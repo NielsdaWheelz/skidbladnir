@@ -1,33 +1,34 @@
-# Ariadne v1: product and architecture
+# Skíðblaðnir v1: product and architecture
 
 Status: reviewed implementation target; no implementation is implied. Audience:
 implementers and reviewers. Evidence last checked: 2026-08-23.
 
 Specification precedence:
 
-1. This document owns Ariadne behavior, architecture, scope, trust, and
+1. This document owns Skíðblaðnir behavior, architecture, scope, trust, and
    acceptance.
 2. [`docs/rules`](rules/index.md) owns implementation standards unless this
-   document names a narrower Ariadne rule. The rules bind by intent, translated
-   to Go and Kotlin. Where a rule document's mechanism is specific to a
+   document names a narrower Skíðblaðnir rule. The rules bind by intent,
+   translated to Go and Kotlin. Where a rule document's mechanism is specific to a
    TypeScript/Effect runtime — returned effect values, self-wired service
    layers, layer kinds, generic-parameter forms — Section 5 composition and
    Section 8 explicit Go composition are the named narrower rule; the
    underlying obligations (supervised termination, single wiring, closed
    variants) still bind. `frontend.md` binds the Compose client's state,
-   variant, and error-message rules; its routing rules have no Ariadne surface.
+   variant, and error-message rules; its routing rules have no Skíðblaðnir
+   surface.
 3. Imported [`docs/rules/modules`](rules/modules/index.md) binds only when
    linked from this document; a cross-reference from one rule document into
-   `modules/` does not bind Ariadne.
+   `modules/` does not bind Skíðblaðnir.
 4. [`testing.md`](rules/testing.md) is the testing authority. Section 9 owns the
-   concrete Ariadne proof set.
+   concrete Skíðblaðnir proof set.
 
 Resolve any conflict before implementation.
 
 ## 1. Outcome
 
-Ariadne is Niels's private Android command deck for Codex subscription agents on
-one remote devbox. From a Galaxy S22+, Niels can:
+Skíðblaðnir is Niels's private Android command deck for Codex subscription
+agents on one remote devbox. From a Galaxy S22+, Niels can:
 
 - see a dense grid of live `ga-*` agents and host pressure;
 - start an agent under `personal`, `work`, or `work2` in a chosen directory;
@@ -37,7 +38,7 @@ one remote devbox. From a Galaxy S22+, Niels can:
 - close an idle TUI, then reopen the exact saved conversation.
 
 The phone is the cockpit, Codex owns conversation/execution, and tmux owns the
-persistent terminal. Ariadne owns identity, attachment, lifecycle facts,
+persistent terminal. Skíðblaðnir owns identity, attachment, lifecycle facts,
 attention, and host telemetry.
 
 The design is terminal-first:
@@ -56,13 +57,13 @@ Core v1 is this document's implementation scope. Wake (FCM) and Release
 
 | Concern | Decision |
 | --- | --- |
-| Product | Ariadne; private, one user, one phone, one devbox |
+| Product | Skíðblaðnir; repository/ASCII namespace `skidbladnir`; private, one user, one phone, one devbox |
 | Phone | Samsung Galaxy S22+ `SM-S906W`, Android 16/API 36; wireless debugging allowed |
 | Host | One Hetzner VPS; Linux, mosh, tmux 3.4 floor with recorded proven version, systemd user services |
 | Network | Tailscale TLS; loopback gateway; Funnel/public ingress forbidden |
 | Profiles | Closed enum `personal | work | work2`; never caller-supplied `CODEX_HOME` |
 | Runtime | One managed Codex App Server daemon per profile; Unix socket only |
-| Interaction | Stock remote Codex TUI in tmux; no Ariadne transcript/composer |
+| Interaction | Stock remote Codex TUI in tmux; no Skíðblaðnir transcript/composer |
 | Android start | Explicit validated devbox cwd; profile default model; YOLO |
 | Laptop start | Current shell cwd; normal interactive model/image/prompt flags; YOLO |
 | Workspace | Shared-live only; worktrees remain prompt-level Codex instructions |
@@ -81,9 +82,26 @@ Profile mapping:
 | `work` | `codex-work` | `/home/niels/.codex-work` |
 | `work2` | `codex-work2` | `/home/niels/.codex-work2` |
 
-All three commands currently resolve through `ai-router`. Ariadne remains its
+All three commands currently resolve through `ai-router`. Skíðblaðnir remains its
 own repository. Installation adds one narrow router/shim integration; it does
 not import or depend on `llm-calling`.
+
+### Product language
+
+| Role | Product language | Contract |
+| --- | --- | --- |
+| Android app | **Skíðblaðnir** | Display name; repository, code, paths, and package identifiers use `skidbladnir`. |
+| Agent and host overview | **Hlíðskjálf** | The grid and pressure surface. Literal navigation and accessibility label: `Agents`. |
+| New-agent surface | **The Forge** | `+` is labeled `Create new agent`; submission remains `Start agent`. Aulë/Hephaestus supply motif only. |
+| Dwarf character catalogue | **Dvergatal** | Versioned, bundled names and portraits; presentation only. |
+| Human source of intent | **Gloriana** | Conceptual role, not a screen, type, or service. |
+| Future orchestration engine | **Sūtradhāra** | Reserved name; Core has no placeholder, route, schema, or abstraction for it. |
+
+Prospero, Solomon/the Seal, shabti, and Gwydion/*Cad Goddeu* are reserved
+product vocabulary until a concrete capability owns each name. Beyond the
+ASCII product namespace, mythic language stays in presentation; domain/API
+concepts and lifecycle, error, trust, and destructive-action labels remain
+literal.
 
 ### Capability contract
 
@@ -105,7 +123,7 @@ Core exposes one path per capability:
 
 ### Goals
 
-- Match known Kache behavior: `ga-*` cards, character icons,
+- Match known Kache behavior: `ga-*` cards, named dwarf portraits,
   `WORKING`/`IDLE`, objective/activity, many agents, voice-driven mobile TUI,
   tmux continuity, and recovery.
 - Surpass the known surface with explicit account separation, honest unknowns,
@@ -129,12 +147,16 @@ Core exposes one path per capability:
   is the sole caller-selected host path and is validated as specified below.
 - Coordinated multi-writer leases. Tmux may have multiple viewers; one person
   types at a time.
-- Core: FCM, A/B updating, images, custom speech recognition, TTS, terminal
-  screen reconstruction, permanent purge, or off-host disaster recovery.
+- Character-driven prompts/personas, catalogue CRUD/network fetch, character
+  picker/reroll, or any character tradition outside Old Norse/Eddic, Tolkien,
+  and Germanic/operatic sources.
+- Core: FCM, A/B updating, prompt/terminal image transfer, custom speech
+  recognition, TTS, terminal screen reconstruction, permanent purge, or
+  off-host disaster recovery.
 
 ## 3. Evidence and decisions
 
-Claims are **observed**, **stated**, **platform fact**, or **Ariadne decision**.
+Claims are **observed**, **stated**, **platform fact**, or **Skíðblaðnir decision**.
 Similarity is not attribution.
 
 | Evidence | Supports | Does not prove |
@@ -142,18 +164,18 @@ Similarity is not attribution.
 | Kache [agent grid](https://x.com/yacineMTB/status/2090580615049408711) | Observed dense two-column `ga-*` cards, character art, objective/activity, `WORKING`, `IDLE`, attention marks | Private backend, concurrency, durability |
 | Kache [mobile TUI](https://pbs.twimg.com/media/HQVGPaeXQAAARj3?format=jpg&name=medium) | Observed stock-looking Codex TUI on Android | Embedded vs tmux vs `--remote` implementation |
 | Kache [A/B post](https://x.com/yacineMTB/status/2090436678519312650) | Stated/observed two installed variants intended to preserve access during updates | Signing, activation, rollback safety |
-| Kache [recovery screenshot](https://x.com/yacineMTB/status/2090443641697288552) | Observed proposal to inventory `ga-*`, tmux, saved Codex sessions, `todo.txt` | That recovery ran or matches Ariadne internals |
+| Kache [recovery screenshot](https://x.com/yacineMTB/status/2090443641697288552) | Observed proposal to inventory `ga-*`, tmux, saved Codex sessions, `todo.txt` | That recovery ran or matches Skíðblaðnir internals |
 | [Codex App Server](https://learn.chatgpt.com/docs/app-server) | Platform fact: rich-client interface, explicit thread cwd, remote TUI, Unix sockets, generated versioned schemas | Production support or in-flight survival after process death |
 | [Codex hooks](https://learn.chatgpt.com/docs/hooks) | Platform fact: session/prompt/tool/stop/end events and exact fields | Stable transcript format; the docs explicitly deny that |
 
-The image's bottom row is Gboard, not Ariadne: toolbar menu, stickers/emoji,
+The image's bottom row is Gboard, not Skíðblaðnir: toolbar menu, stickers/emoji,
 GIF, Writing Tools, clipboard, settings, microphone. Core relies on the installed
 IME and does not copy this row.
 
-The observed `whitebox` card label has no public semantic contract. Ariadne does
+The observed `whitebox` card label has no public semantic contract. Skíðblaðnir does
 not invent one; the equivalent badge is the truthful runtime/profile pair
 `CODEX · personal|work|work2`. The observed product is branded `k-stack` in its
-own UI; Ariadne matches surveyed behavior, never branding, naming, or
+own UI; Skíðblaðnir matches surveyed behavior, never branding, naming, or
 unobserved internals.
 
 Local inspection on 2026-08-23 found `codex-cli 0.149.0`, tmux 3.4, the three
@@ -232,7 +254,7 @@ Failure reopens this design; it never authorizes a fallback.
    starts settles `WorkingDirectoryUnavailable`.
 4. The broker calls stable `thread/start` with that normalized cwd, profile
    default model, approval `never`, danger-full-access sandbox, no experimental
-   capability, and `serviceName:"ariadne"`.
+   capability, and `serviceName:"skidbladnir"`.
 5. Persist returned `thread.id` and `thread.sessionId`; unsubscribe the broker's
    automatic thread subscription.
 6. Create the deterministic per-incarnation `ga-*` tmux session. Register its
@@ -248,7 +270,7 @@ authority. Validation prevents malformed launches; it is not a sandbox.
 
 A lost post-write `thread/start` response stabilizes once before any product
 outcome: the reconciler reads that profile's summary `thread/list`, matching
-`serviceName:"ariadne"`, the normalized cwd, and the dispatch window. A unique
+`serviceName:"skidbladnir"`, the normalized cwd, and the dispatch window. A unique
 match completes the original command against that thread; absence or ambiguity
 terminates it as `RecoveryRequired`, an immutable receipt that is never
 redispatched. The user-confirmed retry is a new `StartAgent` under a fresh
@@ -281,8 +303,8 @@ by intent, never a replay.
 
 Interactive model/image/prompt/`-C` arguments are preserved; conflicting
 transport, `CODEX_HOME`, approval, or sandbox inputs fail. Noninteractive Codex
-subcommands remain ordinary `ai-router` behavior and are not Ariadne agents.
-Starts outside tmux remain usable remote Codex but are not shown by Ariadne.
+subcommands remain ordinary `ai-router` behavior and are not Skíðblaðnir agents.
+Starts outside tmux remain usable remote Codex but are not shown by Skíðblaðnir.
 
 The first `UserPromptSubmit` supplies at most 240 normalized scalars as the
 objective when a laptop-created card lacks one. Cwd is observed for resume and
@@ -301,10 +323,10 @@ diagnosis only; it never becomes project identity.
   active pane and redirect other clients' input. The gateway attaches with one
   invocation — `attach-session -t <shadow> -f active-pane,ignore-size \;
   select-window \; select-pane`; later targeting uses a reserved binding in a
-  dedicated Ariadne key table, armed with `switch-client -c <phone-tty> -T
+  dedicated Skíðblaðnir key table, armed with `switch-client -c <phone-tty> -T
   <table>` and delivered by writing the bound key into the gateway-owned phone
   PTY. Client-context `select-pane` under `active-pane` moves only that client;
-  Ariadne-created sessions have a single pane and need no selection. While a
+  Skíðblaðnir-created sessions have a single pane and need no selection. While a
   laptop client is attached, `ignore-size` keeps rotation and IME resizing from
   reflowing the laptop TUI; a smaller phone sees tmux's cursor-following
   viewport, and rotation/terminal zoom reveals more cells.
@@ -335,7 +357,7 @@ diagnosis only; it never becomes project identity.
 
 A second `codex --remote` process is not handoff: it could resume the same
 thread, but it would not share this TUI's unsent draft, local screen state, or
-terminal process. Ariadne therefore shares one TUI through tmux.
+terminal process. Skíðblaðnir therefore shares one TUI through tmux.
 
 ### Close, reopen, recovery
 
@@ -382,11 +404,11 @@ terminal process. Ariadne therefore shares one TUI through tmux.
   fail `ProfileUnavailable`, and existing cards keep deriving from hook and
   liveness evidence. No embedded or cross-profile fallback. Recover the same
   pin, then reopen exact threads.
-- `$XDG_STATE_HOME/ariadne/todo.txt` is an atomic `0600` operator recovery
+- `$XDG_STATE_HOME/skidbladnir/todo.txt` is an atomic `0600` operator recovery
   projection of handle, profile, exact refs, last tmux target, objective,
   state — rewritten from committed state in one awaited step after the Fact
   commit, never inside a SQLite transaction. SQLite is authority; `todo.txt` is
-  never input, never read by Ariadne code, and carries no field absent from
+  never input, never read by Skíðblaðnir code, and carries no field absent from
   SQLite.
 - Terminal input is never replayed after disconnect. Reattach, inspect, decide.
 
@@ -461,9 +483,9 @@ frame, unmatched response, write error — fail the in-flight request, log a
 defect with correlation handle, and recycle the proxy connection; failures past
 a named consecutive threshold mark the profile `ProfileUnavailable` until the
 supervised availability probe (`initialize` plus daemon/CLI version and
-schema-digest comparison, on a named schedule and on `ariadne profile recheck`)
+schema-digest comparison, on a named schedule and on `skidbladnir profile recheck`)
 restores it with a durable Fact. Drift — unknown method/variant, pin/schema/
-config mismatch — is Ariadne's own defect: that profile is unusable until
+config mismatch — is Skíðblaðnir's own defect: that profile is unusable until
 operator repair and reports distinctly from daemon loss. `ProfileUnavailable`
 itself covers only observed daemon/socket outage of a correctly pinned profile.
 
@@ -514,17 +536,17 @@ stdout/stderr, and reasoning.
 
 | Owner | Owns | Must not own |
 | --- | --- | --- |
-| Android | Dashboard, requested cwd, local terminal rendering/input, disposable cache | Agent truth, Codex refs, effective cwd, tmux commands |
+| Android | Dashboard, bundled portraits, requested cwd, local terminal rendering/input, disposable cache | Agent truth, character assignment, Codex refs, effective cwd, tmux commands |
 | Gateway | Auth, strict DTOs, paging, SSE/WSS admission | Transcript, turns, provider policy |
-| Registry/commands | Agent identity, lifecycle facts, idempotency, attention | Repos, worktrees, generic jobs, terminal bytes |
+| Registry/commands | Agent identity, character assignment, lifecycle facts, idempotency, attention | Repos, worktrees, generic jobs, terminal bytes |
 | Broker | Stable thread identity/summary allowlist and schema | Turn control, content, archive/delete |
 | Launcher/hooks | Closed profile, exact-id exec, semantic observations | Guessed correlation, raw network exposure |
 | Tmux/terminal | Exact binding, PTY bytes, attach/detach/backpressure | Conversation meaning, status parsing |
 | Metrics | `/proc`, aggregation, pressure reasons | Admission, scheduling, agent attribution |
-| SQLite | Ariadne facts and receipts | Codex auth/history, terminal bytes |
+| SQLite | Skíðblaðnir facts and receipts | Codex auth/history, terminal bytes |
 
 Core, tmux, App Server, and Codex share the devbox user. YOLO code can modify
-Ariadne files/processes. Tailnet and bearer auth protect remote access, not the
+Skíðblaðnir files/processes. Tailnet and bearer auth protect remote access, not the
 control plane from same-UID code.
 
 The terminal endpoint is high-trust shell-equivalent authority. It accepts only
@@ -538,8 +560,29 @@ UID/VM and is out of Core scope.
 
 ### Identity and state
 
-An **agent** has opaque id, stable `ga-*` handle, profile, objective, created
-time, optional local closure time. It is not a process, thread, cwd, or repo.
+An **agent** has opaque id, stable `ga-*` handle, immutable `characterKey`,
+profile, objective, created time, optional local closure time. The id/handle is
+authority; the dwarf name and portrait are presentation. An agent is not a
+process, thread, cwd, repo, or character-driven runtime persona.
+
+**Dvergatal** is the immutable repository-owned character catalogue at
+`catalog/characters.json`, embedded at build time rather than stored as CRUD
+data. Core ships at least 100 curated named dwarfs from exactly
+`OldNorse | Tolkien | GermanicOperatic`; no `FairyTale` or `ModernMedia`
+catalogue family exists. Each entry has exactly `{key, ordinal, displayName,
+tradition, source, iconKey}`. Keys are namespaced, such as `norse.durinn` and
+`tolkien.durin-i`; ordinals, keys, and icon keys are unique and stable, while
+display names may overlap across traditions. Every icon key resolves to one
+bundled square WebP portrait. No runtime URL or download exists.
+
+Initial phone and supported laptop registration assign `characterKey` in the
+same transaction that inserts the agent. Compute SHA-256 over the UTF-8
+canonical agent id, interpret the first eight digest bytes as an unsigned
+big-endian integer, and take modulo catalogue length. From that ordinal, scan
+cyclically for the first entry not used by a non-`CLOSED` agent and persist it
+once. If every entry is active, use the derived starting entry; repeated
+characters are allowed and the handle still disambiguates. Reopen never
+reassigns. Catalogue size therefore never caps agents.
 
 A **Codex binding** stores App Server `thread.id` (exact resume ref) and
 `thread.sessionId`. Hooks/CLI often call the root ref a session id; Lane 0 proves
@@ -583,10 +626,10 @@ evaluated continuously by the supervised reconciler, not only at restart.
 
 The card projection carries the closed derivation reason plus
 `failureCode`/`failureObservedAt`; `EXCEPTION` and `UNKNOWN` always carry one
-closed code. Evidence Ariadne observes but does not own — hooks, summary reads,
+closed code. Evidence Skíðblaðnir observes but does not own — hooks, summary reads,
 tmux, `/proc`, PID/start-time/TTY facts — that is absent, stale, or
 contradictory derives `UNKNOWN`, at read time, never persisted as a status
-column. Ariadne-owned state contradicting itself — two live bindings, a binding
+column. Skíðblaðnir-owned state contradicting itself — two live bindings, a binding
 without its agent, a refs-less `codex_sessions` row, corrupt storage — is a
 defect with correlation handle, never `UNKNOWN`.
 
@@ -602,7 +645,7 @@ missing them is a defect. Hook ACK latency is never blocked by read snapshots.
 
 | Table | Fact |
 | --- | --- |
-| `agents` | Handle/profile/objective/created/closed |
+| `agents` | Handle/character key/profile/objective/created/closed |
 | `codex_sessions` | Exact agent/profile/thread+session refs, requested/effective cwd, model |
 | `runtime_bindings` | Verified tmux/TTY/PID incarnation and end |
 | `agent_observations` | Closed hook/liveness facts and safe activity |
@@ -631,7 +674,7 @@ outcome: no dispatch record means the proxy write never happened and the
 reconciler re-drives it; persisted refs with an unregistered runtime re-drive
 the tmux start. Resumption, not user retry, completes accepted commands; an
 undriven non-terminal command is a defect. This per-command resume loop is the
-named narrower Ariadne rule replacing `operation-types.md`'s durable-operation
+named narrower Skíðblaðnir rule replacing `operation-types.md`'s durable-operation
 runners; section 8's exclusion of queue/broker infrastructure stands.
 
 Tmux session names are deterministic per runtime incarnation — handle plus
@@ -643,7 +686,7 @@ matches the registered identity running the pinned invocation; an unregistered
 or unverified session is killed and recreated, never adopted, never
 attachable. Close targets exact PID/start time and is replay-safe after
 absence. Projection plus SSE Fact commit atomically. Facts are a closed
-PascalCase-discriminated union declared in `api/ariadne.v1.json` —
+PascalCase-discriminated union declared in `api/skidbladnir.v1.json` —
 `AgentStarted | AgentBound | AgentStateChanged | ActivityObserved |
 AttentionRaised | AttentionAcknowledged | CommandSettled | AgentClosed |
 HostPressureChanged` — generated into both clients and matched exhaustively;
@@ -681,10 +724,13 @@ replay keys are never reused. Installation bearers are generated 256-bit
 material stored only as domain-separated verifiers; bearers do not expire, and
 revocation is their only invalidation.
 
-Every `/v1` request carries `Ariadne-Contract: <digest of api/ariadne.v1.json>`
-and every response echoes the server digest. Mismatch is `ProtocolMismatch` on
-every route including `/v1/pair`, answered with the server digest; `/v1/events`
-and `/v1/terminal/{handle}` reject the upgrade with the same code.
+Every `/v1` request carries `Skidbladnir-Contract: <contract digest>`, covering
+`api/skidbladnir.v1.json`, canonical `catalog/characters.json`, and the
+lexicographically ordered portrait paths plus raw bytes; every response echoes
+it. Mismatch is
+`ProtocolMismatch` on every route including `/v1/pair`, answered with the
+server digest; `/v1/events` and `/v1/terminal/{handle}` reject the upgrade with
+the same code.
 `ProtocolMismatch` never describes App Server drift.
 
 | Method/path | Contract |
@@ -692,7 +738,7 @@ and `/v1/terminal/{handle}` reject the upgrade with the same code.
 | `POST /v1/pair` | Consume challenge; register phone bearer |
 | `GET /v1/bootstrap` | Profile health with account fingerprint, host projection, counts, Fact cursor, per profile up to eight recent cwds most-recent-first (recent = confirmed effective by `SessionStart`) |
 | `GET /v1/agents?cursor=&limit=&state=` | Keyset pages ordered `(created desc, id desc)`; `limit <= 100`; `state` enum `open \| closed \| all`, default `open` (excludes `CLOSED`); cursor encodes order key and filter |
-| `GET /v1/agents/{handle}` | Exact card/binding/attention/attachability/derivation reason/failure fields |
+| `GET /v1/agents/{handle}` | Exact card character/binding/attention/attachability/derivation reason/failure fields |
 | `POST /v1/agents` | `StartAgent(clientCommandId, profile, objective, cwd)`; `202` |
 | `POST /v1/agents/{handle}/close` | Idle-only idempotent close; `202` |
 | `POST /v1/agents/{handle}/reopen` | Exact-thread idempotent reopen; `202` |
@@ -700,6 +746,9 @@ and `/v1/terminal/{handle}` reject the upgrade with the same code.
 | `GET /v1/events` | Durable SSE after `Last-Event-ID` |
 | `GET /v1/host/samples?window=&resolution=` | Current sample + aggregated series `<= 300` points; `window` enum `15m \| 1h \| 6h \| 24h \| 7d`; `resolution` derived from `window`, explicit overflow is `InvalidRequest`; buckets aggregate pressure-truthfully (min for available memory/disk, max otherwise), carry worst state and reason union, `UNKNOWN` on any missing required signal, and bucket start times |
 | `GET /v1/terminal/{handle}` | Authenticated WSS upgrade |
+
+Every agent/card projection carries `characterKey`, `displayName`, and
+`iconKey`. `POST /v1/agents` accepts none of them; assignment is server-owned.
 
 Every `202` returns `{handle, clientCommandId, acceptedAt}`; Start mints the
 card in `STARTING` before answering, and exact replay returns the same body.
@@ -740,7 +789,7 @@ malformed, filter-mismatched, or beyond-high-water cursor — a client defect
 signal, never silence. `ResyncRequired` is a well-formed SSE cursor expired or
 overtaken by queue overflow and instructs bootstrap. Transient internal failure
 is retried internally until success or defect; no generic transient code
-exists. `api/ariadne.v1.json` carries the one authoritative code-to-HTTP-status
+exists. `api/skidbladnir.v1.json` carries the one authoritative code-to-HTTP-status
 mapping; both generated clients derive from it.
 
 Unknown internal state, corrupt storage, impossible process identity, or unknown
@@ -784,7 +833,7 @@ frames are input; binary server frames are PTY output. `Hello`/`Presence`
 expose only attached-client count and `Owner | Constrained` geometry mode; they
 are not durable Facts. The count spans the registered source session's whole
 group via `list-clients`, classifying gateway-owned shadow clients apart from
-non-Ariadne clients; the non-Ariadne count drives geometry mode and presence —
+non-Skíðblaðnir clients; the non-Skíðblaðnir count drives geometry mode and presence —
 single-session `session_attached` is never sufficient. Each WSS connection owns
 one gateway PTY, tmux client, and ephemeral shadow session, created at upgrade
 and torn down on any close — `Detach`, slow-client disconnect, or abnormal
@@ -823,16 +872,21 @@ this document are UI copy or quoted observation, not wire values.
 
 - Compile/target/min SDK 36 after physical build preflight. One manually
   installed package for Core.
-- Start sheet: profile, objective, and editable cwd defaulted to the first
-  server-supplied recent, with up to eight server-derived recents as one-tap
-  suggestions; allow type/paste, not filesystem browsing. The cwd field is
-  single-line URI-class input with autocapitalization, autocorrect, suggestion
-  substitution, and smart punctuation disabled; paste preserves bytes exactly.
-  Validation errors keep the sheet and input intact.
-- Adaptive virtualized two-column grid; one column at large font. Card:
-  deterministic bundled character icon, handle, profile, state, objective, safe
-  activity, age, attention. Icon/color never carries state alone. Grid order is
-  a stable total order: unacknowledged attention first, then state rank
+- `+`, labeled `Create new agent` for accessibility, opens **The Forge**. This
+  Start sheet contains profile, objective, and editable cwd defaulted to the
+  first server-supplied recent, with up to eight server-derived recents as
+  one-tap suggestions; allow type/paste, not filesystem browsing. The cwd field
+  is single-line URI-class input with autocapitalization, autocorrect,
+  suggestion substitution, and smart punctuation disabled; paste preserves
+  bytes exactly. Validation errors keep the sheet and input intact; its submit
+  action is labeled `Start agent`. Character assignment is automatic; Core has
+  no character field, picker, or reroll.
+- **Hlíðskjálf** is the adaptive virtualized two-column agent and host overview;
+  it uses one column at large font. Card:
+  Dvergatal display name and bundled portrait, handle, profile, state,
+  objective, safe activity, age, attention. Name/icon/color never carries state
+  or identity alone. Grid order is a stable total order: unacknowledged
+  attention first, then state rank
   (`WORKING`; `STARTING`/`CLOSING`; `EXCEPTION`/`UNKNOWN`/`RECOVERABLE`;
   `IDLE`), then last observation descending, then handle. `CLOSED` cards are
   excluded from the default grid behind an explicit `Closed` filter.
@@ -844,10 +898,10 @@ this document are UI copy or quoted observation, not wire values.
   variant fails loudly.
 - Card tap opens the terminal when the card is attachable; otherwise it opens
   the agent sheet. Long-press and an explicit overflow control open the agent
-  sheet from any card: handle, profile, exact refs, state with reason and
-  correlation handle, attention, last activity, and the closed action set
-  `Open | Close | Reopen | Acknowledge`. Close is offered only for `IDLE`;
-  elsewhere it renders disabled with its reason. Reopen is offered for
+  sheet from any card: dwarf name, handle, profile, exact refs, state with
+  reason and correlation handle, attention, last activity, and the closed
+  action set `Open | Close | Reopen | Acknowledge`. Close is offered only for
+  `IDLE`; elsewhere it renders disabled with its reason. Reopen is offered for
   `RECOVERABLE`, `CLOSED`, and `EXCEPTION` holding exact refs and opens the
   terminal once a live runtime-binding Fact commits; a missing exact thread
   renders `ExactThreadMissing` and offers no Reopen. Acknowledge clears the
@@ -893,12 +947,13 @@ this document are UI copy or quoted observation, not wire values.
   accent. Avatars are landmarks, not status. No decorative motion.
 - Minimum 48 dp targets. Grid, start sheet, agent sheet, top strip, terminal
   chrome, and accessory row are fully TalkBack-labeled and Switch-Access
-  reachable; each card announces handle, profile, state, reason, attention, and
-  age as one node. The terminal surface is one labeled region running xterm.js
-  screen-reader mode announcing the active line; character-level TalkBack
-  navigation inside terminal content is a recorded limitation, not a claimed
-  capability. Physical tests cover edge-to-edge, IME resize, both navigation
-  modes, 200% scale, TalkBack, Switch Access, rotation, and process recreation.
+  reachable; each card announces dwarf name, handle, profile, state, reason,
+  attention, and age as one node. The terminal surface is one labeled region
+  running xterm.js screen-reader mode announcing the active line;
+  character-level TalkBack navigation inside terminal content is a recorded
+  limitation, not a claimed capability. Physical tests cover edge-to-edge, IME
+  resize, both navigation modes, 200% scale, TalkBack, Switch Access, rotation,
+  and process recreation.
 - Cache only disposable card/metric projections. Terminal scrollback stays in
   memory. The objective is prompt-derived with declared handling: persisted in
   SQLite, projected in Facts, cards, and `todo.txt`, cached on the phone,
@@ -929,10 +984,10 @@ all reasons. No Prometheus/Grafana, alerts, attribution, throttling, or gating.
 
 ### Security and lifecycle
 
-- `ariadne pair` prints one short-lived one-time secret/QR; operator scrollback
+- `skidbladnir pair` prints one short-lived one-time secret/QR; operator scrollback
   holds it only until it is used or expires. Successful pairing replaces:
   register the new bearer, revoke every prior phone installation in one
-  transaction, close their SSE/WSS. `ariadne pair --revoke` revokes without
+  transaction, close their SSE/WSS. `skidbladnir pair --revoke` revokes without
   replacement. Bearers, Codex auth, and signing material never enter repo/logs.
 - Loopback plus Tailscale Serve plus bearer are all required. Android rejects
   cleartext/unapproved hosts; WebView loads packaged assets only.
@@ -948,7 +1003,7 @@ all reasons. No Prometheus/Grafana, alerts, attribution, throttling, or gating.
   `./scripts/test accept upgrade`. Any failure restores every manifest artifact
   and re-probes before ingress reopens. Each pin change first rehearses the
   restore path once: snapshot, forced probe failure, restore, `accept upgrade`
-  PASS. The snapshot lives under `$XDG_STATE_HOME/ariadne/snapshots/<pin>` mode
+  PASS. The snapshot lives under `$XDG_STATE_HOME/skidbladnir/snapshots/<pin>` mode
   `0700`, never leaves the host, and is deleted once acceptance passes. Host
   tmux upgrades take the same path — probe grouped
   sessions/`active-pane`/`ignore-size`, re-run the handoff gate, record the new
@@ -971,11 +1026,12 @@ capabilities remain explicit; no runtime/account fallback. Evaluate
 ## 8. Target files and work split
 
 ```text
-api/ariadne.v1.json
+api/skidbladnir.v1.json
+catalog/characters.json
 generated/api/{go,kotlin}/
 schemas/codex/<pinned-version>/
 codex.lock
-cmd/{ariadne,ariadne-hook}/
+cmd/{skidbladnir,skidbladnir-hook}/
 internal/{registry,storage,commands,events,hooks}/
 internal/runtime/{appserver,codex,tmux,terminal}/
 internal/gateway/{api,auth,sync}/
@@ -983,6 +1039,7 @@ internal/metrics/
 migrations/
 android/app/src/main/
 android/app/src/main/assets/terminal/
+android/app/src/main/res/drawable-nodpi/dwarf_*.webp
 tests/{fixtures,integration,system,e2e}/
 evidence/{sources,live}/
 scripts/{build,test,install-devbox}
@@ -1006,11 +1063,11 @@ or a token with empty justification.
 
 | Lane | Owns | First red proof |
 | --- | --- | --- |
-| 0 Contract/build/evidence | API, generated DTO/schema, pin, scripts, workflow, evidence | Drift/mutable binary/wrong command inventory fails |
-| 1 Registry/storage/hooks | Registry, commands, facts, hooks, migrations | Event sequences derive one truthful state; replay keys are exact |
+| 0 Contract/build/evidence | API, Dvergatal data/validation, generated DTO/schema, pin, scripts, workflow, evidence | Contract/catalog drift, mutable binary, or wrong command inventory fails |
+| 1 Registry/storage/hooks | Registry, character assignment, commands, facts, hooks, migrations | Assignment is atomic/stable; event sequences derive one truthful state; replay keys are exact |
 | 2 Runtime/terminal | App Server adapter, launcher, tmux, PTY | Cwd validation, exact allocation, shadow attach/detach, close/reopen |
 | 3 Gateway/metrics | API/auth/sync/metrics | Real HTTP+SQLite+SSE/WSS, bounds, pressure |
-| 4 Android | `android/**` | Real-runtime grid, terminal, IME, keys, accessibility |
+| 4 Android | `android/**` | Bundled portraits; real-runtime grid, terminal, IME, keys, accessibility |
 | 5 Composition | Entrypoint, deploy, tests/{system,e2e} | Real phone/devbox laptop-phone handoff |
 
 Lane 0 is serial; 1-4 may follow; 5 composes. Shared contract changes return to
@@ -1065,6 +1122,7 @@ gate.
 | PTY/WSS -> Android | System/device: ANSI/UTF-8/IME/clipboard, viewport/size ownership, backpressure/reconnect/no replay |
 | Laptop -> phone -> laptop | Live: same pane/PID/thread/draft; laptop focus/geometry/process unchanged; independent detach |
 | SQLite Fact -> card | Real HTTP/SSE: atomic snapshot, catch-up/live race, dedupe, overflow resync; retention prune keeps and removes exactly per the stated windows without changing a derived state; expired cursor forces bootstrap |
+| Dvergatal -> agent/card | Static catalogue/source/icon validation + real SQLite/API/Compose: atomic assignment, stable reopen/restart, exact name/portrait/handle, deterministic exhaustion without a cap |
 | Kernel -> pressure | Real `/proc` persist/aggregate/render + synthetic threshold/missing/hysteresis |
 | Bearer -> terminal authority | Pair race, rotation/revocation, wrong bearer, raw-target injection, off-Tailnet denial |
 | Restart -> recovery | Kill gateway/PTY/tmux/App Server: live/recoverable/exception/unknown, never guess/replay |
@@ -1076,10 +1134,21 @@ one expensive real phone/devbox flow. Do not test every internal helper matrix.
 
 - Physical `SM-S906W` preflight records API/build, Tailscale, WebView, Gboard
   typing/dictation/clipboard, navigation modes, scale, accessibility.
-- Phone displays at least 15 idle/live cards with no configured cap; at least two
-  real agents work concurrently; pressure remains advisory. With 15 cards
-  present, a completion raises the attention count and reaches its card in one
-  tap; closed agents are absent from the default grid.
+- The installed app identifies as **Skíðblaðnir**; the agent and host overview
+  is **Hlíðskjálf**; `+` is announced as `Create new agent`, opens **The Forge**,
+  and submits through `Start agent`. Reserved product vocabulary appears in no
+  Core route, schema, navigation item, or domain type.
+- Dvergatal contains at least 100 validated entries from only Old Norse/Eddic,
+  Tolkien, and Germanic/operatic sources, each with one unique bundled portrait;
+  no `FairyTale` or `ModernMedia` family, missing asset, or orphaned asset
+  exists.
+- Phone displays at least 15 idle/live cards with distinct dwarf names and
+  portraits and no configured cap; at least two real agents work concurrently;
+  pressure remains advisory. Close/reopen, restart, and laptop discovery retain
+  the assigned character. With 15 cards present, a completion raises the
+  attention count and reaches its card in one tap; closed agents are absent from
+  the default grid. Exhausting the catalogue still permits Start and preserves
+  unique `ga-*` handles.
 - Android Start works independently for all three profiles with exact isolated
   home, a manually entered existing cwd (including spaces and `~/`), empty exact
   thread, remote TUI, YOLO, and no substitution. Invalid, missing, relative, or
@@ -1125,7 +1194,7 @@ one expensive real phone/devbox flow. Do not test every internal helper matrix.
 ## 10. Deferred v1.1+
 
 - Wake: opaque FCM attention, redacted notification, doze/deep-link proof.
-- Release: `dev.niels.ariadne.a/.b`, manual provisioning, signed immutable
+- Release: `dev.niels.skidbladnir.a/.b`, manual provisioning, signed immutable
   candidate, health/activation/rollback; signing/ADB outside YOLO UID.
 - Native voice review only if Gboard fails real tests.
 - Images, rich clipboard, terminal text copy-out (touch selection of terminal
