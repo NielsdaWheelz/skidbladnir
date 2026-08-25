@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "proofId": "p0-tmux-handoff",
+  "recordedAt": "2026-08-25T14:11:55Z",
+  "command": ["./scripts/test", "proof", "p0-tmux-handoff"],
+  "artifacts": [
+    {"path": "tests/live/tmux_grouped_live_test.go", "sha256": "498fa92b2f20bbac93a06edc7b920df45615f0405acece2bccf4aa3cdc95c805"}
+  ]
+}

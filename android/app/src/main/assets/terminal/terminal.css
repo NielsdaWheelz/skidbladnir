@@ -23,10 +23,30 @@ h1 {
     margin: 0;
 }
 
+h2 {
+    font-size: 16px;
+    margin: 0;
+}
+
 #terminal {
     min-height: 180px;
     border: 1px solid #3c414b;
     padding: 8px;
+}
+
+#draft-proof {
+    border: 1px solid #3c414b;
+    padding: 8px;
+}
+
+#draft-value {
+    display: block;
+    min-height: 24px;
+    padding: 8px;
+    border: 1px solid #596273;
+    background: #181b21;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 p {

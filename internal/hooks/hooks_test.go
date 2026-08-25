@@ -2,8 +2,99 @@ package hooks
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestDecodeProjectsBindingAndBoundedLaptopObjective(t *testing.T) {
+	session, err := decode([]byte(`{
+		"session_id":"session_123",
+		"transcript_path":"/tmp/sessions/2026/08/25/rollout-2026-08-25T01-02-03-11111111-1111-4111-8111-111111111111.jsonl",
+		"cwd":"/home/niels/src",
+		"hook_event_name":"SessionStart",
+		"model":"gpt-5.6",
+		"permission_mode":"bypassPermissions",
+		"source":"startup"
+	}`))
+	if err != nil {
+		t.Fatalf("decode SessionStart: %v", err)
+	}
+	if session.EffectiveCWD != "/home/niels/src" || session.Model != "gpt-5.6" || session.SessionSource != "startup" {
+		t.Fatalf("binding projection = %#v", session)
+	}
+
+	prompt := strings.Repeat("x", 300) + "\nsecond\u202eline"
+	input := map[string]any{
+		"session_id":      "session_123",
+		"transcript_path": "/tmp/sessions/2026/08/25/rollout-2026-08-25T01-02-03-11111111-1111-4111-8111-111111111111.jsonl",
+		"cwd":             "/home/niels/src",
+		"hook_event_name": "UserPromptSubmit",
+		"turn_id":         "turn_123",
+		"prompt":          prompt,
+		"model":           "gpt-5.6",
+		"permission_mode": "bypassPermissions",
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitted, err := decode(encoded)
+	if err != nil {
+		t.Fatalf("decode UserPromptSubmit: %v", err)
+	}
+	if len([]rune(submitted.Objective)) != 240 || strings.ContainsAny(submitted.Objective, "\n\u202e") {
+		t.Fatalf("objective preview is not safe and bounded: %q", submitted.Objective)
+	}
+}
+
+func TestDecodeAcceptsLargeDiscardedAssistantMessage(t *testing.T) {
+	input := map[string]any{
+		"session_id":             "session_123",
+		"transcript_path":        "/tmp/sessions/2026/08/25/rollout-2026-08-25T01-02-03-11111111-1111-4111-8111-111111111111.jsonl",
+		"cwd":                    "/home/niels/src",
+		"hook_event_name":        "Stop",
+		"model":                  "gpt-5.6",
+		"permission_mode":        "bypassPermissions",
+		"turn_id":                "turn_123",
+		"stop_hook_active":       false,
+		"last_assistant_message": strings.Repeat("discarded", 1024),
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact, err := decode(encoded)
+	if err != nil {
+		t.Fatalf("decode large assistant message: %v", err)
+	}
+	if fact.Projection != stopObserved {
+		t.Fatalf("projection = %v, want StopObserved", fact.Projection)
+	}
+}
+
+func TestObjectivePreviewNormalizesAndCollapsesUnsafeSeparators(t *testing.T) {
+	got := objectivePreview("  e\u0301\talpha\n\u202ebeta\u2066gamma  ")
+	if got != "é alpha beta gamma" {
+		t.Fatalf("objective preview = %q", got)
+	}
+}
+
+func TestDeliverRejectsOversizedProjectionBeforeDial(t *testing.T) {
+	err := deliver("/definitely/not/a/socket", deliveryMessage{
+		Type:      "HookFact",
+		Objective: strings.Repeat("x", maxProjectedHookBytes),
+	})
+	if err == nil || !strings.Contains(err.Error(), "projected hook message exceeds") {
+		t.Fatalf("deliver oversized projection error = %v", err)
+	}
+}
+
+func TestRunRejectsRawHookInputOverLimit(t *testing.T) {
+	err := run(strings.NewReader(strings.Repeat("x", maxHookInputBytes+1)), 1, "/unused", "/unused", "/unused")
+	if err == nil || !strings.Contains(err.Error(), "hook input exceeds") {
+		t.Fatalf("run oversized hook input error = %v", err)
+	}
+}
 
 func TestDecodeRejectsUnknownFields(t *testing.T) {
 	_, err := decode([]byte(`{
@@ -98,7 +189,7 @@ func TestDecodeRejectsFieldsOutsideThePinnedEventSchema(t *testing.T) {
 func TestDecodeProjectsDiscriminatedSubagentPromptOnlyAsActivity(t *testing.T) {
 	fact, err := decode([]byte(`{
 		"session_id":"thr_123",
-		"transcript_path":null,
+		"transcript_path":"/tmp/sessions/2026/08/24/rollout-2026-08-24T12-34-56-11111111-1111-4111-8111-111111111111.jsonl",
 		"cwd":"/home/niels/src",
 		"hook_event_name":"UserPromptSubmit",
 		"turn_id":"turn_123",
@@ -119,7 +210,7 @@ func TestDecodeProjectsDiscriminatedSubagentPromptOnlyAsActivity(t *testing.T) {
 func TestDecodeAcceptsExactPinnedSessionEndShape(t *testing.T) {
 	fact, err := decode([]byte(`{
 		"session_id":"thr_123",
-		"transcript_path":null,
+		"transcript_path":"/tmp/sessions/2026/08/24/rollout-2026-08-24T12-34-56-11111111-1111-4111-8111-111111111111.jsonl",
 		"cwd":"/home/niels/src",
 		"hook_event_name":"SessionEnd",
 		"reason":"other"
@@ -135,7 +226,7 @@ func TestDecodeAcceptsExactPinnedSessionEndShape(t *testing.T) {
 func TestDecodeProjectsSubagentOnlyAsActivity(t *testing.T) {
 	fact, err := decode([]byte(`{
 		"session_id":"thr_123",
-		"transcript_path":null,
+		"transcript_path":"/tmp/sessions/2026/08/24/rollout-2026-08-24T12-34-56-11111111-1111-4111-8111-111111111111.jsonl",
 		"cwd":"/home/niels/src",
 		"hook_event_name":"SubagentStop",
 		"turn_id":"turn_123",

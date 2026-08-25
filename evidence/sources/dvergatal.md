@@ -1,8 +1,7 @@
 # Dvergatal curation and provenance
 
-Status: P0 content proposal for `catalog/characters.json`. This file owns the
-curation record; it does not replace the generated catalogue or portrait
-artifacts.
+Status: frozen P0 curation record for `catalog/characters.json`. This file owns
+the catalogue evidence; portrait artifacts remain a P5 deliverable.
 
 ## Acceptance for good content
 

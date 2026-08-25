@@ -3,8 +3,11 @@ package contract
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCatalogueRejectsInvalidContentAtItsBoundary(t *testing.T) {
@@ -122,10 +125,10 @@ func TestFrozenInputsRejectAnyMutation(t *testing.T) {
 	}
 }
 
-func TestSchemaTreeDigestCoversEveryPathAndByte(t *testing.T) {
+func TestHookSchemaTreeDigestCoversEveryPathAndByte(t *testing.T) {
 	files := []schemaFile{
-		{Path: "v2/ThreadReadParams.json", SHA256: sha256Hex([]byte("read"))},
-		{Path: "v2/ThreadStartParams.json", SHA256: sha256Hex([]byte("start"))},
+		{Path: "session-start.command.input.schema.json", SHA256: sha256Hex([]byte("start"))},
+		{Path: "stop.command.input.schema.json", SHA256: sha256Hex([]byte("stop"))},
 	}
 	baseline := schemaTreeDigest(files)
 	reordered := []schemaFile{files[1], files[0]}
@@ -133,7 +136,7 @@ func TestSchemaTreeDigestCoversEveryPathAndByte(t *testing.T) {
 		t.Fatal("schema tree digest depends on directory walk order")
 	}
 	changedPath := append([]schemaFile(nil), files...)
-	changedPath[0].Path = "v2/ThreadReadResponse.json"
+	changedPath[0].Path = "session-end.command.input.schema.json"
 	if schemaTreeDigest(changedPath) == baseline {
 		t.Fatal("schema path mutation did not change tree digest")
 	}
@@ -151,12 +154,6 @@ func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
 		PlatformPackage:      "@openai/codex@0.149.1-linux-x64",
 		BinaryPath:           "/opt/codex/0.149.1/codex",
 		BinarySHA256:         strings.Repeat("c", 64),
-		SchemaDirectory:      "schemas/codex/0.149.1",
-		SchemaFiles:          298,
-		SchemaTreeSHA256:     strings.Repeat("a", 64),
-		SchemaBundle:         "schemas/codex/0.149.1/codex_app_server_protocol.v2.schemas.json",
-		SchemaSHA256:         strings.Repeat("d", 64),
-		SchemaCommand:        []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--experimental", "--out", "schemas/codex/0.149.1"},
 		SourceRepository:     "https://github.com/openai/codex.git",
 		SourceCommit:         "ff29a44391deccde0aba0f8390337d7f3c319ea4",
 		SourceTag:            "rust-v0.149.1",
@@ -178,9 +175,6 @@ func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
 		"hook count":   func(lock *codexLock) { lock.HookSchemaFiles = 6 },
 		"hook digest":  func(lock *codexLock) { lock.HookSchemaTreeSHA256 = "" },
 		"hook command": func(lock *codexLock) { lock.HookSchemaCommand = nil },
-		"stable-only schema command": func(lock *codexLock) {
-			lock.SchemaCommand = []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--out", "schemas/codex/0.149.1"}
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			changed := valid
@@ -280,6 +274,7 @@ func TestJustificationGrammarRejectsMissingOrEmptyReasons(t *testing.T) {
 
 func TestAcceptanceGateInventoriesAreExact(t *testing.T) {
 	tests := map[string]string{
+		"p0":      "static unit platform",
 		"core":    "static unit integration component system platform live e2e",
 		"upgrade": "static unit integration component system upgrade-live",
 	}
@@ -331,8 +326,8 @@ func TestAcceptanceGateResultRequiresExitAndRecordAgreement(t *testing.T) {
 }
 
 func TestProofResultsRequireClosedStatusShapesAndScannedEvidencePaths(t *testing.T) {
-	proof := proofSpec{ID: "broker-appserver", Gate: "live", RequiredFor: []string{"core"}}
-	evidence := "evidence/live/broker-appserver.json"
+	proof := proofSpec{ID: "p0-hook-origin", Gate: "live", Command: []string{"./scripts/test", "proof", "p0-hook-origin"}, RequiredFor: []string{"p0", "core"}}
+	evidence := "evidence/live/p0-hook-origin.json"
 	reason := "live probe failed"
 	for name, result := range map[string]proofResult{
 		"pass without evidence": {ID: proof.ID, Gate: proof.Gate, Status: "PASS"},
@@ -352,6 +347,36 @@ func TestProofResultsRequireClosedStatusShapesAndScannedEvidencePaths(t *testing
 	}
 	if err := validateProofResult(proof, proofResult{ID: proof.ID, Gate: proof.Gate, Status: "FAIL", Reason: &reason}); err != nil {
 		t.Fatalf("valid FAIL proof rejected: %v", err)
+	}
+}
+
+func TestProofEvidenceBindsCurrentArtifactsAndRejectsFutureRecords(t *testing.T) {
+	root := t.TempDir()
+	artifactPath := filepath.Join("scripts", "test")
+	if err := os.MkdirAll(filepath.Join(root, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, artifactPath), []byte("proof runner"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	proof := proofSpec{ID: "p0-hook-origin", Gate: "live", Command: []string{"./scripts/test", "proof", "p0-hook-origin"}, RequiredFor: []string{"p0"}}
+	now := time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC)
+	valid := fmt.Sprintf(`{"version":1,"proofId":"p0-hook-origin","recordedAt":"2026-08-25T11:59:00Z","command":["./scripts/test","proof","p0-hook-origin"],"artifacts":[{"path":"scripts/test","sha256":"%s"}]}`, sha256Hex([]byte("proof runner")))
+	if err := validateProofEvidence(root, proof, []byte(valid), now); err != nil {
+		t.Fatalf("valid proof evidence rejected: %v", err)
+	}
+
+	for name, changed := range map[string]string{
+		"future":        strings.Replace(valid, "2026-08-25T11:59:00Z", "2026-08-25T12:00:01Z", 1),
+		"wrong proof":   strings.Replace(valid, "p0-hook-origin", "p0-hook-identity", 1),
+		"wrong command": strings.Replace(valid, "\"proof\",\"p0-hook-origin\"", "\"live\",\"p0-hook-origin\"", 1),
+		"stale digest":  strings.Replace(valid, sha256Hex([]byte("proof runner")), strings.Repeat("0", 64), 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateProofEvidence(root, proof, []byte(changed), now); err == nil {
+				t.Fatal("invalid proof evidence was accepted")
+			}
+		})
 	}
 }
 
@@ -417,18 +442,29 @@ import . "fmt"
 func run() { Println("state") }`,
 		"android/Main.kt":     `fun run() { android.util.Log.i("state", "working") }`,
 		"android/terminal.js": `globalThis.console["log"]("working")`,
+		"cmd/tool/main.go": `package main
+import (
+    "fmt"
+    "os"
+)
+func main() { fmt.Fprintln(os.Stderr, "state") }`,
 	} {
 		if err := validateAdHocLogging(path, []byte(content)); err == nil {
 			t.Fatalf("ad-hoc logger accepted in %s", path)
 		}
 	}
-	if err := validateAdHocLogging("cmd/tool/main.go", []byte(`package main
+	if err := validateAdHocLogging("cmd/skidbladnir-contract/main.go", []byte(`package main
 import (
     "fmt"
     "os"
 )
-func main() { fmt.Fprintln(os.Stderr, "typed boundary error") }`)); err != nil {
-		t.Fatalf("CLI stderr boundary rejected: %v", err)
+func main() {
+    if err := run(); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+    }
+}
+func run() error { return nil }`)); err != nil {
+		t.Fatalf("exact contract CLI error boundary rejected: %v", err)
 	}
 }
 

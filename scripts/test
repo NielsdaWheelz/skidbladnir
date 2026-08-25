@@ -74,7 +74,6 @@ case "$gate" in
   system)
     cd "$repo_dir"
     run p0-hook-system go test -tags=system ./internal/hooks
-    run p0-appserver-transport go test -tags=system ./internal/runtime/appserver
     not_run system 'P3-P4 system surface is not implemented'
     ;;
   platform)
@@ -108,8 +107,8 @@ case "$gate" in
       not_run upgrade-live 'tmux is unavailable on the target host'
     fi
     cd "$repo_dir"
-    run p0-appserver-contract go run ./cmd/skidbladnir-contract verify
-    run p0-appserver-upgrade-live go test -tags=live ./tests/live -count=1
+    run p0-direct-tui-contract go run ./cmd/skidbladnir-contract verify
+    run p0-direct-tui-upgrade-live go test -tags=live ./tests/live -run '^(TestDirectTUIAcrossProfiles|TestDirectTUIHookOrigin|TestDirectTUILifecycle|TestTmuxGroupedBehavior)$' -count=1
     ;;
   e2e)
     not_run e2e 'P7 end-to-end surface is not implemented'
@@ -128,19 +127,56 @@ case "$gate" in
     "$0" live
     "$0" e2e
     ;;
+  proof)
+    proof_id="${1:-}"
+    cd "$repo_dir"
+    case "$proof_id" in
+      p0-codex-pin)
+        run "$proof_id" go run ./cmd/skidbladnir-contract verify
+        ;;
+      p0-profile-direct-tui)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIAcrossProfiles$' -count=1
+        ;;
+      p0-hook-origin)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIHookOrigin$' -count=1
+        ;;
+      p0-hook-identity)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIHookIdentity$' -count=1
+        ;;
+      p0-tui-lifecycle)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUILifecycle$' -count=1
+        ;;
+      p0-tmux-handoff)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestTmuxGroupedBehavior$' -count=1
+        ;;
+      p0-tui-keys)
+        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIKeys$' -count=1
+        ;;
+      p0-android-terminal)
+        "$0" platform
+        ;;
+      '')
+        printf 'usage: %s proof PROOF_ID\n' "$0" >&2
+        exit 64
+        ;;
+      *)
+        not_run proof "Proof is not implemented: $proof_id"
+        ;;
+    esac
+    ;;
   accept)
     case "${1:-}" in
-      core|upgrade)
+      p0|core|upgrade)
         go run ./cmd/skidbladnir-contract accept "${1}"
         ;;
       *)
-        printf 'usage: %s accept {core|upgrade}\n' "$0" >&2
+        printf 'usage: %s accept {p0|core|upgrade}\n' "$0" >&2
         exit 64
         ;;
     esac
     ;;
   '')
-    printf 'usage: %s {static|unit|integration|component|system|platform|live|upgrade-live|e2e|verify|full|accept {core|upgrade}}\n' "$0" >&2
+    printf 'usage: %s {static|unit|integration|component|system|platform|live|upgrade-live|e2e|verify|full|proof PROOF_ID|accept {p0|core|upgrade}}\n' "$0" >&2
     exit 64
     ;;
   *)

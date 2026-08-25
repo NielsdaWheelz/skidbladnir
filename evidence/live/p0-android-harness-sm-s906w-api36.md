@@ -1,6 +1,6 @@
 # P0 Android terminal harness
 
-Recorded: 2026-08-25T05:03:14Z
+Recorded: 2026-08-25T07:13:06Z
 
 Result: **PASS (automated harness only)**
 
@@ -11,17 +11,17 @@ Result: **PASS (automated harness only)**
 - Android System WebView: `151.0.7922.85`
 - Selected Gboard: `17.6.5.924672101-release-arm64-v8a`
 - xterm.js: `6.0.0`
-- Terminal entry SHA-256: `965b6ed9941867e855830064aac9df6d27db3c8a5efb8624ab99f415cf7311f5`
-- Terminal adapter SHA-256: `dc5cf13375787dd14344afde66e0498242edd42c94e63e2c21658169937fa574`
+- Terminal entry SHA-256: `aedc7fc0088fc4ea42414af70d260debf4c601eef028fd74ee292f1d9c6c3439`
+- Terminal adapter SHA-256: `2f1e7624570338159ad9178b318db722fc3ec5dcb2bd61d2c344a835d2366ecf`
 - xterm.js SHA-256: `14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972`
-- Manifest SHA-256: `043202c48f584340c4bfb41d60ea0a2a065072a2fb08425b5a002e81679bb31b`
+- Manifest SHA-256: `5d697bf7473a2c06f7c0267d03ea955817dc3a88cf35f78d0f5a3c327df91d19`
 
 ## Procedure
 
 `./scripts/test platform`
 
 The pinned Android SDK installed the debug app and instrumentation APK on the
-single connected target. Five instrumentation tests launched the real
+single connected target. Seven instrumentation tests launched the real
 `MainActivity`, loaded the packaged xterm runtime in its locked WebView, and
 collected the content-free `android-target-preflight.v1` report. The manifest
 declared only the package-visibility query required to verify the installed
@@ -38,11 +38,14 @@ Tailscale client.
   harness rendered its ANSI/Unicode fixture, resized to 80×24, and emitted the
   pinned DA1, DA2, DSR, and CPR automatic-reply classes.
 - Programmatic composition, paste sanitization, and dictation fixtures remained
-  editable and did not submit. This is a JavaScript harness assertion, not a
-  claim about physical Gboard interaction.
+  editable and did not submit. The harness exposed that draft visibly, handled
+  Unicode-safe backspace, and reported the live visual viewport. These are
+  WebView/xterm harness assertions, not claims about physical Gboard
+  interaction.
 - The original run exposed three failures: two off-UI-thread WebView reads and
-  one startup `null` race. After repair, focused tests and the full five-test
-  platform gate passed on the target.
+  one startup `null` race. After repair, the focused tests and the full
+  seven-test platform gate passed on the target. This record reports automated
+  harness coverage only; it does not claim manual rotation confirmation.
 
 No device identifier, credential, prompt, clipboard value, terminal stream, or
 user content is retained. Physical Gboard composition/dictation, Android

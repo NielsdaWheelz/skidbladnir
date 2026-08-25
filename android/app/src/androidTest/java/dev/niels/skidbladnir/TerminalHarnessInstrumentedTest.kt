@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import android.content.pm.ActivityInfo
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -48,6 +49,31 @@ class TerminalHarnessInstrumentedTest {
     }
 
     @Test
+    fun editableDraftAndVisualViewportAreVisible() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val webView = awaitWebView(scenario)
+            assertEquals("Empty draft", evaluate(webView, "document.getElementById('draft-value').textContent"))
+            assertTrue(
+                evaluate(webView, "document.getElementById('viewport-status').textContent.includes('Visual viewport:')") == "true",
+            )
+
+            evaluate(webView, "window.__skidbladnirHarness.compose('北極星')")
+            evaluate(webView, "window.__skidbladnirHarness.paste('one')")
+            evaluate(webView, "window.__skidbladnirHarness.dictation(' reviewed')")
+            evaluate(webView, "window.__skidbladnirHarness.backspace()")
+
+            assertEquals(
+                "北極星one reviewe",
+                evaluate(webView, "document.getElementById('draft-value').textContent"),
+            )
+            assertEquals("false", evaluate(webView, "window.__skidbladnirHarness.autoSubmitted"))
+            assertTrue(
+                evaluate(webView, "window.__skidbladnirHarness.visualViewport.width > 0 && window.__skidbladnirHarness.visualViewport.height > 0") == "true",
+            )
+        }
+    }
+
+    @Test
     fun compositionPasteAndDictationRemainEditableAndSanitized() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             val webView = awaitWebView(scenario)
@@ -66,6 +92,76 @@ class TerminalHarnessInstrumentedTest {
             assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.editorValue.indexOf('\\u0085')"))
             assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.editorValue.indexOf('\\u0001')"))
             assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.inputHistory.join('').indexOf('\\u001b[201~')"))
+        }
+    }
+
+    @Test
+    fun editableUnicodeDraftSurvivesRotationAndRemainsEditable() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            var webView = awaitWebView(scenario)
+            evaluate(webView, "window.__skidbladnirHarness.compose('北極星')")
+            val beforeRotation = evaluate(webView, "window.visualViewport.width + 'x' + window.visualViewport.height")
+            var initialOrientation = 0
+            scenario.onActivity { activity ->
+                initialOrientation = activity.resources.configuration.orientation
+            }
+            val firstOrientation = if (
+                initialOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+            ) {
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                android.content.res.Configuration.ORIENTATION_PORTRAIT
+            }
+            val firstRequestedOrientation = if (
+                firstOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+            ) {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+
+            scenario.onActivity { activity ->
+                activity.requestedOrientation = firstRequestedOrientation
+            }
+            webView = awaitWebViewWithViewportChange(
+                scenario,
+                beforeRotation,
+                firstOrientation,
+            )
+            assertEquals("北極星", evaluate(webView, "window.__skidbladnirHarness.editorValue"))
+            evaluate(webView, "window.__skidbladnirHarness.compose('追加')")
+            assertEquals("北極星追加", evaluate(webView, "window.__skidbladnirHarness.editorValue"))
+
+            val secondOrientation = if (
+                firstOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+            ) {
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                android.content.res.Configuration.ORIENTATION_PORTRAIT
+            }
+            val secondRequestedOrientation = if (
+                secondOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+            ) {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+            scenario.onActivity { activity ->
+                activity.requestedOrientation = secondRequestedOrientation
+            }
+            webView = awaitWebViewWithViewportChange(
+                scenario,
+                evaluate(webView, "window.visualViewport.width + 'x' + window.visualViewport.height"),
+                secondOrientation,
+            )
+            assertEquals("北極星追加", evaluate(webView, "window.__skidbladnirHarness.editorValue"))
+            assertEquals("true", evaluate(webView, "window.__skidbladnirHarness.actualInputElement"))
+            evaluate(webView, "window.__skidbladnirHarness.compose('!')")
+            assertEquals("北極星追加!", evaluate(webView, "window.__skidbladnirHarness.editorValue"))
+
+            scenario.onActivity { activity ->
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
         }
     }
 
@@ -129,6 +225,30 @@ class TerminalHarnessInstrumentedTest {
         } else {
             webView.postDelayed({ awaitLoaded(webView, latch) }, 50)
         }
+    }
+
+    private fun awaitWebViewWithViewportChange(
+        scenario: ActivityScenario<MainActivity>,
+        previousViewport: String,
+        expectedOrientation: Int,
+    ): WebView {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+        while (System.nanoTime() < deadline) {
+            var orientation = 0
+            var webView: WebView? = null
+            scenario.onActivity { activity ->
+                orientation = activity.resources.configuration.orientation
+                webView = findWebView(activity.window.decorView)
+            }
+            val candidate = webView
+            if (candidate != null && orientation == expectedOrientation) {
+                val ready = evaluate(candidate, "window.__skidbladnirHarness.state === 'ready'")
+                val viewport = evaluate(candidate, "window.visualViewport.width + 'x' + window.visualViewport.height")
+                if (ready == "true" && viewport != previousViewport) return candidate
+            }
+            Thread.sleep(100)
+        }
+        throw AssertionError("rotation did not produce a ready WebView with a changed viewport")
     }
 
     private fun <T> onUi(scenario: ActivityScenario<MainActivity>, block: () -> T): T {

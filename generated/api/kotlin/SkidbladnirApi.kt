@@ -6,7 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
-object SkidbladnirContract { const val digest: String = "2bd388c4a9605b41612f89b38a8c2ea1687a85c66c4045f90f2eb0423cdbf5c8" }
+object SkidbladnirContract { const val digest: String = "f279aabdaf03160a4ce7bbd814cd65371330bcde3adf9eafb3ab52813a0ebb8a" }
 
 @Serializable
 @JvmInline
@@ -68,6 +68,12 @@ enum class AgentListState {
 }
 
 @Serializable
+enum class AgentOrigin {
+    @SerialName("Managed") Managed,
+    @SerialName("External") External
+}
+
+@Serializable
 enum class AgentState {
     @SerialName("Starting") Starting,
     @SerialName("Idle") Idle,
@@ -83,8 +89,7 @@ enum class AgentState {
 enum class CommandKind {
     @SerialName("StartAgent") StartAgent,
     @SerialName("CloseAgent") CloseAgent,
-    @SerialName("ReopenAgent") ReopenAgent,
-    @SerialName("AdoptThread") AdoptThread
+    @SerialName("ReopenAgent") ReopenAgent
 }
 
 @Serializable
@@ -98,14 +103,14 @@ enum class DerivationReason {
     @SerialName("close-accepted") CloseAccepted,
     @SerialName("runtime-ended-idle") RuntimeEndedIdle,
     @SerialName("runtime-ended-working") RuntimeEndedWorking,
+    @SerialName("runtime-ended-unbound") RuntimeEndedUnbound,
+    @SerialName("runtime-launch-failed") RuntimeLaunchFailed,
     @SerialName("system-error") SystemError,
-    @SerialName("exact-thread-missing") ExactThreadMissing,
-    @SerialName("profile-unavailable") ProfileUnavailable,
+    @SerialName("pending-resume-contradiction") PendingResumeContradiction,
+    @SerialName("external-runtime-untracked") ExternalRuntimeUntracked,
     @SerialName("evidence-absent") EvidenceAbsent,
     @SerialName("evidence-stale") EvidenceStale,
     @SerialName("evidence-contradictory") EvidenceContradictory,
-    @SerialName("completion-confirmation-exhausted") CompletionConfirmationExhausted,
-    @SerialName("awaiting-session-confirmation") AwaitingSessionConfirmation,
     @SerialName("start-binding-deadline") StartBindingDeadline
 }
 
@@ -119,15 +124,12 @@ enum class ErrorCode {
     @SerialName("AgentClosed") AgentClosed,
     @SerialName("AgentWorking") AgentWorking,
     @SerialName("AgentNotAttachable") AgentNotAttachable,
+    @SerialName("AgentUntracked") AgentUntracked,
     @SerialName("WorkingDirectoryInvalid") WorkingDirectoryInvalid,
     @SerialName("WorkingDirectoryUnavailable") WorkingDirectoryUnavailable,
     @SerialName("ProfileUnavailable") ProfileUnavailable,
-    @SerialName("ExactThreadMissing") ExactThreadMissing,
+    @SerialName("RuntimeLaunchFailed") RuntimeLaunchFailed,
     @SerialName("CommandConflict") CommandConflict,
-    @SerialName("ThreadNotAdoptable") ThreadNotAdoptable,
-    @SerialName("ThreadAlreadyTracked") ThreadAlreadyTracked,
-    @SerialName("ModelInvalid") ModelInvalid,
-    @SerialName("RecoveryRequired") RecoveryRequired,
     @SerialName("CursorInvalid") CursorInvalid,
     @SerialName("ResyncRequired") ResyncRequired,
     @SerialName("LivenessUnverifiable") LivenessUnverifiable
@@ -231,9 +233,11 @@ data class AgentCard(
     val handle: AgentHandle,
     val characterKey: CharacterKey,
     val displayName: String,
+    val origin: AgentOrigin,
     val profile: Profile,
     val state: AgentState,
-    val objective: Objective,
+    val objective: Objective?,
+    val cwd: WorkingDirectory,
     val createdAt: String,
     val lastObservedAt: String,
     val activity: SafeActivity?,
@@ -278,8 +282,7 @@ data class BootstrapResponse(
 data class CodexBinding(
     val threadId: ThreadId,
     val sessionId: SessionId,
-    val requestedCwd: WorkingDirectory,
-    val effectiveCwd: WorkingDirectory?,
+    val effectiveCwd: WorkingDirectory,
     val model: String
 )
 
@@ -357,8 +360,6 @@ data class PairResponse(
 data class ProfileHealth(
     val profile: Profile,
     val state: ProfileState,
-    val accountFingerprint: String?,
-    val defaultModel: String,
     val reason: String?
 )
 
@@ -498,20 +499,17 @@ fun errorHttpStatus(code: ErrorCode): Int = when (code) {
     ErrorCode.AgentClosed -> 409
     ErrorCode.AgentNotAttachable -> 409
     ErrorCode.AgentNotFound -> 404
+    ErrorCode.AgentUntracked -> 409
     ErrorCode.AgentWorking -> 409
     ErrorCode.CommandConflict -> 409
     ErrorCode.CursorInvalid -> 400
-    ErrorCode.ExactThreadMissing -> 404
     ErrorCode.InvalidRequest -> 400
     ErrorCode.LivenessUnverifiable -> 503
-    ErrorCode.ModelInvalid -> 422
     ErrorCode.PairingInvalid -> 401
     ErrorCode.ProfileUnavailable -> 503
     ErrorCode.ProtocolMismatch -> 409
-    ErrorCode.RecoveryRequired -> 409
     ErrorCode.ResyncRequired -> 409
-    ErrorCode.ThreadAlreadyTracked -> 409
-    ErrorCode.ThreadNotAdoptable -> 409
+    ErrorCode.RuntimeLaunchFailed -> 503
     ErrorCode.Unauthenticated -> 401
     ErrorCode.WorkingDirectoryInvalid -> 422
     ErrorCode.WorkingDirectoryUnavailable -> 409

@@ -1,16 +1,29 @@
 {
   "version": 1,
   "results": [
-    { "id": "command-profile", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 live router and profile boundary is not implemented" },
-    { "id": "broker-appserver", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-appserver-0.149.1.md", "reason": null },
+    { "id": "p0-codex-pin", "gate": "static", "status": "PASS", "evidence": "evidence/live/p0-codex-pin.json" },
+    { "id": "p0-profile-direct-tui", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-profile-direct-tui.json" },
+    { "id": "p0-hook-origin", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-hook-origin.json" },
+    { "id": "p0-hook-identity", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-hook-identity.json" },
+    { "id": "p0-tui-lifecycle", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tui-lifecycle.json" },
+    { "id": "p0-tmux-handoff", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tmux-handoff.json" },
+    { "id": "p0-tui-keys", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tui-keys.json" },
+    { "id": "p0-android-terminal", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "Automated device harness passes; required physical Gboard and accessibility observations remain NOT_RUN" },
+    { "id": "command-profile", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 router and profile boundary is not implemented" },
+    { "id": "launcher-codex-runtime", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 launcher boundary is not implemented" },
     { "id": "hooks-registry", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 registry projection is not implemented" },
+    { "id": "core-root-rollover", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 root rollover reducer is not implemented" },
     { "id": "lifecycle-tmux-process", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 lifecycle surface is not implemented" },
-    { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "P4 terminal transport and P6 physical handoff journey are not implemented; P0 automated harness only" },
+    { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "P4 terminal transport and P6 physical handoff journey are not implemented" },
     { "id": "laptop-phone-laptop", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P6 handoff journey is not implemented" },
     { "id": "sqlite-fact-card", "gate": "integration", "status": "NOT_RUN", "evidence": null, "reason": "P3 Fact projection is not implemented" },
     { "id": "dvergatal-agent-card", "gate": "component", "status": "NOT_RUN", "evidence": null, "reason": "P5 card projection is not implemented" },
     { "id": "kernel-pressure", "gate": "system", "status": "NOT_RUN", "evidence": null, "reason": "P3 host pressure surface is not implemented" },
     { "id": "bearer-terminal-authority", "gate": "system", "status": "NOT_RUN", "evidence": null, "reason": "P4 terminal authority surface is not implemented" },
-    { "id": "restart-recovery", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P7 recovery journey is not implemented" }
+    { "id": "restart-recovery", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P7 recovery journey is not implemented" },
+    { "id": "core-scale-concurrency", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "Core scale journey is not implemented" },
+    { "id": "core-android-start-profiles", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "Core Android profile Start journey is not implemented" },
+    { "id": "core-android-accessibility", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "Core physical accessibility journey is not implemented" },
+    { "id": "core-runtime-drift-refusal", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "Core installed-artifact drift refusal is not implemented" }
   ]
 }

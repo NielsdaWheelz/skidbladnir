@@ -9,16 +9,24 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
+	maxHookInputBytes     = 4 * 1024 * 1024
 	maxProjectedHookBytes = 16 * 1024
+	maxObjectiveRunes     = 240
 	maxAncestryDepth      = 256
 	deliveryTimeout       = 250 * time.Millisecond
 )
+
+var runtimeIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type projection uint8
 
@@ -31,38 +39,58 @@ const (
 )
 
 type fact struct {
-	Hook       string
-	Projection projection
-	SessionID  string
-	TurnID     string
-	ToolName   string
+	Hook          string
+	Projection    projection
+	ThreadID      string
+	SessionID     string
+	TurnID        string
+	ToolName      string
+	EffectiveCWD  string
+	Model         string
+	SessionSource string
+	Objective     string
 }
 
 type processIdentity struct {
-	BindingID string
+	RuntimeID string
 	PID       int
 	StartTime uint64
+	TTY       string
 }
 
 type deliveryMessage struct {
-	Type       string `json:"type"`
-	Hook       string `json:"hook"`
-	Projection string `json:"projection"`
-	BindingID  string `json:"binding_id"`
-	PID        int    `json:"pid"`
-	StartTime  uint64 `json:"start_time"`
-	SessionID  string `json:"session_id"`
-	TurnID     string `json:"turn_id,omitempty"`
-	ToolName   string `json:"tool_name,omitempty"`
+	Type          string `json:"type"`
+	Hook          string `json:"hook"`
+	Projection    string `json:"projection"`
+	RuntimeID     string `json:"runtime_id"`
+	PID           int    `json:"pid"`
+	StartTime     uint64 `json:"start_time"`
+	TTY           string `json:"tty"`
+	ThreadID      string `json:"thread_id"`
+	SessionID     string `json:"session_id"`
+	TurnID        string `json:"turn_id,omitempty"`
+	ToolName      string `json:"tool_name,omitempty"`
+	EffectiveCWD  string `json:"effective_cwd,omitempty"`
+	Model         string `json:"model,omitempty"`
+	SessionSource string `json:"session_source,omitempty"`
+	Objective     string `json:"objective,omitempty"`
 }
 
 type gapMarker struct {
-	Hook      string `json:"hook"`
-	BindingID string `json:"binding_id"`
-	PID       int    `json:"pid"`
-	StartTime uint64 `json:"start_time"`
-	SessionID string `json:"session_id"`
-	TurnID    string `json:"turn_id,omitempty"`
+	Hook          string `json:"hook"`
+	Projection    string `json:"projection"`
+	RuntimeID     string `json:"runtime_id"`
+	PID           int    `json:"pid"`
+	StartTime     uint64 `json:"start_time"`
+	TTY           string `json:"tty"`
+	ThreadID      string `json:"thread_id"`
+	SessionID     string `json:"session_id"`
+	TurnID        string `json:"turn_id,omitempty"`
+	ToolName      string `json:"tool_name,omitempty"`
+	EffectiveCWD  string `json:"effective_cwd,omitempty"`
+	Model         string `json:"model,omitempty"`
+	SessionSource string `json:"session_source,omitempty"`
+	Objective     string `json:"objective,omitempty"`
 }
 
 func Run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory string) error {
@@ -70,7 +98,7 @@ func Run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory st
 }
 
 func run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory string) error {
-	raw, err := readBounded(input, maxProjectedHookBytes)
+	raw, err := readBounded(input, maxHookInputBytes)
 	if err != nil {
 		return err
 	}
@@ -83,24 +111,38 @@ func run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory st
 		return err
 	}
 	message := deliveryMessage{
-		Type:       "HookFact",
-		Hook:       fact.Hook,
-		Projection: fact.Projection.String(),
-		BindingID:  identity.BindingID,
-		PID:        identity.PID,
-		StartTime:  identity.StartTime,
-		SessionID:  fact.SessionID,
-		TurnID:     fact.TurnID,
-		ToolName:   fact.ToolName,
+		Type:          "HookFact",
+		Hook:          fact.Hook,
+		Projection:    fact.Projection.String(),
+		RuntimeID:     identity.RuntimeID,
+		PID:           identity.PID,
+		StartTime:     identity.StartTime,
+		TTY:           identity.TTY,
+		ThreadID:      fact.ThreadID,
+		SessionID:     fact.SessionID,
+		TurnID:        fact.TurnID,
+		ToolName:      fact.ToolName,
+		EffectiveCWD:  fact.EffectiveCWD,
+		Model:         fact.Model,
+		SessionSource: fact.SessionSource,
+		Objective:     fact.Objective,
 	}
 	if err := deliver(socketPath, message); err != nil {
 		if gapErr := writeGap(gapDirectory, gapMarker{
-			Hook:      fact.Hook,
-			BindingID: identity.BindingID,
-			PID:       identity.PID,
-			StartTime: identity.StartTime,
-			SessionID: fact.SessionID,
-			TurnID:    fact.TurnID,
+			Hook:          fact.Hook,
+			Projection:    fact.Projection.String(),
+			RuntimeID:     identity.RuntimeID,
+			PID:           identity.PID,
+			StartTime:     identity.StartTime,
+			TTY:           identity.TTY,
+			ThreadID:      fact.ThreadID,
+			SessionID:     fact.SessionID,
+			TurnID:        fact.TurnID,
+			ToolName:      fact.ToolName,
+			EffectiveCWD:  fact.EffectiveCWD,
+			Model:         fact.Model,
+			SessionSource: fact.SessionSource,
+			Objective:     fact.Objective,
 		}); gapErr != nil {
 			return fmt.Errorf("deliver hook fact: %w; write gap marker: %v", err, gapErr)
 		}
@@ -145,7 +187,11 @@ func decode(data []byte) (fact, error) {
 	if err := validateCommon(fields, event); err != nil {
 		return fact{}, err
 	}
-	decoded := fact{Hook: event, Projection: projectionFor, SessionID: sessionID}
+	threadID, err := canonicalTranscriptThreadID(fields)
+	if err != nil {
+		return fact{}, err
+	}
+	decoded := fact{Hook: event, Projection: projectionFor, ThreadID: threadID, SessionID: sessionID}
 	if requiresTurn(event) {
 		decoded.TurnID, err = requiredString(fields, "turn_id")
 		if err != nil {
@@ -163,6 +209,27 @@ func decode(data []byte) (fact, error) {
 	}
 	if err := validateEvent(fields, event); err != nil {
 		return fact{}, err
+	}
+	if event == "SessionStart" {
+		decoded.EffectiveCWD, err = requiredString(fields, "cwd")
+		if err != nil {
+			return fact{}, err
+		}
+		decoded.Model, err = requiredString(fields, "model")
+		if err != nil {
+			return fact{}, err
+		}
+		decoded.SessionSource, err = requiredString(fields, "source")
+		if err != nil {
+			return fact{}, err
+		}
+	}
+	if event == "UserPromptSubmit" && !hasSubagentDiscriminator(fields) {
+		prompt, promptErr := requiredLargeString(fields, "prompt")
+		if promptErr != nil {
+			return fact{}, promptErr
+		}
+		decoded.Objective = objectivePreview(prompt)
 	}
 	return decoded, nil
 }
@@ -246,9 +313,6 @@ func validateCommon(fields map[string]json.RawMessage, event string) error {
 	if _, err := requiredString(fields, "cwd"); err != nil {
 		return err
 	}
-	if err := requiredNullableString(fields, "transcript_path"); err != nil {
-		return err
-	}
 	if event == "SessionEnd" {
 		return nil
 	}
@@ -263,6 +327,30 @@ func validateCommon(fields map[string]json.RawMessage, event string) error {
 		return errors.New("invalid permission_mode")
 	}
 	return nil
+}
+
+var canonicalRolloutBase = regexp.MustCompile(`^rollout-([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2})-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?\.jsonl$`)
+
+func canonicalTranscriptThreadID(fields map[string]json.RawMessage) (string, error) {
+	raw, ok := fields["transcript_path"]
+	if !ok {
+		return "", errors.New("missing transcript_path")
+	}
+	var transcriptPath string
+	if err := json.Unmarshal(raw, &transcriptPath); err != nil || transcriptPath == "" {
+		return "", errors.New("transcript_path must be a canonical rollout path")
+	}
+	if !filepath.IsAbs(transcriptPath) || filepath.Clean(transcriptPath) != transcriptPath {
+		return "", errors.New("transcript_path must be a canonical absolute path")
+	}
+	match := canonicalRolloutBase.FindStringSubmatch(filepath.Base(transcriptPath))
+	if match == nil {
+		return "", errors.New("transcript_path must be a canonical rollout path")
+	}
+	if _, err := time.Parse("2006-01-02T15-04-05", match[1]); err != nil {
+		return "", errors.New("transcript_path must contain a valid rollout timestamp")
+	}
+	return match[2], nil
 }
 
 func hasSubagentDiscriminator(fields map[string]json.RawMessage) bool {
@@ -295,7 +383,7 @@ func validateEvent(fields map[string]json.RawMessage, event string) error {
 			return errors.New("invalid SessionEnd reason")
 		}
 	case "UserPromptSubmit":
-		if _, err := requiredString(fields, "prompt"); err != nil {
+		if _, err := requiredLargeString(fields, "prompt"); err != nil {
 			return err
 		}
 		if err := validateSubagentDiscriminator(fields); err != nil {
@@ -334,14 +422,14 @@ func validateEvent(fields map[string]json.RawMessage, event string) error {
 		if err := requiredBool(fields, "stop_hook_active"); err != nil {
 			return err
 		}
-		if err := requiredNullableString(fields, "last_assistant_message"); err != nil {
+		if err := requiredNullableLargeString(fields, "last_assistant_message"); err != nil {
 			return err
 		}
 	case "Stop":
 		if err := requiredBool(fields, "stop_hook_active"); err != nil {
 			return err
 		}
-		if err := requiredNullableString(fields, "last_assistant_message"); err != nil {
+		if err := requiredNullableLargeString(fields, "last_assistant_message"); err != nil {
 			return err
 		}
 	}
@@ -382,6 +470,18 @@ func requiredNullableString(fields map[string]json.RawMessage, name string) erro
 	return err
 }
 
+func requiredNullableLargeString(fields map[string]json.RawMessage, name string) error {
+	raw, ok := fields[name]
+	if !ok {
+		return fmt.Errorf("missing %s", name)
+	}
+	if bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	_, err := decodeLargeString(raw, name)
+	return err
+}
+
 func knownSessionSource(value string) bool {
 	return value == "startup" || value == "resume" || value == "clear" || value == "compact"
 }
@@ -403,12 +503,62 @@ func requiredString(fields map[string]json.RawMessage, name string) (string, err
 	return decodeString(raw, name)
 }
 
+func requiredLargeString(fields map[string]json.RawMessage, name string) (string, error) {
+	raw, ok := fields[name]
+	if !ok {
+		return "", fmt.Errorf("missing %s", name)
+	}
+	return decodeLargeString(raw, name)
+}
+
 func decodeString(raw json.RawMessage, name string) (string, error) {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil || value == "" || len(value) > 4096 {
 		return "", fmt.Errorf("invalid %s", name)
 	}
 	return value, nil
+}
+
+func decodeLargeString(raw json.RawMessage, name string) (string, error) {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil || value == "" || len(value) > maxHookInputBytes {
+		return "", fmt.Errorf("invalid %s", name)
+	}
+	return value, nil
+}
+
+func objectivePreview(value string) string {
+	normalized := norm.NFC.String(value)
+	preview := make([]rune, 0, maxObjectiveRunes)
+	spacePending := false
+	for _, current := range normalized {
+		if objectiveSeparator(current) {
+			spacePending = len(preview) > 0
+			continue
+		}
+		if spacePending && len(preview) < maxObjectiveRunes {
+			preview = append(preview, ' ')
+		}
+		spacePending = false
+		if len(preview) == maxObjectiveRunes {
+			break
+		}
+		preview = append(preview, current)
+	}
+	return strings.TrimSpace(string(preview))
+}
+
+func objectiveSeparator(value rune) bool {
+	if unicode.IsSpace(value) || unicode.IsControl(value) || value == '\u2028' || value == '\u2029' {
+		return true
+	}
+	switch value {
+	case '\u061c', '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+		'\u2066', '\u2067', '\u2068', '\u2069':
+		return true
+	default:
+		return false
+	}
 }
 
 func requiresTurn(event string) bool {
@@ -438,9 +588,9 @@ func (value projection) String() string {
 }
 
 func identityFor(pid int, pinnedExecutable string) (processIdentity, error) {
-	bindingID := os.Getenv("SKIDBLADNIR_BINDING_ID")
-	if bindingID == "" || len(bindingID) > 512 {
-		return processIdentity{}, errors.New("missing or invalid SKIDBLADNIR_BINDING_ID")
+	runtimeID := os.Getenv("SKIDBLADNIR_RUNTIME_ID")
+	if !runtimeIDPattern.MatchString(runtimeID) {
+		return processIdentity{}, errors.New("missing or invalid SKIDBLADNIR_RUNTIME_ID")
 	}
 	pinned, err := filepath.EvalSymlinks(pinnedExecutable)
 	if err != nil {
@@ -453,7 +603,11 @@ func identityFor(pid int, pinnedExecutable string) (processIdentity, error) {
 			if err != nil {
 				return processIdentity{}, err
 			}
-			return processIdentity{BindingID: bindingID, PID: candidate, StartTime: startTime}, nil
+			tty, err := processTTY(candidate)
+			if err != nil {
+				return processIdentity{}, err
+			}
+			return processIdentity{RuntimeID: runtimeID, PID: candidate, StartTime: startTime, TTY: tty}, nil
 		}
 		parent, err := parentPID(candidate)
 		if err != nil {
@@ -465,6 +619,17 @@ func identityFor(pid int, pinnedExecutable string) (processIdentity, error) {
 		candidate = parent
 	}
 	return processIdentity{}, errors.New("no exact pinned Codex ancestor")
+}
+
+func processTTY(pid int) (string, error) {
+	tty, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "fd", "0"))
+	if err != nil {
+		return "", fmt.Errorf("read Codex stdin TTY: %w", err)
+	}
+	if !filepath.IsAbs(tty) || filepath.Clean(tty) != tty {
+		return "", errors.New("Codex stdin TTY is not canonical")
+	}
+	return tty, nil
 }
 
 func parentPID(pid int) (int, error) {
@@ -510,6 +675,13 @@ func procStatFields(pid int) ([]string, error) {
 }
 
 func deliver(socketPath string, message deliveryMessage) error {
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	if len(encoded)+1 > maxProjectedHookBytes {
+		return fmt.Errorf("projected hook message exceeds %d bytes", maxProjectedHookBytes)
+	}
 	connection, err := net.DialTimeout("unix", socketPath, deliveryTimeout)
 	if err != nil {
 		return err
@@ -519,7 +691,7 @@ func deliver(socketPath string, message deliveryMessage) error {
 	if err := connection.SetDeadline(deadline); err != nil {
 		return err
 	}
-	if err := json.NewEncoder(connection).Encode(message); err != nil {
+	if _, err := io.Copy(connection, bytes.NewReader(append(encoded, '\n'))); err != nil {
 		return err
 	}
 	var ack struct {
@@ -543,6 +715,9 @@ func writeGap(directory string, marker gapMarker) error {
 	encoded, err := json.Marshal(marker)
 	if err != nil {
 		return err
+	}
+	if len(encoded)+1 > maxProjectedHookBytes {
+		return fmt.Errorf("projected gap marker exceeds %d bytes", maxProjectedHookBytes)
 	}
 	info, err := os.Stat(directory)
 	if err != nil {

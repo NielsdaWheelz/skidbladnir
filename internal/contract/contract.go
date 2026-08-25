@@ -41,7 +41,7 @@ const (
 	terminalLockPath  = "android/terminal.lock"
 	workflowPath      = ".github/workflows/verify.yml"
 	digestDomain      = "Skidbladnir.Contract.V1"
-	schemaDomain      = "Skidbladnir.CodexSchemaTree.V1"
+	schemaDomain      = "Skidbladnir.CodexHookSchemaTree.V1"
 	acceptanceTimeout = 30 * time.Minute
 	minimumDwarfs     = 100
 	maximumRecents    = 8
@@ -100,6 +100,7 @@ type routeSpec struct {
 type proofSpec struct {
 	ID          string   `json:"id"`
 	Gate        string   `json:"gate"`
+	Command     []string `json:"command"`
 	RequiredFor []string `json:"requiredFor"`
 }
 
@@ -121,12 +122,6 @@ type codexLock struct {
 	PlatformPackage      string   `json:"platformPackage"`
 	BinaryPath           string   `json:"binaryPath"`
 	BinarySHA256         string   `json:"binarySha256"`
-	SchemaDirectory      string   `json:"schemaDirectory"`
-	SchemaFiles          int      `json:"schemaFiles"`
-	SchemaTreeSHA256     string   `json:"schemaTreeSha256"`
-	SchemaBundle         string   `json:"schemaBundle"`
-	SchemaSHA256         string   `json:"schemaSha256"`
-	SchemaCommand        []string `json:"schemaCommand"`
 	SourceRepository     string   `json:"sourceRepository"`
 	SourceCommit         string   `json:"sourceCommit"`
 	SourceTag            string   `json:"sourceTag"`
@@ -168,6 +163,19 @@ type proofResult struct {
 	Status   string  `json:"status"`
 	Evidence *string `json:"evidence"`
 	Reason   *string `json:"reason"`
+}
+
+type proofEvidence struct {
+	Version    int                `json:"version"`
+	ProofID    string             `json:"proofId"`
+	RecordedAt string             `json:"recordedAt"`
+	Command    []string           `json:"command"`
+	Artifacts  []evidenceArtifact `json:"artifacts"`
+}
+
+type evidenceArtifact struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 type acceptanceGateResult struct {
@@ -307,6 +315,8 @@ func Accept(root string, target string, output io.Writer) error {
 
 func acceptanceGates(target string) ([]string, error) {
 	switch target {
+	case "p0":
+		return []string{"static", "unit", "platform"}, nil
 	case "core":
 		return []string{"static", "unit", "integration", "component", "system", "platform", "live", "e2e"}, nil
 	case "upgrade":
@@ -440,7 +450,7 @@ func validateContract(spec apiContract) error {
 	if spec.Bounds["objectiveScalars"] != 240 || spec.Bounds["workingDirectoryBytes"] != 4096 || spec.Bounds["agentPage"] != 100 || spec.Bounds["historyPoints"] != 300 || spec.Bounds["terminalFrameBytes"] != 65536 {
 		return errors.New("reviewed transport bounds changed")
 	}
-	if len(spec.LocalCommands) != 7 || !equalStringSets(spec.LocalCommands, []string{"PrepareNew", "ListResumableSessions", "PrepareResume", "RegisterRuntime", "CreatePairingChallenge", "ListInstallations", "RevokeInstallation"}) {
+	if len(spec.LocalCommands) != 6 || !equalStringSets(spec.LocalCommands, []string{"PrepareNew", "ListTrackedAgents", "PrepareResume", "CreatePairingChallenge", "ListInstallations", "RevokeInstallation"}) {
 		return errors.New("local command inventory changed")
 	}
 
@@ -536,8 +546,16 @@ func validateContract(spec apiContract) error {
 	}
 	seenProofs := map[string]bool{}
 	for _, proof := range spec.Proofs {
-		if proof.ID == "" || seenProofs[proof.ID] || !contains([]string{"static", "unit", "integration", "component", "system", "platform", "live", "e2e"}, proof.Gate) || len(proof.RequiredFor) == 0 {
+		if proof.ID == "" || seenProofs[proof.ID] || !contains([]string{"static", "unit", "integration", "component", "system", "platform", "live", "e2e"}, proof.Gate) || len(proof.RequiredFor) == 0 || duplicate(proof.RequiredFor) != "" {
 			return fmt.Errorf("invalid proof %q", proof.ID)
+		}
+		if len(proof.Command) != 3 || proof.Command[0] != "./scripts/test" || proof.Command[1] != "proof" || proof.Command[2] != proof.ID {
+			return fmt.Errorf("proof %q has no exact command", proof.ID)
+		}
+		for _, target := range proof.RequiredFor {
+			if !contains([]string{"p0", "core", "upgrade"}, target) {
+				return fmt.Errorf("proof %q has invalid acceptance target %q", proof.ID, target)
+			}
 		}
 		seenProofs[proof.ID] = true
 	}
@@ -623,19 +641,6 @@ func verifyCodexLock(root string) error {
 	if err := verifyDigest(lock.BinaryPath, lock.BinarySHA256); err != nil {
 		return fmt.Errorf("pinned Codex binary: %w", err)
 	}
-	if err := verifyCodexSchemaGeneration(root, lock); err != nil {
-		return err
-	}
-	if err := verifyDigest(filepath.Join(root, lock.SchemaBundle), lock.SchemaSHA256); err != nil {
-		return fmt.Errorf("pinned Codex schema: %w", err)
-	}
-	files, err := collectSchemaFiles(filepath.Join(root, lock.SchemaDirectory))
-	if err != nil {
-		return fmt.Errorf("read pinned Codex schema tree: %w", err)
-	}
-	if len(files) != lock.SchemaFiles || schemaTreeDigest(files) != lock.SchemaTreeSHA256 {
-		return errors.New("pinned Codex schema tree differs from codex.lock")
-	}
 	hookFiles, err := collectSchemaFiles(filepath.Join(root, lock.HookSchemaDirectory))
 	if err != nil {
 		return fmt.Errorf("read pinned Codex hook schema tree: %w", err)
@@ -646,78 +651,14 @@ func verifyCodexLock(root string) error {
 	return nil
 }
 
-func verifyCodexSchemaGeneration(root string, lock codexLock) error {
-	temporaryDirectory, err := os.MkdirTemp("", "skidbladnir-codex-schema-")
-	if err != nil {
-		return fmt.Errorf("create temporary Codex schema directory: %w", err)
-	}
-	defer func() {
-		_ = os.RemoveAll(temporaryDirectory) // justify-ignore-error: the operating system owns cleanup of an unpublished temporary verification tree after process exit.
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, lock.BinaryPath, "app-server", "generate-json-schema", "--experimental", "--out", temporaryDirectory)
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return errors.New("pinned Codex schema generation timed out")
-		}
-		return fmt.Errorf("regenerate pinned Codex schema: %w", err)
-	}
-
-	generated, err := collectSchemaFiles(temporaryDirectory)
-	if err != nil {
-		return fmt.Errorf("read regenerated Codex schema tree: %w", err)
-	}
-	committed, err := collectSchemaFiles(filepath.Join(root, lock.SchemaDirectory))
-	if err != nil {
-		return fmt.Errorf("read committed Codex schema tree: %w", err)
-	}
-	withoutHooks := committed[:0]
-	for _, file := range committed {
-		if !strings.HasPrefix(file.Path, "hooks/") {
-			withoutHooks = append(withoutHooks, file)
-		}
-	}
-	if !equalSchemaFiles(generated, withoutHooks) {
-		return errors.New("committed Codex schemas are not reproducible from the pinned binary")
-	}
-	return nil
-}
-
-func equalSchemaFiles(left, right []schemaFile) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	left = append([]schemaFile(nil), left...)
-	right = append([]schemaFile(nil), right...)
-	sort.Slice(left, func(i, j int) bool { return left[i].Path < left[j].Path })
-	sort.Slice(right, func(i, j int) bool { return right[i].Path < right[j].Path })
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
-}
-
 func validateCodexLockIdentity(lock codexLock) error {
-	expectedSchemaDirectory := filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version))
 	if lock.Version == "" || lock.Package != "@openai/codex@"+lock.Version || !strings.HasSuffix(lock.PlatformPackage, "@"+lock.Version+"-linux-x64") || !filepath.IsAbs(lock.BinaryPath) || len(lock.BinarySHA256) != sha256.Size*2 {
 		return errors.New("codex.lock identity is incomplete")
-	}
-	if lock.SchemaDirectory != expectedSchemaDirectory || lock.SchemaFiles < 1 || len(lock.SchemaTreeSHA256) != sha256.Size*2 || filepath.ToSlash(filepath.Dir(lock.SchemaBundle)) != lock.SchemaDirectory || len(lock.SchemaSHA256) != sha256.Size*2 {
-		return errors.New("codex.lock schema identity is incomplete")
-	}
-	if len(lock.SchemaCommand) != 6 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--experimental" || lock.SchemaCommand[4] != "--out" || filepath.ToSlash(lock.SchemaCommand[5]) != lock.SchemaDirectory {
-		return errors.New("codex.lock schema command is not exact")
 	}
 	if lock.SourceRepository != "https://github.com/openai/codex.git" || len(lock.SourceCommit) != 40 || lock.SourceTag != "rust-v"+lock.Version {
 		return errors.New("codex.lock source identity is incomplete")
 	}
-	if lock.HookSchemaDirectory != filepath.ToSlash(filepath.Join(lock.SchemaDirectory, "hooks")) || lock.HookSchemaFiles != 7 || len(lock.HookSchemaTreeSHA256) != sha256.Size*2 {
+	if lock.HookSchemaDirectory != filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version, "hooks")) || lock.HookSchemaFiles != 7 || len(lock.HookSchemaTreeSHA256) != sha256.Size*2 {
 		return errors.New("codex.lock hook schema identity is incomplete")
 	}
 	if len(lock.HookSchemaCommand) != 1 || lock.HookSchemaCommand[0] != "./scripts/vendor-codex-hook-schemas" {
@@ -893,12 +834,20 @@ func verifyProofLedger(root string, spec apiContract) (proofLedger, error) {
 			return proofLedger{}, err
 		}
 		if result.Evidence != nil {
-			info, err := os.Lstat(filepath.Join(root, *result.Evidence))
+			evidencePath := filepath.Join(root, *result.Evidence)
+			info, err := os.Lstat(evidencePath)
 			if err != nil {
 				return proofLedger{}, fmt.Errorf("proof %s evidence: %w", result.ID, err)
 			}
 			if !info.Mode().IsRegular() {
 				return proofLedger{}, fmt.Errorf("proof %s evidence is not a regular file", result.ID)
+			}
+			content, err := os.ReadFile(evidencePath)
+			if err != nil {
+				return proofLedger{}, fmt.Errorf("read proof %s evidence: %w", result.ID, err)
+			}
+			if err := validateProofEvidence(root, proof, content, time.Now().UTC()); err != nil {
+				return proofLedger{}, fmt.Errorf("proof %s evidence: %w", result.ID, err)
 			}
 		}
 	}
@@ -906,6 +855,55 @@ func verifyProofLedger(root string, spec apiContract) (proofLedger, error) {
 		return proofLedger{}, errors.New("proof ledger does not cover the closed proof inventory")
 	}
 	return ledger, nil
+}
+
+func validateProofEvidence(root string, proof proofSpec, content []byte, now time.Time) error {
+	var evidence proofEvidence
+	if err := decodeStrict(content, &evidence); err != nil {
+		return fmt.Errorf("decode evidence: %w", err)
+	}
+	if evidence.Version != 1 || evidence.ProofID != proof.ID || !equalStrings(evidence.Command, proof.Command) {
+		return errors.New("evidence identity differs from proof contract")
+	}
+	if !strings.HasSuffix(evidence.RecordedAt, "Z") {
+		return errors.New("evidence timestamp is not canonical UTC")
+	}
+	recordedAt, err := time.Parse(time.RFC3339Nano, evidence.RecordedAt)
+	if err != nil || recordedAt.UTC().Format(time.RFC3339Nano) != evidence.RecordedAt {
+		return errors.New("evidence timestamp is not canonical UTC")
+	}
+	if recordedAt.After(now.UTC()) {
+		return errors.New("evidence timestamp is in the future")
+	}
+	if len(evidence.Artifacts) == 0 || len(evidence.Artifacts) > 64 {
+		return errors.New("evidence artifact inventory is empty or excessive")
+	}
+	previous := ""
+	for _, artifact := range evidence.Artifacts {
+		path := filepath.Clean(artifact.Path)
+		if artifact.Path == "" || path != artifact.Path || filepath.IsAbs(path) || strings.ContainsAny(path, "\r\n") || path <= previous {
+			return fmt.Errorf("evidence artifact path %q is not canonical and sorted", artifact.Path)
+		}
+		if path == "evidence" || strings.HasPrefix(path, "evidence"+string(filepath.Separator)) {
+			return fmt.Errorf("evidence artifact %q cannot attest evidence", artifact.Path)
+		}
+		if !validSHA256(artifact.SHA256) {
+			return fmt.Errorf("evidence artifact %q has invalid digest", artifact.Path)
+		}
+		absolute := filepath.Join(root, path)
+		info, err := os.Lstat(absolute)
+		if err != nil {
+			return fmt.Errorf("evidence artifact %q: %w", artifact.Path, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("evidence artifact %q is not a regular file", artifact.Path)
+		}
+		if err := verifyDigest(absolute, artifact.SHA256); err != nil {
+			return fmt.Errorf("evidence artifact %q: %w", artifact.Path, err)
+		}
+		previous = path
+	}
+	return nil
 }
 
 func validateProofResult(proof proofSpec, result proofResult) error {
@@ -1214,7 +1212,7 @@ func validateGoLogging(path string, content []byte) error {
 			if !ok || imports[qualifier.Name] != "fmt" || !contains([]string{"Print", "Printf", "Println", "Fprint", "Fprintf", "Fprintln"}, function.Sel.Name) {
 				return true
 			}
-			if strings.HasPrefix(function.Sel.Name, "F") && commandPath(path) && len(call.Args) != 0 && isStandardError(call.Args[0], imports) {
+			if isContractCLIErrorWrite(path, call, function, imports) {
 				return true
 			}
 			result = fmt.Errorf("ad-hoc fmt.%s call", function.Sel.Name)
@@ -1224,11 +1222,6 @@ func validateGoLogging(path string, content []byte) error {
 	return result
 }
 
-func commandPath(path string) bool {
-	clean := filepath.ToSlash(filepath.Clean(path))
-	return strings.HasPrefix(clean, "cmd/") || strings.Contains(clean, "/cmd/")
-}
-
 func isStandardError(expression ast.Expr, imports map[string]string) bool {
 	selector, ok := expression.(*ast.SelectorExpr) // justify-type-assertion: os.Stderr is represented by a selector expression.
 	if !ok || selector.Sel.Name != "Stderr" {
@@ -1236,6 +1229,18 @@ func isStandardError(expression ast.Expr, imports map[string]string) bool {
 	}
 	qualifier, ok := selector.X.(*ast.Ident) // justify-type-assertion: os.Stderr must be qualified by the imported os package identifier.
 	return ok && imports[qualifier.Name] == "os"
+}
+
+func isContractCLIErrorWrite(path string, call *ast.CallExpr, function *ast.SelectorExpr, imports map[string]string) bool {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	if !strings.HasSuffix(clean, "/cmd/skidbladnir-contract/main.go") && clean != "cmd/skidbladnir-contract/main.go" {
+		return false
+	}
+	if function.Sel.Name != "Fprintln" || len(call.Args) != 2 || !isStandardError(call.Args[0], imports) {
+		return false
+	}
+	errorValue, ok := call.Args[1].(*ast.Ident) // justify-type-assertion: the only permitted CLI stderr payload is the local error value.
+	return ok && errorValue.Name == "err"
 }
 
 func verifyJustifications(root string) error {

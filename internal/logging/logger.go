@@ -80,15 +80,12 @@ var (
 	ErrorAgentClosed                 = ErrorCode{value: skidbladnirv1.ErrorCodeAgentClosed}
 	ErrorAgentWorking                = ErrorCode{value: skidbladnirv1.ErrorCodeAgentWorking}
 	ErrorAgentNotAttachable          = ErrorCode{value: skidbladnirv1.ErrorCodeAgentNotAttachable}
+	ErrorAgentUntracked              = ErrorCode{value: skidbladnirv1.ErrorCodeAgentUntracked}
 	ErrorWorkingDirectoryInvalid     = ErrorCode{value: skidbladnirv1.ErrorCodeWorkingDirectoryInvalid}
 	ErrorWorkingDirectoryUnavailable = ErrorCode{value: skidbladnirv1.ErrorCodeWorkingDirectoryUnavailable}
 	ErrorProfileUnavailable          = ErrorCode{value: skidbladnirv1.ErrorCodeProfileUnavailable}
-	ErrorExactThreadMissing          = ErrorCode{value: skidbladnirv1.ErrorCodeExactThreadMissing}
+	ErrorRuntimeLaunchFailed         = ErrorCode{value: skidbladnirv1.ErrorCodeRuntimeLaunchFailed}
 	ErrorCommandConflict             = ErrorCode{value: skidbladnirv1.ErrorCodeCommandConflict}
-	ErrorThreadNotAdoptable          = ErrorCode{value: skidbladnirv1.ErrorCodeThreadNotAdoptable}
-	ErrorThreadAlreadyTracked        = ErrorCode{value: skidbladnirv1.ErrorCodeThreadAlreadyTracked}
-	ErrorModelInvalid                = ErrorCode{value: skidbladnirv1.ErrorCodeModelInvalid}
-	ErrorRecoveryRequired            = ErrorCode{value: skidbladnirv1.ErrorCodeRecoveryRequired}
 	ErrorCursorInvalid               = ErrorCode{value: skidbladnirv1.ErrorCodeCursorInvalid}
 	ErrorResyncRequired              = ErrorCode{value: skidbladnirv1.ErrorCodeResyncRequired}
 	ErrorLivenessUnverifiable        = ErrorCode{value: skidbladnirv1.ErrorCodeLivenessUnverifiable}
@@ -104,15 +101,12 @@ func (value ErrorCode) valid() bool {
 		skidbladnirv1.ErrorCodeAgentClosed,
 		skidbladnirv1.ErrorCodeAgentWorking,
 		skidbladnirv1.ErrorCodeAgentNotAttachable,
+		skidbladnirv1.ErrorCodeAgentUntracked,
 		skidbladnirv1.ErrorCodeWorkingDirectoryInvalid,
 		skidbladnirv1.ErrorCodeWorkingDirectoryUnavailable,
 		skidbladnirv1.ErrorCodeProfileUnavailable,
-		skidbladnirv1.ErrorCodeExactThreadMissing,
+		skidbladnirv1.ErrorCodeRuntimeLaunchFailed,
 		skidbladnirv1.ErrorCodeCommandConflict,
-		skidbladnirv1.ErrorCodeThreadNotAdoptable,
-		skidbladnirv1.ErrorCodeThreadAlreadyTracked,
-		skidbladnirv1.ErrorCodeModelInvalid,
-		skidbladnirv1.ErrorCodeRecoveryRequired,
 		skidbladnirv1.ErrorCodeCursorInvalid,
 		skidbladnirv1.ErrorCodeResyncRequired,
 		skidbladnirv1.ErrorCodeLivenessUnverifiable:

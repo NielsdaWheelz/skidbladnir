@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "proofId": "p0-tui-keys",
+  "recordedAt": "2026-08-25T14:11:55Z",
+  "command": ["./scripts/test", "proof", "p0-tui-keys"],
+  "artifacts": [
+    {"path": "codex.lock", "sha256": "6d6152a7e6305fc5ee3b4e1e0f282c8ec1fd91c1cc95e8dc5ec1857b00274ec9"},
+    {"path": "tests/live/direct_tui_live_test.go", "sha256": "503d177c5841fd1983c80977c3d597cf31ed3d594f9f47fc107fd10ad07449dd"},
+    {"path": "tests/live/tui_behavior_live_test.go", "sha256": "c076019b2275a047d54f25f7a15f9cb9792f72de485bdc94c1936eb336edacb8"}
+  ]
+}

@@ -8,6 +8,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/contract"
 )
 
+var acceptanceTargets = map[string]bool{"p0": true, "core": true, "upgrade": true}
+
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -17,7 +19,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: skidbladnir-contract {generate|verify|accept {core|upgrade}}")
+		return errors.New("usage: skidbladnir-contract {generate|verify|accept {p0|core|upgrade}}")
 	}
 
 	root, err := os.Getwd()
@@ -37,8 +39,8 @@ func run(args []string) error {
 		}
 		return contract.Verify(root)
 	case "accept":
-		if len(args) != 2 || (args[1] != "core" && args[1] != "upgrade") {
-			return errors.New("usage: skidbladnir-contract accept {core|upgrade}")
+		if len(args) != 2 || !acceptanceTargets[args[1]] {
+			return errors.New("usage: skidbladnir-contract accept {p0|core|upgrade}")
 		}
 		return contract.Accept(root, args[1], os.Stdout)
 	default:

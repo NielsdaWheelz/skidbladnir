@@ -5,9 +5,12 @@
     var inputStatus = document.getElementById("input-status");
     var imeStatus = document.getElementById("ime-status");
     var viewportStatus = document.getElementById("viewport-status");
+    var draftValue = document.getElementById("draft-value");
+    var draftStatus = document.getElementById("draft-status");
     var bridgePort = null;
     var inputHistory = [];
     var automaticReplies = [];
+    var visualViewportState = { width: 0, height: 0 };
     var terminal = new window.Terminal({
         convertEol: true,
         cursorBlink: true,
@@ -47,6 +50,39 @@
         return "";
     }
 
+    function updateDraftValue() {
+        var value = window.__skidbladnirHarness.editorValue;
+        draftValue.textContent = value || "Empty draft";
+        draftValue.setAttribute("aria-label", "Current editable draft: " + (value || "empty"));
+        draftStatus.textContent = "Draft: editable; never submitted or saved";
+    }
+
+    function updateVisualViewport() {
+        var source = window.visualViewport;
+        var width = source ? source.width : window.innerWidth;
+        var height = source ? source.height : window.innerHeight;
+        visualViewportState.width = Math.round(width || 0);
+        visualViewportState.height = Math.round(height || 0);
+        if (window.__skidbladnirHarness) {
+            window.__skidbladnirHarness.visualViewport = visualViewportState;
+        }
+        viewportStatus.textContent = "Terminal: " + window.__skidbladnirHarness.viewport +
+            " | Visual viewport: " + visualViewportState.width + "x" + visualViewportState.height + " px";
+    }
+
+    function updateDraftFromInput(value) {
+        Array.from(value).forEach(function (character) {
+            if (character === "\x7f" || character === "\b") {
+                window.__skidbladnirHarness.editorValue = Array.from(
+                    window.__skidbladnirHarness.editorValue,
+                ).slice(0, -1).join("");
+            } else {
+                window.__skidbladnirHarness.editorValue += character;
+            }
+        });
+        updateDraftValue();
+    }
+
     function recordInput(data) {
         var reply = automaticReplyKind(data);
         if (reply) {
@@ -56,11 +92,7 @@
         }
         var normalized = data.replace(/\r\n?/g, "\n");
         inputHistory.push(normalized);
-        if (normalized === "\x7f") {
-            window.__skidbladnirHarness.editorValue = window.__skidbladnirHarness.editorValue.slice(0, -1);
-        } else {
-            window.__skidbladnirHarness.editorValue += normalized;
-        }
+        updateDraftFromInput(normalized);
         send("input", normalized);
         inputStatus.textContent = "Input: received through xterm";
     }
@@ -82,11 +114,16 @@
         screenReaderMode: true,
         webMessagePort: false,
         lastAck: "",
+        visualViewport: visualViewportState,
         resize: function (columns, rows) {
             terminal.resize(columns, rows);
             this.viewport = columns + "x" + rows;
-            viewportStatus.textContent = "Viewport: " + this.viewport;
+            updateVisualViewport();
             send("resize", this.viewport);
+        },
+        backspace: function () {
+            terminal.focus();
+            terminal.paste("\x7f");
         },
         compose: function (value) {
             var input = inputElement();
@@ -118,6 +155,12 @@
         fileAccess: false,
         contentAccess: false
     };
+
+    updateDraftValue();
+    updateVisualViewport();
+    window.addEventListener("resize", updateVisualViewport);
+    window.addEventListener("orientationchange", updateVisualViewport);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", updateVisualViewport);
 
     window.addEventListener("message", function (event) {
         if (!event.ports || !event.ports.length) return;

@@ -4,7 +4,7 @@
   "hooksSha256": "63fb61eaab06309c5a5c537b69e9bf0eb478ff6c162824e6249fc46c08863e69",
   "helper": {
     "path": "/home/niels/.local/bin/skidbladnir-hook",
-    "sha256": "b07d2bb68ab963165b0e00b4acc090701db2bc7423f0896a6b894b2663291d07",
+    "sha256": "86a4e5a25e54e26f6e9aaff90388b4e4fae8ba8a62edee79218fb77a9237b047",
     "build": {
       "goVersion": "go1.26.7",
       "package": "./cmd/skidbladnir-hook",

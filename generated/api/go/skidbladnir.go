@@ -24,7 +24,7 @@ type SessionId string
 type ThreadId string
 type WorkingDirectory string
 
-const ContractDigestValue ContractDigest = "2bd388c4a9605b41612f89b38a8c2ea1687a85c66c4045f90f2eb0423cdbf5c8"
+const ContractDigestValue ContractDigest = "f279aabdaf03160a4ce7bbd814cd65371330bcde3adf9eafb3ab52813a0ebb8a"
 
 type AgentListState string
 
@@ -32,6 +32,13 @@ const (
 	AgentListStateOpen   AgentListState = "open"
 	AgentListStateClosed AgentListState = "closed"
 	AgentListStateAll    AgentListState = "all"
+)
+
+type AgentOrigin string
+
+const (
+	AgentOriginManaged  AgentOrigin = "Managed"
+	AgentOriginExternal AgentOrigin = "External"
 )
 
 type AgentState string
@@ -53,7 +60,6 @@ const (
 	CommandKindStartAgent  CommandKind = "StartAgent"
 	CommandKindCloseAgent  CommandKind = "CloseAgent"
 	CommandKindReopenAgent CommandKind = "ReopenAgent"
-	CommandKindAdoptThread CommandKind = "AdoptThread"
 )
 
 type CommandOutcome string
@@ -66,18 +72,18 @@ const (
 type DerivationReason string
 
 const (
-	DerivationReasonCloseAccepted                   DerivationReason = "close-accepted"
-	DerivationReasonRuntimeEndedIdle                DerivationReason = "runtime-ended-idle"
-	DerivationReasonRuntimeEndedWorking             DerivationReason = "runtime-ended-working"
-	DerivationReasonSystemError                     DerivationReason = "system-error"
-	DerivationReasonExactThreadMissing              DerivationReason = "exact-thread-missing"
-	DerivationReasonProfileUnavailable              DerivationReason = "profile-unavailable"
-	DerivationReasonEvidenceAbsent                  DerivationReason = "evidence-absent"
-	DerivationReasonEvidenceStale                   DerivationReason = "evidence-stale"
-	DerivationReasonEvidenceContradictory           DerivationReason = "evidence-contradictory"
-	DerivationReasonCompletionConfirmationExhausted DerivationReason = "completion-confirmation-exhausted"
-	DerivationReasonAwaitingSessionConfirmation     DerivationReason = "awaiting-session-confirmation"
-	DerivationReasonStartBindingDeadline            DerivationReason = "start-binding-deadline"
+	DerivationReasonCloseAccepted              DerivationReason = "close-accepted"
+	DerivationReasonRuntimeEndedIdle           DerivationReason = "runtime-ended-idle"
+	DerivationReasonRuntimeEndedWorking        DerivationReason = "runtime-ended-working"
+	DerivationReasonRuntimeEndedUnbound        DerivationReason = "runtime-ended-unbound"
+	DerivationReasonRuntimeLaunchFailed        DerivationReason = "runtime-launch-failed"
+	DerivationReasonSystemError                DerivationReason = "system-error"
+	DerivationReasonPendingResumeContradiction DerivationReason = "pending-resume-contradiction"
+	DerivationReasonExternalRuntimeUntracked   DerivationReason = "external-runtime-untracked"
+	DerivationReasonEvidenceAbsent             DerivationReason = "evidence-absent"
+	DerivationReasonEvidenceStale              DerivationReason = "evidence-stale"
+	DerivationReasonEvidenceContradictory      DerivationReason = "evidence-contradictory"
+	DerivationReasonStartBindingDeadline       DerivationReason = "start-binding-deadline"
 )
 
 type ErrorCode string
@@ -91,15 +97,12 @@ const (
 	ErrorCodeAgentClosed                 ErrorCode = "AgentClosed"
 	ErrorCodeAgentWorking                ErrorCode = "AgentWorking"
 	ErrorCodeAgentNotAttachable          ErrorCode = "AgentNotAttachable"
+	ErrorCodeAgentUntracked              ErrorCode = "AgentUntracked"
 	ErrorCodeWorkingDirectoryInvalid     ErrorCode = "WorkingDirectoryInvalid"
 	ErrorCodeWorkingDirectoryUnavailable ErrorCode = "WorkingDirectoryUnavailable"
 	ErrorCodeProfileUnavailable          ErrorCode = "ProfileUnavailable"
-	ErrorCodeExactThreadMissing          ErrorCode = "ExactThreadMissing"
+	ErrorCodeRuntimeLaunchFailed         ErrorCode = "RuntimeLaunchFailed"
 	ErrorCodeCommandConflict             ErrorCode = "CommandConflict"
-	ErrorCodeThreadNotAdoptable          ErrorCode = "ThreadNotAdoptable"
-	ErrorCodeThreadAlreadyTracked        ErrorCode = "ThreadAlreadyTracked"
-	ErrorCodeModelInvalid                ErrorCode = "ModelInvalid"
-	ErrorCodeRecoveryRequired            ErrorCode = "RecoveryRequired"
 	ErrorCodeCursorInvalid               ErrorCode = "CursorInvalid"
 	ErrorCodeResyncRequired              ErrorCode = "ResyncRequired"
 	ErrorCodeLivenessUnverifiable        ErrorCode = "LivenessUnverifiable"
@@ -209,9 +212,11 @@ type AgentCard struct {
 	Handle            AgentHandle        `json:"handle"`
 	CharacterKey      CharacterKey       `json:"characterKey"`
 	DisplayName       string             `json:"displayName"`
+	Origin            AgentOrigin        `json:"origin"`
 	Profile           Profile            `json:"profile"`
 	State             AgentState         `json:"state"`
-	Objective         Objective          `json:"objective"`
+	Objective         *Objective         `json:"objective,omitempty"`
+	Cwd               WorkingDirectory   `json:"cwd"`
 	CreatedAt         string             `json:"createdAt"`
 	LastObservedAt    string             `json:"lastObservedAt"`
 	Activity          *SafeActivity      `json:"activity,omitempty"`
@@ -249,11 +254,10 @@ type BootstrapResponse struct {
 }
 
 type CodexBinding struct {
-	ThreadId     ThreadId          `json:"threadId"`
-	SessionId    SessionId         `json:"sessionId"`
-	RequestedCwd WorkingDirectory  `json:"requestedCwd"`
-	EffectiveCwd *WorkingDirectory `json:"effectiveCwd,omitempty"`
-	Model        string            `json:"model"`
+	ThreadId     ThreadId         `json:"threadId"`
+	SessionId    SessionId        `json:"sessionId"`
+	EffectiveCwd WorkingDirectory `json:"effectiveCwd"`
+	Model        string           `json:"model"`
 }
 
 type CommandAccepted struct {
@@ -316,11 +320,9 @@ type PairResponse struct {
 }
 
 type ProfileHealth struct {
-	Profile            Profile      `json:"profile"`
-	State              ProfileState `json:"state"`
-	AccountFingerprint *string      `json:"accountFingerprint,omitempty"`
-	DefaultModel       string       `json:"defaultModel"`
-	Reason             *string      `json:"reason,omitempty"`
+	Profile Profile      `json:"profile"`
+	State   ProfileState `json:"state"`
+	Reason  *string      `json:"reason,omitempty"`
 }
 
 type RecentWorkingDirectories struct {
@@ -977,34 +979,28 @@ func ErrorHTTPStatus(code ErrorCode) (int, bool) {
 		return 409, true
 	case ErrorCodeAgentNotFound:
 		return 404, true
+	case ErrorCodeAgentUntracked:
+		return 409, true
 	case ErrorCodeAgentWorking:
 		return 409, true
 	case ErrorCodeCommandConflict:
 		return 409, true
 	case ErrorCodeCursorInvalid:
 		return 400, true
-	case ErrorCodeExactThreadMissing:
-		return 404, true
 	case ErrorCodeInvalidRequest:
 		return 400, true
 	case ErrorCodeLivenessUnverifiable:
 		return 503, true
-	case ErrorCodeModelInvalid:
-		return 422, true
 	case ErrorCodePairingInvalid:
 		return 401, true
 	case ErrorCodeProfileUnavailable:
 		return 503, true
 	case ErrorCodeProtocolMismatch:
 		return 409, true
-	case ErrorCodeRecoveryRequired:
-		return 409, true
 	case ErrorCodeResyncRequired:
 		return 409, true
-	case ErrorCodeThreadAlreadyTracked:
-		return 409, true
-	case ErrorCodeThreadNotAdoptable:
-		return 409, true
+	case ErrorCodeRuntimeLaunchFailed:
+		return 503, true
 	case ErrorCodeUnauthenticated:
 		return 401, true
 	case ErrorCodeWorkingDirectoryInvalid:

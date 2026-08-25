@@ -13,9 +13,14 @@
     <h1>Terminal platform harness</h1>
     <p id="bridge-status">Waiting for native bridge</p>
     <section id="terminal" aria-label="ANSI and Unicode terminal"></section>
+    <section id="draft-proof" aria-label="Editable draft proof">
+        <h2>Editable draft</h2>
+        <output id="draft-value" aria-label="Current editable draft" aria-live="polite">Empty draft</output>
+        <p id="draft-status">Draft: editable; never submitted or saved</p>
+    </section>
     <p id="input-status">Input: focus the terminal</p>
     <p id="ime-status">IME: idle</p>
-    <p id="viewport-status">Viewport: unknown</p>
+    <p id="viewport-status" role="status" aria-live="polite">Visual viewport: measuring</p>
 </main>
 <script src="vendor/xterm-6.0.0.js"></script>
 <script src="terminal.js"></script>
