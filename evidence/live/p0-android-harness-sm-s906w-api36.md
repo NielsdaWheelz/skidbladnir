@@ -1,6 +1,6 @@
 # P0 Android terminal harness
 
-Recorded: 2026-08-25T07:13:06Z
+Recorded: 2026-08-25T15:46:49Z
 
 Result: **PASS (automated harness only)**
 
@@ -8,7 +8,7 @@ Result: **PASS (automated harness only)**
 
 - Target: `SM-S906W`, Android API `36`, build `BP2A.250605.031.A3`
 - App: `dev.niels.skidbladnir` `0.1.0` (`versionCode=1`)
-- Android System WebView: `151.0.7922.85`
+- Android System WebView: `151.0.7922.170`
 - Selected Gboard: `17.6.5.924672101-release-arm64-v8a`
 - xterm.js: `6.0.0`
 - Terminal entry SHA-256: `aedc7fc0088fc4ea42414af70d260debf4c601eef028fd74ee292f1d9c6c3439`
@@ -39,13 +39,15 @@ Tailscale client.
   pinned DA1, DA2, DSR, and CPR automatic-reply classes.
 - Programmatic composition, paste sanitization, and dictation fixtures remained
   editable and did not submit. The harness exposed that draft visibly, handled
-  Unicode-safe backspace, and reported the live visual viewport. These are
-  WebView/xterm harness assertions, not claims about physical Gboard
-  interaction.
-- The original run exposed three failures: two off-UI-thread WebView reads and
-  one startup `null` race. After repair, the focused tests and the full
-  seven-test platform gate passed on the target. This record reports automated
-  harness coverage only; it does not claim manual rotation confirmation.
+  Unicode-safe backspace, and reported the live visual viewport. Two requested
+  rotations retained the exact Unicode draft, and the draft accepted another
+  edit after each rotation. These are WebView/xterm harness assertions, not
+  claims about physical Gboard interaction.
+- A securely locked first attempt returned `NOT_RUN` before device execution.
+  After the phone was unlocked, the full seven-test platform gate passed on the
+  target. The original run's two off-UI-thread WebView reads and one startup
+  `null` race remain repaired. This record reports automated harness coverage
+  only; it does not claim manual Gboard rotation confirmation.
 
 No device identifier, credential, prompt, clipboard value, terminal stream, or
 user content is retained. Physical Gboard composition/dictation, Android
