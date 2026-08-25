@@ -27,6 +27,37 @@ func TestDecodeRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectsDuplicateFields(t *testing.T) {
+	_, err := decode([]byte(`{
+		"session_id":"thr_123",
+		"session_id":"thr_456",
+		"transcript_path":null,
+		"cwd":"/home/niels/src",
+		"hook_event_name":"Stop",
+		"turn_id":"turn_123",
+		"stop_hook_active":false,
+		"last_assistant_message":null
+	}`))
+	if err == nil {
+		t.Fatal("decode accepted duplicate hook fields")
+	}
+}
+
+func TestDecodeRejectsNullRequiredBoolean(t *testing.T) {
+	_, err := decode([]byte(`{
+		"session_id":"thr_123",
+		"transcript_path":null,
+		"cwd":"/home/niels/src",
+		"hook_event_name":"Stop",
+		"turn_id":"turn_123",
+		"stop_hook_active":null,
+		"last_assistant_message":null
+	}`))
+	if err == nil {
+		t.Fatal("decode accepted null for required boolean")
+	}
+}
+
 func TestDecodeProjectsSubagentOnlyAsActivity(t *testing.T) {
 	fact, err := decode([]byte(`{
 		"session_id":"thr_123",
@@ -75,8 +106,8 @@ func TestIdentityWalkFindsPinnedParentInsteadOfUnpinnedChild(t *testing.T) {
 		t.Fatalf("start child: %v", err)
 	}
 	defer func() {
-		_ = child.Process.Kill()
-		_ = child.Wait()
+		_ = child.Process.Kill() // justify-ignore-error: cleanup accepts an already-exited fixture process.
+		_ = child.Wait()         // justify-ignore-error: cleanup accepts the killed fixture process exit status.
 	}()
 	time.Sleep(10 * time.Millisecond)
 	report, err := identityFor(child.Process.Pid, pinned)
@@ -85,6 +116,34 @@ func TestIdentityWalkFindsPinnedParentInsteadOfUnpinnedChild(t *testing.T) {
 	}
 	if report.PID != os.Getpid() {
 		t.Fatalf("nearest pinned process = %d, want parent %d", report.PID, os.Getpid())
+	}
+}
+
+func TestIdentityReportsNestedExactPinnedProcess(t *testing.T) {
+	if os.Getenv("SKIDBLADNIR_TEST_NESTED_PINNED") == "1" {
+		select {}
+	}
+	pinned, err := os.Executable()
+	if err != nil {
+		t.Fatalf("executable: %v", err)
+	}
+	t.Setenv("SKIDBLADNIR_BINDING_ID", "binding_123")
+	child := exec.Command(pinned, "-test.run=^TestIdentityReportsNestedExactPinnedProcess$")
+	child.Env = append(os.Environ(), "SKIDBLADNIR_TEST_NESTED_PINNED=1")
+	if err := child.Start(); err != nil {
+		t.Fatalf("start nested pinned child: %v", err)
+	}
+	defer func() {
+		_ = child.Process.Kill() // justify-ignore-error: cleanup accepts an already-exited fixture process.
+		_ = child.Wait()         // justify-ignore-error: cleanup accepts the killed fixture process exit status.
+	}()
+	time.Sleep(10 * time.Millisecond)
+	report, err := identityFor(child.Process.Pid, pinned)
+	if err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	if report.PID != child.Process.Pid || report.StartTime == 0 {
+		t.Fatalf("nested pinned identity = %#v, want child PID %d and start time", report, child.Process.Pid)
 	}
 }
 
@@ -139,7 +198,7 @@ func TestRunDeliversOnlySafeProjectionAfterAck(t *testing.T) {
 		var message deliveryMessage
 		if json.NewDecoder(connection).Decode(&message) == nil {
 			received <- message
-			_ = json.NewEncoder(connection).Encode(struct {
+			_ = json.NewEncoder(connection).Encode(struct { // justify-ignore-error: the negative-path fixture intentionally allows the client to close first.
 				Type string `json:"type"`
 			}{Type: "Ack"})
 		}
@@ -168,5 +227,31 @@ func TestRunDeliversOnlySafeProjectionAfterAck(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "gap.json")); !os.IsNotExist(err) {
 		t.Fatalf("ACKed delivery wrote a gap marker: %v", err)
+	}
+}
+
+func TestDeliverRejectsTrailingAckData(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "hook.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer connection.Close()
+		var received deliveryMessage
+		if json.NewDecoder(connection).Decode(&received) == nil {
+			_, _ = connection.Write([]byte("{\"type\":\"Ack\"} {\"type\":\"Ack\"}\n")) // justify-ignore-error: the malformed-response fixture intentionally allows the client to close first.
+		}
+	}()
+
+	err = deliver(socketPath, deliveryMessage{Type: "HookFact"})
+	if err == nil {
+		t.Fatal("delivery accepted trailing ACK JSON")
 	}
 }

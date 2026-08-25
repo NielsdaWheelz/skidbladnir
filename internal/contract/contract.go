@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -25,16 +26,19 @@ import (
 )
 
 const (
-	apiPath        = "api/skidbladnir.v1.json"
-	cataloguePath  = "catalog/characters.json"
-	codexLockPath  = "codex.lock"
-	goOutputPath   = "generated/api/go/skidbladnir.go"
-	kotlinPath     = "generated/api/kotlin/SkidbladnirApi.kt"
-	proofsPath     = "evidence/proof-ledger.json"
-	dvergatalPath  = "evidence/sources/dvergatal.md"
-	digestDomain   = "Skidbladnir.Contract.V1"
-	minimumDwarfs  = 100
-	maximumRecents = 8
+	apiPath          = "api/skidbladnir.v1.json"
+	apiLockPath      = "api/skidbladnir.v1.lock"
+	cataloguePath    = "catalog/characters.json"
+	codexLockPath    = "codex.lock"
+	goOutputPath     = "generated/api/go/skidbladnir.go"
+	kotlinPath       = "generated/api/kotlin/SkidbladnirApi.kt"
+	proofsPath       = "evidence/proof-ledger.json"
+	dvergatalPath    = "evidence/sources/dvergatal.md"
+	terminalLockPath = "android/terminal.lock"
+	digestDomain     = "Skidbladnir.Contract.V1"
+	schemaDomain     = "Skidbladnir.CodexSchemaTree.V1"
+	minimumDwarfs    = 100
+	maximumRecents   = 8
 )
 
 var (
@@ -106,14 +110,38 @@ type catalogueSource struct {
 }
 
 type codexLock struct {
-	Version         string   `json:"version"`
-	Package         string   `json:"package"`
-	PlatformPackage string   `json:"platformPackage"`
-	BinaryPath      string   `json:"binaryPath"`
-	BinarySHA256    string   `json:"binarySha256"`
-	SchemaBundle    string   `json:"schemaBundle"`
-	SchemaSHA256    string   `json:"schemaSha256"`
-	SchemaCommand   []string `json:"schemaCommand"`
+	Version          string   `json:"version"`
+	Package          string   `json:"package"`
+	PlatformPackage  string   `json:"platformPackage"`
+	BinaryPath       string   `json:"binaryPath"`
+	BinarySHA256     string   `json:"binarySha256"`
+	SchemaDirectory  string   `json:"schemaDirectory"`
+	SchemaFiles      int      `json:"schemaFiles"`
+	SchemaTreeSHA256 string   `json:"schemaTreeSha256"`
+	SchemaBundle     string   `json:"schemaBundle"`
+	SchemaSHA256     string   `json:"schemaSha256"`
+	SchemaCommand    []string `json:"schemaCommand"`
+}
+
+type contractInputLock struct {
+	Version               int    `json:"version"`
+	APISHA256             string `json:"apiSha256"`
+	CatalogueSHA256       string `json:"catalogueSha256"`
+	CatalogueKeySetSHA256 string `json:"catalogueKeySetSha256"`
+	CatalogueEntries      int    `json:"catalogueEntries"`
+}
+
+type schemaFile struct {
+	Path   string
+	SHA256 string
+}
+
+type terminalAssetLock struct {
+	Package   string            `json:"package"`
+	Version   string            `json:"version"`
+	Source    string            `json:"source"`
+	Integrity string            `json:"integrity"`
+	Files     map[string]string `json:"files"`
 }
 
 type proofLedger struct {
@@ -159,6 +187,9 @@ func Verify(root string) error {
 	if err := verifyCodexLock(root); err != nil {
 		return err
 	}
+	if err := verifyTerminalAssets(root); err != nil {
+		return err
+	}
 	if err := verifyDvergatalEvidence(root, catalogue); err != nil {
 		return err
 	}
@@ -169,6 +200,9 @@ func Verify(root string) error {
 		return err
 	}
 	if err := verifyLoggerBoundary(root); err != nil {
+		return err
+	}
+	if err := verifyJustifications(root); err != nil {
 		return err
 	}
 
@@ -254,7 +288,37 @@ func loadInputs(root string) ([]byte, apiContract, []catalogueEntry, error) {
 	if err := validateCatalogue(catalogue); err != nil {
 		return nil, apiContract{}, nil, fmt.Errorf("validate %s: %w", cataloguePath, err)
 	}
+	lockBytes, err := os.ReadFile(filepath.Join(root, apiLockPath))
+	if err != nil {
+		return nil, apiContract{}, nil, fmt.Errorf("read %s: %w", apiLockPath, err)
+	}
+	var lock contractInputLock
+	if err := decodeStrict(lockBytes, &lock); err != nil {
+		return nil, apiContract{}, nil, fmt.Errorf("decode %s: %w", apiLockPath, err)
+	}
+	if err := validateContractInputLock(lock, apiBytes, catalogueBytes, catalogue); err != nil {
+		return nil, apiContract{}, nil, fmt.Errorf("validate %s: %w", apiLockPath, err)
+	}
 	return apiBytes, spec, catalogue, nil
+}
+
+func validateContractInputLock(lock contractInputLock, apiBytes []byte, catalogueBytes []byte, catalogue []catalogueEntry) error {
+	if lock.Version != 1 {
+		return errors.New("contract input lock version is not 1")
+	}
+	if lock.APISHA256 != sha256Hex(apiBytes) {
+		return errors.New("API contract digest differs from reviewed lock")
+	}
+	if lock.CatalogueSHA256 != sha256Hex(catalogueBytes) {
+		return errors.New("catalogue digest differs from reviewed lock")
+	}
+	if lock.CatalogueEntries != len(catalogue) {
+		return errors.New("catalogue count differs from reviewed lock")
+	}
+	if lock.CatalogueKeySetSHA256 != sha256Hex(catalogueKeySetBytes(catalogue)) {
+		return errors.New("catalogue key set differs from reviewed lock")
+	}
+	return nil
 }
 
 func validateContract(spec apiContract) error {
@@ -307,11 +371,28 @@ func validateContract(spec apiContract) error {
 		if union.Discriminator == "" || len(union.Variants) == 0 {
 			return fmt.Errorf("union %s has no discriminator or variants", name)
 		}
+		discriminatorType, found := findUnionDiscriminatorType(spec, name)
+		if !found {
+			return fmt.Errorf("union %s has no exact discriminator enum", name)
+		}
 		for variant, raw := range union.Variants {
 			var recordName string
 			if err := json.Unmarshal(raw, &recordName); err == nil {
-				if !types[recordName] {
+				fields, exists := spec.Records[recordName]
+				if !exists {
 					return fmt.Errorf("union %s variant %s references unknown %s", name, variant, recordName)
+				}
+				discriminatorFields := 0
+				for _, field := range fields {
+					if field.Name == union.Discriminator {
+						discriminatorFields++
+						if field.Type != discriminatorType {
+							return fmt.Errorf("union %s record %s has invalid discriminator type %s", name, recordName, field.Type)
+						}
+					}
+				}
+				if discriminatorFields != 1 {
+					return fmt.Errorf("union %s record %s must declare its discriminator exactly once", name, recordName)
 				}
 				continue
 			}
@@ -321,6 +402,11 @@ func validateContract(spec apiContract) error {
 			}
 			if err := validateFields(name+variant, fields, types); err != nil {
 				return err
+			}
+			for _, field := range fields {
+				if field.Name == union.Discriminator {
+					return fmt.Errorf("union %s inline variant %s repeats its discriminator", name, variant)
+				}
 			}
 		}
 	}
@@ -419,8 +505,15 @@ func verifyCodexLock(root string) error {
 	if err := decodeStrict(bytes, &lock); err != nil {
 		return fmt.Errorf("decode %s: %w", codexLockPath, err)
 	}
+	expectedSchemaDirectory := filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version))
 	if lock.Version == "" || lock.Package != "@openai/codex@"+lock.Version || !strings.HasSuffix(lock.PlatformPackage, "@"+lock.Version+"-linux-x64") || !filepath.IsAbs(lock.BinaryPath) {
 		return errors.New("codex.lock identity is incomplete")
+	}
+	if lock.SchemaDirectory != expectedSchemaDirectory || lock.SchemaFiles < 1 || len(lock.SchemaTreeSHA256) != sha256.Size*2 {
+		return errors.New("codex.lock schema tree identity is incomplete")
+	}
+	if filepath.ToSlash(filepath.Dir(lock.SchemaBundle)) != lock.SchemaDirectory {
+		return errors.New("codex.lock schema bundle is outside its schema directory")
 	}
 	if err := verifyDigest(lock.BinaryPath, lock.BinarySHA256); err != nil {
 		return fmt.Errorf("pinned Codex binary: %w", err)
@@ -428,10 +521,64 @@ func verifyCodexLock(root string) error {
 	if err := verifyDigest(filepath.Join(root, lock.SchemaBundle), lock.SchemaSHA256); err != nil {
 		return fmt.Errorf("pinned Codex schema: %w", err)
 	}
-	if len(lock.SchemaCommand) != 5 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--out" || lock.SchemaCommand[4] != filepath.Dir(lock.SchemaBundle) {
+	files, err := collectSchemaFiles(filepath.Join(root, lock.SchemaDirectory))
+	if err != nil {
+		return fmt.Errorf("read pinned Codex schema tree: %w", err)
+	}
+	if len(files) != lock.SchemaFiles || schemaTreeDigest(files) != lock.SchemaTreeSHA256 {
+		return errors.New("pinned Codex schema tree differs from codex.lock")
+	}
+	if len(lock.SchemaCommand) != 5 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--out" || filepath.ToSlash(lock.SchemaCommand[4]) != lock.SchemaDirectory {
 		return errors.New("codex.lock schema command is not exact")
 	}
 	return nil
+}
+
+func collectSchemaFiles(directory string) ([]schemaFile, error) {
+	var files []schemaFile
+	err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("schema tree contains symlink %s", path)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("schema tree contains non-regular file %s", path)
+		}
+		relative, err := filepath.Rel(directory, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if strings.ContainsAny(relative, "\r\n") {
+			return fmt.Errorf("schema path contains a line break: %q", relative)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files = append(files, schemaFile{Path: relative, SHA256: sha256Hex(content)})
+		return nil
+	})
+	return files, err
+}
+
+func schemaTreeDigest(files []schemaFile) string {
+	ordered := append([]schemaFile(nil), files...)
+	sort.Slice(ordered, func(left int, right int) bool { return ordered[left].Path < ordered[right].Path })
+	hash := sha256.New()
+	hash.Write([]byte(schemaDomain)) // justify-ignore-error: hash.Hash.Write cannot fail.
+	for _, file := range ordered {
+		hash.Write([]byte(file.SHA256)) // justify-ignore-error: hash.Hash.Write cannot fail.
+		hash.Write([]byte("  "))        // justify-ignore-error: hash.Hash.Write cannot fail.
+		hash.Write([]byte(file.Path))   // justify-ignore-error: hash.Hash.Write cannot fail.
+		hash.Write([]byte{'\n'})        // justify-ignore-error: hash.Hash.Write cannot fail.
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func verifyDigest(path string, expected string) error {
@@ -446,21 +593,89 @@ func verifyDigest(path string, expected string) error {
 	return nil
 }
 
+func verifyTerminalAssets(root string) error {
+	content, err := os.ReadFile(filepath.Join(root, terminalLockPath))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", terminalLockPath, err)
+	}
+	var lock terminalAssetLock
+	if err := decodeStrict(content, &lock); err != nil {
+		return fmt.Errorf("decode %s: %w", terminalLockPath, err)
+	}
+	if lock.Package != "@xterm/xterm" || lock.Version != "6.0.0" || lock.Source != "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz" || !strings.HasPrefix(lock.Integrity, "sha512-") {
+		return errors.New("terminal asset lock identity differs from the reviewed pin")
+	}
+	required := map[string]bool{
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js":      true,
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css":     true,
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE": true,
+	}
+	if len(lock.Files) != len(required) {
+		return errors.New("terminal asset lock has the wrong file inventory")
+	}
+	for path, expectedDigest := range lock.Files {
+		if !required[path] || len(expectedDigest) != sha256.Size*2 {
+			return fmt.Errorf("terminal asset lock has unexpected file %s", path)
+		}
+		if err := verifyDigest(filepath.Join(root, filepath.FromSlash(path)), expectedDigest); err != nil {
+			return fmt.Errorf("terminal asset %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
 func verifyDvergatalEvidence(root string, entries []catalogueEntry) error {
 	content, err := os.ReadFile(filepath.Join(root, dvergatalPath))
 	if err != nil {
 		return fmt.Errorf("read %s: %w", dvergatalPath, err)
 	}
+	if err := validateDvergatalEvidence(content, entries); err != nil {
+		return fmt.Errorf("validate %s: %w", dvergatalPath, err)
+	}
+	return nil
+}
+
+func validateDvergatalEvidence(content []byte, entries []catalogueEntry) error {
 	text := string(content)
-	lowerText := strings.ToLower(text)
-	for _, phrase := range []string{"portrait production", "rights basis", "dedupe", "exclusion"} {
-		if !strings.Contains(lowerText, phrase) {
-			return fmt.Errorf("%s is missing %q", dvergatalPath, phrase)
+	for _, heading := range []string{"## Acceptance for good content", "## Portrait production and rights basis", "## Dedupe and exclusion"} {
+		if !strings.Contains(text, heading) {
+			return fmt.Errorf("missing section %q", heading)
 		}
 	}
+	recorded := make(map[string]catalogueEntry, len(entries))
+	for lineNumber, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(line, "ENTRY|") {
+			continue
+		}
+		parts := strings.Split(line, "|")
+		if len(parts) != 6 {
+			return fmt.Errorf("entry line %d has %d fields; want 6", lineNumber+1, len(parts))
+		}
+		values := make([]string, 5)
+		for index, name := range []string{"key", "displayName", "tradition", "work", "locus"} {
+			prefix := name + "="
+			if !strings.HasPrefix(parts[index+1], prefix) || len(parts[index+1]) == len(prefix) {
+				return fmt.Errorf("entry line %d has invalid %s field", lineNumber+1, name)
+			}
+			values[index] = strings.TrimPrefix(parts[index+1], prefix)
+		}
+		entry := catalogueEntry{
+			Key:         values[0],
+			DisplayName: values[1],
+			Tradition:   values[2],
+			Source:      catalogueSource{Work: values[3], Locus: values[4]},
+		}
+		if _, exists := recorded[entry.Key]; exists {
+			return fmt.Errorf("duplicate evidence entry %s", entry.Key)
+		}
+		recorded[entry.Key] = entry
+	}
+	if len(recorded) != len(entries) {
+		return fmt.Errorf("evidence has %d entries; catalogue has %d", len(recorded), len(entries))
+	}
 	for _, entry := range entries {
-		if strings.Count(text, "ENTRY|key="+entry.Key+"|") != 1 {
-			return fmt.Errorf("%s must contain catalogue key %s exactly once", dvergatalPath, entry.Key)
+		if recordedEntry, exists := recorded[entry.Key]; !exists || recordedEntry != entry {
+			return fmt.Errorf("evidence does not exactly match catalogue entry %s", entry.Key)
 		}
 	}
 	return nil
@@ -572,18 +787,170 @@ func verifyLoggerBoundary(root string) error {
 	return nil
 }
 
+func verifyJustifications(root string) error {
+	for _, base := range []string{"cmd", "internal", "android", "generated"} {
+		err := filepath.WalkDir(filepath.Join(root, base), func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				name := entry.Name()
+				if name == ".gradle" || name == "build" || name == "vendor" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			extension := filepath.Ext(path)
+			if extension != ".go" && extension != ".kt" && extension != ".kts" {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if err := validateJustificationLines(path, content); err != nil {
+				return err
+			}
+			if extension == ".go" {
+				return validateGoJustifications(path, content)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateJustificationLines(path string, content []byte) error {
+	extension := filepath.Ext(path)
+	if extension == ".go" {
+		fileSet := token.NewFileSet()
+		parsed, err := parser.ParseFile(fileSet, path, content, parser.ParseComments)
+		if err != nil {
+			return err
+		}
+		for _, group := range parsed.Comments {
+			for _, comment := range group.List {
+				line := fileSet.Position(comment.Slash).Line
+				if err := validateJustificationComment(path, line, comment.Text); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	for index, line := range strings.Split(string(content), "\n") {
+		comment := ""
+		if commentIndex := strings.Index(line, "//"); commentIndex >= 0 {
+			comment = line[commentIndex:]
+		}
+		if err := validateJustificationComment(path, index+1, comment); err != nil {
+			return err
+		}
+		if extension == ".kt" || extension == ".kts" {
+			if (strings.Contains(line, "@Suppress") || strings.Contains(line, "@OptIn") || strings.Contains(comment, "noinspection")) && !strings.Contains(comment, "justify-override:") {
+				return fmt.Errorf("%s:%d override lacks justify-override", path, index+1)
+			}
+		}
+	}
+	return nil
+}
+
+func validateJustificationComment(path string, line int, comment string) error {
+	known := map[string]bool{
+		"justify-defect":                  true,
+		"justify-ignore-error":            true,
+		"justify-service-invariant-check": true,
+		"justify-polling":                 true,
+		"justify-retry-schedule":          true,
+		"justify-override":                true,
+		"justify-dead-code":               true,
+		"justify-type-assertion":          true,
+		"justify-base64url-over-base64":   true,
+	}
+	if tokenIndex := strings.Index(comment, "justify-"); tokenIndex >= 0 {
+		remainder := comment[tokenIndex:]
+		colon := strings.IndexByte(remainder, ':')
+		if colon < 0 {
+			return fmt.Errorf("%s:%d justification has no colon", path, line)
+		}
+		justification := remainder[:colon]
+		if !known[justification] || strings.TrimSpace(remainder[colon+1:]) == "" {
+			return fmt.Errorf("%s:%d has unknown or empty justification %s", path, line, justification)
+		}
+	}
+	if strings.Contains(comment, "nolint") || strings.Contains(comment, "#nosec") || strings.Contains(comment, "lint:ignore") || strings.Contains(comment, "go:nocheckptr") {
+		if !strings.Contains(comment, "justify-override:") {
+			return fmt.Errorf("%s:%d suppression lacks justify-override", path, line)
+		}
+	}
+	return nil
+}
+
+func validateGoJustifications(path string, content []byte) error {
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, path, content, 0)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(content), "\n")
+	var result error
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if node == nil || result != nil {
+			return result == nil
+		}
+		line := fileSet.Position(node.Pos()).Line
+		required := ""
+		switch value := node.(type) { // justify-type-assertion: the Go AST exposes syntax kinds through its closed node interface.
+		case *ast.TypeAssertExpr:
+			required = "justify-type-assertion:"
+		case *ast.CallExpr:
+			if identifier, ok := value.Fun.(*ast.Ident); ok && identifier.Name == "panic" { // justify-type-assertion: only identifier calls can name the panic builtin.
+				required = "justify-defect:"
+			}
+		case *ast.AssignStmt:
+			last := value.Lhs[len(value.Lhs)-1]
+			identifier, ok := last.(*ast.Ident) // justify-type-assertion: only identifier nodes can represent the blank assignment target.
+			if ok && identifier.Name == "_" {
+				for _, expression := range value.Rhs {
+					if _, ok := expression.(*ast.CallExpr); ok { // justify-type-assertion: a discarded call result is the only assignment shape governed by the ignored-error rule.
+						required = "justify-ignore-error:"
+						break
+					}
+				}
+			}
+		}
+		if required != "" && (line < 1 || line > len(lines) || !strings.Contains(lines[line-1], required)) {
+			result = fmt.Errorf("%s:%d requires %s", path, line, required)
+			return false
+		}
+		return true
+	})
+	return result
+}
+
 func contractDigest(apiBytes []byte, catalogue []catalogueEntry) string {
+	hash := sha256.New()
+	hash.Write([]byte(digestDomain))
+	writeDigestPart(hash, apiPath, apiBytes)
+	writeDigestPart(hash, "catalog/characters.keys", catalogueKeySetBytes(catalogue))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func catalogueKeySetBytes(catalogue []catalogueEntry) []byte {
 	keys := make([]string, 0, len(catalogue))
 	for _, entry := range catalogue {
 		keys = append(keys, entry.Key)
 	}
 	sort.Strings(keys)
-	keyBytes := []byte(strings.Join(keys, "\n"))
-	hash := sha256.New()
-	hash.Write([]byte(digestDomain))
-	writeDigestPart(hash, apiPath, apiBytes)
-	writeDigestPart(hash, "catalog/characters.keys", keyBytes)
-	return hex.EncodeToString(hash.Sum(nil))
+	return []byte(strings.Join(keys, "\n"))
+}
+
+func sha256Hex(content []byte) string {
+	digest := sha256.Sum256(content)
+	return hex.EncodeToString(digest[:])
 }
 
 func writeDigestPart(writer io.Writer, path string, content []byte) {
@@ -606,9 +973,69 @@ func render(spec apiContract, digest string) (map[string][]byte, error) {
 	}, nil
 }
 
+type renderedUnionVariant struct {
+	UnionName         string
+	Variant           string
+	ConcreteName      string
+	Discriminator     string
+	DiscriminatorType string
+	Fields            []fieldSpec
+}
+
+func renderedUnionVariants(spec apiContract) ([]renderedUnionVariant, error) {
+	var variants []renderedUnionVariant
+	for _, unionName := range sortedUnionNames(spec.Unions) {
+		union := spec.Unions[unionName]
+		discriminatorType := unionDiscriminatorType(spec, unionName)
+		for _, variant := range sortedRawNames(union.Variants) {
+			raw := union.Variants[variant]
+			concreteName := variant + unionName
+			var fields []fieldSpec
+			var recordName string
+			if json.Unmarshal(raw, &recordName) == nil {
+				concreteName = recordName
+				fields = append([]fieldSpec(nil), spec.Records[recordName]...)
+				fields = removeField(fields, union.Discriminator)
+			} else if err := decodeStrict(raw, &fields); err != nil {
+				return nil, err
+			}
+			variants = append(variants, renderedUnionVariant{
+				UnionName:         unionName,
+				Variant:           variant,
+				ConcreteName:      concreteName,
+				Discriminator:     union.Discriminator,
+				DiscriminatorType: discriminatorType,
+				Fields:            fields,
+			})
+		}
+	}
+	return variants, nil
+}
+
+func removeField(fields []fieldSpec, name string) []fieldSpec {
+	result := make([]fieldSpec, 0, len(fields))
+	for _, field := range fields {
+		if field.Name != name {
+			result = append(result, field)
+		}
+	}
+	return result
+}
+
 func renderGo(spec apiContract, digest string) ([]byte, error) {
+	variants, err := renderedUnionVariants(spec)
+	if err != nil {
+		return nil, err
+	}
+	recordVariant := map[string]renderedUnionVariant{}
+	for _, variant := range variants {
+		if _, exists := spec.Records[variant.ConcreteName]; exists {
+			recordVariant[variant.ConcreteName] = variant
+		}
+	}
 	var output strings.Builder
 	output.WriteString("// Code generated by ./scripts/build generate. DO NOT EDIT.\n\npackage skidbladnirv1\n\n")
+	output.WriteString("import (\n\t\"bytes\"\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n)\n\n")
 	for _, name := range sortedScalarNames(spec.Scalars) {
 		output.WriteString("type " + name + " string\n")
 	}
@@ -622,51 +1049,73 @@ func renderGo(spec apiContract, digest string) ([]byte, error) {
 		}
 		output.WriteString(")\n")
 	}
+	for _, unionName := range sortedUnionNames(spec.Unions) {
+		discriminatorType := unionDiscriminatorType(spec, unionName)
+		output.WriteString("\ntype " + unionName + " interface {\n\tis" + unionName + "()\n\t" + discriminatorType + "() " + discriminatorType + "\n}\n")
+	}
 	for _, name := range sortedRecordNames(spec.Records) {
-		output.WriteString("\ntype " + name + " struct {\n")
-		for _, field := range spec.Records[name] {
-			optional := strings.HasPrefix(field.Type, "?")
-			tag := field.Name
-			if optional {
-				tag += ",omitempty"
-			}
-			output.WriteString("\t" + goIdentifier(field.Name) + " " + goType(field.Type) + " `json:\"" + tag + "\"`\n")
+		fields := spec.Records[name]
+		if variant, exists := recordVariant[name]; exists {
+			fields = variant.Fields
+		}
+		writeGoStruct(&output, name, fields)
+	}
+	for _, variant := range variants {
+		if _, recordBacked := spec.Records[variant.ConcreteName]; !recordBacked {
+			writeGoStruct(&output, variant.ConcreteName, variant.Fields)
+		}
+	}
+	for _, variant := range variants {
+		wireName := lowerFirst(variant.UnionName + variant.Variant + "Wire")
+		output.WriteString("\nfunc (" + variant.ConcreteName + ") is" + variant.UnionName + "() {}\n")
+		output.WriteString("\nfunc (" + variant.ConcreteName + ") " + variant.DiscriminatorType + "() " + variant.DiscriminatorType + " {\n")
+		output.WriteString("\treturn " + variant.DiscriminatorType + goIdentifier(variant.Variant) + "\n}\n")
+		output.WriteString("\ntype " + wireName + " struct {\n")
+		writeGoField(&output, fieldSpec{Name: variant.Discriminator, Type: variant.DiscriminatorType})
+		for _, field := range variant.Fields {
+			writeGoField(&output, field)
 		}
 		output.WriteString("}\n")
+		output.WriteString("\nfunc (value " + variant.ConcreteName + ") MarshalJSON() ([]byte, error) {\n")
+		output.WriteString("\treturn json.Marshal(" + wireName + "{\n")
+		output.WriteString("\t\t" + goIdentifier(variant.Discriminator) + ": " + variant.DiscriminatorType + goIdentifier(variant.Variant) + ",\n")
+		for _, field := range variant.Fields {
+			fieldName := goIdentifier(field.Name)
+			output.WriteString("\t\t" + fieldName + ": value." + fieldName + ",\n")
+		}
+		output.WriteString("\t})\n}\n")
 	}
 	for _, unionName := range sortedUnionNames(spec.Unions) {
 		union := spec.Unions[unionName]
-		output.WriteString("\ntype " + unionName + " interface {\n\tis" + unionName + "()\n}\n")
-		for _, variant := range sortedRawNames(union.Variants) {
-			raw := union.Variants[variant]
-			var recordName string
-			if json.Unmarshal(raw, &recordName) == nil {
-				output.WriteString("\nfunc (" + recordName + ") is" + unionName + "() {}\n")
+		discriminatorType := unionDiscriminatorType(spec, unionName)
+		output.WriteString("\nfunc Decode" + unionName + "(content []byte) (" + unionName + ", error) {\n")
+		output.WriteString("\tvar envelope struct {\n")
+		output.WriteString("\t\t" + goIdentifier(union.Discriminator) + " " + discriminatorType + " `json:\"" + union.Discriminator + "\"`\n\t}\n")
+		output.WriteString("\tif err := json.Unmarshal(content, &envelope); err != nil {\n\t\treturn nil, err\n\t}\n")
+		output.WriteString("\tswitch envelope." + goIdentifier(union.Discriminator) + " {\n")
+		for _, variant := range variants {
+			if variant.UnionName != unionName {
 				continue
 			}
-			var fields []fieldSpec
-			if err := decodeStrict(raw, &fields); err != nil {
-				return nil, err
+			wireName := lowerFirst(variant.UnionName + variant.Variant + "Wire")
+			output.WriteString("\tcase " + discriminatorType + goIdentifier(variant.Variant) + ":\n")
+			output.WriteString("\t\tvar wire " + wireName + "\n")
+			output.WriteString("\t\tif err := decodeStrict(content, &wire); err != nil {\n\t\t\treturn nil, err\n\t\t}\n")
+			output.WriteString("\t\treturn " + variant.ConcreteName + "{\n")
+			for _, field := range variant.Fields {
+				fieldName := goIdentifier(field.Name)
+				output.WriteString("\t\t\t" + fieldName + ": wire." + fieldName + ",\n")
 			}
-			name := variant + unionName
-			output.WriteString("\ntype " + name + " struct {\n")
-			output.WriteString("\t" + goIdentifier(union.Discriminator) + " " + unionDiscriminatorType(spec, unionName) + " `json:\"" + union.Discriminator + "\"`\n")
-			for _, field := range fields {
-				optional := strings.HasPrefix(field.Type, "?")
-				tag := field.Name
-				if optional {
-					tag += ",omitempty"
-				}
-				output.WriteString("\t" + goIdentifier(field.Name) + " " + goType(field.Type) + " `json:\"" + tag + "\"`\n")
-			}
-			output.WriteString("}\n\nfunc (" + name + ") is" + unionName + "() {}\n")
+			output.WriteString("\t\t}, nil\n")
 		}
+		output.WriteString("\tdefault:\n\t\treturn nil, fmt.Errorf(\"unknown " + unionName + " discriminator %q\", envelope." + goIdentifier(union.Discriminator) + ")\n\t}\n}\n")
 	}
-	output.WriteString("\nvar ErrorHTTPStatus = map[ErrorCode]int{\n")
+	output.WriteString("\nfunc ErrorHTTPStatus(code ErrorCode) (int, bool) {\n\tswitch code {\n")
 	for _, code := range sortedIntNames(spec.Errors) {
-		output.WriteString("\tErrorCode" + goIdentifier(code) + ": " + strconv.Itoa(spec.Errors[code]) + ",\n")
+		output.WriteString("\tcase ErrorCode" + goIdentifier(code) + ":\n\t\treturn " + strconv.Itoa(spec.Errors[code]) + ", true\n")
 	}
-	output.WriteString("}\n")
+	output.WriteString("\tdefault:\n\t\treturn 0, false\n\t}\n}\n")
+	output.WriteString("\nfunc decodeStrict(content []byte, target any) error {\n\tdecoder := json.NewDecoder(bytes.NewReader(content))\n\tdecoder.DisallowUnknownFields()\n\tif err := decoder.Decode(target); err != nil {\n\t\treturn err\n\t}\n\tif decoder.Decode(&struct{}{}) != io.EOF {\n\t\treturn errors.New(\"multiple JSON values\")\n\t}\n\treturn nil\n}\n")
 	formatted, err := format.Source([]byte(output.String()))
 	if err != nil {
 		return nil, fmt.Errorf("format generated Go: %w", err)
@@ -674,20 +1123,36 @@ func renderGo(spec apiContract, digest string) ([]byte, error) {
 	return formatted, nil
 }
 
+func writeGoStruct(output *strings.Builder, name string, fields []fieldSpec) {
+	output.WriteString("\ntype " + name + " struct {\n")
+	for _, field := range fields {
+		writeGoField(output, field)
+	}
+	output.WriteString("}\n")
+}
+
+func writeGoField(output *strings.Builder, field fieldSpec) {
+	tag := field.Name
+	if strings.HasPrefix(field.Type, "?") {
+		tag += ",omitempty"
+	}
+	output.WriteString("\t" + goIdentifier(field.Name) + " " + goType(field.Type) + " `json:\"" + tag + "\"`\n")
+}
+
 func renderKotlin(spec apiContract, digest string) []byte {
-	recordUnions := map[string][]string{}
-	recordVariant := map[string]string{}
-	for unionName, union := range spec.Unions {
-		for variant, raw := range union.Variants {
-			var recordName string
-			if json.Unmarshal(raw, &recordName) == nil {
-				recordUnions[recordName] = append(recordUnions[recordName], unionName)
-				recordVariant[recordName] = variant
-			}
+	variants, err := renderedUnionVariants(spec)
+	if err != nil {
+		panic(err) // justify-defect: validateContract has already accepted this committed union shape.
+	}
+	recordVariant := map[string]renderedUnionVariant{}
+	for _, variant := range variants {
+		if _, exists := spec.Records[variant.ConcreteName]; exists {
+			recordVariant[variant.ConcreteName] = variant
 		}
 	}
 	var output strings.Builder
-	output.WriteString("// Code generated by ./scripts/build generate. DO NOT EDIT.\npackage dev.niels.skidbladnir.generated\n\nimport kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\n\n")
+	output.WriteString("// Code generated by ./scripts/build generate. DO NOT EDIT.\npackage dev.niels.skidbladnir.generated\n\n")
+	output.WriteString("import kotlinx.serialization.ExperimentalSerializationApi\nimport kotlinx.serialization.SerialName\nimport kotlinx.serialization.Serializable\nimport kotlinx.serialization.json.JsonClassDiscriminator\n\n")
 	output.WriteString("object SkidbladnirContract { const val digest: String = \"")
 	output.WriteString(digest)
 	output.WriteString("\" }\n")
@@ -706,64 +1171,56 @@ func renderKotlin(spec apiContract, digest string) []byte {
 		output.WriteString("}\n")
 	}
 	for _, name := range sortedUnionNames(spec.Unions) {
-		output.WriteString("\nsealed interface " + name + "\n")
+		output.WriteString("\n@OptIn(ExperimentalSerializationApi::class) // justify-override: kotlinx serialization requires explicit opt-in for a custom class discriminator.\n@Serializable\n@JsonClassDiscriminator(" + strconv.Quote(spec.Unions[name].Discriminator) + ")\nsealed interface " + name + "\n")
 	}
 	for _, name := range sortedRecordNames(spec.Records) {
-		output.WriteString("\n@Serializable\ndata class " + name + "(\n")
-		variant := recordVariant[name]
-		for index, field := range spec.Records[name] {
-			output.WriteString("    val " + field.Name + ": " + kotlinType(field.Type))
-			for _, unionName := range recordUnions[name] {
-				union := spec.Unions[unionName]
-				if field.Name == union.Discriminator {
-					output.WriteString(" = " + unionDiscriminatorType(spec, unionName) + "." + kotlinIdentifier(variant))
-				}
+		fields := spec.Records[name]
+		if variant, exists := recordVariant[name]; exists {
+			fields = variant.Fields
+			output.WriteString("\n@Serializable\n@SerialName(" + strconv.Quote(variant.Variant) + ")\n")
+			if len(fields) == 0 {
+				output.WriteString("data object " + name + " : " + variant.UnionName + "\n")
+			} else {
+				output.WriteString("data class " + name + "(\n")
+				writeKotlinFields(&output, fields)
+				output.WriteString(") : " + variant.UnionName + "\n")
 			}
-			if index+1 != len(spec.Records[name]) {
-				output.WriteString(",")
-			}
-			output.WriteString("\n")
+			continue
 		}
-		output.WriteString(")")
-		if unions := recordUnions[name]; len(unions) != 0 {
-			output.WriteString(" : " + strings.Join(unions, ", "))
+		output.WriteString("\n@Serializable\ndata class " + name + "(\n")
+		writeKotlinFields(&output, fields)
+		output.WriteString(")\n")
+	}
+	for _, variant := range variants {
+		if _, recordBacked := spec.Records[variant.ConcreteName]; recordBacked {
+			continue
+		}
+		output.WriteString("\n@Serializable\n@SerialName(" + strconv.Quote(variant.Variant) + ")\ndata class " + variant.ConcreteName + "(\n")
+		writeKotlinFields(&output, variant.Fields)
+		output.WriteString(") : " + variant.UnionName + "\n")
+	}
+	output.WriteString("\nfun errorHttpStatus(code: ErrorCode): Int = when (code) {\n")
+	for _, code := range sortedIntNames(spec.Errors) {
+		output.WriteString("    ErrorCode." + kotlinIdentifier(code) + " -> " + strconv.Itoa(spec.Errors[code]) + "\n")
+	}
+	output.WriteString("}\n")
+	return []byte(output.String())
+}
+
+func writeKotlinFields(output *strings.Builder, fields []fieldSpec) {
+	for index, field := range fields {
+		output.WriteString("    val " + field.Name + ": " + kotlinType(field.Type))
+		if index+1 != len(fields) {
+			output.WriteString(",")
 		}
 		output.WriteString("\n")
 	}
-	for _, unionName := range sortedUnionNames(spec.Unions) {
-		union := spec.Unions[unionName]
-		for _, variant := range sortedRawNames(union.Variants) {
-			raw := union.Variants[variant]
-			var recordName string
-			if json.Unmarshal(raw, &recordName) == nil {
-				continue
-			}
-			var fields []fieldSpec
-			if err := decodeStrict(raw, &fields); err != nil {
-				panic(err) // justify-defect: validateContract has already accepted this committed union shape.
-			}
-			output.WriteString("\n@Serializable\ndata class " + variant + unionName + "(\n")
-			output.WriteString("    val " + union.Discriminator + ": " + unionDiscriminatorType(spec, unionName) + " = " + unionDiscriminatorType(spec, unionName) + "." + kotlinIdentifier(variant))
-			if len(fields) != 0 {
-				output.WriteString(",")
-			}
-			output.WriteString("\n")
-			for index, field := range fields {
-				output.WriteString("    val " + field.Name + ": " + kotlinType(field.Type))
-				if index+1 != len(fields) {
-					output.WriteString(",")
-				}
-				output.WriteString("\n")
-			}
-			output.WriteString(") : " + unionName + "\n")
-		}
-	}
-	output.WriteString("\nval errorHttpStatus: Map<ErrorCode, Int> = mapOf(\n")
-	for _, code := range sortedIntNames(spec.Errors) {
-		output.WriteString("    ErrorCode." + kotlinIdentifier(code) + " to " + strconv.Itoa(spec.Errors[code]) + ",\n")
-	}
-	output.WriteString(")\n")
-	return []byte(output.String())
+}
+
+func lowerFirst(value string) string {
+	runes := []rune(value)
+	runes[0] = unicode.ToLower(runes[0])
+	return string(runes)
 }
 
 func goType(name string) string {
@@ -811,13 +1268,21 @@ func kotlinType(name string) string {
 }
 
 func unionDiscriminatorType(spec apiContract, unionName string) string {
+	name, found := findUnionDiscriminatorType(spec, unionName)
+	if found {
+		return name
+	}
+	panic("union discriminator has no exact enum") // justify-defect: contract validation requires every public union to have a closed discriminator enum.
+}
+
+func findUnionDiscriminatorType(spec apiContract, unionName string) (string, bool) {
 	variants := mapKeysRaw(spec.Unions[unionName].Variants)
 	for enumName, values := range spec.Enums {
 		if equalStringSets(values, variants) {
-			return enumName
+			return enumName, true
 		}
 	}
-	panic("union discriminator has no exact enum") // justify-defect: contract validation requires every public union to have a closed discriminator enum.
+	return "", false
 }
 
 func decodeStrict(content []byte, target any) error {

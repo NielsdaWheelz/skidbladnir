@@ -1,5 +1,7 @@
 package dev.niels.skidbladnir
 
+import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,9 +22,24 @@ class TerminalHarnessInstrumentedTest {
             assertEquals("Skíðblaðnir terminal platform harness", evaluate(webView, "document.title"))
             assertEquals("ready", evaluate(webView, "window.__skidbladnirHarness.state"))
             assertTrue(evaluate(webView, "window.__skidbladnirHarness.ansiUnicode") == "PASS")
+            assertEquals("true", evaluate(webView, "window.__skidbladnirHarness.actualInputElement"))
+            assertEquals("true", evaluate(webView, "window.__skidbladnirHarness.screenReaderMode"))
+            assertEquals("1", evaluate(webView, "document.querySelectorAll('.xterm-helper-textarea').length"))
+            assertEquals(
+                "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                evaluate(webView, "document.querySelector('meta[http-equiv=\\\"Content-Security-Policy\\\"]').content"),
+            )
 
             evaluate(webView, "window.__skidbladnirHarness.resize(80, 24)")
             assertEquals("80x24", evaluate(webView, "window.__skidbladnirHarness.viewport"))
+
+            evaluate(webView, "window.__skidbladnirHarness.probeAutomaticReplies()")
+            Thread.sleep(200)
+            val replies = evaluate(webView, "window.__skidbladnirHarness.automaticReplies.join(',')")
+            assertTrue("missing DA1 reply: $replies", replies.contains("DA1"))
+            assertTrue("missing DA2 reply: $replies", replies.contains("DA2"))
+            assertTrue("missing DSR reply: $replies", replies.contains("DSR"))
+            assertTrue("missing CPR reply: $replies", replies.contains("CPR"))
         }
     }
 
@@ -31,15 +48,20 @@ class TerminalHarnessInstrumentedTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             val webView = awaitWebView(scenario)
             evaluate(webView, "window.__skidbladnirHarness.compose('北極星')")
-            evaluate(webView, "window.__skidbladnirHarness.paste('one\\u0000two\\r\\nthree')")
+            evaluate(webView, "window.__skidbladnirHarness.paste('one\\u0000two\\r\\nthree\\u001b[201~\\u0085\\u0001\\t')")
             evaluate(webView, "window.__skidbladnirHarness.dictation(' reviewed')")
 
             assertEquals(
-                "北極星onetwo\\nthree reviewed",
+                "北極星onetwo\nthree[201~\t reviewed",
                 evaluate(webView, "window.__skidbladnirHarness.editorValue"),
             )
             assertEquals("false", evaluate(webView, "window.__skidbladnirHarness.autoSubmitted"))
             assertEquals("PASS", evaluate(webView, "window.__skidbladnirHarness.ime"))
+            assertEquals("3", evaluate(webView, "window.__skidbladnirHarness.inputHistory.length"))
+            assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.editorValue.indexOf('\\u001b')"))
+            assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.editorValue.indexOf('\\u0085')"))
+            assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.editorValue.indexOf('\\u0001')"))
+            assertEquals("-1", evaluate(webView, "window.__skidbladnirHarness.inputHistory.join('').indexOf('\\u001b[201~')"))
         }
     }
 
@@ -64,11 +86,22 @@ class TerminalHarnessInstrumentedTest {
         val latch = CountDownLatch(1)
         var result: WebView? = null
         scenario.onActivity { activity ->
-            result = activity.terminalWebView
-            awaitLoaded(result!!, latch)
+            result = findWebView(activity.window.decorView)
+            requireNotNull(result) { "MainActivity view tree has no WebView" }
+            awaitLoaded(requireNotNull(result), latch)
         }
         assertTrue("local harness did not load", latch.await(5, TimeUnit.SECONDS))
         return requireNotNull(result)
+    }
+
+    private fun findWebView(root: View): WebView? {
+        if (root is WebView) return root
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                findWebView(root.getChildAt(index))?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun awaitLoaded(webView: WebView, latch: CountDownLatch) {
@@ -84,7 +117,11 @@ class TerminalHarnessInstrumentedTest {
         var result: String? = null
         webView.post {
             webView.evaluateJavascript("JSON.stringify($expression)") {
-                result = it.removeSurrounding("\"").replace("\\n", "\n").replace("\\\"", "\"")
+                result = it.removeSurrounding("\"")
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\r", "\r")
+                    .replace("\\\"", "\"")
                 latch.countDown()
             }
         }

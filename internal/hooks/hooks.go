@@ -121,13 +121,9 @@ func readBounded(input io.Reader, limit int64) ([]byte, error) {
 }
 
 func decode(data []byte) (fact, error) {
-	var fields map[string]json.RawMessage
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(&fields); err != nil {
-		return fact{}, fmt.Errorf("decode hook JSON: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fact{}, errors.New("hook input contains multiple JSON values")
+	fields, err := decodeObject(data)
+	if err != nil {
+		return fact{}, err
 	}
 	event, err := requiredString(fields, "hook_event_name")
 	if err != nil {
@@ -166,6 +162,47 @@ func decode(data []byte) (fact, error) {
 		return fact{}, err
 	}
 	return decoded, nil
+}
+
+func decodeObject(data []byte) (map[string]json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("decode hook JSON: %w", err)
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' { // justify-type-assertion: json.Decoder.Token exposes delimiters through its required interface return.
+		return nil, errors.New("hook input must be one JSON object")
+	}
+	fields := make(map[string]json.RawMessage)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, fmt.Errorf("decode hook field name: %w", err)
+		}
+		name, ok := token.(string) // justify-type-assertion: object keys returned by json.Decoder.Token are strings by the JSON decoder contract.
+		if !ok {
+			return nil, errors.New("hook field name is not a string")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			return nil, fmt.Errorf("duplicate hook field %q", name)
+		}
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return nil, fmt.Errorf("decode hook field %q: %w", name, err)
+		}
+		fields[name] = raw
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		return nil, fmt.Errorf("close hook JSON object: %w", err)
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '}' { // justify-type-assertion: json.Decoder.Token exposes delimiters through its required interface return.
+		return nil, errors.New("hook input has invalid JSON object closure")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("hook input contains multiple JSON values")
+	}
+	return fields, nil
 }
 
 func allowedFor(event string) (map[string]bool, projection, error) {
@@ -298,6 +335,9 @@ func requiredBool(fields map[string]json.RawMessage, name string) error {
 	if !ok {
 		return fmt.Errorf("missing %s", name)
 	}
+	if bytes.Equal(raw, []byte("null")) {
+		return fmt.Errorf("invalid %s", name)
+	}
 	var value bool
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return fmt.Errorf("invalid %s", name)
@@ -365,7 +405,7 @@ func (value projection) String() string {
 	case sessionEnded:
 		return "SessionEnded"
 	default:
-		panic("invalid hook projection")
+		panic("invalid hook projection") // justify-defect: the closed hook decoder validated the projection kind before dispatch.
 	}
 }
 
@@ -461,6 +501,9 @@ func deliver(socketPath string, message deliveryMessage) error {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&ack); err != nil {
 		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("hook ACK contains multiple JSON values")
 	}
 	if ack.Type != "Ack" {
 		return errors.New("missing hook ACK")

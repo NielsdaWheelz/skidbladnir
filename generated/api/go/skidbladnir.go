@@ -2,6 +2,14 @@
 
 package skidbladnirv1
 
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+)
+
 type AgentHandle string
 type BearerToken string
 type CharacterKey string
@@ -177,6 +185,21 @@ const (
 	WssFrameKindError    WssFrameKind = "Error"
 )
 
+type CommandResult interface {
+	isCommandResult()
+	CommandOutcome() CommandOutcome
+}
+
+type Fact interface {
+	isFact()
+	FactKind() FactKind
+}
+
+type WssFrame interface {
+	isWssFrame()
+	WssFrameKind() WssFrameKind
+}
+
 type AcknowledgeAttentionResponse struct {
 	Handle         AgentHandle `json:"handle"`
 	AcknowledgedAt string      `json:"acknowledgedAt"`
@@ -240,15 +263,13 @@ type CommandAccepted struct {
 }
 
 type CommandFailure struct {
-	Outcome           CommandOutcome     `json:"outcome"`
 	Code              ErrorCode          `json:"code"`
 	ObservedAt        string             `json:"observedAt"`
 	CorrelationHandle *CorrelationHandle `json:"correlationHandle,omitempty"`
 }
 
 type CommandSuccess struct {
-	Outcome    CommandOutcome `json:"outcome"`
-	ObservedAt string         `json:"observedAt"`
+	ObservedAt string `json:"observedAt"`
 }
 
 type ErrorResponse struct {
@@ -309,9 +330,8 @@ type RecentWorkingDirectories struct {
 }
 
 type ResizeFrame struct {
-	Kind    WssFrameKind `json:"kind"`
-	Columns int64        `json:"columns"`
-	Rows    int64        `json:"rows"`
+	Columns int64 `json:"columns"`
+	Rows    int64 `json:"rows"`
 }
 
 type SafeActivity struct {
@@ -327,39 +347,131 @@ type StartAgentRequest struct {
 }
 
 type TerminalErrorFrame struct {
-	Kind  WssFrameKind  `json:"kind"`
 	Error ErrorResponse `json:"error"`
 }
 
 type TerminalHelloFrame struct {
-	Kind            WssFrameKind `json:"kind"`
 	AttachedClients int64        `json:"attachedClients"`
 	Geometry        GeometryMode `json:"geometry"`
 }
 
 type TerminalPresenceFrame struct {
-	Kind            WssFrameKind `json:"kind"`
 	AttachedClients int64        `json:"attachedClients"`
 	Geometry        GeometryMode `json:"geometry"`
 }
 
 type TerminalSimpleFrame struct {
-	Kind WssFrameKind `json:"kind"`
 }
 
-type CommandResult interface {
-	isCommandResult()
+type ActivityObservedFact struct {
+	Sequence   int64        `json:"sequence"`
+	OccurredAt string       `json:"occurredAt"`
+	Handle     AgentHandle  `json:"handle"`
+	Activity   SafeActivity `json:"activity"`
+}
+
+type AgentBoundFact struct {
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+}
+
+type AgentClosedFact struct {
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+	ClosedAt   string      `json:"closedAt"`
+}
+
+type AgentStartedFact struct {
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+	Agent      AgentCard   `json:"agent"`
+}
+
+type AgentStateChangedFact struct {
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+	Agent      AgentCard   `json:"agent"`
+}
+
+type AttentionAcknowledgedFact struct {
+	Sequence       int64       `json:"sequence"`
+	OccurredAt     string      `json:"occurredAt"`
+	Handle         AgentHandle `json:"handle"`
+	AcknowledgedAt string      `json:"acknowledgedAt"`
+}
+
+type AttentionRaisedFact struct {
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+	Attention  Attention   `json:"attention"`
+}
+
+type CommandSettledFact struct {
+	Sequence        int64           `json:"sequence"`
+	OccurredAt      string          `json:"occurredAt"`
+	Handle          AgentHandle     `json:"handle"`
+	ClientCommandId ClientCommandId `json:"clientCommandId"`
+	Result          CommandResult   `json:"result"`
+}
+
+type HostPressureChangedFact struct {
+	Sequence   int64        `json:"sequence"`
+	OccurredAt string       `json:"occurredAt"`
+	Host       HostPressure `json:"host"`
 }
 
 func (CommandFailure) isCommandResult() {}
 
-func (CommandSuccess) isCommandResult() {}
-
-type Fact interface {
-	isFact()
+func (CommandFailure) CommandOutcome() CommandOutcome {
+	return CommandOutcomeFailed
 }
 
-type ActivityObservedFact struct {
+type commandResultFailedWire struct {
+	Outcome           CommandOutcome     `json:"outcome"`
+	Code              ErrorCode          `json:"code"`
+	ObservedAt        string             `json:"observedAt"`
+	CorrelationHandle *CorrelationHandle `json:"correlationHandle,omitempty"`
+}
+
+func (value CommandFailure) MarshalJSON() ([]byte, error) {
+	return json.Marshal(commandResultFailedWire{
+		Outcome:           CommandOutcomeFailed,
+		Code:              value.Code,
+		ObservedAt:        value.ObservedAt,
+		CorrelationHandle: value.CorrelationHandle,
+	})
+}
+
+func (CommandSuccess) isCommandResult() {}
+
+func (CommandSuccess) CommandOutcome() CommandOutcome {
+	return CommandOutcomeSucceeded
+}
+
+type commandResultSucceededWire struct {
+	Outcome    CommandOutcome `json:"outcome"`
+	ObservedAt string         `json:"observedAt"`
+}
+
+func (value CommandSuccess) MarshalJSON() ([]byte, error) {
+	return json.Marshal(commandResultSucceededWire{
+		Outcome:    CommandOutcomeSucceeded,
+		ObservedAt: value.ObservedAt,
+	})
+}
+
+func (ActivityObservedFact) isFact() {}
+
+func (ActivityObservedFact) FactKind() FactKind {
+	return FactKindActivityObserved
+}
+
+type factActivityObservedWire struct {
 	Kind       FactKind     `json:"kind"`
 	Sequence   int64        `json:"sequence"`
 	OccurredAt string       `json:"occurredAt"`
@@ -367,18 +479,45 @@ type ActivityObservedFact struct {
 	Activity   SafeActivity `json:"activity"`
 }
 
-func (ActivityObservedFact) isFact() {}
+func (value ActivityObservedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factActivityObservedWire{
+		Kind:       FactKindActivityObserved,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+		Activity:   value.Activity,
+	})
+}
 
-type AgentBoundFact struct {
+func (AgentBoundFact) isFact() {}
+
+func (AgentBoundFact) FactKind() FactKind {
+	return FactKindAgentBound
+}
+
+type factAgentBoundWire struct {
 	Kind       FactKind    `json:"kind"`
 	Sequence   int64       `json:"sequence"`
 	OccurredAt string      `json:"occurredAt"`
 	Handle     AgentHandle `json:"handle"`
 }
 
-func (AgentBoundFact) isFact() {}
+func (value AgentBoundFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAgentBoundWire{
+		Kind:       FactKindAgentBound,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+	})
+}
 
-type AgentClosedFact struct {
+func (AgentClosedFact) isFact() {}
+
+func (AgentClosedFact) FactKind() FactKind {
+	return FactKindAgentClosed
+}
+
+type factAgentClosedWire struct {
 	Kind       FactKind    `json:"kind"`
 	Sequence   int64       `json:"sequence"`
 	OccurredAt string      `json:"occurredAt"`
@@ -386,19 +525,23 @@ type AgentClosedFact struct {
 	ClosedAt   string      `json:"closedAt"`
 }
 
-func (AgentClosedFact) isFact() {}
-
-type AgentStartedFact struct {
-	Kind       FactKind    `json:"kind"`
-	Sequence   int64       `json:"sequence"`
-	OccurredAt string      `json:"occurredAt"`
-	Handle     AgentHandle `json:"handle"`
-	Agent      AgentCard   `json:"agent"`
+func (value AgentClosedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAgentClosedWire{
+		Kind:       FactKindAgentClosed,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+		ClosedAt:   value.ClosedAt,
+	})
 }
 
 func (AgentStartedFact) isFact() {}
 
-type AgentStateChangedFact struct {
+func (AgentStartedFact) FactKind() FactKind {
+	return FactKindAgentStarted
+}
+
+type factAgentStartedWire struct {
 	Kind       FactKind    `json:"kind"`
 	Sequence   int64       `json:"sequence"`
 	OccurredAt string      `json:"occurredAt"`
@@ -406,9 +549,47 @@ type AgentStateChangedFact struct {
 	Agent      AgentCard   `json:"agent"`
 }
 
+func (value AgentStartedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAgentStartedWire{
+		Kind:       FactKindAgentStarted,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+		Agent:      value.Agent,
+	})
+}
+
 func (AgentStateChangedFact) isFact() {}
 
-type AttentionAcknowledgedFact struct {
+func (AgentStateChangedFact) FactKind() FactKind {
+	return FactKindAgentStateChanged
+}
+
+type factAgentStateChangedWire struct {
+	Kind       FactKind    `json:"kind"`
+	Sequence   int64       `json:"sequence"`
+	OccurredAt string      `json:"occurredAt"`
+	Handle     AgentHandle `json:"handle"`
+	Agent      AgentCard   `json:"agent"`
+}
+
+func (value AgentStateChangedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAgentStateChangedWire{
+		Kind:       FactKindAgentStateChanged,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+		Agent:      value.Agent,
+	})
+}
+
+func (AttentionAcknowledgedFact) isFact() {}
+
+func (AttentionAcknowledgedFact) FactKind() FactKind {
+	return FactKindAttentionAcknowledged
+}
+
+type factAttentionAcknowledgedWire struct {
 	Kind           FactKind    `json:"kind"`
 	Sequence       int64       `json:"sequence"`
 	OccurredAt     string      `json:"occurredAt"`
@@ -416,9 +597,23 @@ type AttentionAcknowledgedFact struct {
 	AcknowledgedAt string      `json:"acknowledgedAt"`
 }
 
-func (AttentionAcknowledgedFact) isFact() {}
+func (value AttentionAcknowledgedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAttentionAcknowledgedWire{
+		Kind:           FactKindAttentionAcknowledged,
+		Sequence:       value.Sequence,
+		OccurredAt:     value.OccurredAt,
+		Handle:         value.Handle,
+		AcknowledgedAt: value.AcknowledgedAt,
+	})
+}
 
-type AttentionRaisedFact struct {
+func (AttentionRaisedFact) isFact() {}
+
+func (AttentionRaisedFact) FactKind() FactKind {
+	return FactKindAttentionRaised
+}
+
+type factAttentionRaisedWire struct {
 	Kind       FactKind    `json:"kind"`
 	Sequence   int64       `json:"sequence"`
 	OccurredAt string      `json:"occurredAt"`
@@ -426,9 +621,23 @@ type AttentionRaisedFact struct {
 	Attention  Attention   `json:"attention"`
 }
 
-func (AttentionRaisedFact) isFact() {}
+func (value AttentionRaisedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factAttentionRaisedWire{
+		Kind:       FactKindAttentionRaised,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Handle:     value.Handle,
+		Attention:  value.Attention,
+	})
+}
 
-type CommandSettledFact struct {
+func (CommandSettledFact) isFact() {}
+
+func (CommandSettledFact) FactKind() FactKind {
+	return FactKindCommandSettled
+}
+
+type factCommandSettledWire struct {
 	Kind            FactKind        `json:"kind"`
 	Sequence        int64           `json:"sequence"`
 	OccurredAt      string          `json:"occurredAt"`
@@ -437,50 +646,384 @@ type CommandSettledFact struct {
 	Result          CommandResult   `json:"result"`
 }
 
-func (CommandSettledFact) isFact() {}
+func (value CommandSettledFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factCommandSettledWire{
+		Kind:            FactKindCommandSettled,
+		Sequence:        value.Sequence,
+		OccurredAt:      value.OccurredAt,
+		Handle:          value.Handle,
+		ClientCommandId: value.ClientCommandId,
+		Result:          value.Result,
+	})
+}
 
-type HostPressureChangedFact struct {
+func (HostPressureChangedFact) isFact() {}
+
+func (HostPressureChangedFact) FactKind() FactKind {
+	return FactKindHostPressureChanged
+}
+
+type factHostPressureChangedWire struct {
 	Kind       FactKind     `json:"kind"`
 	Sequence   int64        `json:"sequence"`
 	OccurredAt string       `json:"occurredAt"`
 	Host       HostPressure `json:"host"`
 }
 
-func (HostPressureChangedFact) isFact() {}
-
-type WssFrame interface {
-	isWssFrame()
+func (value HostPressureChangedFact) MarshalJSON() ([]byte, error) {
+	return json.Marshal(factHostPressureChangedWire{
+		Kind:       FactKindHostPressureChanged,
+		Sequence:   value.Sequence,
+		OccurredAt: value.OccurredAt,
+		Host:       value.Host,
+	})
 }
 
 func (TerminalSimpleFrame) isWssFrame() {}
 
+func (TerminalSimpleFrame) WssFrameKind() WssFrameKind {
+	return WssFrameKindDetach
+}
+
+type wssFrameDetachWire struct {
+	Kind WssFrameKind `json:"kind"`
+}
+
+func (value TerminalSimpleFrame) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wssFrameDetachWire{
+		Kind: WssFrameKindDetach,
+	})
+}
+
 func (TerminalErrorFrame) isWssFrame() {}
+
+func (TerminalErrorFrame) WssFrameKind() WssFrameKind {
+	return WssFrameKindError
+}
+
+type wssFrameErrorWire struct {
+	Kind  WssFrameKind  `json:"kind"`
+	Error ErrorResponse `json:"error"`
+}
+
+func (value TerminalErrorFrame) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wssFrameErrorWire{
+		Kind:  WssFrameKindError,
+		Error: value.Error,
+	})
+}
 
 func (TerminalHelloFrame) isWssFrame() {}
 
+func (TerminalHelloFrame) WssFrameKind() WssFrameKind {
+	return WssFrameKindHello
+}
+
+type wssFrameHelloWire struct {
+	Kind            WssFrameKind `json:"kind"`
+	AttachedClients int64        `json:"attachedClients"`
+	Geometry        GeometryMode `json:"geometry"`
+}
+
+func (value TerminalHelloFrame) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wssFrameHelloWire{
+		Kind:            WssFrameKindHello,
+		AttachedClients: value.AttachedClients,
+		Geometry:        value.Geometry,
+	})
+}
+
 func (TerminalPresenceFrame) isWssFrame() {}
+
+func (TerminalPresenceFrame) WssFrameKind() WssFrameKind {
+	return WssFrameKindPresence
+}
+
+type wssFramePresenceWire struct {
+	Kind            WssFrameKind `json:"kind"`
+	AttachedClients int64        `json:"attachedClients"`
+	Geometry        GeometryMode `json:"geometry"`
+}
+
+func (value TerminalPresenceFrame) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wssFramePresenceWire{
+		Kind:            WssFrameKindPresence,
+		AttachedClients: value.AttachedClients,
+		Geometry:        value.Geometry,
+	})
+}
 
 func (ResizeFrame) isWssFrame() {}
 
-var ErrorHTTPStatus = map[ErrorCode]int{
-	ErrorCodeAgentClosed:                 409,
-	ErrorCodeAgentNotAttachable:          409,
-	ErrorCodeAgentNotFound:               404,
-	ErrorCodeAgentWorking:                409,
-	ErrorCodeCommandConflict:             409,
-	ErrorCodeCursorInvalid:               400,
-	ErrorCodeExactThreadMissing:          404,
-	ErrorCodeInvalidRequest:              400,
-	ErrorCodeLivenessUnverifiable:        503,
-	ErrorCodeModelInvalid:                422,
-	ErrorCodePairingInvalid:              401,
-	ErrorCodeProfileUnavailable:          503,
-	ErrorCodeProtocolMismatch:            409,
-	ErrorCodeRecoveryRequired:            409,
-	ErrorCodeResyncRequired:              409,
-	ErrorCodeThreadAlreadyTracked:        409,
-	ErrorCodeThreadNotAdoptable:          409,
-	ErrorCodeUnauthenticated:             401,
-	ErrorCodeWorkingDirectoryInvalid:     422,
-	ErrorCodeWorkingDirectoryUnavailable: 409,
+func (ResizeFrame) WssFrameKind() WssFrameKind {
+	return WssFrameKindResize
+}
+
+type wssFrameResizeWire struct {
+	Kind    WssFrameKind `json:"kind"`
+	Columns int64        `json:"columns"`
+	Rows    int64        `json:"rows"`
+}
+
+func (value ResizeFrame) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wssFrameResizeWire{
+		Kind:    WssFrameKindResize,
+		Columns: value.Columns,
+		Rows:    value.Rows,
+	})
+}
+
+func DecodeCommandResult(content []byte) (CommandResult, error) {
+	var envelope struct {
+		Outcome CommandOutcome `json:"outcome"`
+	}
+	if err := json.Unmarshal(content, &envelope); err != nil {
+		return nil, err
+	}
+	switch envelope.Outcome {
+	case CommandOutcomeFailed:
+		var wire commandResultFailedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return CommandFailure{
+			Code:              wire.Code,
+			ObservedAt:        wire.ObservedAt,
+			CorrelationHandle: wire.CorrelationHandle,
+		}, nil
+	case CommandOutcomeSucceeded:
+		var wire commandResultSucceededWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return CommandSuccess{
+			ObservedAt: wire.ObservedAt,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown CommandResult discriminator %q", envelope.Outcome)
+	}
+}
+
+func DecodeFact(content []byte) (Fact, error) {
+	var envelope struct {
+		Kind FactKind `json:"kind"`
+	}
+	if err := json.Unmarshal(content, &envelope); err != nil {
+		return nil, err
+	}
+	switch envelope.Kind {
+	case FactKindActivityObserved:
+		var wire factActivityObservedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return ActivityObservedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+			Activity:   wire.Activity,
+		}, nil
+	case FactKindAgentBound:
+		var wire factAgentBoundWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AgentBoundFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+		}, nil
+	case FactKindAgentClosed:
+		var wire factAgentClosedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AgentClosedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+			ClosedAt:   wire.ClosedAt,
+		}, nil
+	case FactKindAgentStarted:
+		var wire factAgentStartedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AgentStartedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+			Agent:      wire.Agent,
+		}, nil
+	case FactKindAgentStateChanged:
+		var wire factAgentStateChangedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AgentStateChangedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+			Agent:      wire.Agent,
+		}, nil
+	case FactKindAttentionAcknowledged:
+		var wire factAttentionAcknowledgedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AttentionAcknowledgedFact{
+			Sequence:       wire.Sequence,
+			OccurredAt:     wire.OccurredAt,
+			Handle:         wire.Handle,
+			AcknowledgedAt: wire.AcknowledgedAt,
+		}, nil
+	case FactKindAttentionRaised:
+		var wire factAttentionRaisedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return AttentionRaisedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Handle:     wire.Handle,
+			Attention:  wire.Attention,
+		}, nil
+	case FactKindCommandSettled:
+		var wire factCommandSettledWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return CommandSettledFact{
+			Sequence:        wire.Sequence,
+			OccurredAt:      wire.OccurredAt,
+			Handle:          wire.Handle,
+			ClientCommandId: wire.ClientCommandId,
+			Result:          wire.Result,
+		}, nil
+	case FactKindHostPressureChanged:
+		var wire factHostPressureChangedWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return HostPressureChangedFact{
+			Sequence:   wire.Sequence,
+			OccurredAt: wire.OccurredAt,
+			Host:       wire.Host,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown Fact discriminator %q", envelope.Kind)
+	}
+}
+
+func DecodeWssFrame(content []byte) (WssFrame, error) {
+	var envelope struct {
+		Kind WssFrameKind `json:"kind"`
+	}
+	if err := json.Unmarshal(content, &envelope); err != nil {
+		return nil, err
+	}
+	switch envelope.Kind {
+	case WssFrameKindDetach:
+		var wire wssFrameDetachWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return TerminalSimpleFrame{}, nil
+	case WssFrameKindError:
+		var wire wssFrameErrorWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return TerminalErrorFrame{
+			Error: wire.Error,
+		}, nil
+	case WssFrameKindHello:
+		var wire wssFrameHelloWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return TerminalHelloFrame{
+			AttachedClients: wire.AttachedClients,
+			Geometry:        wire.Geometry,
+		}, nil
+	case WssFrameKindPresence:
+		var wire wssFramePresenceWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return TerminalPresenceFrame{
+			AttachedClients: wire.AttachedClients,
+			Geometry:        wire.Geometry,
+		}, nil
+	case WssFrameKindResize:
+		var wire wssFrameResizeWire
+		if err := decodeStrict(content, &wire); err != nil {
+			return nil, err
+		}
+		return ResizeFrame{
+			Columns: wire.Columns,
+			Rows:    wire.Rows,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown WssFrame discriminator %q", envelope.Kind)
+	}
+}
+
+func ErrorHTTPStatus(code ErrorCode) (int, bool) {
+	switch code {
+	case ErrorCodeAgentClosed:
+		return 409, true
+	case ErrorCodeAgentNotAttachable:
+		return 409, true
+	case ErrorCodeAgentNotFound:
+		return 404, true
+	case ErrorCodeAgentWorking:
+		return 409, true
+	case ErrorCodeCommandConflict:
+		return 409, true
+	case ErrorCodeCursorInvalid:
+		return 400, true
+	case ErrorCodeExactThreadMissing:
+		return 404, true
+	case ErrorCodeInvalidRequest:
+		return 400, true
+	case ErrorCodeLivenessUnverifiable:
+		return 503, true
+	case ErrorCodeModelInvalid:
+		return 422, true
+	case ErrorCodePairingInvalid:
+		return 401, true
+	case ErrorCodeProfileUnavailable:
+		return 503, true
+	case ErrorCodeProtocolMismatch:
+		return 409, true
+	case ErrorCodeRecoveryRequired:
+		return 409, true
+	case ErrorCodeResyncRequired:
+		return 409, true
+	case ErrorCodeThreadAlreadyTracked:
+		return 409, true
+	case ErrorCodeThreadNotAdoptable:
+		return 409, true
+	case ErrorCodeUnauthenticated:
+		return 401, true
+	case ErrorCodeWorkingDirectoryInvalid:
+		return 422, true
+	case ErrorCodeWorkingDirectoryUnavailable:
+		return 409, true
+	default:
+		return 0, false
+	}
+}
+
+func decodeStrict(content []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return errors.New("multiple JSON values")
+	}
+	return nil
 }

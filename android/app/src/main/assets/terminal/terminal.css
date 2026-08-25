@@ -29,18 +29,6 @@ h1 {
     padding: 8px;
 }
 
-#editor {
-    box-sizing: border-box;
-    width: 100%;
-    resize: vertical;
-    color: #f1f2f4;
-    background: #17191f;
-    border: 1px solid #646b78;
-    border-radius: 6px;
-    padding: 10px;
-    font: 16px monospace;
-}
-
 p {
     margin: 0;
     color: #b9c0cb;

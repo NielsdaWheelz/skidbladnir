@@ -3,8 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
     <title>Skíðblaðnir terminal platform harness</title>
-    <link rel="stylesheet" href="vendor/xterm-5.3.0.css">
+    <link rel="stylesheet" href="vendor/xterm-6.0.0.css">
     <link rel="stylesheet" href="terminal.css">
 </head>
 <body>
@@ -12,12 +13,11 @@
     <h1>Terminal platform harness</h1>
     <p id="bridge-status">Waiting for native bridge</p>
     <section id="terminal" aria-label="ANSI and Unicode terminal"></section>
-    <label for="editor">Editable input</label>
-    <textarea id="editor" rows="3" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+    <p id="input-status">Input: focus the terminal</p>
     <p id="ime-status">IME: idle</p>
     <p id="viewport-status">Viewport: unknown</p>
 </main>
-<script src="vendor/xterm-5.3.0.js"></script>
+<script src="vendor/xterm-6.0.0.js"></script>
 <script src="terminal.js"></script>
 </body>
 </html>

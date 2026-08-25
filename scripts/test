@@ -19,8 +19,10 @@ not_run() {
 case "$gate" in
   static)
     cd "$repo_dir"
+    run diff-check git diff --check
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
     run contract go run ./cmd/skidbladnir-contract verify
+    run go-mod-verify go mod verify
     run go-vet go vet ./...
     run android-static ./scripts/build android-static
     ;;

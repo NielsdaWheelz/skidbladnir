@@ -1,25 +1,33 @@
 (function () {
     "use strict";
 
-    var editor = document.getElementById("editor");
     var bridgeStatus = document.getElementById("bridge-status");
+    var inputStatus = document.getElementById("input-status");
     var imeStatus = document.getElementById("ime-status");
     var viewportStatus = document.getElementById("viewport-status");
     var bridgePort = null;
+    var inputHistory = [];
+    var automaticReplies = [];
     var terminal = new window.Terminal({
         convertEol: true,
         cursorBlink: true,
         fontFamily: "monospace",
         rows: 8,
         scrollback: 100,
+        ignoreBracketedPasteMode: true,
+        screenReaderMode: true,
         theme: { background: "#101114", foreground: "#f1f2f4" }
     });
     terminal.open(document.getElementById("terminal"));
-    terminal.write("\\x1b[1;32mSkíðblaðnir\\x1b[0m platform harness\\r\\n");
-    terminal.write("ANSI: \\x1b[31mred\\x1b[0m  Unicode: 北極星 / 🧭\\r\\n");
+    terminal.write("\x1b[1;32mSkíðblaðnir\x1b[0m platform harness\r\n");
+    terminal.write("ANSI: \x1b[31mred\x1b[0m  Unicode: 北極星 / 🧭\r\n");
 
     function sanitizePaste(value) {
-        return String(value).replace(/\\u0000/g, "").replace(/\\r\\n?/g, "\\n");
+        var normalized = String(value).replace(/\r\n?/g, "\n");
+        return Array.from(normalized).filter(function (character) {
+            var code = character.charCodeAt(0);
+            return code === 0x09 || code === 0x0a || (code > 0x1f && code < 0x7f) || code > 0x9f;
+        }).join("");
     }
 
     function send(kind, value) {
@@ -27,21 +35,51 @@
         bridgePort.postMessage(JSON.stringify({ kind: kind, value: value }));
     }
 
-    function appendText(value) {
-        var start = editor.selectionStart;
-        var end = editor.selectionEnd;
-        editor.value = editor.value.slice(0, start) + value + editor.value.slice(end);
-        editor.selectionStart = editor.selectionEnd = start + value.length;
-        send("input", value);
+    function inputElement() {
+        return document.querySelector(".xterm-helper-textarea");
     }
+
+    function automaticReplyKind(data) {
+        if (/^\x1b\[\?[^c]*c$/.test(data)) return "DA1";
+        if (/^\x1b\[>[^c]*c$/.test(data)) return "DA2";
+        if (/^\x1b\[[?]?\d+n$/.test(data)) return "DSR";
+        if (/^\x1b\[[?]?\d+;\d+R$/.test(data)) return "CPR";
+        return "";
+    }
+
+    function recordInput(data) {
+        var reply = automaticReplyKind(data);
+        if (reply) {
+            automaticReplies.push(reply);
+            send("terminalReply", reply);
+            return;
+        }
+        var normalized = data.replace(/\r\n?/g, "\n");
+        inputHistory.push(normalized);
+        if (normalized === "\x7f") {
+            window.__skidbladnirHarness.editorValue = window.__skidbladnirHarness.editorValue.slice(0, -1);
+        } else {
+            window.__skidbladnirHarness.editorValue += normalized;
+        }
+        send("input", normalized);
+        inputStatus.textContent = "Input: received through xterm";
+    }
+
+    terminal.onData(function (data) {
+        recordInput(data);
+    });
 
     window.__skidbladnirHarness = {
         state: "ready",
         ansiUnicode: "PASS",
         viewport: "unknown",
         editorValue: "",
+        inputHistory: inputHistory,
+        automaticReplies: automaticReplies,
         autoSubmitted: false,
         ime: "PASS",
+        actualInputElement: inputElement() !== null,
+        screenReaderMode: true,
         webMessagePort: false,
         lastAck: "",
         resize: function (columns, rows) {
@@ -51,22 +89,27 @@
             send("resize", this.viewport);
         },
         compose: function (value) {
-            editor.focus();
-            editor.dispatchEvent(new CompositionEvent("compositionstart", { data: "" }));
-            appendText(value);
-            editor.dispatchEvent(new CompositionEvent("compositionend", { data: value }));
+            var input = inputElement();
+            terminal.focus();
+            if (input) input.dispatchEvent(new CompositionEvent("compositionstart", { data: "" }));
+            terminal.paste(String(value));
+            if (input) input.dispatchEvent(new CompositionEvent("compositionend", { data: String(value) }));
             imeStatus.textContent = "IME: composed";
             this.ime = "PASS";
         },
         paste: function (value) {
-            editor.focus();
-            appendText(sanitizePaste(value));
-            this.editorValue = editor.value;
+            var sanitized = sanitizePaste(value);
+            terminal.focus();
+            terminal.paste(sanitized);
         },
         dictation: function (value) {
-            editor.focus();
-            appendText(value);
-            this.editorValue = editor.value;
+            terminal.focus();
+            terminal.paste(String(value));
+        },
+        probeAutomaticReplies: function () {
+            automaticReplies.length = 0;
+            terminal.write("\x1b[c\x1b[>c\x1b[5n\x1b[6n");
+            return "requested";
         },
         send: function (kind, value) {
             send(kind, value);
@@ -75,23 +118,6 @@
         fileAccess: false,
         contentAccess: false
     };
-
-    editor.addEventListener("compositionstart", function () {
-        imeStatus.textContent = "IME: composing";
-    });
-    editor.addEventListener("compositionend", function () {
-        imeStatus.textContent = "IME: composed";
-        window.__skidbladnirHarness.ime = "PASS";
-    });
-    editor.addEventListener("paste", function (event) {
-        event.preventDefault();
-        var value = event.clipboardData ? event.clipboardData.getData("text/plain") : "";
-        appendText(sanitizePaste(value));
-        window.__skidbladnirHarness.editorValue = editor.value;
-    });
-    editor.addEventListener("input", function () {
-        window.__skidbladnirHarness.editorValue = editor.value;
-    });
 
     window.addEventListener("message", function (event) {
         if (!event.ports || !event.ports.length) return;

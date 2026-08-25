@@ -31,32 +31,26 @@ private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
 
 class MainActivity : ComponentActivity() {
-    internal lateinit var terminalWebView: LockedTerminalWebView
-        private set
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
-                TerminalHarnessScreen { view -> terminalWebView = view }
+                TerminalHarnessScreen()
             }
         }
     }
 }
 
 @Composable
-private fun TerminalHarnessScreen(onViewReady: (LockedTerminalWebView) -> Unit) {
+private fun TerminalHarnessScreen() {
     AndroidView(
         modifier = Modifier.fillMaxSize(),
-        factory = { context ->
-            LockedTerminalWebView(context).also(onViewReady)
-        },
-        update = { view -> onViewReady(view) },
+        factory = { context -> LockedTerminalWebView(context) },
     )
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled") // justify-override: JavaScript is required only for the packaged asset-only xterm runtime.
 internal class LockedTerminalWebView(context: Context) : WebView(context) {
     private val assetLoader = WebViewAssetLoader.Builder()
         .setDomain(LOCAL_ASSET_HOST)
@@ -113,7 +107,7 @@ internal class LockedTerminalWebView(context: Context) : WebView(context) {
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest,
-            ): Boolean = request.url.host != LOCAL_ASSET_HOST
+            ): Boolean = request.url.scheme != "https" || request.url.host != LOCAL_ASSET_HOST
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
@@ -136,7 +130,7 @@ internal class LockedTerminalWebView(context: Context) : WebView(context) {
                 ) {
                     val payload = message?.data ?: return
                     val kind = JSONObject(payload).optString("kind")
-                    if (kind !in setOf("ready", "input", "resize")) return
+                    if (kind !in setOf("ready", "input", "resize", "terminalReply")) return
                     port.postMessage(
                         WebMessageCompat(
                             JSONObject()

@@ -2,80 +2,170 @@ package logging
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"time"
+
+	skidbladnirv1 "github.com/NielsdaWheelz/skidbladnir/generated/api/go"
 )
 
 var (
-	handlePattern      = regexp.MustCompile(`^ga-[a-z2-7]{6,64}$`)
-	correlationPattern = regexp.MustCompile(`^corr-[a-z0-9]{4,64}$`)
+	handlePattern      = regexp.MustCompile(`^ga-[a-z0-9]{10}$`)
+	correlationPattern = regexp.MustCompile(`^cor_[a-zA-Z0-9_-]{16,96}$`)
 )
 
-type Handle struct{ value string }
+type Handle struct{ value skidbladnirv1.AgentHandle }
 
 func ParseHandle(value string) (Handle, error) {
 	if !handlePattern.MatchString(value) {
-		return Handle{}, fmt.Errorf("invalid handle")
+		return Handle{}, errors.New("invalid agent handle")
 	}
-	return Handle{value: value}, nil
+	return Handle{value: skidbladnirv1.AgentHandle(value)}, nil
 }
 
-type Correlation struct{ value string }
+func (value Handle) valid() bool { return handlePattern.MatchString(string(value.value)) }
+
+type Correlation struct {
+	value skidbladnirv1.CorrelationHandle
+}
 
 func ParseCorrelation(value string) (Correlation, error) {
 	if !correlationPattern.MatchString(value) {
-		return Correlation{}, fmt.Errorf("invalid correlation")
+		return Correlation{}, errors.New("invalid correlation handle")
 	}
-	return Correlation{value: value}, nil
+	return Correlation{value: skidbladnirv1.CorrelationHandle(value)}, nil
 }
 
-type State struct{ value string }
+func (value Correlation) valid() bool { return correlationPattern.MatchString(string(value.value)) }
+
+type State struct{ value skidbladnirv1.AgentState }
 
 var (
-	StateIdle    = State{value: "Idle"}
-	StateWorking = State{value: "Working"}
-	StateUnknown = State{value: "Unknown"}
+	StateStarting    = State{value: skidbladnirv1.AgentStateStarting}
+	StateIdle        = State{value: skidbladnirv1.AgentStateIdle}
+	StateWorking     = State{value: skidbladnirv1.AgentStateWorking}
+	StateClosing     = State{value: skidbladnirv1.AgentStateClosing}
+	StateRecoverable = State{value: skidbladnirv1.AgentStateRecoverable}
+	StateException   = State{value: skidbladnirv1.AgentStateException}
+	StateUnknown     = State{value: skidbladnirv1.AgentStateUnknown}
+	StateClosed      = State{value: skidbladnirv1.AgentStateClosed}
 )
 
-type ErrorCode struct{ value string }
+func (value State) valid() bool {
+	switch value.value {
+	case skidbladnirv1.AgentStateStarting,
+		skidbladnirv1.AgentStateIdle,
+		skidbladnirv1.AgentStateWorking,
+		skidbladnirv1.AgentStateClosing,
+		skidbladnirv1.AgentStateRecoverable,
+		skidbladnirv1.AgentStateException,
+		skidbladnirv1.AgentStateUnknown,
+		skidbladnirv1.AgentStateClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+type ErrorCode struct{ value skidbladnirv1.ErrorCode }
 
 var (
-	ErrorSocketDelivery  = ErrorCode{value: "SocketDelivery"}
-	ErrorHookShape       = ErrorCode{value: "HookShape"}
-	ErrorProcessIdentity = ErrorCode{value: "ProcessIdentity"}
+	ErrorUnauthenticated             = ErrorCode{value: skidbladnirv1.ErrorCodeUnauthenticated}
+	ErrorPairingInvalid              = ErrorCode{value: skidbladnirv1.ErrorCodePairingInvalid}
+	ErrorProtocolMismatch            = ErrorCode{value: skidbladnirv1.ErrorCodeProtocolMismatch}
+	ErrorInvalidRequest              = ErrorCode{value: skidbladnirv1.ErrorCodeInvalidRequest}
+	ErrorAgentNotFound               = ErrorCode{value: skidbladnirv1.ErrorCodeAgentNotFound}
+	ErrorAgentClosed                 = ErrorCode{value: skidbladnirv1.ErrorCodeAgentClosed}
+	ErrorAgentWorking                = ErrorCode{value: skidbladnirv1.ErrorCodeAgentWorking}
+	ErrorAgentNotAttachable          = ErrorCode{value: skidbladnirv1.ErrorCodeAgentNotAttachable}
+	ErrorWorkingDirectoryInvalid     = ErrorCode{value: skidbladnirv1.ErrorCodeWorkingDirectoryInvalid}
+	ErrorWorkingDirectoryUnavailable = ErrorCode{value: skidbladnirv1.ErrorCodeWorkingDirectoryUnavailable}
+	ErrorProfileUnavailable          = ErrorCode{value: skidbladnirv1.ErrorCodeProfileUnavailable}
+	ErrorExactThreadMissing          = ErrorCode{value: skidbladnirv1.ErrorCodeExactThreadMissing}
+	ErrorCommandConflict             = ErrorCode{value: skidbladnirv1.ErrorCodeCommandConflict}
+	ErrorThreadNotAdoptable          = ErrorCode{value: skidbladnirv1.ErrorCodeThreadNotAdoptable}
+	ErrorThreadAlreadyTracked        = ErrorCode{value: skidbladnirv1.ErrorCodeThreadAlreadyTracked}
+	ErrorModelInvalid                = ErrorCode{value: skidbladnirv1.ErrorCodeModelInvalid}
+	ErrorRecoveryRequired            = ErrorCode{value: skidbladnirv1.ErrorCodeRecoveryRequired}
+	ErrorCursorInvalid               = ErrorCode{value: skidbladnirv1.ErrorCodeCursorInvalid}
+	ErrorResyncRequired              = ErrorCode{value: skidbladnirv1.ErrorCodeResyncRequired}
+	ErrorLivenessUnverifiable        = ErrorCode{value: skidbladnirv1.ErrorCodeLivenessUnverifiable}
 )
+
+func (value ErrorCode) valid() bool {
+	switch value.value {
+	case skidbladnirv1.ErrorCodeUnauthenticated,
+		skidbladnirv1.ErrorCodePairingInvalid,
+		skidbladnirv1.ErrorCodeProtocolMismatch,
+		skidbladnirv1.ErrorCodeInvalidRequest,
+		skidbladnirv1.ErrorCodeAgentNotFound,
+		skidbladnirv1.ErrorCodeAgentClosed,
+		skidbladnirv1.ErrorCodeAgentWorking,
+		skidbladnirv1.ErrorCodeAgentNotAttachable,
+		skidbladnirv1.ErrorCodeWorkingDirectoryInvalid,
+		skidbladnirv1.ErrorCodeWorkingDirectoryUnavailable,
+		skidbladnirv1.ErrorCodeProfileUnavailable,
+		skidbladnirv1.ErrorCodeExactThreadMissing,
+		skidbladnirv1.ErrorCodeCommandConflict,
+		skidbladnirv1.ErrorCodeThreadNotAdoptable,
+		skidbladnirv1.ErrorCodeThreadAlreadyTracked,
+		skidbladnirv1.ErrorCodeModelInvalid,
+		skidbladnirv1.ErrorCodeRecoveryRequired,
+		skidbladnirv1.ErrorCodeCursorInvalid,
+		skidbladnirv1.ErrorCodeResyncRequired,
+		skidbladnirv1.ErrorCodeLivenessUnverifiable:
+		return true
+	default:
+		return false
+	}
+}
 
 type Event struct {
-	Handle      Handle
-	State       State
-	Timing      time.Duration
-	Count       uint64
-	Correlation Correlation
-	ErrorCode   ErrorCode
+	handle      Handle
+	state       State
+	timing      time.Duration
+	count       uint64
+	correlation Correlation
+	errorCode   ErrorCode
+}
+
+func NewEvent(handle Handle, state State, timing time.Duration, count uint64, correlation Correlation, errorCode ErrorCode) (Event, error) {
+	if !handle.valid() || !state.valid() || timing < 0 || !correlation.valid() || !errorCode.valid() {
+		return Event{}, errors.New("invalid log event")
+	}
+	return Event{handle: handle, state: state, timing: timing, count: count, correlation: correlation, errorCode: errorCode}, nil
+}
+
+func (event Event) valid() bool {
+	return event.handle.valid() && event.state.valid() && event.timing >= 0 && event.correlation.valid() && event.errorCode.valid()
 }
 
 type Logger struct{ output io.Writer }
 
-func New(output io.Writer) Logger {
-	return Logger{output: output}
-}
+func New(output io.Writer) Logger { return Logger{output: output} }
 
-func (logger Logger) Write(event Event) {
-	_ = json.NewEncoder(logger.output).Encode(struct {
-		Handle      string `json:"handle"`
-		State       string `json:"state"`
-		TimingMS    int64  `json:"timing_ms"`
-		Count       uint64 `json:"count"`
-		Correlation string `json:"correlation"`
-		ErrorCode   string `json:"error_code"`
+func (logger Logger) Write(event Event) error {
+	if logger.output == nil || !event.valid() {
+		return errors.New("invalid logger write")
+	}
+	if err := json.NewEncoder(logger.output).Encode(struct {
+		Handle      string `json:"skidbladnir.agent.handle"`
+		State       string `json:"skidbladnir.agent.state"`
+		TimingMS    int64  `json:"skidbladnir.timing.ms"`
+		Count       uint64 `json:"skidbladnir.count"`
+		Correlation string `json:"skidbladnir.correlation.handle"`
+		ErrorCode   string `json:"skidbladnir.error.code"`
 	}{
-		Handle:      event.Handle.value,
-		State:       event.State.value,
-		TimingMS:    event.Timing.Milliseconds(),
-		Count:       event.Count,
-		Correlation: event.Correlation.value,
-		ErrorCode:   event.ErrorCode.value,
-	})
+		Handle:      string(event.handle.value),
+		State:       string(event.state.value),
+		TimingMS:    event.timing.Milliseconds(),
+		Count:       event.count,
+		Correlation: string(event.correlation.value),
+		ErrorCode:   string(event.errorCode.value),
+	}); err != nil {
+		return fmt.Errorf("write structured log: %w", err)
+	}
+	return nil
 }
