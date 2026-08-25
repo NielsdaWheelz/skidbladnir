@@ -5,7 +5,7 @@
     { "id": "broker-appserver", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-appserver-0.149.1.md", "reason": null },
     { "id": "hooks-registry", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 registry projection is not implemented" },
     { "id": "lifecycle-tmux-process", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 lifecycle surface is not implemented" },
-    { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "No Android device is connected" },
+    { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "P4 terminal transport and P6 physical handoff journey are not implemented; P0 automated harness only" },
     { "id": "laptop-phone-laptop", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P6 handoff journey is not implemented" },
     { "id": "sqlite-fact-card", "gate": "integration", "status": "NOT_RUN", "evidence": null, "reason": "P3 Fact projection is not implemented" },
     { "id": "dvergatal-agent-card", "gate": "component", "status": "NOT_RUN", "evidence": null, "reason": "P5 card projection is not implemented" },

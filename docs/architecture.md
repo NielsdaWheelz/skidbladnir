@@ -218,7 +218,11 @@ user message materializes its rollout. Finally, the pin emits response-only
 experimental fields even when the client requests no experimental capability;
 the committed schema tree is generated with `--experimental` to describe the
 actual wire, while the broker's request allowlist still excludes experimental
-methods.
+methods. The pin's stable `hooks/list` method resolves the effective hook set
+for an explicit cwd and reports source, managed status, normalized hash, and
+trust status after Codex composes user, project, plugin, system, MDM, cloud,
+and requirements layers. It is the authoritative discovery read;
+Skíðblaðnir does not duplicate that precedence algorithm.
 
 | Question | Decision | Why |
 | --- | --- | --- |
@@ -605,8 +609,8 @@ the raw-byte `app-server proxy`. Commit the exact pin's reproducible
 wire without client opt-in. Do not request experimental capabilities or admit
 experimental methods.
 
-Allow only `initialize`, `account/read`, `model/list`, and the minimum stable
-`thread/start|read|list|unsubscribe` shapes. Reads set or imply
+Allow only `initialize`, `account/read`, `model/list`, `hooks/list`, and the
+minimum stable `thread/start|read|list|unsubscribe` shapes. Reads set or imply
 `includeTurns:false`; reject any response carrying turns. `thread/list` is
 called only in the pinned bounded page shape; the bare-`resume` picker and
 `ListResumableSessions` never request an unbounded list. `thread/list` and
@@ -615,6 +619,14 @@ called only in the pinned bounded page shape; the bare-`resume` picker and
 field — title, preview, any
 content-derived summary — is discarded at the broker boundary, never persisted,
 displayed, or projected.
+
+`hooks/list` is called for exactly one validated launch cwd. Its closed
+projection retains only the fields needed to compare the reviewed hook set:
+event and handler kind, command/async mode, key, source path/source, enabled and
+managed flags, normalized current hash, trust status, matcher, and timeout.
+Errors fail the read. Warnings and status text are discarded; hook commands
+are compared in memory and never persisted or logged. An unknown field,
+variant, source, trust status, or handler kind is protocol drift.
 
 The bounded list filters source kinds to `cli|vscode`: on this pin CLI App
 Server threads are `vscode`, while `appServer` means MCP. It lists materialized
@@ -654,9 +666,10 @@ shell, or approval methods. The broker is identity/status plumbing, not chat.
 
 ### Launcher and hooks
 
-The launcher resolves profile config, asks the broker for exact refs, starts the
-matching daemon, and registers exact runtime identity over the local control
-socket. It then execs the pinned Codex binary with the equivalent of:
+The launcher resolves profile config, asks the broker for exact refs and the
+effective hook set for the launch cwd, starts the matching daemon, and registers
+exact runtime identity over the local control socket. It then execs the pinned
+Codex binary with the equivalent of:
 
 ```text
 codex resume --remote unix:// --strict-config \
@@ -675,28 +688,29 @@ profile unavailable on the fail-visible drift path. The effective
 lifecycle-hook universe for a tracked launch is therefore closed: no foreign
 hook that observes or controls `SessionStart`, `UserPromptSubmit`, `Stop`, or
 `SessionEnd` runs. Only supported preserved interactive arguments may be
-added. Immediately before exec, the launcher validates the effective hook
-resolution for that profile and launch cwd: it hashes every installed
-profile-layer hook config and the installed `skidbladnir-hook` helper against
-the committed expected set, verifies the reviewed set's trust records are
-present and current, verifies no trusted non-managed lifecycle hook outside the
-reviewed set is effective for that cwd — project layer included — and verifies
-that no effective managed-requirements source carries a foreign lifecycle hook.
+added. Immediately before exec, the launcher hashes the installed profile hook
+config and `skidbladnir-hook` helper against the committed expected set, then
+validates the broker's exact-cwd `hooks/list` projection. The reviewed hooks
+must be present, enabled, trusted, and byte-for-byte equal to the committed
+event, handler, command, key, source path, matcher, timeout, and normalized-hash
+contract. No trusted non-managed lifecycle hook outside that set may be
+effective for the cwd — project and plugin layers included — and no managed
+source may carry a lifecycle hook.
 A launch-scoped violation fails that launch before exec with a typed result; a
 profile- or managed-source violation fails on the same path as pin drift.
 Dormant trust records for other tools, cwds, and workflows are never rejected.
-This effective-set walk replicates a slice of the pin's hook discovery and is
-valid only for the pin; the recorded discovery layout and managed-source
-enumeration are Lane 0 evidence. This closes drift and accident, not a hostile
-same-UID writer: a same-UID write between hash and exec remains unmitigated
-residual risk under the stated trust model. A cloud-delivered managed source
-can change between inspections; the contract detects that drift at readiness
-and immediately before the next exec, not instantaneously. Profile readiness
-runs the identical profile- and managed-source checks as a background detector,
-never as the launch precondition. The exec target is one absolute path recorded
-in repo-owned configuration and pinned by `codex.lock`; the launcher never
-performs a PATH lookup, never execs a router or shim path, and fails visibly if
-that path is absent or not executable. The launcher constructs argv directly;
+The exact-pin `hooks/list` decoder and source/trust universe are Lane 0
+evidence; Codex remains the sole owner of discovery precedence. This closes
+drift and accident, not a hostile same-UID writer: a same-UID write between the
+read and exec remains unmitigated residual risk under the stated trust model. A
+cloud-delivered managed source can change between inspections; the contract
+detects that drift at readiness and immediately before the next exec, not
+instantaneously. Profile readiness runs the identical exact-cwd check as a
+background detector, never as the launch precondition. The exec target is one
+absolute path recorded in repo-owned configuration and pinned by `codex.lock`;
+the launcher never performs a PATH lookup, never execs a router or shim path,
+and fails visibly if that path is absent or not executable. The launcher
+constructs argv directly;
 no user-supplied string becomes a path or shell source. No embedded terminal
 path exists.
 

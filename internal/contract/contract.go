@@ -206,6 +206,9 @@ func Verify(root string) error {
 	if err := verifyCodexLock(root); err != nil {
 		return err
 	}
+	if err := verifyHookArtifacts(root); err != nil {
+		return err
+	}
 	if err := verifyTerminalAssets(root); err != nil {
 		return err
 	}

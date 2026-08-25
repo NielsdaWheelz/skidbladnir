@@ -3,6 +3,7 @@
 package live
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -42,6 +43,7 @@ type appServerProcess struct {
 	cmd    *exec.Cmd
 	result chan error
 	path   string
+	stderr *bytes.Buffer
 	waited bool
 }
 
@@ -209,11 +211,12 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 	command := exec.Command(binary, "app-server", "--strict-config", "--listen", "unix://"+path)
 	command.Env = withCodexHome(profile.Home)
 	command.Stdout = io.Discard
-	command.Stderr = io.Discard
+	stderr := &bytes.Buffer{}
+	command.Stderr = stderr
 	if err := command.Start(); err != nil {
 		t.Fatalf("start pinned app-server for %s: %v", profile.Name, err)
 	}
-	process := &appServerProcess{cmd: command, result: make(chan error, 1), path: path}
+	process := &appServerProcess{cmd: command, result: make(chan error, 1), path: path, stderr: stderr}
 	go func() { process.result <- command.Wait() }()
 	t.Cleanup(func() { stopAppServer(t, process) })
 
@@ -225,13 +228,22 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 		select {
 		case err := <-process.result:
 			process.waited = true
-			t.Fatalf("pinned app-server for %s exited before socket readiness: %v", profile.Name, err)
+			t.Fatalf("pinned app-server for %s exited before socket readiness: %v: %s", profile.Name, err, boundedAppServerError(process.stderr.String()))
 		default:
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
 	t.Fatalf("pinned app-server for %s did not create its unique profile socket", profile.Name)
 	return nil
+}
+
+func boundedAppServerError(message string) string {
+	const limit = 2048
+	message = strings.TrimSpace(message)
+	if len(message) > limit {
+		return message[:limit] + "..."
+	}
+	return message
 }
 
 func stopAppServer(t *testing.T, process *appServerProcess) {

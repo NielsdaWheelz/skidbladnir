@@ -138,6 +138,9 @@ ships no agent-management capability.
   schemas. Generate with `--experimental` because 0.149.1 emits response-only
   experimental fields without client opt-in; experimental requests remain
   forbidden.
+- Use the pin's stable exact-cwd `hooks/list` projection as the sole owner of
+  effective user, project, plugin, and managed hook discovery; do not reproduce
+  its precedence algorithm.
 - Generate Go/Kotlin DTOs from `api/skidbladnir.v1.json`; generated files are
   reproducible and never hand-edited.
 - Establish the final test command dispatcher and machine-readable proof

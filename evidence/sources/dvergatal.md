@@ -80,6 +80,42 @@ Portrait evidence remains open until P5 records the named artist or exact tool
 version and the corresponding rights assignment. Portrait bytes land in P5,
 not in this source record.
 
+## Portrait set acceptance
+
+P0 freezes the set-level production brief and rights method; P5 creates the
+portrait bytes and the per-key `portrait-manifest.v1` records. A good set is
+producible from that brief without importing an unrecorded likeness or a
+missing rights decision:
+
+- Each portrait is an original, single-figure square WebP at a common minimum
+  size of 256×256 pixels. It uses the same head-and-shoulders card framing,
+  neutral background treatment, lighting direction, and restrained detail
+  level across all 101 entries. No text, logo, watermark, border, or extra
+  character appears in the image.
+- The cited work and locus constrain the depiction. A name, epithet, and
+  explicitly described role may inform the face, silhouette, clothing, or one
+  restrained prop; an unsupported modern likeness, actor, illustrator,
+  production costume, film/game design, or invented canonical biography may
+  not. A visual distinction must be explainable by the entry's source or by a
+  neutral compositional choice, not by borrowing a third-party depiction.
+- Every portrait must remain distinguishable from the other 100 at the card
+  thumbnail size and in grayscale: face or silhouette, value grouping, and
+  one source-safe distinguishing cue must survive 64×64 downsampling. Hue
+  alone is never the distinguishing cue. Review records must identify the cue
+  and reject near-duplicates before P5 freezes the manifest; this review
+  criterion does not add a manifest field.
+- The subject/background boundary and facial features must remain legible at
+  64×64 and 200% display scale, with no essential cue at the extreme edge.
+  The portrait supplies no required text or color-only signal; the card's
+  accessible display name remains the authoritative label.
+- For each key, P5 records the exact production method, artist or tool and
+  version, creation date, applicable prompt, source digest, and rights basis
+  and assignment in the manifest. Static QA then checks one record and one
+  square WebP per key, matching SHA-256 and documented asset path, with no
+  orphan record or asset. A failed thumbnail, provenance, digest, or rights
+  check is red; it is never repaired with a placeholder or silently reused
+  portrait.
+
 ## Dedupe and exclusion record
 
 - `Eikinskjaldi` appears twice in *Vǫluspá* but is one shipped Old Norse entry.
@@ -95,7 +131,7 @@ not in this source record.
 - No `FairyTale`, `ModernMedia`, generic Nibelung, unnamed dwarf, disputed dwarf,
   giant, dragon, human, god, elf, or invented catalogue filler is included.
 
-## Proposed inventory (100 entries)
+## Proposed inventory (101 entries)
 
 ```text
 ENTRY|key=norse.modsognir|displayName=Móðsognir|tradition=OldNorse|work=Vǫluspá|locus=st. 10
