@@ -15,7 +15,9 @@ translation.
 
 The Old Norse set uses the named individuals in the `Dvergatal` of *Vǫluspá*
 stanzas 10–16. The repeated `Eikinskjaldi` in stanzas 13 and 16 is one figure
-and ships once. The Tolkien set uses distinct textual characters from *The
+and ships once. Lofarr ships once because stanza 14 places him at the end of
+Dvalinn's dwarven kindred and stanza 16 names that lineage as Lofarr's. The
+Tolkien set uses distinct textual characters from *The
 Hobbit*, *The Lord of the Rings* Appendix A, *The Silmarillion*, and *The
 Children of Húrin*. Display suffixes such as `of Erebor` and `Ironfoot` are
 curatorial disambiguators, not additional figures. Tolkien's `Mîm` and
@@ -81,6 +83,8 @@ not in this source record.
 ## Dedupe and exclusion record
 
 - `Eikinskjaldi` appears twice in *Vǫluspá* but is one shipped Old Norse entry.
+- `Lofarr` is named through the lineage clauses in stanzas 14 and 16 and is
+  retained as the terminal member of the explicitly dwarven company.
 - Diacritics are normalized, not multiplied into variants: each Old Norse
   source spelling below appears once.
 - Tolkien entries with names cognate with Old Norse names are separate authored
@@ -168,6 +172,7 @@ ENTRY|key=norse.fjalarr|displayName=Fjalarr|tradition=OldNorse|work=Vǫluspá|lo
 ENTRY|key=norse.frosti|displayName=Frosti|tradition=OldNorse|work=Vǫluspá|locus=st. 16
 ENTRY|key=norse.finnr|displayName=Finnr|tradition=OldNorse|work=Vǫluspá|locus=st. 16
 ENTRY|key=norse.ginnarr|displayName=Ginnarr|tradition=OldNorse|work=Vǫluspá|locus=st. 16
+ENTRY|key=norse.lofarr|displayName=Lofarr|tradition=OldNorse|work=Vǫluspá|locus=sts. 14 and 16
 ENTRY|key=tolkien.balin|displayName=Balin|tradition=Tolkien|work=The Hobbit|locus=ch. 1
 ENTRY|key=tolkien.bifur|displayName=Bifur|tradition=Tolkien|work=The Hobbit|locus=ch. 1
 ENTRY|key=tolkien.bofur|displayName=Bofur|tradition=Tolkien|work=The Hobbit|locus=ch. 1
@@ -186,7 +191,7 @@ ENTRY|key=tolkien.dain-ironfoot|displayName=Dáin Ironfoot|tradition=Tolkien|wor
 ENTRY|key=tolkien.durin-deathless|displayName=Durin the Deathless|tradition=Tolkien|work=The Lord of the Rings|locus=Appendix A.III
 ENTRY|key=tolkien.gimli|displayName=Gimli|tradition=Tolkien|work=The Lord of the Rings|locus=Appendix A.III
 ENTRY|key=tolkien.azaghal|displayName=Azaghâl|tradition=Tolkien|work=The Silmarillion|locus=ch. 20
-ENTRY|key=tolkien.telchar|displayName=Telchar|tradition=Tolkien|work=The Silmarillion|locus=ch. 16
+ENTRY|key=tolkien.telchar|displayName=Telchar|tradition=Tolkien|work=The Silmarillion|locus=ch. 10
 ENTRY|key=tolkien.mim-amon-rudh|displayName=Mîm of Amon Rûdh|tradition=Tolkien|work=The Children of Húrin|locus=ch. 11
 ENTRY|key=tolkien.khim|displayName=Khîm|tradition=Tolkien|work=The Children of Húrin|locus=ch. 11
 ENTRY|key=tolkien.ibun|displayName=Ibûn|tradition=Tolkien|work=The Children of Húrin|locus=ch. 11
@@ -196,4 +201,4 @@ ENTRY|key=germanic-operatic.alberich|displayName=Alberich of Nibelheim|tradition
 ENTRY|key=germanic-operatic.mime|displayName=Mime of Nibelheim|tradition=GermanicOperatic|work=Siegfried|locus=Act I
 ```
 
-Inventory count: 74 `OldNorse` + 24 `Tolkien` + 2 `GermanicOperatic` = 100.
+Inventory count: 75 `OldNorse` + 24 `Tolkien` + 2 `GermanicOperatic` = 101.

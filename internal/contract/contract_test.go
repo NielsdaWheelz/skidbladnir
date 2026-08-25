@@ -230,6 +230,135 @@ func TestJustificationGrammarRejectsMissingOrEmptyReasons(t *testing.T) {
 	}
 }
 
+func TestAcceptanceGateInventoriesAreExact(t *testing.T) {
+	tests := map[string]string{
+		"core":    "static unit integration component system platform live e2e",
+		"upgrade": "static unit integration component system upgrade-live",
+	}
+	for target, want := range tests {
+		gates, err := acceptanceGates(target)
+		if err != nil {
+			t.Fatalf("%s gate inventory: %v", target, err)
+		}
+		if got := strings.Join(gates, " "); got != want {
+			t.Fatalf("%s gates = %q, want %q", target, got, want)
+		}
+	}
+	if _, err := acceptanceGates("unknown"); err == nil {
+		t.Fatal("unknown acceptance target has a gate inventory")
+	}
+}
+
+func TestAcceptanceGateResultRequiresExitAndRecordAgreement(t *testing.T) {
+	valid := []struct {
+		exit    int
+		content string
+	}{
+		{exit: 0, content: `{"gate":"live","status":"PASS"}`},
+		{exit: 1, content: `{"gate":"live","status":"FAIL","reason":"probe failed"}`},
+		{exit: 2, content: `{"gate":"live","status":"NOT_RUN","reason":"profile unavailable"}`},
+	}
+	for _, test := range valid {
+		if _, err := parseAcceptanceGateResult("live", test.exit, []byte(test.content)); err != nil {
+			t.Fatalf("valid exit %d record rejected: %v", test.exit, err)
+		}
+	}
+	for name, test := range map[string]struct {
+		exit    int
+		content string
+	}{
+		"wrong gate":      {exit: 0, content: `{"gate":"unit","status":"PASS"}`},
+		"status mismatch": {exit: 2, content: `{"gate":"live","status":"FAIL","reason":"failed"}`},
+		"missing reason":  {exit: 2, content: `{"gate":"live","status":"NOT_RUN"}`},
+		"pass reason":     {exit: 0, content: `{"gate":"live","status":"PASS","reason":"unexpected"}`},
+		"unknown field":   {exit: 0, content: `{"gate":"live","status":"PASS","raw":"secret"}`},
+		"trailing value":  {exit: 0, content: `{"gate":"live","status":"PASS"} {}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseAcceptanceGateResult("live", test.exit, []byte(test.content)); err == nil {
+				t.Fatalf("accepted contradictory gate result: %s", test.content)
+			}
+		})
+	}
+}
+
+func TestWorkflowRequiresImmutableActionsAndTheP0CommandInventory(t *testing.T) {
+	valid := strings.Join([]string{
+		"name: verify",
+		"on:",
+		"  pull_request:",
+		"permissions:",
+		"  contents: read",
+		"steps:",
+		"  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"  - run: ./scripts/test static",
+		"  - run: ./scripts/build all",
+		"  - run: ./scripts/test unit",
+	}, "\n")
+	if err := validateWorkflow([]byte(valid)); err != nil {
+		t.Fatalf("reviewed workflow rejected: %v", err)
+	}
+	for name, content := range map[string]string{
+		"floating action":      strings.Replace(valid, "@3d3c42e5aac5ba805825da76410c181273ba90b1", "@v7", 1),
+		"missing command":      strings.Replace(valid, "  - run: ./scripts/test unit", "", 1),
+		"privileged trigger":   strings.Replace(valid, "pull_request:", "pull_request_target:", 1),
+		"ignored failure":      valid + "\n  - run: ./scripts/test static || true",
+		"elevated permissions": strings.Replace(valid, "contents: read", "contents: write", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateWorkflow([]byte(content)); err == nil {
+				t.Fatalf("workflow accepted %s", name)
+			}
+		})
+	}
+}
+
+func TestProductLanguageRejectsReservedNamesAndDeferredConcepts(t *testing.T) {
+	if err := validateProductText("AgentCard StartAgent Skíðblaðnir The Forge Agents"); err != nil {
+		t.Fatalf("Core product language rejected: %v", err)
+	}
+	for _, content := range []string{
+		"WorktreePicker",
+		"repository_id",
+		"WorkspaceMode",
+		"WorkspaceModes",
+		"App Server",
+		"AppServers",
+		"rawTargets",
+		"Dvergatal",
+		"Ariadne",
+	} {
+		if err := validateProductText(content); err == nil {
+			t.Fatalf("reserved product language accepted %q", content)
+		}
+	}
+}
+
+func TestAdHocLoggingIsRejectedOutsideTheClosedLogger(t *testing.T) {
+	for path, content := range map[string]string{
+		"internal/service.go": `package service
+import "fmt"
+func run() { fmt.Println("state") }`,
+		"internal/dot.go": `package service
+import . "fmt"
+func run() { Println("state") }`,
+		"android/Main.kt":     `fun run() { android.util.Log.i("state", "working") }`,
+		"android/terminal.js": `globalThis.console["log"]("working")`,
+	} {
+		if err := validateAdHocLogging(path, []byte(content)); err == nil {
+			t.Fatalf("ad-hoc logger accepted in %s", path)
+		}
+	}
+	if err := validateAdHocLogging("cmd/tool/main.go", []byte(`package main
+import (
+    "fmt"
+    "os"
+)
+func main() { fmt.Fprintln(os.Stderr, "typed boundary error") }`)); err != nil {
+		t.Fatalf("CLI stderr boundary rejected: %v", err)
+	}
+}
+
 func jsonFields(fields []fieldSpec) ([]byte, error) {
 	return json.Marshal(fields)
 }

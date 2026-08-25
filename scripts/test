@@ -4,6 +4,38 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 gate="${1:-}"
 shift || true
+android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+acceptance_mode="${SKIDBLADNIR_ACCEPTANCE:-0}"
+acceptance_reason=""
+
+emit_acceptance_result() {
+  exit_code="$?"
+  if [[ "$exit_code" -eq 0 ]]; then
+    printf '{"gate":"%s","status":"PASS"}\n' "$gate" >&3
+    return
+  fi
+  if [[ -z "$acceptance_reason" ]]; then
+    acceptance_reason='declared gate failed'
+  fi
+  if [[ "$exit_code" -eq 2 ]]; then
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$gate" "$acceptance_reason" >&3
+    return
+  fi
+  printf '{"gate":"%s","status":"FAIL","reason":"%s"}\n' "$gate" "$acceptance_reason" >&3
+}
+
+case "$acceptance_mode" in
+  0) ;;
+  1)
+    exec 3>&1
+    exec 1>&2
+    trap emit_acceptance_result EXIT
+    ;;
+  *)
+    printf 'SKIDBLADNIR_ACCEPTANCE must be 0 or 1\n' >&2
+    exit 64
+    ;;
+esac
 
 run() {
   printf '==> %s\n' "$1"
@@ -12,7 +44,10 @@ run() {
 }
 
 not_run() {
-  printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
+  acceptance_reason="$2"
+  if [[ "$acceptance_mode" -eq 0 ]]; then
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
+  fi
   exit 2
 }
 
@@ -34,18 +69,34 @@ case "$gate" in
     not_run integration 'P1-P3 integration surface is not implemented'
     ;;
   component)
-    cd "$repo_dir"
-    run android-component ./scripts/build android-component
+    not_run component 'No host-side Compose/WebView component runtime is implemented before P5'
     ;;
   system)
     not_run system 'P3-P4 system surface is not implemented'
     ;;
   platform)
-    cd "$repo_dir"
-    ./scripts/build android-platform
+    adb="$android_sdk/platform-tools/adb"
+    if [[ ! -x "$adb" ]]; then
+      not_run platform 'Pinned Android SDK adb is unavailable'
+    fi
+    mapfile -t devices < <("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+    if [[ "${#devices[@]}" -ne 1 ]]; then
+      not_run platform 'Exactly one connected Android device is required'
+    fi
+    serial="${devices[0]}"
+    model="$("$adb" -s "$serial" shell getprop ro.product.model | tr -d '\r')"
+    api="$("$adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')"
+    if [[ "$model" != 'SM-S906W' || "$api" != '36' ]]; then
+      not_run platform 'Connected device is not SM-S906W on API 36'
+    fi
+    cd "$repo_dir/android"
+    run android-platform env ANDROID_HOME="$android_sdk" ANDROID_SERIAL="$serial" ./gradlew :app:connectedDebugAndroidTest --no-daemon
     ;;
   live)
     not_run live 'P0 live proof harness is not implemented'
+    ;;
+  upgrade-live)
+    not_run upgrade-live 'P0 per-profile initialize/version/schema and empty-thread round-trip probe is not implemented'
     ;;
   e2e)
     not_run e2e 'P7 end-to-end surface is not implemented'
@@ -67,7 +118,7 @@ case "$gate" in
   accept)
     case "${1:-}" in
       core|upgrade)
-        run acceptance go run ./cmd/skidbladnir-contract accept "${1}"
+        go run ./cmd/skidbladnir-contract accept "${1}"
         ;;
       *)
         printf 'usage: %s accept {core|upgrade}\n' "$0" >&2
@@ -76,7 +127,7 @@ case "$gate" in
     esac
     ;;
   '')
-    printf 'usage: %s {static|unit|integration|component|system|platform|live|e2e|verify|full|accept {core|upgrade}}\n' "$0" >&2
+    printf 'usage: %s {static|unit|integration|component|system|platform|live|upgrade-live|e2e|verify|full|accept {core|upgrade}}\n' "$0" >&2
     exit 64
     ;;
   *)

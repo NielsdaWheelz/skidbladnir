@@ -6,7 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
-object SkidbladnirContract { const val digest: String = "615651c06bdde55d92081dd03ffa61eb8ffc499466854a8219320ab3a4d2ceb1" }
+object SkidbladnirContract { const val digest: String = "2bd388c4a9605b41612f89b38a8c2ea1687a85c66c4045f90f2eb0423cdbf5c8" }
 
 @Serializable
 @JvmInline

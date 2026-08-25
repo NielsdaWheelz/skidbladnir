@@ -666,6 +666,15 @@
     }
   },
   {
+    "key": "norse.lofarr",
+    "displayName": "Lofarr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "sts. 14 and 16"
+    }
+  },
+  {
     "key": "tolkien.balin",
     "displayName": "Balin",
     "tradition": "Tolkien",
@@ -833,7 +842,7 @@
     "tradition": "Tolkien",
     "source": {
       "work": "The Silmarillion",
-      "locus": "ch. 16"
+      "locus": "ch. 10"
     }
   },
   {

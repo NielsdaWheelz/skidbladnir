@@ -25,31 +25,6 @@ case "$target" in
     node --check android/app/src/main/assets/terminal/terminal.js
     android_gradle :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin lintDebug
     ;;
-  android-component)
-    printf '{"gate":"android-component","status":"NOT_RUN","reason":"No host-side Compose/WebView component runtime is implemented before P5"}\n'
-    exit 2
-    ;;
-  android-platform)
-    adb="$android_sdk/platform-tools/adb"
-    if [[ ! -x "$adb" ]]; then
-      printf '{"gate":"android-platform","status":"NOT_RUN","reason":"Pinned Android SDK adb is unavailable"}\n'
-      exit 2
-    fi
-    mapfile -t devices < <("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
-    if [[ "${#devices[@]}" -ne 1 ]]; then
-      printf '{"gate":"android-platform","status":"NOT_RUN","reason":"Exactly one connected Android device is required"}\n'
-      exit 2
-    fi
-    serial="${devices[0]}"
-    model="$($adb -s "$serial" shell getprop ro.product.model | tr -d '\r')"
-    api="$($adb -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')"
-    if [[ "$model" != "SM-S906W" || "$api" != "36" ]]; then
-      printf '{"gate":"android-platform","status":"NOT_RUN","reason":"Connected device is not SM-S906W on API 36"}\n'
-      exit 2
-    fi
-    cd "$android_dir"
-    ANDROID_HOME="$android_sdk" ANDROID_SERIAL="$serial" ./gradlew :app:connectedDebugAndroidTest --no-daemon
-    ;;
   all)
     cd "$repo_dir"
     go build ./...

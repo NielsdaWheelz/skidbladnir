@@ -1,7 +1,7 @@
 {
   "version": 1,
   "apiSha256": "90dd0a01642efaae002f93a3b3a2a731de76adf3b612cd8b89cbc449cd73579d",
-  "catalogueSha256": "25b6f8e1a623d63ad4231dad250d6fc2b7825072c204a378abb91fab043d5dd0",
-  "catalogueKeySetSha256": "4a8c513b506defff7fd5a94f5b69ba885348873e9b06983bf059d322d7151e8c",
-  "catalogueEntries": 100
+  "catalogueSha256": "5c1b9565ef24b7028683d2f6d0f626949a9146adfe23641fdd05ca948e89b95e",
+  "catalogueKeySetSha256": "487f4a21da435f2c1972fdbb6c3308ead8b29aef582e6cde63f1d1424886d66f",
+  "catalogueEntries": 101
 }

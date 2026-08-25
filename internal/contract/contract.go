@@ -2,6 +2,7 @@ package contract
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -14,11 +15,14 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -26,19 +30,21 @@ import (
 )
 
 const (
-	apiPath          = "api/skidbladnir.v1.json"
-	apiLockPath      = "api/skidbladnir.v1.lock"
-	cataloguePath    = "catalog/characters.json"
-	codexLockPath    = "codex.lock"
-	goOutputPath     = "generated/api/go/skidbladnir.go"
-	kotlinPath       = "generated/api/kotlin/SkidbladnirApi.kt"
-	proofsPath       = "evidence/proof-ledger.json"
-	dvergatalPath    = "evidence/sources/dvergatal.md"
-	terminalLockPath = "android/terminal.lock"
-	digestDomain     = "Skidbladnir.Contract.V1"
-	schemaDomain     = "Skidbladnir.CodexSchemaTree.V1"
-	minimumDwarfs    = 100
-	maximumRecents   = 8
+	apiPath           = "api/skidbladnir.v1.json"
+	apiLockPath       = "api/skidbladnir.v1.lock"
+	cataloguePath     = "catalog/characters.json"
+	codexLockPath     = "codex.lock"
+	goOutputPath      = "generated/api/go/skidbladnir.go"
+	kotlinPath        = "generated/api/kotlin/SkidbladnirApi.kt"
+	proofsPath        = "evidence/proof-ledger.json"
+	dvergatalPath     = "evidence/sources/dvergatal.md"
+	terminalLockPath  = "android/terminal.lock"
+	workflowPath      = ".github/workflows/verify.yml"
+	digestDomain      = "Skidbladnir.Contract.V1"
+	schemaDomain      = "Skidbladnir.CodexSchemaTree.V1"
+	acceptanceTimeout = 30 * time.Minute
+	minimumDwarfs     = 100
+	maximumRecents    = 8
 )
 
 var (
@@ -157,6 +163,12 @@ type proofResult struct {
 	Reason   *string `json:"reason"`
 }
 
+type acceptanceGateResult struct {
+	Gate   string `json:"gate"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
 func Generate(root string) error {
 	apiBytes, spec, catalogue, err := loadInputs(root)
 	if err != nil {
@@ -193,10 +205,16 @@ func Verify(root string) error {
 	if err := verifyDvergatalEvidence(root, catalogue); err != nil {
 		return err
 	}
-	if err := verifyProofLedger(root, spec); err != nil {
+	if _, err := verifyProofLedger(root, spec); err != nil {
 		return err
 	}
 	if err := verifyEvidenceContent(root); err != nil {
+		return err
+	}
+	if err := verifyWorkflow(root); err != nil {
+		return err
+	}
+	if err := verifyProductLanguage(root, spec); err != nil {
 		return err
 	}
 	if err := verifyLoggerBoundary(root); err != nil {
@@ -223,11 +241,15 @@ func Verify(root string) error {
 }
 
 func Accept(root string, target string, output io.Writer) error {
+	gates, err := acceptanceGates(target)
+	if err != nil {
+		return err
+	}
 	_, spec, _, err := loadInputs(root)
 	if err != nil {
 		return err
 	}
-	ledger, err := loadProofLedger(root)
+	ledger, err := verifyProofLedger(root, spec)
 	if err != nil {
 		return err
 	}
@@ -239,6 +261,15 @@ func Accept(root string, target string, output io.Writer) error {
 	accepted := true
 	encoder := json.NewEncoder(output)
 	encoder.SetEscapeHTML(false)
+	for _, gate := range gates {
+		result := executeAcceptanceGate(root, gate)
+		if result.Status != "PASS" {
+			accepted = false
+		}
+		if err := encoder.Encode(result); err != nil {
+			return fmt.Errorf("write acceptance gate result: %w", err)
+		}
+	}
 	for _, proof := range spec.Proofs {
 		if !contains(proof.RequiredFor, target) {
 			continue
@@ -259,9 +290,80 @@ func Accept(root string, target string, output io.Writer) error {
 		return fmt.Errorf("write acceptance verdict: %w", err)
 	}
 	if !accepted {
-		return fmt.Errorf("%s acceptance has a non-PASS proof", target)
+		return fmt.Errorf("%s acceptance has a non-PASS gate or proof", target)
 	}
 	return nil
+}
+
+func acceptanceGates(target string) ([]string, error) {
+	switch target {
+	case "core":
+		return []string{"static", "unit", "integration", "component", "system", "platform", "live", "e2e"}, nil
+	case "upgrade":
+		return []string{"static", "unit", "integration", "component", "system", "upgrade-live"}, nil
+	default:
+		return nil, fmt.Errorf("unknown acceptance target %q", target)
+	}
+}
+
+func executeAcceptanceGate(root, gate string) acceptanceGateResult {
+	ctx, cancel := context.WithTimeout(context.Background(), acceptanceTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, filepath.Join(root, "scripts", "test"), gate)
+	command.Dir = root
+	command.Env = append(os.Environ(), "SKIDBLADNIR_ACCEPTANCE=1")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error {
+		err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	command.WaitDelay = 5 * time.Second
+	var result bytes.Buffer
+	command.Stdout = &result
+	command.Stderr = io.Discard
+	err := command.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return acceptanceGateResult{Gate: gate, Status: "FAIL", Reason: "declared gate timed out"}
+	}
+	exitCode := 0
+	if err != nil {
+		var exitError *exec.ExitError
+		if !errors.As(err, &exitError) {
+			return acceptanceGateResult{Gate: gate, Status: "FAIL", Reason: "declared gate could not run"}
+		}
+		exitCode = exitError.ExitCode()
+	}
+	parsed, parseErr := parseAcceptanceGateResult(gate, exitCode, result.Bytes())
+	if parseErr != nil {
+		return acceptanceGateResult{Gate: gate, Status: "FAIL", Reason: "declared gate returned an invalid result"}
+	}
+	return parsed
+}
+
+func parseAcceptanceGateResult(gate string, exitCode int, content []byte) (acceptanceGateResult, error) {
+	var result acceptanceGateResult
+	if err := decodeStrict(bytes.TrimSpace(content), &result); err != nil {
+		return acceptanceGateResult{}, err
+	}
+	if result.Gate != gate {
+		return acceptanceGateResult{}, fmt.Errorf("gate result names %q; want %q", result.Gate, gate)
+	}
+	expected := "FAIL"
+	if exitCode == 0 {
+		expected = "PASS"
+	} else if exitCode == 2 {
+		expected = "NOT_RUN"
+	}
+	if result.Status != expected {
+		return acceptanceGateResult{}, fmt.Errorf("gate %s exit %d contradicts status %s", gate, exitCode, result.Status)
+	}
+	if (result.Status == "PASS" && result.Reason != "") || (result.Status != "PASS" && result.Reason == "") {
+		return acceptanceGateResult{}, fmt.Errorf("gate %s has invalid result reason", gate)
+	}
+	return result, nil
 }
 
 func loadInputs(root string) ([]byte, apiContract, []catalogueEntry, error) {
@@ -681,10 +783,10 @@ func validateDvergatalEvidence(content []byte, entries []catalogueEntry) error {
 	return nil
 }
 
-func verifyProofLedger(root string, spec apiContract) error {
+func verifyProofLedger(root string, spec apiContract) (proofLedger, error) {
 	ledger, err := loadProofLedger(root)
 	if err != nil {
-		return err
+		return proofLedger{}, err
 	}
 	proofs := make(map[string]proofSpec, len(spec.Proofs))
 	for _, proof := range spec.Proofs {
@@ -694,29 +796,29 @@ func verifyProofLedger(root string, spec apiContract) error {
 	for _, result := range ledger.Results {
 		proof, ok := proofs[result.ID]
 		if !ok || seen[result.ID] || result.Gate != proof.Gate || !contains([]string{"PASS", "FAIL", "NOT_RUN"}, result.Status) {
-			return fmt.Errorf("invalid proof result %q", result.ID)
+			return proofLedger{}, fmt.Errorf("invalid proof result %q", result.ID)
 		}
 		seen[result.ID] = true
 		if result.Status == "PASS" && (result.Evidence == nil || *result.Evidence == "") {
-			return fmt.Errorf("PASS proof %s has no evidence", result.ID)
+			return proofLedger{}, fmt.Errorf("PASS proof %s has no evidence", result.ID)
 		}
 		if result.Status == "NOT_RUN" && (result.Reason == nil || *result.Reason == "") {
-			return fmt.Errorf("NOT_RUN proof %s has no reason", result.ID)
+			return proofLedger{}, fmt.Errorf("NOT_RUN proof %s has no reason", result.ID)
 		}
 		if result.Evidence != nil {
 			path := filepath.Clean(*result.Evidence)
 			if filepath.IsAbs(path) || strings.HasPrefix(path, "..") {
-				return fmt.Errorf("proof %s has unsafe evidence path", result.ID)
+				return proofLedger{}, fmt.Errorf("proof %s has unsafe evidence path", result.ID)
 			}
 			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
-				return fmt.Errorf("proof %s evidence: %w", result.ID, err)
+				return proofLedger{}, fmt.Errorf("proof %s evidence: %w", result.ID, err)
 			}
 		}
 	}
 	if len(seen) != len(proofs) {
-		return errors.New("proof ledger does not cover the closed proof inventory")
+		return proofLedger{}, errors.New("proof ledger does not cover the closed proof inventory")
 	}
-	return nil
+	return ledger, nil
 }
 
 func loadProofLedger(root string) (proofLedger, error) {
@@ -756,27 +858,179 @@ func verifyEvidenceContent(root string) error {
 	})
 }
 
+func verifyWorkflow(root string) error {
+	content, err := os.ReadFile(filepath.Join(root, workflowPath))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", workflowPath, err)
+	}
+	if err := validateWorkflow(content); err != nil {
+		return fmt.Errorf("validate %s: %w", workflowPath, err)
+	}
+	return nil
+}
+
+func validateWorkflow(content []byte) error {
+	text := string(content)
+	for _, forbidden := range []string{"pull_request_target:", "continue-on-error:", "|| true", "write-all"} {
+		if strings.Contains(text, forbidden) {
+			return fmt.Errorf("workflow contains forbidden %q", forbidden)
+		}
+	}
+	if !strings.Contains(text, "pull_request:") || !strings.Contains(text, "permissions:\n  contents: read") {
+		return errors.New("workflow lacks the reviewed trigger or read-only permissions")
+	}
+	if regexp.MustCompile(`(?m)^\s+[a-z][a-z-]*:\s+write\s*$`).Match(content) {
+		return errors.New("workflow grants write permission")
+	}
+	required := []string{
+		"run: ./scripts/test static",
+		"run: ./scripts/build all",
+		"run: ./scripts/test unit",
+	}
+	for _, command := range required {
+		if strings.Count(text, command) != 1 {
+			return fmt.Errorf("workflow must contain exactly one %q", command)
+		}
+	}
+	for lineNumber, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "-"))
+		if strings.HasPrefix(trimmed, "uses:") {
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "uses:"))
+			parts := strings.Split(value, "@")
+			if len(parts) != 2 || parts[0] == "" || !regexp.MustCompile(`^[0-9a-f]{40}(?:\s+#.*)?$`).MatchString(parts[1]) {
+				return fmt.Errorf("workflow line %d has an unpinned action", lineNumber+1)
+			}
+		}
+		if strings.HasPrefix(trimmed, "run: ./scripts/test ") && !contains(required, trimmed) {
+			return fmt.Errorf("workflow line %d invokes an undeclared test gate", lineNumber+1)
+		}
+		if strings.HasPrefix(trimmed, "run: ./scripts/build ") && trimmed != "run: ./scripts/build all" {
+			return fmt.Errorf("workflow line %d invokes an undeclared build target", lineNumber+1)
+		}
+	}
+	return nil
+}
+
+func verifyProductLanguage(root string, spec apiContract) error {
+	surface := spec
+	surface.Proofs = nil
+	content, err := json.Marshal(surface)
+	if err != nil {
+		return fmt.Errorf("encode product contract: %w", err)
+	}
+	if err := validateProductText(string(content)); err != nil {
+		return fmt.Errorf("validate %s product language: %w", apiPath, err)
+	}
+
+	return filepath.WalkDir(filepath.Join(root, "android", "app", "src", "main"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".css", ".html", ".js", ".kt", ".kts", ".xml":
+		default:
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := validateProductText(string(content)); err != nil {
+			return fmt.Errorf("validate product language in %s: %w", path, err)
+		}
+		return nil
+	})
+}
+
+func validateProductText(content string) error {
+	words := productWords(content)
+	for index, word := range words {
+		if forbiddenProductWord(word) {
+			return fmt.Errorf("reserved product word %q", word)
+		}
+		if index+1 < len(words) && forbiddenProductPair(word, words[index+1]) {
+			return fmt.Errorf("reserved product phrase %q", word+" "+words[index+1])
+		}
+	}
+	return nil
+}
+
+func productWords(content string) []string {
+	runes := []rune(norm.NFKD.String(content))
+	words := make([]string, 0, len(runes)/8)
+	word := make([]rune, 0, 16)
+	flush := func() {
+		if len(word) == 0 {
+			return
+		}
+		words = append(words, string(word))
+		word = word[:0]
+	}
+	for index, current := range runes {
+		if unicode.Is(unicode.Mn, current) {
+			continue
+		}
+		if !unicode.IsLetter(current) && !unicode.IsDigit(current) {
+			flush()
+			continue
+		}
+		if len(word) != 0 && unicode.IsUpper(current) {
+			previous := runes[index-1]
+			nextIsLower := index+1 < len(runes) && unicode.IsLower(runes[index+1])
+			if unicode.IsLower(previous) || unicode.IsDigit(previous) || unicode.IsUpper(previous) && nextIsLower {
+				flush()
+			}
+		}
+		word = append(word, unicode.ToLower(current))
+	}
+	flush()
+	return words
+}
+
+func forbiddenProductWord(word string) bool {
+	switch word {
+	case "ariadne", "gloriana", "sutradhara", "aule", "hephaestus", "prospero", "solomon", "shabti", "gwydion", "dvergatal",
+		"project", "projects", "repo", "repos", "repository", "repositories", "worktree", "worktrees", "quota", "quotas",
+		"provider", "providers", "transcript", "transcripts", "composer", "composers", "appserver", "workspacemode", "rawtarget", "nstack", "kstack":
+		return true
+	default:
+		return false
+	}
+}
+
+func forbiddenProductPair(first string, second string) bool {
+	switch first + " " + second {
+	case "app server", "app servers", "workspace mode", "workspace modes", "raw target", "raw targets", "n stack", "k stack":
+		return true
+	default:
+		return false
+	}
+}
+
 func verifyLoggerBoundary(root string) error {
-	for _, base := range []string{"cmd", "internal"} {
+	for _, base := range []string{"cmd", "internal", filepath.Join("android", "app", "src", "main")} {
 		err := filepath.WalkDir(filepath.Join(root, base), func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
-			if entry.IsDir() || filepath.Ext(path) != ".go" || strings.Contains(path, string(filepath.Separator)+"internal"+string(filepath.Separator)+"logging"+string(filepath.Separator)) {
+			if entry.IsDir() {
+				if entry.Name() == "vendor" || strings.HasSuffix(path, filepath.Join("internal", "logging")) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
-			parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+			content, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			for _, imported := range parsed.Imports {
-				name, err := strconv.Unquote(imported.Path.Value)
-				if err != nil {
-					return err
-				}
-				if name == "log" || name == "log/slog" {
-					return fmt.Errorf("ad-hoc logger import outside internal/logging: %s", path)
-				}
+			if err := validateAdHocLogging(path, content); err != nil {
+				return fmt.Errorf("validate logging in %s: %w", path, err)
 			}
 			return nil
 		})
@@ -785,6 +1039,93 @@ func verifyLoggerBoundary(root string) error {
 		}
 	}
 	return nil
+}
+
+func validateAdHocLogging(path string, content []byte) error {
+	switch filepath.Ext(path) {
+	case ".go":
+		return validateGoLogging(path, content)
+	case ".js":
+		if regexp.MustCompile(`\bconsole\b`).Match(content) {
+			return errors.New("ad-hoc JavaScript console call")
+		}
+	case ".kt", ".kts":
+		text := string(content)
+		for _, forbidden := range []string{"android.util.Log", "Log.", "println(", "System.out", "System.err"} {
+			if strings.Contains(text, forbidden) {
+				return fmt.Errorf("ad-hoc Kotlin log call %q", forbidden)
+			}
+		}
+	}
+	return nil
+}
+
+func validateGoLogging(path string, content []byte) error {
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, path, content, 0)
+	if err != nil {
+		return err
+	}
+	imports := make(map[string]string, len(parsed.Imports))
+	for _, imported := range parsed.Imports {
+		name, err := strconv.Unquote(imported.Path.Value)
+		if err != nil {
+			return err
+		}
+		if name == "log" || name == "log/slog" {
+			return fmt.Errorf("ad-hoc logger import %q", name)
+		}
+		alias := filepath.Base(name)
+		if imported.Name != nil {
+			alias = imported.Name.Name
+		}
+		if name == "fmt" && alias == "." {
+			return errors.New("dot-imported fmt bypasses the logging boundary")
+		}
+		imports[alias] = name
+	}
+
+	var result error
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if node == nil || result != nil {
+			return result == nil
+		}
+		call, ok := node.(*ast.CallExpr) // justify-type-assertion: only call expressions can invoke an ad-hoc logging surface.
+		if !ok {
+			return true
+		}
+		switch function := call.Fun.(type) { // justify-type-assertion: the Go AST exposes call targets through its closed expression interface.
+		case *ast.Ident:
+			if function.Name == "print" || function.Name == "println" {
+				result = fmt.Errorf("ad-hoc builtin %s call", function.Name)
+			}
+		case *ast.SelectorExpr:
+			qualifier, ok := function.X.(*ast.Ident) // justify-type-assertion: only a package identifier can select a package-level fmt function.
+			if !ok || imports[qualifier.Name] != "fmt" || !contains([]string{"Print", "Printf", "Println", "Fprint", "Fprintf", "Fprintln"}, function.Sel.Name) {
+				return true
+			}
+			if strings.HasPrefix(function.Sel.Name, "F") && commandPath(path) && len(call.Args) != 0 && isStandardError(call.Args[0], imports) {
+				return true
+			}
+			result = fmt.Errorf("ad-hoc fmt.%s call", function.Sel.Name)
+		}
+		return result == nil
+	})
+	return result
+}
+
+func commandPath(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	return strings.HasPrefix(clean, "cmd/") || strings.Contains(clean, "/cmd/")
+}
+
+func isStandardError(expression ast.Expr, imports map[string]string) bool {
+	selector, ok := expression.(*ast.SelectorExpr) // justify-type-assertion: os.Stderr is represented by a selector expression.
+	if !ok || selector.Sel.Name != "Stderr" {
+		return false
+	}
+	qualifier, ok := selector.X.(*ast.Ident) // justify-type-assertion: os.Stderr must be qualified by the imported os package identifier.
+	return ok && imports[qualifier.Name] == "os"
 }
 
 func verifyJustifications(root string) error {

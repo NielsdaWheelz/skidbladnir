@@ -24,7 +24,7 @@ type SessionId string
 type ThreadId string
 type WorkingDirectory string
 
-const ContractDigestValue ContractDigest = "615651c06bdde55d92081dd03ffa61eb8ffc499466854a8219320ab3a4d2ceb1"
+const ContractDigestValue ContractDigest = "2bd388c4a9605b41612f89b38a8c2ea1687a85c66c4045f90f2eb0423cdbf5c8"
 
 type AgentListState string
 
