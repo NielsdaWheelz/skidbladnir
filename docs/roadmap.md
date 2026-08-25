@@ -618,7 +618,7 @@ temporary worktrees after their commits are integrated.
 
 | PR | Status |
 | --- | --- |
-| P0 Contracts and platform proofs | Pending |
+| P0 Contracts and platform proofs | InProgress |
 | P1 One managed laptop agent | Pending |
 | P2 Lifecycle and continuity | Pending |
 | P3 Phone control plane | Pending |

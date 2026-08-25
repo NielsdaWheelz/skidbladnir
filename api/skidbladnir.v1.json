@@ -1,0 +1,379 @@
+{
+  "formatVersion": 1,
+  "namespace": "Skidbladnir.V1",
+  "contractHeader": "Skidbladnir-Contract",
+  "bounds": {
+    "httpBodyBytes": 65536,
+    "objectiveScalars": 240,
+    "workingDirectoryBytes": 4096,
+    "agentPage": 100,
+    "historyPoints": 300,
+    "sseFacts": 256,
+    "sseBytes": 1048576,
+    "brokerFrameBytes": 1048576,
+    "terminalFrameBytes": 65536,
+    "terminalQueueBytes": 1048576,
+    "terminalColumnsMin": 20,
+    "terminalColumnsMax": 240,
+    "terminalRowsMin": 5,
+    "terminalRowsMax": 120,
+    "hookBytes": 16384,
+    "unarySeconds": 30
+  },
+  "scalars": {
+    "AgentHandle": { "base": "String", "pattern": "^ga-[a-z0-9]{10}$" },
+    "BearerToken": { "base": "String", "sensitive": true },
+    "CharacterKey": { "base": "String", "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$" },
+    "ClientCommandId": { "base": "String", "format": "uuid" },
+    "ContractDigest": { "base": "String", "pattern": "^[a-f0-9]{64}$" },
+    "CorrelationHandle": { "base": "String", "pattern": "^cor_[a-zA-Z0-9_-]{16,96}$" },
+    "FactCursor": { "base": "String" },
+    "InstallationHandle": { "base": "String" },
+    "Objective": { "base": "String", "maxScalars": 240 },
+    "PairingSecret": { "base": "String", "sensitive": true },
+    "SessionId": { "base": "String" },
+    "ThreadId": { "base": "String" },
+    "WorkingDirectory": { "base": "String", "maxBytes": 4096 }
+  },
+  "enums": {
+    "AgentListState": ["open", "closed", "all"],
+    "AgentState": ["Starting", "Idle", "Working", "Closing", "Recoverable", "Exception", "Unknown", "Closed"],
+    "CommandKind": ["StartAgent", "CloseAgent", "ReopenAgent", "AdoptThread"],
+    "CommandOutcome": ["Succeeded", "Failed"],
+    "DerivationReason": [
+      "close-accepted",
+      "runtime-ended-idle",
+      "runtime-ended-working",
+      "system-error",
+      "exact-thread-missing",
+      "profile-unavailable",
+      "evidence-absent",
+      "evidence-stale",
+      "evidence-contradictory",
+      "completion-confirmation-exhausted",
+      "awaiting-session-confirmation",
+      "start-binding-deadline"
+    ],
+    "ErrorCode": [
+      "Unauthenticated",
+      "PairingInvalid",
+      "ProtocolMismatch",
+      "InvalidRequest",
+      "AgentNotFound",
+      "AgentClosed",
+      "AgentWorking",
+      "AgentNotAttachable",
+      "WorkingDirectoryInvalid",
+      "WorkingDirectoryUnavailable",
+      "ProfileUnavailable",
+      "ExactThreadMissing",
+      "CommandConflict",
+      "ThreadNotAdoptable",
+      "ThreadAlreadyTracked",
+      "ModelInvalid",
+      "RecoveryRequired",
+      "CursorInvalid",
+      "ResyncRequired",
+      "LivenessUnverifiable"
+    ],
+    "FactKind": [
+      "AgentStarted",
+      "AgentBound",
+      "AgentStateChanged",
+      "ActivityObserved",
+      "AttentionRaised",
+      "AttentionAcknowledged",
+      "CommandSettled",
+      "AgentClosed",
+      "HostPressureChanged"
+    ],
+    "GeometryMode": ["Owner", "Constrained"],
+    "HostHistoryWindow": ["15m", "1h", "6h", "24h", "7d"],
+    "PressureReason": ["Cpu", "Load", "Memory", "Swap", "Disk", "CpuPsi", "MemoryPsi", "IoPsi", "SignalMissing"],
+    "PressureState": ["Ok", "Warm", "Hot", "Unknown"],
+    "Profile": ["personal", "work", "work2"],
+    "ProfileState": ["Available", "Unavailable", "Drift"],
+    "WssFrameKind": ["Hello", "Presence", "Resize", "Detach", "Error"]
+  },
+  "records": {
+    "AcknowledgeAttentionResponse": [
+      { "name": "handle", "type": "AgentHandle" },
+      { "name": "acknowledgedAt", "type": "Instant" }
+    ],
+    "AgentCard": [
+      { "name": "handle", "type": "AgentHandle" },
+      { "name": "characterKey", "type": "CharacterKey" },
+      { "name": "displayName", "type": "String" },
+      { "name": "profile", "type": "Profile" },
+      { "name": "state", "type": "AgentState" },
+      { "name": "objective", "type": "Objective" },
+      { "name": "createdAt", "type": "Instant" },
+      { "name": "lastObservedAt", "type": "Instant" },
+      { "name": "activity", "type": "?SafeActivity" },
+      { "name": "attention", "type": "?Attention" },
+      { "name": "codex", "type": "?CodexBinding" },
+      { "name": "attachable", "type": "Boolean" },
+      { "name": "derivationReason", "type": "?DerivationReason" },
+      { "name": "failureCode", "type": "?ErrorCode" },
+      { "name": "failureObservedAt", "type": "?Instant" },
+      { "name": "correlationHandle", "type": "?CorrelationHandle" }
+    ],
+    "AgentCounts": [
+      { "name": "open", "type": "Int64" },
+      { "name": "closed", "type": "Int64" },
+      { "name": "attention", "type": "Int64" }
+    ],
+    "AgentPage": [
+      { "name": "agents", "type": "[]AgentCard" },
+      { "name": "nextCursor", "type": "?FactCursor" }
+    ],
+    "Attention": [
+      { "name": "raisedAt", "type": "Instant" },
+      { "name": "acknowledgedAt", "type": "?Instant" }
+    ],
+    "BootstrapResponse": [
+      { "name": "profiles", "type": "[]ProfileHealth" },
+      { "name": "host", "type": "HostPressure" },
+      { "name": "agentCounts", "type": "AgentCounts" },
+      { "name": "snapshotFactCursor", "type": "FactCursor" },
+      { "name": "recentCwds", "type": "RecentWorkingDirectories" }
+    ],
+    "CodexBinding": [
+      { "name": "threadId", "type": "ThreadId" },
+      { "name": "sessionId", "type": "SessionId" },
+      { "name": "requestedCwd", "type": "WorkingDirectory" },
+      { "name": "effectiveCwd", "type": "?WorkingDirectory" },
+      { "name": "model", "type": "String" }
+    ],
+    "CommandAccepted": [
+      { "name": "handle", "type": "AgentHandle" },
+      { "name": "clientCommandId", "type": "ClientCommandId" },
+      { "name": "acceptedAt", "type": "Instant" }
+    ],
+    "CommandFailure": [
+      { "name": "outcome", "type": "CommandOutcome" },
+      { "name": "code", "type": "ErrorCode" },
+      { "name": "observedAt", "type": "Instant" },
+      { "name": "correlationHandle", "type": "?CorrelationHandle" }
+    ],
+    "CommandSuccess": [
+      { "name": "outcome", "type": "CommandOutcome" },
+      { "name": "observedAt", "type": "Instant" }
+    ],
+    "ErrorResponse": [
+      { "name": "code", "type": "ErrorCode" },
+      { "name": "message", "type": "String" },
+      { "name": "correlationHandle", "type": "?CorrelationHandle" },
+      { "name": "serverContract", "type": "?ContractDigest" },
+      { "name": "owningHandle", "type": "?AgentHandle" }
+    ],
+    "HostHistory": [
+      { "name": "current", "type": "HostSample" },
+      { "name": "buckets", "type": "[]HostSample" }
+    ],
+    "HostPressure": [
+      { "name": "state", "type": "PressureState" },
+      { "name": "reasons", "type": "[]PressureReason" },
+      { "name": "sampledAt", "type": "Instant" }
+    ],
+    "HostSample": [
+      { "name": "bucketStartedAt", "type": "Instant" },
+      { "name": "state", "type": "PressureState" },
+      { "name": "reasons", "type": "[]PressureReason" },
+      { "name": "cpuRatio", "type": "?Float64" },
+      { "name": "normalizedLoad", "type": "?Float64" },
+      { "name": "memoryAvailableRatio", "type": "?Float64" },
+      { "name": "swapUsedRatio", "type": "?Float64" },
+      { "name": "diskAvailableRatio", "type": "?Float64" },
+      { "name": "cpuPsiSomeAvg60", "type": "?Float64" },
+      { "name": "memoryPsiFullAvg60", "type": "?Float64" },
+      { "name": "ioPsiFullAvg60", "type": "?Float64" }
+    ],
+    "PairRequest": [
+      { "name": "secret", "type": "PairingSecret" }
+    ],
+    "PairResponse": [
+      { "name": "installation", "type": "InstallationHandle" },
+      { "name": "bearer", "type": "BearerToken" },
+      { "name": "contract", "type": "ContractDigest" }
+    ],
+    "ProfileHealth": [
+      { "name": "profile", "type": "Profile" },
+      { "name": "state", "type": "ProfileState" },
+      { "name": "accountFingerprint", "type": "?String" },
+      { "name": "defaultModel", "type": "String" },
+      { "name": "reason", "type": "?String" }
+    ],
+    "RecentWorkingDirectories": [
+      { "name": "personal", "type": "[]WorkingDirectory" },
+      { "name": "work", "type": "[]WorkingDirectory" },
+      { "name": "work2", "type": "[]WorkingDirectory" }
+    ],
+    "ResizeFrame": [
+      { "name": "kind", "type": "WssFrameKind" },
+      { "name": "columns", "type": "Int64" },
+      { "name": "rows", "type": "Int64" }
+    ],
+    "SafeActivity": [
+      { "name": "toolName", "type": "String" },
+      { "name": "observedAt", "type": "Instant" }
+    ],
+    "StartAgentRequest": [
+      { "name": "clientCommandId", "type": "ClientCommandId" },
+      { "name": "profile", "type": "Profile" },
+      { "name": "objective", "type": "Objective" },
+      { "name": "cwd", "type": "WorkingDirectory" }
+    ],
+    "TerminalErrorFrame": [
+      { "name": "kind", "type": "WssFrameKind" },
+      { "name": "error", "type": "ErrorResponse" }
+    ],
+    "TerminalHelloFrame": [
+      { "name": "kind", "type": "WssFrameKind" },
+      { "name": "attachedClients", "type": "Int64" },
+      { "name": "geometry", "type": "GeometryMode" }
+    ],
+    "TerminalPresenceFrame": [
+      { "name": "kind", "type": "WssFrameKind" },
+      { "name": "attachedClients", "type": "Int64" },
+      { "name": "geometry", "type": "GeometryMode" }
+    ],
+    "TerminalSimpleFrame": [
+      { "name": "kind", "type": "WssFrameKind" }
+    ]
+  },
+  "unions": {
+    "CommandResult": {
+      "discriminator": "outcome",
+      "variants": {
+        "Succeeded": "CommandSuccess",
+        "Failed": "CommandFailure"
+      }
+    },
+    "Fact": {
+      "discriminator": "kind",
+      "variants": {
+        "AgentStarted": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "agent", "type": "AgentCard" }
+        ],
+        "AgentBound": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" }
+        ],
+        "AgentStateChanged": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "agent", "type": "AgentCard" }
+        ],
+        "ActivityObserved": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "activity", "type": "SafeActivity" }
+        ],
+        "AttentionRaised": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "attention", "type": "Attention" }
+        ],
+        "AttentionAcknowledged": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "acknowledgedAt", "type": "Instant" }
+        ],
+        "CommandSettled": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "clientCommandId", "type": "ClientCommandId" },
+          { "name": "result", "type": "CommandResult" }
+        ],
+        "AgentClosed": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "handle", "type": "AgentHandle" },
+          { "name": "closedAt", "type": "Instant" }
+        ],
+        "HostPressureChanged": [
+          { "name": "sequence", "type": "Int64" },
+          { "name": "occurredAt", "type": "Instant" },
+          { "name": "host", "type": "HostPressure" }
+        ]
+      }
+    },
+    "WssFrame": {
+      "discriminator": "kind",
+      "variants": {
+        "Hello": "TerminalHelloFrame",
+        "Presence": "TerminalPresenceFrame",
+        "Resize": "ResizeFrame",
+        "Detach": "TerminalSimpleFrame",
+        "Error": "TerminalErrorFrame"
+      }
+    }
+  },
+  "errors": {
+    "Unauthenticated": 401,
+    "PairingInvalid": 401,
+    "ProtocolMismatch": 409,
+    "InvalidRequest": 400,
+    "AgentNotFound": 404,
+    "AgentClosed": 409,
+    "AgentWorking": 409,
+    "AgentNotAttachable": 409,
+    "WorkingDirectoryInvalid": 422,
+    "WorkingDirectoryUnavailable": 409,
+    "ProfileUnavailable": 503,
+    "ExactThreadMissing": 404,
+    "CommandConflict": 409,
+    "ThreadNotAdoptable": 409,
+    "ThreadAlreadyTracked": 409,
+    "ModelInvalid": 422,
+    "RecoveryRequired": 409,
+    "CursorInvalid": 400,
+    "ResyncRequired": 409,
+    "LivenessUnverifiable": 503
+  },
+  "routes": [
+    { "method": "POST", "path": "/v1/pair", "auth": "Pairing", "request": "PairRequest", "response": "PairResponse", "status": 200 },
+    { "method": "GET", "path": "/v1/bootstrap", "auth": "Bearer", "response": "BootstrapResponse", "status": 200 },
+    { "method": "GET", "path": "/v1/agents", "auth": "Bearer", "response": "AgentPage", "status": 200 },
+    { "method": "GET", "path": "/v1/agents/{handle}", "auth": "Bearer", "response": "AgentCard", "status": 200 },
+    { "method": "POST", "path": "/v1/agents", "auth": "Bearer", "request": "StartAgentRequest", "response": "CommandAccepted", "status": 202 },
+    { "method": "POST", "path": "/v1/agents/{handle}/close", "auth": "Bearer", "response": "CommandAccepted", "status": 202 },
+    { "method": "POST", "path": "/v1/agents/{handle}/reopen", "auth": "Bearer", "response": "CommandAccepted", "status": 202 },
+    { "method": "POST", "path": "/v1/agents/{handle}/attention/acknowledge", "auth": "Bearer", "response": "AcknowledgeAttentionResponse", "status": 200 },
+    { "method": "GET", "path": "/v1/events", "auth": "Bearer", "stream": "Fact", "status": 200 },
+    { "method": "GET", "path": "/v1/host/samples", "auth": "Bearer", "response": "HostHistory", "status": 200 },
+    { "method": "GET", "path": "/v1/terminal/{handle}", "auth": "Bearer", "upgrade": "WssFrame", "status": 101 }
+  ],
+  "localCommands": [
+    "PrepareNew",
+    "ListResumableSessions",
+    "PrepareResume",
+    "RegisterRuntime",
+    "CreatePairingChallenge",
+    "ListInstallations",
+    "RevokeInstallation"
+  ],
+  "proofs": [
+    { "id": "command-profile", "gate": "live", "requiredFor": ["core", "upgrade"] },
+    { "id": "broker-appserver", "gate": "live", "requiredFor": ["core", "upgrade"] },
+    { "id": "hooks-registry", "gate": "live", "requiredFor": ["core"] },
+    { "id": "lifecycle-tmux-process", "gate": "live", "requiredFor": ["core"] },
+    { "id": "pty-wss-android", "gate": "platform", "requiredFor": ["core"] },
+    { "id": "laptop-phone-laptop", "gate": "e2e", "requiredFor": ["core"] },
+    { "id": "sqlite-fact-card", "gate": "integration", "requiredFor": ["core"] },
+    { "id": "dvergatal-agent-card", "gate": "component", "requiredFor": ["core"] },
+    { "id": "kernel-pressure", "gate": "system", "requiredFor": ["core"] },
+    { "id": "bearer-terminal-authority", "gate": "system", "requiredFor": ["core"] },
+    { "id": "restart-recovery", "gate": "e2e", "requiredFor": ["core"] }
+  ]
+}

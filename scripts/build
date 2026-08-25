@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+target="${1:-all}"
+
+case "$target" in
+  generate)
+    cd "$repo_dir"
+    go run ./cmd/skidbladnir-contract generate
+    ;;
+  android-static|android-component|android-platform)
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"Android P0 harness is not implemented"}\n' "$target"
+    exit 2
+    ;;
+  all)
+    cd "$repo_dir"
+    go build ./...
+    ;;
+  *)
+    printf 'unknown build target: %s\n' "$target" >&2
+    exit 64
+    ;;
+esac

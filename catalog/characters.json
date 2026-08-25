@@ -1,0 +1,902 @@
+[
+  {
+    "key": "norse.modsognir",
+    "displayName": "Móðsognir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 10"
+    }
+  },
+  {
+    "key": "norse.durinn",
+    "displayName": "Durinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 10"
+    }
+  },
+  {
+    "key": "norse.nyi",
+    "displayName": "Nýi",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nidi",
+    "displayName": "Niði",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nordri",
+    "displayName": "Norðri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.sudri",
+    "displayName": "Suðri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.austri",
+    "displayName": "Austri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.vestri",
+    "displayName": "Vestri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.althjofr",
+    "displayName": "Alþjófr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.dvalinn",
+    "displayName": "Dvalinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nar",
+    "displayName": "Nár",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nainn",
+    "displayName": "Náinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nipingr",
+    "displayName": "Nípingr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.dainn",
+    "displayName": "Dáinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.bivurr",
+    "displayName": "Bívurr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.bavurr",
+    "displayName": "Bávurr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.bomburr",
+    "displayName": "Bömburr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.nori",
+    "displayName": "Nóri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.ann",
+    "displayName": "Ánn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.anarr",
+    "displayName": "Ánarr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.oinn",
+    "displayName": "Óinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.mjodvitnir",
+    "displayName": "Mjöðvitnir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 11"
+    }
+  },
+  {
+    "key": "norse.veggr",
+    "displayName": "Veggr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.gandalfr",
+    "displayName": "Gandalfr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.vindalfr",
+    "displayName": "Vindalfr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.thorinn",
+    "displayName": "Þorinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.thrar",
+    "displayName": "Þrár",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.thrainn",
+    "displayName": "Þráinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.thekkr",
+    "displayName": "Þekkr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.litr",
+    "displayName": "Litr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.vitr",
+    "displayName": "Vitr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.nyr",
+    "displayName": "Nýr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.nyradr",
+    "displayName": "Nýráðr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.reginn",
+    "displayName": "Reginn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.radsvidr",
+    "displayName": "Ráðsviðr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 12"
+    }
+  },
+  {
+    "key": "norse.fili",
+    "displayName": "Fíli",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.kili",
+    "displayName": "Kíli",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.fundinn",
+    "displayName": "Fundinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.nali",
+    "displayName": "Náli",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.hefti",
+    "displayName": "Hefti",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.vili",
+    "displayName": "Víli",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.hannar",
+    "displayName": "Hannar",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.sviurr",
+    "displayName": "Svíurr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.billingr",
+    "displayName": "Billingr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.bruni",
+    "displayName": "Brúni",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.bildr",
+    "displayName": "Bíldr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.buri",
+    "displayName": "Buri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.frar",
+    "displayName": "Frár",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.hornbori",
+    "displayName": "Hornbori",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.fraegr",
+    "displayName": "Frægr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.loni",
+    "displayName": "Lóni",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.aurvangr",
+    "displayName": "Aurvangr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.jari",
+    "displayName": "Jari",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13"
+    }
+  },
+  {
+    "key": "norse.eikinskjaldi",
+    "displayName": "Eikinskjaldi",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 13 and st. 16"
+    }
+  },
+  {
+    "key": "norse.draupnir",
+    "displayName": "Draupnir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.dolgthrasir",
+    "displayName": "Dolgþrasir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.har",
+    "displayName": "Hár",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.haugspori",
+    "displayName": "Haugspori",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.hlevangr",
+    "displayName": "Hlévangr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.gloinn",
+    "displayName": "Glóinn",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.dori",
+    "displayName": "Dóri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.ori",
+    "displayName": "Óri",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.dufr",
+    "displayName": "Dúfr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.andvari",
+    "displayName": "Andvari",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.skirfir",
+    "displayName": "Skirfir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.virfir",
+    "displayName": "Virfir",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.skafidr",
+    "displayName": "Skáfiðr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.ai",
+    "displayName": "Ái",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 15"
+    }
+  },
+  {
+    "key": "norse.alfr",
+    "displayName": "Alfr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "norse.yngvi",
+    "displayName": "Yngvi",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "norse.fjalarr",
+    "displayName": "Fjalarr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "norse.frosti",
+    "displayName": "Frosti",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "norse.finnr",
+    "displayName": "Finnr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "norse.ginnarr",
+    "displayName": "Ginnarr",
+    "tradition": "OldNorse",
+    "source": {
+      "work": "Vǫluspá",
+      "locus": "st. 16"
+    }
+  },
+  {
+    "key": "tolkien.balin",
+    "displayName": "Balin",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.bifur",
+    "displayName": "Bifur",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.bofur",
+    "displayName": "Bofur",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.bombur-erebor",
+    "displayName": "Bombur of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.dwalin-erebor",
+    "displayName": "Dwalin of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.fili-erebor",
+    "displayName": "Fíli of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.kili-erebor",
+    "displayName": "Kíli of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.dori-erebor",
+    "displayName": "Dori of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.nori-erebor",
+    "displayName": "Nori of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.ori-erebor",
+    "displayName": "Ori of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.oin-erebor",
+    "displayName": "Óin of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.gloin-erebor",
+    "displayName": "Glóin of Erebor",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.thorin-oakenshield",
+    "displayName": "Thorin Oakenshield",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Hobbit",
+      "locus": "ch. 1"
+    }
+  },
+  {
+    "key": "tolkien.thrain-ii",
+    "displayName": "Thráin II",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "tolkien.dain-ironfoot",
+    "displayName": "Dáin Ironfoot",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "tolkien.durin-deathless",
+    "displayName": "Durin the Deathless",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "tolkien.gimli",
+    "displayName": "Gimli",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "tolkien.azaghal",
+    "displayName": "Azaghâl",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Silmarillion",
+      "locus": "ch. 20"
+    }
+  },
+  {
+    "key": "tolkien.telchar",
+    "displayName": "Telchar",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Silmarillion",
+      "locus": "ch. 16"
+    }
+  },
+  {
+    "key": "tolkien.mim-amon-rudh",
+    "displayName": "Mîm of Amon Rûdh",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Children of Húrin",
+      "locus": "ch. 11"
+    }
+  },
+  {
+    "key": "tolkien.khim",
+    "displayName": "Khîm",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Children of Húrin",
+      "locus": "ch. 11"
+    }
+  },
+  {
+    "key": "tolkien.ibun",
+    "displayName": "Ibûn",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Children of Húrin",
+      "locus": "ch. 11"
+    }
+  },
+  {
+    "key": "tolkien.frerin",
+    "displayName": "Frerin",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "tolkien.groin",
+    "displayName": "Gróin",
+    "tradition": "Tolkien",
+    "source": {
+      "work": "The Lord of the Rings",
+      "locus": "Appendix A.III"
+    }
+  },
+  {
+    "key": "germanic-operatic.alberich",
+    "displayName": "Alberich of Nibelheim",
+    "tradition": "GermanicOperatic",
+    "source": {
+      "work": "Das Rheingold",
+      "locus": "Scene 3"
+    }
+  },
+  {
+    "key": "germanic-operatic.mime",
+    "displayName": "Mime of Nibelheim",
+    "tradition": "GermanicOperatic",
+    "source": {
+      "work": "Siegfried",
+      "locus": "Act I"
+    }
+  }
+]

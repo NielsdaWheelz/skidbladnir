@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "results": [
+    { "id": "command-profile", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 live router and profile boundary is not implemented" },
+    { "id": "broker-appserver", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P0 live App Server probe is not yet recorded" },
+    { "id": "hooks-registry", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 registry projection is not implemented" },
+    { "id": "lifecycle-tmux-process", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 lifecycle surface is not implemented" },
+    { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "No Android device is connected" },
+    { "id": "laptop-phone-laptop", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P6 handoff journey is not implemented" },
+    { "id": "sqlite-fact-card", "gate": "integration", "status": "NOT_RUN", "evidence": null, "reason": "P3 Fact projection is not implemented" },
+    { "id": "dvergatal-agent-card", "gate": "component", "status": "NOT_RUN", "evidence": null, "reason": "P5 card projection is not implemented" },
+    { "id": "kernel-pressure", "gate": "system", "status": "NOT_RUN", "evidence": null, "reason": "P3 host pressure surface is not implemented" },
+    { "id": "bearer-terminal-authority", "gate": "system", "status": "NOT_RUN", "evidence": null, "reason": "P4 terminal authority surface is not implemented" },
+    { "id": "restart-recovery", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P7 recovery journey is not implemented" }
+  ]
+}

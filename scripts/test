@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+gate="${1:-}"
+shift || true
+
+run() {
+  printf '==> %s\n' "$1"
+  shift
+  "$@"
+}
+
+not_run() {
+  printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
+  exit 2
+}
+
+case "$gate" in
+  static)
+    cd "$repo_dir"
+    run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
+    run contract go run ./cmd/skidbladnir-contract verify
+    run go-vet go vet ./...
+    run android-static ./scripts/build android-static
+    ;;
+  unit)
+    cd "$repo_dir"
+    run go-unit go test ./cmd/... ./internal/... ./generated/...
+    ;;
+  integration)
+    not_run integration 'P1-P3 integration surface is not implemented'
+    ;;
+  component)
+    cd "$repo_dir"
+    run android-component ./scripts/build android-component
+    ;;
+  system)
+    not_run system 'P3-P4 system surface is not implemented'
+    ;;
+  platform)
+    cd "$repo_dir"
+    ./scripts/build android-platform
+    ;;
+  live)
+    not_run live 'P0 live proof harness is not implemented'
+    ;;
+  e2e)
+    not_run e2e 'P7 end-to-end surface is not implemented'
+    ;;
+  verify)
+    "$0" static
+    "$repo_dir/scripts/build"
+    "$0" unit
+    "$0" integration
+    "$0" component
+    "$0" system
+    ;;
+  full)
+    "$0" verify
+    "$0" platform
+    "$0" live
+    "$0" e2e
+    ;;
+  accept)
+    case "${1:-}" in
+      core|upgrade)
+        run acceptance go run ./cmd/skidbladnir-contract accept "${1}"
+        ;;
+      *)
+        printf 'usage: %s accept {core|upgrade}\n' "$0" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  '')
+    printf 'usage: %s {static|unit|integration|component|system|platform|live|e2e|verify|full|accept {core|upgrade}}\n' "$0" >&2
+    exit 64
+    ;;
+  *)
+    printf 'unknown test gate: %s\n' "$gate" >&2
+    exit 64
+    ;;
+esac

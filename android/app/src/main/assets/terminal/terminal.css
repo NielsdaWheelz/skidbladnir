@@ -1,0 +1,47 @@
+:root {
+    color-scheme: dark;
+    background: #101114;
+    color: #f1f2f4;
+    font: 16px sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 16px;
+    background: #101114;
+}
+
+main {
+    display: grid;
+    gap: 10px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+h1 {
+    font-size: 18px;
+    margin: 0;
+}
+
+#terminal {
+    min-height: 180px;
+    border: 1px solid #3c414b;
+    padding: 8px;
+}
+
+#editor {
+    box-sizing: border-box;
+    width: 100%;
+    resize: vertical;
+    color: #f1f2f4;
+    background: #17191f;
+    border: 1px solid #646b78;
+    border-radius: 6px;
+    padding: 10px;
+    font: 16px monospace;
+}
+
+p {
+    margin: 0;
+    color: #b9c0cb;
+}
