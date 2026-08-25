@@ -282,6 +282,31 @@ func TestAcceptanceGateResultRequiresExitAndRecordAgreement(t *testing.T) {
 	}
 }
 
+func TestProofResultsRequireClosedStatusShapesAndScannedEvidencePaths(t *testing.T) {
+	proof := proofSpec{ID: "broker-appserver", Gate: "live", RequiredFor: []string{"core"}}
+	evidence := "evidence/live/broker-appserver.json"
+	reason := "live probe failed"
+	for name, result := range map[string]proofResult{
+		"pass without evidence": {ID: proof.ID, Gate: proof.Gate, Status: "PASS"},
+		"fail without reason":   {ID: proof.ID, Gate: proof.Gate, Status: "FAIL"},
+		"outside evidence tree": {ID: proof.ID, Gate: proof.Gate, Status: "PASS", Evidence: pointer("docs/architecture.md")},
+		"noncanonical path":     {ID: proof.ID, Gate: proof.Gate, Status: "PASS", Evidence: pointer("evidence/live/../proof.json")},
+		"unknown status":        {ID: proof.ID, Gate: proof.Gate, Status: "SKIPPED", Reason: &reason},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateProofResult(proof, result); err == nil {
+				t.Fatalf("accepted invalid proof result: %#v", result)
+			}
+		})
+	}
+	if err := validateProofResult(proof, proofResult{ID: proof.ID, Gate: proof.Gate, Status: "PASS", Evidence: &evidence}); err != nil {
+		t.Fatalf("valid PASS proof rejected: %v", err)
+	}
+	if err := validateProofResult(proof, proofResult{ID: proof.ID, Gate: proof.Gate, Status: "FAIL", Reason: &reason}); err != nil {
+		t.Fatalf("valid FAIL proof rejected: %v", err)
+	}
+}
+
 func TestWorkflowRequiresImmutableActionsAndTheP0CommandInventory(t *testing.T) {
 	valid := strings.Join([]string{
 		"name: verify",
@@ -375,3 +400,5 @@ func catalogueFixture() []catalogueEntry {
 	}
 	return entries
 }
+
+func pointer(value string) *string { return &value }

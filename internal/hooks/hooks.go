@@ -142,7 +142,7 @@ func decode(data []byte) (fact, error) {
 	if err != nil {
 		return fact{}, err
 	}
-	if err := optionalCommon(fields); err != nil {
+	if err := validateCommon(fields, event); err != nil {
 		return fact{}, err
 	}
 	decoded := fact{Hook: event, Projection: projectionFor, SessionID: sessionID}
@@ -157,6 +157,9 @@ func decode(data []byte) (fact, error) {
 		if err != nil {
 			return fact{}, err
 		}
+	}
+	if event == "UserPromptSubmit" && hasSubagentDiscriminator(fields) {
+		decoded.Projection = activityObserved
 	}
 	if err := validateEvent(fields, event); err != nil {
 		return fact{}, err
@@ -208,7 +211,6 @@ func decodeObject(data []byte) (map[string]json.RawMessage, error) {
 func allowedFor(event string) (map[string]bool, projection, error) {
 	common := map[string]bool{
 		"session_id": true, "transcript_path": true, "cwd": true, "hook_event_name": true,
-		"model": true, "permission_mode": true,
 	}
 	with := func(names ...string) map[string]bool {
 		allowed := make(map[string]bool, len(common)+len(names))
@@ -222,17 +224,17 @@ func allowedFor(event string) (map[string]bool, projection, error) {
 	}
 	switch event {
 	case "SessionStart":
-		return with("source"), sessionStarted, nil
+		return with("model", "permission_mode", "source"), sessionStarted, nil
 	case "UserPromptSubmit":
-		return with("turn_id", "prompt"), promptSubmitted, nil
+		return with("model", "permission_mode", "turn_id", "prompt", "agent_id", "agent_type"), promptSubmitted, nil
 	case "PostToolUse":
-		return with("turn_id", "tool_name", "tool_use_id", "tool_input", "tool_response"), activityObserved, nil
+		return with("model", "permission_mode", "turn_id", "tool_name", "tool_use_id", "tool_input", "tool_response", "agent_id", "agent_type"), activityObserved, nil
 	case "SubagentStart":
-		return with("turn_id", "agent_id", "agent_type"), activityObserved, nil
+		return with("model", "permission_mode", "turn_id", "agent_id", "agent_type"), activityObserved, nil
 	case "SubagentStop":
-		return with("turn_id", "agent_id", "agent_type", "agent_transcript_path", "stop_hook_active", "last_assistant_message"), activityObserved, nil
+		return with("model", "permission_mode", "turn_id", "agent_id", "agent_type", "agent_transcript_path", "stop_hook_active", "last_assistant_message"), activityObserved, nil
 	case "Stop":
-		return with("turn_id", "stop_hook_active", "last_assistant_message"), stopObserved, nil
+		return with("model", "permission_mode", "turn_id", "stop_hook_active", "last_assistant_message"), stopObserved, nil
 	case "SessionEnd":
 		return with("reason"), sessionEnded, nil
 	default:
@@ -240,23 +242,40 @@ func allowedFor(event string) (map[string]bool, projection, error) {
 	}
 }
 
-func optionalCommon(fields map[string]json.RawMessage) error {
+func validateCommon(fields map[string]json.RawMessage, event string) error {
 	if _, err := requiredString(fields, "cwd"); err != nil {
 		return err
 	}
-	if raw, ok := fields["transcript_path"]; ok && !bytes.Equal(raw, []byte("null")) {
-		if _, err := decodeString(raw, "transcript_path"); err != nil {
-			return err
-		}
+	if err := requiredNullableString(fields, "transcript_path"); err != nil {
+		return err
 	}
-	for _, name := range []string{"model", "permission_mode"} {
+	if event == "SessionEnd" {
+		return nil
+	}
+	if _, err := requiredString(fields, "model"); err != nil {
+		return err
+	}
+	permissionMode, err := requiredString(fields, "permission_mode")
+	if err != nil {
+		return err
+	}
+	if !knownPermissionMode(permissionMode) {
+		return errors.New("invalid permission_mode")
+	}
+	return nil
+}
+
+func hasSubagentDiscriminator(fields map[string]json.RawMessage) bool {
+	_, hasAgentID := fields["agent_id"]
+	_, hasAgentType := fields["agent_type"]
+	return hasAgentID || hasAgentType
+}
+
+func validateSubagentDiscriminator(fields map[string]json.RawMessage) error {
+	for _, name := range []string{"agent_id", "agent_type"} {
 		if raw, ok := fields[name]; ok {
-			value, err := decodeString(raw, name)
-			if err != nil {
+			if _, err := decodeString(raw, name); err != nil {
 				return err
-			}
-			if name == "permission_mode" && !knownPermissionMode(value) {
-				return fmt.Errorf("invalid permission_mode")
 			}
 		}
 	}
@@ -279,6 +298,9 @@ func validateEvent(fields map[string]json.RawMessage, event string) error {
 		if _, err := requiredString(fields, "prompt"); err != nil {
 			return err
 		}
+		if err := validateSubagentDiscriminator(fields); err != nil {
+			return err
+		}
 	case "PostToolUse":
 		if _, err := requiredString(fields, "tool_use_id"); err != nil {
 			return err
@@ -287,6 +309,9 @@ func validateEvent(fields map[string]json.RawMessage, event string) error {
 			return err
 		}
 		if err := validJSONValue(fields["tool_response"], "tool_response"); err != nil {
+			return err
+		}
+		if err := validateSubagentDiscriminator(fields); err != nil {
 			return err
 		}
 	case "SubagentStart":
@@ -303,20 +328,20 @@ func validateEvent(fields map[string]json.RawMessage, event string) error {
 		if _, err := requiredString(fields, "agent_type"); err != nil {
 			return err
 		}
-		if err := optionalNullableString(fields, "agent_transcript_path"); err != nil {
+		if err := requiredNullableString(fields, "agent_transcript_path"); err != nil {
 			return err
 		}
 		if err := requiredBool(fields, "stop_hook_active"); err != nil {
 			return err
 		}
-		if err := optionalNullableString(fields, "last_assistant_message"); err != nil {
+		if err := requiredNullableString(fields, "last_assistant_message"); err != nil {
 			return err
 		}
 	case "Stop":
 		if err := requiredBool(fields, "stop_hook_active"); err != nil {
 			return err
 		}
-		if err := optionalNullableString(fields, "last_assistant_message"); err != nil {
+		if err := requiredNullableString(fields, "last_assistant_message"); err != nil {
 			return err
 		}
 	}
@@ -345,9 +370,12 @@ func requiredBool(fields map[string]json.RawMessage, name string) error {
 	return nil
 }
 
-func optionalNullableString(fields map[string]json.RawMessage, name string) error {
+func requiredNullableString(fields map[string]json.RawMessage, name string) error {
 	raw, ok := fields[name]
-	if !ok || bytes.Equal(raw, []byte("null")) {
+	if !ok {
+		return fmt.Errorf("missing %s", name)
+	}
+	if bytes.Equal(raw, []byte("null")) {
 		return nil
 	}
 	_, err := decodeString(raw, name)

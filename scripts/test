@@ -72,6 +72,8 @@ case "$gate" in
     not_run component 'No host-side Compose/WebView component runtime is implemented before P5'
     ;;
   system)
+    cd "$repo_dir"
+    run p0-hook-system go test -tags=system ./internal/hooks
     not_run system 'P3-P4 system surface is not implemented'
     ;;
   platform)

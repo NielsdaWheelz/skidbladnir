@@ -795,23 +795,20 @@ func verifyProofLedger(root string, spec apiContract) (proofLedger, error) {
 	seen := map[string]bool{}
 	for _, result := range ledger.Results {
 		proof, ok := proofs[result.ID]
-		if !ok || seen[result.ID] || result.Gate != proof.Gate || !contains([]string{"PASS", "FAIL", "NOT_RUN"}, result.Status) {
+		if !ok || seen[result.ID] {
 			return proofLedger{}, fmt.Errorf("invalid proof result %q", result.ID)
 		}
 		seen[result.ID] = true
-		if result.Status == "PASS" && (result.Evidence == nil || *result.Evidence == "") {
-			return proofLedger{}, fmt.Errorf("PASS proof %s has no evidence", result.ID)
-		}
-		if result.Status == "NOT_RUN" && (result.Reason == nil || *result.Reason == "") {
-			return proofLedger{}, fmt.Errorf("NOT_RUN proof %s has no reason", result.ID)
+		if err := validateProofResult(proof, result); err != nil {
+			return proofLedger{}, err
 		}
 		if result.Evidence != nil {
-			path := filepath.Clean(*result.Evidence)
-			if filepath.IsAbs(path) || strings.HasPrefix(path, "..") {
-				return proofLedger{}, fmt.Errorf("proof %s has unsafe evidence path", result.ID)
-			}
-			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
+			info, err := os.Lstat(filepath.Join(root, *result.Evidence))
+			if err != nil {
 				return proofLedger{}, fmt.Errorf("proof %s evidence: %w", result.ID, err)
+			}
+			if !info.Mode().IsRegular() {
+				return proofLedger{}, fmt.Errorf("proof %s evidence is not a regular file", result.ID)
 			}
 		}
 	}
@@ -819,6 +816,26 @@ func verifyProofLedger(root string, spec apiContract) (proofLedger, error) {
 		return proofLedger{}, errors.New("proof ledger does not cover the closed proof inventory")
 	}
 	return ledger, nil
+}
+
+func validateProofResult(proof proofSpec, result proofResult) error {
+	if result.ID != proof.ID || result.Gate != proof.Gate || !contains([]string{"PASS", "FAIL", "NOT_RUN"}, result.Status) {
+		return fmt.Errorf("invalid proof result %q", result.ID)
+	}
+	if result.Status == "PASS" && (result.Evidence == nil || *result.Evidence == "") {
+		return fmt.Errorf("PASS proof %s has no evidence", result.ID)
+	}
+	if result.Status != "PASS" && (result.Reason == nil || *result.Reason == "") {
+		return fmt.Errorf("%s proof %s has no reason", result.Status, result.ID)
+	}
+	if result.Evidence == nil {
+		return nil
+	}
+	path := filepath.Clean(*result.Evidence)
+	if path != *result.Evidence || filepath.IsAbs(path) || !strings.HasPrefix(path, filepath.Join("evidence", "live")+string(filepath.Separator)) {
+		return fmt.Errorf("proof %s has unscanned evidence path", result.ID)
+	}
+	return nil
 }
 
 func loadProofLedger(root string) (proofLedger, error) {
@@ -843,6 +860,9 @@ func verifyEvidenceContent(root string) error {
 		}
 		if entry.IsDir() {
 			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
+			return fmt.Errorf("evidence entry is not a regular file: %s", path)
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
