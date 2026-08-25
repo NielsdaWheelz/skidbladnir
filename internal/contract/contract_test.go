@@ -144,6 +144,51 @@ func TestSchemaTreeDigestCoversEveryPathAndByte(t *testing.T) {
 	}
 }
 
+func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
+	valid := codexLock{
+		Version:              "0.149.1",
+		Package:              "@openai/codex@0.149.1",
+		PlatformPackage:      "@openai/codex@0.149.1-linux-x64",
+		BinaryPath:           "/opt/codex/0.149.1/codex",
+		BinarySHA256:         strings.Repeat("c", 64),
+		SchemaDirectory:      "schemas/codex/0.149.1",
+		SchemaFiles:          298,
+		SchemaTreeSHA256:     strings.Repeat("a", 64),
+		SchemaBundle:         "schemas/codex/0.149.1/codex_app_server_protocol.v2.schemas.json",
+		SchemaSHA256:         strings.Repeat("d", 64),
+		SchemaCommand:        []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--out", "schemas/codex/0.149.1"},
+		SourceRepository:     "https://github.com/openai/codex.git",
+		SourceCommit:         "ff29a44391deccde0aba0f8390337d7f3c319ea4",
+		SourceTag:            "rust-v0.149.1",
+		HookSchemaDirectory:  "schemas/codex/0.149.1/hooks",
+		HookSchemaFiles:      7,
+		HookSchemaTreeSHA256: strings.Repeat("b", 64),
+		HookSchemaCommand:    []string{"./scripts/vendor-codex-hook-schemas"},
+	}
+	if err := validateCodexLockIdentity(valid); err != nil {
+		t.Fatalf("complete pin identity rejected: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*codexLock){
+		"source commit": func(lock *codexLock) { lock.SourceCommit = "" },
+		"source tag":    func(lock *codexLock) { lock.SourceTag = "rust-v0.149.0" },
+		"hook directory": func(lock *codexLock) {
+			lock.HookSchemaDirectory = "schemas/codex/0.149.1/other"
+		},
+		"hook count":   func(lock *codexLock) { lock.HookSchemaFiles = 6 },
+		"hook digest":  func(lock *codexLock) { lock.HookSchemaTreeSHA256 = "" },
+		"hook command": func(lock *codexLock) { lock.HookSchemaCommand = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := valid
+			mutate(&changed)
+			if err := validateCodexLockIdentity(changed); err == nil {
+				t.Fatalf("pin identity accepted invalid %s", name)
+			}
+		})
+	}
+}
+
 func TestDvergatalEvidenceExactlyMatchesCatalogue(t *testing.T) {
 	entry := catalogueEntry{
 		Key:         "norse.ai",

@@ -116,17 +116,24 @@ type catalogueSource struct {
 }
 
 type codexLock struct {
-	Version          string   `json:"version"`
-	Package          string   `json:"package"`
-	PlatformPackage  string   `json:"platformPackage"`
-	BinaryPath       string   `json:"binaryPath"`
-	BinarySHA256     string   `json:"binarySha256"`
-	SchemaDirectory  string   `json:"schemaDirectory"`
-	SchemaFiles      int      `json:"schemaFiles"`
-	SchemaTreeSHA256 string   `json:"schemaTreeSha256"`
-	SchemaBundle     string   `json:"schemaBundle"`
-	SchemaSHA256     string   `json:"schemaSha256"`
-	SchemaCommand    []string `json:"schemaCommand"`
+	Version              string   `json:"version"`
+	Package              string   `json:"package"`
+	PlatformPackage      string   `json:"platformPackage"`
+	BinaryPath           string   `json:"binaryPath"`
+	BinarySHA256         string   `json:"binarySha256"`
+	SchemaDirectory      string   `json:"schemaDirectory"`
+	SchemaFiles          int      `json:"schemaFiles"`
+	SchemaTreeSHA256     string   `json:"schemaTreeSha256"`
+	SchemaBundle         string   `json:"schemaBundle"`
+	SchemaSHA256         string   `json:"schemaSha256"`
+	SchemaCommand        []string `json:"schemaCommand"`
+	SourceRepository     string   `json:"sourceRepository"`
+	SourceCommit         string   `json:"sourceCommit"`
+	SourceTag            string   `json:"sourceTag"`
+	HookSchemaDirectory  string   `json:"hookSchemaDirectory"`
+	HookSchemaFiles      int      `json:"hookSchemaFiles"`
+	HookSchemaTreeSHA256 string   `json:"hookSchemaTreeSha256"`
+	HookSchemaCommand    []string `json:"hookSchemaCommand"`
 }
 
 type contractInputLock struct {
@@ -607,15 +614,8 @@ func verifyCodexLock(root string) error {
 	if err := decodeStrict(bytes, &lock); err != nil {
 		return fmt.Errorf("decode %s: %w", codexLockPath, err)
 	}
-	expectedSchemaDirectory := filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version))
-	if lock.Version == "" || lock.Package != "@openai/codex@"+lock.Version || !strings.HasSuffix(lock.PlatformPackage, "@"+lock.Version+"-linux-x64") || !filepath.IsAbs(lock.BinaryPath) {
-		return errors.New("codex.lock identity is incomplete")
-	}
-	if lock.SchemaDirectory != expectedSchemaDirectory || lock.SchemaFiles < 1 || len(lock.SchemaTreeSHA256) != sha256.Size*2 {
-		return errors.New("codex.lock schema tree identity is incomplete")
-	}
-	if filepath.ToSlash(filepath.Dir(lock.SchemaBundle)) != lock.SchemaDirectory {
-		return errors.New("codex.lock schema bundle is outside its schema directory")
+	if err := validateCodexLockIdentity(lock); err != nil {
+		return err
 	}
 	if err := verifyDigest(lock.BinaryPath, lock.BinarySHA256); err != nil {
 		return fmt.Errorf("pinned Codex binary: %w", err)
@@ -630,8 +630,35 @@ func verifyCodexLock(root string) error {
 	if len(files) != lock.SchemaFiles || schemaTreeDigest(files) != lock.SchemaTreeSHA256 {
 		return errors.New("pinned Codex schema tree differs from codex.lock")
 	}
+	hookFiles, err := collectSchemaFiles(filepath.Join(root, lock.HookSchemaDirectory))
+	if err != nil {
+		return fmt.Errorf("read pinned Codex hook schema tree: %w", err)
+	}
+	if len(hookFiles) != lock.HookSchemaFiles || schemaTreeDigest(hookFiles) != lock.HookSchemaTreeSHA256 {
+		return errors.New("pinned Codex hook schema tree differs from codex.lock")
+	}
+	return nil
+}
+
+func validateCodexLockIdentity(lock codexLock) error {
+	expectedSchemaDirectory := filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version))
+	if lock.Version == "" || lock.Package != "@openai/codex@"+lock.Version || !strings.HasSuffix(lock.PlatformPackage, "@"+lock.Version+"-linux-x64") || !filepath.IsAbs(lock.BinaryPath) || len(lock.BinarySHA256) != sha256.Size*2 {
+		return errors.New("codex.lock identity is incomplete")
+	}
+	if lock.SchemaDirectory != expectedSchemaDirectory || lock.SchemaFiles < 1 || len(lock.SchemaTreeSHA256) != sha256.Size*2 || filepath.ToSlash(filepath.Dir(lock.SchemaBundle)) != lock.SchemaDirectory || len(lock.SchemaSHA256) != sha256.Size*2 {
+		return errors.New("codex.lock schema identity is incomplete")
+	}
 	if len(lock.SchemaCommand) != 5 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--out" || filepath.ToSlash(lock.SchemaCommand[4]) != lock.SchemaDirectory {
 		return errors.New("codex.lock schema command is not exact")
+	}
+	if lock.SourceRepository != "https://github.com/openai/codex.git" || len(lock.SourceCommit) != 40 || lock.SourceTag != "rust-v"+lock.Version {
+		return errors.New("codex.lock source identity is incomplete")
+	}
+	if lock.HookSchemaDirectory != filepath.ToSlash(filepath.Join(lock.SchemaDirectory, "hooks")) || lock.HookSchemaFiles != 7 || len(lock.HookSchemaTreeSHA256) != sha256.Size*2 {
+		return errors.New("codex.lock hook schema identity is incomplete")
+	}
+	if len(lock.HookSchemaCommand) != 1 || lock.HookSchemaCommand[0] != "./scripts/vendor-codex-hook-schemas" {
+		return errors.New("codex.lock hook schema command is not exact")
 	}
 	return nil
 }

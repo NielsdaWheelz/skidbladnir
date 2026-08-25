@@ -5,8 +5,8 @@
   "binaryPath": "/home/niels/.local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
   "binarySha256": "73dc5888888f411c1f0fa7b81d866e721dcc86b527ce8e3b2cf4708661e823ba",
   "schemaDirectory": "schemas/codex/0.149.1",
-  "schemaFiles": 291,
-  "schemaTreeSha256": "69565bda2cf809a9d4e2170fc480225c1690de97a239b2c49cf7d9c7329a6d98",
+  "schemaFiles": 298,
+  "schemaTreeSha256": "3868af3b1231c32ba185fc62d4678f6eb2506c998cd56c246e34d72181e412b2",
   "schemaBundle": "schemas/codex/0.149.1/codex_app_server_protocol.v2.schemas.json",
   "schemaSha256": "9b3de71a5a2ffc980b792a18aa8f8dec3f85f48829560222a0264fe494b679a9",
   "schemaCommand": [
@@ -15,5 +15,14 @@
     "generate-json-schema",
     "--out",
     "schemas/codex/0.149.1"
+  ],
+  "sourceRepository": "https://github.com/openai/codex.git",
+  "sourceCommit": "ff29a44391deccde0aba0f8390337d7f3c319ea4",
+  "sourceTag": "rust-v0.149.1",
+  "hookSchemaDirectory": "schemas/codex/0.149.1/hooks",
+  "hookSchemaFiles": 7,
+  "hookSchemaTreeSha256": "ff72259ab473b2351c4cc5a3d0170b3331c19758ced743ade778384e31e31bb1",
+  "hookSchemaCommand": [
+    "./scripts/vendor-codex-hook-schemas"
   ]
 }
