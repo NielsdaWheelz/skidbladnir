@@ -130,7 +130,7 @@ missing rights decision:
 - No `FairyTale`, `ModernMedia`, generic Nibelung, unnamed dwarf, disputed dwarf,
   giant, dragon, human, god, elf, or invented catalogue filler is included.
 
-## Proposed inventory (101 entries)
+## Frozen inventory (101 entries)
 
 ```text
 ENTRY|key=norse.modsognir|displayName=Móðsognir|tradition=OldNorse|work=Vǫluspá|locus=st. 10

@@ -8,7 +8,7 @@
     { "id": "p0-tui-lifecycle", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tui-lifecycle.json" },
     { "id": "p0-tmux-handoff", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tmux-handoff.json" },
     { "id": "p0-tui-keys", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-tui-keys.json" },
-    { "id": "p0-android-terminal", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "Automated device harness passes; required physical Gboard and accessibility observations remain NOT_RUN" },
+    { "id": "p0-android-terminal", "gate": "platform", "status": "PASS", "evidence": "evidence/live/p0-android-terminal.json" },
     { "id": "command-profile", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 router and profile boundary is not implemented" },
     { "id": "launcher-codex-runtime", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 launcher boundary is not implemented" },
     { "id": "hooks-registry", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 registry projection is not implemented" },

@@ -1,9 +1,16 @@
 {
   "version": 1,
   "proofId": "p0-tmux-handoff",
-  "recordedAt": "2026-08-25T14:11:55Z",
+  "recordedAt": "2026-08-25T18:43:48Z",
   "command": ["./scripts/test", "proof", "p0-tmux-handoff"],
   "artifacts": [
-    {"path": "tests/live/tmux_grouped_live_test.go", "sha256": "498fa92b2f20bbac93a06edc7b920df45615f0405acece2bccf4aa3cdc95c805"}
+    {"path": "codex.lock", "sha256": "6d6152a7e6305fc5ee3b4e1e0f282c8ec1fd91c1cc95e8dc5ec1857b00274ec9"},
+    {"path": "internal/inventory/inventory.go", "sha256": "d06fbd91ef3052c133bf894ac41e59bf4edaa9ab57b52d3d8bb0bf19a4e286f0"},
+    {"path": "internal/inventory/inventory_test.go", "sha256": "c5a3834f8a2dffe4733262f3f62ba5accdf41a2c8a75bba8593ba244ed52fb43"},
+    {"path": "scripts/test", "sha256": "d0627f1a07473e1a78e5978a3b8b84cbf30e00cd1848eac1e55cf10b89d9c9ac"},
+    {"path": "tests/live/direct_tui_live_test.go", "sha256": "efbaf599e76fe4efc2c58d3c1ae28f603516764698980a3497e0fa9a558e6ad8"},
+    {"path": "tests/live/p0_inventory_process_live_test.go", "sha256": "2f33fc00f301520575b1e7ff57a78caf843b95637e8a674af2eeeb98cadab343"},
+    {"path": "tests/live/tmux_grouped_live_test.go", "sha256": "498fa92b2f20bbac93a06edc7b920df45615f0405acece2bccf4aa3cdc95c805"},
+    {"path": "tests/live/tui_behavior_live_test.go", "sha256": "dc60c3de3c002e3061d2a4ad6a0186b7e9e03ea37295450a5b22c570749bcb86"}
   ]
 }

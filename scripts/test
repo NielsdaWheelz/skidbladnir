@@ -113,7 +113,7 @@ case "$gate" in
     fi
     cd "$repo_dir"
     run p0-direct-tui-contract go run ./cmd/skidbladnir-contract verify
-    run p0-direct-tui-upgrade-live go test -tags=live ./tests/live -run '^(TestDirectTUIAcrossProfiles|TestDirectTUIHookOrigin|TestDirectTUILifecycle|TestTmuxGroupedBehavior)$' -count=1
+    run p0-direct-tui-upgrade-live go test -tags=live ./tests/live -run '^(TestDirectTUIAcrossProfiles|TestDirectTUIHookOrigin|TestDirectTUILifecycle|TestTmuxGroupedBehavior|TestP0PinnedCodexResumeArgvGrammar|TestP0UnmarkedTUIInventoryProcessTrees)$' -count=1
     ;;
   e2e)
     not_run e2e 'P7 end-to-end surface is not implemented'
@@ -138,6 +138,7 @@ case "$gate" in
     case "$proof_id" in
       p0-codex-pin)
         run "$proof_id" go run ./cmd/skidbladnir-contract verify
+        run p0-resume-grammar go test -tags=live ./tests/live -run '^TestP0PinnedCodexResumeArgvGrammar$' -count=1
         ;;
       p0-profile-direct-tui)
         run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIAcrossProfiles$' -count=1
@@ -152,7 +153,7 @@ case "$gate" in
         run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUILifecycle$' -count=1
         ;;
       p0-tmux-handoff)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestTmuxGroupedBehavior$' -count=1
+        run "$proof_id" go test -tags=live ./tests/live -run '^(TestTmuxGroupedBehavior|TestP0UnmarkedTUIInventoryProcessTrees)$' -count=1
         ;;
       p0-tui-keys)
         run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIKeys$' -count=1

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -39,6 +40,7 @@ type tuiBehaviorClient struct {
 	input   io.WriteCloser
 	done    chan error
 	mu      sync.Mutex
+	process directTUIProcess
 }
 
 func TestDirectTUIKeys(t *testing.T) {
@@ -180,6 +182,9 @@ func startNamedTUIBehaviorClient(t *testing.T, socket, session string) *tuiBehav
 	}()
 	t.Cleanup(func() {
 		_ = input.Close() // justify-ignore-error: cleanup closes only the test-owned terminal probe input.
+		if directTUIProcessAlive(client.process) {
+			_ = syscall.Kill(client.process.pid, syscall.SIGTERM) // justify-ignore-error: cleanup targets the exact test-owned tmux client PID/start.
+		}
 		if command.Process != nil {
 			_ = command.Process.Kill() // justify-ignore-error: cleanup accepts an already-exited test-owned terminal probe.
 		}
@@ -188,12 +193,38 @@ func startNamedTUIBehaviorClient(t *testing.T, socket, session string) *tuiBehav
 		case <-time.After(2 * time.Second):
 			t.Error("terminal probe client did not exit")
 		}
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) && directTUIProcessAlive(client.process) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if directTUIProcessAlive(client.process) {
+			_ = syscall.Kill(client.process.pid, syscall.SIGKILL) // justify-ignore-error: exact PID/start cleanup follows a bounded graceful wait.
+			t.Error("exact terminal probe tmux client survived cleanup")
+		}
 	})
 	deadline := time.Now().Add(directTUITimeout)
 	for time.Now().Before(deadline) {
-		output, err := exec.Command("tmux", "-L", socket, "list-clients", "-F", "#{client_session}").Output()
-		if err == nil && strings.Contains(string(output), session) {
-			return client
+		output, err := exec.Command("tmux", "-L", socket, "list-clients", "-F", "#{client_pid}|#{client_tty}|#{client_session}").Output()
+		if err == nil {
+			var matches []directTUIProcess
+			for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+				parts := strings.Split(line, "|")
+				if len(parts) != 3 || parts[2] != session {
+					continue
+				}
+				pid, parseErr := strconv.Atoi(parts[0])
+				startTime := processStartTime(pid)
+				if parseErr == nil && pid > 0 && startTime > 0 && filepath.IsAbs(parts[1]) {
+					matches = append(matches, directTUIProcess{pid: pid, startTime: startTime, tty: filepath.Clean(parts[1])})
+				}
+			}
+			if len(matches) > 1 {
+				t.Fatal("terminal probe resolved multiple tmux clients for one test-owned session")
+			}
+			if len(matches) == 1 {
+				client.process = matches[0]
+				return client
+			}
 		}
 		time.Sleep(25 * time.Millisecond)
 	}

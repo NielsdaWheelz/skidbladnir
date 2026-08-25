@@ -294,7 +294,9 @@ func TestDirectTUIHookIdentity(t *testing.T) {
 		return strings.Contains(screen, "Ask Codex to do anything")
 	}, "identity-probe TUI composer readiness")
 
-	turns := []directHookTurn{submitDirectHookPrompt(t, capture, harness, "identity-root", 1)}
+	root := submitDirectHookPrompt(t, capture, harness, "identity-root", 1)
+	assertDirectHookRootTurnOrder(t, capture.snapshot(), harness, root, "initial root")
+	turns := []directHookTurn{root}
 	for _, rollover := range []struct {
 		command string
 		prompt  string
@@ -306,6 +308,7 @@ func TestDirectTUIHookIdentity(t *testing.T) {
 	} {
 		sendDirectHookSlash(t, harness, rollover.command)
 		turn := submitDirectHookPrompt(t, capture, harness, rollover.prompt, int64(len(turns)+1))
+		assertDirectHookRootTurnOrder(t, capture.snapshot(), harness, turn, rollover.command+" rollover")
 		if turn.Source != rollover.source {
 			t.Fatalf("%s SessionStart source = %q, want %q", rollover.command, turn.Source, rollover.source)
 		}
@@ -857,6 +860,43 @@ func submitDirectHookPrompt(t *testing.T, capture *directHookCapture, harness di
 	}
 	t.Fatal("root prompt completed without a matching SessionStart")
 	return directHookTurn{}
+}
+
+func assertDirectHookRootTurnOrder(t *testing.T, facts []capturedHookFact, harness directHookHarness, turn directHookTurn, phase string) {
+	t.Helper()
+	if harness.process.startTime != processStartTime(harness.process.pid) {
+		t.Fatalf("%s replaced the registered TUI PID %d", phase, harness.process.pid)
+	}
+
+	sessionStartIndex, promptIndex, stopIndex := -1, -1, -1
+	for index, fact := range facts {
+		if fact.PID != harness.process.pid || fact.ThreadID != turn.ThreadID {
+			continue
+		}
+		if fact.RuntimeID != harness.runtimeID || fact.StartTime != harness.process.startTime || fact.TTY != harness.process.tty {
+			t.Fatalf("%s hook %s did not originate from the unchanged registered TUI PID %d", phase, fact.Hook, harness.process.pid)
+		}
+		switch fact.Hook {
+		case "SessionStart":
+			if fact.SessionID == turn.SessionID {
+				sessionStartIndex = index
+			}
+		case "UserPromptSubmit":
+			if fact.SessionID == turn.SessionID && fact.TurnID == turn.TurnID {
+				promptIndex = index
+			}
+		case "Stop":
+			if fact.SessionID == turn.SessionID && fact.TurnID == turn.TurnID {
+				stopIndex = index
+			}
+		}
+	}
+	if sessionStartIndex < 0 || promptIndex < 0 || stopIndex < 0 {
+		t.Fatalf("%s omitted SessionStart, UserPromptSubmit, or Stop on registered TUI PID %d", phase, harness.process.pid)
+	}
+	if !(sessionStartIndex < promptIndex && promptIndex < stopIndex) {
+		t.Fatalf("%s hook order on registered TUI PID %d = SessionStart[%d], UserPromptSubmit[%d], Stop[%d], want SessionStart < UserPromptSubmit < Stop", phase, harness.process.pid, sessionStartIndex, promptIndex, stopIndex)
+	}
 }
 
 func backtrackAndResubmitDirectHookPrompt(t *testing.T, capture *directHookCapture, harness directHookHarness, previous directHookTurn, prompt string, providerCount int64) directHookTurn {

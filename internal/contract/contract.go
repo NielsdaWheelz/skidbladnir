@@ -149,7 +149,15 @@ type terminalAssetLock struct {
 	Version   string            `json:"version"`
 	Source    string            `json:"source"`
 	Integrity string            `json:"integrity"`
+	FitAddon  terminalAddonLock `json:"fitAddon"`
 	Files     map[string]string `json:"files"`
+}
+
+type terminalAddonLock struct {
+	Package   string `json:"package"`
+	Version   string `json:"version"`
+	Source    string `json:"source"`
+	Integrity string `json:"integrity"`
 }
 
 type proofLedger struct {
@@ -735,13 +743,22 @@ func verifyTerminalAssets(root string) error {
 	if err := decodeStrict(content, &lock); err != nil {
 		return fmt.Errorf("decode %s: %w", terminalLockPath, err)
 	}
-	if lock.Package != "@xterm/xterm" || lock.Version != "6.0.0" || lock.Source != "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz" || !strings.HasPrefix(lock.Integrity, "sha512-") {
+	if lock.Package != "@xterm/xterm" ||
+		lock.Version != "6.0.0" ||
+		lock.Source != "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz" ||
+		lock.Integrity != "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==" ||
+		lock.FitAddon.Package != "@xterm/addon-fit" ||
+		lock.FitAddon.Version != "0.11.0" ||
+		lock.FitAddon.Source != "https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz" ||
+		lock.FitAddon.Integrity != "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==" {
 		return errors.New("terminal asset lock identity differs from the reviewed pin")
 	}
 	required := map[string]bool{
-		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js":      true,
-		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css":     true,
-		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE": true,
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js":                 true,
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css":                true,
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE":            true,
+		"android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js":      true,
+		"android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.LICENSE": true,
 	}
 	if len(lock.Files) != len(required) {
 		return errors.New("terminal asset lock has the wrong file inventory")
@@ -971,13 +988,26 @@ func verifyWorkflow(root string) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", workflowPath, err)
 	}
-	if err := validateWorkflow(content); err != nil {
+	lockContent, err := os.ReadFile(filepath.Join(root, codexLockPath))
+	if err != nil {
+		return fmt.Errorf("read %s for workflow: %w", codexLockPath, err)
+	}
+	var lock codexLock
+	if err := decodeStrict(lockContent, &lock); err != nil {
+		return fmt.Errorf("decode %s for workflow: %w", codexLockPath, err)
+	}
+	marker := filepath.ToSlash(filepath.Join("lib", "node_modules"))
+	prefix, suffix, found := strings.Cut(filepath.ToSlash(lock.BinaryPath), "/"+marker+"/")
+	if !found || prefix == "" || suffix == "" || !filepath.IsAbs(prefix) {
+		return errors.New("pinned Codex binary has no global npm prefix")
+	}
+	if err := validateWorkflow(content, lock.Package, prefix); err != nil {
 		return fmt.Errorf("validate %s: %w", workflowPath, err)
 	}
 	return nil
 }
 
-func validateWorkflow(content []byte) error {
+func validateWorkflow(content []byte, codexPackage, codexPrefix string) error {
 	text := string(content)
 	for _, forbidden := range []string{"pull_request_target:", "continue-on-error:", "|| true", "write-all"} {
 		if strings.Contains(text, forbidden) {
@@ -998,6 +1028,16 @@ func validateWorkflow(content []byte) error {
 	for _, command := range required {
 		if strings.Count(text, command) != 1 {
 			return fmt.Errorf("workflow must contain exactly one %q", command)
+		}
+	}
+	pinnedCodexProvisioning := []string{
+		"- name: Provision pinned Codex",
+		fmt.Sprintf(`sudo install -d -o "$(id -u)" -g "$(id -g)" %s`, codexPrefix),
+		fmt.Sprintf("npm install --global --ignore-scripts --prefix %s %s", codexPrefix, codexPackage),
+	}
+	for _, line := range pinnedCodexProvisioning {
+		if strings.Count(text, line) != 1 {
+			return fmt.Errorf("workflow must derive and provision pinned Codex with exactly one %q", line)
 		}
 	}
 	for lineNumber, line := range strings.Split(text, "\n") {

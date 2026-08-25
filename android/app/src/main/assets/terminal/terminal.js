@@ -2,6 +2,7 @@
     "use strict";
 
     var bridgeStatus = document.getElementById("bridge-status");
+    var focusTerminal = document.getElementById("focus-terminal");
     var inputStatus = document.getElementById("input-status");
     var imeStatus = document.getElementById("ime-status");
     var viewportStatus = document.getElementById("viewport-status");
@@ -10,7 +11,13 @@
     var bridgePort = null;
     var inputHistory = [];
     var automaticReplies = [];
+    var compositionValue = "";
+    var compositionActive = false;
+    var compositionCommitObserved = false;
+    var compositionStartOffset = 0;
+    var pendingCompositionValues = [];
     var visualViewportState = { width: 0, height: 0 };
+    var terminalContainer = document.getElementById("terminal");
     var terminal = new window.Terminal({
         convertEol: true,
         cursorBlink: true,
@@ -21,7 +28,10 @@
         screenReaderMode: true,
         theme: { background: "#101114", foreground: "#f1f2f4" }
     });
-    terminal.open(document.getElementById("terminal"));
+    var fitAddon = new window.FitAddon.FitAddon();
+    var fitScheduled = false;
+    terminal.loadAddon(fitAddon);
+    terminal.open(terminalContainer);
     terminal.write("\x1b[1;32mSkíðblaðnir\x1b[0m platform harness\r\n");
     terminal.write("ANSI: \x1b[31mred\x1b[0m  Unicode: 北極星 / 🧭\r\n");
 
@@ -51,10 +61,13 @@
     }
 
     function updateDraftValue() {
-        var value = window.__skidbladnirHarness.editorValue;
+        var value = window.__skidbladnirHarness.editorValue +
+            pendingCompositionValues.join("") + compositionValue;
         draftValue.textContent = value || "Empty draft";
         draftValue.setAttribute("aria-label", "Current editable draft: " + (value || "empty"));
-        draftStatus.textContent = "Draft: editable; never submitted or saved";
+        draftStatus.textContent = compositionActive || pendingCompositionValues.length > 0
+            ? "Draft: composing; never submitted or saved"
+            : "Draft: editable; never submitted or saved";
     }
 
     function updateVisualViewport() {
@@ -68,6 +81,21 @@
         }
         viewportStatus.textContent = "Terminal: " + window.__skidbladnirHarness.viewport +
             " | Visual viewport: " + visualViewportState.width + "x" + visualViewportState.height + " px";
+    }
+
+    function fitTerminal() {
+        fitScheduled = false;
+        fitAddon.fit();
+        if (!window.__skidbladnirHarness) return;
+        window.__skidbladnirHarness.viewport = terminal.cols + "x" + terminal.rows;
+        updateVisualViewport();
+        send("resize", window.__skidbladnirHarness.viewport);
+    }
+
+    function scheduleTerminalFit() {
+        if (fitScheduled) return;
+        fitScheduled = true;
+        window.requestAnimationFrame(fitTerminal);
     }
 
     function updateDraftFromInput(value) {
@@ -90,6 +118,18 @@
             send("terminalReply", reply);
             return;
         }
+        var matchesActiveComposition = compositionActive && data === compositionValue;
+        var matchesPendingComposition = pendingCompositionValues.length > 0 &&
+            data === pendingCompositionValues[0];
+        if (matchesActiveComposition && !matchesPendingComposition) {
+            compositionCommitObserved = true;
+            compositionValue = "";
+        } else if (pendingCompositionValues.length > 0) {
+            pendingCompositionValues.shift();
+        } else if (compositionActive) {
+            compositionCommitObserved = true;
+            compositionValue = "";
+        }
         var normalized = data.replace(/\r\n?/g, "\n");
         inputHistory.push(normalized);
         updateDraftFromInput(normalized);
@@ -99,6 +139,54 @@
 
     terminal.onData(function (data) {
         recordInput(data);
+    });
+
+    var terminalInput = inputElement();
+    if (terminalInput) {
+        terminalInput.addEventListener("compositionstart", function (event) {
+            compositionActive = true;
+            compositionCommitObserved = false;
+            compositionStartOffset = terminalInput.value.length;
+            compositionValue = event.data || "";
+            updateDraftValue();
+        });
+        terminalInput.addEventListener("compositionupdate", function (event) {
+            compositionValue = event.data || "";
+            updateDraftValue();
+        });
+        terminalInput.addEventListener("beforeinput", function (event) {
+            if (!event.isComposing || !event.data) return;
+            compositionActive = true;
+            compositionValue = event.data;
+            updateDraftValue();
+        }, true);
+        terminalInput.addEventListener("input", function (event) {
+            if (!event.isComposing || (!event.data && !terminalInput.value)) return;
+            compositionActive = true;
+            var currentValue = terminalInput.value.length >= compositionStartOffset
+                ? terminalInput.value.substring(compositionStartOffset)
+                : "";
+            compositionValue = currentValue || event.data || compositionValue;
+            updateDraftValue();
+        }, true);
+        terminalInput.addEventListener("compositionend", function (event) {
+            compositionActive = false;
+            if (compositionCommitObserved) {
+                compositionCommitObserved = false;
+                compositionValue = "";
+                updateDraftValue();
+                return;
+            }
+            compositionValue = event.data || "";
+            if (compositionValue !== "") pendingCompositionValues.push(compositionValue);
+            compositionValue = "";
+            updateDraftValue();
+        });
+    }
+
+    focusTerminal.addEventListener("click", function () {
+        terminal.focus();
+        inputStatus.textContent = "Input: terminal focused; type with Gboard";
     });
 
     window.__skidbladnirHarness = {
@@ -129,8 +217,9 @@
             var input = inputElement();
             terminal.focus();
             if (input) input.dispatchEvent(new CompositionEvent("compositionstart", { data: "" }));
-            terminal.paste(String(value));
+            if (input) input.dispatchEvent(new CompositionEvent("compositionupdate", { data: String(value) }));
             if (input) input.dispatchEvent(new CompositionEvent("compositionend", { data: String(value) }));
+            terminal.paste(String(value));
             imeStatus.textContent = "IME: composed";
             this.ime = "PASS";
         },
@@ -157,10 +246,11 @@
     };
 
     updateDraftValue();
-    updateVisualViewport();
-    window.addEventListener("resize", updateVisualViewport);
-    window.addEventListener("orientationchange", updateVisualViewport);
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", updateVisualViewport);
+    scheduleTerminalFit();
+    new ResizeObserver(scheduleTerminalFit).observe(terminalContainer);
+    window.addEventListener("resize", scheduleTerminalFit);
+    window.addEventListener("orientationchange", scheduleTerminalFit);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleTerminalFit);
 
     window.addEventListener("message", function (event) {
         if (!event.ports || !event.ports.length) return;

@@ -186,6 +186,88 @@ func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
 	}
 }
 
+func TestTerminalAssetsRequireExactReviewedPinsAndBytes(t *testing.T) {
+	root := t.TempDir()
+	assets := map[string][]byte{
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js":                 []byte("xterm"),
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css":                []byte("xterm-css"),
+		"android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE":            []byte("xterm-license"),
+		"android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js":      []byte("fit-addon"),
+		"android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.LICENSE": []byte("fit-license"),
+	}
+	lock := terminalAssetLock{
+		Package:   "@xterm/xterm",
+		Version:   "6.0.0",
+		Source:    "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz",
+		Integrity: "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==",
+		FitAddon: terminalAddonLock{
+			Package:   "@xterm/addon-fit",
+			Version:   "0.11.0",
+			Source:    "https://registry.npmjs.org/@xterm/addon-fit/-/addon-fit-0.11.0.tgz",
+			Integrity: "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==",
+		},
+		Files: make(map[string]string, len(assets)),
+	}
+	for path, content := range assets {
+		fullPath := filepath.Join(root, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fullPath, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		lock.Files[path] = sha256Hex(content)
+	}
+	writeLock := func(value terminalAssetLock) {
+		content, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(root, terminalLockPath)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeLock(lock)
+	if err := verifyTerminalAssets(root); err != nil {
+		t.Fatalf("reviewed terminal assets rejected: %v", err)
+	}
+
+	fitPath := filepath.Join(root, "android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js")
+	if err := os.WriteFile(fitPath, []byte("mutated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyTerminalAssets(root); err == nil {
+		t.Fatal("mutated FitAddon bytes were accepted")
+	}
+	if err := os.WriteFile(fitPath, assets["android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js"], 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changedIdentity := lock
+	changedIdentity.FitAddon.Version = "0.12.0"
+	writeLock(changedIdentity)
+	if err := verifyTerminalAssets(root); err == nil {
+		t.Fatal("unreviewed FitAddon identity was accepted")
+	}
+
+	missingAsset := lock
+	missingAsset.Files = make(map[string]string, len(lock.Files)-1)
+	for path, digest := range lock.Files {
+		if path != "android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js" {
+			missingAsset.Files[path] = digest
+		}
+	}
+	writeLock(missingAsset)
+	if err := verifyTerminalAssets(root); err == nil {
+		t.Fatal("incomplete terminal asset inventory was accepted")
+	}
+}
+
 func TestDvergatalEvidenceExactlyMatchesCatalogue(t *testing.T) {
 	entry := catalogueEntry{
 		Key:         "norse.ai",
@@ -389,11 +471,15 @@ func TestWorkflowRequiresImmutableActionsAndTheP0CommandInventory(t *testing.T) 
 		"  contents: read",
 		"steps:",
 		"  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"  - name: Provision pinned Codex",
+		"    run: |",
+		"      sudo install -d -o \"$(id -u)\" -g \"$(id -g)\" /home/niels/.local",
+		"      npm install --global --ignore-scripts --prefix /home/niels/.local @openai/codex@0.149.1",
 		"  - run: ./scripts/test static",
 		"  - run: ./scripts/build all",
 		"  - run: ./scripts/test unit",
 	}, "\n")
-	if err := validateWorkflow([]byte(valid)); err != nil {
+	if err := validateWorkflow([]byte(valid), "@openai/codex@0.149.1", "/home/niels/.local"); err != nil {
 		t.Fatalf("reviewed workflow rejected: %v", err)
 	}
 	for name, content := range map[string]string{
@@ -402,9 +488,12 @@ func TestWorkflowRequiresImmutableActionsAndTheP0CommandInventory(t *testing.T) 
 		"privileged trigger":   strings.Replace(valid, "pull_request:", "pull_request_target:", 1),
 		"ignored failure":      valid + "\n  - run: ./scripts/test static || true",
 		"elevated permissions": strings.Replace(valid, "contents: read", "contents: write", 1),
+		"unpinned Codex":       strings.Replace(valid, "  - name: Provision pinned Codex", "  - name: Install dependency", 1),
+		"wrong Codex package":  strings.Replace(valid, "@openai/codex@0.149.1", "@openai/codex@latest", 1),
+		"dynamic sudo prefix":  strings.Replace(valid, "/home/niels/.local", "$prefix", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validateWorkflow([]byte(content)); err == nil {
+			if err := validateWorkflow([]byte(content), "@openai/codex@0.149.1", "/home/niels/.local"); err == nil {
 				t.Fatalf("workflow accepted %s", name)
 			}
 		})

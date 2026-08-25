@@ -220,11 +220,11 @@ yet; their behavior belongs to P1/P2 and cannot be claimed by a P0 probe.
 | Proof id | Gate | Exact P0 claim |
 | --- | --- | --- |
 | `p0-codex-pin` | `static` | Binary/source/tag/digest, root/resume grammar, reviewed hook schemas/config/helper, and generated contracts are immutable and reproducible |
-| `p0-profile-direct-tui` | `live` | Each profile starts ordinary `codex` and resumes a canonical UUID with exact home/cwd/config/YOLO in one foreground process; no shared/external daemon, remote transport, or broker is started |
+| `p0-profile-direct-tui` | `live` | Each profile starts ordinary `codex` and resumes a canonical UUID with exact profile home/cwd and strict-config/YOLO argv in one foreground process; readiness, persistence, and teardown scans find no shared/external daemon, remote transport, or broker |
 | `p0-hook-origin` | `live` | Exact production handler hashes match the frozen three-profile trust lock; a foreign untrusted handler is catalogued and blocks for review; `SKIDBLADNIR_RUNTIME_ID` reaches every reviewed hook; nearest exact pinned-Codex ancestor PID/start/TTY matches the invoking TUI; inherited nested-CLI traffic is rejected |
 | `p0-hook-identity` | `live` | Raw hook payloads establish basename thread id, session corroboration, fresh revert/public-fork identities, native-subagent discrimination, and the event/PID sequence for `/new`, `/clear`, and `/fork`, without claiming hooks distinguish `/fork` from `/new` |
 | `p0-tui-lifecycle` | `live` | Raw `Stop`, active-Escape interruption and same-root continuation, unordered loaded-root `SessionEnd`, pane/PID death, ordinary `/quit`, idle Ctrl-C, and killed-work behavior are recorded |
-| `p0-tmux-handoff` | `live` | Grouped shadow attach/detach, client-context targeting, last-link guard, repaint, focus, input routing, `active-pane`, and `ignore-size` match Section 4 |
+| `p0-tmux-handoff` | `live` | Grouped shadow attach/detach, client-context targeting, last-link guard, repaint, focus, input routing, `active-pane`, and `ignore-size` match Section 4; exact pinned unmarked-TUI tmux/`/proc` classification accepts only proven pane-root or unique foreground-group ownership and excludes marked, nested, ambiguous, or incomplete ancestry |
 | `p0-tui-keys` | `live` | Stock TUI intra-line edit, exact raw Ctrl-J (`0x0a`) newline-without-submit, raw CR (`0x0d`) submit, history, scroll, and normal-buffer behavior are recorded |
 | `p0-android-terminal` | `platform` | Exact S22+ WebView/xterm.js/Gboard proves ANSI, Unicode, composition, editable dictation, clipboard, automatic DA/DSR/CPR replies, resize, and rotation |
 
