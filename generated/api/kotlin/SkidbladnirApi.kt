@@ -6,7 +6,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 
-object SkidbladnirContract { const val digest: String = "f279aabdaf03160a4ce7bbd814cd65371330bcde3adf9eafb3ab52813a0ebb8a" }
+object SkidbladnirContract { const val digest: String = "0d18c5953e1d70a22744bf24f1bb93c72be43441db26deefef1b467efb63974a" }
 
 @Serializable
 @JvmInline
@@ -131,7 +131,6 @@ enum class ErrorCode {
     @SerialName("RuntimeLaunchFailed") RuntimeLaunchFailed,
     @SerialName("CommandConflict") CommandConflict,
     @SerialName("CursorInvalid") CursorInvalid,
-    @SerialName("ResyncRequired") ResyncRequired,
     @SerialName("LivenessUnverifiable") LivenessUnverifiable
 }
 
@@ -508,7 +507,6 @@ fun errorHttpStatus(code: ErrorCode): Int = when (code) {
     ErrorCode.PairingInvalid -> 401
     ErrorCode.ProfileUnavailable -> 503
     ErrorCode.ProtocolMismatch -> 409
-    ErrorCode.ResyncRequired -> 409
     ErrorCode.RuntimeLaunchFailed -> 503
     ErrorCode.Unauthenticated -> 401
     ErrorCode.WorkingDirectoryInvalid -> 422

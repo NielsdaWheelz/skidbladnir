@@ -70,7 +70,6 @@
       "RuntimeLaunchFailed",
       "CommandConflict",
       "CursorInvalid",
-      "ResyncRequired",
       "LivenessUnverifiable"
     ],
     "FactKind": [
@@ -331,7 +330,6 @@
     "RuntimeLaunchFailed": 503,
     "CommandConflict": 409,
     "CursorInvalid": 400,
-    "ResyncRequired": 409,
     "LivenessUnverifiable": 503
   },
   "routes": [
@@ -378,7 +376,6 @@
     { "id": "restart-recovery", "gate": "e2e", "command": ["./scripts/test", "proof", "restart-recovery"], "requiredFor": ["core"] },
     { "id": "core-scale-concurrency", "gate": "e2e", "command": ["./scripts/test", "proof", "core-scale-concurrency"], "requiredFor": ["core"] },
     { "id": "core-android-start-profiles", "gate": "e2e", "command": ["./scripts/test", "proof", "core-android-start-profiles"], "requiredFor": ["core"] },
-    { "id": "core-android-accessibility", "gate": "platform", "command": ["./scripts/test", "proof", "core-android-accessibility"], "requiredFor": ["core"] },
     { "id": "core-runtime-drift-refusal", "gate": "live", "command": ["./scripts/test", "proof", "core-runtime-drift-refusal"], "requiredFor": ["core", "upgrade"] }
   ]
 }

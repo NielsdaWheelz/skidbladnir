@@ -1,6 +1,6 @@
 # Skíðblaðnir Core implementation roadmap
 
-Status: P0 in progress; P1–P7 pending.
+Status: P0 merged; P1–P7 pending.
 
 This document owns delivery order and PR boundaries. The
 [architecture](architecture.md) owns behavior and acceptance;
@@ -267,8 +267,8 @@ reopens, acknowledges, and inspects host pressure through the closed `/v1` API.
   connection revocation.
 - Implement every non-terminal `/v1` route, closed error, bound, idempotent
   receipt, cursor, and asynchronous settlement exactly once.
-- Implement snapshot+Facts/SSE continuity, bounded queues/heartbeats/resync, and
-  honest stale state.
+- Implement snapshot+Facts/SSE continuity, bounded queues/heartbeats, and
+  re-bootstrap-only resync with honest stale state.
 - Sample/aggregate CPU/load/memory/swap/disk/PSI; never schedule or gate Start.
 - Bind loopback and install/verify minimal Tailscale Serve mapping.
 
@@ -332,14 +332,14 @@ attention, stale state, and pressure.
 ### Owns
 
 - Lane 4 secure bearer, REST/SSE/cache, Compose grid/detail/Forge/pressure, and
-  accessibility.
+  semantic labeling.
 - Final original Dvergatal portraits and total asset validation.
 
 ### Red
 
 - Recreation loses authority or presents cache as fresh; SSE replay duplicates;
-  Forge leaks invalid/raw runtime fields; portrait or accessibility/layout
-  failure passes; minified shrink strips an asset.
+  Forge leaks invalid/raw runtime fields; a portrait failure passes; minified
+  shrink strips an asset.
 
 ### Green
 
@@ -357,7 +357,7 @@ attention, stale state, and pressure.
 - Component tests use real Compose/client runtime and semantic interactions.
 - Physical release-configuration S22+ proof: pair, >=15 cards, two working,
   path with spaces, failures/stale/attention/pressure, recreation/rotation,
-  navigation modes, TalkBack, Switch Access, 200%, all portraits.
+  navigation modes, all portraits.
 - No terminal/prompt/provider/project/worktree/raw-target leak.
 
 ### Not in P5
@@ -398,7 +398,7 @@ typing, clipboard, and dictation remain editable and never auto-submit.
   Gboard type/clipboard/dictation, mid-line correction, multiline before submit,
   every accessory key, and no auto-send/replay.
 - Live handoff records one pane/PID/thread/draft with concurrent laptop/phone,
-  independent detach, unchanged laptop. Terminal TalkBack limitation is honest.
+  independent detach, unchanged laptop.
 - P5 deferred terminal proof rows flip from `NOT_RUN` to PASS.
 
 ### Not in P6
@@ -482,7 +482,7 @@ temporary worktrees.
 
 | PR | Status |
 | --- | --- |
-| P0 Contracts and platform proofs | InProgress |
+| P0 Contracts and platform proofs | Merged |
 | P1 One managed laptop agent | Pending |
 | P2 Lifecycle and continuity | Pending |
 | P3 Phone control plane | Pending |

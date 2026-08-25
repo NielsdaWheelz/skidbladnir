@@ -23,7 +23,6 @@
     { "id": "restart-recovery", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "P7 recovery journey is not implemented" },
     { "id": "core-scale-concurrency", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "Core scale journey is not implemented" },
     { "id": "core-android-start-profiles", "gate": "e2e", "status": "NOT_RUN", "evidence": null, "reason": "Core Android profile Start journey is not implemented" },
-    { "id": "core-android-accessibility", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "Core physical accessibility journey is not implemented" },
     { "id": "core-runtime-drift-refusal", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "Core installed-artifact drift refusal is not implemented" }
   ]
 }

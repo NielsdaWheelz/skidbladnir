@@ -87,7 +87,6 @@ var (
 	ErrorRuntimeLaunchFailed         = ErrorCode{value: skidbladnirv1.ErrorCodeRuntimeLaunchFailed}
 	ErrorCommandConflict             = ErrorCode{value: skidbladnirv1.ErrorCodeCommandConflict}
 	ErrorCursorInvalid               = ErrorCode{value: skidbladnirv1.ErrorCodeCursorInvalid}
-	ErrorResyncRequired              = ErrorCode{value: skidbladnirv1.ErrorCodeResyncRequired}
 	ErrorLivenessUnverifiable        = ErrorCode{value: skidbladnirv1.ErrorCodeLivenessUnverifiable}
 )
 
@@ -108,7 +107,6 @@ func (value ErrorCode) valid() bool {
 		skidbladnirv1.ErrorCodeRuntimeLaunchFailed,
 		skidbladnirv1.ErrorCodeCommandConflict,
 		skidbladnirv1.ErrorCodeCursorInvalid,
-		skidbladnirv1.ErrorCodeResyncRequired,
 		skidbladnirv1.ErrorCodeLivenessUnverifiable:
 		return true
 	default:

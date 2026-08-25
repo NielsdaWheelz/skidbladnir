@@ -73,7 +73,7 @@ Wake (FCM) and Release (Kache-style A/B packages) are v1.1.
 | Capacity | No agent cap, scheduler, pressure gate, or one-writer-per-repo rule |
 | Client | Kotlin/Compose dashboard; vendored pinned xterm.js terminal |
 | Host app | Go, SQLite, tmux/PTY, hooks, `/proc` |
-| Transport | Strict HTTPS JSON, durable SSE facts, authenticated WSS terminal |
+| Transport | Strict HTTPS JSON, live-push SSE Facts, authenticated WSS terminal |
 | Trust | Codex is trusted as the devbox user; no hostile same-UID containment claim |
 
 Profile mapping is closed:
@@ -582,8 +582,8 @@ Keys match `^[a-z0-9]+([.-][a-z0-9]+)*$`; display names are unique NFC text of
 at most 64 scalars with objective control/separator exclusions; citations are
 non-empty and structured. Variant spellings are one figure, disputed dwarfs
 are excluded, and no `FairyTale` or `ModernMedia` family exists.
-`evidence/sources/dvergatal.md` records curation decisions and one set-level
-portrait method/rights basis. Portraits are original square WebP assets named by
+`evidence/sources/dvergatal.md` records one short set-level portrait
+method/rights note; further curation detail is optional, never required. Portraits are original square WebP assets named by
 the total transform (`norse.durinn` -> `dwarf_norse_durinn.webp`); no scraped or
 rights-holder artwork ships. A shipped key is never removed, renamed, or reused;
 metadata corrections and appends are allowed.
@@ -731,7 +731,7 @@ Mismatch returns `ProtocolMismatch` on Pair, HTTP, SSE, and WSS before mutation.
 | `POST /v1/agents/{handle}/close` | Managed idle-only Close; `202` |
 | `POST /v1/agents/{handle}/reopen` | Managed confirmed-ref Reopen; `202` |
 | `POST /v1/agents/{handle}/attention/acknowledge` | Idempotent acknowledgement |
-| `GET /v1/events` | Durable SSE after `Last-Event-ID` |
+| `GET /v1/events` | Live-push SSE; any loss or overflow re-bootstraps |
 | `GET /v1/host/samples?window=&resolution=` | Current plus <=300 truthful aggregate buckets |
 | `GET /v1/terminal/{handle}` | Authenticated WSS upgrade after fresh attachability check |
 
@@ -757,7 +757,7 @@ Unauthenticated | PairingInvalid | ProtocolMismatch | InvalidRequest |
 AgentNotFound | AgentClosed | AgentWorking | AgentNotAttachable |
 AgentUntracked | WorkingDirectoryInvalid | WorkingDirectoryUnavailable |
 ProfileUnavailable | RuntimeLaunchFailed | CommandConflict |
-CursorInvalid | ResyncRequired | LivenessUnverifiable
+CursorInvalid | LivenessUnverifiable
 ```
 
 Each has one schema-owned HTTP mapping and one named trigger. Unexpected
@@ -766,10 +766,14 @@ protocol/storage/process states are defects with a correlation handle.
 ### SSE and terminal WSS
 
 Bootstrap and `snapshotFactCursor` come from one SQLite read transaction. SSE
-subscriber registration is serialized with post-commit Fact fan-out; stored and
-queued facts merge into strictly contiguous ascending sequence. Expired cursor
-or bounded-queue overflow returns `ResyncRequired`; malformed/filter-invalid
-cursor is `CursorInvalid`. SSE carries no terminal or transcript data.
+is live-push only: subscriber registration is serialized with post-commit Fact
+fan-out, a stream carries only Facts committed after its registration with
+their sequences, and the server keeps no per-subscriber cursor and replays
+nothing. The client subscribes, then bootstraps, and discards Facts at or below
+`snapshotFactCursor`; bounded-queue overflow or any stream loss closes the
+stream and the client re-bootstraps — at one-phone scale bootstrap is the only
+resync path. A malformed/filter-invalid paging cursor is `CursorInvalid`. SSE
+carries no terminal or transcript data.
 
 WSS text frames are the closed `Hello | Presence | Resize | Detach | Error`;
 binary client frames are input and binary server frames are PTY output. One WSS
@@ -847,10 +851,11 @@ profile/list/window values declared by the schema.
 - Gboard owns typing, clipboard, emoji, settings, and voice. There is no
   microphone permission or `SpeechRecognizer`; dictation stays editable and
   never auto-sends.
-- xterm.js runs in screen-reader mode as one labeled terminal region. All
-  Compose surfaces are 48 dp, TalkBack-labeled, Switch-Access reachable, and
-  usable at 200%/both navigation modes. Character-level terminal TalkBack is a
-  declared limitation.
+- Compose surfaces keep 48 dp targets and ordinary semantic labels, and the
+  terminal is one labeled region — labels are nearly free and semantic tests
+  select by them. Accessibility beyond labels (TalkBack, Switch Access, 200%
+  scale, screen-reader terminal navigation) is best-effort for this one-user
+  product and never a proof gate.
 - Near-black tonal surfaces, warm high-contrast type, restrained luminous-thread
   accent, and avatars as landmarks rather than state. No decorative motion.
 
@@ -891,8 +896,9 @@ the prior threshold. Show every reason; pressure never blocks Start.
   `VACUUM INTO`; archive each profile home, pinned binary, hook schemas/config,
   and `codex.lock` with permissions plus digest manifest; install/reprobe; then
   `./scripts/test accept upgrade`. Any failure restores every manifest artifact
-  and reprobes before ingress. Each pin change rehearses forced failure/restore
-  once. Snapshot is mode 0700 under
+  and reprobes before ingress. The forced failure/restore rehearsal runs once
+  when the upgrade mechanism lands, then again only when the snapshot/restore
+  procedure itself changes — never per pin change. Snapshot is mode 0700 under
   `$XDG_STATE_HOME/skidbladnir/snapshots/<pin>` and deleted after acceptance.
 - Tmux upgrades use the same maintenance path and must reprove grouped-client
   semantics. There is no fallback binary or mixed runtime.
@@ -948,7 +954,7 @@ repository token.
 | 1 Registry/storage/hooks | Agents, assignment, commands, facts, reducer, migrations | Assignment/replay/rollover/Stop races are atomic |
 | 2 Runtime/terminal | Launcher/router seam, Codex/tmux/PTY | Cwd, exact exec/origin, external inventory, switch, shadow, close/reopen |
 | 3 Gateway/metrics | HTTP/auth/SSE/WSS/metrics | Real HTTP+SQLite/Facts/bounds/pressure |
-| 4 Android | `android/**` | Real-runtime dashboard, terminal, IME, accessibility |
+| 4 Android | `android/**` | Real-runtime dashboard, terminal, IME, semantic labels |
 | 5 Composition | Entrypoint/deploy/system/e2e | Real devbox/phone/laptop handoff and recovery |
 
 Lane 0 is serial; lanes 1–4 may follow only its frozen contract; lane 5
@@ -1008,7 +1014,6 @@ phone Core acceptance remains separate.
 | `restart-recovery` | Restart -> recovery | Kill phone/gateway/PTY/tmux/TUI: honest live/recoverable/exception/unknown, never guess/replay |
 | `core-scale-concurrency` | Capacity -> cards/runtimes | Device/E2E: >=15 cards and >=2 real concurrent working agents without a cap |
 | `core-android-start-profiles` | Android Start -> profiles | Device/E2E: all three homes, cwd variants, empty TUI, YOLO, and fail-before-mutation invalid forms |
-| `core-android-accessibility` | Compose -> accessibility services | Physical device: TalkBack/Switch Access, 200%, navigation modes, IME, rotation, process recreation |
 | `core-runtime-drift-refusal` | Installed artifacts -> launch | Live: profile/pin/config/hook/router/protocol drift fails visibly before exec, with no fallback |
 
 This is the 80/20 verification shape: deterministic gates per change, one proof
@@ -1017,14 +1022,14 @@ per crossing, one expensive real devbox/phone flow—not every helper matrix.
 ### Core acceptance
 
 - Physical `SM-S906W` preflight records API/build, Tailscale, WebView, Gboard
-  typing/dictation/clipboard, navigation modes, 200% scale, accessibility,
-  rotation, IME resize, and process recreation.
+  typing/dictation/clipboard, navigation modes, rotation, IME resize, and
+  process recreation.
 - UI language is exact: app `Skíðblaðnir`; `Create new agent`; `New agent`;
   `Start agent`; terminal exit `Agents`; no reserved mythic term leaks into
   route/schema/type/UI. Static enforces the denylist.
 - Dvergatal has >=100 validated entries from only three allowed traditions,
   unique key/name, structured citation, one original bundled portrait each, and
-  complete curation/provenance. No missing/orphan asset.
+  the set-level method/rights note. No missing/orphan asset.
 - Phone shows >=15 cards with distinct assignment while available, no cap, and
   >=2 real concurrent working agents. Completion attention reaches its card in
   one tap; closed cards leave the default grid; catalogue exhaustion still
@@ -1058,9 +1063,9 @@ per crossing, one expensive real devbox/phone flow—not every helper matrix.
   substitutes input/profile/agent.
 - Current/history CPU, memory, swap, load, disk, PSI and all reasons render;
   missing is Unknown; Hot never blocks Start.
-- TalkBack/Switch Access pass on all Compose surfaces at 200%, both navigation
-  modes, edge-to-edge, IME, rotation/process recreation; terminal limitation is
-  recorded rather than falsely passed.
+- Edge-to-edge, IME, both navigation modes, and rotation/process recreation
+  pass on all Compose surfaces; accessibility beyond semantic labels is
+  best-effort, never an acceptance gate.
 - API/schema/UI contain no project/repo/worktree/workspace/quota/generic-runtime/
   transcript/composer/direct-turn/raw-target/App-Server surface.
 - Profile/pin/config/hook/router drift and unknown protocol fail visibly before

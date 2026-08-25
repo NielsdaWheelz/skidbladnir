@@ -24,7 +24,7 @@ type SessionId string
 type ThreadId string
 type WorkingDirectory string
 
-const ContractDigestValue ContractDigest = "f279aabdaf03160a4ce7bbd814cd65371330bcde3adf9eafb3ab52813a0ebb8a"
+const ContractDigestValue ContractDigest = "0d18c5953e1d70a22744bf24f1bb93c72be43441db26deefef1b467efb63974a"
 
 type AgentListState string
 
@@ -104,7 +104,6 @@ const (
 	ErrorCodeRuntimeLaunchFailed         ErrorCode = "RuntimeLaunchFailed"
 	ErrorCodeCommandConflict             ErrorCode = "CommandConflict"
 	ErrorCodeCursorInvalid               ErrorCode = "CursorInvalid"
-	ErrorCodeResyncRequired              ErrorCode = "ResyncRequired"
 	ErrorCodeLivenessUnverifiable        ErrorCode = "LivenessUnverifiable"
 )
 
@@ -996,8 +995,6 @@ func ErrorHTTPStatus(code ErrorCode) (int, bool) {
 	case ErrorCodeProfileUnavailable:
 		return 503, true
 	case ErrorCodeProtocolMismatch:
-		return 409, true
-	case ErrorCodeResyncRequired:
 		return 409, true
 	case ErrorCodeRuntimeLaunchFailed:
 		return 503, true
