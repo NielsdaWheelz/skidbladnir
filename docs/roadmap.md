@@ -167,8 +167,8 @@ router behavior.
   managed, plugin, project, session, or foreign hook reaches registration or an
   interactive review screen.
 - Duplicate `clientCommandId` creates multiple cards/runtimes.
-- A pre-existing laptop TUI is guessed as managed or invisible to Android
-  inventory.
+- A pre-existing laptop TUI is guessed as managed or absent from the persisted
+  external-card inventory.
 
 ### Green
 
@@ -212,7 +212,8 @@ laptop resume, Close/Reopen, process loss, gap repair, and gateway restart.
 
 - Stop/continuation races false-idle; restart drops/doubles attention; gaps,
   authoritative SessionEnd, or second prompts strand/incorrectly close turns;
-  historical/unconfirmed-root SessionEnd mutates the card.
+  historical/unconfirmed-root SessionEnd mutates the card; an Escape-interrupted
+  turn with no Stop presents Working past the staleness bound.
 - `/new|clear|fork` duplicates cards or loses runtime continuity.
 - Two resume callers create two managed TUIs; ambiguous tmux client switching
   moves the wrong client.
@@ -221,13 +222,15 @@ laptop resume, Close/Reopen, process loss, gap repair, and gateway restart.
 
 ### Green
 
-- Implement total state derivation, one-second Stop settlement, exact-once
-  attention/ack/re-arm, gap import, rollover, and Unknown.
+- Implement total state derivation, one-second Stop settlement, turn-activity
+  staleness demotion, exact-once attention/ack/re-arm, gap import, rollover,
+  and Unknown.
 - Bare `resume` lists bounded local tracked cards only. Exact resume switches
   one resolved live client, reopens a verified-dead card, or creates a pending
   binding for an explicitly supplied untracked UUID.
-- Implement managed idle Close, latest-confirmed-ref Reopen, external attach-only
-  restrictions, retention, command recovery, and restart reconciliation.
+- Implement managed idle Close, dead-card local dismissal,
+  latest-confirmed-ref Reopen, external attach-only restrictions, retention,
+  command recovery, and restart reconciliation.
 
 ### Merge gate
 

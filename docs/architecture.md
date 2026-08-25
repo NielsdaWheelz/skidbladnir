@@ -315,8 +315,9 @@ Resume has one local flow:
 
 A supplied pending ref is stored separately from a confirmed binding. Every
 root `SessionStart` is gated by it until confirmation: the parsed UUID must
-equal the pending ref. Mismatch derives `EXCEPTION` and stops accepting input;
-the generic rollover rule cannot bypass this gate. A direct fresh start has no
+equal the pending ref. Mismatch derives `EXCEPTION`, withdraws that runtime's
+hook authority, and closes its phone bridges — the pane itself remains the
+user's to end; the generic rollover rule cannot bypass this gate. A direct fresh start has no
 pending ref.
 
 ### Conversation rollover
@@ -381,10 +382,17 @@ transcript, SQLite, title, or inferred current thread.
   is `LivenessUnverifiable`; a newer turn is `AgentWorking`.
 - A launcher-origin close kills only the exact Codex PID; the user's pane returns
   to its shell after every phone bridge has already closed. A gateway-origin
-  TUI is the pane root, so its pane ends. External cards cannot Close.
+  TUI is the pane root, so its pane ends. A live external card cannot Close —
+  Skíðblaðnir never kills an unmanaged process.
 - Local closure preserves the latest confirmed Codex ref. Reopen is offered only
   when that ref exists and every prior binding is verified dead. It creates a
   fresh runtime and execs ordinary `codex resume <exact-thread-id>`.
+- Any card whose every runtime is verified dead accepts Close as local
+  dismissal — including a refs-less `EXCEPTION` card from a failed launch or
+  mistyped resume and a dead external card. Dismissal commits local closure
+  only and touches no Codex history; Reopen is afterward offered only when a
+  confirmed ref exists, and an unverifiable live runtime still blocks Close as
+  `LivenessUnverifiable`.
 - Phone/WSS/mosh loss affects only that client. Gateway restart reconstructs
   owned runtime facts from SQLite, tmux, `/proc`, and hook gap files; no input is
   replayed.
@@ -455,7 +463,12 @@ seven reviewed, enabled, trusted, non-managed user handlers with exact source
 path and frozen hashes, and no warning, error, plugin, managed, modified,
 untrusted, disabled, or foreign handler. The subprocess must exit cleanly
 within its deadline. Any difference fails visibly before a card/runtime exists;
-no review choice or trust mutation is automated. The launcher uses direct argv,
+no review choice or trust mutation is automated. This closed universe
+deliberately rejects a working directory whose project layer ships its own
+Codex hooks — trusted or disabled included: the typed failure names the foreign
+handler, and such a repository is used outside the tracked tmux path or with
+those hooks removed. That is a recorded one-user trade, not drift. The launcher
+uses direct argv,
 never shell interpolation or PATH lookup. A same-UID mutation between preflight
 and exec remains the declared residual trust risk.
 
@@ -533,9 +546,16 @@ authoritative `SessionEnd` or process death with an unclosed turn and no
 qualifying Stop derives death-while-working. Historical/unconfirmed-root
 `SessionEnd` never changes card state.
 
-No timer asserts conversation truth beyond this coalescing rule: Stop is the
-semantic completion fact; the delay only orders an immediately concurrent
-continuation. Missing lifecycle evidence is `UNKNOWN`, never guessed Idle.
+An open turn proves `WORKING` only while fresh: the pin records that active
+Escape interrupts a turn without `Stop`, so an open root turn with no newer
+root, tool, subagent, or `Stop` fact within one named turn-activity staleness
+bound stops satisfying `WORKING`, and the live card derives `UNKNOWN` with
+reason `evidence-stale`. The turn stays open and a later prompt, `Stop`, or
+rollover resolves it normally; the demotion never publishes `IDLE` or
+attention. No timer asserts completion: `Stop` is the semantic completion fact,
+the settle delay only orders an immediately concurrent continuation, and the
+staleness bound only withdraws a stale `WORKING` claim. Missing lifecycle
+evidence is `UNKNOWN`, never guessed Idle.
 
 ### Ownership and trust
 
@@ -619,7 +639,7 @@ Two simultaneous predicates are a defect.
 | --- | --- |
 | `STARTING` | Accepted managed launch; exact live runtime not registered and no settled failure |
 | `IDLE` | Live managed runtime, bound or not yet bound; no open turn/candidate; null binding means a new conversation awaiting its first prompt, not a resumable conversation |
-| `WORKING` | Live managed runtime with open root turn or unsettled Stop candidate |
+| `WORKING` | Live managed runtime with an unsettled Stop candidate or an open root turn with activity within the named turn-activity staleness bound |
 | `CLOSING` | Accepted Close; exact runtime stop not committed |
 | `RECOVERABLE` | No live managed runtime; latest confirmed thread exists; death followed a settled turn |
 | `EXCEPTION` | Managed launch failure, runtime death while working, runtime end before any ref, or pending-ref contradiction |
@@ -834,7 +854,7 @@ profile/list/window values declared by the schema.
   memory, swap, normalized load, distinct-filesystem disk, and CPU/memory/I/O
   PSI with <=300 one-hour points.
 - SSE loss marks every card/pressure view stale with last-Fact age until
-  bootstrap/cursor recovery succeeds.
+  re-bootstrap succeeds.
 - Terminal detail is full screen. Its >=48 dp horizontally scrollable accessory
   row is `Agents | Esc | Ctrl-C | Tab | Left | Right | Up | Down | Home | End |
   Newline | Detach`. `Newline` sends raw Ctrl-J (`0x0a`), the pin's first
@@ -1053,11 +1073,14 @@ per crossing, one expensive real devbox/phone flow—not every helper matrix.
   Output above the fold is readable without changing laptop pane mode/view.
 - Every card state comes only from declared hook/liveness facts. Stop never
   publishes Idle/attention before its settle interval; concurrent continuation
-  cancels both; gap/restart repairs exactly once; terminal content has no state
-  authority. Every non-nominal cause/failure renders distinctly.
+  cancels both; an interrupted turn with no Stop demotes to Unknown at the
+  turn-activity staleness bound, never Idle or attention; gap/restart repairs
+  exactly once; terminal content has no state authority. Every non-nominal
+  cause/failure renders distinctly.
 - Working Close rejects. Idle Close stops only exact managed TUI and exposes no
-  shell to phone; Reopen reaches latest confirmed conversation. External cards
-  cannot Close/Reopen. Attention acknowledgement is idempotent and re-arms.
+  shell to phone; Reopen reaches latest confirmed conversation. A live external
+  card cannot Close/Reopen; any verified-dead card, refs-less included,
+  dismisses locally. Attention acknowledgement is idempotent and re-arms.
 - Tailnet/SSE loss marks cards and pressure stale with age. Constrained terminal
   explains its cause. Phone/WSS/gateway/tmux/TUI loss never replays or
   substitutes input/profile/agent.
