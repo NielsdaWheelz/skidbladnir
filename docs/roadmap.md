@@ -59,7 +59,10 @@ Fixtures prove adapters only. Live/device records under `evidence/live/` include
 exact versions, procedure, outcome, and artifact digests, but never credentials,
 account identity, prompts, assistant/tool/terminal content, paths to transcripts,
 patches, reasoning, or raw terminal bytes. Synthetic proof input may execute but
-is not copied into evidence.
+is not copied into evidence. Six merged P0 records are digest-manifest-only and
+predate this shape; the first PR that re-runs each probe backfills versions,
+procedure, and outcome (or links its markdown record into the ledger row), and
+every new record conforms from the start.
 
 ## 2. P0 — contracts and platform proofs
 
@@ -108,7 +111,8 @@ ships no agent-management capability.
   PID/start/TTY, canonical basename thread id, session corroboration, fresh
   public-fork/revert identities, the absence of a hook-level fork/new
   discriminator, frozen production trust hashes, the blocking review behavior
-  of one extra untrusted handler, nested-CLI discard, and native-subagent
+  of one extra untrusted handler, nested-CLI ancestry distinguishability (the
+  discard itself is P1's), and native-subagent
   activity-only behavior.
 - Record `/new`, `/clear`, and `/fork` raw root-hook sequences in one unchanged
   TUI PID, plus active-Escape interruption, same-root continuation, unordered
@@ -169,6 +173,8 @@ router behavior.
 - Duplicate `clientCommandId` creates multiple cards/runtimes.
 - A pre-existing laptop TUI is guessed as managed or absent from the persisted
   external-card inventory.
+- The startup root emits `SessionStart` before its first input (attach-time
+  emission) and no probe records it.
 
 ### Green
 
@@ -213,7 +219,9 @@ laptop resume, Close/Reopen, process loss, gap repair, and gateway restart.
 - Stop/continuation races false-idle; restart drops/doubles attention; gaps,
   authoritative SessionEnd, or second prompts strand/incorrectly close turns;
   historical/unconfirmed-root SessionEnd mutates the card; an Escape-interrupted
-  turn with no Stop presents Working past the staleness bound.
+  turn with no Stop presents Working past the staleness bound or derives
+  death-while-working at ordinary exit; a compact-source SessionStart closes a
+  live turn or publishes Idle/attention.
 - `/new|clear|fork` duplicates cards or loses runtime continuity.
 - Two resume callers create two managed TUIs; ambiguous tmux client switching
   moves the wrong client.
@@ -223,8 +231,9 @@ laptop resume, Close/Reopen, process loss, gap repair, and gateway restart.
 ### Green
 
 - Implement total state derivation, one-second Stop settlement, turn-activity
-  staleness demotion, exact-once attention/ack/re-arm, gap import, rollover,
-  and Unknown.
+  staleness demotion and freshness-based end classification, exact-once
+  attention/ack/re-arm, running-gateway and restart gap import, rollover,
+  and Unknown. Record the pin's compact identity behavior.
 - Bare `resume` lists bounded local tracked cards only. Exact resume switches
   one resolved live client, reopens a verified-dead card, or creates a pending
   binding for an explicitly supplied untracked UUID.
@@ -303,21 +312,27 @@ remains attached, then detaches without another TUI or laptop state change.
 
 ### Red
 
-- Attach spawns TUI, steals/resizes laptop, exposes returned shell, or replays
+- Attach spawns TUI, steals/resizes laptop, moves the source window's shared
+  active pane, exposes returned shell, or replays
   bytes/input. Slow client grows unbounded; stale identity accepts input;
-  disconnect leaks/kills the wrong session.
+  disconnect leaks/kills the wrong session; last-link promotion leaves the
+  runtime bound to a destroyed session.
 
 ### Green
 
-- One shadow session + PTY per WSS, permanent `active-pane|ignore-size`, exact
-  client-context targeting, truthful presence/geometry.
+- One shadow session + PTY per WSS, permanent `active-pane|ignore-size`,
+  window-level client-context targeting with key-sequence pane selection
+  through the phone PTY, truthful presence/geometry.
 - Opaque bounded bytes only after exact identity; serialized attach/resize/
-  detach/last-link promotion/GC; no parser/history/provider token.
+  detach/last-link promotion (re-registering session/window ids)/GC of
+  gateway-named shadows; no parser/history/provider token.
 
 ### Merge gate
 
 - Real tmux/system proof: two clients, one pane/PID/draft, isolated focus/size,
-  independent detach, bounded slow failure, no replay/shell, exact cleanup.
+  the source window's active pane byte-identical before and after phone
+  attach/detach, independent detach, bounded slow failure, no replay/shell,
+  exact cleanup.
 - Revocation/digest mismatch closes live WSS within bound.
 
 ### Not in P4

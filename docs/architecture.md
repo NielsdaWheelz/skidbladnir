@@ -36,9 +36,10 @@ Core uses one ordinary pinned Codex TUI process per tracked runtime. The TUI
 owns Codex's in-process session machinery; Skíðblaðnir uses no shared/external
 App Server daemon, session transport, or broker. One bounded, read-only,
 pre-registration `hooks/list` subprocess is the sole exception and owns no
-runtime state. This is load-bearing: exact-pin evidence showed
+runtime state. This is load-bearing: exact-pin live probes showed
 that stock `/new`, `/clear`, and `/fork` replace the active thread inside one
-TUI, while shared App Server broadcasts expose no initiating client identity.
+TUI, and a source reading of the pinned commit shows shared App Server
+broadcasts expose no initiating client identity.
 A shared daemon therefore cannot assign the new thread to the correct card when
 several TUIs use one profile. A per-runtime marker plus exact process ancestry
 can.
@@ -122,7 +123,8 @@ Core exposes one path per capability:
 4. **Attach** bridges Android to the registered pane without replacing its TUI
    or changing another client's selection or geometry.
 5. **Detach** closes only Android's client/shadow.
-6. **Close** stops only a verified idle managed TUI and locally closes its card.
+6. **Close** stops only a verified idle managed TUI and locally closes its
+   card, or locally dismisses a card whose every runtime is verified dead.
 7. **Reopen** foreground-execs `codex resume <latest-confirmed-thread-id>`.
 8. **Recover** reconciles durable facts and exact liveness; it never replays
    terminal input or guesses conversation identity.
@@ -173,7 +175,9 @@ Exact 0.149.1 source, binary, and live probes established:
 
 - a stock TUI uses the normal terminal buffer and can be shared by tmux clients;
 - `SessionStart` occurs immediately before the first `UserPromptSubmit` for a
-  selected root, not merely on TUI attach;
+  selected replacement root, not merely on TUI attach; the initial startup
+  root's rollout materializes only at first prompt, and P1's red asserts no
+  `SessionStart` precedes the first input;
 - canonical rollout basenames encode the root thread UUID without reading the
   transcript; `session_id` corroborates the hook session but is not a resume
   key;
@@ -192,7 +196,8 @@ Exact 0.149.1 source, binary, and live probes established:
 - an enabled untrusted hook is excluded from the runnable hook engine but stops
   ordinary TUI startup at an interactive review screen; a tracked launch must
   reject that universe before registration rather than wait for user review;
-- shared App Server notifications expose no initiating TUI/client identity;
+- shared App Server notifications expose no initiating TUI/client identity
+  (a pinned-source reading, not a live probe);
 - tmux 3.4 grouped sessions share panes/processes while clients retain
   independent current-window context; `active-pane` and `ignore-size` are
   required for phone attachment.
@@ -221,10 +226,10 @@ yet; their behavior belongs to P1/P2 and cannot be claimed by a P0 probe.
 | --- | --- | --- |
 | `p0-codex-pin` | `static` | Binary/source/tag/digest, root/resume grammar, reviewed hook schemas/config/helper, and generated contracts are immutable and reproducible |
 | `p0-profile-direct-tui` | `live` | Each profile starts ordinary `codex` and resumes a canonical UUID with exact profile home/cwd and strict-config/YOLO argv in one foreground process; readiness, persistence, and teardown scans find no shared/external daemon, remote transport, or broker |
-| `p0-hook-origin` | `live` | Exact production handler hashes match the frozen three-profile trust lock; a foreign untrusted handler is catalogued and blocks for review; `SKIDBLADNIR_RUNTIME_ID` reaches every reviewed hook; nearest exact pinned-Codex ancestor PID/start/TTY matches the invoking TUI; inherited nested-CLI traffic is rejected |
+| `p0-hook-origin` | `live` | Exact production handler hashes match the frozen three-profile trust lock; a foreign untrusted handler is catalogued and blocks for review; `SKIDBLADNIR_RUNTIME_ID` reaches every reviewed hook; nearest exact pinned-Codex ancestor PID/start/TTY matches the invoking TUI; inherited nested-CLI traffic is distinguishable by that ancestor identity (rejection is P1's) |
 | `p0-hook-identity` | `live` | Raw hook payloads establish basename thread id, session corroboration, fresh revert/public-fork identities, native-subagent discrimination, and the event/PID sequence for `/new`, `/clear`, and `/fork`, without claiming hooks distinguish `/fork` from `/new` |
 | `p0-tui-lifecycle` | `live` | Raw `Stop`, active-Escape interruption and same-root continuation, unordered loaded-root `SessionEnd`, pane/PID death, ordinary `/quit`, idle Ctrl-C, and killed-work behavior are recorded |
-| `p0-tmux-handoff` | `live` | Grouped shadow attach/detach, client-context targeting, last-link guard, repaint, focus, input routing, `active-pane`, and `ignore-size` match Section 4; exact pinned unmarked-TUI tmux/`/proc` classification accepts only proven pane-root or unique foreground-group ownership and excludes marked, nested, ambiguous, or incomplete ancestry |
+| `p0-tmux-handoff` | `live` | Grouped shadow attach/detach, window-level client-context targeting, the last-link kill hazard (the guard is P4's), repaint, focus, input routing, `active-pane`, and `ignore-size` match Section 4; exact pinned unmarked-TUI tmux/`/proc` classification accepts only proven pane-root or unique foreground-group ownership and excludes marked, nested, ambiguous, or incomplete ancestry |
 | `p0-tui-keys` | `live` | Stock TUI intra-line edit, exact raw Ctrl-J (`0x0a`) newline-without-submit, raw CR (`0x0d`) submit, history, scroll, and normal-buffer behavior are recorded |
 | `p0-android-terminal` | `platform` | Exact S22+ WebView/xterm.js/Gboard proves ANSI, Unicode, composition, editable dictation, clipboard, automatic DA/DSR/CPR replies, resize, and rotation |
 
@@ -247,13 +252,17 @@ Failure changes this design or remains `NOT_RUN`; it never enables a fallback.
    `/home/niels/src`; at most eight server recents are suggestions.
 2. `StartAgent` accepts no prompt, model, runtime, thread, character, or target.
 3. Cwd parses once: at most 4,096 valid UTF-8 bytes; no NUL/C0/C1; optional
-   leading `~`/`~/` resolves against the service UID home; cleaned; absolute;
-   existing directory enterable by the service UID; input must already equal
-   the resulting canonical string. Symlinks follow kernel resolution. Failure
-   before mutation is `WorkingDirectoryInvalid`; a later enter failure settles
-   `WorkingDirectoryUnavailable`.
-4. One durable Start creates a `STARTING` card and deterministic gateway-owned
-   tmux runtime, sets a fresh runtime id, registers exact tmux/PID/start/TTY,
+   leading `~`/`~/` resolves against the service UID home; after that
+   expansion the input must already equal its lexically cleaned absolute form
+   — canonicalization is lexical, never symlink resolution; symlinks follow
+   kernel resolution only in the enterability check against the service UID.
+   Failure before mutation is `WorkingDirectoryInvalid`; a later enter failure
+   settles `WorkingDirectoryUnavailable`.
+4. One durable Start creates a `STARTING` card, runs the same bounded
+   hook-catalog preflight in the gateway against the profile home and
+   validated cwd (failure settles the command as `RuntimeLaunchFailed` before
+   any tmux mutation), then creates the deterministic gateway-owned tmux
+   runtime, sets a fresh runtime id, registers exact tmux/PID/start/TTY,
    and foreground-execs the pinned ordinary Codex TUI with profile home, cwd,
    reviewed hooks, strict config, and YOLO. It sends no prompt.
 5. Exact live process registration settles Start and publishes `IDLE`; the card
@@ -292,33 +301,57 @@ approval, sandbox, or runtime identity. It validates `-C/--cd`; injects YOLO;
 and preserves supported prompt/image/model and other non-conflicting
 interactive flags. A conflicting or unknown-at-the-pin option fails before
 registration or exec. `--remote`, caller-supplied `CODEX_HOME`, arbitrary
-`-c/--config`, approval, sandbox, and hook-trust bypasses are forbidden.
-Noninteractive and outside-tmux commands retain ordinary router behavior.
+`-c/--config` and its documented aliases (`--enable`/`--disable`), Codex
+`-p/--profile` config layering, provider swaps (`--oss`, `--local-provider`),
+approval (`--approve-for-me` included), sandbox, and hook-trust bypasses are
+forbidden; an alias of a forbidden option is forbidden, and profile in this
+section always means the Skíðblaðnir profile, never Codex `-p`. The launcher
+also refuses delegation with a typed failure when any of its ancestors is the
+exact pinned Codex binary or the invoking pane already resolves to a live
+registered runtime. Noninteractive and outside-tmux commands retain ordinary
+router behavior, as do terminating informational forms (`-h/--help`,
+`-V/--version`, `help`, `completion`): the router execs the profile binary
+unchanged with no preflight, `PrepareNew`, or registration.
 
 Resume has one local flow:
 
 - `resume <exact UUID>` accepts only a canonical UUID: parse and re-render the
   lowercase `8-4-4-4-12` form before any lookup or exec. An arbitrary Codex
-  `SESSION_ID`/session name is rejected, never forwarded. The UUID first
-  resolves a current Skíðblaðnir binding. Live
+  `SESSION_ID`/session name is rejected, never forwarded. The UUID resolves
+  against confirmed bindings, pending refs, and non-terminal Start/Reopen
+  commands in that order — a UUID already pending or in flight switches to
+  (or names) the owning card rather than creating a second one. Live
   means switch exactly the invoking non-gateway tmux client to the registered
   session/window/pane; dead means reopen the same card in the invoking pane;
   no match creates a new card with that pending thread ref and execs ordinary
-  `codex resume <UUID>`. No prefix/fuzzy/session-id resolution exists.
-- bare `resume` shows only the bounded local Skíðblaðnir card picker. Selecting
-  a live card switches it; selecting a dormant card reopens it. Importing an
-  older untracked conversation requires its exact UUID; Core never lists or
-  parses Codex history.
+  `codex resume <UUID>`. No prefix/fuzzy/session-id resolution exists. The
+  pin's other resume selectors — `--last`, `--all`,
+  `--include-non-interactive` — are rejected with a typed failure naming the
+  exact-UUID and picker alternatives.
+- bare `resume` shows only the bounded local Skíðblaðnir card picker: open
+  managed cards plus dormant cards holding a confirmed ref; external and
+  refs-less cards are omitted. Selecting a live card switches it; selecting a
+  dormant card reopens it; an empty picker prints a named local failure.
+  Importing an older untracked conversation requires its exact UUID; Core
+  never lists or parses Codex history.
 - zero or multiple candidate laptop clients never trigger an implicit switch;
   print the exact tmux target and handle. Client-context-less `switch-client`
   is forbidden.
 
 A supplied pending ref is stored separately from a confirmed binding. Every
-root `SessionStart` is gated by it until confirmation: the parsed UUID must
-equal the pending ref. Mismatch derives `EXCEPTION`, withdraws that runtime's
-hook authority, and closes its phone bridges — the pane itself remains the
-user's to end; the generic rollover rule cannot bypass this gate. A direct fresh start has no
-pending ref.
+root `SessionStart` is gated by it until confirmation: a parsed UUID equal to
+the pending ref confirms the binding. A mismatching `SessionStart` whose
+source is `startup` or `clear` is user-initiated new-root evidence — the user
+typed `/new`, `/clear`, or a backtrack edit before the first prompt — so it
+abandons the pending ref and binds as ordinary rollover with a recorded
+derivation note. Only a mismatching `SessionStart` with source `resume` — a
+different conversation actually loaded — derives `EXCEPTION`
+`pending-resume-contradiction`, withdraws that runtime's hook authority, and
+closes its phone bridges — the pane itself remains the user's to end; the
+generic rollover rule cannot bypass this gate. A direct fresh start has no
+pending ref. Every resume-form exec — laptop exact-UUID resume, dormant-card
+reopen, and gateway Reopen — records its target as the pending ref under this
+same gate.
 
 ### Conversation rollover
 
@@ -338,7 +371,12 @@ authenticated TUI process:
 Because this pin emits `SessionStart` immediately before the new root's first
 prompt, closing after selecting a new empty root but before typing reopens the
 last confirmed conversation. No submitted work exists in the unconfirmed root.
-Native subagents never cause rollover.
+Native subagents never cause rollover. `SessionStart` with source `compact` is
+corroboration, never new-conversation evidence: same-thread compaction changes
+nothing, and a compact-source `SessionStart` carrying a new thread id follows
+rollover but inherits any open turn rather than closing it and never publishes
+Idle or attention. P2 records the pin's actual compact identity behavior
+before relying on more.
 
 ### Pre-existing laptop TUIs
 
@@ -352,16 +390,29 @@ binding, state `UNKNOWN`, reason `external-runtime-untracked`, and an assigned
 handle/character. Android may attach to its exact terminal, but Close/Reopen and
 semantic state are unavailable. Ending it and starting/resuming through the
 launcher creates a normal managed card. Skíðblaðnir never reads its screen,
-transcript, SQLite, title, or inferred current thread.
+transcript, SQLite, title, or inferred current thread. Re-inventory re-matches
+an existing external card by its proven tuple rather than minting a duplicate,
+and an external card whose tuple is verified dead with no live attachment
+retires automatically as local closure with reason
+`external-runtime-untracked` — external cards are inventory, not history. A
+lifecycle action on an external card whose runtime is live or unverifiable is
+`AgentUntracked`.
 
 ### Phone/laptop handoff
 
 - Opening a card starts no second TUI and asks no laptop client to detach.
 - The gateway creates an ephemeral tmux session grouped with the registered
-  source, then attaches one gateway-owned phone PTY to that shadow.
-- The phone client keeps `active-pane` and `ignore-size`. Initial targeting is
-  one client-context invocation; later targeting uses the gateway-owned phone
-  client context. Never mutate another client's selection.
+  source — gateway-named deterministically per runtime and attachment — then
+  attaches one gateway-owned phone PTY to that shadow. Restart destroys
+  gateway-named shadows with no live WSS through the same last-link guard.
+- The phone client keeps `active-pane` and `ignore-size`. Client-context
+  targeting is session/window-level only — proven session-local at the pin —
+  and never names a pane target: every pane-level targeting form mutates the
+  window's shared active pane and drags an unflagged laptop client with it.
+  The phone client's own active pane is selected by writing a `select-pane`
+  key sequence into the gateway-owned phone PTY, using a prefix and key table
+  the gateway sets on the shadow session itself. A registered pane unreachable
+  this way is a typed failure. Never mutate another client's selection.
 - Effective global `window-size latest` is readiness-checked. With an unflagged
   laptop client present, phone resize changes only its viewport and reports
   `CONSTRAINED`; when the phone is the only client it owns sizing and reports
@@ -369,8 +420,11 @@ transcript, SQLite, title, or inferred current thread.
 - Both devices see/type into the same process, screen, draft, turn, and active
   binding. Inputs may interleave; one human is expected to type at a time.
 - Detach first closes the phone client, then destroys its shadow through one
-  in-server last-link guard. If it is the final group link, retain/promote it so
-  the shared pane is never accidentally killed. Reconcile exact pane/TTY/PID
+  in-server last-link guard; the guard outranks WSS teardown. If the shadow is
+  the final group link, promote it: rename it to the runtime's deterministic
+  gateway session name and durably re-register the runtime's session/window
+  ids, so the shared pane is never accidentally killed and Open/resume resolve
+  the promoted session. Reconcile exact pane/TTY/PID and session/window ids
   after cleanup.
 
 ### Close, Reopen, and recovery
@@ -379,7 +433,9 @@ transcript, SQLite, title, or inferred current thread.
 - Accepting Close atomically enters `CLOSING`, rejects new attachments, pins
   the latest managed runtime identity, closes Android shadows, re-verifies exact
   liveness and settled-idle facts, then terminates only that TUI. Any uncertainty
-  is `LivenessUnverifiable`; a newer turn is `AgentWorking`.
+  is `LivenessUnverifiable`; a newer turn is `AgentWorking`. A Close that
+  settles a failure leaves `CLOSING` and re-derives state from evidence,
+  carrying only that `failureCode`/`failureObservedAt`.
 - A launcher-origin close kills only the exact Codex PID; the user's pane returns
   to its shell after every phone bridge has already closed. A gateway-origin
   TUI is the pane root, so its pane ends. A live external card cannot Close —
@@ -396,9 +452,11 @@ transcript, SQLite, title, or inferred current thread.
 - Phone/WSS/mosh loss affects only that client. Gateway restart reconstructs
   owned runtime facts from SQLite, tmux, `/proc`, and hook gap files; no input is
   replayed.
-- Runtime death after a settled turn is `RECOVERABLE`; death with an unclosed
-  turn is `EXCEPTION`; death before any confirmed ref is `EXCEPTION` and cannot
-  Reopen; absent/stale/contradictory evidence is `UNKNOWN`.
+- Runtime death with a fresh unclosed turn is `EXCEPTION`; death over a
+  settled, continuation-closed, rollover-closed, stale, or absent turn with a
+  confirmed ref is `RECOVERABLE` (`runtime-ended-idle`); death before any
+  confirmed ref is `EXCEPTION` and cannot Reopen; absent/stale/contradictory
+  evidence is `UNKNOWN`.
 - `$XDG_STATE_HOME/skidbladnir/todo.txt` is an awaited atomic `0600` projection
   of handle, profile, latest confirmed ref, tmux target, objective, and state.
   SQLite is authority; code never reads `todo.txt`.
@@ -445,7 +503,10 @@ conversation semantics retained by Skíðblaðnir.
   SQLite pragmas, hook/helper/pin/router digests, sockets, Serve, and the exact
   recorded tmux behavior/version. Profile health independently proves expected
   `CODEX_HOME`, readable auth/config state, installed hook config, and pinned
-  executable. It never reads or logs account identity.
+  executable; it is the closed `Available | Unavailable | Drift`, and Start
+  against a profile not `Available` fails synchronously as
+  `ProfileUnavailable` before a card exists. It never reads or logs account
+  identity.
 - Liveness sampling is every two seconds for live bindings and fresh at
   terminal/close/reopen admission. Host pressure samples every five seconds.
   The one-second post-Stop settle schedule is event-triggered and self-ending.
@@ -462,8 +523,10 @@ config and the requested cwd. The bounded response must contain exactly the
 seven reviewed, enabled, trusted, non-managed user handlers with exact source
 path and frozen hashes, and no warning, error, plugin, managed, modified,
 untrusted, disabled, or foreign handler. The subprocess must exit cleanly
-within its deadline. Any difference fails visibly before a card/runtime exists;
-no review choice or trust mutation is automated. This closed universe
+within its deadline. Any difference fails visibly — on the launcher path
+before a card or runtime exists; on gateway origin, where acceptance precedes
+the preflight, by settling the accepted Start before any tmux creation or
+registration; no review choice or trust mutation is automated. This closed universe
 deliberately rejects a working directory whose project layer ships its own
 Codex hooks — trusted or disabled included: the typed failure names the foreign
 handler, and such a repository is used outside the tracked tmux path or with
@@ -472,7 +535,8 @@ uses direct argv,
 never shell interpolation or PATH lookup. A same-UID mutation between preflight
 and exec remains the declared residual trust risk.
 
-The launcher mints `SKIDBLADNIR_RUNTIME_ID`, registers it with:
+The launcher mints `SKIDBLADNIR_RUNTIME_ID` for laptop origin — gateway
+origin receives it minted durably at acceptance — and registers it with:
 
 ```text
 profile + runtime id + Codex PID + kernel start time + pane TTY
@@ -500,7 +564,9 @@ transcript, and discards the path. It walks `/proc` from itself to the nearest
 ancestor whose executable is the exact pinned Codex binary and reports that
 PID, kernel start time, and TTY. It sends one bounded projection to an
 owner-only Unix socket, prints no model-visible output, and awaits an ACK.
-Delivery failure writes an atomic owner-only gap containing only the validated
+The ACK asserts durable commit: the receiver acknowledges only after the
+projection's transaction commits, so a delivery the helper saw fail is at
+worst duplicated, never lost. Delivery failure writes an atomic owner-only gap containing only the validated
 identity/projection tuple and optional bounded objective preview; the gap never
 contains the full prompt, transcript path, tool input/output, assistant text,
 reasoning, or terminal bytes.
@@ -537,13 +603,36 @@ publish Idle. After one second with no newer root prompt/session:
 - a live binding publishes `IDLE`;
 - result-ready attention is raised once in the same SQLite transaction.
 
+Exception attention is raised exactly once per transition into `EXCEPTION`
+per runtime incarnation, in the same transaction as its state Fact and
+idempotent across re-derivation; acknowledgement re-arms it only for a fresh
+transition. Local closure or dismissal acknowledges outstanding attention in
+the same transaction as `AgentClosed`; acknowledge stays accepted on a closed
+agent; `agentCounts.attention` counts unacknowledged attention on non-closed
+cards and stays current through `AttentionRaised`/`AttentionAcknowledged`
+Facts.
+
 A newer prompt during the interval cancels the candidate. Gateway restart
 reconstructs and re-arms the remaining interval from durable timestamps. A gap
-marker applies the same reducer using its original observation time. Duplicate
+marker applies the same reducer using its original observation time, and a
+supervised sweep imports gap markers while the gateway runs — periodically and
+at each liveness reconciliation — through the same idempotent path as restart.
+An authoritative current-root fact referencing an unknown turn synthesizes
+that turn as opened at the referenced turn time, so a gapped opening never
+strands its Stop. Gap import is forward-only against committed settlements: it
+never retracts a published turn close, `IDLE`, or attention; a late fact that
+would have canceled a settlement applies from its import time as a corrective
+state Fact. Duplicate
 hook/gap delivery is idempotent. An authoritative current-root `SessionEnd`
-after a qualifying Stop resolves completion before runtime-loss derivation;
-authoritative `SessionEnd` or process death with an unclosed turn and no
-qualifying Stop derives death-while-working. Historical/unconfirmed-root
+after a qualifying Stop resolves completion before runtime-loss derivation,
+whether or not its settle interval finished. End classification uses the same
+freshness evidence as the live demotion: an end fact or process death whose
+open turn was still fresh within the turn-activity staleness bound derives
+`runtime-ended-working`; a stale open turn — the pin's Escape-interrupt
+signature — an absent turn, or a turn closed by continuation or rollover
+derives `runtime-ended-idle`, and `RECOVERABLE` when a confirmed ref survives.
+A genuinely silent tool call killed past the bound therefore reads as
+idle-ended; that is the recorded trade. Historical/unconfirmed-root
 `SessionEnd` never changes card state.
 
 An open turn proves `WORKING` only while fresh: the pin records that active
@@ -622,25 +711,29 @@ A **Codex binding** is the latest root selected by a managed TUI: exact
 `thread.id`, corroborating `session_id`, and confirmed effective cwd/model.
 `thread.id` alone resumes. A pending explicit resume ref is
 separate command/runtime support state and never projected as confirmed. One
-active `(profile, thread.id)` belongs to at most one managed agent; rollover
+active `(profile, thread.id)` — pending refs included — belongs to at most one
+managed agent; rollover
 releases the previous ref. Native subagents never become bindings or cards.
 
 A **runtime binding** is one TUI incarnation: opaque runtime id; closed origin
-`gateway | launcher | external`; immutable tmux server/session/window/pane ids;
-pane TTY; exact PID/kernel start time; start/end facts. Tmux names and indexes
-are never identity. At most one managed live runtime exists per agent. External
+`gateway | launcher | external`; immutable pane id, pane TTY, and exact
+PID/kernel start time; tmux server/session/window ids as reconcilable facts
+(last-link promotion re-registers session/window); start/end facts. Tmux names
+and indexes are never identity. At most one managed live runtime exists per agent. External
 bindings are attach-only and have no runtime id or hook authority.
 
 Card state derives by first match over this total order:
 `CLOSED > CLOSING > STARTING > EXCEPTION > WORKING > IDLE > RECOVERABLE > UNKNOWN`.
-Two simultaneous predicates are a defect.
+First match arbitrates transiently overlapping evidence — an accepted Close
+outranks the turn it races by order, not exclusivity; an overlap that persists
+outside a command window is a defect.
 
 | State | Evidence |
 | --- | --- |
 | `STARTING` | Accepted managed launch; exact live runtime not registered and no settled failure |
-| `IDLE` | Live managed runtime, bound or not yet bound; no open turn/candidate; null binding means a new conversation awaiting its first prompt, not a resumable conversation |
+| `IDLE` | Live managed runtime, bound or not yet bound; no open turn/candidate; null binding means a new conversation awaiting its first prompt, not a resumable conversation; a pending unconfirmed resume ref projects `Resuming · not yet confirmed` instead |
 | `WORKING` | Live managed runtime with an unsettled Stop candidate or an open root turn with activity within the named turn-activity staleness bound |
-| `CLOSING` | Accepted Close; exact runtime stop not committed |
+| `CLOSING` | Accepted Close; exact runtime stop not committed and no settled failure |
 | `RECOVERABLE` | No live managed runtime; latest confirmed thread exists; death followed a settled turn |
 | `EXCEPTION` | Managed launch failure, runtime death while working, runtime end before any ref, or pending-ref contradiction |
 | `UNKNOWN` | External runtime, or required evidence absent/stale/contradictory |
@@ -678,7 +771,7 @@ has its own UUIDv7 id.
 | --- | --- |
 | `agents` | Handle, character, origin, profile, optional objective, cwd, created/closed |
 | `codex_bindings` | Current confirmed root ref/session/effective cwd/model per agent |
-| `pending_resumes` | Exact user-selected ref until first root hook or terminal failure |
+| `pending_resumes` | Exact selected ref until first root hook, terminal failure, or runtime end |
 | `runtime_bindings` | Runtime id/origin and exact tmux/TTY/PID incarnation/end |
 | `agent_observations` | Closed hook/liveness facts and safe activity |
 | `lifecycle_commands` | Installation/key/kind/digest, step, immutable outcome |
@@ -690,15 +783,33 @@ has its own UUIDv7 id.
 
 Lifecycle kinds are exactly `StartAgent | CloseAgent | ReopenAgent`. A unique
 `(installation_id, client_command_id)` plus normalized semantic-payload digest
-linearizes replay. Terminal outcomes are immutable. Exact terminal replay
+linearizes replay. `StartAgent` carries its key in the request; Close and
+Reopen declare no request body at this contract, so their key is
+server-derived from `(installation_id, handle, kind, pinned binding/ref)` — a
+repeat while non-terminal returns the in-flight receipt. A replayed key whose
+normalized semantic-payload digest differs is `CommandConflict`.
+Launcher-origin commands record one reserved local installation identity;
+neither key column is ever NULL. Terminal outcomes are immutable. Exact
+terminal replay
 returns the original receipt; in-flight replay returns current receipt and never
 duplicates a stage.
 
 Start stages are `accepted -> runtime_created -> runtime_registered -> outcome`.
+For gateway origin, the gateway mints the runtime id and deterministic session
+name durably at acceptance and passes the id to the launch environment.
 Phone-origin workers resume deterministic tmux creation/registration after
-restart. Launcher-origin commands never outlive the invoking launcher: the
+restart, and restart re-drives or settles every non-terminal lifecycle command
+from its durable stage — a failed settlement releases the agent's
+serialization. Launcher-origin commands never outlive the invoking launcher:
+the
 reconciler may settle an observed registration/outcome but never creates a user
-pane or execs on its behalf. A named binding deadline settles failure. Close and
+pane or execs on its behalf. One named registration deadline bounds accepted
+Start: a runtime not exactly registered within it settles
+`RuntimeLaunchFailed` and derives `EXCEPTION` with reason
+`start-binding-deadline`. The deadline measures accepted Start to live runtime
+registration, never Codex binding — a registered runtime with a null Codex
+binding never expires, and a pending ref is cleared with its runtime, not
+settled by any deadline. Close and
 Reopen pin exact binding/ref at acceptance and serialize per agent.
 
 Gateway runtime session names are deterministic per runtime id. Replay adopts a
@@ -748,9 +859,9 @@ Mismatch returns `ProtocolMismatch` on Pair, HTTP, SSE, and WSS before mutation.
 | `GET /v1/agents?cursor=&limit=&state=` | Keyset `(created desc,id desc)`, `limit<=100`, `open|closed|all`, default open |
 | `GET /v1/agents/{handle}` | Exact card, binding, attention, attachability, reasons/failure |
 | `POST /v1/agents` | `StartAgent(clientCommandId,profile,objective,cwd)`; `202` |
-| `POST /v1/agents/{handle}/close` | Managed idle-only Close; `202` |
+| `POST /v1/agents/{handle}/close` | Idle managed stop or verified-dead local dismissal; `202` |
 | `POST /v1/agents/{handle}/reopen` | Managed confirmed-ref Reopen; `202` |
-| `POST /v1/agents/{handle}/attention/acknowledge` | Idempotent acknowledgement |
+| `POST /v1/agents/{handle}/attention/acknowledge` | Idempotent acknowledgement, closed cards included |
 | `GET /v1/events` | Live-push SSE; any loss or overflow re-bootstraps |
 | `GET /v1/host/samples?window=&resolution=` | Current plus <=300 truthful aggregate buckets |
 | `GET /v1/terminal/{handle}` | Authenticated WSS upgrade after fresh attachability check |
@@ -787,17 +898,26 @@ protocol/storage/process states are defects with a correlation handle.
 
 Bootstrap and `snapshotFactCursor` come from one SQLite read transaction. SSE
 is live-push only: subscriber registration is serialized with post-commit Fact
-fan-out, a stream carries only Facts committed after its registration with
+fan-out, registration completes before the response head, the stream's first
+event is one `ready` marker emitted from the registration critical section,
+a stream carries only Facts committed after its registration with
 their sequences, and the server keeps no per-subscriber cursor and replays
-nothing. The client subscribes, then bootstraps, and discards Facts at or below
-`snapshotFactCursor`; bounded-queue overflow or any stream loss closes the
-stream and the client re-bootstraps — at one-phone scale bootstrap is the only
-resync path. A malformed/filter-invalid paging cursor is `CursorInvalid`. SSE
+nothing. The client subscribes, awaits `ready`, then bootstraps, discards
+Facts at or below
+`snapshotFactCursor`, and re-pages `/v1/agents` at or after the bootstrap
+transaction; bounded-queue overflow or any stream loss closes the
+stream and the client re-runs that ordered composite — at one-phone scale it
+is the only resync path, safe because Facts at or below the cursor are
+discarded and later Facts apply in sequence order. SSE emits a periodic
+comment heartbeat and WSS a ping on one named keepalive interval; a client
+missing two intervals treats the stream as lost. A malformed/filter-invalid
+paging cursor is `CursorInvalid`. SSE
 carries no terminal or transcript data.
 
 WSS text frames are the closed `Hello | Presence | Resize | Detach | Error`;
 binary client frames are input and binary server frames are PTY output. One WSS
-owns one PTY/client/shadow and tears all three down on any close. `Hello` and
+owns one PTY/client/shadow and tears all three down on any close, the shadow
+subject to the in-server last-link guard. `Hello` and
 `Presence` expose only whole-group attached-client count and
 `Owner|Constrained` geometry. Initial phone geometry is set before attach;
 tmux's repaint is the only initial output. There is no byte replay or gateway
@@ -817,9 +937,10 @@ projected hook message or gap 16 KiB; unary handler 30 s. These are transport
 bounds, not agent quotas.
 
 Objective is NFC, non-empty for Android Start, at most 240 scalars, with no
-C0/C1, line/paragraph separators, or bidi overrides. Laptop/external cards may
+C0/C1, line/paragraph separators, or bidi overrides. Laptop cards may
 have semantic absence until the first accepted root prompt supplies the same
-bounded preview. The helper NFC-normalizes that prompt, collapses whitespace,
+bounded preview; external cards keep semantic absence — no hook authority
+ever supplies one. The helper NFC-normalizes that prompt, collapses whitespace,
 controls, line/paragraph separators, and bidi controls to single ASCII spaces,
 then takes at most 240 scalars and trims the result; it never retains the full
 prompt. Wire enums use PascalCase except the externally fixed lowercase
@@ -838,7 +959,9 @@ profile/list/window values declared by the schema.
   objective, safe activity, age, attention, and typed non-nominal reason.
   External cards visibly state `External TUI · status unavailable`.
 - An Idle card with null Codex binding states
-  `New conversation · not yet resumable`; it never implies saved history.
+  `New conversation · not yet resumable`; a card holding a pending unconfirmed
+  resume ref states `Resuming · not yet confirmed` instead. Neither implies
+  saved history.
 - Grid order is attention first, then `WORKING`, transitional, problem,
   `IDLE`, then last observation descending and handle. `CLOSED` is behind an
   explicit filter.
@@ -911,8 +1034,13 @@ the prior threshold. Show every reason; pressure never blocks Start.
   credential/content-free; synthetic proof prompts are allowed but never
   recorded verbatim.
 - UI always shows `YOLO` and profile and never implies containment.
-- Upgrades are idle maintenance: close ingress; require every tracked agent
-  idle; detach/stop tracked TUIs; stop gateway; verify no tracked process remains;
+- Upgrades are idle maintenance over runtimes, not cards: require no managed
+  runtime live-and-working and every live managed runtime idle-verified —
+  dead, closed, and external cards are irrelevant to the precondition, but a
+  live external pinned process refuses the run with an operator-visible reason
+  naming its pane, since Core never kills an unmanaged process. Then close
+  ingress; detach/stop managed TUIs; stop gateway; verify no managed runtime
+  process remains;
   `VACUUM INTO`; archive each profile home, pinned binary, hook schemas/config,
   and `codex.lock` with permissions plus digest manifest; install/reprobe; then
   `./scripts/test accept upgrade`. Any failure restores every manifest artifact
@@ -920,8 +1048,11 @@ the prior threshold. Show every reason; pressure never blocks Start.
   when the upgrade mechanism lands, then again only when the snapshot/restore
   procedure itself changes — never per pin change. Snapshot is mode 0700 under
   `$XDG_STATE_HOME/skidbladnir/snapshots/<pin>` and deleted after acceptance.
-- Tmux upgrades use the same maintenance path and must reprove grouped-client
-  semantics. There is no fallback binary or mixed runtime.
+- Tmux upgrades use the same maintenance path, additionally restart the tmux
+  server — announced to the operator first, since that destroys untracked
+  panes — and must reprove grouped-client
+  semantics against the restarted server. There is no fallback binary or
+  mixed runtime.
 
 ### Future runtime seam
 
@@ -1074,7 +1205,9 @@ per crossing, one expensive real devbox/phone flow—not every helper matrix.
 - Every card state comes only from declared hook/liveness facts. Stop never
   publishes Idle/attention before its settle interval; concurrent continuation
   cancels both; an interrupted turn with no Stop demotes to Unknown at the
-  turn-activity staleness bound, never Idle or attention; gap/restart repairs
+  turn-activity staleness bound, never Idle or attention, and an end fact over
+  that stale turn settles `runtime-ended-idle`/`RECOVERABLE`, never
+  death-while-working; gap/restart repairs
   exactly once; terminal content has no state authority. Every non-nominal
   cause/failure renders distinctly.
 - Working Close rejects. Idle Close stops only exact managed TUI and exposes no
