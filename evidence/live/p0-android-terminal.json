@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "proofId": "p0-android-terminal",
+  "recordedAt": "2026-08-25T18:30:46Z",
+  "command": [
+    "./scripts/test",
+    "proof",
+    "p0-android-terminal"
+  ],
+  "artifacts": [
+    {
+      "path": "android/app/build.gradle.kts",
+      "sha256": "55cead2bdda6196fd2fc381025230ca7aaddba9b4815cf2abf0ca2dc3d7f30f3"
+    },
+    {
+      "path": "android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalHarnessInstrumentedTest.kt",
+      "sha256": "f75c2f0789bf9c9649dd2622e29d625de3b5c55a292c5b7f903dbb9ea5713aaa"
+    },
+    {
+      "path": "android/app/src/main/AndroidManifest.xml",
+      "sha256": "bccaf739e0a9b608dfa758b7fce3ebef3e1c33d0f592919d27bf55f40cef68f8"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/index.html",
+      "sha256": "084d3b3c7274e10242c02d4c54dac498e2d02b09f528ad88cd86d5c0e7036656"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/terminal.css",
+      "sha256": "5afbdd6dcb277edf2bc3e19a702b6125cd1602dcac805774ca12afd080175d39"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/terminal.js",
+      "sha256": "19ffee4f9d84b2170efcdaccfad81fec1e78a951026b9e54af33dec682db4120"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE",
+      "sha256": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css",
+      "sha256": "854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js",
+      "sha256": "14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.LICENSE",
+      "sha256": "e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f"
+    },
+    {
+      "path": "android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js",
+      "sha256": "ba3ea256ce0620a0992a197d6c9baea64823fc93d8da07a9e366ca9943c18527"
+    },
+    {
+      "path": "android/app/src/main/java/dev/niels/skidbladnir/MainActivity.kt",
+      "sha256": "eccbdc63027d0cfa4e07b6305e9cfc0e3d26803ab72f07d7d919084732bef8a7"
+    },
+    {
+      "path": "android/app/src/main/java/dev/niels/skidbladnir/PlatformPreflight.kt",
+      "sha256": "6ce2624ec68d68f5706596d4dddbf6db8d847b03c5672d9667de952b25c5f5ba"
+    },
+    {
+      "path": "android/gradle.properties",
+      "sha256": "5964c5f1e3be0a7690eee5b8d2207b0dcc5d2f5eb3b04f7d032c1f813998226d"
+    },
+    {
+      "path": "android/terminal.lock",
+      "sha256": "7d2a0ea8572dab738fec1557e7e67b04437f4bf50257e15436a964c6af6bfdd1"
+    },
+    {
+      "path": "scripts/test",
+      "sha256": "d0627f1a07473e1a78e5978a3b8b84cbf30e00cd1848eac1e55cf10b89d9c9ac"
+    }
+  ]
+}

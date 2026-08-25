@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "proofId": "p0-tui-lifecycle",
+  "recordedAt": "2026-08-25T18:43:48Z",
+  "command": ["./scripts/test", "proof", "p0-tui-lifecycle"],
+  "artifacts": [
+    {"path": "codex.lock", "sha256": "6d6152a7e6305fc5ee3b4e1e0f282c8ec1fd91c1cc95e8dc5ec1857b00274ec9"},
+    {"path": "deploy/codex/hooks.json", "sha256": "63fb61eaab06309c5a5c537b69e9bf0eb478ff6c162824e6249fc46c08863e69"},
+    {"path": "deploy/codex/hooks.lock.json", "sha256": "ae552469c427116cbd25752adf348bd7c2f36b7312d637de8b56f24bf396f4e1"},
+    {"path": "internal/hooks/hooks.go", "sha256": "912f3787fcd10407d3bf7f45cef2f661c5d2b5b65575d56a717437c6b501c6a0"},
+    {"path": "scripts/test", "sha256": "d0627f1a07473e1a78e5978a3b8b84cbf30e00cd1848eac1e55cf10b89d9c9ac"},
+    {"path": "tests/live/direct_tui_live_test.go", "sha256": "efbaf599e76fe4efc2c58d3c1ae28f603516764698980a3497e0fa9a558e6ad8"},
+    {"path": "tests/live/hooks_live_test.go", "sha256": "6f56acce2926658b4550dcc0a3a7deb64e35712102c7c415bc5fa8e8106fd1ee"},
+    {"path": "tests/live/tmux_grouped_live_test.go", "sha256": "498fa92b2f20bbac93a06edc7b920df45615f0405acece2bccf4aa3cdc95c805"},
+    {"path": "tests/live/tui_behavior_live_test.go", "sha256": "dc60c3de3c002e3061d2a4ad6a0186b7e9e03ea37295450a5b22c570749bcb86"}
+  ]
+}
