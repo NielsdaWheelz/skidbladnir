@@ -1,7 +1,7 @@
 {
   "version": 1,
   "proofId": "p0-codex-pin",
-  "recordedAt": "2026-08-25T14:35:21Z",
+  "recordedAt": "2026-08-25T15:32:52Z",
   "command": ["./scripts/test", "proof", "p0-codex-pin"],
   "artifacts": [
     {"path": "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css", "sha256": "854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6"},
@@ -24,6 +24,6 @@
     {"path": "schemas/codex/0.149.1/hooks/subagent-start.command.input.schema.json", "sha256": "ce7dc9b5ae8826d1e0c59ffcea793e558aebceb7917a2eb9bb2edd8a7ac37aa9"},
     {"path": "schemas/codex/0.149.1/hooks/subagent-stop.command.input.schema.json", "sha256": "94dc8df29f4691195ac2338ae6de876230e5100a10b94ef48df4e732424b5df5"},
     {"path": "schemas/codex/0.149.1/hooks/user-prompt-submit.command.input.schema.json", "sha256": "e6b923bc519896197c44c4fc267a9d115cef24ac418dde9c27db699f4e3b65fd"},
-    {"path": "scripts/test", "sha256": "60cb790cd92adfdb4d3c10f466a93401c3b17c10eb7893763ca531313b205d5b"}
+    {"path": "scripts/test", "sha256": "8fa5ee661a5bea660d9e751bd5577da26e26a31097879b858f1b0a1b97585eaf"}
   ]
 }

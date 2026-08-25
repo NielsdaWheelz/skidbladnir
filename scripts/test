@@ -91,6 +91,11 @@ case "$gate" in
     if [[ "$model" != 'SM-S906W' || "$api" != '36' ]]; then
       not_run platform 'Connected device is not SM-S906W on API 36'
     fi
+    "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null
+    "$adb" -s "$serial" shell wm dismiss-keyguard >/dev/null
+    if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
+      not_run platform 'Connected Android device must be awake and unlocked'
+    fi
     cd "$repo_dir/android"
     run android-platform env ANDROID_HOME="$android_sdk" ANDROID_SERIAL="$serial" ./gradlew :app:connectedDebugAndroidTest --no-daemon
     ;;
