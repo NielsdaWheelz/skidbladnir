@@ -1,7 +1,7 @@
 # Skíðblaðnir v1: product and architecture
 
 Status: reviewed implementation target; no implementation is implied. Audience:
-implementers and reviewers. Evidence last checked: 2026-08-23.
+implementers and reviewers. Evidence last checked: 2026-08-24.
 
 Specification precedence:
 
@@ -24,6 +24,9 @@ Specification precedence:
    concrete Skíðblaðnir proof set.
 
 Resolve any conflict before implementation.
+
+[`roadmap.md`](roadmap.md) owns implementation order, PR boundaries, and
+handoff gates. It may not change or waive this document's product contract.
 
 ## 1. Outcome
 
@@ -85,21 +88,31 @@ Profile mapping:
 All three commands currently resolve through the dev-server-owned `ai-router`.
 Skíðblaðnir remains its own repository. Inside tmux, only a root interactive
 Codex start and `resume` delegate, after `ai-router` selects the closed profile,
-to the repo-installed Skíðblaðnir launcher. Every other Codex subcommand and
-every outside-tmux invocation executes the real profile-selected binary
-unchanged. The Skíðblaðnir installer verifies this source-owned seam and never
-replaces router files or symlinks; a missing/incompatible managed seam fails
-visibly rather than silently starting an untracked TUI. Skíðblaðnir does not
-import or depend on `llm-calling`.
+to the repo-installed Skíðblaðnir launcher at one fixed absolute path. Every
+other Codex subcommand and every outside-tmux invocation executes the real
+profile-selected binary unchanged; interactive subcommands other than root and
+`resume` therefore produce untracked TUIs by design, which Skíðblaðnir observes
+only as discarded hook traffic. The seam is versioned and introspectable: it
+carries a seam contract version and an env-gated introspection mode that prints
+that version and its classification decision without executing anything. The
+Skíðblaðnir installer writes a `0600` enablement marker recording the required
+seam contract version and never replaces router files or symlinks. With the
+marker present, a seam that cannot delegate — launcher missing, incompatible,
+or not executable — prints its reason and exits non-zero, never plain-execs;
+with the marker absent, the router plain-execs the real binary unchanged, so
+dev-server stays standalone on every other host. Profile readiness re-verifies
+the installed router's seam version against the marker on the same schedule and
+fail-visible path as pin drift. Skíðblaðnir does not import or depend on
+`llm-calling`.
 
 ### Product language
 
 | Role | Product language | Contract |
 | --- | --- | --- |
-| Android app | **Skíðblaðnir** | Display name; repository, code, paths, and package identifiers use `skidbladnir`. |
-| Agent and host overview | **Hlíðskjálf** | The grid and pressure surface. Literal navigation and accessibility label: `Agents`. |
-| New-agent surface | **The Forge** | `+` is labeled `Create new agent`; submission remains `Start agent`. Aulë/Hephaestus supply motif only. |
-| Dwarf character catalogue | **Dvergatal** | Versioned, bundled names and portraits; presentation only. |
+| Android app | **Skíðblaðnir** | Display name — the launcher label and app accessibility name; repository, code, paths, and package identifiers use `skidbladnir`. |
+| Agent and host overview | **Hlíðskjálf** | The grid and pressure surface. Documentation vocabulary only — no in-app string; the surface's literal label is `Agents`, surfaced as the terminal accessory row's exit-to-grid key. |
+| New-agent surface | **The Forge** | Documentation vocabulary only beyond its literal labels: `+` is labeled `Create new agent`, the sheet is titled `New agent`, and submission remains `Start agent`. Aulë/Hephaestus supply motif only. |
+| Dwarf character catalogue | **Dvergatal** | Append-only bundled names and portraits; presentation only. Documentation vocabulary only — no in-app string. |
 | Human source of intent | **Gloriana** | Conceptual role, not a screen, type, or service. |
 | Future orchestration engine | **Sūtradhāra** | Reserved name; Core has no placeholder, route, schema, or abstraction for it. |
 
@@ -189,7 +202,10 @@ commands above, `--remote`, `resume --remote`, `agents`, `app-server proxy`, and
 `app-server daemon bootstrap|start|version`. No App Server socket was live.
 Tmux 3.4 exposes grouped sessions with independent current windows plus client
 `active-pane` and `ignore-size` flags; an isolated probe confirmed independent
-group window selection. These are dated observations, not the release pin.
+group window selection. These are dated observations, not the release pin; a
+2026-08-24 re-check already found `codex-cli 0.149.1` — drift from the
+unpinned dev-server npm install — so `codex.lock` alone names the version P0
+proves.
 
 | Question | Decision | Why |
 | --- | --- | --- |
@@ -215,13 +231,41 @@ production support.
 Lane 0 must prove on the exact pin:
 
 - empty `thread/start` -> `thread/unsubscribe` -> stock remote TUI resume;
-- App Server thread/session ids map exactly to hook ids;
-- exact reviewed hook digests permit non-interactive trust bypass while any
-  mismatch fails before TUI exec;
+- App Server thread/session ids map exactly to hook ids — corroboration only:
+  forks retain the root `sessionId`, so hook payload ids never carry
+  correlation authority;
+- the launcher-set `SKIDBLADNIR_BINDING_ID` survives exec; every hook helper
+  walks its own `/proc` ancestry to the nearest process whose executable is the
+  exact pinned Codex binary and reports that PID plus kernel start time; the
+  gateway accepts tracked traffic only when the identifier/PID/start-time tuple
+  equals the registered runtime binding, while a nested Codex CLI that inherits
+  the identifier is counted and discarded;
+- the pin's native-subagent process and hook model: record whether subagents run
+  in the registered Codex process or a child Codex process and the exact event
+  fields that distinguish their traffic; child-process traffic fails the
+  ancestry gate, while same-process `SubagentStart`/`SubagentStop` and any other
+  explicitly distinguishable subagent traffic project safe activity only and
+  never mutate parent lifecycle, turn closure, or attention; an
+  indistinguishable same-process lifecycle event reopens this design;
+- with no trust bypass, a non-managed hook whose persisted trust record is
+  absent or stale is excluded under `resume --remote` with at most the stock
+  non-blocking warning — no interactive review, no block — while the
+  persisted-trusted reviewed set runs; managed hooks run regardless of trust,
+  so the pin's effective managed-requirements composition — system, MDM, cloud,
+  and `requirements.toml` sources — is enumerated and inspected instead; the
+  pinned discovery layout (user, project, plugin, managed) and exact managed
+  source enumeration are recorded as evidence, and the launcher's pre-exec
+  effective-hook gate is proven to fail before TUI exec;
 - a `Stop` concurrent with a continuation hook never publishes `IDLE` or
   attention before a post-settle summary confirms completion;
-- whether pinned `thread/list` summaries carry `serviceName`, cwd, and creation
-  time (Start stabilization depends on the answer);
+- whether the pinned TUI flow under approval `never` can yield summary `active`
+  with `waitingOnUserInput` after a `Stop`; the confirmation rule's
+  continuation classification is valid only if it cannot;
+- pinned `thread/list`/`thread/read` summaries carry cwd, creation time,
+  status, `forkedFromId`, and `parentThreadId` — no service field exists —
+  enough for the picker and the adoption gate;
+- what summary `idle` implies about live remote clients for a stored thread,
+  and how promptly an exited TUI's thread returns to `notLoaded`;
 - tmux 3.4 grouped sessions plus `active-pane`/`ignore-size` preserve one TUI and
   input buffer without changing the attached laptop's selection or geometry;
 - phone pane targeting in a split window changes neither the window's active
@@ -263,13 +307,16 @@ Failure reopens this design; it never authorizes a fallback.
    special case. A cwd that parses but cannot be entered when the runtime
    starts settles `WorkingDirectoryUnavailable`.
 4. The broker calls stable `thread/start` with that normalized cwd, profile
-   default model, approval `never`, danger-full-access sandbox, no experimental
-   capability, and `serviceName:"skidbladnir"`.
+   default model, approval `never`, danger-full-access sandbox, and no
+   experimental capability. The pin's `serviceName` parameter is metrics-only,
+   allowlisted, and never persisted or listed, so no provider-side field marks
+   Skíðblaðnir threads; tracked-versus-untracked is decided solely by
+   `codex_sessions` rows.
 5. Persist returned `thread.id` and `thread.sessionId`; unsubscribe the broker's
    automatic thread subscription.
 6. Create the deterministic per-incarnation `ga-*` tmux session. Register its
    exact TTY/PID/start time, then exec the pinned exact-id remote TUI with
-   strict config, YOLO, and reviewed-hook trust bypass as specified below.
+   strict config, YOLO, and the reviewed persisted hook trust specified below.
 7. `SessionStart` confirms the mapping and effective cwd; show `IDLE`; open the
    terminal.
 8. Niels types/pastes/dictates the real prompt in the stock TUI.
@@ -278,16 +325,14 @@ Cwd is execution context, not identity or an enrollment boundary. No root
 allowlist applies: YOLO already grants the agent the devbox user's filesystem
 authority. Validation prevents malformed launches; it is not a sandbox.
 
-A lost post-write `thread/start` response stabilizes once before any product
-outcome: the reconciler reads that profile's summary `thread/list`, matching
-`serviceName:"skidbladnir"`, the normalized cwd, and the dispatch window. A unique
-match completes the original command against that thread; absence or ambiguity
-terminates it as `RecoveryRequired`, an immutable receipt that is never
-redispatched. The user-confirmed retry is a new `StartAgent` under a fresh
-`clientCommandId` and warns that an unused empty thread may remain. If Lane 0
-proves the pin's summaries cannot carry the match fields, stabilization is
-skipped and `RecoveryRequired` is the intentionally modeled terminal outcome.
-No real work can be duplicated because Start never sends a prompt.
+A lost post-write `thread/start` response terminates the command
+`RecoveryRequired`, an immutable receipt that is never redispatched and never
+matched to a thread after the fact: a later summary listing can identify a
+plausible thread, never the thread caused by that write, so no stabilization
+search exists. The user-confirmed retry is a new `StartAgent` under a fresh
+`clientCommandId` and warns that an unused empty thread may remain; the orphan
+is empty because Start never sends a prompt, so no real work is lost or
+duplicated.
 
 ### Laptop start and resume
 
@@ -308,31 +353,72 @@ model against the profile catalogue. After refs persist, the launcher registers
 the current tmux pane/TTY/PID and execs the exact-id remote TUI. A lost
 post-write `thread/start` response is `RecoveryRequired`: the launcher prints
 the unused-empty-thread warning and exits without exec; a re-run is a new agent
-by intent, never a replay.
+by intent, never a replay. Each launcher invocation mints a fresh
+`clientCommandId` under the reserved launcher installation identity; launcher
+commands are never replayed.
 
-`resume <id>` resolves one exact stored thread; bare `resume` uses the bounded
-broker-backed picker and resolves an id before acting. `PrepareResume` never
-calls `thread/start`:
+`resume <id>` accepts an exact `thread.id` and nothing else —
+`thread.sessionId` never resolves a resume: forked threads retain their root's
+`sessionId`, so it is not conversation identity. Matching is exact — no
+prefix, fuzzy, or recency resolution — and an unknown id fails visibly with
+the id echoed. Bare `resume` uses the bounded broker-backed picker:
+`ListResumableSessions` returns one bounded most-recent-first page for the
+resolved profile — tracked agents holding dormant threads, labeled with handle,
+dwarf name, and state; tracked live threads, labeled live, resolving to the
+switch path; untracked stored threads from the pinned bounded `thread/list`
+page, labeled untracked with cwd and creation time. The picker displays
+`thread.id` values so copy/paste round-trips; selecting a row is an explicit
+selection for the adoption gate; the picker never auto-selects, and adoption
+remains per-thread — no bulk action exists. `PrepareResume` never calls
+`thread/start`:
 
-- A tracked live thread returns its exact source-session target. The launcher
-  switches only the invoking tmux client to that session; it starts no second
-  TUI or runtime binding.
+- A tracked live thread returns a switch decision, computed under the same
+  binding verification as attach admission. The launcher's invoking pane id and
+  TTY are typed `PrepareResume` inputs; the gateway — never the launcher —
+  enumerates the clients attached to the session group containing that pane,
+  classifies gateway-owned shadow clients apart, and only on exactly one
+  non-Skíðblaðnir match switches that client to the registered session with
+  `switch-client -c <that-client-tty>`, landing it on the registered window and
+  pane through the same client-context selection mechanism as phone attach.
+  Zero or multiple candidate clients: no switch — the launcher prints the exact
+  target session and handle and exits with a typed result. A switch failing
+  because the target died settles `AgentNotAttachable`; the launcher prints the
+  typed failure and exits nonzero, never retrying and never falling through to
+  reopen or adoption. Client-context-less `switch-client` is forbidden
+  everywhere. This path starts no second TUI and creates no runtime binding.
 - A tracked thread with every prior binding verified dead records
   `ReopenAgent`, verifies the exact thread, registers the invoking pane as the
   new runtime binding, then execs its exact-id remote TUI.
 - An explicitly selected, untracked stored thread is read without turns. Only
-  `idle` or `notLoaded` may be atomically adopted as a new agent/Codex binding
-  under `AdoptThread`, assigned a character, registered to the invoking pane,
-  and resumed. `active`, `systemError`, missing, or unverifiable threads fail
-  visibly. Core never bulk-imports App Server history or guesses by title, cwd,
-  or recency.
+  `notLoaded` may be atomically adopted as a new agent/Codex binding under
+  `AdoptThread`, assigned a character, registered to the invoking pane, and
+  resumed — at the pin, summary `idle` means the thread is loaded in the shared
+  daemon, evidence some client has the conversation open. `idle`, `active`,
+  `systemError`, an unverifiable summary, a non-null `forkedFromId` (a fork),
+  or a non-null `parentThreadId` (a subagent thread) fails
+  `ThreadNotAdoptable`; a
+  missing thread fails `ExactThreadMissing`; a tracked thread — including a
+  `CLOSED` agent's, and the loser of a concurrent adoption — fails
+  `ThreadAlreadyTracked` with the owning handle in the receipt. Adoption
+  verifies status at the permitted summary read; a thread turned `active` by an
+  unmanaged process between read and exec is an accepted residual race that
+  surfaces through hook and summary evidence, never prevented. Core never
+  bulk-imports App Server history or guesses by title, cwd, or recency.
 
 A tracked TUI is bound to one thread for its process lifetime; open another
 through another card/invocation. Launcher commands use the same durable
 kind/digest/outcome rules as phone commands.
 
-Interactive model/image/prompt/`-C` arguments are preserved; conflicting
-transport, `CODEX_HOME`, approval, sandbox, or hook-trust inputs fail.
+The launcher parses the pinned CLI grammar and accepts exactly model, image,
+prompt, and `-C/--cd`; every other flag, option, or positional — recognized or
+not — fails visibly before exec and starts no TUI, the conflicting transport,
+`CODEX_HOME`, approval, sandbox, and hook-trust cases being illustrative
+members of that closed set, never its whole extent. `resume --last` is
+unsupported and fails visibly — Skíðblaðnir's picker and Codex's
+most-recent-rollout selection are different selection spaces — and `resume`'s
+positional is accepted only as an exact id per above, never a session name. A
+preserved prompt argument reaches only the exact-id TUI after refs and runtime
+identity are durable. Lane 0 records the pinned argument grammar as evidence.
 Noninteractive Codex subcommands and the explicit outside-tmux path remain
 ordinary `ai-router` behavior and are not Skíðblaðnir agents.
 
@@ -421,16 +507,17 @@ terminal process. Skíðblaðnir therefore shares one TUI through tmux.
   the exact stored `thread.id`; launcher Reopen registers its invoking pane.
   Missing exact thread becomes `EXCEPTION`; no search-by-title/cwd/recency. For
   a tracked dormant thread, `PrepareResume` applies this same verified-dead
-  gate; for a tracked live thread it returns the exact source-session switch
-  target and creates no binding. Two simultaneously live runtime bindings for
-  one thread is a defect, never a race outcome.
+  gate; for a tracked live thread it returns the switch decision (section 4)
+  and creates no binding. Two simultaneously live runtime bindings for one
+  thread is a defect, never a race outcome.
 - Phone death, WSS/mosh loss, or tmux client detach does not affect TUI/turn.
 - Gateway restart reconciles SQLite with summary-only thread reads and exact
   tmux/PID/TTY facts, and resumes every non-terminal lifecycle command from its
   last committed step before ingress opens. Unresolved or contradictory
   evidence is `UNKNOWN`.
-- Tmux/host loss with an exact thread is `RECOVERABLE` when the agent was idle
-  and `EXCEPTION` when it died while working; reopen resumes history either way
+- Tmux/host loss with an exact thread is `RECOVERABLE` when the agent was
+  idle — including a completion candidate resolved by `SessionEnd` — and
+  `EXCEPTION` when it died while working; reopen resumes history either way
   and never claims killed in-flight work survived.
 - Profile daemon loss degrades that profile's health only: new Start/Reopen
   fail `ProfileUnavailable`, and existing cards keep deriving from hook and
@@ -501,7 +588,12 @@ Allow only `initialize`, `account/read`, `model/list`, and the minimum stable
 `thread/start|read|list|unsubscribe` shapes. Reads set or imply
 `includeTurns:false`; reject any response carrying turns. `thread/list` is
 called only in the pinned bounded page shape; the bare-`resume` picker and
-`ListResumableSessions` never request an unbounded list.
+`ListResumableSessions` never request an unbounded list. `thread/list` and
+`thread/read` projections are restricted to thread id, session id,
+`forkedFromId`, `parentThreadId`, cwd, creation time, and status; every other
+field — title, preview, any
+content-derived summary — is discarded at the broker boundary, never persisted,
+displayed, or projected.
 
 `thread/unsubscribe` is a required post-allocation step, not best effort: retry
 it on one named bounded schedule while draining/discarding that thread's
@@ -533,24 +625,57 @@ shell, or approval methods. The broker is identity/status plumbing, not chat.
 
 The launcher resolves profile config, asks the broker for exact refs, starts the
 matching daemon, and registers exact runtime identity over the local control
-socket. It then execs the profile-selected binary with the equivalent of:
+socket. It then execs the pinned Codex binary with the equivalent of:
 
 ```text
 codex resume --remote unix:// --strict-config \
-  --dangerously-bypass-approvals-and-sandbox \
-  --dangerously-bypass-hook-trust <thread.id>
+  --dangerously-bypass-approvals-and-sandbox <thread.id>
 ```
 
-Only supported preserved interactive arguments may be added. The hook-trust
-bypass is permitted only after readiness verifies the installed hook files
-against their committed digests; otherwise launch fails before exec. The
-launcher constructs argv directly; no user string becomes shell source. No
-embedded path exists.
+No hook-trust bypass is passed — Codex's own persisted per-hook trust is the
+closure mechanism for every layer it governs. Installation persists trust
+records for exactly the reviewed Skíðblaðnir hook set, so at exec Codex runs
+that set and excludes every non-managed hook whose trust record is absent or
+stale, surfacing at most the stock non-blocking warning. Hooks from the
+effective managed-requirements composition — system, MDM, cloud, and
+`requirements.toml` sources — run regardless of trust by platform policy, so
+trust cannot close those sources: a foreign managed lifecycle hook makes the
+profile unavailable on the fail-visible drift path. The effective
+lifecycle-hook universe for a tracked launch is therefore closed: no foreign
+hook that observes or controls `SessionStart`, `UserPromptSubmit`, `Stop`, or
+`SessionEnd` runs. Only supported preserved interactive arguments may be
+added. Immediately before exec, the launcher validates the effective hook
+resolution for that profile and launch cwd: it hashes every installed
+profile-layer hook config and the installed `skidbladnir-hook` helper against
+the committed expected set, verifies the reviewed set's trust records are
+present and current, verifies no trusted non-managed lifecycle hook outside the
+reviewed set is effective for that cwd — project layer included — and verifies
+that no effective managed-requirements source carries a foreign lifecycle hook.
+A launch-scoped violation fails that launch before exec with a typed result; a
+profile- or managed-source violation fails on the same path as pin drift.
+Dormant trust records for other tools, cwds, and workflows are never rejected.
+This effective-set walk replicates a slice of the pin's hook discovery and is
+valid only for the pin; the recorded discovery layout and managed-source
+enumeration are Lane 0 evidence. This closes drift and accident, not a hostile
+same-UID writer: a same-UID write between hash and exec remains unmitigated
+residual risk under the stated trust model. A cloud-delivered managed source
+can change between inspections; the contract detects that drift at readiness
+and immediately before the next exec, not instantaneously. Profile readiness
+runs the identical profile- and managed-source checks as a background detector,
+never as the launch precondition. The exec target is one absolute path recorded
+in repo-owned configuration and pinned by `codex.lock`; the launcher never
+performs a PATH lookup, never execs a router or shim path, and fails visibly if
+that path is absent or not executable. The launcher constructs argv directly;
+no user-supplied string becomes a path or shell source. No embedded terminal
+path exists.
 
-Installation writes each profile's hook config and records its digest. Profile
-readiness verifies those digests against the committed expected set; a mismatch
-is hook drift and makes that profile unavailable on the same fail-visible path
-as pin drift. "Reviewed" names that digest check and nothing more. Hook facts
+Installation writes each profile's hook config, persists its Codex trust
+record, and records both digests. Profile readiness verifies configs, helper,
+the reviewed set's trust records, and the effective managed-requirements
+composition's absence of foreign lifecycle hooks; a mismatch is hook drift and
+makes that profile unavailable on the same fail-visible path as pin drift.
+"Reviewed" names that
+digest-and-trust check and nothing more. Hook facts
 carry devbox-user trust, not Codex trust: any same-UID process can write the
 `0600` hook socket, and peer-UID verification distinguishes nothing under this
 trust model.
@@ -562,23 +687,80 @@ The reviewed user-level hooks in each profile emit:
 | `SessionStart` | Confirm profile/thread mapping; observe cwd/model/source |
 | `UserPromptSubmit` | Turn id, `WORKING`, optional initial objective preview |
 | `PostToolUse` | `tool_name` and time only |
+| `SubagentStart` | Safe activity only; never parent lifecycle/turn authority |
+| `SubagentStop` | Safe activity only; never parent lifecycle/turn authority |
 | `Stop` | Completion candidate with turn id/time; no state or attention alone |
 | `SessionEnd` | Semantic end; liveness still decides attachability |
 
-The hook helper validates one documented input shape and sends one bounded
-message to a `0600` Unix socket. It returns no model-visible output. Delivery is
-ACKed; failure writes an atomic gap marker and never blocks Codex. A later hook
-or summary read repairs the gap. Hook facts order by turn id. A `Stop` creates a
-completion-confirmation obligation and never closes a turn by itself. After one
-named settle interval, the broker makes a named bounded sequence of
-`thread/read(includeTurns:false)` attempts. A read captured after that `Stop`
-may atomically close only that turn, publish `IDLE`, and raise attention when
-the summary is `idle` and no newer `UserPromptSubmit` has been observed. An
-`active` summary is continuation evidence and retains `WORKING`; failure or
-exhaustion derives `UNKNOWN`. Every observation records capture time; newer
-capture wins, and a summary read captured before the latest hook never
-overrides that hook. Never read `transcript_path`; discard full
-prompt after objective projection, assistant text, tool input/output, patches,
+The launcher exports `SKIDBLADNIR_BINDING_ID` into the tracked TUI before exec.
+The hook helper validates one documented input shape, reads that identifier,
+walks its own `/proc` ancestry to the nearest ancestor whose executable is the
+exact pinned Codex binary, reads that process's kernel start time, and sends the
+identifier/PID/start-time tuple with one bounded message to a `0600` Unix
+socket. Every reviewed hook is synchronous; Codex waits for the helper, so the
+originating process remains in its ancestry until the helper returns, while the
+kernel start time guards PID reuse. The helper returns no model-visible output.
+Delivery is ACKed; failure writes an atomic gap marker recording the validated
+hook kind, tuple, and session/turn ids, and never blocks Codex.
+
+The gateway accepts a hook fact only when the binding identifier resolves and
+the reported Codex PID/start-time pair exactly equals that binding's registered
+pair. The environment identifier authenticates neither inheritance nor origin
+by itself. Only after that process gate may a root lifecycle fact whose
+`session_id` corroborates the bound thread's root session apply the table's
+full turn/state projection; forks share their root's `sessionId`, so the
+payload id is never correlation authority. `PostToolUse` is activity-only.
+Explicit `SubagentStart`/`SubagentStop` facts are activity-only by hook kind —
+the documented contract gives them the parent `session_id` — and may project
+`ActivityObserved`; a tool name from native-subagent work may project only
+when Lane 0 proves an explicit subagent discriminator. Any other
+process-authenticated fact explicitly distinguished as subagent traffic is
+likewise activity-only and can never open, close, or confirm a turn or raise
+attention. The parent's own `Stop` plus the tracked thread's qualifying summary
+still decide `IDLE`. If the pin emits same-process subagent lifecycle traffic
+that cannot be distinguished from the root, its Lane 0 proof fails and reopens
+this design.
+
+Hook facts order by turn id within their binding. A well-formed observation
+carrying no identifier, an unresolvable tuple, or a tuple from an untracked TUI,
+foreign fork, nested CLI, or child-process subagent is counted and discarded at
+the hook endpoint — never a defect, a gap, a summary-read trigger, or grounds
+to create an agent, character, binding, or attention; only an unknown hook
+shape remains a defect.
+
+A `Stop` fact, a gap marker, or an unclosed newest turn past the staleness
+bound opens a completion-confirmation obligation; `Stop` never closes a turn by
+itself. The obligation is derived from durable facts alone — an unclosed newest
+turn with such evidence, no newer `UserPromptSubmit`, and no resolving
+`SessionEnd` — so the supervised reconciler evaluates open candidates
+continuously and re-arms a fresh confirmation schedule after gateway restart
+and profile restoration. One named schedule constant owns the initial settle
+delay, the bounded `thread/read(includeTurns:false)` attempt cadence, and
+termination; its total duration is the declared bound on
+completion-to-attention latency. A qualifying read — captured at least one
+settle interval after the newest hook fact or gap marker while the newest turn
+is unclosed — resolves the candidate exhaustively over the pinned status enum:
+`idle` atomically closes that turn, publishes `IDLE`, and raises result-ready
+attention exactly once — closure, publication, and attention commit in one
+transaction keyed on turn closure, so publication stays exactly-once across
+restarts; `active` is continuation evidence and retains `WORKING`;
+`systemError` derives `EXCEPTION`; `notLoaded` against a live binding is
+contradictory evidence, and against a dead or ending binding is consistent end
+evidence. An exhausted schedule leaves the candidate open and the card derives
+`UNKNOWN` (section 6); a later qualifying read may still resolve it. A
+`UserPromptSubmit` for a newer turn atomically closes every prior unclosed turn
+and resolves its candidates without publishing `IDLE` or attention — the next
+prompt is itself proof the prior turn ended — so the obligation, its guard, and
+its expiry apply only to the newest turn. A `SessionEnd` observed after an open
+candidate with no newer `UserPromptSubmit` resolves it the same way: it closes
+the turn and cancels the remaining schedule, publishing neither `IDLE` nor
+attention; binding death after such resolution derives `RECOVERABLE`, never
+death-while-working. A `SessionStart` of a new runtime incarnation supersedes
+prior-incarnation turn evidence: it closes prior incarnations' unclosed turns
+without `IDLE` publication or attention. Every observation records capture
+time; newer capture wins, and a summary read captured before the latest hook
+never overrides that hook. Never read `transcript_path`; discard full prompt
+after objective projection, assistant text, tool input/output, patches,
 stdout/stderr, and reasoning.
 
 ### Ownership and trust
@@ -615,30 +797,64 @@ profile, objective, created time, optional local closure time. The id/handle is
 authority; the dwarf name and portrait are presentation. An agent is not a
 process, thread, cwd, repo, or character-driven runtime persona.
 
-**Dvergatal** is the immutable repository-owned character catalogue at
-`catalog/characters.json`, embedded at build time rather than stored as CRUD
-data. Core ships at least 100 curated named dwarfs from exactly
+**Dvergatal** is the repository-owned, append-only, build-embedded character
+catalogue at `catalog/characters.json` — never CRUD data, a runtime URL, or a
+download. Core ships at least 100 curated named dwarfs from exactly
 `OldNorse | Tolkien | GermanicOperatic`; no `FairyTale` or `ModernMedia`
-catalogue family exists. Each entry has exactly `{key, ordinal, displayName,
-tradition, source, iconKey}`. Keys are namespaced, such as `norse.durinn` and
-`tolkien.durin-i`; ordinals, keys, and icon keys are unique and stable, while
-display names may overlap across traditions. Every icon key resolves to one
-bundled square WebP portrait. No runtime URL or download exists.
+catalogue family exists. Each entry is exactly `{key, displayName, tradition,
+source}`, one entry per distinct figure: manuscript spelling variants ship as a
+single entry, and a figure whose dwarf status is disputed in its primary source
+is excluded. `key` matches `^[a-z0-9]+([.-][a-z0-9]+)*$`, namespaced as in
+`norse.durinn` and `tolkien.durin-i` — a recorded exception, beside the profile
+values, to the PascalCase wire-identifier rule, because keys also derive
+bundled asset names in the Android resource alphabet. `displayName` is NFC, at
+most 64 Unicode scalars, with the objective field's control and separator
+exclusions. `source` is a structured citation `{work, locus}` — for example
+`Völuspá 11` or `The Hobbit ch. 1` — required and non-empty. Keys and display
+names are both unique across the whole catalogue; where two traditions share a
+figure's name, curation disambiguates the shipped display form or ships only
+one. `evidence/sources/dvergatal.md` records, once for the set, the portrait
+production method (artist, or generation tool plus exact version) and rights
+basis, plus the curation dedupe and exclusion decisions; portraits are original
+assets — no third-party artwork, scraped image, or rights-holder depiction is
+bundled. The catalogue is append-only: a shipped key is never removed, renamed,
+or reused for a different figure; corrections may change `displayName`,
+`tradition`, or `source` and may append entries, never delete one. A persisted
+`characterKey` that does not resolve in the embedded catalogue is a defect with
+correlation handle — never a placeholder, a blank portrait, or a
+reassignment — asserted at gateway startup. Every key resolves to one bundled
+square WebP portrait named by the documented transform (`norse.durinn` ->
+`dwarf_norse_durinn.webp`).
 
 Initial phone and supported laptop registration assign `characterKey` in the
-same transaction that inserts the agent. Compute SHA-256 over the UTF-8
-canonical agent id, interpret the first eight digest bytes as an unsigned
-big-endian integer, and take modulo catalogue length. From that ordinal, scan
-cyclically for the first entry not used by a non-`CLOSED` agent and persist it
-once. If every entry is active, use the derived starting entry; repeated
-characters are allowed and the handle still disambiguates. Reopen never
-reassigns. Catalogue size therefore never caps agents.
+same transaction that inserts the agent. The canonical catalogue order is the
+array order of `catalog/characters.json`; compute SHA-256 over the agent id's
+stored text form, read the first eight digest bytes as an unsigned big-endian
+integer, and take that value modulo the entry count as the zero-based starting
+index. Scan forward with wraparound for the first entry whose key no non-purged
+`agents` row holds; if every key is held, scan again for the first whose key no
+open agent holds (an agent is open while its local closure time is unset); if
+that also fails, use the derived starting entry. The scan reads only stored
+`agents` columns — no derived card state, liveness, or hook evidence takes
+part. Closed agents keep their key, so a reopened card never collides with a
+live one below exhaustion; at exhaustion repeats are expected, the handle still
+disambiguates, and a repeat is never a defect. Reopen never reassigns.
+Catalogue size therefore never caps agents.
 
 A **Codex binding** stores App Server `thread.id` (exact resume ref) and
-`thread.sessionId`. Hooks/CLI often call the root ref a session id; Lane 0 proves
-the pinned mapping. `(profile, thread.id)` is unique across all agents, including
-closed agents, so concurrent adoption cannot create a second card for one
-conversation. Requested/effective cwd and model are launch/diagnostic facts only.
+`thread.sessionId`. `thread.id` is the sole resume, adoption, and uniqueness
+key; `sessionId` is hook corroboration and diagnostic metadata only and never
+resolves or authenticates anything — forked threads retain their root's
+`sessionId`, so it is not conversation identity, and v1 never adopts a forked
+or subagent thread (`forkedFromId`/`parentThreadId`). Hooks/CLI often call the
+root ref a session id; Lane 0 proves the pinned mapping. Hook origin binds by
+`SKIDBLADNIR_BINDING_ID` plus the exact pinned-Codex ancestor PID/start time;
+only after that gate may hook kind and `session_id` distinguish root lifecycle
+authority from safe activity (section 5).
+`(profile, thread.id)` is unique across all
+agents, including closed agents, so concurrent adoption cannot create a second
+card for one conversation. Requested/effective cwd and model are
+launch/diagnostic facts only.
 
 A **runtime binding** is one TUI incarnation: immutable server-generated tmux
 `session_id`/`window_id`/`pane_id` — never session names or window/pane
@@ -658,18 +874,26 @@ from one evidence set is a defect:
 | State | Evidence |
 | --- | --- |
 | `STARTING` | Accepted launch; no binding/failure yet |
-| `IDLE` | Live binding; empty `SessionStart` or post-`Stop` summary confirmation is `idle`; no unclosed prompt |
-| `WORKING` | Live binding; unclosed prompt, unconfirmed `Stop` candidate, or summary status `active` |
+| `IDLE` | Live binding; this incarnation's `SessionStart` or a summary-confirmed completion (section 5) observed; no unclosed turn of this incarnation and no open completion candidate |
+| `WORKING` | Live binding; unclosed prompt, a pending `Stop` candidate within its confirmation schedule, or summary status `active` |
 | `CLOSING` | Accepted close; exact TUI stop unconfirmed |
 | `RECOVERABLE` | No live binding; exact stored thread previously existed |
 | `EXCEPTION` | Failed/unknown start, `systemError`, missing exact thread, or death while working |
-| `UNKNOWN` | Required evidence absent, stale, or contradictory |
+| `UNKNOWN` | Required evidence absent, stale, or contradictory, or an open candidate whose confirmation schedule exhausted |
 | `CLOSED` | Local closure committed; no live binding |
 
-Evidence rules: fresh hook/summary disagreement triggers one on-demand summary
+Evidence rules: while a newest-turn completion candidate is open — including
+after its schedule exhausts, when the card derives `UNKNOWN` but a later
+qualifying read may still resolve it — the hook/summary disagreement rule does
+not apply to that turn: a `Stop` candidate asserts no state, so `active` is
+continuation evidence and `idle` is confirmation input under section 5's
+settle-and-guard rule, and any qualifying read, scheduled or on-demand, may
+serve as the confirmation through the same atomic turn closure. Outside an open
+candidate, fresh hook/summary disagreement triggers one on-demand summary
 re-read; disagreement that survives it derives `UNKNOWN`, never
-`WORKING`/`IDLE`. An unresolved completion candidate becomes `UNKNOWN` when its
-bounded confirmation sequence expires; it never becomes `IDLE` from `Stop`
+`WORKING`/`IDLE`. Schedule exhaustion is a stored evidence transition applied
+by the broker's confirmation schedule, so a candidate is never simultaneously
+pending and expired at read time, and a card never becomes `IDLE` from `Stop`
 alone. An accepted-but-uncommitted close stays `CLOSING` even when the TUI is
 already dead. Evidence older than three liveness periods is stale for the
 `UNKNOWN` rule. `STARTING` is bounded by a named start-binding
@@ -677,14 +901,37 @@ deadline: expiry settles the owning command and the card — `RECOVERABLE` when
 exact refs are persisted, `EXCEPTION` with the settled failure code otherwise —
 evaluated continuously by the supervised reconciler, not only at restart.
 
-The card projection carries the closed derivation reason plus
-`failureCode`/`failureObservedAt`; `EXCEPTION` and `UNKNOWN` always carry one
-closed code. Evidence Skíðblaðnir observes but does not own — hooks, summary reads,
-tmux, `/proc`, PID/start-time/TTY facts — that is absent, stale, or
-contradictory derives `UNKNOWN`, at read time, never persisted as a status
-column. Skíðblaðnir-owned state contradicting itself — two live bindings, a binding
+The card projection carries mandatory closed `derivationReason` for every
+non-nominal state — `CLOSING`, `RECOVERABLE`, `EXCEPTION`, and `UNKNOWN` — and
+it is absent for nominal states. `awaiting-session-confirmation` is an ordinary
+`UNKNOWN` derivation reason. `failureCode` and `failureObservedAt` appear
+together exactly when the represented lifecycle command settled with that
+failure and are absent otherwise; `failureObservedAt` is the settlement time.
+Observation-derived `systemError` and death while working, plus `UNKNOWN` due
+solely to absent, stale, or contradictory evidence, are reasons rather than
+command failures and do not invent a `failureCode`. A missing exact thread
+observed while Reopen settles is instead the command failure
+`ExactThreadMissing`. The start-binding deadline likewise remains a
+settled-command path and therefore carries its settled failure code when it
+derives `EXCEPTION`. Evidence Skíðblaðnir observes but does not own — hooks,
+summary reads, tmux, `/proc`, PID/start-time/TTY facts — that is absent, stale,
+or contradictory derives `UNKNOWN`, at read time, never persisted as a status
+column.
+Skíðblaðnir-owned state contradicting itself — two live bindings, a binding
 without its agent, a refs-less `codex_sessions` row, corrupt storage — is a
 defect with correlation handle, never `UNKNOWN`.
+
+**Attachable** is one closed predicate: the agent's latest runtime binding is
+live-verified — exact PID/start time/TTY/pane identity — and the derived state
+is neither `CLOSING` nor `CLOSED`. Before its first binding a `STARTING` card
+has nothing to verify and is not attachable; between `AgentBound` and its
+incarnation's `SessionStart` the card derives `UNKNOWN` with the
+awaiting-session-confirmation reason yet is attachable — `SessionStart` gates
+state derivation, never attachment. A
+conflicting second live binding is a defect, never attachable. The card
+projection's attachability field reports the last sampled liveness; admission
+to `/v1/terminal/{handle}` re-verifies with one bounded fresh identity check
+before upgrade, and close/reopen acceptance do the same at their gates.
 
 ### SQLite
 
@@ -700,7 +947,7 @@ missing them is a defect. Hook ACK latency is never blocked by read snapshots.
 | --- | --- |
 | `agents` | Handle/character key/profile/objective/created/closed |
 | `codex_sessions` | Exact agent/profile/thread+session refs, requested/effective cwd, model |
-| `runtime_bindings` | Verified tmux/TTY/PID incarnation and end |
+| `runtime_bindings` | Verified tmux/TTY/PID incarnation, closed origin, and end |
 | `agent_observations` | Closed hook/liveness facts and safe activity |
 | `lifecycle_commands` | Installation key, kind/digest, target, per-step state, dispatch/outcome |
 | `facts` | Ordered public projection changes for SSE |
@@ -724,28 +971,56 @@ original receipt/current status without redispatching any stage; different
 payload/kind is `CommandConflict`.
 
 For `StartAgent`, record `thread/start` dispatch before proxy write. A lost
-post-write response stabilizes once through summary `thread/list` (section 4);
-absence or ambiguity is `RecoveryRequired`, never redispatched. `AdoptThread`
+post-write response is terminal `RecoveryRequired` (section 4), never
+redispatched and never matched to a thread after the fact. `AdoptThread`
 performs no provider write: after the permitted summary read, it atomically
 persists the new agent, character assignment, and exact Codex refs before
-runtime registration. The composition resumes every non-terminal command from
-its recorded applicable step until it reaches a terminal outcome: an accepted
-Start without `dispatch_recorded` is safe to dispatch; persisted refs with an
-unregistered runtime re-drive only the tmux start. Resumption, not user retry,
-completes accepted commands; an undriven non-terminal command is a defect. This
-per-command resume loop is the
-named narrower Skíðblaðnir rule replacing `operation-types.md`'s durable-operation
-runners; section 8's exclusion of queue/broker infrastructure stands.
+runtime registration, committing the same `AgentStarted` Fact as `StartAgent`
+and the same `AgentBound` Fact on registration — no new Fact kind exists.
 
-Tmux session names are deterministic per runtime incarnation — handle plus
-runtime-binding id — never per agent, so reopen and prior incarnations cannot
-collide. The name is a creation-idempotency convention only; replay and bridge
-identity key on stored tmux ids plus TTY/PID/start time. Replay adopts an
-existing same-named session only after exact verification that the pane root
-matches the registered identity running the pinned invocation; an unregistered
-or unverified session is killed and recreated, never adopted, never
-attachable. Close targets exact PID/start time and is replay-safe after
-absence. Projection plus SSE Fact commit atomically. Facts are a closed
+Resumption is origin-aware, keyed on the recorded installation identity. The
+composition resumes every non-terminal phone-origin command from its recorded
+applicable step until it reaches a terminal outcome: an accepted Start without
+`dispatch_recorded` is safe to dispatch; a dispatched Start with no persisted
+refs and no in-flight proxy request settles `RecoveryRequired`; persisted refs
+with an unregistered runtime re-drive only the tmux start. Launcher-origin
+runtimes exist only in the live launcher invocation, so the reconciler may
+settle steps — a dispatched launcher Start without refs settles
+`RecoveryRequired` the same way — but never dispatches `thread/start` for an
+accepted-undispatched launcher Start, never creates a runtime, and never
+registers a pane. A launcher-origin command not
+reaching `runtime_registered` by the named start-binding deadline settles with
+its closed failure code — the card deriving `RECOVERABLE` when exact refs are
+persisted, reopenable from the phone — and an accepted `AdoptThread` without
+`refs_persisted` settles the same way, leaving the thread untracked; a re-run
+is a new command by intent. Resumption, not user retry, completes accepted
+phone commands; an undriven non-terminal command is a defect. This per-command
+resume loop is the named narrower Skíðblaðnir rule replacing
+`operation-types.md`'s durable-operation runners; section 8's exclusion of
+queue/broker infrastructure stands.
+
+A runtime binding carries a closed origin — `gateway | launcher`. Gateway
+origin: tmux session names are deterministic per runtime incarnation — handle
+plus runtime-binding id — never per agent, so reopen and prior incarnations
+cannot collide; the name is a creation-idempotency convention only, replay and
+bridge identity key on stored tmux ids plus TTY/PID/start time, the TUI is
+execed as the pane root, and replay adopts an existing same-named session only
+after exact verification that the pane root matches the registered identity
+running the pinned invocation — an unregistered or unverified same-named
+session is killed and recreated, never adopted, never attachable. Launcher
+origin: the session and window are user-owned; the launcher registers the
+immutable pane/window/session ids, pane TTY, and its own PID with kernel start
+time captured immediately before exec — exec preserves both, so the registered
+identity is the TUI process — and verification checks that this PID/start time
+is alive on the registered pane TTY running the pinned invocation, never the
+pane root. Verification failure ends the binding and the card derives from
+evidence; Skíðblaðnir never kills, recreates, resizes, or otherwise mutates a
+user-owned session, window, or pane. Close targets exact PID/start time for
+either origin and is replay-safe after absence; closing a launcher-origin
+runtime stops only the TUI process — the pane returns to the user's local
+shell, which is not phone-exposed because the ended binding fails attach
+admission and the agent's WSS bridges close first.
+Projection plus SSE Fact commit atomically. Facts are a closed
 PascalCase-discriminated union declared in `api/skidbladnir.v1.json` —
 `AgentStarted | AgentBound | AgentStateChanged | ActivityObserved |
 AttentionRaised | AttentionAcknowledged | CommandSettled | AgentClosed |
@@ -784,14 +1059,23 @@ replay keys are never reused. Installation bearers are generated 256-bit
 material stored only as domain-separated verifiers; bearers do not expire, and
 revocation is their only invalidation.
 
-Every `/v1` request carries `Skidbladnir-Contract: <contract digest>`, covering
-`api/skidbladnir.v1.json` and canonical `catalog/characters.json`; every
-response echoes it. Portrait bytes are build assets, not wire protocol. Static
-Android validation proves every catalogue `iconKey` resolves to exactly one
-bundled portrait and that no orphan portrait exists. Mismatch is
-`ProtocolMismatch` on every route including `/v1/pair`, answered with the
-server digest; `/v1/events` and `/v1/terminal/{handle}` reject the upgrade with
-the same code.
+Every `/v1` request carries `Skidbladnir-Contract: <contract digest>` — the
+SHA-256 over the domain-separated concatenation of the committed bytes of
+`api/skidbladnir.v1.json` and the catalogue key set (every `key`, sorted
+byte-ascending, newline-joined), each part prefixed by its path and byte
+length — and every response echoes it. Lane 0 generates the digest once into
+both clients as a constant; `static` fails when the Go and Kotlin constants
+differ from each other or from a fresh computation. Adding, removing, or
+renaming a catalogue key is therefore a contract change; correcting an entry's
+`displayName`, `tradition`, or `source` is not — names reach the phone in card
+projections, and portrait bytes are build assets, not wire protocol. Portrait
+lookup is a Lane 0-generated total `characterKey -> drawable` map in which
+every drawable is statically referenced, so resource shrinking cannot strip
+one; no name-based resource lookup exists. Static Android validation proves
+every catalogue key resolves to exactly one bundled portrait and no orphan
+portrait exists. Mismatch is `ProtocolMismatch` on every route including
+`/v1/pair`, answered with the server digest; `/v1/events` and
+`/v1/terminal/{handle}` reject the upgrade with the same code.
 `ProtocolMismatch` never describes App Server drift.
 
 | Method/path | Contract |
@@ -808,8 +1092,8 @@ the same code.
 | `GET /v1/host/samples?window=&resolution=` | Current sample + aggregated series `<= 300` points; `window` enum `15m \| 1h \| 6h \| 24h \| 7d`; `resolution` derived from `window`, explicit overflow is `InvalidRequest`; buckets aggregate pressure-truthfully (min for available memory/disk, max otherwise), carry worst state and reason union, `UNKNOWN` on any missing required signal, and bucket start times |
 | `GET /v1/terminal/{handle}` | Authenticated WSS upgrade |
 
-Every agent/card projection carries `characterKey`, `displayName`, and
-`iconKey`. `POST /v1/agents` accepts none of them; assignment is server-owned.
+Every agent/card projection carries `characterKey` and `displayName`.
+`POST /v1/agents` accepts neither; assignment is server-owned.
 
 Every `202` returns `{handle, clientCommandId, acceptedAt}`; Start mints the
 card in `STARTING` before answering, and exact replay returns the same body.
@@ -826,8 +1110,10 @@ commands: `PrepareNew`, `ListResumableSessions`, `PrepareResume`,
 `RevokeInstallation`. It accepts no shell, executable, raw socket/terminal
 target/home, SQL, or generic maintenance command. The launcher's
 current/effective cwd and optional parsed model are typed `PrepareNew` inputs;
-an exact selected thread id is a typed `PrepareResume` input, and only the
-broker returns a tmux switch target. Revocation takes effect immediately: every
+an exact selected thread id plus the invoking pane id and TTY are typed
+`PrepareResume` inputs, and only the broker returns a switch decision, which
+the gateway executes (section 4). `PrepareResume` owns `AdoptThread`; no
+separate adoption command exists. Revocation takes effect immediately: every
 authenticated route rejects a revoked verifier with
 `Unauthenticated`, and its open SSE/WSS connections close within one liveness
 period. Rotation is pair-then-revoke.
@@ -842,12 +1128,20 @@ Closed errors:
 Unauthenticated | PairingInvalid | ProtocolMismatch | InvalidRequest |
 AgentNotFound | AgentClosed | AgentWorking | AgentNotAttachable |
 WorkingDirectoryInvalid | WorkingDirectoryUnavailable | ProfileUnavailable |
-ExactThreadMissing | CommandConflict |
+ExactThreadMissing | CommandConflict | ThreadNotAdoptable |
+ThreadAlreadyTracked | ModelInvalid |
 RecoveryRequired | CursorInvalid | ResyncRequired | LivenessUnverifiable
 ```
 
 Every closed error has one named trigger. `LivenessUnverifiable` is Close or
-Reopen admission failing to verify binding liveness. `CursorInvalid` is a
+Reopen admission failing to verify binding liveness. `ThreadNotAdoptable` is
+`AdoptThread` selecting an untracked thread whose summary read returns `idle`,
+`active`, or `systemError`, is unverifiable, or carries a non-null
+`forkedFromId` or `parentThreadId`. `ThreadAlreadyTracked` is
+`AdoptThread` naming a thread a `(profile, thread.id)` row already holds —
+including a `CLOSED` agent's, and the loser of a concurrent adoption — answered
+with the owning handle. `ModelInvalid` is `PrepareNew`'s parsed model failing
+the profile-catalogue validation. `CursorInvalid` is a
 malformed, filter-mismatched, or beyond-high-water cursor — a client defect
 signal, never silence. `ResyncRequired` is a well-formed SSE cursor expired or
 overtaken by queue overflow and instructs bootstrap. Transient internal failure
@@ -935,8 +1229,9 @@ this document are UI copy or quoted observation, not wire values.
 
 - Compile/target/min SDK 36 after physical build preflight. One manually
   installed package for Core.
-- `+`, labeled `Create new agent` for accessibility, opens **The Forge**. This
-  Start sheet contains profile, objective, and editable cwd defaulted to the
+- `+`, labeled `Create new agent` for accessibility, opens **The Forge**, the
+  Start sheet titled `New agent`. It contains profile, objective, and editable
+  cwd defaulted to the
   first server-supplied recent, with up to eight server-derived recents as
   one-tap suggestions; allow type/paste, not filesystem browsing. The cwd field
   is single-line URI-class input with autocapitalization, autocorrect,
@@ -955,10 +1250,11 @@ this document are UI copy or quoted observation, not wire values.
   excluded from the default grid behind an explicit `Closed` filter.
 - Every non-nominal card carries a one-line typed reason under its state:
   `EXCEPTION`, `UNKNOWN`, `RECOVERABLE`, and `CLOSING` render the closed
-  derivation reason. A `202` command outcome resolves visibly on its card as
-  success or the typed failure. One exhaustive `agentErrorMessage` helper at
-  the screen boundary maps every closed error variant to UI text; an unmapped
-  variant fails loudly.
+  `derivationReason`. Independently, a `202` command outcome resolves visibly
+  on its card as success or, exactly when the failure-field pair is present,
+  the typed failure; the UI never synthesizes an error from a derivation
+  reason. One exhaustive `agentErrorMessage` helper at the screen boundary maps
+  every closed error variant to UI text; an unmapped variant fails loudly.
 - Card tap opens the terminal when the card is attachable; otherwise it opens
   the agent sheet. Long-press and an explicit overflow control open the agent
   sheet from any card: dwarf name, handle, profile, exact refs, state with
@@ -1036,9 +1332,17 @@ The same supervised scheduler owns liveness and summary cadence with named
 constants (`justify-polling`): pane/PID/TTY liveness every two seconds per live
 runtime binding and at attach/close/reopen admission; summary
 `thread/read(includeTurns=false)` only on gap marker, hook/summary conflict,
-card open, an unclosed turn past the staleness bound, or reconciliation — never
-a per-agent steady timer. No `/v1` request path probes on demand; requests read
-the last sampled facts.
+card open, an unclosed turn past the staleness bound, reconciliation, or an
+open completion candidate's confirmation schedule — never a per-agent steady
+timer. The confirmation schedule is per-candidate and self-terminating; its
+`justify-polling` justification: hooks push completion candidates, and the
+broker mandatorily unsubscribes thread notifications — the narrow allowlist
+forbids content-bearing subscriptions — so no in-boundary push channel confirms
+post-`Stop` thread status, and one bounded read schedule per open candidate is
+the minimum poll. No ordinary `/v1` read path probes on demand; requests read
+the last sampled facts. Admission is the designed exception: the
+`/v1/terminal/{handle}` upgrade and close/reopen acceptance run the bounded
+fresh identity check that section 6's attachable predicate names.
 
 WARM/HOT thresholds: memory available `15%/8%`; disk `15%/5%`; normalized load
 `1.0/2.0`; CPU PSI `some avg60 20%/50%`; memory/I/O PSI `full avg60 1%/5%`.
@@ -1055,7 +1359,8 @@ all reasons. No Prometheus/Grafana, alerts, attribution, throttling, or gating.
 - Loopback plus Tailscale Serve plus bearer are all required. Android rejects
   cleartext/unapproved hosts; WebView loads packaged assets only.
 - Logs contain handles, state, timings, counts, correlations; redact objectives,
-  prompts, terminal/tool content, tokens, auth, account metadata.
+  prompts, terminal/tool content, tokens, auth, account metadata. Committed
+  `evidence/` records obey the same exclusions (roadmap section 1).
 - UI always shows `YOLO` and selected profile; it never implies sandboxing.
 - Upgrades are idle maintenance with all agents idle: close ingress; stop the
   gateway unit, every tracked TUI, and all three App Server daemons, confirming
@@ -1178,14 +1483,14 @@ gate.
 
 | Boundary | Authoritative proof |
 | --- | --- |
-| Existing command -> profile | Live `personal/work/work2`: interactive tmux start/resume delegates after profile selection; other and outside-tmux commands reach the exact home/pin unchanged; hook drift fails before TUI exec; no fallback |
+| Existing command -> profile | Live `personal/work/work2`: interactive tmux start/resume delegates after profile selection; other and outside-tmux commands reach the exact home/pin unchanged; with the enablement marker present, a reverted or removed seam fails visibly inside tmux; an unsupported flag fails before exec; the launcher execs exactly the pinned binary path; hook drift fails before TUI exec; a hook outside the reviewed trusted set never runs on a tracked launch; every effective managed-requirements source is enumerated and a foreign managed lifecycle hook in any one degrades the profile; no fallback |
 | Broker -> App Server | Generated-schema fixtures + live start/unsubscribe/list/read; reject all content/turn methods |
-| Hooks -> registry | Real hook JSON + SQLite/SSE: bind, objective, work/activity/idle/end, gap/unknown; only post-`Stop` confirmed idle and exception raise attention exactly once; a concurrent continuation never false-idles; acknowledge is idempotent and re-arms on later events; unacknowledged attention survives restart |
-| Lifecycle -> tmux/process | Real tmux + controllable TUI: cwd, idempotent start, exact identity, live resume switches without a second TUI, dormant reopen, explicit dormant-thread adoption, idle close, shell cutoff |
+| Hooks -> registry | Real hook JSON + SQLite/SSE: bind, objective, work/activity/idle/end, gap/unknown; only summary-confirmed completion (post-`Stop` or gap-repaired) and exception raise attention exactly once; a concurrent continuation never false-idles; restart re-arms open confirmations and raises pending attention exactly once; hook facts bind by `SKIDBLADNIR_BINDING_ID` plus the nearest exact pinned-Codex ancestor PID/start time — a nested CLI inherits the identifier but never touches the tracked card, its traffic counted and discarded; native-subagent traffic follows the proved process branch, with accepted same-process traffic activity-only and never parent lifecycle/turn/attention authority; acknowledge is idempotent and re-arms on later events; unacknowledged attention survives restart |
+| Lifecycle -> tmux/process | Real tmux + controllable TUI: cwd, idempotent start, exact identity, live resume switches exactly one resolved client without a second TUI, dormant reopen, explicit dormant-thread adoption, idle close, shell cutoff |
 | PTY/WSS -> Android | System/device: ANSI/UTF-8/IME/clipboard, viewport/size ownership, backpressure/reconnect/no replay |
 | Laptop -> phone -> laptop | Live: same pane/PID/thread/draft; laptop focus/geometry/process unchanged; independent detach |
 | SQLite Fact -> card | Real HTTP/SSE: atomic snapshot, catch-up/live race, dedupe, overflow resync; retention prune keeps and removes exactly per the stated windows without changing a derived state; expired cursor forces bootstrap |
-| Dvergatal -> agent/card | Static catalogue/source/icon validation + real SQLite/API/Compose: atomic assignment, stable reopen/restart, exact name/portrait/handle, deterministic exhaustion without a cap |
+| Dvergatal -> agent/card | Static catalogue/source/portrait validation + real SQLite/API/Compose: atomic assignment, stable reopen/restart, exact name/portrait/handle, deterministic exhaustion without a cap |
 | Kernel -> pressure | Real `/proc` persist/aggregate/render + synthetic threshold/missing/hysteresis |
 | Bearer -> terminal authority | Pair race, rotation/revocation, wrong bearer, raw-target injection, off-Tailnet denial |
 | Restart -> recovery | Kill gateway/PTY/tmux/App Server: live/recoverable/exception/unknown, never guess/replay |
@@ -1197,16 +1502,21 @@ one expensive real phone/devbox flow. Do not test every internal helper matrix.
 
 - Physical `SM-S906W` preflight records API/build, Tailscale, WebView, Gboard
   typing/dictation/clipboard, navigation modes, scale, accessibility.
-- The installed app identifies as **Skíðblaðnir**; the agent and host overview
-  is **Hlíðskjálf**; `+` is announced as `Create new agent`, opens **The Forge**,
-  and submits through `Start agent`. Reserved product vocabulary appears in no
-  Core route, schema, navigation item, or domain type.
+- The installed app's launcher label and accessibility name are `Skíðblaðnir`;
+  `+` is announced `Create new agent`, its sheet is titled `New agent`, and it
+  submits through `Start agent`; the terminal's exit-to-grid key is `Agents`.
+  No other product-language or reserved name appears in any UI string, route,
+  schema, navigation item, or domain type; Lane 0 `static` enforces that
+  denylist over identifiers, the API schema, and Android string resources.
 - Dvergatal contains at least 100 validated entries from only Old Norse/Eddic,
-  Tolkien, and Germanic/operatic sources, each with one unique bundled portrait;
-  no `FairyTale` or `ModernMedia` family, missing asset, or orphaned asset
-  exists.
-- Phone displays at least 15 idle/live cards with distinct dwarf names and
-  portraits and no configured cap; at least two real agents work concurrently;
+  Tolkien, and Germanic/operatic sources — unique keys and display names,
+  structured source citations, one entry per distinct figure, each resolving to
+  one bundled portrait; no `FairyTale` or `ModernMedia` family, missing asset,
+  orphaned asset, or entry absent from `evidence/sources/dvergatal.md`'s
+  curation record exists.
+- Phone displays at least 15 idle/live cards, each with a distinct
+  `characterKey`, display name, and portrait, with no configured cap; at least
+  two real agents work concurrently;
   pressure remains advisory. Close/reopen, restart, and laptop discovery retain
   the assigned character. With 15 cards present, a completion raises the
   attention count and reaches its card in one tap; closed agents are absent from
@@ -1219,20 +1529,25 @@ one expensive real phone/devbox flow. Do not test every internal helper matrix.
 - Laptop start in arbitrary cwd appears automatically. While laptop mosh/tmux
   remains attached, phone opens the exact TUI without changing laptop session,
   window, pane, geometry, PID, thread, draft, or turn; phone Detach changes none
-  of them. From another laptop tmux client, tracked live `resume` switches only
-  that client to the exact source session and creates no second TUI. Explicitly
-  selecting one untracked `idle`/`notLoaded` stored thread adopts it once and
-  exposes the exact conversation; active, missing, erroneous, or unverifiable
-  threads fail visibly. Noninteractive and outside-tmux Codex commands retain
-  ordinary `ai-router` behavior.
+  of them. From another laptop tmux client, tracked live `resume` resolves
+  exactly one invoking client and switches only it to the registered session,
+  window, and pane, creating no second TUI; ambiguity prints the exact target
+  instead of switching. Explicitly selecting one untracked `notLoaded` stored
+  thread adopts it once and exposes the exact conversation; `idle`, `active`,
+  `systemError`, missing, tracked, forked, subagent, or unverifiable threads
+  fail with their typed codes. Noninteractive and outside-tmux Codex commands retain ordinary
+  `ai-router` behavior.
 - Gboard text/clipboard/reviewed dictation and accessory keys reach TUI;
   nothing auto-sends or replays after reconnect beyond the pinned emulator's
   enumerated automatic replies. A dictated prompt is corrected mid-line and
   extended to a second line before submission. Output above the fold is read
   from the phone with the laptop's pane mode, view, and geometry unchanged.
 - Every declared card state arises only from declared hook/summary/liveness
-  evidence. `Stop` alone never produces `IDLE` or attention, and a concurrent
-  continuation stays `WORKING`; terminal content never affects status. Each
+  evidence. `Stop` alone never produces `IDLE` or attention, a concurrent
+  continuation stays `WORKING`, a gap-marked lost `Stop` is summary-repaired to
+  confirmed `IDLE` with attention, and restart re-arms open confirmations,
+  raising each pending attention exactly once; terminal content never affects
+  status. Each
   declared `EXCEPTION`/`UNKNOWN` cause and each asynchronous command failure
   renders its distinct typed reason on the phone; no command resolves silently.
 - Working Close rejects. Idle Close stops exact TUI, exposes no returned shell,
