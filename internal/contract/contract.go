@@ -620,6 +620,9 @@ func verifyCodexLock(root string) error {
 	if err := verifyDigest(lock.BinaryPath, lock.BinarySHA256); err != nil {
 		return fmt.Errorf("pinned Codex binary: %w", err)
 	}
+	if err := verifyCodexSchemaGeneration(root, lock); err != nil {
+		return err
+	}
 	if err := verifyDigest(filepath.Join(root, lock.SchemaBundle), lock.SchemaSHA256); err != nil {
 		return fmt.Errorf("pinned Codex schema: %w", err)
 	}
@@ -640,6 +643,63 @@ func verifyCodexLock(root string) error {
 	return nil
 }
 
+func verifyCodexSchemaGeneration(root string, lock codexLock) error {
+	temporaryDirectory, err := os.MkdirTemp("", "skidbladnir-codex-schema-")
+	if err != nil {
+		return fmt.Errorf("create temporary Codex schema directory: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(temporaryDirectory) // justify-ignore-error: the operating system owns cleanup of an unpublished temporary verification tree after process exit.
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, lock.BinaryPath, "app-server", "generate-json-schema", "--experimental", "--out", temporaryDirectory)
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	if err := command.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return errors.New("pinned Codex schema generation timed out")
+		}
+		return fmt.Errorf("regenerate pinned Codex schema: %w", err)
+	}
+
+	generated, err := collectSchemaFiles(temporaryDirectory)
+	if err != nil {
+		return fmt.Errorf("read regenerated Codex schema tree: %w", err)
+	}
+	committed, err := collectSchemaFiles(filepath.Join(root, lock.SchemaDirectory))
+	if err != nil {
+		return fmt.Errorf("read committed Codex schema tree: %w", err)
+	}
+	withoutHooks := committed[:0]
+	for _, file := range committed {
+		if !strings.HasPrefix(file.Path, "hooks/") {
+			withoutHooks = append(withoutHooks, file)
+		}
+	}
+	if !equalSchemaFiles(generated, withoutHooks) {
+		return errors.New("committed Codex schemas are not reproducible from the pinned binary")
+	}
+	return nil
+}
+
+func equalSchemaFiles(left, right []schemaFile) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	left = append([]schemaFile(nil), left...)
+	right = append([]schemaFile(nil), right...)
+	sort.Slice(left, func(i, j int) bool { return left[i].Path < left[j].Path })
+	sort.Slice(right, func(i, j int) bool { return right[i].Path < right[j].Path })
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func validateCodexLockIdentity(lock codexLock) error {
 	expectedSchemaDirectory := filepath.ToSlash(filepath.Join("schemas", "codex", lock.Version))
 	if lock.Version == "" || lock.Package != "@openai/codex@"+lock.Version || !strings.HasSuffix(lock.PlatformPackage, "@"+lock.Version+"-linux-x64") || !filepath.IsAbs(lock.BinaryPath) || len(lock.BinarySHA256) != sha256.Size*2 {
@@ -648,7 +708,7 @@ func validateCodexLockIdentity(lock codexLock) error {
 	if lock.SchemaDirectory != expectedSchemaDirectory || lock.SchemaFiles < 1 || len(lock.SchemaTreeSHA256) != sha256.Size*2 || filepath.ToSlash(filepath.Dir(lock.SchemaBundle)) != lock.SchemaDirectory || len(lock.SchemaSHA256) != sha256.Size*2 {
 		return errors.New("codex.lock schema identity is incomplete")
 	}
-	if len(lock.SchemaCommand) != 5 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--out" || filepath.ToSlash(lock.SchemaCommand[4]) != lock.SchemaDirectory {
+	if len(lock.SchemaCommand) != 6 || lock.SchemaCommand[0] != lock.BinaryPath || lock.SchemaCommand[1] != "app-server" || lock.SchemaCommand[2] != "generate-json-schema" || lock.SchemaCommand[3] != "--experimental" || lock.SchemaCommand[4] != "--out" || filepath.ToSlash(lock.SchemaCommand[5]) != lock.SchemaDirectory {
 		return errors.New("codex.lock schema command is not exact")
 	}
 	if lock.SourceRepository != "https://github.com/openai/codex.git" || len(lock.SourceCommit) != 40 || lock.SourceTag != "rust-v"+lock.Version {

@@ -74,6 +74,7 @@ case "$gate" in
   system)
     cd "$repo_dir"
     run p0-hook-system go test -tags=system ./internal/hooks
+    run p0-appserver-transport go test -tags=system ./internal/runtime/appserver
     not_run system 'P3-P4 system surface is not implemented'
     ;;
   platform)
@@ -95,10 +96,20 @@ case "$gate" in
     run android-platform env ANDROID_HOME="$android_sdk" ANDROID_SERIAL="$serial" ./gradlew :app:connectedDebugAndroidTest --no-daemon
     ;;
   live)
-    not_run live 'P0 live proof harness is not implemented'
+    not_run live 'P1-P7 live gateway, hook, tmux, terminal, and recovery surfaces are not implemented'
     ;;
   upgrade-live)
-    not_run upgrade-live 'P0 per-profile initialize/version/schema and empty-thread round-trip probe is not implemented'
+    for required_directory in /home/niels/src /home/niels/.codex-personal /home/niels/.codex-work /home/niels/.codex-work2; do
+      if [[ ! -d "$required_directory" ]]; then
+        not_run upgrade-live "Required target directory is unavailable: $required_directory"
+      fi
+    done
+    if ! command -v tmux >/dev/null 2>&1; then
+      not_run upgrade-live 'tmux is unavailable on the target host'
+    fi
+    cd "$repo_dir"
+    run p0-appserver-contract go run ./cmd/skidbladnir-contract verify
+    run p0-appserver-upgrade-live go test -tags=live ./tests/live -count=1
     ;;
   e2e)
     not_run e2e 'P7 end-to-end surface is not implemented'

@@ -1,6 +1,6 @@
-//go:build system
+//go:build live
 
-package system
+package live
 
 import "testing"
 

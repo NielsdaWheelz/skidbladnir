@@ -207,6 +207,19 @@ group window selection. These are dated observations, not the release pin; a
 unpinned dev-server npm install — so `codex.lock` alone names the version P0
 proves.
 
+Exact 0.149.1 source and live-wire inspection further found that a Unix
+listener requires an RFC 6455 WebSocket upgrade and text frames;
+`app-server proxy` only copies raw bytes and is not a protocol adapter. A CLI
+App Server records its own new threads with source kind `vscode`, while the
+protocol's `appServer` source kind maps to MCP-origin threads. Therefore the
+resumable picker requests `cli|vscode`. A fresh empty thread is readable and
+remotely resumable by exact id but is absent from `thread/list` until the first
+user message materializes its rollout. Finally, the pin emits response-only
+experimental fields even when the client requests no experimental capability;
+the committed schema tree is generated with `--experimental` to describe the
+actual wire, while the broker's request allowlist still excludes experimental
+methods.
+
 | Question | Decision | Why |
 | --- | --- | --- |
 | TUI or structured chat? | Stock TUI | It already owns conversation, tools, approvals, and rendering. |
@@ -224,7 +237,7 @@ App Server and its raw WebSocket transport are documented as experimental and
 unsupported for production workloads. The per-profile Unix socket narrows
 exposure only; it carries the same experimental App Server protocol, so the pin
 and probes — not the transport — are the mitigation. This private prototype
-accepts that risk through an immutable pin, Unix sockets, generated stable
+accepts that risk through an immutable pin, Unix sockets, generated exact-pin
 schemas, live probes, and fail-closed upgrades. It must not claim OpenAI
 production support.
 
@@ -264,8 +277,11 @@ Lane 0 must prove on the exact pin:
 - pinned `thread/list`/`thread/read` summaries carry cwd, creation time,
   status, `forkedFromId`, and `parentThreadId` — no service field exists —
   enough for the picker and the adoption gate;
-- what summary `idle` implies about live remote clients for a stored thread,
-  and how promptly an exited TUI's thread returns to `notLoaded`;
+- what summary `idle` implies about live remote clients for a stored thread;
+  0.149.1 source fixes no-subscriber idle unload at 30 minutes, and the live
+  probe confirms an exited TUI's dead binding is still summary `idle` on the
+  immediate post-exit read; the upgrade gate does not spend 30 minutes proving
+  the later transition, so status never substitutes for binding liveness;
 - tmux 3.4 grouped sessions plus `active-pane`/`ignore-size` preserve one TUI and
   input buffer without changing the attached laptop's selection or geometry;
 - phone pane targeting in a split window changes neither the window's active
@@ -392,8 +408,9 @@ remains per-thread — no bulk action exists. `PrepareResume` never calls
 - An explicitly selected, untracked stored thread is read without turns. Only
   `notLoaded` may be atomically adopted as a new agent/Codex binding under
   `AdoptThread`, assigned a character, registered to the invoking pane, and
-  resumed — at the pin, summary `idle` means the thread is loaded in the shared
-  daemon, evidence some client has the conversation open. `idle`, `active`,
+  resumed — at the pin, summary `idle` means loaded but cannot distinguish a
+  live subscriber from the 30-minute no-subscriber cache, so it cannot prove
+  exclusive adoption. `idle`, `active`,
   `systemError`, an unverifiable summary, a non-null `forkedFromId` (a fork),
   or a non-null `parentThreadId` (a subagent thread) fails
   `ThreadNotAdoptable`; a
@@ -543,7 +560,7 @@ terminal process. Skíðblaðnir therefore shares one TUI through tmux.
                               ^
 Galaxy S22+                                  App Server daemon per profile
   Gboard -> local xterm.js                   personal | work | work2
-             |                                  ^ proxy       ^ unix://
+             |                              ^ WebSocket       ^ unix://
   Compose dashboard                             |             |
              | HTTPS + SSE + WSS                |             |
              v                                  |             |
@@ -562,8 +579,8 @@ between exact tmux PTY and Android without interpretation.
 
 - Bootstrap official daemon management once per profile. Require exact
   CLI/daemon version before that profile is available.
-- One systemd user service owns gateway, SQLite, three bounded `app-server
-  proxy` children, hook/control sockets, tmux/shadow reconciliation, PTYs, SSE,
+- One systemd user service owns gateway, SQLite, three bounded `app-server`
+  children, hook/control sockets, tmux/shadow reconciliation, PTYs, SSE,
   and metrics.
 - Bind loopback; expose `/v1` only through Tailscale Serve; disable Funnel.
   `/healthz` and `/readyz` bind loopback only and are never exposed through
@@ -580,9 +597,13 @@ between exact tmux PTY and Android without interpretation.
 
 ### Narrow App Server broker
 
-Each profile proxy has one serialized JSONL writer, bounded decoder, request
-correlation, and drained/redacted stderr. Commit generated non-experimental
-schemas for the exact pin.
+Each profile App Server connection has one serialized WebSocket text-frame
+writer, bounded decoder, request correlation, and drained/redacted stderr. The
+broker connects directly to the per-profile Unix listener; it never invokes
+the raw-byte `app-server proxy`. Commit the exact pin's reproducible
+`--experimental` schema output because those response-only fields occur on the
+wire without client opt-in. Do not request experimental capabilities or admit
+experimental methods.
 
 Allow only `initialize`, `account/read`, `model/list`, and the minimum stable
 `thread/start|read|list|unsubscribe` shapes. Reads set or imply
@@ -595,17 +616,27 @@ field — title, preview, any
 content-derived summary — is discarded at the broker boundary, never persisted,
 displayed, or projected.
 
+The bounded list filters source kinds to `cli|vscode`: on this pin CLI App
+Server threads are `vscode`, while `appServer` means MCP. It lists materialized
+stored threads only; a newly allocated promptless thread remains absent while
+exact-id read and resume continue to work. Stored `cliVersion` is creator
+metadata and may predate the running pin; the initialized server version and
+decoded exact-pin response schema, not that historical field, establish
+protocol compatibility.
+
 `thread/unsubscribe` is a required post-allocation step, not best effort: retry
 it on one named bounded schedule while draining/discarding that thread's
 notifications. Exhaustion is a defect; the broker then recycles that profile's
-proxy connection, which drops every subscription. A connection with an
-unreleased subscription is never reused. Notifications naming any thread id are
-counted, drained, and discarded, never a failure.
+App Server connection, which drops every subscription. A connection with an
+unreleased subscription is never reused. Every drained notification is
+accepted only through the exact-pin method/shape allowlist, then counted and
+discarded. Unknown notification methods or variants are drift.
 
 Broker faults have two classes. Transport faults — malformed or oversized
 frame, unmatched response, write error — fail the in-flight request, log a
-defect with correlation handle, and recycle the proxy connection; failures past
-a named consecutive threshold mark the profile `ProfileUnavailable` until the
+defect with correlation handle, and recycle the App Server connection;
+failures past a named consecutive threshold mark the profile
+`ProfileUnavailable` until the
 supervised availability probe (`initialize` plus daemon/CLI version and
 schema-digest comparison, on a named schedule and on `skidbladnir profile recheck`)
 restores it with a durable Fact. Drift — unknown method/variant, pin/schema/
@@ -970,7 +1001,7 @@ returns its immutable receipt; exact replay of an in-flight command returns the
 original receipt/current status without redispatching any stage; different
 payload/kind is `CommandConflict`.
 
-For `StartAgent`, record `thread/start` dispatch before proxy write. A lost
+For `StartAgent`, record `thread/start` dispatch before the App Server write. A lost
 post-write response is terminal `RecoveryRequired` (section 4), never
 redispatched and never matched to a thread after the fact. `AdoptThread`
 performs no provider write: after the permitted summary read, it atomically
@@ -982,7 +1013,7 @@ Resumption is origin-aware, keyed on the recorded installation identity. The
 composition resumes every non-terminal phone-origin command from its recorded
 applicable step until it reaches a terminal outcome: an accepted Start without
 `dispatch_recorded` is safe to dispatch; a dispatched Start with no persisted
-refs and no in-flight proxy request settles `RecoveryRequired`; persisted refs
+refs and no in-flight App Server request settles `RecoveryRequired`; persisted refs
 with an unregistered runtime re-drive only the tmux start. Launcher-origin
 runtimes exist only in the live launcher invocation, so the reconciler may
 settle steps — a dispatched launcher Start without refs settles
@@ -1207,7 +1238,7 @@ input frame and on each output flush — and watches exact-PID exit; identity
 failure drops the frame and closes the bridge.
 
 Hard bounds: HTTP body 64 KiB; objective 240 Unicode scalars; cwd 4,096 UTF-8
-bytes; page 100; history 300; SSE queue 256 Facts/1 MiB; broker JSONL frame 1
+bytes; page 100; history 300; SSE queue 256 Facts/1 MiB; broker WebSocket text frame 1
 MiB; terminal frame 64 KiB; terminal queue 1 MiB; geometry 20-240 columns and
 5-120 rows; projected hook 16 KiB; unary handler 30 s (`/v1/events` and
 `/v1/terminal/{handle}` are bounded by queues and liveness instead). These are
@@ -1461,7 +1492,8 @@ Target commands:
 ./scripts/test component      # real Compose/WebView runtime
 ./scripts/test system         # gateway + SQLite + real tmux + external fixtures
 ./scripts/test platform       # connected Android instrumentation
-./scripts/test live           # pinned profiles/devbox/Tailscale
+./scripts/test live           # full gateway + pinned profiles/devbox/Tailscale boundary
+./scripts/test upgrade-live   # exact pin/schema + three-profile App Server/TUI probe
 ./scripts/test e2e            # real devbox gateway + pinned Codex/tmux + physical S22+ journeys
 ./scripts/test verify         # static + build + unit + integration + component + system
 ./scripts/test full           # verify + platform + live + e2e
@@ -1473,9 +1505,10 @@ Required gates are static, unit, integration, component, system, platform,
 live, and e2e; `verify` and `full` are compositions, not separately required.
 `accept core` aggregates exactly the required gates plus every proof-table row,
 emitting one machine-readable result per gate; any `FAIL` or `NOT_RUN` keeps
-Core unaccepted. `accept upgrade` runs the deterministic tiers plus a live
-per-profile initialize/version/schema-digest check and one empty
-`thread/start -> unsubscribe -> resume -> stop` round trip; full Core
+Core unaccepted. `accept upgrade` runs the deterministic tiers plus one exact
+binary/schema regeneration-and-digest check, then verifies each profile's exact
+home and runtime version while running one empty
+`thread/start -> unsubscribe -> resume -> stop` round trip per profile; full Core
 acceptance with the physical device remains a release gate, not an upgrade
 gate.
 

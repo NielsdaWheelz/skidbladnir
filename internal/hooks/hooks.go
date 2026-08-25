@@ -65,11 +65,11 @@ type gapMarker struct {
 	TurnID    string `json:"turn_id,omitempty"`
 }
 
-func Run(input io.Reader, pid int, pinnedExecutable, socketPath, gapPath string) error {
-	return run(input, pid, pinnedExecutable, socketPath, gapPath)
+func Run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory string) error {
+	return run(input, pid, pinnedExecutable, socketPath, gapDirectory)
 }
 
-func run(input io.Reader, pid int, pinnedExecutable, socketPath, gapPath string) error {
+func run(input io.Reader, pid int, pinnedExecutable, socketPath, gapDirectory string) error {
 	raw, err := readBounded(input, maxProjectedHookBytes)
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func run(input io.Reader, pid int, pinnedExecutable, socketPath, gapPath string)
 		ToolName:   fact.ToolName,
 	}
 	if err := deliver(socketPath, message); err != nil {
-		if gapErr := writeGap(gapPath, gapMarker{
+		if gapErr := writeGap(gapDirectory, gapMarker{
 			Hook:      fact.Hook,
 			BindingID: identity.BindingID,
 			PID:       identity.PID,
@@ -539,32 +539,55 @@ func deliver(socketPath string, message deliveryMessage) error {
 	return nil
 }
 
-func writeGap(path string, marker gapMarker) error {
+func writeGap(directory string, marker gapMarker) error {
 	encoded, err := json.Marshal(marker)
 	if err != nil {
 		return err
 	}
-	directory := filepath.Dir(path)
+	info, err := os.Stat(directory)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("gap path is not a directory")
+	}
 	temporary, err := os.CreateTemp(directory, ".gap-*")
 	if err != nil {
 		return err
 	}
 	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
+	defer func() { _ = os.Remove(temporaryName) }() // justify-ignore-error: cleanup targets only this unpublished temporary marker.
 	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
+		_ = temporary.Close() // justify-ignore-error: returning the chmod error is authoritative.
 		return err
 	}
 	if _, err := temporary.Write(append(encoded, '\n')); err != nil {
-		temporary.Close()
+		_ = temporary.Close() // justify-ignore-error: returning the write error is authoritative.
 		return err
 	}
 	if err := temporary.Sync(); err != nil {
-		temporary.Close()
+		_ = temporary.Close() // justify-ignore-error: returning the file sync error is authoritative.
 		return err
 	}
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryName, path)
+	finalName := filepath.Join(directory, "gap-"+strings.TrimPrefix(filepath.Base(temporaryName), ".gap-")+".json")
+	if _, err := os.Lstat(finalName); err == nil {
+		return errors.New("gap marker name collision")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(temporaryName, finalName); err != nil {
+		return err
+	}
+	directoryHandle, err := os.Open(directory)
+	if err != nil {
+		return err
+	}
+	if err := directoryHandle.Sync(); err != nil {
+		_ = directoryHandle.Close() // justify-ignore-error: returning the directory sync error is authoritative.
+		return err
+	}
+	return directoryHandle.Close()
 }

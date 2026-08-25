@@ -148,6 +148,15 @@
             "null"
           ]
         },
+        "allowedApprovalsReviewers": {
+          "items": {
+            "$ref": "#/definitions/ApprovalsReviewer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "allowedPermissionProfiles": {
           "additionalProperties": {
             "type": "boolean"
@@ -271,6 +280,16 @@
             }
           ]
         },
+        "hooks": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ManagedHooksRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "logDir": {
           "type": [
             "string",
@@ -287,6 +306,16 @@
           "anyOf": [
             {
               "$ref": "#/definitions/ModelsRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/NetworkRequirements"
             },
             {
               "type": "null"

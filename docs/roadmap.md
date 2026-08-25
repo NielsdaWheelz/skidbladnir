@@ -134,7 +134,10 @@ ships no agent-management capability.
 
 ### Green
 
-- Pin exact Codex CLI/App Server artifacts and commit generated stable schemas.
+- Pin exact Codex CLI/App Server artifacts and commit reproducible exact-wire
+  schemas. Generate with `--experimental` because 0.149.1 emits response-only
+  experimental fields without client opt-in; experimental requests remain
+  forbidden.
 - Generate Go/Kotlin DTOs from `api/skidbladnir.v1.json`; generated files are
   reproducible and never hand-edited.
 - Establish the final test command dispatcher and machine-readable proof
@@ -147,7 +150,8 @@ ships no agent-management capability.
   the pin's native-subagent process/event model; prove child-process traffic is
   discarded and every accepted same-process subagent observation is
   activity-only, never lifecycle/turn/attention authority. Also prove the
-  pinned bounded `thread/list` page with cwd, creation time, status,
+  pinned bounded `thread/list` page over the pin's `cli|vscode` source kinds
+  with cwd, creation time, status,
   `forkedFromId`, and `parentThreadId`; warning-only exclusion of untrusted
   non-managed hooks under `resume --remote` with the reviewed persisted-trust
   set running; the recorded hook discovery layout and exact effective
@@ -551,7 +555,7 @@ fail-visible readiness, restart recovery, and one machine-readable Core verdict.
 
 - Install repository-owned binaries/config/hooks/services idempotently and
   verify, but never own, the dev-server router seam.
-- Supervise the gateway and three isolated profile proxies; implement exact
+- Supervise the gateway and three isolated profile App Servers; implement exact
   health/readiness degradation and no fallback.
 - Verify loopback binding, Tailscale Serve TLS, Funnel absence, permissions,
   SQLite migrations/pragmas, hooks, tmux configuration, and account/model pins.

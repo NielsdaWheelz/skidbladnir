@@ -156,7 +156,7 @@ func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
 		SchemaTreeSHA256:     strings.Repeat("a", 64),
 		SchemaBundle:         "schemas/codex/0.149.1/codex_app_server_protocol.v2.schemas.json",
 		SchemaSHA256:         strings.Repeat("d", 64),
-		SchemaCommand:        []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--out", "schemas/codex/0.149.1"},
+		SchemaCommand:        []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--experimental", "--out", "schemas/codex/0.149.1"},
 		SourceRepository:     "https://github.com/openai/codex.git",
 		SourceCommit:         "ff29a44391deccde0aba0f8390337d7f3c319ea4",
 		SourceTag:            "rust-v0.149.1",
@@ -178,6 +178,9 @@ func TestCodexLockIdentityRequiresPinnedHookSchemas(t *testing.T) {
 		"hook count":   func(lock *codexLock) { lock.HookSchemaFiles = 6 },
 		"hook digest":  func(lock *codexLock) { lock.HookSchemaTreeSHA256 = "" },
 		"hook command": func(lock *codexLock) { lock.HookSchemaCommand = nil },
+		"stable-only schema command": func(lock *codexLock) {
+			lock.SchemaCommand = []string{"/opt/codex/0.149.1/codex", "app-server", "generate-json-schema", "--out", "schemas/codex/0.149.1"}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			changed := valid

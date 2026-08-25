@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,7 +83,6 @@ func TestIdentityReportsNestedExactPinnedProcess(t *testing.T) {
 
 func TestRunWritesAtomicGapWhenAckFailsAndNeverWritesStdout(t *testing.T) {
 	dir := t.TempDir()
-	gapPath := filepath.Join(dir, "gap.json")
 	pinned, err := os.Executable()
 	if err != nil {
 		t.Fatalf("executable: %v", err)
@@ -98,11 +98,25 @@ func TestRunWritesAtomicGapWhenAckFailsAndNeverWritesStdout(t *testing.T) {
 		"turn_id":"turn_123",
 		"stop_hook_active":false,
 		"last_assistant_message":null
-	}`), os.Getpid(), pinned, filepath.Join(dir, "missing.sock"), gapPath)
+	}`), os.Getpid(), pinned, filepath.Join(dir, "missing.sock"), dir)
 	if err != nil {
 		t.Fatalf("delivery failure must not block Codex: %v", err)
 	}
-	gapBytes, err := os.ReadFile(gapPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read gap directory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("gap marker count = %d, want 1", len(entries))
+	}
+	markerInfo, err := entries[0].Info()
+	if err != nil {
+		t.Fatalf("stat gap marker: %v", err)
+	}
+	if markerInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("gap marker mode = %o, want 600", markerInfo.Mode().Perm())
+	}
+	gapBytes, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
 	if err != nil {
 		t.Fatalf("read gap marker: %v", err)
 	}
@@ -113,6 +127,54 @@ func TestRunWritesAtomicGapWhenAckFailsAndNeverWritesStdout(t *testing.T) {
 	if gap.Hook != "Stop" || gap.BindingID != "binding_123" || gap.SessionID != "thr_123" || gap.TurnID != "turn_123" {
 		t.Fatalf("unexpected gap marker: %#v", gap)
 	}
+}
+
+func TestRunWritesDistinctGapMarkersWithoutOverwrite(t *testing.T) {
+	directory := t.TempDir()
+	pinned, err := os.Executable()
+	if err != nil {
+		t.Fatalf("executable: %v", err)
+	}
+	t.Setenv("SKIDBLADNIR_BINDING_ID", "binding_123")
+	input := bytes.NewBufferString(`{
+		"session_id":"thr_123",
+		"transcript_path":null,
+		"cwd":"/home/niels/src",
+		"hook_event_name":"Stop",
+		"model":"gpt-5.6",
+		"permission_mode":"bypassPermissions",
+		"turn_id":"turn_123",
+		"stop_hook_active":false,
+		"last_assistant_message":null
+	}`)
+	if err := run(input, os.Getpid(), pinned, filepath.Join(directory, "missing.sock"), directory); err != nil {
+		t.Fatalf("first failed delivery: %v", err)
+	}
+	input = bytes.NewBuffer(inputBytesForGapTest())
+	if err := run(input, os.Getpid(), pinned, filepath.Join(directory, "missing.sock"), directory); err != nil {
+		t.Fatalf("second failed delivery: %v", err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("read gap directory: %v", err)
+	}
+	if len(entries) != 2 || entries[0].Name() == entries[1].Name() {
+		t.Fatalf("gap markers = %#v, want two distinct markers", entries)
+	}
+}
+
+func inputBytesForGapTest() []byte {
+	return []byte(`{
+		"session_id":"thr_123",
+		"transcript_path":null,
+		"cwd":"/home/niels/src",
+		"hook_event_name":"Stop",
+		"model":"gpt-5.6",
+		"permission_mode":"bypassPermissions",
+		"turn_id":"turn_123",
+		"stop_hook_active":false,
+		"last_assistant_message":null
+	}`)
 }
 
 func TestRunDeliversOnlySafeProjectionAfterAck(t *testing.T) {
@@ -153,7 +215,7 @@ func TestRunDeliversOnlySafeProjectionAfterAck(t *testing.T) {
 		"agent_type":"worker",
 		"model":"gpt-5.6",
 		"permission_mode":"bypassPermissions"
-	}`), os.Getpid(), pinned, socketPath, filepath.Join(dir, "gap.json"))
+	}`), os.Getpid(), pinned, socketPath, dir)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -161,8 +223,14 @@ func TestRunDeliversOnlySafeProjectionAfterAck(t *testing.T) {
 	if message.Projection != "ActivityObserved" || message.ToolName != "" || message.Hook != "SubagentStart" {
 		t.Fatalf("subagent delivery = %#v, want activity-only projection", message)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "gap.json")); !os.IsNotExist(err) {
-		t.Fatalf("ACKed delivery wrote a gap marker: %v", err)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read gap directory: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "gap-") {
+			t.Fatalf("ACKed delivery wrote gap marker: %s", entry.Name())
+		}
 	}
 }
 

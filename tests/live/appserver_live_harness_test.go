@@ -1,6 +1,6 @@
-//go:build system
+//go:build live
 
-package system
+package live
 
 import (
 	"context"
@@ -42,11 +42,13 @@ type appServerProcess struct {
 	cmd    *exec.Cmd
 	result chan error
 	path   string
+	waited bool
 }
 
 type tmuxPane struct {
-	PID int
-	TTY string
+	PID       int
+	StartTime uint64
+	TTY       string
 }
 
 func runLiveProfileProbe(t *testing.T, profileName string) {
@@ -57,12 +59,18 @@ func runLiveProfileProbe(t *testing.T, profileName string) {
 	assertProfilePreconditions(t, profile)
 
 	server := startAppServer(t, lock.BinaryPath, profile)
-	t.Cleanup(func() { stopAppServer(server) })
-
-	var started appserver.ThreadRef
-	if err := withProxy(t, lock.BinaryPath, profile, server.path, func(connection io.ReadWriter) error {
+	var listed []appserver.ThreadSummary
+	if err := withAppServer(server.path, func(ctx context.Context, connection appserver.Connection) error {
 		var err error
-		started, err = appserver.ProbeEmptyThread(connection)
+		listed, err = appserver.ListThreadSummaries(ctx, connection, profile.Home, "")
+		return err
+	}); err != nil {
+		t.Fatalf("%s bounded unfiltered thread/list failed: %v", profile.Name, err)
+	}
+	var started appserver.ThreadRef
+	if err := withAppServer(server.path, func(ctx context.Context, connection appserver.Connection) error {
+		var err error
+		started, err = appserver.ProbeEmptyThread(ctx, connection, profile.Home)
 		return err
 	}); err != nil {
 		t.Fatalf("%s empty thread/start -> unsubscribe failed: %v", profile.Name, err)
@@ -71,22 +79,10 @@ func runLiveProfileProbe(t *testing.T, profileName string) {
 		t.Fatalf("%s empty thread returned incomplete identity", profile.Name)
 	}
 
-	var listed []appserver.ThreadSummary
-	if err := withProxy(t, lock.BinaryPath, profile, server.path, func(connection io.ReadWriter) error {
-		var err error
-		listed, err = appserver.ListThreadSummaries(connection)
-		return err
-	}); err != nil {
-		t.Fatalf("%s bounded thread/list failed: %v", profile.Name, err)
-	}
-	if !containsRootThread(listed, started) {
-		t.Fatalf("%s bounded thread/list did not return the started root thread", profile.Name)
-	}
-
 	var readBefore appserver.ThreadSummary
-	if err := withProxy(t, lock.BinaryPath, profile, server.path, func(connection io.ReadWriter) error {
+	if err := withAppServer(server.path, func(ctx context.Context, connection appserver.Connection) error {
 		var err error
-		readBefore, err = appserver.ReadThreadSummary(connection, started)
+		readBefore, err = appserver.ReadThreadSummary(ctx, connection, profile.Home, started)
 		return err
 	}); err != nil {
 		t.Fatalf("%s bounded thread/read failed: %v", profile.Name, err)
@@ -95,19 +91,26 @@ func runLiveProfileProbe(t *testing.T, profileName string) {
 
 	session := fmt.Sprintf("skidbladnir-live-%s-%d", profile.Name, time.Now().UnixNano())
 	launchRemoteTUI(t, lock.BinaryPath, profile, server.path, session, started.ThreadID)
-	t.Cleanup(func() { killOwnedTmuxSession(session) })
+	t.Cleanup(func() {
+		if err := killOwnedTmuxSession(session); err != nil {
+			t.Errorf("clean up test-owned tmux session %s: %v", session, err)
+		}
+		if tmuxSessionExists(session) {
+			t.Errorf("test-owned tmux session survived cleanup: %s", session)
+		}
+	})
 
 	pane := awaitExactPinnedTUI(t, session, lock.BinaryPath, started.ThreadID)
-	var listedAfter []appserver.ThreadSummary
-	if err := withProxy(t, lock.BinaryPath, profile, server.path, func(connection io.ReadWriter) error {
+	var listedInCWD []appserver.ThreadSummary
+	if err := withAppServer(server.path, func(ctx context.Context, connection appserver.Connection) error {
 		var err error
-		listedAfter, err = appserver.ListThreadSummaries(connection)
+		listedInCWD, err = appserver.ListThreadSummaries(ctx, connection, profile.Home, liveFixedCWD)
 		return err
 	}); err != nil {
-		t.Fatalf("%s thread/list after remote TUI launch failed: %v", profile.Name, err)
+		t.Fatalf("%s bounded cwd thread/list failed: %v", profile.Name, err)
 	}
-	if !containsRootThread(listedAfter, started) {
-		t.Fatalf("%s remote TUI did not preserve the exact thread identity", profile.Name)
+	if containsRootThread(listedInCWD, started) {
+		t.Fatalf("%s unmaterialized empty thread unexpectedly appeared in thread/list", profile.Name)
 	}
 
 	if err := killOwnedTmuxSession(session); err != nil {
@@ -116,21 +119,24 @@ func runLiveProfileProbe(t *testing.T, profileName string) {
 	if tmuxSessionExists(session) {
 		t.Fatalf("%s owned tmux session survived stop", profile.Name)
 	}
+	awaitExactProcessGone(t, pane)
 
+	stoppedAt := time.Now()
 	var readAfter appserver.ThreadSummary
-	if err := withProxy(t, lock.BinaryPath, profile, server.path, func(connection io.ReadWriter) error {
+	if err := withAppServer(server.path, func(ctx context.Context, connection appserver.Connection) error {
 		var err error
-		readAfter, err = appserver.ReadThreadSummary(connection, started)
+		readAfter, err = appserver.ReadThreadSummary(ctx, connection, profile.Home, started)
 		return err
 	}); err != nil {
 		t.Fatalf("%s thread/read after TUI stop failed: %v", profile.Name, err)
 	}
 	assertRootSummary(t, profile.Name, readAfter, started)
-	if readAfter.Status.Type != "notLoaded" {
-		t.Fatalf("%s stopped exact thread status = %q, want notLoaded resumability", profile.Name, readAfter.Status.Type)
+	if readAfter.Status.Type != "idle" {
+		t.Fatalf("%s stopped exact thread status = %q, want idle during the pin's 30-minute unload delay", profile.Name, readAfter.Status.Type)
 	}
+	stopReadLatency := time.Since(stoppedAt)
 
-	t.Logf("profile=%s codex=%s cwd=%s thread=%s session=%s pane_pid=%d pane_tty=%s stopped_status=%s", profile.Name, lock.Version, liveFixedCWD, started.ThreadID, started.SessionID, pane.PID, pane.TTY, readAfter.Status.Type)
+	t.Logf("profile=%s codex=%s cwd=%s thread=%s session=%s pane_pid=%d pane_start=%d pane_tty=%s immediate_stopped_status=%s stop_read_ms=%d materialized_listed=%d", profile.Name, lock.Version, liveFixedCWD, started.ThreadID, started.SessionID, pane.PID, pane.StartTime, pane.TTY, readAfter.Status.Type, stopReadLatency.Milliseconds(), len(listed))
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -200,7 +206,7 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 		t.Fatalf("inspect test-owned socket path: %v", err)
 	}
 
-	command := exec.Command(binary, "app-server", "--listen", "unix://"+path)
+	command := exec.Command(binary, "app-server", "--strict-config", "--listen", "unix://"+path)
 	command.Env = withCodexHome(profile.Home)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
@@ -209,6 +215,7 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 	}
 	process := &appServerProcess{cmd: command, result: make(chan error, 1), path: path}
 	go func() { process.result <- command.Wait() }()
+	t.Cleanup(func() { stopAppServer(t, process) })
 
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
@@ -217,6 +224,7 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 		}
 		select {
 		case err := <-process.result:
+			process.waited = true
 			t.Fatalf("pinned app-server for %s exited before socket readiness: %v", profile.Name, err)
 		default:
 			time.Sleep(100 * time.Millisecond)
@@ -226,64 +234,41 @@ func startAppServer(t *testing.T, binary string, profile liveProfile) *appServer
 	return nil
 }
 
-func stopAppServer(process *appServerProcess) {
+func stopAppServer(t *testing.T, process *appServerProcess) {
+	t.Helper()
 	if process == nil {
 		return
 	}
-	if process.cmd.Process != nil {
-		_ = process.cmd.Process.Kill() // justify-ignore-error: cleanup targets only this test-owned process.
+	if !process.waited && process.cmd.Process != nil {
+		if err := process.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			t.Errorf("stop test-owned App Server: %v", err)
+		}
 	}
-	select {
-	case <-process.result:
-	case <-time.After(5 * time.Second):
-		_ = process.cmd.Process.Kill() // justify-ignore-error: bounded cleanup retry for this test-owned process.
+	if !process.waited {
+		select {
+		case <-process.result:
+			process.waited = true
+		case <-time.After(5 * time.Second):
+			t.Errorf("test-owned App Server did not exit within cleanup deadline")
+		}
 	}
-	_ = os.Remove(process.path) // justify-ignore-error: cleanup targets only this test-owned socket.
+	if err := os.Remove(process.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("remove test-owned App Server socket: %v", err)
+	}
+	if _, err := os.Lstat(process.path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("test-owned App Server socket survived cleanup: %v", err)
+	}
 }
 
-func withProxy(t *testing.T, binary string, profile liveProfile, socket string, operation func(io.ReadWriter) error) error {
-	t.Helper()
+func withAppServer(socket string, operation func(context.Context, appserver.Connection) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, binary, "app-server", "proxy", "--sock", socket)
-	command.Env = withCodexHome(profile.Home)
-	command.Stderr = io.Discard
-	input, err := command.StdinPipe()
+	connection, err := appserver.DialUnix(ctx, socket)
 	if err != nil {
 		return err
 	}
-	output, err := command.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := command.Start(); err != nil {
-		return err
-	}
-	result := make(chan error, 1)
-	go func() {
-		result <- operation(struct {
-			io.Reader
-			io.Writer
-		}{Reader: output, Writer: input})
-	}()
-	var operationErr error
-	select {
-	case operationErr = <-result:
-	case <-ctx.Done():
-		operationErr = fmt.Errorf("proxy timed out: %w", ctx.Err())
-	}
-	_ = input.Close() // justify-ignore-error: proxy cleanup closes this test-owned pipe.
-	waitErr := command.Wait()
-	if operationErr != nil {
-		return operationErr
-	}
-	if ctx.Err() != nil {
-		return fmt.Errorf("proxy context: %w", ctx.Err())
-	}
-	if waitErr != nil {
-		return fmt.Errorf("proxy exited: %w", waitErr)
-	}
-	return nil
+	defer connection.Close()
+	return operation(ctx, connection)
 }
 
 func withCodexHome(home string) []string {
@@ -321,6 +306,7 @@ func launchRemoteTUI(t *testing.T, binary string, profile liveProfile, socket, s
 		"tmux", "new-session", "-d", "-s", session, "-c", liveFixedCWD,
 		"-e", "CODEX_HOME="+profile.Home,
 		binary, "resume", "--remote", "unix://"+socket,
+		"--strict-config",
 		"--ask-for-approval", "never", "--sandbox", "danger-full-access",
 		"--cd", liveFixedCWD, threadID,
 	)
@@ -338,8 +324,8 @@ func awaitExactPinnedTUI(t *testing.T, session, binary, threadID string) tmuxPan
 		pane, err := readTmuxPane(session)
 		if err == nil {
 			if pid := findPinnedProcess(pane.PID, binary, threadID); pid != 0 {
-				if sameTTY(pid, pane.TTY) && sameCWD(pid, liveFixedCWD) {
-					return tmuxPane{PID: pid, TTY: pane.TTY}
+				if startTime := processStartTime(pid); startTime != 0 && sameTTY(pid, pane.TTY) && sameCWD(pid, liveFixedCWD) {
+					return tmuxPane{PID: pid, StartTime: startTime, TTY: pane.TTY}
 				}
 			}
 		}
@@ -350,6 +336,18 @@ func awaitExactPinnedTUI(t *testing.T, session, binary, threadID string) tmuxPan
 	}
 	t.Fatalf("timed out waiting for exact pinned Codex process/thread/TTY in owned tmux session")
 	return tmuxPane{}
+}
+
+func awaitExactProcessGone(t *testing.T, pane tmuxPane) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if observed := processStartTime(pane.PID); observed == 0 || observed != pane.StartTime {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("exact pinned TUI process survived tmux stop: pid=%d start=%d", pane.PID, pane.StartTime)
 }
 
 func readTmuxPane(session string) (tmuxPane, error) {
@@ -426,6 +424,26 @@ func processParent(pid int) int {
 		return 0
 	}
 	return parent
+}
+
+func processStartTime(pid int) uint64 {
+	bytes, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0
+	}
+	closeParen := strings.LastIndexByte(string(bytes), ')')
+	if closeParen < 0 {
+		return 0
+	}
+	fields := strings.Fields(string(bytes)[closeParen+1:])
+	if len(fields) <= 19 {
+		return 0
+	}
+	startTime, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return startTime
 }
 
 func containsArgument(commandLine []byte, argument string) bool {

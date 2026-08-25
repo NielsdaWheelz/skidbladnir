@@ -2,7 +2,7 @@
   "version": 1,
   "results": [
     { "id": "command-profile", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P1 live router and profile boundary is not implemented" },
-    { "id": "broker-appserver", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P0 live App Server probe is not yet recorded" },
+    { "id": "broker-appserver", "gate": "live", "status": "PASS", "evidence": "evidence/live/p0-appserver-0.149.1.md", "reason": null },
     { "id": "hooks-registry", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 registry projection is not implemented" },
     { "id": "lifecycle-tmux-process", "gate": "live", "status": "NOT_RUN", "evidence": null, "reason": "P2 lifecycle surface is not implemented" },
     { "id": "pty-wss-android", "gate": "platform", "status": "NOT_RUN", "evidence": null, "reason": "No Android device is connected" },
