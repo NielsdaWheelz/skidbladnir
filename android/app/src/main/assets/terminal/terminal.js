@@ -84,8 +84,7 @@
     function sanitizePaste(value) {
         value = String(value);
         if (value.length > maximumInputBytes) return null;
-        var chunks = [];
-        var chunk = "";
+        var sanitized = "";
         var byteCount = 0;
         for (var index = 0; index < value.length; index += 1) {
             var code = value.codePointAt(index);
@@ -96,18 +95,14 @@
                 code = 0x0a;
                 character = "\n";
             }
+            if (code >= 0xd800 && code <= 0xdfff) continue;
             if (code === 0x09 || code === 0x0a || (code > 0x1f && code < 0x7f) || code > 0x9f) {
                 byteCount += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
                 if (byteCount > maximumInputBytes) return null;
-                chunk += character;
-                if (chunk.length >= 4096) {
-                    chunks.push(chunk);
-                    chunk = "";
-                }
+                sanitized += character;
             }
         }
-        chunks.push(chunk);
-        return chunks.join("");
+        return sanitized;
     }
 
     function resizeTerminal() {
@@ -224,6 +219,8 @@
                 pasteInput(sanitized);
             }
         }, true);
+    } else {
+        failPage();
     }
 
     new ResizeObserver(scheduleFit).observe(terminalHost);
@@ -237,6 +234,16 @@
 
     window.addEventListener("message", function (event) {
         if (!event.ports || event.ports.length !== 1) return;
+        var handshake = null;
+        try {
+            handshake = JSON.parse(event.data);
+        } catch (error) {
+            handshake = null;
+        }
+        if (!handshake || handshake.kind !== "PagePort" || handshake.version !== 1) {
+            failPage();
+            return;
+        }
         pagePort = event.ports[0];
         if (pageFailed) {
             send({ kind: "PageFailure" });
@@ -253,6 +260,12 @@
             } else if (payload.kind === "Focus") {
                 focusTerminal();
             } else if (payload.kind === "Accessory") {
+                var literal = {
+                    Escape: "\u001b",
+                    CtrlC: "\u0003",
+                    Tab: "\t",
+                    Newline: "\n"
+                }[payload.key];
                 var suffix = {
                     Left: "D",
                     Up: "A",
@@ -261,11 +274,11 @@
                     Home: "H",
                     End: "F"
                 }[payload.key];
-                if (!suffix) {
+                if (!literal && !suffix) {
                     failPage();
                     return;
                 }
-                sendInput("\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffix);
+                sendInput(literal || "\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffix);
                 focusTerminal();
             }
         };

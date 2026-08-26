@@ -171,19 +171,31 @@ internal class GatewayClient {
         }
     }
 
-    private fun decodeFailure(status: Int, encoded: String): GatewayFailure {
-        return decodeProtocol {
-            val response = productJson.decodeFromString<ErrorResponse>(encoded)
-            val code = parseApiErrorCode(response.code)
-            if (code == ApiErrorCode.ReconnectRequired ||
-                status != apiErrorHttpStatus(code) ||
-                response.message != apiErrorMessage(code)
-            ) {
-                throw SerializationException("HTTP error response disagreed with the owned protocol")
-            }
+}
+
+// An error response that does not speak the owned {code,message} protocol —
+// most commonly the Tailscale Serve proxy answering 502/503 while the gateway
+// systemd unit restarts — proves only that the gateway itself was not reached,
+// so it is a transient transport condition and never a same-system protocol
+// defect.
+internal fun decodeFailure(status: Int, encoded: String): GatewayFailure {
+    val failure = try {
+        val response = productJson.decodeFromString<ErrorResponse>(encoded)
+        val code = parseApiErrorCode(response.code)
+        if (code == ApiErrorCode.ReconnectRequired ||
+            status != apiErrorHttpStatus(code) ||
+            response.message != apiErrorMessage(code)
+        ) {
+            null
+        } else {
             GatewayFailure.Api(code)
         }
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
     }
+    return failure ?: GatewayFailure.Transport
 }
 
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {

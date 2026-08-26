@@ -111,6 +111,30 @@ internal fun DashboardScreen(
             )
         }
 
+        if (state.notice != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = state.notice,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 12.dp),
+                    )
+                    TextButton(onClick = controller::dismissNotice) { Text("Dismiss") }
+                }
+            }
+        }
+
         if (state.error != null) {
             Surface(
                 color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),

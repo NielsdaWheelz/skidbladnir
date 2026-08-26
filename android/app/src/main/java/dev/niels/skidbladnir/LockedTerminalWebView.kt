@@ -28,6 +28,13 @@ private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
 private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024L
 private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
+
+// The gateway's published geometry bounds; the page's glyph scaling guarantees
+// at least 80 columns, so geometry outside these bounds is a page defect.
+private const val MINIMUM_COLUMNS = 20
+private const val MAXIMUM_COLUMNS = 240
+private const val MINIMUM_ROWS = 5
+private const val MAXIMUM_ROWS = 120
 private const val TERMINAL_PAGE_READY_TIMEOUT_MILLIS = 10_000L
 
 private data class PendingPageOutput(
@@ -48,12 +55,16 @@ internal interface TerminalPage {
 }
 
 internal enum class TerminalAccessory {
+    Escape,
+    CtrlC,
+    Tab,
     Left,
     Up,
     Down,
     Right,
     Home,
     End,
+    Newline,
 }
 
 internal interface TerminalPageListener {
@@ -209,6 +220,7 @@ internal class LockedTerminalWebView(
         pagePort = null
         stopLoading()
         clearHistory()
+        (parent as? android.view.ViewGroup)?.removeView(this)
         removeAllViews()
         destroy()
     }
@@ -316,7 +328,10 @@ internal class LockedTerminalWebView(
                         "Resize" -> if (objectValue.hasExactKeys("kind", "columns", "rows")) {
                             val columns = objectValue.intField("columns")
                             val rows = objectValue.intField("rows")
-                            if (columns == null || rows == null) {
+                            if (columns == null || rows == null ||
+                                columns !in MINIMUM_COLUMNS..MAXIMUM_COLUMNS ||
+                                rows !in MINIMUM_ROWS..MAXIMUM_ROWS
+                            ) {
                                 markUnavailable()
                             } else {
                                 listener.onResize(columns, rows)

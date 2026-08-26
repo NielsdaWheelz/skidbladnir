@@ -30,6 +30,8 @@ case "$gate" in
     run terminal-assets-static ./scripts/check-terminal-assets
     run go-mod-verify go mod verify
     run go-vet go vet ./...
+    run go-vet-integration go vet -tags=integration ./tests/integration
+    run go-vet-live go vet -tags=live ./tests/live
     run android-static ./scripts/build android-static
     ;;
   unit)
@@ -102,9 +104,14 @@ case "$gate" in
       printf 'could not uninstall the test-only Android package\n' >&2
       exit 1
     }
+    # The count is pinned so silently dropped tests cannot pass as a full gate;
+    # update it together with the instrumented suites.
+    platform_expected_tests="$(grep -c '@Test' \
+      "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt | \
+      awk -F: '{ total += $2 } END { print total }')"
     if [[ "$instrumentation_status" -ne 0 ]] ||
-      ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' <<<"$instrumentation_output"; then
-      printf 'Android instrumentation failed\n' >&2
+      ! grep -Eq "^OK \(${platform_expected_tests} tests?\)$" <<<"$instrumentation_output"; then
+      printf 'Android instrumentation failed or ran fewer than %s tests\n' "$platform_expected_tests" >&2
       exit 1
     fi
     if [[ -n "$pairing_digest" ]]; then

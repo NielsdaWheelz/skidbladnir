@@ -95,8 +95,7 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		return
 	}
 	if !strings.HasPrefix(request.URL.Path, "/v1") {
-		writer.setErrorCode(logging.ErrorInvalidRequest)
-		http.NotFound(writer, request)
+		writeError(writer, errorInvalidRequest)
 		return
 	}
 	if !gateway.authenticate(writer, request, route) {
@@ -129,10 +128,7 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 
 func (gateway *Gateway) serveHealth(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet || request.URL.RawQuery != "" || !isLoopbackRemote(request.RemoteAddr) {
-		if tracked, ok := writer.(interface{ setErrorCode(logging.ErrorCode) }); ok {
-			tracked.setErrorCode(logging.ErrorInvalidRequest)
-		}
-		http.NotFound(writer, request)
+		writeError(writer, errorInvalidRequest)
 		return
 	}
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -254,9 +250,9 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorInternal)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.ID, created.Name, created.Profile, time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.ID, created.Name, input.Profile.value, time.Since(startedAt))
 	if eventErr != nil {
-		panic("invalid session-created log event") // justify-defect: sessions returned an invalid owned session.
+		panic("invalid session-created log event") // justify-defect: Create validated the profile key and tmux minted the id and name.
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusCreated, card)
@@ -342,7 +338,13 @@ func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *a
 		failure := errorRequestTooLarge
 		return zero, &failure
 	}
-	request.Body = http.MaxBytesReader(writer, request.Body, MaximumBodyBytes)
+	// MaxBytesReader marks the connection for closure through an unexported
+	// method of net/http's own writer, which the tracking wrapper would hide.
+	limitWriter := writer
+	if tracked, ok := writer.(*trackedResponseWriter); ok {
+		limitWriter = tracked.ResponseWriter
+	}
+	request.Body = http.MaxBytesReader(limitWriter, request.Body, MaximumBodyBytes)
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	var decoded *T

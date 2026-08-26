@@ -227,7 +227,8 @@ untrusted, or unloaded hooks leave the honest `RUNNING` state.
    against the service UID home; must be an existing directory. Failure is
    typed and mutates nothing.
 2. Profile must be one of the four allowlisted commands.
-3. Optional name is 1–64 ASCII letters, digits, underscores, or hyphens;
+3. Optional name is 1–64 ASCII letters, digits, underscores, or hyphens,
+   beginning with a letter or digit;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
    Invalid input mutates nothing.
 4. One tmux client command queue creates the session (named `optionalName` or

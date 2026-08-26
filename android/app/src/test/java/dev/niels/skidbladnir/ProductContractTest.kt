@@ -227,6 +227,37 @@ class ProductContractTest {
     }
 
     @Test
+    fun `error responses outside the owned protocol classify as transport not defect`() {
+        assertEquals(
+            GatewayFailure.Api(ApiErrorCode.SessionGroupedConflict),
+            decodeFailure(
+                409,
+                """{"code":"SessionGroupedConflict","message":"This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it."}""",
+            ),
+        )
+        assertEquals(
+            GatewayFailure.Api(ApiErrorCode.SessionNotFound),
+            decodeFailure(404, """{"code":"SessionNotFound","message":"That session no longer exists."}"""),
+        )
+        // The Tailscale Serve proxy answers for a restarting gateway with
+        // non-protocol bodies; that is unreachability, never a protocol defect.
+        assertEquals(GatewayFailure.Transport, decodeFailure(502, "<html>Bad Gateway</html>"))
+        assertEquals(GatewayFailure.Transport, decodeFailure(503, ""))
+        assertEquals(
+            GatewayFailure.Transport,
+            decodeFailure(400, """{"code":"SessionNotFound","message":"That session no longer exists."}"""),
+        )
+        assertEquals(
+            GatewayFailure.Transport,
+            decodeFailure(404, """{"code":"SessionNotFound","message":"A reworded message."}"""),
+        )
+        assertEquals(
+            GatewayFailure.Transport,
+            decodeFailure(404, """{"code":"NotACode","message":"That session no longer exists."}"""),
+        )
+    }
+
+    @Test
     fun `mutation failures distinguish rejection from unknown outcome`() {
         assertTrue(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionNameConflict)))
         assertFalse(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.InternalError)))
@@ -386,6 +417,7 @@ class ProductContractTest {
             inventoryAgeAdvanceSeconds = 0,
             refreshing = false,
             error = null,
+            notice = null,
             forge = forge,
             forgeRecovery = null,
             kill = null,

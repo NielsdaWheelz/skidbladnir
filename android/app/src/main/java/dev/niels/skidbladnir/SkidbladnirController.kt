@@ -11,6 +11,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
+private const val POLL_DELAY_SECONDS = 5L
+
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
 
@@ -27,6 +29,7 @@ internal sealed interface SkidbladnirUiState {
         val inventoryAgeAdvanceSeconds: Long,
         val refreshing: Boolean,
         val error: String?,
+        val notice: String?,
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
         val kill: KillState?,
@@ -121,7 +124,7 @@ internal class SkidbladnirController(context: Context) {
         val generation = ++foregroundGeneration
         if (bearer != null) {
             showDashboard(refreshing = true)
-            startPolling(requireNotNull(bearer), generation, immediately = true)
+            startPolling(requireNotNull(bearer), generation)
             return
         }
         state = SkidbladnirUiState.Booting
@@ -177,7 +180,7 @@ internal class SkidbladnirController(context: Context) {
                 } else {
                     bearer = stored
                     showDashboard(refreshing = true)
-                    startPolling(stored, generation, immediately = true)
+                    startPolling(stored, generation)
                 }
             }
         }
@@ -266,7 +269,7 @@ internal class SkidbladnirController(context: Context) {
                         inventory = result.value
                         inventoryReceivedAtElapsedMillis = inventoryReceivedAt
                         showDashboard(refreshing = false, inventoryStale = false)
-                        startPolling(candidate, generation, immediately = true)
+                        startPolling(candidate, generation)
                     }
                 }
                 is GatewayResult.Failure -> main.post {
@@ -274,10 +277,7 @@ internal class SkidbladnirController(context: Context) {
                     val pairing = state as? SkidbladnirUiState.Pairing ?: return@post
                     state = pairing.copy(
                         pending = false,
-                        error = when (result.failure) {
-                            is GatewayFailure.Api -> gatewayFailureMessage(result.failure)
-                            GatewayFailure.Transport -> "Could not reach Skíðblaðnir over your Tailnet."
-                        },
+                        error = gatewayFailureMessage(result.failure),
                     )
                 }
             }
@@ -444,7 +444,7 @@ internal class SkidbladnirController(context: Context) {
         terminalConnection?.terminalUnavailable()
         leaveTerminal()
         state = current.copy(
-            connection = TerminalUiStatus.ReconnectRequired("Reconnect required."),
+            connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(ApiErrorCode.ReconnectRequired)),
         )
     }
 
@@ -522,7 +522,7 @@ internal class SkidbladnirController(context: Context) {
                             it.id == kill.target.id && it.identityToken == kill.target.identityToken
                         },
                     )
-                    showDashboard(refreshing = true)
+                    showDashboard(refreshing = true, notice = null)
                     executeClient { poll(activeBearer, generation) }
                 }
                 is GatewayResult.Failure -> {
@@ -534,48 +534,44 @@ internal class SkidbladnirController(context: Context) {
                     }
                     main.post {
                         if (!isActive(generation, activeBearer)) return@post
-                        val message = gatewayFailureMessage(result.failure)
-                        if (killFailureIsDefinitive(result.failure)) {
-                            leaveTerminal()
-                            state = SkidbladnirUiState.Dashboard(
-                                inventory = inventory,
-                                pressure = null,
-                                inventoryStale = inventory != null,
-                                inventoryAgeAdvanceSeconds = inventoryAgeAdvanceSeconds(),
-                                refreshing = true,
-                                error = "$message Agents are refreshing.",
-                                forge = null,
-                                forgeRecovery = null,
-                                kill = null,
-                            )
-                            executeClient { poll(activeBearer, generation) }
+                        // The kill outcome must outlive the poll it triggers: it
+                        // stays as a standing notice until dismissed or replaced,
+                        // while the poll-owned error field keeps reporting
+                        // connectivity.
+                        val notice = if (killFailureIsDefinitive(result.failure)) {
+                            gatewayFailureMessage(result.failure)
                         } else {
-                            leaveTerminal()
-                            state = SkidbladnirUiState.Dashboard(
-                                inventory = inventory,
-                                pressure = null,
-                                inventoryStale = inventory != null,
-                                inventoryAgeAdvanceSeconds = inventoryAgeAdvanceSeconds(),
-                                refreshing = true,
-                                error = "Kill outcome unknown. Agents are refreshing.",
-                                forge = null,
-                                forgeRecovery = null,
-                                kill = null,
-                            )
-                            executeClient { poll(activeBearer, generation) }
+                            "Kill outcome unknown. Agents are refreshing."
                         }
+                        leaveTerminal()
+                        state = SkidbladnirUiState.Dashboard(
+                            inventory = inventory,
+                            pressure = null,
+                            inventoryStale = inventory != null,
+                            inventoryAgeAdvanceSeconds = inventoryAgeAdvanceSeconds(),
+                            refreshing = true,
+                            error = null,
+                            notice = notice,
+                            forge = null,
+                            forgeRecovery = null,
+                            kill = null,
+                        )
+                        executeClient { poll(activeBearer, generation) }
                     }
                 }
             }
         }
     }
 
-    private fun startPolling(activeBearer: GatewayBearer, generation: Long, immediately: Boolean) {
+    // justify-polling: the gateway inventory has no push channel in v0; one
+    // five-second fixed-delay poll starting immediately keeps cards, attention,
+    // and pressure honest while the app is foregrounded.
+    private fun startPolling(activeBearer: GatewayBearer, generation: Long) {
         poller?.cancel(false)
         poller = worker.scheduleWithFixedDelay(
             { surfaceWorkerDefect { poll(activeBearer, generation) } },
-            if (immediately) 0 else 5,
-            5,
+            0,
+            POLL_DELAY_SECONDS,
             TimeUnit.SECONDS,
         )
     }
@@ -660,16 +656,26 @@ internal class SkidbladnirController(context: Context) {
         }
     }
 
+    fun dismissNotice() {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        if (current.notice == null) return
+        state = current.copy(notice = null)
+    }
+
+    private fun standingNotice(): String? = (state as? SkidbladnirUiState.Dashboard)?.notice
+
     private fun showDashboard(
         refreshing: Boolean,
         inventoryStale: Boolean = inventory != null,
+        notice: String? = standingNotice(),
     ) {
-        state = dashboardState(refreshing, inventoryStale)
+        state = dashboardState(refreshing, inventoryStale, notice)
     }
 
     private fun dashboardState(
         refreshing: Boolean,
         inventoryStale: Boolean = inventory != null,
+        notice: String? = standingNotice(),
     ): SkidbladnirUiState.Dashboard {
         val carry = forgeCarry(state)
         return SkidbladnirUiState.Dashboard(
@@ -679,6 +685,7 @@ internal class SkidbladnirController(context: Context) {
             inventoryAgeAdvanceSeconds = inventoryAgeAdvanceSeconds(),
             refreshing = refreshing,
             error = null,
+            notice = notice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
             kill = null,
@@ -716,7 +723,7 @@ internal class SkidbladnirController(context: Context) {
         state = SkidbladnirUiState.Pairing(
             draft = "",
             pending = false,
-            error = "Authentication required.${storageError.orEmpty()}",
+            error = apiErrorMessage(ApiErrorCode.Unauthenticated) + storageError.orEmpty(),
         )
     }
 

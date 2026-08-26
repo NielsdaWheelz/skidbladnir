@@ -25,6 +25,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // The product install is the release build: debuggable=false closes
+            // the run-as/JDWP path to the bearer at rest. The debug keystore
+            // only provides update continuity for one sideloaded device.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

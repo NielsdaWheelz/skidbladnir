@@ -223,13 +223,13 @@ class TerminalInstrumentedTest {
 
             onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
             awaitValue(webView, "window.innerWidth > window.innerHeight", "true")
-            val landscapeSize = awaitTerminalSize { it.first >= 80 }
+            val landscapeSize = awaitSettledSizeWithAllSamplesConforming()
             assertTrue("landscape terminal dropped below 80 columns: $landscapeSize", landscapeSize.first >= 80)
             TerminalTestProbe.sizes.clear()
 
             onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
             awaitValue(webView, "window.innerHeight > window.innerWidth", "true")
-            val finalSize = awaitTerminalSize { it.first >= 80 }
+            val finalSize = awaitSettledSizeWithAllSamplesConforming()
             val finalScreenWidth = evaluate(
                 webView,
                 "document.querySelector('.xterm-screen').getBoundingClientRect().width",
@@ -398,6 +398,20 @@ class TerminalInstrumentedTest {
             if (predicate(size)) return size
         }
         throw AssertionError("terminal did not publish the required size")
+    }
+
+    // Every published sample resizes the shared PTY, so a single transitional
+    // sample below 80 columns is already the regression, not noise to skip.
+    private fun awaitSettledSizeWithAllSamplesConforming(): Pair<Int, Int> {
+        var latest = awaitTerminalSize { true }
+        assertTrue("terminal published below 80 columns: $latest", latest.first >= 80)
+        val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (System.nanoTime() < settleDeadline) {
+            val size = TerminalTestProbe.sizes.poll(100, TimeUnit.MILLISECONDS) ?: continue
+            assertTrue("terminal published below 80 columns: $size", size.first >= 80)
+            latest = size
+        }
+        return latest
     }
 
     private fun awaitVisualState(webView: WebView) {

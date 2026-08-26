@@ -66,10 +66,10 @@ func TestPressureMonitorSamplesTheHost(t *testing.T) {
 	if len(snapshot.Window) != 1 || snapshot.Current.ObservedAt.IsZero() {
 		t.Fatalf("monitor did not publish its initial pressure sample: %+v", snapshot)
 	}
-	if snapshot.Current.MemoryAvailablePercent.Status == pressure.StatusUnknown {
+	if _, known := snapshot.Current.MemoryAvailablePercent.Value(); !known {
 		t.Fatalf("host /proc meminfo was not sampled: %+v", snapshot.Current.MemoryAvailablePercent)
 	}
-	if snapshot.Current.DiskAvailablePercent.Status == pressure.StatusUnknown {
+	if _, known := snapshot.Current.DiskAvailablePercent.Value(); !known {
 		t.Fatalf("host statfs was not sampled: %+v", snapshot.Current.DiskAvailablePercent)
 	}
 }

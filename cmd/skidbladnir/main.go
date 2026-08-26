@@ -135,7 +135,7 @@ func codexProfile(home, key, label, codexHomeName string) sessions.Profile {
 		},
 		ForegroundSignatures: []sessions.ForegroundSignature{
 			{ExecutableBase: "codex"},
-			{ExecutableBase: "node", Argument1: filepath.Join(home, ".local", "bin", "codex")},
+			{ExecutableBase: "node", Argument1: statushook.CodexNodeEntrypoint},
 		},
 		Arguments: []string{"--dangerously-bypass-approvals-and-sandbox"},
 	}

@@ -16,6 +16,7 @@ readonly serve_port="8443"
 readonly binary_target="${expected_home}/.local/bin/skidbladnir"
 readonly notify_target="${expected_home}/.local/bin/skid-notify"
 readonly hooks_source="${repo_dir}/deploy/codex/status-hooks.json"
+readonly hooks_superseded="${repo_dir}/deploy/codex/status-hooks.superseded"
 readonly retired_hook_target="${expected_home}/.local/bin/skidbladnir-hook"
 readonly retired_hook_socket="/run/user/${expected_uid}/skidbladnir/hook.sock"
 readonly retired_hook_gaps="${expected_home}/.local/state/skidbladnir/hook-gaps"
@@ -33,6 +34,7 @@ readonly -a profile_configs=(
 )
 
 staging_dir=""
+publish_in_progress="0"
 declare -a config_digests=()
 declare -a hook_digests=()
 
@@ -41,9 +43,33 @@ die() {
   exit 1
 }
 
+attempt_rollback() {
+  [[ -n "$staging_dir" && -f "$staging_dir/rollback-skidbladnir" ]] || return 1
+  atomic_install "$staging_dir/rollback-skidbladnir" "$binary_target" 0755 || return 1
+  if [[ -f "$staging_dir/rollback-unit" ]]; then
+    atomic_install "$staging_dir/rollback-unit" "$unit_target" 0600 || return 1
+  fi
+  /usr/bin/systemctl --user daemon-reload || return 1
+  /usr/bin/systemctl --user enable --now "$service_name" || return 1
+}
+
 cleanup() {
   local exit_status=$?
   trap - EXIT
+  if [[ "$publish_in_progress" == "1" && "$exit_status" -ne 0 ]]; then
+    if [[ -f "${staging_dir}/rollback-skidbladnir" ]]; then
+      if attempt_rollback; then
+        printf 'skidbladnir devbox: installation failed; the previous gateway was restored and restarted
+' >&2
+      else
+        printf 'skidbladnir devbox: installation failed and rollback also failed; the service needs manual repair
+' >&2
+      fi
+    else
+      printf 'skidbladnir devbox: first installation failed before completion; no previous gateway exists to restore
+' >&2
+    fi
+  fi
   if [[ -n "$staging_dir" && -d "$staging_dir" ]]; then
     if ! /usr/bin/rm -rf -- "$staging_dir"; then
       printf 'skidbladnir devbox: could not remove staging directory: %s\n' "$staging_dir" >&2
@@ -67,6 +93,15 @@ acquire_operation_lock() {
   exec 9>"$operation_lock"
   /usr/bin/chmod 0600 "$operation_lock"
   /usr/bin/flock --exclusive --nonblock 9 || die "another installer operation is running"
+}
+
+require_optional_owned_directory() {
+  local target_directory="$1"
+  local expected_mode="${2:-}"
+  if [[ ! -e "$target_directory" && ! -L "$target_directory" ]]; then
+    return
+  fi
+  require_owned_directory "$target_directory" "$expected_mode"
 }
 
 require_owned_directory() {
@@ -110,6 +145,10 @@ require_absent() {
     die "${description} is still present: ${target_path}"
 }
 
+# add: no hooks.json; present: byte-identical to the shipped file; update: a
+# byte-exact previously shipped version recorded in status-hooks.superseded,
+# which installation replaces and Codex digest review re-approves once. Any
+# other content is user-authored and fails closed.
 classify_status_hooks() {
   local hook_file="$1"
   if [[ ! -e "$hook_file" && ! -L "$hook_file" ]]; then
@@ -119,6 +158,13 @@ classify_status_hooks() {
   require_regular_file "$hook_file" 600
   if /usr/bin/cmp --silent "$hooks_source" "$hook_file"; then
     printf 'present\n'
+    return
+  fi
+  local observed_digest
+  observed_digest="$(/usr/bin/sha256sum -- "$hook_file" | /usr/bin/cut -d ' ' -f 1)"
+  if [[ -f "$hooks_superseded" ]] &&
+    /usr/bin/grep -qx -- "$observed_digest" "$hooks_superseded"; then
+    printf 'update\n'
     return
   fi
   return 3
@@ -362,12 +408,14 @@ preflight_platform() {
   verify_caddy_boundary
   require_retired_hook_runtime_disabled
 
-  require_owned_directory "${expected_home}/.local"
-  require_owned_directory "${expected_home}/.local/bin" 700
-  require_owned_directory "${expected_home}/.local/share"
-  require_owned_directory "${expected_home}/.config"
-  require_owned_directory "${expected_home}/.config/systemd"
-  require_owned_directory "${expected_home}/.config/systemd/user" 700
+  # Publication creates these with ensure_owned_directory; a fresh host is a
+  # bootstrap, not a conflict. Present directories must still be exactly owned.
+  require_optional_owned_directory "${expected_home}/.local"
+  require_optional_owned_directory "${expected_home}/.local/bin" 700
+  require_optional_owned_directory "${expected_home}/.local/share"
+  require_optional_owned_directory "${expected_home}/.config"
+  require_optional_owned_directory "${expected_home}/.config/systemd"
+  require_optional_owned_directory "${expected_home}/.config/systemd/user" 700
 }
 
 preflight_host() {
@@ -461,6 +509,9 @@ stage_installation() {
     cd "$repo_dir"
     /usr/bin/git diff --check
     ./scripts/check-catalogue
+    expected_go="go$(/usr/bin/awk '$1 == "go" { print $2 }' go.mod)"
+    [[ "$(go env GOVERSION)" == "$expected_go" ]] ||
+      die "resolved Go toolchain $(go env GOVERSION) does not match go.mod ${expected_go}"
     go build ./cmd/... ./internal/...
     go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
     /usr/bin/systemd-analyze --user verify deploy/systemd/skidbladnir.service
@@ -703,6 +754,15 @@ install_devbox() {
   preflight_host
   stage_installation
   verify_profile_digests
+  if [[ -f "$binary_target" && ! -L "$binary_target" ]]; then
+    /usr/bin/cp -p -- "$binary_target" "$staging_dir/rollback-skidbladnir" ||
+      die "could not snapshot the running gateway for rollback"
+  fi
+  if [[ -f "$unit_target" && ! -L "$unit_target" ]]; then
+    /usr/bin/cp -p -- "$unit_target" "$staging_dir/rollback-unit" ||
+      die "could not snapshot the systemd unit for rollback"
+  fi
+  publish_in_progress="1"
   stop_current_service || die "service could not be safely stopped for installation"
 
   ensure_owned_directory "$(/usr/bin/dirname -- "$binary_target")" 700
@@ -729,7 +789,7 @@ install_devbox() {
     [[ "$(optional_file_digest "$hook_file")" == "${hook_digests[index]}" ]] ||
       die "Codex hooks changed before publication: ${hook_file}"
     classification="$(classify_status_hooks "$hook_file")"
-    if [[ "$classification" == "add" ]]; then
+    if [[ "$classification" == "add" || "$classification" == "update" ]]; then
       atomic_install "$staging_dir/status-hooks.json" "$hook_file" 0600
     fi
     index=$((index + 1))
@@ -755,6 +815,7 @@ install_devbox() {
     *) die "Tailscale Serve configuration conflicts" ;;
   esac
   verify_installation
+  publish_in_progress="0"
 }
 
 verify_devbox() {

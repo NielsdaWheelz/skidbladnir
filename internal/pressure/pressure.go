@@ -44,9 +44,8 @@ const (
 )
 
 type Signal struct {
-	Status Status
-	value  float64
-	known  bool
+	value float64
+	known bool
 }
 
 func (signal Signal) Value() (float64, bool) {
@@ -118,14 +117,14 @@ func (monitor *Monitor) sample(observedAt time.Time) {
 		ObservedAt:                   observedAt.UTC(),
 		Status:                       evaluation.status,
 		Reasons:                      evaluation.reasons,
-		CPUPercent:                   signal(raw.cpuPercent, classifyInformational),
-		LoadNormalized:               signal(raw.loadNormalized, classifyLoad),
-		MemoryAvailablePercent:       signal(raw.memoryAvailablePercent, classifyMemory),
-		SwapUsedPercent:              signal(raw.swapUsedPercent, classifyInformational),
-		DiskAvailablePercent:         signal(raw.diskAvailablePercent, classifyDisk),
-		CPUPressureSomeAvg60:         signal(raw.cpuPSISomeAvg60, classifyCPUPSI),
-		MemoryPressureFullAvg60:      signal(raw.memoryPSIFullAvg60, classifyFullPSI),
-		InputOutputPressureFullAvg60: signal(raw.ioPSIFullAvg60, classifyFullPSI),
+		CPUPercent:                   signal(raw.cpuPercent),
+		LoadNormalized:               signal(raw.loadNormalized),
+		MemoryAvailablePercent:       signal(raw.memoryAvailablePercent),
+		SwapUsedPercent:              signal(raw.swapUsedPercent),
+		DiskAvailablePercent:         signal(raw.diskAvailablePercent),
+		CPUPressureSomeAvg60:         signal(raw.cpuPSISomeAvg60),
+		MemoryPressureFullAvg60:      signal(raw.memoryPSIFullAvg60),
+		InputOutputPressureFullAvg60: signal(raw.ioPSIFullAvg60),
 	}
 
 	monitor.mutex.Lock()
@@ -235,18 +234,11 @@ func classifyOverall(sample rawSample) evaluation {
 	return result
 }
 
-func signal(value metric, classify func(metric) Status) Signal {
+func signal(value metric) Signal {
 	if !value.known {
-		return Signal{Status: StatusUnknown}
+		return Signal{}
 	}
-	return Signal{Status: classify(value), value: value.value, known: true}
-}
-
-func classifyInformational(value metric) Status {
-	if !value.known {
-		return StatusUnknown
-	}
-	return StatusNormal
+	return Signal{value: value.value, known: true}
 }
 
 func classifyMemory(value metric) Status {

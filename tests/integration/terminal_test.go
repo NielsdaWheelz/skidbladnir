@@ -176,6 +176,15 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		}
 		return false
 	})
+	if got := terminalLaptopShape(t, fixture, "shared-terminal"); got != laptopShapeBefore {
+		t.Fatalf("phone detach changed laptop geometry: before=%q after=%q", laptopShapeBefore, got)
+	}
+	if got := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{window_width}x#{window_height}"); got != windowShapeBefore {
+		t.Fatalf("phone detach changed laptop-owned window geometry: before=%q after=%q", windowShapeBefore, got)
+	}
+	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
+		t.Fatalf("phone detach moved the shared active pane: %q", active)
+	}
 	if _, err := laptop.Write([]byte("LAPTOP-A\r")); err != nil {
 		t.Fatalf("write through surviving laptop client: %v", err)
 	}
@@ -351,6 +360,127 @@ while IFS= read -r token; do
     printf '\nFLOOD-DONE\n'
   fi
 done`
+}
+
+// The grouped session tmux mints opens on the lowest-index window, so the
+// attach path must move the shadow's own current window to the source's
+// current window without touching the source's selection.
+func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "current-window.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "windowed-source", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "WINDOW-0")
+	fixture.tmux(t, "new-window", "-t", "windowed-source:", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath+".1", "WINDOW-1")
+	fixture.tmux(t, "select-window", "-t", "windowed-source:1")
+	sourceWindow := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}")
+
+	source := terminalSource(t, fixture, "windowed-source")
+	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
+	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+
+	shadow := requireTerminalPhoneShadow(t, fixture)
+	if got := fixture.tmux(t, "display-message", "-p", "-t", shadow.id, "#{window_id}"); got != sourceWindow {
+		t.Fatalf("phone shadow opened on window %q, want the source's current window %q", got, sourceWindow)
+	}
+	if got := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}"); got != sourceWindow {
+		t.Fatalf("attach moved the source's current window: got %q, want %q", got, sourceWindow)
+	}
+}
+
+// Kill with an open terminal must first settle the live attachment — including
+// the shadow tmux already destroyed through the armed keep-last option — and
+// then kill exactly the confirmed session.
+func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "kill-open-terminal.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "kill-me", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "KILL-ME")
+	fixture.tmux(t, "new-session", "-d", "-s", "bystander", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath+".bystander", "BYSTANDER")
+	source := terminalSource(t, fixture, "kill-me")
+	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
+	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+
+	body := strings.NewReader(`{"name":"kill-me","identityToken":"` + source.IdentityToken + `"}`)
+	request, err := http.NewRequest(http.MethodDelete, gatewayFixture.server.URL+"/v1/sessions/"+source.ID, body)
+	if err != nil {
+		t.Fatalf("build kill request: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+gatewayFixture.bearer)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("kill with open terminal: %v", err)
+	}
+	payload, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("kill with open terminal answered %d: %s", response.StatusCode, payload)
+	}
+	requireTerminalClosed(t, connection)
+	waitForTerminalCondition(t, "killed session and its shadow disappear", func() bool {
+		return !terminalSessionExists(t, fixture, source.ID, source.Name) && len(terminalPhoneShadows(t, fixture)) == 0
+	})
+	if !terminalSessionExists(t, fixture, terminalSource(t, fixture, "bystander").ID, "bystander") {
+		t.Fatal("kill with open terminal destroyed a bystander session")
+	}
+}
+
+// The terminal endpoint is shell-equivalent authority: every credential must
+// travel in headers and be verified before any tmux mutation.
+func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "auth-chokepoint.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "auth-source", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "AUTH")
+	source := terminalSource(t, fixture, "auth-source")
+	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
+
+	tests := []struct {
+		name    string
+		url     string
+		headers http.Header
+		status  int
+	}{
+		{
+			name:    "no bearer",
+			url:     gatewayFixture.url(source.ID),
+			headers: http.Header{"Skidbladnir-Session-Identity": []string{source.IdentityToken}},
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "no identity header",
+			url:     gatewayFixture.url(source.ID),
+			headers: http.Header{"Authorization": []string{"Bearer " + gatewayFixture.bearer}},
+			status:  http.StatusBadRequest,
+		},
+		{
+			name:    "identity in query",
+			url:     gatewayFixture.url(source.ID) + "?identity=" + source.IdentityToken,
+			headers: http.Header{"Authorization": []string{"Bearer " + gatewayFixture.bearer}},
+			status:  http.StatusBadRequest,
+		},
+	}
+	for _, test := range tests {
+		_, response, err := websocket.Dial(context.Background(), test.url, &websocket.DialOptions{HTTPHeader: test.headers})
+		if err == nil || response == nil || response.StatusCode != test.status {
+			status := 0
+			if response != nil {
+				status = response.StatusCode
+			}
+			t.Fatalf("%s: status=%d error=%v, want status=%d with no upgrade", test.name, status, err, test.status)
+		}
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+	}
+	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
+		t.Fatalf("credential-less terminal dial mutated sessions:\nbefore=%q\nafter=%q", sessionsBefore, sessionsAfter)
+	}
 }
 
 type terminalGatewayFixture struct {
