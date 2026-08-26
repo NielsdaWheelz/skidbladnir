@@ -359,9 +359,10 @@ Galaxy S22+                       laptop / mosh
   reserved `@skid_internal` marker are session-scoped; `@skid_attention` and
   `@skid_lifecycle` are pane-scoped; `@skid_server_epoch` is server-scoped.
   Same-named options at another scope are invariant corruption outside v0.
-  `@skid_internal=phone-shadow` is valid only on a session with the reserved
-  phone-shadow name; any other pairing fails closed as invariant corruption.
-  Poller state is in-memory and rebuilt on start.
+  `@skid_internal=phone-shadow` is reserved for the phone-shadow name; partial
+  name/marker facts retain section 5's ordinary, never-reconciled semantics and
+  are invariant corruption outside v0. Poller state is in-memory and rebuilt on
+  start.
 - The API is:
 
 | Method/path | Contract |
