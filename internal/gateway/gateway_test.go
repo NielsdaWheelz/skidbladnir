@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -43,8 +44,9 @@ func (stub stubSessionManager) OpenTerminal(context.Context, string, string) (*s
 func TestCreateSessionWithDegradedReadbackRespondsCreated(t *testing.T) {
 	degraded := sessions.Session{
 		ID:            "$7",
-		Name:          "ga-durinn",
+		TmuxName:      "laptop-work",
 		IdentityToken: "v1-0123456789abcdef0123456789abcdef.1234.5678.7",
+		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
 		Status: sessions.Status{
 			Kind:     sessions.StatusUnknown,
 			Signal:   sessions.StatusSignalPollFailure,
@@ -67,7 +69,8 @@ func TestCreateSessionWithDegradedReadbackRespondsCreated(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &card); err != nil {
 		t.Fatalf("create response is not a session card: %v", err)
 	}
-	if card.ID != "$7" || card.Profile != "" || card.Status.Kind != "Unknown" {
+	if card.ID != "$7" || card.TmuxName != "laptop-work" || card.Character.Key != "norse.durinn" ||
+		card.Profile != "" || card.Status.Kind != "Unknown" {
 		t.Fatalf("degraded card misreported facts: %+v", card)
 	}
 	if !strings.Contains(logs.String(), "personal") {

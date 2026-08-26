@@ -404,7 +404,7 @@ func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
 
-	body := strings.NewReader(`{"name":"kill-me","identityToken":"` + source.IdentityToken + `"}`)
+	body := strings.NewReader(`{"tmuxName":"kill-me","identityToken":"` + source.IdentityToken + `"}`)
 	request, err := http.NewRequest(http.MethodDelete, gatewayFixture.server.URL+"/v1/sessions/"+source.ID, body)
 	if err != nil {
 		t.Fatalf("build kill request: %v", err)
@@ -422,7 +422,7 @@ func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 	}
 	requireTerminalClosed(t, connection)
 	waitForTerminalCondition(t, "killed session and its shadow disappear", func() bool {
-		return !terminalSessionExists(t, fixture, source.ID, source.Name) && len(terminalPhoneShadows(t, fixture)) == 0
+		return !terminalSessionExists(t, fixture, source.ID, source.TmuxName) && len(terminalPhoneShadows(t, fixture)) == 0
 	})
 	if !terminalSessionExists(t, fixture, terminalSource(t, fixture, "bystander").ID, "bystander") {
 		t.Fatal("kill with open terminal destroyed a bystander session")

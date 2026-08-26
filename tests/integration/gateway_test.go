@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
@@ -256,11 +257,22 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"laptop","identityToken":%q}`, createdToken))
 	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
+	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "set-option", "-p", "-t", laptopID,
+		"--", "@skid_attention", fmt.Sprint(time.Now().Unix())).CombinedOutput(); err != nil {
+		t.Fatalf("make alphabetically later laptop card higher priority: output=%q error=%v", output, err)
+	}
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
 	inventory = decodeObject(t, response)
 	findSession(t, inventory, "laptop")
 	findSession(t, inventory, "gateway-test")
+	wireOrder := make([]string, 0, len(inventory["sessions"].([]any)))
+	for _, value := range inventory["sessions"].([]any) {
+		wireOrder = append(wireOrder, value.(map[string]any)["tmuxName"].(string))
+	}
+	if want := []string{"laptop", "gateway-test"}; !reflect.DeepEqual(wireOrder, want) {
+		t.Fatalf("gateway wire order = %v, want %v", wireOrder, want)
+	}
 
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"gateway-test","identityToken":%q}`, createdToken))
 	assertStatus(t, response, http.StatusNoContent)
