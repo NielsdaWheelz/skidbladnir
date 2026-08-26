@@ -262,22 +262,17 @@ private fun AgentCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val character = session.character
-                if (character == null) {
-                    NeutralSessionPortrait()
-                } else {
-                    DwarfPortrait(character)
-                }
+                DwarfPortrait(session.character)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = session.name,
+                        text = session.tmuxName,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = session.character?.displayName ?: "tmux session",
+                        text = session.character.displayName,
                         color = Muted,
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
@@ -427,25 +422,6 @@ private fun DwarfPortrait(character: CharacterSummary) {
 }
 
 @Composable
-private fun NeutralSessionPortrait() {
-    Box(
-        modifier = Modifier
-            .size(58.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(RaisedSurface)
-            .semantics { contentDescription = "Uncatalogued tmux session" },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = ">_",
-            color = Muted,
-            fontWeight = FontWeight.Black,
-            style = MaterialTheme.typography.titleMedium,
-        )
-    }
-}
-
-@Composable
 private fun PressureStrip(response: PressureResponse) {
     val current = response.current
     val known = buildList {
@@ -589,13 +565,13 @@ private fun ForgeSheet(
                 }
             }
             OutlinedTextField(
-                value = state.draft.optionalName,
-                onValueChange = { value -> onDraftChange { it.copy(optionalName = value) } },
+                value = state.draft.optionalTmuxName,
+                onValueChange = { value -> onDraftChange { it.copy(optionalTmuxName = value) } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),
                 enabled = !state.pending,
-                label = { Text("Session name (optional)") },
+                label = { Text("tmux name (optional)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -647,7 +623,7 @@ internal fun KillConfirmation(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Kill session ${state.target.name}?") },
+        title = { Text("Kill session ${state.target.tmuxName}?") },
         text = {
             Column {
                 Text("This tmux session and its processes end now.")

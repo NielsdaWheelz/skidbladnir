@@ -191,8 +191,8 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		if leftPriority != rightPriority {
 			return leftPriority < rightPriority
 		}
-		if cards[left].Name != cards[right].Name {
-			return cards[left].Name < cards[right].Name
+		if cards[left].TmuxName != cards[right].TmuxName {
+			return cards[left].TmuxName < cards[right].TmuxName
 		}
 		return cards[left].ID < cards[right].ID
 	})
@@ -219,13 +219,13 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	optionalName := ""
-	if input.OptionalName.present {
-		if input.OptionalName.value == "" {
+	optionalTmuxName := ""
+	if input.OptionalTmuxName.present {
+		if input.OptionalTmuxName.value == "" {
 			writeError(writer, errorSessionNameInvalid)
 			return
 		}
-		optionalName = input.OptionalName.value
+		optionalTmuxName = input.OptionalTmuxName.value
 	}
 	objective := ""
 	if input.Objective.present {
@@ -236,10 +236,10 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		objective = input.Objective.value
 	}
 	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
-		CWD:          input.CWD.value,
-		Profile:      input.Profile.value,
-		OptionalName: optionalName,
-		Objective:    objective,
+		CWD:              input.CWD.value,
+		Profile:          input.Profile.value,
+		OptionalTmuxName: optionalTmuxName,
+		Objective:        objective,
 	})
 	if err != nil {
 		writeSessionError(writer, err)
@@ -250,7 +250,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorInternal)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.ID, created.Name, input.Profile.value, time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.ID, created.TmuxName, input.Profile.value, time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-created log event") // justify-defect: Create validated the profile key and tmux minted the id and name.
 	}
@@ -270,11 +270,11 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeError(writer, *failure)
 		return
 	}
-	if input.Name == "" || input.IdentityToken == "" {
+	if input.TmuxName == "" || input.IdentityToken == "" {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	kill := sessions.KillInput{ID: id, DisplayedName: input.Name, IdentityToken: input.IdentityToken}
+	kill := sessions.KillInput{ID: id, TmuxName: input.TmuxName, IdentityToken: input.IdentityToken}
 	gateway.terminalLifecycle.Lock()
 	defer gateway.terminalLifecycle.Unlock()
 	if err := gateway.sessions.ValidateKill(request.Context(), kill); err != nil {
@@ -289,7 +289,7 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeSessionError(writer, err)
 		return
 	}
-	event, eventErr := logging.NewSessionKilled(id, input.Name, time.Since(startedAt))
+	event, eventErr := logging.NewSessionKilled(id, input.TmuxName, time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-killed log event") // justify-defect: sessions accepted the exact owned identity pair.
 	}

@@ -1,6 +1,10 @@
 package sessions
 
-import "time"
+import (
+	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+)
 
 type Config struct {
 	TmuxPath      string
@@ -31,31 +35,30 @@ type Profile struct {
 }
 
 type CreateInput struct {
-	CWD          string
-	Profile      string
-	OptionalName string
-	Objective    string
+	CWD              string
+	Profile          string
+	OptionalTmuxName string
+	Objective        string
 }
 
 type KillInput struct {
 	ID            string
-	DisplayedName string
+	TmuxName      string
 	IdentityToken string
 }
 
 type Session struct {
-	ID                   string
-	Name                 string
-	IdentityToken        string
-	Profile              string
-	Objective            string
-	CharacterKey         string
-	CharacterDisplayName string
-	CWD                  string
-	ActiveCommand        string
-	AttachedClients      int
-	Status               Status
-	Attention            bool
+	ID              string
+	TmuxName        string
+	IdentityToken   string
+	Profile         string
+	Objective       string
+	Character       catalog.Character
+	CWD             string
+	ActiveCommand   string
+	AttachedClients int
+	Status          Status
+	Attention       bool
 }
 
 type Status struct {

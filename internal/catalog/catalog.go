@@ -15,7 +15,6 @@ var characterKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a
 type Character struct {
 	Key         string
 	DisplayName string
-	NameSuffix  string
 }
 
 type Catalogue struct {
@@ -49,7 +48,6 @@ func decode(contents []byte) (Catalogue, error) {
 	characters := make([]Character, 0, len(raw))
 	byKey := make(map[string]Character, len(raw))
 	displayNames := make(map[string]struct{}, len(raw))
-	suffixes := make(map[string]struct{}, len(raw))
 	for index, entry := range raw {
 		if !characterKeyPattern.MatchString(entry.Key) {
 			return Catalogue{}, fmt.Errorf("character catalogue entry %d has an invalid key", index)
@@ -63,19 +61,10 @@ func decode(contents []byte) (Catalogue, error) {
 		if _, found := displayNames[entry.DisplayName]; found {
 			return Catalogue{}, fmt.Errorf("character catalogue entry %d duplicates a display name", index)
 		}
-		suffix := entry.Key[strings.LastIndexByte(entry.Key, '.')+1:]
-		if len("ga-"+suffix) > 64 {
-			return Catalogue{}, fmt.Errorf("character catalogue entry %d has an oversized session suffix", index)
-		}
-		if _, found := suffixes[suffix]; found {
-			return Catalogue{}, fmt.Errorf("character catalogue entry %d duplicates a session suffix", index)
-		}
-
-		character := Character{Key: entry.Key, DisplayName: entry.DisplayName, NameSuffix: suffix}
+		character := Character{Key: entry.Key, DisplayName: entry.DisplayName}
 		characters = append(characters, character)
 		byKey[character.Key] = character
 		displayNames[character.DisplayName] = struct{}{}
-		suffixes[character.NameSuffix] = struct{}{}
 	}
 	return Catalogue{characters: characters, byKey: byKey}, nil
 }

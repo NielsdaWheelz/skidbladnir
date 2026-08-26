@@ -75,11 +75,11 @@ internal data class CharacterSummary(
 @Serializable
 internal data class AgentSession(
     val id: String,
-    val name: String,
+    val tmuxName: String,
     val identityToken: String,
+    val character: CharacterSummary,
     val profile: String? = null,
     val objective: String? = null,
-    val character: CharacterSummary? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -169,7 +169,7 @@ internal data class PressureResponse(
 internal data class ForgeDraft(
     val cwd: String,
     val profile: String,
-    val optionalName: String,
+    val optionalTmuxName: String,
     val objective: String,
 )
 
@@ -177,13 +177,13 @@ internal data class ForgeDraft(
 private data class CreateSessionRequest(
     val cwd: String,
     val profile: String,
-    val optionalName: String? = null,
+    val optionalTmuxName: String? = null,
     val objective: String? = null,
 )
 
 @Serializable
 private data class KillSessionRequest(
-    val name: String,
+    val tmuxName: String,
     val identityToken: String,
 )
 
@@ -191,7 +191,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     val element = productJson.parseToJsonElement(encoded).jsonObject
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
         encodedSession.jsonObject.requireAbsentOrNonNull(
-            setOf("profile", "objective", "character", "cwd", "activeCommand"),
+            setOf("profile", "objective", "cwd", "activeCommand"),
         )
     }
     val response = productJson.decodeFromJsonElement<SessionsResponse>(element)
@@ -233,7 +233,7 @@ internal fun decodePressureResponse(encoded: String): PressureResponse = decodeP
 
 internal fun decodeAgentSession(encoded: String): AgentSession = decodeProtocol {
     val element = productJson.parseToJsonElement(encoded).jsonObject
-    element.requireAbsentOrNonNull(setOf("profile", "objective", "character", "cwd", "activeCommand"))
+    element.requireAbsentOrNonNull(setOf("profile", "objective", "cwd", "activeCommand"))
     productJson.decodeFromJsonElement<AgentSession>(element).also { acceptSession(it, null) }
 }
 
@@ -242,13 +242,13 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String =
         CreateSessionRequest(
             cwd = draft.cwd,
             profile = draft.profile,
-            optionalName = draft.optionalName.ifEmpty { null },
+            optionalTmuxName = draft.optionalTmuxName.ifEmpty { null },
             objective = draft.objective.ifEmpty { null },
         ),
     )
 
 internal fun encodeKillSessionRequest(session: AgentSession): String =
-    productJson.encodeToString(KillSessionRequest(session.name, session.identityToken))
+    productJson.encodeToString(KillSessionRequest(session.tmuxName, session.identityToken))
 
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"),
@@ -422,13 +422,13 @@ private fun JsonObject.requireAbsentOrNonNull(optionalKeys: Set<String>) {
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
 
 private fun acceptSession(session: AgentSession, observedAt: Instant?) {
-    require(session.id.isNotEmpty() && session.name.isNotEmpty() && session.identityToken.isNotEmpty())
+    require(session.id.isNotEmpty() && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
     require(session.attachedClients >= 0)
     require(session.profile?.isNotEmpty() != false)
     require(session.objective?.isNotEmpty() != false)
     require(session.cwd?.isNotEmpty() != false)
     require(session.activeCommand?.isNotEmpty() != false)
-    require(session.character?.let { it.key.isNotEmpty() && it.displayName.isNotEmpty() } != false)
+    require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
     val legalSignal = when (session.status.kind) {
         SessionStatusKind.Working, SessionStatusKind.Idle ->
             session.status.signal == SessionStatusSignal.Lifecycle

@@ -27,7 +27,7 @@ class ProductContractTest {
     }
 
     @Test
-    fun `inventory decoder preserves observed facts and optional metadata`() {
+    fun `session contract requires character and hard-cut tmux names`() {
         val inventory = decodeSessionsResponse(
             """
             {
@@ -36,7 +36,7 @@ class ProductContractTest {
               "sessions":[
                 {
                   "id":"${'$'}1",
-                  "name":"ga-durinn",
+                  "tmuxName":"forge",
                   "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.1",
                   "profile":"personal",
                   "objective":"Inspect the forge",
@@ -49,8 +49,9 @@ class ProductContractTest {
                 },
                 {
                   "id":"${'$'}2",
-                  "name":"laptop",
+                  "tmuxName":"laptop",
                   "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.2",
+                  "character":{"key":"norse.bifur","displayName":"Bifur"},
                   "attachedClients":1,
                   "attention":false,
                   "status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}
@@ -60,12 +61,22 @@ class ProductContractTest {
             """.trimIndent(),
         )
 
-        assertEquals("Durinn", inventory.sessions.first().character?.displayName)
+        assertEquals("forge", inventory.sessions.first().tmuxName)
+        assertEquals("Durinn", inventory.sessions.first().character.displayName)
         assertEquals(SessionStatusKind.Working, inventory.sessions.first().status.kind)
         assertTrue(inventory.sessions.first().attention)
         assertEquals(2, inventory.sessions.first().attachedClients)
         assertNull(inventory.sessions.last().profile)
-        assertNull(inventory.sessions.last().character)
+        assertEquals("Bifur", inventory.sessions.last().character.displayName)
+        assertEquals(
+            "{\"tmuxName\":\"forge\",\"identityToken\":\"v1-0123456789abcdef0123456789abcdef.100.200.1\"}",
+            encodeKillSessionRequest(inventory.sessions.first()),
+        )
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodeAgentSession(
+                """{"id":"${'$'}3","tmuxName":"missing-character","identityToken":"token","attachedClients":0,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}""",
+            )
+        }
     }
 
     @Test
@@ -92,18 +103,19 @@ class ProductContractTest {
     }
 
     @Test
-    fun `forge request omits empty optional drafts but preserves invalid nonempty drafts`() {
+    fun `forge request uses the hard-cut optional tmux name`() {
         val emptyOptional = encodeCreateSessionRequest(
-            ForgeDraft(cwd = "~/src", profile = "work", optionalName = "", objective = ""),
+            ForgeDraft(cwd = "~/src", profile = "work", optionalTmuxName = "", objective = ""),
         )
         val invalidDraft = encodeCreateSessionRequest(
-            ForgeDraft(cwd = "~/src", profile = "work", optionalName = "bad name", objective = "\u001b"),
+            ForgeDraft(cwd = "~/src", profile = "work", optionalTmuxName = "bad name", objective = "\u001b"),
         )
 
-        assertFalse(emptyOptional.contains("optionalName"))
-        assertFalse(emptyOptional.contains("objective"))
-        assertTrue(invalidDraft.contains("\"optionalName\":\"bad name\""))
-        assertTrue(invalidDraft.contains("\"objective\":\"\\u001b\""))
+        assertEquals("{\"cwd\":\"~/src\",\"profile\":\"work\"}", emptyOptional)
+        assertEquals(
+            "{\"cwd\":\"~/src\",\"profile\":\"work\",\"optionalTmuxName\":\"bad name\",\"objective\":\"\\u001b\"}",
+            invalidDraft,
+        )
     }
 
     @Test
@@ -111,9 +123,10 @@ class ProductContractTest {
         val profiles = listOf(ProfileChoice("claude-work", "Claude · Work"))
         val session = AgentSession(
             id = "${'$'}1",
-            name = "ga-durinn",
+            tmuxName = "forge",
             identityToken = "token",
             profile = "claude-work",
+            character = CharacterSummary("norse.durinn", "Durinn"),
             activeCommand = "claude",
             attachedClients = 1,
             attention = false,
@@ -138,7 +151,7 @@ class ProductContractTest {
             "Forge should submit the selected profile key without provider fields",
             "{\"cwd\":\"~/src\",\"profile\":\"claude-work\"}",
             encodeCreateSessionRequest(
-                ForgeDraft(cwd = "~/src", profile = "claude-work", optionalName = "", objective = ""),
+                ForgeDraft(cwd = "~/src", profile = "claude-work", optionalTmuxName = "", objective = ""),
             ),
         )
     }
@@ -288,7 +301,7 @@ class ProductContractTest {
         val draft = ForgeDraft(
             cwd = "bad relative directory",
             profile = "personal",
-            optionalName = "bad name",
+            optionalTmuxName = "bad name",
             objective = "Inspect the forge",
         )
         val rejected = dashboardWithForge(
@@ -346,8 +359,9 @@ class ProductContractTest {
                   "profiles":[{"key":"personal","label":"Personal"}],
                   "sessions":[{
                     "id":"${'$'}1",
-                    "name":"laptop",
+                    "tmuxName":"laptop",
                     "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.1",
+                    "character":{"key":"norse.durinn","displayName":"Durinn"},
                     "profile":null,
                     "attachedClients":1,
                     "attention":false,
@@ -369,7 +383,7 @@ class ProductContractTest {
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"id":"${'$'}1","name":"ga-durinn","identityToken":"token","attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
+                """{"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"id":"${'$'}1","tmuxName":"forge","identityToken":"token","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
             )
         }
     }
@@ -399,8 +413,8 @@ class ProductContractTest {
         """.trimIndent()
     }
 
-    private fun inventorySession(id: String, name: String, identityToken: String): String =
-        """{"id":"$id","name":"$name","identityToken":"$identityToken","attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
+    private fun inventorySession(id: String, tmuxName: String, identityToken: String): String =
+        """{"id":"$id","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
 
     private fun inventoryWithSessions(vararg sessions: String): String =
         """{"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"}],"sessions":[${sessions.joinToString()}]}"""

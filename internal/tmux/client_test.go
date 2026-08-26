@@ -57,6 +57,29 @@ func TestKillEligibilityRequiresTheLastGroupedLink(t *testing.T) {
 	}
 }
 
+func TestCharacterAssignmentUsesOneNarrowConditionalCommand(t *testing.T) {
+	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
+	arguments, err := characterAssignmentArguments("$7", "old#,}value", "norse.durinn", server)
+	if err != nil {
+		t.Fatalf("build character assignment command: %v", err)
+	}
+	want := []string{
+		"if-shell", "-F", "-t", "$7",
+		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{&&:#{==:#{@skid_character},old###,#}value},#{!=:#{@skid_internal},phone-shadow}}}}}}",
+		"set-option -t '$7' -- @skid_character norse.durinn",
+		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
+	}
+	if !slices.Equal(arguments, want) {
+		t.Fatalf("character assignment arguments\nwant: %q\n got: %q", want, arguments)
+	}
+	if strings.Contains(arguments[4], "session_name") {
+		t.Fatalf("character assignment incorrectly depends on mutable tmux name: %q", arguments[4])
+	}
+	if _, err := characterAssignmentArguments("$7", "", "norse.durinn ; kill-server", server); err == nil {
+		t.Fatal("unsafe character command token was accepted")
+	}
+}
+
 func TestAttachmentCreationUsesOneIdentityGateBeforeEveryMutation(t *testing.T) {
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
 	arguments, err := attachmentCommandArguments(AttachmentSpec{

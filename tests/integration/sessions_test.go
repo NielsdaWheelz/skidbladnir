@@ -3,7 +3,9 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -269,6 +271,64 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 
 	fixture := newSessionFixture(t)
 	ctx := context.Background()
+	const fixtureServerEpoch = "v1-00000000000000000000000000000000"
+	fixture.tmux(t, "set-option", "-s", "--", tmuxclient.ServerEpochOption, fixtureServerEpoch)
+
+	t.Run("inventory preserves valid duplicates and balances new characters", func(t *testing.T) {
+		const duplicateKey = "norse.durinn"
+		for _, name := range []string{
+			"valid-duplicate-a", "valid-duplicate-b",
+			"unassigned-a", "unassigned-b", "unassigned-c", "unassigned-d", "unassigned-e",
+		} {
+			fixture.tmux(t, "new-session", "-d", "-s", name, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		}
+		duplicateIDs := []string{
+			fixture.tmux(t, "display-message", "-p", "-t", "valid-duplicate-a", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "valid-duplicate-b", "#{session_id}"),
+		}
+		for _, id := range duplicateIDs {
+			fixture.tmux(t, "set-option", "-t", id, "--", "@skid_character", duplicateKey)
+		}
+		unassignedIDs := []string{
+			fixture.tmux(t, "display-message", "-p", "-t", "skid-test-bootstrap", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "unassigned-a", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "unassigned-b", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "unassigned-c", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "unassigned-d", "#{session_id}"),
+			fixture.tmux(t, "display-message", "-p", "-t", "unassigned-e", "#{session_id}"),
+		}
+
+		listed, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list controlled character allocation: %v", err)
+		}
+		if len(listed) != len(duplicateIDs)+len(unassignedIDs) {
+			t.Fatalf("controlled inventory size = %d, want %d: %+v", len(listed), len(duplicateIDs)+len(unassignedIDs), listed)
+		}
+		for _, id := range duplicateIDs {
+			observed := requireSessionID(t, listed, id)
+			if observed.Character.Key != duplicateKey {
+				t.Fatalf("valid external duplicate changed: id=%s session=%+v", id, observed)
+			}
+			if persisted := fixture.tmux(t, "show-options", "-qv", "-t", id, "@skid_character"); persisted != duplicateKey {
+				t.Fatalf("valid external duplicate was not preserved byte-for-byte: id=%s persisted=%q", id, persisted)
+			}
+		}
+		for _, id := range unassignedIDs {
+			observed := requireSessionID(t, listed, id)
+			requireValidCharacter(t, observed)
+			if persisted := fixture.tmux(t, "show-options", "-qv", "-t", id, "@skid_character"); persisted != observed.Character.Key {
+				t.Fatalf("balanced character assignment was not persisted: session=%+v persisted=%q", observed, persisted)
+			}
+		}
+		usage := map[string]int{"norse.modsognir": 0, duplicateKey: 0}
+		for _, session := range listed {
+			usage[session.Character.Key]++
+		}
+		if usage["norse.modsognir"] != usage[duplicateKey] {
+			t.Fatalf("controlled allocation is not balanced after sequential commits: %+v", usage)
+		}
+	})
 
 	t.Run("invalid starts mutate nothing", func(t *testing.T) {
 		before, err := fixture.manager.List(ctx)
@@ -303,7 +363,7 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 			{name: "file cwd", input: sessions.CreateInput{CWD: file, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
 			{name: "unsearchable cwd", input: sessions.CreateInput{CWD: unsearchable, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
 			{name: "unknown profile", input: sessions.CreateInput{CWD: fixture.project, Profile: "other"}, code: sessions.ErrorProfileUnknown},
-			{name: "unsafe name", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "unsafe:name"}, code: sessions.ErrorSessionNameInvalid},
+			{name: "unsafe name", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "unsafe:name"}, code: sessions.ErrorSessionNameInvalid},
 			{name: "non-NFC objective", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "e\u0301"}, code: sessions.ErrorObjectiveInvalid},
 			{name: "objective control", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "inspect\u2028later"}, code: sessions.ErrorObjectiveInvalid},
 			{name: "objective bidi isolate", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "inspect\u2066later"}, code: sessions.ErrorObjectiveInvalid},
@@ -332,10 +392,10 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 		identity := filepath.Join(fixture.root, "collision-identity")
 		script := fmt.Sprintf(`#!/bin/sh
 set -eu
-socket=%q
-project=%q
-marker=%q
-identity=%q
+socket=%s
+project=%s
+marker=%s
+identity=%s
 is_create=0
 is_target=0
 previous=
@@ -343,19 +403,20 @@ for argument in "$@"; do
   if [ "$argument" = new-session ]; then
     is_create=1
   fi
-  if [ "$previous" = -s ] && [ "$argument" = %q ]; then
+  if [ "$previous" = -s ] && [ "$argument" = %s ]; then
     is_target=1
   fi
   previous=$argument
 done
 if [ "$is_create" -eq 1 ] && [ "$is_target" -eq 1 ] && [ ! -e "$marker" ]; then
   : > "$marker"
-  /usr/bin/tmux -L "$socket" -f /dev/null new-session -d -s %q -c "$project" -- /usr/bin/sleep 300
-  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t '=%s:' -- @collision_guard untouched
-  /usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t '=%s:' '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
+  /usr/bin/tmux -L "$socket" -f /dev/null new-session -d -s %s -c "$project" -- /usr/bin/sleep 300
+  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t %s -- @collision_guard untouched
+  /usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t %s '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
 fi
 exec /usr/bin/tmux "$@"
-`, fixture.socket, fixture.project, marker, identity, collisionName, collisionName, collisionName, collisionName)
+`, shellQuote(fixture.socket), shellQuote(fixture.project), shellQuote(marker), shellQuote(identity),
+			shellQuote(collisionName), shellQuote(collisionName), shellQuote("="+collisionName+":"), shellQuote("="+collisionName+":"))
 		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
 			t.Fatalf("write collision tmux wrapper: %v", err)
 		}
@@ -377,10 +438,10 @@ exec /usr/bin/tmux "$@"
 			t.Fatalf("construct collision manager: %v", err)
 		}
 		_, err = manager.Create(ctx, sessions.CreateInput{
-			CWD:          fixture.project,
-			Profile:      "personal",
-			OptionalName: collisionName,
-			Objective:    "must not land",
+			CWD:              fixture.project,
+			Profile:          "personal",
+			OptionalTmuxName: collisionName,
+			Objective:        "must not land",
 		})
 		assertSessionError(t, err, sessions.ErrorSessionNameConflict)
 
@@ -396,17 +457,47 @@ exec /usr/bin/tmux "$@"
 		}
 	})
 
-	t.Run("lists laptop and managed sessions without guessing metadata", func(t *testing.T) {
+	t.Run("inventory persists required characters without changing other session facts", func(t *testing.T) {
 		fixture.tmux(t, "new-session", "-d", "-s", "laptop", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
 		fixture.tmux(t, "new-session", "-d", "-s", "shell", "-c", fixture.project)
+		fixture.tmux(t, "new-session", "-d", "-s", "invalid-character", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "set-option", "-t", "invalid-character", "--", "@skid_character", "not.in-catalogue")
+		laptopActivePane := fixture.tmux(t, "display-message", "-p", "-t", "laptop:0.0", "#{pane_id}")
+		fixture.tmux(t, "split-window", "-d", "-t", "laptop:0", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-window", "-d", "-t", "laptop", "-n", "laptop-aux", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "select-window", "-t", "laptop:0")
+		fixture.tmux(t, "select-pane", "-t", laptopActivePane)
+		fixture.attachClient(t, "laptop")
+
+		laptopID := fixture.tmux(t, "display-message", "-p", "-t", "laptop", "#{session_id}")
+		invalidID := fixture.tmux(t, "display-message", "-p", "-t", "invalid-character", "#{session_id}")
+		laptopBefore := sessionNonCharacterSnapshot(t, fixture, laptopID)
+		invalidBefore := sessionNonCharacterSnapshot(t, fixture, invalidID)
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatalf("list laptop-created sessions: %v", err)
 		}
 		laptop := requireSessionNamed(t, listed, "laptop")
-		if laptop.Profile != "" || laptop.Objective != "" || laptop.CharacterKey != "" || laptop.CharacterDisplayName != "" {
-			t.Fatalf("laptop session metadata was guessed: %+v", laptop)
+		invalid := requireSessionNamed(t, listed, "invalid-character")
+		requireValidCharacter(t, laptop)
+		requireValidCharacter(t, invalid)
+		if laptop.Profile != "" || laptop.Objective != "" || invalid.Profile != "" || invalid.Objective != "" {
+			t.Fatalf("inventory guessed profile or objective metadata: laptop=%+v invalid=%+v", laptop, invalid)
+		}
+		if laptop.AttachedClients != 1 {
+			t.Fatalf("inventory did not preserve the test-owned laptop client: %+v", laptop)
+		}
+		for _, session := range []sessions.Session{laptop, invalid} {
+			if persisted := fixture.tmux(t, "show-options", "-qv", "-t", session.ID, "@skid_character"); persisted != session.Character.Key {
+				t.Fatalf("required character was not persisted: session=%+v persisted=%q", session, persisted)
+			}
+		}
+		if after := sessionNonCharacterSnapshot(t, fixture, laptopID); after != laptopBefore {
+			t.Fatalf("automatic assignment changed laptop facts:\nbefore=%q\n after=%q", laptopBefore, after)
+		}
+		if after := sessionNonCharacterSnapshot(t, fixture, invalidID); after != invalidBefore {
+			t.Fatalf("invalid-character repair changed non-character facts:\nbefore=%q\n after=%q", invalidBefore, after)
 		}
 		if laptop.Status.Kind != sessions.StatusRunning || laptop.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("uninstrumented allowlisted laptop process should report only process liveness: %+v", laptop.Status)
@@ -414,6 +505,216 @@ exec /usr/bin/tmux "$@"
 		shell := requireSessionNamed(t, listed, "shell")
 		if shell.Status.Kind != sessions.StatusShell || shell.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("ordinary laptop shell should be reported literally: %+v", shell.Status)
+		}
+
+		repeated, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("repeat laptop-created inventory: %v", err)
+		}
+		if observed := requireSessionID(t, repeated, laptop.ID); observed.Character != laptop.Character {
+			t.Fatalf("repeated inventory changed persisted character: first=%+v repeated=%+v", laptop, observed)
+		}
+		if observed := requireSessionID(t, repeated, invalid.ID); observed.Character != invalid.Character {
+			t.Fatalf("repeated inventory changed repaired character: first=%+v repeated=%+v", invalid, observed)
+		}
+
+		panePID := fixture.tmux(t, "display-message", "-p", "-t", laptop.ID, "#{pane_pid}")
+		fixture.tmux(t, "rename-session", "-t", laptop.ID, "laptop-renamed")
+		fixture.tmux(t, "respawn-pane", "-k", "-t", laptop.ID, "--", "/usr/bin/sleep", "300")
+		if replacementPID := fixture.tmux(t, "display-message", "-p", "-t", laptop.ID, "#{pane_pid}"); replacementPID == panePID {
+			t.Fatalf("test-owned process replacement retained pane PID %s", panePID)
+		}
+		afterReplacement, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list renamed process replacement: %v", err)
+		}
+		replaced := requireSessionID(t, afterReplacement, laptop.ID)
+		if replaced.TmuxName != "laptop-renamed" || replaced.Character != laptop.Character {
+			t.Fatalf("rename or process replacement changed character: before=%+v after=%+v", laptop, replaced)
+		}
+	})
+
+	t.Run("a concurrent valid character assignment wins the conditional race", func(t *testing.T) {
+		baseline, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list before concurrent-character fixture: %v", err)
+		}
+		baselineUse := map[string]int{"norse.modsognir": 0, "norse.durinn": 0}
+		for _, session := range baseline {
+			requireValidCharacter(t, session)
+			baselineUse[session.Character.Key]++
+		}
+		if baselineUse["norse.modsognir"] != baselineUse["norse.durinn"] {
+			t.Fatalf("concurrent-character fixture requires balanced prior use: %+v", baselineUse)
+		}
+		epoch := fixture.tmux(t, "show-options", "-sqv", tmuxclient.ServerEpochOption)
+		if epoch != fixtureServerEpoch {
+			t.Fatalf("concurrent-character fixture server epoch = %q, want %q", epoch, fixtureServerEpoch)
+		}
+		fixture.tmux(t, "new-session", "-d", "-s", "concurrent-character", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "set-option", "-t", "concurrent-character", "--", "@skid_character", "invalid.concurrent")
+		id := fixture.tmux(t, "display-message", "-p", "-t", "concurrent-character", "#{session_id}")
+		expectedAttempted := expectedTestCharacter(epoch, id, baselineUse)
+		expectedInjected := "norse.durinn"
+		if expectedAttempted == expectedInjected {
+			expectedInjected = "norse.modsognir"
+		}
+		const followerName = "concurrent-follower"
+		fixture.tmux(t, "new-session", "-d", "-s", followerName, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		followerID := fixture.tmux(t, "display-message", "-p", "-t", followerName, "#{session_id}")
+		if id >= followerID || expectedTestCharacter(epoch, followerID, baselineUse) != expectedInjected {
+			t.Fatalf("deterministic concurrent fixture has no later counterfactual follower: concurrent=%s follower=%s attempted=%s injected=%s", id, followerID, expectedAttempted, expectedInjected)
+		}
+		before := sessionNonCharacterSnapshot(t, fixture, id)
+		wrapper := filepath.Join(fixture.root, "concurrent-character-tmux")
+		record := filepath.Join(fixture.root, "concurrent-character-record")
+		script := fmt.Sprintf(`#!/bin/sh
+set -eu
+socket=%s
+target_id=%s
+record=%s
+is_if_shell=0
+attempted=
+target=
+previous=
+for argument in "$@"; do
+	if [ "$argument" = if-shell ]; then
+	  is_if_shell=1
+	fi
+  if [ "$previous" = -t ]; then
+    target=$argument
+  fi
+  case "$argument" in
+    *' -- @skid_character '*) attempted=${argument##* } ;;
+  esac
+  previous=$argument
+done
+if [ "$is_if_shell" -eq 1 ] && [ -n "$attempted" ] && [ "$target" = "$target_id" ] && [ ! -e "$record" ]; then
+  case "$attempted" in
+    norse.durinn) injected=norse.modsognir ;;
+    norse.modsognir) injected=norse.durinn ;;
+    *) exit 96 ;;
+  esac
+  printf '%%s\n%%s\n' "$attempted" "$injected" > "$record"
+  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t "$target_id" -- @skid_character "$injected"
+fi
+exec /usr/bin/tmux "$@"
+`, shellQuote(fixture.socket), shellQuote(id), shellQuote(record))
+		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+			t.Fatalf("write concurrent-character tmux wrapper: %v", err)
+		}
+		manager, err := sessions.New(sessions.Config{
+			TmuxPath: wrapper, SocketName: fixture.socket, Home: fixture.home, CataloguePath: fixture.cataloguePath,
+			Profiles: []sessions.Profile{{
+				Key: "personal", Label: "Codex · Personal", Command: fixture.agent,
+				Environment:          []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
+				ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+				Arguments:            []string{yoloFlag},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("construct concurrent-character manager: %v", err)
+		}
+		listed, err := manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list through concurrent-character boundary: %v", err)
+		}
+		recordBytes, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatalf("read concurrent-character record: %v", err)
+		}
+		attemptedAndInjected := strings.Split(strings.TrimSpace(string(recordBytes)), "\n")
+		if len(attemptedAndInjected) != 2 || attemptedAndInjected[0] != expectedAttempted || attemptedAndInjected[1] != expectedInjected {
+			t.Fatalf("concurrent-character fixture recorded unexpected keys: want=%q/%q got=%q", expectedAttempted, expectedInjected, recordBytes)
+		}
+		observed := requireSessionID(t, listed, id)
+		requireValidCharacter(t, observed)
+		if observed.Character.Key != attemptedAndInjected[1] {
+			t.Fatalf("concurrent valid character did not win: attempted=%q injected=%q observed=%+v", attemptedAndInjected[0], attemptedAndInjected[1], observed)
+		}
+		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", id, "@skid_character"); persisted != observed.Character.Key {
+			t.Fatalf("concurrent valid character was not preserved: card=%+v persisted=%q", observed, persisted)
+		}
+		follower := requireSessionID(t, listed, followerID)
+		if follower.Character.Key != expectedAttempted {
+			t.Fatalf("later assignment did not count the re-read concurrent winner: attempted=%q injected=%q follower=%+v", expectedAttempted, expectedInjected, follower)
+		}
+		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", followerID, "@skid_character"); persisted != expectedAttempted {
+			t.Fatalf("later assignment after concurrent winner was not persisted: follower=%+v persisted=%q", follower, persisted)
+		}
+		if after := sessionNonCharacterSnapshot(t, fixture, id); after != before {
+			t.Fatalf("conditional race changed non-character facts:\nbefore=%q\n after=%q", before, after)
+		}
+	})
+
+	t.Run("a session disappearing during assignment is omitted without a collateral write", func(t *testing.T) {
+		const sentinelName = "disappearance-sentinel"
+		fixture.tmux(t, "new-session", "-d", "-s", sentinelName, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "set-option", "-t", sentinelName, "--", "@skid_character", "norse.durinn")
+		sentinelID := fixture.tmux(t, "display-message", "-p", "-t", sentinelName, "#{session_id}")
+		const targetName = "disappearing-character"
+		fixture.tmux(t, "new-session", "-d", "-s", targetName, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		targetID := fixture.tmux(t, "display-message", "-p", "-t", targetName, "#{session_id}")
+
+		wrapper := filepath.Join(fixture.root, "disappearing-character-tmux")
+		record := filepath.Join(fixture.root, "disappearing-character-record")
+		script := fmt.Sprintf(`#!/bin/sh
+set -eu
+socket=%s
+target_id=%s
+record=%s
+is_assignment=0
+target=
+previous=
+for argument in "$@"; do
+  if [ "$previous" = -t ]; then
+    target=$argument
+  fi
+  case "$argument" in
+    *' -- @skid_character '*) is_assignment=1 ;;
+  esac
+  previous=$argument
+done
+if [ "$is_assignment" -eq 1 ] && [ "$target" = "$target_id" ] && [ ! -e "$record" ]; then
+  printf '%%s\n' "$target_id" > "$record"
+  /usr/bin/tmux -L "$socket" -f /dev/null kill-session -t "$target_id"
+fi
+exec /usr/bin/tmux "$@"
+`, shellQuote(fixture.socket), shellQuote(targetID), shellQuote(record))
+		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+			t.Fatalf("write disappearing-character tmux wrapper: %v", err)
+		}
+		manager, err := sessions.New(sessions.Config{
+			TmuxPath: wrapper, SocketName: fixture.socket, Home: fixture.home, CataloguePath: fixture.cataloguePath,
+			Profiles: []sessions.Profile{{
+				Key: "personal", Label: "Codex · Personal", Command: fixture.agent,
+				Environment:          []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
+				ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+				Arguments:            []string{yoloFlag},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("construct disappearing-character manager: %v", err)
+		}
+		listed, err := manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list through disappearing-character boundary: %v", err)
+		}
+		recordedID, err := os.ReadFile(record)
+		if err != nil || strings.TrimSpace(string(recordedID)) != targetID {
+			t.Fatalf("disappearing-character fixture did not remove exact target %s: record=%q error=%v", targetID, recordedID, err)
+		}
+		for _, session := range listed {
+			if session.ID == targetID {
+				t.Fatalf("inventory returned session that vanished during assignment: %+v", session)
+			}
+		}
+		sentinel := requireSessionID(t, listed, sentinelID)
+		if sentinel.Character.Key != "norse.durinn" {
+			t.Fatalf("disappearing assignment changed sentinel character: %+v", sentinel)
+		}
+		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", sentinelID, "@skid_character"); persisted != sentinel.Character.Key {
+			t.Fatalf("disappearing assignment wrote a collateral session: sentinel=%+v persisted=%q", sentinel, persisted)
 		}
 	})
 
@@ -462,27 +763,41 @@ exec /usr/bin/tmux "$@"
 		}
 	})
 
-	t.Run("phone shadows are excluded and grouped cards report group clients", func(t *testing.T) {
+	t.Run("phone shadows are excluded while reclaimed last links receive characters", func(t *testing.T) {
 		const phoneShadow = "skid-phone-00112233445566778899aabbccddeeff"
+		const reclaimedShadow = "skid-phone-ffeeddccbbaa99887766554433221100"
 		fixture.tmux(t, "new-session", "-d", "-s", phoneShadow, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
 		fixture.tmux(t, "set-option", "-t", phoneShadow, "--", "@skid_internal", "phone-shadow")
 		fixture.attachClient(t, phoneShadow)
+		fixture.tmux(t, "new-session", "-d", "-s", reclaimedShadow, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "set-option", "-t", reclaimedShadow, "--", "@skid_internal", "phone-shadow")
 		fixture.tmux(t, "new-session", "-d", "-s", "group-source", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
 		fixture.tmux(t, "new-session", "-d", "-t", "group-source", "-s", "group-link")
 		fixture.attachClient(t, "group-source")
 		fixture.attachClient(t, "group-link")
 
 		deadline := time.Now().Add(tmuxConvergenceTimeout)
+		var reclaimed sessions.Session
 		for {
 			listed, err := fixture.manager.List(ctx)
 			if err != nil {
 				t.Fatalf("list grouped client fixture: %v", err)
 			}
-			if slices.ContainsFunc(listed, func(session sessions.Session) bool { return session.Name == phoneShadow }) {
+			if slices.ContainsFunc(listed, func(session sessions.Session) bool { return session.TmuxName == phoneShadow }) {
 				t.Fatalf("gateway-owned phone shadow leaked into inventory: %+v", listed)
+			}
+			if character := fixture.tmux(t, "show-options", "-qv", "-t", phoneShadow, "@skid_character"); character != "" {
+				t.Fatalf("phone shadow received a character: %q", character)
+			}
+			reclaimed = requireSessionNamed(t, listed, reclaimedShadow)
+			requireValidCharacter(t, reclaimed)
+			if marker := fixture.tmux(t, "show-options", "-qv", "-t", reclaimedShadow, "@skid_internal"); marker != "" {
+				t.Fatalf("reclaimed last link retained phone-shadow marker: %q", marker)
 			}
 			source := requireSessionNamed(t, listed, "group-source")
 			link := requireSessionNamed(t, listed, "group-link")
+			requireValidCharacter(t, source)
+			requireValidCharacter(t, link)
 			if source.AttachedClients == 2 && link.AttachedClients == 2 {
 				break
 			}
@@ -490,6 +805,21 @@ exec /usr/bin/tmux "$@"
 				t.Fatalf("group attachment count did not converge: source=%+v link=%+v", source, link)
 			}
 			time.Sleep(tmuxConvergencePollInterval)
+		}
+		persistedCharacter := fixture.tmux(t, "show-options", "-qv", "-t", reclaimed.ID, "@skid_character")
+		if persistedCharacter != reclaimed.Character.Key {
+			t.Fatalf("reclaimed last link did not persist its character: session=%+v persisted=%q", reclaimed, persistedCharacter)
+		}
+		repeated, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("repeat reclaimed last-link inventory: %v", err)
+		}
+		repeatedReclaimed := requireSessionID(t, repeated, reclaimed.ID)
+		if repeatedReclaimed.Character != reclaimed.Character {
+			t.Fatalf("repeated inventory changed reclaimed character: first=%+v repeated=%+v", reclaimed, repeatedReclaimed)
+		}
+		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", reclaimed.ID, "@skid_character"); persisted != persistedCharacter {
+			t.Fatalf("repeated inventory changed reclaimed persisted character: before=%q after=%q", persistedCharacter, persisted)
 		}
 	})
 
@@ -506,6 +836,7 @@ exec /usr/bin/tmux "$@"
 			}
 			unknown := requireSessionNamed(t, listed, "unknown")
 			if unknown.Status.Kind == sessions.StatusUnknown {
+				requireValidCharacter(t, unknown)
 				if unknown.Status.Signal != sessions.StatusSignalPollFailure {
 					t.Fatalf("unknown status must name poll failure: %+v", unknown.Status)
 				}
@@ -518,7 +849,26 @@ exec /usr/bin/tmux "$@"
 		}
 	})
 
-	t.Run("creates profiles metadata balanced portraits and unbounded generated names", func(t *testing.T) {
+	t.Run("create keeps tmux names independent from balanced required characters", func(t *testing.T) {
+		beforeCreate, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list before managed creates: %v", err)
+		}
+		liveCharacterUse := map[string]int{"norse.modsognir": 0, "norse.durinn": 0}
+		for _, session := range beforeCreate {
+			requireValidCharacter(t, session)
+			liveCharacterUse[session.Character.Key]++
+		}
+		requireCreatedLeastUsed := func(label string, session sessions.Session) {
+			t.Helper()
+			requireValidCharacter(t, session)
+			selectedUse := liveCharacterUse[session.Character.Key]
+			leastUse := min(liveCharacterUse["norse.modsognir"], liveCharacterUse["norse.durinn"])
+			if selectedUse != leastUse {
+				t.Fatalf("%s create selected an overused character: before=%+v created=%+v", label, liveCharacterUse, session)
+			}
+			liveCharacterUse[session.Character.Key]++
+		}
 		first, err := fixture.manager.Create(ctx, sessions.CreateInput{
 			CWD:       "~/project with spaces",
 			Profile:   "personal",
@@ -527,34 +877,42 @@ exec /usr/bin/tmux "$@"
 		if err != nil {
 			t.Fatalf("create first generated session: %v", err)
 		}
+		requireCreatedLeastUsed("first generated", first)
 		second, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work"})
 		if err != nil {
 			t.Fatalf("create second generated session: %v", err)
 		}
+		requireCreatedLeastUsed("second generated", second)
 		third, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work2"})
 		if err != nil {
 			t.Fatalf("create generated session beyond catalogue base names: %v", err)
 		}
-		custom, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "hand_named"})
+		requireCreatedLeastUsed("third generated", third)
+		custom, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "hand_named"})
 		if err != nil {
 			t.Fatalf("create custom named session: %v", err)
 		}
+		requireCreatedLeastUsed("custom named", custom)
 		claude, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "claude-work"})
 		if err != nil {
 			t.Fatalf("create Claude work session: %v", err)
 		}
+		requireCreatedLeastUsed("Claude work", claude)
 
-		if first.Name != "ga-modsognir" || first.CharacterKey != "norse.modsognir" || first.CharacterDisplayName != "Móðsognir" {
-			t.Fatalf("first catalogue assignment mismatch: %+v", first)
-		}
-		if second.Name != "ga-durinn" || second.CharacterKey != "norse.durinn" || second.CharacterDisplayName != "Durinn" {
-			t.Fatalf("second catalogue assignment mismatch: %+v", second)
-		}
-		if third.Name != "ga-modsognir-2" || third.CharacterKey != "norse.modsognir" {
-			t.Fatalf("generated names must continue at the smallest suffix round: %+v", third)
-		}
-		if custom.Name != "hand_named" || custom.CharacterKey != "norse.durinn" || custom.CharacterDisplayName != "Durinn" {
-			t.Fatalf("custom name must retain a least-used dwarf portrait: %+v", custom)
+		for _, test := range []struct {
+			want    string
+			session sessions.Session
+		}{
+			{want: "skidbladnir-personal-1", session: first},
+			{want: "skidbladnir-work-1", session: second},
+			{want: "skidbladnir-work2-1", session: third},
+			{want: "hand_named", session: custom},
+			{want: "skidbladnir-claude-work-1", session: claude},
+		} {
+			if test.session.TmuxName != test.want {
+				t.Fatalf("created tmux name = %q, want %q: %+v", test.session.TmuxName, test.want, test.session)
+			}
+			requireValidCharacter(t, test.session)
 		}
 		if first.Profile != "personal" || first.Objective != "Inspect Ω" || first.CWD != fixture.project {
 			t.Fatalf("managed session facts mismatch: %+v", first)
@@ -575,9 +933,18 @@ exec /usr/bin/tmux "$@"
 		}
 		for _, created := range []sessions.Session{first, second, third, custom, claude} {
 			observed := requireSessionID(t, listed, created.ID)
-			if observed.Name != created.Name || observed.Profile != created.Profile || observed.CharacterKey != created.CharacterKey || observed.IdentityToken != created.IdentityToken {
+			if observed.TmuxName != created.TmuxName || observed.Profile != created.Profile ||
+				observed.Character != created.Character || observed.IdentityToken != created.IdentityToken {
 				t.Fatalf("create response did not converge to tmux inventory: created=%+v listed=%+v", created, observed)
 			}
+		}
+		characterUse := map[string]int{"norse.modsognir": 0, "norse.durinn": 0}
+		for _, session := range listed {
+			requireValidCharacter(t, session)
+			characterUse[session.Character.Key]++
+		}
+		if difference := characterUse["norse.modsognir"] - characterUse["norse.durinn"]; difference < -1 || difference > 1 {
+			t.Fatalf("live character allocation is not balanced: %+v", characterUse)
 		}
 	})
 
@@ -586,7 +953,7 @@ exec /usr/bin/tmux "$@"
 		if err != nil {
 			t.Fatalf("list before lifecycle projection: %v", err)
 		}
-		target := requireSessionNamed(t, listed, "ga-modsognir")
+		target := requireSessionNamed(t, listed, "skidbladnir-personal-1")
 		if target.Status.Kind != sessions.StatusRunning {
 			t.Fatalf("agent without lifecycle evidence should be Running: %+v", target.Status)
 		}
@@ -664,17 +1031,17 @@ exec /usr/bin/tmux "$@"
 
 	})
 
-	t.Run("kill rechecks exact id and displayed name", func(t *testing.T) {
-		victim, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "kill_victim"})
+	t.Run("kill rechecks exact id and tmux name", func(t *testing.T) {
+		victim, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "kill_victim"})
 		if err != nil {
 			t.Fatalf("create kill victim: %v", err)
 		}
-		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalName: "kill_survivor"})
+		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalTmuxName: "kill_survivor"})
 		if err != nil {
 			t.Fatalf("create kill survivor: %v", err)
 		}
 
-		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, DisplayedName: survivor.Name, IdentityToken: victim.IdentityToken})
+		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, TmuxName: survivor.TmuxName, IdentityToken: victim.IdentityToken})
 		assertSessionError(t, err, sessions.ErrorSessionIdentityMismatch)
 		listed, listErr := fixture.manager.List(ctx)
 		if listErr != nil {
@@ -684,12 +1051,12 @@ exec /usr/bin/tmux "$@"
 		requireSessionID(t, listed, survivor.ID)
 
 		missingToken := strings.TrimSuffix(victim.IdentityToken, strings.TrimPrefix(victim.ID, "$")) + "999999"
-		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: "$999999", DisplayedName: victim.Name, IdentityToken: missingToken})
+		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: "$999999", TmuxName: victim.TmuxName, IdentityToken: missingToken})
 		assertSessionError(t, err, sessions.ErrorSessionNotFound)
-		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: "kill_survivor", DisplayedName: survivor.Name, IdentityToken: survivor.IdentityToken})
+		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: "kill_survivor", TmuxName: survivor.TmuxName, IdentityToken: survivor.IdentityToken})
 		assertSessionError(t, err, sessions.ErrorSessionNotFound)
 
-		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, DisplayedName: victim.Name, IdentityToken: victim.IdentityToken}); err != nil {
+		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, TmuxName: victim.TmuxName, IdentityToken: victim.IdentityToken}); err != nil {
 			t.Fatalf("kill exact confirmed session: %v", err)
 		}
 		listed, listErr = fixture.manager.List(ctx)
@@ -716,16 +1083,16 @@ exec /usr/bin/tmux "$@"
 			t.Fatalf("grouped kill fixture does not share one pane process: target=%s sibling=%s", panePID, siblingPID)
 		}
 
-		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, DisplayedName: target.Name, IdentityToken: target.IdentityToken})
+		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, TmuxName: target.TmuxName, IdentityToken: target.IdentityToken})
 		assertSessionError(t, err, sessions.ErrorSessionGroupedConflict)
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatalf("list after refused grouped kill: %v", err)
 		}
-		if observed := requireSessionID(t, listed, target.ID); observed.Name != target.Name {
+		if observed := requireSessionID(t, listed, target.ID); observed.TmuxName != target.TmuxName {
 			t.Fatalf("refused grouped kill changed target identity: before=%+v after=%+v", target, observed)
 		}
-		if observed := requireSessionID(t, listed, sibling.ID); observed.Name != sibling.Name {
+		if observed := requireSessionID(t, listed, sibling.ID); observed.TmuxName != sibling.TmuxName {
 			t.Fatalf("refused grouped kill changed sibling identity: before=%+v after=%+v", sibling, observed)
 		}
 		if after := fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}"); after != panePID {
@@ -734,11 +1101,11 @@ exec /usr/bin/tmux "$@"
 	})
 
 	t.Run("one kill reconciles every stale owned shadow before ending only the source", func(t *testing.T) {
-		target, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "shadowed_kill_target"})
+		target, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "shadowed_kill_target"})
 		if err != nil {
 			t.Fatalf("create shadowed kill target: %v", err)
 		}
-		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalName: "shadowed_kill_survivor"})
+		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalTmuxName: "shadowed_kill_survivor"})
 		if err != nil {
 			t.Fatalf("create shadowed kill survivor: %v", err)
 		}
@@ -770,7 +1137,7 @@ exec /usr/bin/tmux "$@"
 			fixture.tmux(t, "set-option", "-t", "="+shadowName+":", "--", "@skid_internal", "phone-shadow")
 		}
 
-		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, DisplayedName: target.Name, IdentityToken: target.IdentityToken}); err != nil {
+		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, TmuxName: target.TmuxName, IdentityToken: target.IdentityToken}); err != nil {
 			t.Fatalf("kill source after multi-shadow fixed-point recovery: %v", err)
 		}
 		deadline := time.Now().Add(tmuxConvergenceTimeout)
@@ -781,12 +1148,12 @@ exec /usr/bin/tmux "$@"
 			time.Sleep(tmuxConvergencePollInterval)
 		}
 		remainingNames := strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_name}"), "\n")
-		for _, name := range append([]string{target.Name}, shadowNames...) {
+		for _, name := range append([]string{target.TmuxName}, shadowNames...) {
 			if slices.Contains(remainingNames, name) {
 				t.Fatalf("successful kill left a grouped link: name=%s sessions=%q", name, remainingNames)
 			}
 		}
-		if !slices.Contains(remainingNames, survivor.Name) {
+		if !slices.Contains(remainingNames, survivor.TmuxName) {
 			t.Fatalf("multi-shadow recovery killed the unrelated survivor: survivor=%+v sessions=%q", survivor, remainingNames)
 		}
 		if observed := fixture.tmux(t, "display-message", "-p", "-t", survivor.ID, "#{pane_pid}"); observed != survivorPanePIDText || linuxProcessStartTime(survivorPanePID) != survivorPaneStartTime {
@@ -803,7 +1170,10 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		t.Fatalf("create lifetime-token fixture: %v", err)
 	}
 	cataloguePath := filepath.Join(root, "catalogue.json")
-	if err := os.WriteFile(cataloguePath, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
+	if err := os.WriteFile(cataloguePath, []byte(`[
+  {"key":"norse.modsognir","displayName":"Móðsognir"},
+  {"key":"norse.durinn","displayName":"Durinn"}
+]`), 0o600); err != nil {
 		t.Fatalf("write lifetime-token catalogue: %v", err)
 	}
 	socket := randomTmuxSocketName(t, "skid-reuse")
@@ -834,18 +1204,18 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		if cleanup == nil {
 			return
 		}
-		if err := manager.Kill(ctx, sessions.KillInput{ID: cleanup.ID, DisplayedName: cleanup.Name, IdentityToken: cleanup.IdentityToken}); err != nil {
+		if err := manager.Kill(ctx, sessions.KillInput{ID: cleanup.ID, TmuxName: cleanup.TmuxName, IdentityToken: cleanup.IdentityToken}); err != nil {
 			t.Errorf("kill exact test-owned lifetime fixture: %v", err)
 		}
 	})
 
-	first, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalName: "epoch-reuse"})
+	first, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalTmuxName: "epoch-reuse"})
 	if err != nil {
 		t.Fatalf("create first lifetime fixture: %v", err)
 	}
 	cleanup = &first
 	firstServer := captureTestTmuxServer(t, tmuxPath, socketPath)
-	if err := manager.Kill(ctx, sessions.KillInput{ID: first.ID, DisplayedName: first.Name, IdentityToken: first.IdentityToken}); err != nil {
+	if err := manager.Kill(ctx, sessions.KillInput{ID: first.ID, TmuxName: first.TmuxName, IdentityToken: first.IdentityToken}); err != nil {
 		t.Fatalf("kill first exact lifetime fixture: %v", err)
 	}
 	deadline := time.Now().Add(tmuxCleanupTimeout)
@@ -857,18 +1227,46 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	}
 	cleanup = nil
 
-	second, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalName: first.Name})
+	second, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalTmuxName: first.TmuxName})
 	if err != nil {
 		t.Fatalf("recreate lifetime fixture: %v", err)
 	}
 	cleanup = &second
-	if second.ID != first.ID || second.Name != first.Name || second.IdentityToken == first.IdentityToken {
+	if second.ID != first.ID || second.TmuxName != first.TmuxName || second.IdentityToken == first.IdentityToken {
 		t.Fatalf("fixture did not recycle id/name under a new lifetime: first=%+v second=%+v", first, second)
 	}
 	firstIdentityFields := strings.Split(first.IdentityToken, ".")
 	secondIdentityFields := strings.Split(second.IdentityToken, ".")
 	if len(firstIdentityFields) != 4 || len(secondIdentityFields) != 4 {
 		t.Fatalf("fixture returned malformed lifetime identities: first=%q second=%q", first.IdentityToken, second.IdentityToken)
+	}
+	conditionalClient, err := tmuxclient.New(tmuxPath, socket)
+	if err != nil {
+		t.Fatalf("construct stale-write tmux client: %v", err)
+	}
+	currentCharacter, err := conditionalClient.Output(ctx, "read-recycled-character", "show-options", "-qv", "-t", second.ID, "@skid_character")
+	if err != nil || currentCharacter != second.Character.Key {
+		t.Fatalf("read recycled session character before stale write: card=%q persisted=%q error=%v", second.Character.Key, currentCharacter, err)
+	}
+	staleWriteCandidate := "norse.durinn"
+	if currentCharacter == staleWriteCandidate {
+		staleWriteCandidate = "norse.modsognir"
+	}
+	committed, err := conditionalClient.AssignCharacterIfUnchanged(ctx, second.ID, currentCharacter, staleWriteCandidate, tmuxclient.ServerIdentity{
+		Epoch: firstIdentityFields[0], PID: firstIdentityFields[1], StartTime: firstIdentityFields[2],
+	})
+	if err != nil {
+		t.Fatalf("attempt character write with stale server lifetime: %v", err)
+	}
+	if committed {
+		t.Fatalf("stale server lifetime wrote recycled session: first=%+v second=%+v", first, second)
+	}
+	persistedCharacter, err := conditionalClient.Output(ctx, "reread-recycled-character", "show-options", "-qv", "-t", second.ID, "@skid_character")
+	if err != nil {
+		t.Fatalf("read recycled session character after stale write: %v", err)
+	}
+	if persistedCharacter != currentCharacter {
+		t.Fatalf("stale server lifetime changed recycled session character: want=%q got=%q", currentCharacter, persistedCharacter)
 	}
 	oldEpoch := firstIdentityFields[0]
 	if output, err := isolatedTmuxCommand(tmuxPath, "-S", socketPath,
@@ -887,7 +1285,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	if !strings.HasPrefix(second.IdentityToken, oldEpoch+".") || second.IdentityToken == first.IdentityToken {
 		t.Fatalf("built-in server lifetime did not distinguish restored epoch: first=%+v second=%+v", first, second)
 	}
-	err = manager.Kill(ctx, sessions.KillInput{ID: second.ID, DisplayedName: second.Name, IdentityToken: first.IdentityToken})
+	err = manager.Kill(ctx, sessions.KillInput{ID: second.ID, TmuxName: second.TmuxName, IdentityToken: first.IdentityToken})
 	assertSessionError(t, err, sessions.ErrorSessionIdentityMismatch)
 	listed, err = manager.List(ctx)
 	if err != nil {
@@ -1038,6 +1436,17 @@ func (fixture sessionFixture) attachClient(t *testing.T, session string) {
 			t.Errorf("test-owned tmux PTY helper did not exit: session=%s", session)
 		}
 	})
+	deadline := time.Now().Add(tmuxConvergenceTimeout)
+	for {
+		attached, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", session, "#{session_attached}"))
+		if err == nil && attached > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("test-owned tmux client did not attach: session=%s attached=%d parse_error=%v", session, attached, err)
+		}
+		time.Sleep(tmuxConvergencePollInterval)
+	}
 }
 
 func (fixture sessionFixture) tmux(t *testing.T, args ...string) string {
@@ -1061,10 +1470,101 @@ func assertSessionError(t *testing.T, err error, want sessions.ErrorCode) {
 	}
 }
 
+func sessionNonCharacterSnapshot(t *testing.T, fixture sessionFixture, id string) string {
+	t.Helper()
+	session := fixture.tmux(t, "display-message", "-p", "-t", id,
+		"#{session_id}|#{session_name}|#{session_attached}|#{session_group}|#{session_group_size}|#{session_group_attached}|#{window_id}|#{pane_id}|#{@skid_internal}|#{@skid_profile}|#{@skid_objective_b64}")
+	windows := strings.Split(fixture.tmux(t, "list-windows", "-t", id, "-F",
+		"#{session_id}|#{window_id}|#{window_index}|#{window_active}|#{window_name}|#{window_panes}|#{window_width}|#{window_height}|#{window_layout}|#{window_active_clients}"), "\n")
+	panes := strings.Split(fixture.tmux(t, "list-panes", "-s", "-t", id, "-F",
+		"#{session_id}|#{window_id}|#{pane_id}|#{pane_index}|#{pane_active}|#{pane_pid}|#{pane_width}|#{pane_height}|#{pane_current_path}|#{pane_current_command}"), "\n")
+	clients := make([]string, 0)
+	for _, client := range strings.Split(fixture.tmux(t, "list-clients", "-F",
+		"#{client_name}|#{session_id}|#{session_name}|#{client_width}|#{client_height}"), "\n") {
+		fields := strings.Split(client, "|")
+		if len(fields) == 5 && fields[1] == id {
+			clients = append(clients, client)
+		}
+	}
+	slices.Sort(windows)
+	slices.Sort(panes)
+	slices.Sort(clients)
+	sessionOptions := make([]string, 0)
+	for _, option := range strings.Split(fixture.tmux(t, "show-options", "-t", id), "\n") {
+		if option != "" && !strings.HasPrefix(option, "@skid_character ") {
+			sessionOptions = append(sessionOptions, option)
+		}
+	}
+	windowOptions := make([]string, 0)
+	for _, window := range windows {
+		fields := strings.Split(window, "|")
+		if len(fields) < 2 {
+			t.Fatalf("malformed test-owned window snapshot: %q", window)
+		}
+		for _, option := range strings.Split(fixture.tmux(t, "show-options", "-w", "-t", fields[1]), "\n") {
+			if option != "" {
+				windowOptions = append(windowOptions, fields[1]+"|"+option)
+			}
+		}
+	}
+	paneOptions := make([]string, 0)
+	for _, pane := range panes {
+		fields := strings.Split(pane, "|")
+		if len(fields) < 3 {
+			t.Fatalf("malformed test-owned pane snapshot: %q", pane)
+		}
+		for _, option := range strings.Split(fixture.tmux(t, "show-options", "-p", "-t", fields[2]), "\n") {
+			if option != "" {
+				paneOptions = append(paneOptions, fields[2]+"|"+option)
+			}
+		}
+	}
+	slices.Sort(sessionOptions)
+	slices.Sort(windowOptions)
+	slices.Sort(paneOptions)
+	return strings.Join([]string{
+		"session=" + session,
+		"windows=" + strings.Join(windows, "\n"),
+		"panes=" + strings.Join(panes, "\n"),
+		"clients=" + strings.Join(clients, "\n"),
+		"session-options=" + strings.Join(sessionOptions, "\n"),
+		"window-options=" + strings.Join(windowOptions, "\n"),
+		"pane-options=" + strings.Join(paneOptions, "\n"),
+	}, "\n")
+}
+
+func requireValidCharacter(t *testing.T, session sessions.Session) {
+	t.Helper()
+	wantDisplayName := map[string]string{
+		"norse.modsognir": "Móðsognir",
+		"norse.durinn":    "Durinn",
+	}[session.Character.Key]
+	if wantDisplayName == "" || session.Character.DisplayName != wantDisplayName {
+		t.Fatalf("session has no valid required character: %+v", session)
+	}
+}
+
+func expectedTestCharacter(epoch, id string, usage map[string]int) string {
+	const modsognir = "norse.modsognir"
+	const durinn = "norse.durinn"
+	if usage[modsognir] < usage[durinn] {
+		return modsognir
+	}
+	if usage[durinn] < usage[modsognir] {
+		return durinn
+	}
+	modsognirScore := sha256.Sum256([]byte(epoch + "\x00" + id + "\x00" + modsognir))
+	durinnScore := sha256.Sum256([]byte(epoch + "\x00" + id + "\x00" + durinn))
+	if bytes.Compare(modsognirScore[:], durinnScore[:]) >= 0 {
+		return modsognir
+	}
+	return durinn
+}
+
 func requireSessionNamed(t *testing.T, listed []sessions.Session, name string) sessions.Session {
 	t.Helper()
 	for _, session := range listed {
-		if session.Name == name {
+		if session.TmuxName == name {
 			return session
 		}
 	}

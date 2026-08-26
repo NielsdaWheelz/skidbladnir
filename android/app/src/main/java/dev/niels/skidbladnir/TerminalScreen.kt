@@ -55,7 +55,7 @@ internal fun TerminalScreen(
             TextButton(onClick = controller::detachToAgents) { Text("Agents") }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = state.session.name,
+                    text = state.session.tmuxName,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
