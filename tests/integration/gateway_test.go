@@ -91,8 +91,51 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 			t.Fatalf("create %s profile home: %v", home, err)
 		}
 	}
-	manager, err := sessions.New(sessions.Config{
-		TmuxPath:      tmuxPath,
+	tmuxWrapper := filepath.Join(testRoot, "gateway-tmux")
+	degradedReadRecord := filepath.Join(testRoot, "degraded-read-record")
+	reverseInventoryMarker := filepath.Join(testRoot, "reverse-inventory")
+	tmuxScript := fmt.Sprintf(`#!/bin/sh
+set -eu
+socket=%s
+degraded_read_record=%s
+reverse_inventory_marker=%s
+is_list=0
+is_profile_read=0
+target=
+previous=
+for argument in "$@"; do
+  if [ "$argument" = list-sessions ]; then
+    is_list=1
+  fi
+  if [ "$argument" = @skid_profile ]; then
+    is_profile_read=1
+  fi
+  if [ "$previous" = -t ]; then
+    target=$argument
+  fi
+  previous=$argument
+done
+if [ "$is_list" -eq 1 ] && [ -e "$reverse_inventory_marker" ]; then
+  output=$(/usr/bin/tmux "$@") || exit $?
+  if [ -n "$output" ]; then
+    printf '%%s\n' "$output" | /usr/bin/tac
+  fi
+  exit 0
+fi
+if [ "$is_profile_read" -eq 1 ] && [ -n "$target" ] && [ ! -e "$degraded_read_record" ]; then
+  name=$(/usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t "$target" '#{session_name}') || exec /usr/bin/tmux "$@"
+  if [ "$name" = degraded-create ]; then
+    printf '%%s\n' "$target" > "$degraded_read_record"
+    exit 1
+  fi
+fi
+exec /usr/bin/tmux "$@"
+`, shellQuote(socketName), shellQuote(degradedReadRecord), shellQuote(reverseInventoryMarker))
+	if err := os.WriteFile(tmuxWrapper, []byte(tmuxScript), 0o700); err != nil {
+		t.Fatalf("write gateway tmux wrapper: %v", err)
+	}
+	managerConfig := sessions.Config{
+		TmuxPath:      tmuxWrapper,
 		SocketName:    socketName,
 		Home:          testRoot,
 		CataloguePath: filepath.Join(repositoryRoot(t), "catalog", "characters.json"),
@@ -111,7 +154,8 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 				Arguments:            []string{"--permission-mode", "auto"},
 			},
 		},
-	})
+	}
+	manager, err := sessions.New(managerConfig)
 	if err != nil {
 		t.Fatalf("create sessions manager: %v", err)
 	}
@@ -189,6 +233,26 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	if laptopCharacter["key"] == "" || laptopCharacter["displayName"] == "" {
 		t.Fatalf("laptop-created session omitted its normalized character: %+v", laptop)
 	}
+	server.Close()
+	reconstructedManager, err := sessions.New(managerConfig)
+	if err != nil {
+		t.Fatalf("reconstruct sessions manager: %v", err)
+	}
+	server = httptest.NewServer(gateway.New(gateway.Config{
+		Sessions: reconstructedManager,
+		Pressure: monitor,
+		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Logger:   logging.New(&logs),
+	}))
+	t.Cleanup(server.Close)
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
+	assertStatus(t, response, http.StatusOK)
+	inventory = decodeObject(t, response)
+	reconstructedLaptop := findSession(t, inventory, "laptop")
+	if reconstructedLaptop["id"] != laptopID || reconstructedLaptop["identityToken"] != laptopToken ||
+		!reflect.DeepEqual(reconstructedLaptop["character"], laptopCharacter) {
+		t.Fatalf("gateway reconstruction changed persisted laptop identity: before=%+v after=%+v", laptop, reconstructedLaptop)
+	}
 
 	before := len(inventory["sessions"].([]any))
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"/definitely/not/a/skidbladnir/directory","profile":"personal"}`)
@@ -235,6 +299,38 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	if len(createdToken) < 4 {
 		t.Fatalf("created card omitted its lifetime identity token: %+v", created)
 	}
+	degradedLogsStart := logs.Len()
+	degradedBody, err := json.Marshal(map[string]string{
+		"cwd": testRoot, "profile": "personal", "optionalTmuxName": "degraded-create",
+	})
+	if err != nil {
+		t.Fatalf("encode degraded create request: %v", err)
+	}
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(degradedBody))
+	assertStatus(t, response, http.StatusCreated)
+	degraded := decodeObject(t, response)
+	degradedStatus := degraded["status"].(map[string]any)
+	degradedCharacter := degraded["character"].(map[string]any)
+	if degraded["tmuxName"] != "degraded-create" || degradedStatus["kind"] != "Unknown" ||
+		degradedStatus["signal"] != "PollFailure" || degradedCharacter["key"] == "" || degradedCharacter["displayName"] == "" {
+		t.Fatalf("degraded create did not return its required stable card facts: %+v", degraded)
+	}
+	if _, exists := degraded["profile"]; exists {
+		t.Fatalf("degraded create guessed unavailable profile metadata: %+v", degraded)
+	}
+	degradedID := degraded["id"].(string)
+	degradedToken := degraded["identityToken"].(string)
+	recordedID, err := os.ReadFile(degradedReadRecord)
+	if err != nil || strings.TrimSpace(string(recordedID)) != degradedID {
+		t.Fatalf("degraded create did not cross the exact injected read failure: id=%s record=%q error=%v", degradedID, recordedID, err)
+	}
+	if !strings.Contains(logs.String()[degradedLogsStart:], "personal") {
+		t.Fatalf("degraded create log lost the requested profile: %s", logs.String()[degradedLogsStart:])
+	}
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(degradedID), bearer, "niels@example.test",
+		fmt.Sprintf(`{"tmuxName":"degraded-create","identityToken":%q}`, degradedToken))
+	assertStatus(t, response, http.StatusNoContent)
+	response.Body.Close()
 
 	secondBearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
@@ -257,21 +353,71 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"laptop","identityToken":%q}`, createdToken))
 	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
-	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "set-option", "-p", "-t", laptopID,
-		"--", "@skid_attention", fmt.Sprint(time.Now().Unix())).CombinedOutput(); err != nil {
-		t.Fatalf("make alphabetically later laptop card higher priority: output=%q error=%v", output, err)
+	for _, fixture := range []struct {
+		name      string
+		command   string
+		arguments []string
+	}{
+		{name: "zulu-running", command: "/usr/bin/sleep", arguments: []string{"300"}},
+		{name: "aardvark-shell", command: "/usr/bin/tail", arguments: []string{"-f", "/dev/null"}},
+		{name: "zulu-shell", command: "/usr/bin/tail", arguments: []string{"-f", "/dev/null"}},
+	} {
+		arguments := []string{"-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", fixture.name, "-c", testRoot, fixture.command}
+		arguments = append(arguments, fixture.arguments...)
+		if output, err := isolatedTmuxCommand(tmuxPath, arguments...).CombinedOutput(); err != nil {
+			t.Fatalf("create %s wire-order fixture: output=%q error=%v", fixture.name, output, err)
+		}
 	}
-	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
-	assertStatus(t, response, http.StatusOK)
-	inventory = decodeObject(t, response)
-	findSession(t, inventory, "laptop")
-	findSession(t, inventory, "gateway-test")
+	if err := os.WriteFile(reverseInventoryMarker, []byte("reverse\n"), 0o600); err != nil {
+		t.Fatalf("arm reversed manager inventory fixture: %v", err)
+	}
+	attentiveShellID, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", "zulu-shell", "#{session_id}").Output()
+	if err != nil || strings.TrimSpace(string(attentiveShellID)) == "" {
+		t.Fatalf("resolve attentive shell fixture: output=%q error=%v", attentiveShellID, err)
+	}
+	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "set-option", "-p", "-t", strings.TrimSpace(string(attentiveShellID)),
+		"--", "@skid_attention", fmt.Sprint(time.Now().Unix())).CombinedOutput(); err != nil {
+		t.Fatalf("make lower-priority shell fixture attentive: output=%q error=%v", output, err)
+	}
+	statusKind := func(card map[string]any) string {
+		return card["status"].(map[string]any)["kind"].(string)
+	}
+	deadline := time.Now().Add(tmuxConvergenceTimeout)
+	var attentiveShell, runningAlpha, runningMiddle, runningOmega, shellAlpha map[string]any
+	for {
+		response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
+		assertStatus(t, response, http.StatusOK)
+		inventory = decodeObject(t, response)
+		attentiveShell = findSession(t, inventory, "zulu-shell")
+		runningAlpha = findSession(t, inventory, "gateway-test")
+		runningMiddle = findSession(t, inventory, "laptop")
+		runningOmega = findSession(t, inventory, "zulu-running")
+		shellAlpha = findSession(t, inventory, "aardvark-shell")
+		if attentiveShell["attention"].(bool) && statusKind(attentiveShell) == "Shell" &&
+			statusKind(runningAlpha) == "Running" && statusKind(runningMiddle) == "Running" &&
+			statusKind(runningOmega) == "Running" && statusKind(shellAlpha) == "Shell" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("wire-order fixtures did not converge to attention/running/shell facts: %+v", inventory)
+		}
+		time.Sleep(tmuxConvergencePollInterval)
+	}
 	wireOrder := make([]string, 0, len(inventory["sessions"].([]any)))
 	for _, value := range inventory["sessions"].([]any) {
 		wireOrder = append(wireOrder, value.(map[string]any)["tmuxName"].(string))
 	}
-	if want := []string{"laptop", "gateway-test"}; !reflect.DeepEqual(wireOrder, want) {
+	if want := []string{"zulu-shell", "gateway-test", "laptop", "zulu-running", "aardvark-shell"}; !reflect.DeepEqual(wireOrder, want) {
 		t.Fatalf("gateway wire order = %v, want %v", wireOrder, want)
+	}
+	if err := os.Remove(reverseInventoryMarker); err != nil {
+		t.Fatalf("disarm reversed manager inventory fixture: %v", err)
+	}
+	for _, card := range []map[string]any{attentiveShell, runningOmega, shellAlpha} {
+		id := card["id"].(string)
+		if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "kill-session", "-t", id).CombinedOutput(); err != nil {
+			t.Fatalf("remove exact wire-order fixture %s: output=%q error=%v", id, output, err)
+		}
 	}
 
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"gateway-test","identityToken":%q}`, createdToken))

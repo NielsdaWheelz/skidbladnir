@@ -27,11 +27,12 @@ func TestCharacterSelectionChoosesALeastUsedStableWinner(t *testing.T) {
 	for key := range usage {
 		usage[key] = 0
 	}
-	first := selectCharacter(characters, usage, "v1-test\x00$7")
+	first := selectCharacter(characters, usage, "seed-0")
 	reversed := []catalog.Character{characters[2], characters[1], characters[0]}
-	second := selectCharacter(reversed, usage, "v1-test\x00$7")
-	if first.Key != "norse.gamma" || second != first {
-		t.Fatalf("stable tied selection = (%+v, %+v), want norse.gamma independent of catalogue order", first, second)
+	second := selectCharacter(reversed, usage, "seed-0")
+	third := selectCharacter(characters, usage, "seed-2")
+	if first.Key != "norse.beta" || second != first || third.Key != "norse.alpha" {
+		t.Fatalf("stable seeded tied selections = (%+v, %+v, %+v), want beta/beta/alpha independent of catalogue order", first, second, third)
 	}
 }
 

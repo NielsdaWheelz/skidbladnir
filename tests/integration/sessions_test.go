@@ -392,10 +392,10 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 		identity := filepath.Join(fixture.root, "collision-identity")
 		script := fmt.Sprintf(`#!/bin/sh
 set -eu
-socket=%q
-project=%q
-marker=%q
-identity=%q
+socket=%s
+project=%s
+marker=%s
+identity=%s
 is_create=0
 is_target=0
 previous=
@@ -403,19 +403,20 @@ for argument in "$@"; do
   if [ "$argument" = new-session ]; then
     is_create=1
   fi
-  if [ "$previous" = -s ] && [ "$argument" = %q ]; then
+  if [ "$previous" = -s ] && [ "$argument" = %s ]; then
     is_target=1
   fi
   previous=$argument
 done
 if [ "$is_create" -eq 1 ] && [ "$is_target" -eq 1 ] && [ ! -e "$marker" ]; then
   : > "$marker"
-  /usr/bin/tmux -L "$socket" -f /dev/null new-session -d -s %q -c "$project" -- /usr/bin/sleep 300
-  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t '=%s:' -- @collision_guard untouched
-  /usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t '=%s:' '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
+  /usr/bin/tmux -L "$socket" -f /dev/null new-session -d -s %s -c "$project" -- /usr/bin/sleep 300
+  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t %s -- @collision_guard untouched
+  /usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t %s '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
 fi
 exec /usr/bin/tmux "$@"
-`, fixture.socket, fixture.project, marker, identity, collisionName, collisionName, collisionName, collisionName)
+`, shellQuote(fixture.socket), shellQuote(fixture.project), shellQuote(marker), shellQuote(identity),
+			shellQuote(collisionName), shellQuote(collisionName), shellQuote("="+collisionName+":"), shellQuote("="+collisionName+":"))
 		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
 			t.Fatalf("write collision tmux wrapper: %v", err)
 		}
@@ -569,9 +570,9 @@ exec /usr/bin/tmux "$@"
 		record := filepath.Join(fixture.root, "concurrent-character-record")
 		script := fmt.Sprintf(`#!/bin/sh
 set -eu
-socket=%q
-target_id=%q
-record=%q
+socket=%s
+target_id=%s
+record=%s
 is_if_shell=0
 attempted=
 target=
@@ -598,7 +599,7 @@ if [ "$is_if_shell" -eq 1 ] && [ -n "$attempted" ] && [ "$target" = "$target_id"
   /usr/bin/tmux -L "$socket" -f /dev/null set-option -t "$target_id" -- @skid_character "$injected"
 fi
 exec /usr/bin/tmux "$@"
-`, fixture.socket, id, record)
+`, shellQuote(fixture.socket), shellQuote(id), shellQuote(record))
 		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
 			t.Fatalf("write concurrent-character tmux wrapper: %v", err)
 		}
@@ -643,6 +644,77 @@ exec /usr/bin/tmux "$@"
 		}
 		if after := sessionNonCharacterSnapshot(t, fixture, id); after != before {
 			t.Fatalf("conditional race changed non-character facts:\nbefore=%q\n after=%q", before, after)
+		}
+	})
+
+	t.Run("a session disappearing during assignment is omitted without a collateral write", func(t *testing.T) {
+		const sentinelName = "disappearance-sentinel"
+		fixture.tmux(t, "new-session", "-d", "-s", sentinelName, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "set-option", "-t", sentinelName, "--", "@skid_character", "norse.durinn")
+		sentinelID := fixture.tmux(t, "display-message", "-p", "-t", sentinelName, "#{session_id}")
+		const targetName = "disappearing-character"
+		fixture.tmux(t, "new-session", "-d", "-s", targetName, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		targetID := fixture.tmux(t, "display-message", "-p", "-t", targetName, "#{session_id}")
+
+		wrapper := filepath.Join(fixture.root, "disappearing-character-tmux")
+		record := filepath.Join(fixture.root, "disappearing-character-record")
+		script := fmt.Sprintf(`#!/bin/sh
+set -eu
+socket=%s
+target_id=%s
+record=%s
+is_assignment=0
+target=
+previous=
+for argument in "$@"; do
+  if [ "$previous" = -t ]; then
+    target=$argument
+  fi
+  case "$argument" in
+    *' -- @skid_character '*) is_assignment=1 ;;
+  esac
+  previous=$argument
+done
+if [ "$is_assignment" -eq 1 ] && [ "$target" = "$target_id" ] && [ ! -e "$record" ]; then
+  printf '%%s\n' "$target_id" > "$record"
+  /usr/bin/tmux -L "$socket" -f /dev/null kill-session -t "$target_id"
+fi
+exec /usr/bin/tmux "$@"
+`, shellQuote(fixture.socket), shellQuote(targetID), shellQuote(record))
+		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+			t.Fatalf("write disappearing-character tmux wrapper: %v", err)
+		}
+		manager, err := sessions.New(sessions.Config{
+			TmuxPath: wrapper, SocketName: fixture.socket, Home: fixture.home, CataloguePath: fixture.cataloguePath,
+			Profiles: []sessions.Profile{{
+				Key: "personal", Label: "Codex · Personal", Command: fixture.agent,
+				Environment:          []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
+				ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+				Arguments:            []string{yoloFlag},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("construct disappearing-character manager: %v", err)
+		}
+		listed, err := manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list through disappearing-character boundary: %v", err)
+		}
+		recordedID, err := os.ReadFile(record)
+		if err != nil || strings.TrimSpace(string(recordedID)) != targetID {
+			t.Fatalf("disappearing-character fixture did not remove exact target %s: record=%q error=%v", targetID, recordedID, err)
+		}
+		for _, session := range listed {
+			if session.ID == targetID {
+				t.Fatalf("inventory returned session that vanished during assignment: %+v", session)
+			}
+		}
+		sentinel := requireSessionID(t, listed, sentinelID)
+		if sentinel.Character.Key != "norse.durinn" {
+			t.Fatalf("disappearing assignment changed sentinel character: %+v", sentinel)
+		}
+		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", sentinelID, "@skid_character"); persisted != sentinel.Character.Key {
+			t.Fatalf("disappearing assignment wrote a collateral session: sentinel=%+v persisted=%q", sentinel, persisted)
 		}
 	})
 

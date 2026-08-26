@@ -101,6 +101,10 @@ func isolatedTmuxCommand(path string, args ...string) *exec.Cmd {
 	return isolatedTmuxCommandContext(context.Background(), path, args...)
 }
 
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func isolatedTmuxCommandContext(ctx context.Context, path string, args ...string) *exec.Cmd {
 	if !registeredTmuxTarget(args) {
 		panic("integration tmux command has no registered test-owned -L or -S target")
