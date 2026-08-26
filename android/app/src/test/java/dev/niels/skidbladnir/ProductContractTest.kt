@@ -107,6 +107,43 @@ class ProductContractTest {
     }
 
     @Test
+    fun `dashboard uses declared profile labels and preserves selected profile keys`() {
+        val profiles = listOf(ProfileChoice("claude-work", "Claude · Work"))
+        val session = AgentSession(
+            id = "${'$'}1",
+            name = "ga-durinn",
+            identityToken = "token",
+            profile = "claude-work",
+            activeCommand = "claude",
+            attachedClients = 1,
+            attention = false,
+            status = SessionStatus(
+                kind = SessionStatusKind.Running,
+                signal = SessionStatusSignal.Process,
+                signalAt = "2026-08-25T12:00:00Z",
+            ),
+        )
+
+        assertEquals(
+            "known cards should render the declared label before the separately observed command",
+            listOf("Claude · Work", "claude"),
+            agentCardRuntimeFacts(session, profiles),
+        )
+        assertEquals(
+            "unlisted profile keys should stay visibly unknown",
+            listOf("profile unknown", "claude"),
+            agentCardRuntimeFacts(session.copy(profile = "unlisted"), profiles),
+        )
+        assertEquals(
+            "Forge should submit the selected profile key without provider fields",
+            "{\"cwd\":\"~/src\",\"profile\":\"claude-work\"}",
+            encodeCreateSessionRequest(
+                ForgeDraft(cwd = "~/src", profile = "claude-work", optionalName = "", objective = ""),
+            ),
+        )
+    }
+
+    @Test
     fun `status content names lifecycle signal and age`() {
         val content = statusContent(
             status = SessionStatus(

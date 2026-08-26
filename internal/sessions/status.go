@@ -14,6 +14,7 @@ type foregroundProcess struct {
 	pid            int
 	startTime      string
 	executableBase string
+	argument0      string
 	argument1      string
 }
 
@@ -68,7 +69,9 @@ func runningStatus(now time.Time) Status {
 func (manager *Manager) matchesAgent(process foregroundProcess) bool {
 	for _, profile := range manager.profiles {
 		for _, signature := range profile.ForegroundSignatures {
-			if process.executableBase == signature.ExecutableBase && (signature.Argument1 == "" || process.argument1 == signature.Argument1) {
+			if (signature.ExecutableBase == "" || process.executableBase == signature.ExecutableBase) &&
+				(signature.Argument0 == "" || process.argument0 == signature.Argument0) &&
+				(signature.Argument1 == "" || process.argument1 == signature.Argument1) {
 				return true
 			}
 		}
@@ -114,7 +117,12 @@ func observeForegroundProcess(panePID int) (foregroundProcess, error) {
 	if len(arguments) == 0 || arguments[0] == "" {
 		return foregroundProcess{}, errors.New("foreground command line is empty")
 	}
-	process := foregroundProcess{pid: foregroundPID, startTime: startTime, executableBase: filepath.Base(executable)}
+	process := foregroundProcess{
+		pid:            foregroundPID,
+		startTime:      startTime,
+		executableBase: filepath.Base(executable),
+		argument0:      arguments[0],
+	}
 	if len(arguments) > 1 {
 		process.argument1 = arguments[1]
 	}

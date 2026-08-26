@@ -12,14 +12,16 @@ and routine verification are green. Transactional deployment and repeatable
 verification, the owned hook-file digest, isolated tmux/live gates, and an
 installed lifecycle-producer smoke are also green. The automated 9-test S22+
 platform gate is green; real Codex event delivery and renewed hands-on S22+
-acceptance remain `NOT_RUN`.
+acceptance remain `NOT_RUN`. The Claude Work profile source delta, routine
+verification, isolated tmux integration, exact devbox install/reverify,
+automated S22+ platform gate, and user-reported focused S22+ pass are green.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
 
 This document owns delivery order. The [architecture](architecture.md) owns
-behavior and acceptance. Three slices, each an ordinary PR with one observable
-outcome, a red proof observed before implementation, and real-boundary tests.
+behavior and acceptance. Each slice has one observable outcome, a red proof
+observed before implementation, and real-boundary tests.
 No proof ledger, evidence digests, or acceptance matrix — `NOT_RUN` honesty
 and the closed logger survive; the ceremony does not.
 
@@ -32,6 +34,7 @@ S1 tmux control plane
  -> S2 shared terminal
  -> S3 Android dashboard
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
+ -> v0 profile delta: Claude Work
  -> v0.5 (optional): push
 ```
 
@@ -60,16 +63,16 @@ sessions and reads pressure.
   process-lifetime-bound hook adapter; otherwise a live agent is `RUNNING`.
 - `POST /v1/sessions`: cwd/name/objective validation, profile-table allowlist,
   unbounded `ga-<dwarf>[-N]` naming with catalogue reuse, user options set at
-  create, YOLO exec.
+  create, exact row command/environment/argument exec.
 - `DELETE /v1/sessions/{id}`: inventory `identityToken` binds a random
   tmux-server epoch + built-in PID/start time + id; all lifetime facts, the
   displayed name, ungrouped-or-last-link predicate, and `kill-session` share
   one tmux client queue; owned stale phone shadows reconcile first, while any
   remaining ordinary group fails closed.
 - `GET /v1/pressure` with the proven thresholds.
-- `skid-notify` script + idempotent per-profile `notify` config line;
+- `skid-notify` script + idempotent per-Codex-profile `notify` config line;
   `@skid_attention` is surfaced; opening-and-clearing belongs to S2.
-- Exact per-profile Codex lifecycle hook file; native digest review remains
+- Exact per-Codex-profile lifecycle hook file; native digest review remains
   manual and fail-visible, and the helper accepts only the pane foreground
   Codex origin.
 
@@ -148,6 +151,32 @@ rotation, reconnect.
   digest review, platform instrumentation, then hands-on S22+ prompt/Stop,
   right-edge Gboard/dictation, color, and portrait/rotation checks.
 
+## v0 profile delta — Claude Work
+
+Outcome: The Forge launches the work-account Claude CLI as the fourth closed
+profile while retaining the existing tmux, API, terminal, and kill contracts.
+
+- Ordered profiles are `personal`, `work`, `work2`, `claude-work`, with
+  provider-qualified labels supplied by the gateway.
+- Claude launches only `/home/niels/bin/claude-work` with
+  `CLAUDE_CONFIG_DIR=/home/niels/.claude-work` and
+  `--permission-mode auto`; callers cannot override the capsule.
+- Exact argv[0] `/home/niels/.local/bin/claude` identifies the foreground
+  process as `RUNNING/Process`. Claude has no lifecycle hook or semantic-state
+  inference.
+- Forge, card, and destructive copy are provider-neutral; unknown profile keys
+  stay explicitly unknown.
+
+Red: ordered production-capsule proof, exact argv[0] near misses, Android
+declared-label/selection behavior, and the existing isolated API/tmux journey
+extended through Claude advertise/create/list while retaining detach and exact
+kill proofs.
+
+Gate: routine verification; one isolated real-tmux integration journey; one
+focused S22+ pass of the stock Claude permission UI, shared terminal,
+concurrent attach, reconnect, detach, and exact kill. External gates remain
+`NOT_RUN` without their explicit current-turn approval.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -165,4 +194,5 @@ orchestration, via a new architecture decision.
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
+| v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
 | v0.5 push | Not scheduled |

@@ -52,8 +52,65 @@ func TestLifecycleStatusIsBoundToTheExactForegroundProcessLifetime(t *testing.T)
 
 func TestLiveAgentWithoutLifecycleEvidenceIsRunningNotWorking(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	manager := &Manager{profiles: []Profile{{
+		ForegroundSignatures: []ForegroundSignature{{Argument0: "/home/niels/.local/bin/claude"}},
+	}}}
+	process := foregroundProcess{
+		pid:            4312,
+		startTime:      "991827",
+		executableBase: "claude-2.1.231",
+		argument0:      "/home/niels/.local/bin/claude",
+	}
+	if !manager.matchesAgent(process) {
+		t.Fatalf("exact Claude argv[0] was not recognized: %+v", process)
+	}
+	if lifecycle, valid := parseLifecycleStatus("", process, now); valid {
+		t.Fatalf("absent Claude lifecycle was accepted as %+v", lifecycle)
+	}
+	for _, nearMiss := range []foregroundProcess{
+		{executableBase: "claude-2.1.231", argument0: "/home/niels/.local/bin/claude-beta"},
+		{executableBase: "node", argument0: "node"},
+	} {
+		if manager.matchesAgent(nearMiss) {
+			t.Fatalf("non-Claude foreground process matched exact argv[0] signature: %+v", nearMiss)
+		}
+	}
 	status := runningStatus(now)
 	if status.Kind != StatusRunning || status.Signal != StatusSignalProcess || status.SignalAt != now {
 		t.Fatalf("unobserved live agent status = %+v, want Running/Process at observation", status)
+	}
+}
+
+func TestForegroundSignatureSelectorsMatchExactlyAndConjunctively(t *testing.T) {
+	manager := &Manager{profiles: []Profile{{
+		ForegroundSignatures: []ForegroundSignature{{
+			ExecutableBase: "claude-2.1.231",
+			Argument0:      "/home/niels/.local/bin/claude",
+			Argument1:      "--permission-mode",
+		}},
+	}}}
+	exact := foregroundProcess{
+		executableBase: "claude-2.1.231",
+		argument0:      "/home/niels/.local/bin/claude",
+		argument1:      "--permission-mode",
+	}
+	if !manager.matchesAgent(exact) {
+		t.Fatalf("exact populated foreground selectors did not match: %+v", exact)
+	}
+
+	for _, test := range []struct {
+		name    string
+		process foregroundProcess
+	}{
+		{name: "executable near miss", process: foregroundProcess{executableBase: "claude-2.1.232", argument0: exact.argument0, argument1: exact.argument1}},
+		{name: "argument zero prefix", process: foregroundProcess{executableBase: exact.executableBase, argument0: exact.argument0 + "-beta", argument1: exact.argument1}},
+		{name: "argument zero basename", process: foregroundProcess{executableBase: exact.executableBase, argument0: "claude", argument1: exact.argument1}},
+		{name: "argument one near miss", process: foregroundProcess{executableBase: exact.executableBase, argument0: exact.argument0, argument1: "--permission-modes"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if manager.matchesAgent(test.process) {
+				t.Fatalf("foreground near miss matched exact signature: %+v", test.process)
+			}
+		})
 	}
 }

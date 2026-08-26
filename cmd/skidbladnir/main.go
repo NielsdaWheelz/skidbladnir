@@ -91,16 +91,11 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 }
 
 func serveGateway(listen, bearerPath, cataloguePath, home string, logOutput io.Writer) error {
-	profiles := []sessions.Profile{
-		codexProfile(home, "personal", "Personal", ".codex-personal"),
-		codexProfile(home, "work", "Work", ".codex-work"),
-		codexProfile(home, "work2", "Work 2", ".codex-work2"),
-	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      "/usr/bin/tmux",
 		Home:          home,
 		CataloguePath: cataloguePath,
-		Profiles:      profiles,
+		Profiles:      gatewayProfiles(home),
 	})
 	if err != nil {
 		return fmt.Errorf("initialize tmux sessions: %w", err)
@@ -121,6 +116,15 @@ func serveGateway(listen, bearerPath, cataloguePath, home string, logOutput io.W
 	return nil
 }
 
+func gatewayProfiles(home string) []sessions.Profile {
+	return []sessions.Profile{
+		codexProfile(home, "personal", "Codex · Personal", ".codex-personal"),
+		codexProfile(home, "work", "Codex · Work", ".codex-work"),
+		codexProfile(home, "work2", "Codex · Work 2", ".codex-work2"),
+		claudeProfile(home),
+	}
+}
+
 func codexProfile(home, key, label, codexHomeName string) sessions.Profile {
 	return sessions.Profile{
 		Key:     key,
@@ -134,5 +138,20 @@ func codexProfile(home, key, label, codexHomeName string) sessions.Profile {
 			{ExecutableBase: "node", Argument1: filepath.Join(home, ".local", "bin", "codex")},
 		},
 		Arguments: []string{"--dangerously-bypass-approvals-and-sandbox"},
+	}
+}
+
+func claudeProfile(home string) sessions.Profile {
+	return sessions.Profile{
+		Key:     "claude-work",
+		Label:   "Claude · Work",
+		Command: filepath.Join(home, "bin", "claude-work"),
+		Environment: []sessions.EnvironmentVariable{
+			{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(home, ".claude-work")},
+		},
+		ForegroundSignatures: []sessions.ForegroundSignature{
+			{Argument0: filepath.Join(home, ".local", "bin", "claude")},
+		},
+		Arguments: []string{"--permission-mode", "auto"},
 	}
 }

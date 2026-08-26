@@ -85,7 +85,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nexec /usr/bin/sleep 300\n"), 0o700); err != nil {
 		t.Fatalf("write test agent command: %v", err)
 	}
-	for _, home := range []string{"personal", "work", "work2"} {
+	for _, home := range []string{"personal", "work", "work2", "claude-work"} {
 		if err := os.Mkdir(filepath.Join(testRoot, home), 0o700); err != nil {
 			t.Fatalf("create %s profile home: %v", home, err)
 		}
@@ -96,9 +96,19 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 		Home:          testRoot,
 		CataloguePath: filepath.Join(repositoryRoot(t), "catalog", "characters.json"),
 		Profiles: []sessions.Profile{
-			gatewayTestProfile("personal", "Personal", agentCommand, filepath.Join(testRoot, "personal")),
-			gatewayTestProfile("work", "Work", agentCommand, filepath.Join(testRoot, "work")),
-			gatewayTestProfile("work2", "Work 2", agentCommand, filepath.Join(testRoot, "work2")),
+			gatewayTestCodexProfile("personal", "Codex · Personal", agentCommand, filepath.Join(testRoot, "personal")),
+			gatewayTestCodexProfile("work", "Codex · Work", agentCommand, filepath.Join(testRoot, "work")),
+			gatewayTestCodexProfile("work2", "Codex · Work 2", agentCommand, filepath.Join(testRoot, "work2")),
+			{
+				Key:     "claude-work",
+				Label:   "Claude · Work",
+				Command: agentCommand,
+				Environment: []sessions.EnvironmentVariable{
+					{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(testRoot, "claude-work")},
+				},
+				ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+				Arguments:            []string{"--permission-mode", "auto"},
+			},
 		},
 	})
 	if err != nil {
@@ -157,8 +167,14 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	assertStatus(t, response, http.StatusOK)
 	inventory := decodeObject(t, response)
 	profiles := inventory["profiles"].([]any)
-	if got := []string{profiles[0].(map[string]any)["key"].(string), profiles[1].(map[string]any)["key"].(string), profiles[2].(map[string]any)["key"].(string)}; fmt.Sprint(got) != "[personal work work2]" {
-		t.Fatalf("profile order = %v, want [personal work work2]", got)
+	gotProfiles := make([]string, 0, len(profiles))
+	for _, profile := range profiles {
+		fields := profile.(map[string]any)
+		gotProfiles = append(gotProfiles, fields["key"].(string)+"="+fields["label"].(string))
+	}
+	wantProfiles := []string{"personal=Codex · Personal", "work=Codex · Work", "work2=Codex · Work 2", "claude-work=Claude · Work"}
+	if !reflect.DeepEqual(gotProfiles, wantProfiles) {
+		t.Fatalf("advertised profiles = %v, want %v", gotProfiles, wantProfiles)
 	}
 	laptop := findSession(t, inventory, "laptop")
 	laptopID := laptop["id"].(string)
@@ -195,14 +211,14 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", strings.Repeat("x", int(gateway.MaximumBodyBytes)+1))
 	assertError(t, response, http.StatusRequestEntityTooLarge, "RequestTooLarge")
 
-	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "personal", "optionalName": "ga-gateway-test", "objective": "Prove the control plane"})
+	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "claude-work", "optionalName": "ga-gateway-test", "objective": "Prove the control plane"})
 	if err != nil {
 		t.Fatalf("encode create request: %v", err)
 	}
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(createBody))
 	assertStatus(t, response, http.StatusCreated)
 	created := decodeObject(t, response)
-	if created["name"] != "ga-gateway-test" || created["profile"] != "personal" || created["objective"] != "Prove the control plane" {
+	if created["name"] != "ga-gateway-test" || created["profile"] != "claude-work" || created["objective"] != "Prove the control plane" {
 		t.Fatalf("created card omitted requested metadata: %+v", created)
 	}
 	character := created["character"].(map[string]any)
@@ -307,7 +323,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	}
 }
 
-func gatewayTestProfile(key, label, command, codexHome string) sessions.Profile {
+func gatewayTestCodexProfile(key, label, command, codexHome string) sessions.Profile {
 	return sessions.Profile{
 		Key:     key,
 		Label:   label,
