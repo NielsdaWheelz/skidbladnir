@@ -67,6 +67,7 @@ const (
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
+	ErrorMachineIdentityMismatch     ErrorCode = "MachineIdentityMismatch"
 	ErrorSessionGroupedConflict      ErrorCode = "SessionGroupedConflict"
 	ErrorInternal                    ErrorCode = "InternalError"
 )
@@ -84,6 +85,7 @@ func (code ErrorCode) valid() bool {
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,
+		ErrorMachineIdentityMismatch,
 		ErrorSessionGroupedConflict,
 		ErrorInternal:
 		return true

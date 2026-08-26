@@ -25,8 +25,8 @@ private data class PendingResize(
 
 internal class TerminalConnection(
     private val client: GatewayClient,
-    private val bearer: GatewayBearer,
-    private val session: AgentSession,
+    private val credential: MachineCredential,
+    private val target: AgentTarget,
     private val page: TerminalPage,
     private val observer: TerminalConnectionObserver,
 ) : WebSocketListener() {
@@ -46,7 +46,7 @@ internal class TerminalConnection(
             check(!started) // justify-service-invariant-check: each connection object owns exactly one WebSocket lifetime.
             started = true
             if (stopped.get()) return
-            socket = client.http.newWebSocket(client.terminalRequest(bearer, session), this)
+            socket = client.http.newWebSocket(client.terminalRequest(credential, target), this)
         }
     }
 
@@ -114,7 +114,15 @@ internal class TerminalConnection(
     }
 
     override fun onFailure(webSocket: WebSocket, throwable: Throwable, response: Response?) {
-        if (!stopped.get()) fail(ApiErrorCode.ReconnectRequired)
+        if (stopped.get()) return
+        val code = if (response == null) {
+            terminalUpgradeFailureCode(null, null)
+        } else {
+            response.use {
+                terminalUpgradeFailureCode(it.code, it.body?.string().orEmpty())
+            }
+        }
+        fail(code)
     }
 
     fun resize(columns: Int, rows: Int) {
@@ -223,5 +231,17 @@ internal class TerminalConnection(
         resizeDrainScheduled = false
         main.removeCallbacks(resizeDrain)
         if (!activeSocket.send(resize.encoded)) fail(ApiErrorCode.ReconnectRequired)
+    }
+}
+
+internal fun terminalUpgradeFailureCode(status: Int?, encoded: String?): ApiErrorCode {
+    if (status == null) {
+        require(encoded == null)
+        return ApiErrorCode.ReconnectRequired
+    }
+    val failure = decodeGatewayHttpFailure(status, requireNotNull(encoded))
+    return when (failure) {
+        is GatewayFailure.Api -> failure.code
+        GatewayFailure.Transport -> ApiErrorCode.ReconnectRequired
     }
 }

@@ -1,0 +1,833 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+readonly repo_dir
+readonly expected_user="nnandal"
+readonly expected_uid="501"
+readonly expected_home="/Users/nnandal"
+readonly expected_product_version="26.4.1"
+readonly expected_build_version="25E253"
+readonly expected_darwin_version="25.4.0"
+readonly expected_architecture="arm64"
+readonly tmux_path="/opt/homebrew/bin/tmux"
+readonly expected_tmux_version="tmux 3.7b"
+readonly tailscale_path="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+readonly expected_tailscale_version="1.102.1"
+readonly service_label="dev.niels.skidbladnir"
+readonly service_domain="gui/${expected_uid}"
+readonly listen_port="7341"
+readonly listen_address="127.0.0.1:${listen_port}"
+readonly serve_port="8443"
+readonly binary_target="${expected_home}/.local/bin/skidbladnir"
+readonly notify_target="${expected_home}/.local/bin/skid-notify"
+readonly catalogue_target="${expected_home}/.local/share/skidbladnir/characters.json"
+readonly bearer_target="${expected_home}/.config/skidbladnir/bearer"
+readonly machine_handle_target="${expected_home}/.config/skidbladnir/machine-handle"
+readonly launch_agent_target="${expected_home}/Library/LaunchAgents/${service_label}.plist"
+readonly hooks_source="${repo_dir}/deploy/macbook/status-hooks.json"
+readonly notify_source="${repo_dir}/deploy/macbook/skid-notify"
+readonly launch_agent_source="${repo_dir}/deploy/launchd/${service_label}.plist"
+readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+readonly desired_notify='notify = ["/Users/nnandal/.local/bin/skid-notify"]'
+readonly operation_lock="${expected_home}/.local/state/skidbladnir/install.lock"
+readonly -a profile_configs=(
+  "${expected_home}/.codex-personal/config.toml"
+  "${expected_home}/.codex-work/config.toml"
+  "${expected_home}/.codex-work2/config.toml"
+)
+
+staging_dir=""
+lock_owned=""
+preflight_launch_state=""
+preflight_launch_pid=""
+launchd_print_state=""
+launchd_print_output=""
+port_listener_records=""
+
+die() {
+  printf 'skidbladnir macbook: %s\n' "$1" >&2
+  exit 1
+}
+
+cleanup() {
+  local exit_status=$?
+  trap - EXIT HUP INT TERM
+  if [[ -n "$staging_dir" && -d "$staging_dir" ]]; then
+    /bin/rm -rf -- "$staging_dir" || exit_status=1
+  fi
+  if [[ -n "$lock_owned" && -f "$operation_lock" && ! -L "$operation_lock" &&
+    "$(/usr/bin/sed -n '1p' "$operation_lock" 2>/dev/null)" == "$$" ]]; then
+    /bin/rm -f -- "$operation_lock" || exit_status=1
+  fi
+  exit "$exit_status"
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
+}
+
+require_directory() {
+  local target_directory="$1"
+  local actual_mode
+  [[ ! -L "$target_directory" && -d "$target_directory" ]] || die "expected a directory: ${target_directory}"
+  [[ "$(/usr/bin/stat -f '%u' "$target_directory")" == "$expected_uid" ]] ||
+    die "directory has the wrong owner: ${target_directory}"
+  actual_mode="$(/usr/bin/stat -f '%Lp' "$target_directory")"
+  [[ "$actual_mode" =~ ^[0-7]{3,4}$ ]] || die "directory mode is invalid: ${target_directory}"
+  (( (8#$actual_mode & 8#022) == 0 )) || die "directory is group- or world-writable: ${target_directory}"
+}
+
+require_optional_directory() {
+  local target_directory="$1"
+  if [[ -e "$target_directory" || -L "$target_directory" ]]; then
+    require_directory "$target_directory"
+  fi
+}
+
+require_regular_file() {
+  local path="$1"
+  local mode="$2"
+  [[ ! -L "$path" && -f "$path" ]] || die "expected a regular file: ${path}"
+  [[ "$(/usr/bin/stat -f '%u:%Lp' "$path")" == "${expected_uid}:${mode}" ]] ||
+    die "file ownership or mode drifted: ${path}"
+}
+
+require_optional_regular_file() {
+  local path="$1"
+  local mode="$2"
+  if [[ -e "$path" || -L "$path" ]]; then
+    require_regular_file "$path" "$mode"
+  fi
+}
+
+ensure_directory() {
+  local target_directory="$1"
+  local mode="$2"
+  if [[ -e "$target_directory" || -L "$target_directory" ]]; then
+    require_directory "$target_directory"
+    return
+  fi
+  /bin/mkdir -m "$mode" "$target_directory"
+}
+
+acquire_operation_lock() {
+  ensure_directory "${expected_home}/.local/state" 700
+  ensure_directory "${expected_home}/.local/state/skidbladnir" 700
+  if ! /usr/bin/shlock -p "$$" -f "$operation_lock"; then
+    die "another installer operation is running"
+  fi
+  /bin/chmod 0600 "$operation_lock"
+  lock_owned=1
+}
+
+classify_notify() {
+  local config_file="$1"
+  /usr/bin/python3 - "$config_file" "$desired_notify" <<'PY'
+import json
+import re
+import sys
+
+config_path, desired_notify = sys.argv[1:]
+with open(config_path, "r", encoding="utf-8", newline=None) as stream:
+    lines = stream.read().splitlines()
+
+if any("'''" in line or '\"\"\"' in line for line in lines):
+    raise SystemExit(3)
+
+bare_key = re.compile(r"[A-Za-z0-9_-]+")
+
+def strip_comment(line):
+    quote = None
+    escaped = False
+    for index, character in enumerate(line):
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+        elif quote == "'":
+            if character == quote:
+                quote = None
+        elif character in "'\"":
+            quote = character
+        elif character == "#":
+            return line[:index]
+    if quote is not None:
+        raise ValueError("unterminated quoted value")
+    return line
+
+def key_path(encoded):
+    result = []
+    index = 0
+    while index < len(encoded):
+        while index < len(encoded) and encoded[index].isspace():
+            index += 1
+        if index == len(encoded):
+            break
+        if encoded[index] == '"':
+            end = index + 1
+            escaped = False
+            while end < len(encoded):
+                character = encoded[end]
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    break
+                end += 1
+            if end == len(encoded):
+                raise ValueError("unterminated basic key")
+            result.append(json.loads(encoded[index:end + 1]))
+            index = end + 1
+        elif encoded[index] == "'":
+            end = encoded.find("'", index + 1)
+            if end < 0:
+                raise ValueError("unterminated literal key")
+            result.append(encoded[index + 1:end])
+            index = end + 1
+        else:
+            match = bare_key.match(encoded, index)
+            if match is None:
+                raise ValueError("invalid bare key")
+            result.append(match.group())
+            index = match.end()
+        while index < len(encoded) and encoded[index].isspace():
+            index += 1
+        if index == len(encoded):
+            break
+        if encoded[index] != ".":
+            raise ValueError("invalid dotted key")
+        index += 1
+    if not result:
+        raise ValueError("empty key")
+    return tuple(result)
+
+def starts_with(path, prefix):
+    return path[:len(prefix)] == prefix
+
+def nonempty_string(encoded):
+    encoded = encoded.strip()
+    if encoded.startswith('"'):
+        value = json.loads(encoded)
+    elif len(encoded) >= 2 and encoded.startswith("'") and encoded.endswith("'") and "'" not in encoded[1:-1]:
+        value = encoded[1:-1]
+    else:
+        raise ValueError("trusted_hash must be a string")
+    if not isinstance(value, str) or not value:
+        raise ValueError("trusted_hash must be nonempty")
+
+current_table = ()
+notify = []
+hook_identities = set()
+hook_assignments = set()
+hook_tables = set()
+try:
+    for line_number, original in enumerate(lines, 1):
+        code = strip_comment(original).strip()
+        if not code:
+            continue
+        if code.startswith("["):
+            array_table = code.startswith("[[")
+            close = "]]" if array_table else "]"
+            opening = 2 if array_table else 1
+            if not code.endswith(close):
+                raise ValueError("invalid table header")
+            current_table = key_path(code[opening:-len(close)])
+            if starts_with(current_table, ("notify",)) or starts_with(current_table, ("features", "hooks")):
+                raise SystemExit(3)
+            if starts_with(current_table, ("hooks",)):
+                if (array_table or current_table[:2] != ("hooks", "state") or
+                        len(current_table) not in (2, 3) or
+                        (len(current_table) == 3 and not current_table[2]) or
+                        current_table in hook_tables):
+                    raise SystemExit(3)
+                hook_tables.add(current_table)
+                if len(current_table) == 3:
+                    hook_identities.add(current_table[2])
+            continue
+        quote = None
+        escaped = False
+        separator = None
+        for index, character in enumerate(code):
+            if quote == '"':
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+            elif quote == "'":
+                if character == quote:
+                    quote = None
+            elif character in "'\"":
+                quote = character
+            elif character == "=":
+                separator = index
+                break
+        if separator is None:
+            raise ValueError("non-assignment statement")
+        assigned = current_table + key_path(code[:separator])
+        if starts_with(assigned, ("features", "hooks")) or assigned == ("features",):
+            raise SystemExit(3)
+        if starts_with(assigned, ("hooks",)):
+            if (len(assigned) != 4 or assigned[:2] != ("hooks", "state") or
+                    not assigned[2] or assigned[3] != "trusted_hash" or
+                    assigned in hook_assignments):
+                raise SystemExit(3)
+            nonempty_string(code[separator + 1:])
+            hook_identities.add(assigned[2])
+            hook_assignments.add(assigned)
+        if starts_with(assigned, ("notify",)):
+            if assigned != ("notify",):
+                raise SystemExit(3)
+            notify.append((line_number, original))
+except (UnicodeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(3)
+
+if hook_identities != {assigned[2] for assigned in hook_assignments}:
+    raise SystemExit(3)
+
+if not notify:
+    print("add")
+elif notify == [(1, desired_notify)]:
+    print("present")
+else:
+    raise SystemExit(3)
+PY
+}
+
+classify_hooks() {
+  local hook_file="$1"
+  if [[ ! -e "$hook_file" && ! -L "$hook_file" ]]; then
+    printf 'add\n'
+    return
+  fi
+  require_regular_file "$hook_file" 600
+  if /usr/bin/cmp -s "$hooks_source" "$hook_file"; then
+    printf 'present\n'
+    return
+  fi
+  printf 'conflict\n'
+}
+
+validate_bearer() {
+  /usr/bin/python3 - "$bearer_target" "$expected_uid" <<'PY'
+import base64
+import os
+import stat
+import sys
+
+target, expected_uid = sys.argv[1:]
+metadata = os.lstat(target)
+if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+    raise SystemExit(1)
+if metadata.st_uid != int(expected_uid) or stat.S_IMODE(metadata.st_mode) != 0o600:
+    raise SystemExit(1)
+with open(target, "rb") as stream:
+    encoded = stream.read()
+if len(encoded) != 44 or not encoded.endswith(b"\n"):
+    raise SystemExit(1)
+token = encoded[:-1]
+try:
+    decoded = base64.b64decode(token + b"=", altchars=b"-_", validate=True)
+except Exception:
+    raise SystemExit(1)
+if len(decoded) != 32 or base64.urlsafe_b64encode(decoded).rstrip(b"=") != token:
+    raise SystemExit(1)
+PY
+}
+
+tailnet_host() {
+  "$tailscale_path" status --json | /usr/bin/jq -er '.Self.DNSName | rtrimstr(".")'
+}
+
+serve_state() {
+  local encoded="$1"
+  local host_port="$2"
+  if /usr/bin/jq -e 'type == "object" and . == {}' <<<"$encoded" >/dev/null; then
+    printf 'add\n'
+    return
+  fi
+  if /usr/bin/jq -e --arg host_port "$host_port" --arg serve_port "$serve_port" '
+    ((.AllowFunnel // {}) | length == 0) and
+    ((.Services // {}) | length == 0) and
+    ((.Foreground // {}) | length == 0) and
+    (.TCP == {($serve_port):{"HTTPS":true}}) and
+    (.Web == {($host_port):{"Handlers":{"/v1":{"Proxy":"http://127.0.0.1:7341/v1"}}}}) and
+    ((keys - ["AllowFunnel","Foreground","Services","TCP","Web"]) | length == 0)
+  ' <<<"$encoded" >/dev/null; then
+    printf 'present\n'
+    return
+  fi
+  printf 'conflict\n'
+}
+
+preflight() {
+  [[ "$(/usr/bin/id -un)" == "$expected_user" ]] || die "must run as ${expected_user}"
+  [[ "$(/usr/bin/id -u)" == "$expected_uid" ]] || die "unexpected uid"
+  [[ "${HOME:-}" == "$expected_home" ]] || die "unexpected home directory"
+  [[ -z "${TMUX:-}" && -z "${TMUX_PANE:-}" && -z "${TMUX_TMPDIR:-}" ]] ||
+    die "refusing inherited tmux socket state"
+
+  local command
+  for command in cmp curl git go jq lsof plutil ps shlock; do
+    require_command "$command"
+  done
+  [[ "$(/usr/bin/sw_vers -productVersion)" == "$expected_product_version" ]] || die "macOS version drifted"
+  [[ "$(/usr/bin/sw_vers -buildVersion)" == "$expected_build_version" ]] || die "macOS build drifted"
+  [[ "$(/usr/bin/uname -r)" == "$expected_darwin_version" ]] || die "Darwin version drifted"
+  [[ "$(/usr/bin/uname -m)" == "$expected_architecture" ]] || die "architecture drifted"
+  [[ -x "$tmux_path" && "$("$tmux_path" -V)" == "$expected_tmux_version" ]] || die "tmux pin drifted"
+  [[ -x "$tailscale_path" && "$("$tailscale_path" version | /usr/bin/head -n 1)" == "$expected_tailscale_version" ]] ||
+    die "Tailscale pin drifted"
+  "$tailscale_path" status --json |
+    /usr/bin/jq -e '.BackendState == "Running" and .Self.Online == true' >/dev/null || die "Tailscale is not online"
+
+  require_directory "$expected_home"
+  require_directory "${expected_home}/.config"
+  require_directory "${expected_home}/.local"
+  require_directory "${expected_home}/Library"
+  require_directory "${expected_home}/Library/LaunchAgents"
+  require_optional_directory "${expected_home}/.config/skidbladnir"
+  require_optional_directory "${expected_home}/.local/bin"
+  require_optional_directory "${expected_home}/.local/share"
+  require_optional_directory "${expected_home}/.local/share/skidbladnir"
+  require_optional_directory "${expected_home}/.local/state"
+  require_optional_directory "${expected_home}/.local/state/skidbladnir"
+  acquire_operation_lock
+  require_optional_regular_file "$binary_target" 755
+  require_optional_regular_file "$notify_target" 755
+  require_optional_regular_file "$catalogue_target" 644
+  require_optional_regular_file "$bearer_target" 600
+  require_optional_regular_file "$machine_handle_target" 600
+  require_optional_regular_file "$launch_agent_target" 644
+  [[ -e "$bearer_target" ]] || die "bearer is absent; mint it separately before installation"
+  validate_bearer || die "bearer is invalid"
+
+  local config_file
+  local classification
+  local hook_file
+  local profile_key
+  for profile_key in personal work work2; do
+    [[ -f "${expected_home}/bin/codex-${profile_key}" && -x "${expected_home}/bin/codex-${profile_key}" ]] ||
+      die "profile command is unavailable: codex-${profile_key}"
+  done
+  [[ -f "${expected_home}/.local/bin/codex" && -x "${expected_home}/.local/bin/codex" ]] ||
+    die "foreground Codex path is unavailable"
+  for config_file in "${profile_configs[@]}"; do
+    require_directory "$(/usr/bin/dirname "$config_file")"
+    require_regular_file "$config_file" 600
+    hook_file="$(/usr/bin/dirname "$config_file")/hooks.json"
+    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
+    classification="$(classify_hooks "$hook_file")"
+    [[ "$classification" != "conflict" ]] || die "Codex hook configuration conflicts: ${hook_file}"
+  done
+
+  local host_name
+  local state
+  host_name="$(tailnet_host)"
+  state="$(serve_state "$("$tailscale_path" serve status --json)" "${host_name}:${serve_port}")"
+  [[ "$state" != "conflict" ]] || die "Tailscale Serve configuration conflicts"
+  if [[ "$state" == "add" ]]; then
+    require_port_free "$serve_port"
+  fi
+  require_launchd_environment_clean
+  preflight_launchd_service
+}
+
+stage() {
+  staging_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/skidbladnir-macbook.XXXXXX")"
+  (
+    cd "$repo_dir"
+    /usr/bin/git diff --check
+    ./scripts/check-catalogue
+    go test ./cmd/... ./internal/...
+		go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
+    go build -trimpath -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
+    /usr/bin/plutil -lint "$launch_agent_source" >/dev/null
+    /usr/bin/jq -e . "$hooks_source" >/dev/null
+  )
+  /usr/bin/install -m 0755 "$notify_source" "$staging_dir/skid-notify"
+  /usr/bin/install -m 0600 "$hooks_source" "$staging_dir/status-hooks.json"
+  /usr/bin/install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
+  /usr/bin/install -m 0644 "$launch_agent_source" "$staging_dir/${service_label}.plist"
+
+  local config_file
+  local classification
+  local index=0
+  for config_file in "${profile_configs[@]}"; do
+    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
+    if [[ "$classification" == "add" ]]; then
+      {
+        printf '%s\n\n' "$desired_notify"
+        /bin/cat "$config_file"
+      } >"$staging_dir/config-${index}.toml"
+      /bin/chmod 0600 "$staging_dir/config-${index}.toml"
+    fi
+    index=$((index + 1))
+  done
+}
+
+atomic_install() {
+  local source="$1"
+  local target="$2"
+  local mode="$3"
+  local temporary="${target}.skidbladnir.$$"
+  if ! /usr/bin/install -m "$mode" "$source" "$temporary"; then
+    /bin/rm -f -- "$temporary"
+    return 1
+  fi
+  if ! /bin/mv -f "$temporary" "$target"; then
+    /bin/rm -f -- "$temporary"
+    return 1
+  fi
+}
+
+stop_loaded_job() {
+  local launch_state
+  local main_pid
+  case "$preflight_launch_state" in
+    running)
+      launch_state="$(/bin/launchctl print "${service_domain}/${service_label}")" ||
+        die "LaunchAgent disappeared after preflight"
+      main_pid="$(launchd_pid "$launch_state")"
+      [[ "$main_pid" == "$preflight_launch_pid" ]] || die "LaunchAgent process changed after preflight"
+      verify_running_gateway "$main_pid"
+      /bin/launchctl bootout "${service_domain}/${service_label}"
+      wait_for_port_free "$listen_port"
+      ;;
+    absent)
+      read_launchd_service
+      [[ "$launchd_print_state" == "absent" ]] || die "LaunchAgent appeared after preflight"
+      require_port_free "$listen_port"
+      ;;
+    *) die "LaunchAgent preflight state is absent" ;;
+  esac
+}
+
+wait_for_health() {
+  local attempt
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if /usr/bin/curl --fail --silent "http://${listen_address}/healthz" >/dev/null; then
+      return
+    fi
+    /bin/sleep 0.1
+  done
+  die "gateway health check did not become ready"
+}
+
+machine_get() {
+  local url="$1"
+  local machine_handle
+  machine_handle="$(/usr/bin/sed -n '1p' "$machine_handle_target")"
+  /usr/bin/curl --fail --silent --show-error \
+    --header @<(/usr/bin/sed 's/^/Authorization: Bearer /' "$bearer_target") \
+    --header "Skidbladnir-Machine: ${machine_handle}" \
+    "$url"
+}
+
+verify_plist() {
+  /usr/bin/plutil -convert json -o - "$launch_agent_target" |
+    /usr/bin/jq -e --arg path "$service_path" '
+      .Label == "dev.niels.skidbladnir" and
+      .ProgramArguments == [
+        "/Users/nnandal/.local/bin/skidbladnir",
+        "gateway",
+        "--listen=127.0.0.1:7341",
+        "--bearer-file=/Users/nnandal/.config/skidbladnir/bearer",
+        "--catalogue-path=/Users/nnandal/.local/share/skidbladnir/characters.json",
+        "--machine-handle-file=/Users/nnandal/.config/skidbladnir/machine-handle"
+      ] and
+      .EnvironmentVariables == {HOME:"/Users/nnandal",PATH:$path} and
+      .WorkingDirectory == "/Users/nnandal" and
+      .RunAtLoad == true and .KeepAlive == {SuccessfulExit:false} and
+      .AbandonProcessGroup == true and .ThrottleInterval == 2 and
+      .ExitTimeOut == 10 and .Umask == 18
+    ' >/dev/null || die "LaunchAgent contract drifted"
+}
+
+require_launchd_environment_clean() {
+  local variable
+  local value
+  for variable in TMUX TMUX_PANE TMUX_TMPDIR; do
+    value="$(/bin/launchctl getenv "$variable" 2>&1)" || die "could not read launchd environment"
+    [[ -z "$value" ]] || die "launchd owns inherited tmux socket state: ${variable}"
+  done
+}
+
+read_port_listeners() {
+  local port="$1"
+  local result_code=0
+  if port_listener_records="$(/usr/sbin/lsof -nP -iTCP:"$port" -sTCP:LISTEN -Fpfn 2>&1)"; then
+    [[ -n "$port_listener_records" ]] || die "lsof returned an empty successful listener result"
+    return
+  else
+    result_code=$?
+  fi
+  [[ "$result_code" -eq 1 && -z "$port_listener_records" ]] || die "could not inspect TCP port ${port}"
+}
+
+require_port_free() {
+  local port="$1"
+  read_port_listeners "$port"
+  [[ -z "$port_listener_records" ]] || die "TCP port ${port} is already in use"
+}
+
+wait_for_port_free() {
+  local port="$1"
+  local attempt
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    read_port_listeners "$port"
+    if [[ -z "$port_listener_records" ]]; then
+      return
+    fi
+    /bin/sleep 0.1
+  done
+  die "TCP port ${port} did not become free"
+}
+
+launchd_pid() {
+  local launch_state="$1"
+  local main_pid
+  main_pid="$(/usr/bin/awk '/^[[:space:]]*pid = [1-9][0-9]*$/ { print $3 }' <<<"$launch_state")"
+  [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || die "LaunchAgent PID is absent or ambiguous"
+  printf '%s\n' "$main_pid"
+}
+
+verify_gateway_listener() {
+  local main_pid="$1"
+  read_port_listeners "$listen_port"
+  [[ -n "$port_listener_records" ]] || return 1
+  /usr/bin/python3 - "$main_pid" "$listen_address" "$port_listener_records" <<'PY'
+import sys
+
+expected_pid, expected_address, records = sys.argv[1:]
+current_pid = None
+listeners = []
+for line in records.splitlines():
+    if line.startswith("p"):
+        current_pid = line[1:]
+    elif line.startswith("n"):
+        if current_pid is None:
+            raise SystemExit(1)
+        listeners.append((current_pid, line[1:]))
+if listeners != [(expected_pid, expected_address)]:
+    raise SystemExit(1)
+PY
+}
+
+read_launchd_service() {
+  local result_code=0
+  if launchd_print_output="$(/bin/launchctl print "${service_domain}/${service_label}" 2>&1)"; then
+    launchd_print_state="running"
+    return
+  else
+    result_code=$?
+  fi
+  if [[ "$result_code" -eq 113 &&
+    "$launchd_print_output" == *"Could not find service \"${service_label}\" in domain for user gui: ${expected_uid}"* ]]; then
+    launchd_print_state="absent"
+    return
+  fi
+  die "could not inspect LaunchAgent state"
+}
+
+verify_running_gateway() {
+  local main_pid="$1"
+  local process_command
+  local process_environment
+  process_command="$(/bin/ps -ww -p "$main_pid" -o command=)"
+  [[ "$process_command" == "${binary_target} gateway --listen=${listen_address} --bearer-file=${bearer_target} --catalogue-path=${catalogue_target} --machine-handle-file=${machine_handle_target}" ]] ||
+    die "running gateway command drifted"
+  process_environment="$(/bin/ps eww -p "$main_pid" -o command=)"
+  [[ " $process_environment " == *" HOME=${expected_home} "* ]] || die "running gateway HOME drifted"
+  [[ " $process_environment " == *" PATH=${service_path} "* ]] || die "running gateway PATH drifted"
+  [[ " $process_environment " != *" TMUX="* && " $process_environment " != *" TMUX_PANE="* &&
+    " $process_environment " != *" TMUX_TMPDIR="* ]] || die "running gateway inherited tmux socket state"
+  /usr/bin/python3 - "$main_pid" "$binary_target" <<'PY'
+import ctypes
+import os
+import sys
+
+pid_text, expected_executable = sys.argv[1:]
+if not pid_text.isascii() or not pid_text.isdecimal() or int(pid_text) <= 0:
+    raise SystemExit(1)
+buffer = ctypes.create_string_buffer(4096)
+libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+observed_size = libproc.proc_pidpath(int(pid_text), buffer, len(buffer))
+if observed_size <= 0 or os.fsdecode(buffer.value) != expected_executable:
+    raise SystemExit(1)
+PY
+  verify_gateway_listener "$main_pid" || die "gateway is not the sole exact loopback listener"
+}
+
+preflight_launchd_service() {
+  local launch_state
+  local main_pid
+  read_launchd_service
+  if [[ "$launchd_print_state" == "running" ]]; then
+    launch_state="$launchd_print_output"
+    /usr/bin/grep -Eq '^[[:space:]]*state = running$' <<<"$launch_state" || die "LaunchAgent is loaded but not running"
+    /usr/bin/grep -Eq "^[[:space:]]*program = ${binary_target}$" <<<"$launch_state" || die "LaunchAgent program drifted"
+    [[ -e "$launch_agent_target" ]] || die "loaded LaunchAgent plist is absent"
+    /usr/bin/cmp -s "$launch_agent_source" "$launch_agent_target" || die "loaded LaunchAgent plist drifted"
+    verify_plist
+    main_pid="$(launchd_pid "$launch_state")"
+    verify_running_gateway "$main_pid"
+    read_launchd_service
+    [[ "$launchd_print_state" == "running" ]] || die "LaunchAgent disappeared during preflight"
+    launch_state="$launchd_print_output"
+    [[ "$(launchd_pid "$launch_state")" == "$main_pid" ]] || die "LaunchAgent process changed during preflight"
+    preflight_launch_state="running"
+    preflight_launch_pid="$main_pid"
+    return
+  fi
+  require_port_free "$listen_port"
+  preflight_launch_state="absent"
+  preflight_launch_pid=""
+}
+
+verify_installation() {
+  [[ -n "$staging_dir" && -x "$staging_dir/skidbladnir" ]] || die "verification artifact is absent"
+  require_regular_file "$binary_target" 755
+  require_regular_file "$notify_target" 755
+  require_regular_file "$catalogue_target" 644
+  require_regular_file "$bearer_target" 600
+  require_regular_file "$machine_handle_target" 600
+  require_regular_file "$launch_agent_target" 644
+  validate_bearer || die "bearer is invalid"
+  local machine_handle
+  machine_handle="$("$staging_dir/skidbladnir" machine init --file="$machine_handle_target")"
+  [[ "$machine_handle" == "$(/usr/bin/sed -n '1p' "$machine_handle_target")" ]] || die "machine handle is invalid"
+
+  /usr/bin/cmp -s "$staging_dir/skidbladnir" "$binary_target" || die "installed gateway drifted"
+  /usr/bin/cmp -s "$notify_source" "$notify_target" || die "installed notifier drifted"
+  /usr/bin/cmp -s "$repo_dir/catalog/characters.json" "$catalogue_target" || die "installed catalogue drifted"
+  /usr/bin/cmp -s "$launch_agent_source" "$launch_agent_target" || die "installed LaunchAgent drifted"
+  verify_plist
+
+  local config_file
+  local hook_file
+  for config_file in "${profile_configs[@]}"; do
+    [[ "$(classify_notify "$config_file")" == "present" ]] || die "notify is not installed: ${config_file}"
+    hook_file="$(/usr/bin/dirname "$config_file")/hooks.json"
+    [[ "$(classify_hooks "$hook_file")" == "present" ]] || die "status hooks are not installed: ${hook_file}"
+  done
+
+  local launch_state
+  local main_pid
+  launch_state="$(/bin/launchctl print "${service_domain}/${service_label}")"
+  /usr/bin/grep -Eq '^[[:space:]]*state = running$' <<<"$launch_state" || die "LaunchAgent is not running"
+  /usr/bin/grep -Eq "^[[:space:]]*program = ${binary_target}$" <<<"$launch_state" || die "LaunchAgent program drifted"
+  main_pid="$(launchd_pid "$launch_state")"
+  verify_running_gateway "$main_pid"
+  launch_state="$(/bin/launchctl print "${service_domain}/${service_label}")"
+  [[ "$(/usr/bin/awk '/^[[:space:]]*pid = [1-9][0-9]*$/ { print $3 }' <<<"$launch_state")" == "$main_pid" ]] ||
+    die "LaunchAgent process changed during verification"
+  /usr/bin/grep -Eq '^[[:space:]]*state = running$' <<<"$launch_state" || die "LaunchAgent stopped during verification"
+  require_launchd_environment_clean
+  wait_for_health
+
+  machine_get "http://${listen_address}/v1/sessions" |
+    /usr/bin/jq -e --arg machine_handle "$machine_handle" '.machine == {handle:$machine_handle,platform:"Darwin"}' >/dev/null ||
+    die "loopback machine envelope drifted"
+
+  local host_name
+  host_name="$(tailnet_host)"
+  [[ "$(serve_state "$("$tailscale_path" serve status --json)" "${host_name}:${serve_port}")" == "present" ]] ||
+    die "exact Tailscale Serve route is not installed"
+  machine_get "https://${host_name}:${serve_port}/v1/sessions" |
+    /usr/bin/jq -e --arg machine_handle "$machine_handle" '.machine == {handle:$machine_handle,platform:"Darwin"}' >/dev/null ||
+    die "Tailnet machine envelope drifted"
+  [[ "$(/usr/bin/curl --silent --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/v1/sessions")" == "401" ]] ||
+    die "unauthenticated Tailnet request was not rejected"
+  [[ "$(/usr/bin/curl --silent --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/healthz")" == "404" ]] ||
+    die "health endpoint is exposed to the tailnet"
+  printf 'Skíðblaðnir MacBook installation is verified.\n'
+  printf 'Codex status hooks are digest-verified; review each new digest once with /hooks.\n'
+}
+
+install_macbook() {
+  stage
+  if [[ -e "$machine_handle_target" || -L "$machine_handle_target" ]]; then
+    [[ "$("$staging_dir/skidbladnir" machine init --file="$machine_handle_target")" == "$(/usr/bin/sed -n '1p' "$machine_handle_target")" ]] ||
+      die "existing machine handle is invalid"
+  fi
+  stop_loaded_job
+  ensure_directory "${expected_home}/.local/bin" 700
+  ensure_directory "${expected_home}/.local/share" 700
+  ensure_directory "${expected_home}/.local/share/skidbladnir" 700
+  ensure_directory "${expected_home}/.config/skidbladnir" 700
+  atomic_install "$staging_dir/skidbladnir" "$binary_target" 0755
+  atomic_install "$staging_dir/skid-notify" "$notify_target" 0755
+  atomic_install "$staging_dir/characters.json" "$catalogue_target" 0644
+  "$staging_dir/skidbladnir" machine init --file="$machine_handle_target" >/dev/null
+
+  local config_file
+  local classification
+  local hook_file
+  local index=0
+  for config_file in "${profile_configs[@]}"; do
+    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
+    if [[ "$classification" == "add" ]]; then
+      atomic_install "$staging_dir/config-${index}.toml" "$config_file" 0600
+    fi
+    hook_file="$(/usr/bin/dirname "$config_file")/hooks.json"
+    if [[ "$(classify_hooks "$hook_file")" == "add" ]]; then
+      atomic_install "$staging_dir/status-hooks.json" "$hook_file" 0600
+    fi
+    index=$((index + 1))
+  done
+  atomic_install "$staging_dir/${service_label}.plist" "$launch_agent_target" 0644
+  /bin/launchctl bootstrap "$service_domain" "$launch_agent_target"
+  /bin/launchctl kickstart -k "${service_domain}/${service_label}"
+  wait_for_health
+
+  local host_name
+  local state
+  host_name="$(tailnet_host)"
+  state="$(serve_state "$("$tailscale_path" serve status --json)" "${host_name}:${serve_port}")"
+  case "$state" in
+    add)
+      "$tailscale_path" serve --bg --https="$serve_port" --set-path=/v1 "http://${listen_address}/v1"
+      ;;
+    present) ;;
+    *) die "Tailscale Serve configuration conflicts" ;;
+  esac
+  verify_installation
+}
+
+verify_macbook() {
+  stage
+  verify_installation
+}
+
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: %s {install|verify}\n' "$0" >&2
+  exit 64
+fi
+
+readonly operation="$1"
+case "$operation" in
+  install | verify) ;;
+  *)
+    printf 'usage: %s {install|verify}\n' "$0" >&2
+    exit 64
+    ;;
+esac
+
+preflight
+case "$operation" in
+  install) install_macbook ;;
+  verify) verify_macbook ;;
+esac

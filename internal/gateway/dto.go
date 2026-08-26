@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -33,6 +34,7 @@ var (
 	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
 	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh before killing it.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
+	errorMachineIdentityMismatch     = apiError{Code: "MachineIdentityMismatch", Message: "The machine identity changed. Pair this machine again.", Status: http.StatusConflict, logCode: logging.ErrorMachineIdentityMismatch}
 	errorSessionGroupedConflict      = apiError{Code: "SessionGroupedConflict", Message: "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.", Status: http.StatusConflict, logCode: logging.ErrorSessionGroupedConflict}
 	errorInternal                    = apiError{Code: "InternalError", Message: "Skíðblaðnir could not complete the request.", Status: http.StatusInternalServerError, logCode: logging.ErrorInternal}
 )
@@ -67,7 +69,13 @@ type sessionDTO struct {
 	Status          statusDTO     `json:"status"`
 }
 
+type machineDTO struct {
+	Handle   string        `json:"handle"`
+	Platform platform.Kind `json:"platform"`
+}
+
 type sessionsResponseDTO struct {
+	Machine    machineDTO   `json:"machine"`
 	ObservedAt string       `json:"observedAt"`
 	Profiles   []profileDTO `json:"profiles"`
 	Sessions   []sessionDTO `json:"sessions"`
@@ -99,8 +107,9 @@ type killSessionRequest struct {
 }
 
 type pressureResponseDTO struct {
-	Current hostSampleDTO   `json:"current"`
-	History []hostSampleDTO `json:"history"`
+	Unsupported []pressure.Metric `json:"unsupported"`
+	Current     hostSampleDTO     `json:"current"`
+	History     []hostSampleDTO   `json:"history"`
 }
 
 type hostSampleDTO struct {
@@ -108,18 +117,19 @@ type hostSampleDTO struct {
 	Level     string             `json:"level"`
 	Reasons   []string           `json:"reasons"`
 	Metrics   pressureMetricsDTO `json:"metrics"`
-	Missing   []string           `json:"missing"`
+	Missing   []pressure.Metric  `json:"missing"`
 }
 
 type pressureMetricsDTO struct {
-	CPUPercent                          *float64 `json:"cpuPercent,omitempty"`
-	NormalizedLoad                      *float64 `json:"normalizedLoad,omitempty"`
-	MemoryAvailablePercent              *float64 `json:"memoryAvailablePercent,omitempty"`
-	SwapUsedPercent                     *float64 `json:"swapUsedPercent,omitempty"`
-	DiskAvailablePercent                *float64 `json:"diskAvailablePercent,omitempty"`
-	CPUPressureSomeAvg60Percent         *float64 `json:"cpuPsiSomeAvg60Percent,omitempty"`
-	MemoryPressureFullAvg60Percent      *float64 `json:"memoryPsiFullAvg60Percent,omitempty"`
-	InputOutputPressureFullAvg60Percent *float64 `json:"ioPsiFullAvg60Percent,omitempty"`
+	CPUPercent                          *float64                 `json:"cpuPercent,omitempty"`
+	NormalizedLoad                      *float64                 `json:"normalizedLoad,omitempty"`
+	MemoryAvailablePercent              *float64                 `json:"memoryAvailablePercent,omitempty"`
+	SwapUsedPercent                     *float64                 `json:"swapUsedPercent,omitempty"`
+	DiskAvailablePercent                *float64                 `json:"diskAvailablePercent,omitempty"`
+	CPUPressureSomeAvg60Percent         *float64                 `json:"cpuPsiSomeAvg60Percent,omitempty"`
+	MemoryPressureFullAvg60Percent      *float64                 `json:"memoryPsiFullAvg60Percent,omitempty"`
+	InputOutputPressureFullAvg60Percent *float64                 `json:"ioPsiFullAvg60Percent,omitempty"`
+	MemoryPressure                      *pressure.MemoryPressure `json:"memoryPressure,omitempty"`
 }
 
 func mapProfiles(profiles []sessions.Profile) ([]profileDTO, error) {
@@ -208,7 +218,7 @@ func sessionPriority(kind string) int {
 	}
 }
 
-func mapHostSample(sample pressure.Sample) (hostSampleDTO, error) {
+func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struct{}) (hostSampleDTO, error) {
 	level := string(sample.Status)
 	switch sample.Status {
 	case pressure.StatusNormal, pressure.StatusWarm, pressure.StatusHot, pressure.StatusUnknown:
@@ -228,27 +238,36 @@ func mapHostSample(sample pressure.Sample) (hostSampleDTO, error) {
 		SampledAt: sample.ObservedAt.Format(time.RFC3339Nano),
 		Level:     level,
 		Reasons:   reasons,
-		Missing:   []string{},
+		Missing:   []pressure.Metric{},
 	}
 	metrics := [...]struct {
-		name        string
+		metric      pressure.Metric
 		signal      pressure.Signal
 		destination **float64
 		maximum     float64
 	}{
-		{"cpuPercent", sample.CPUPercent, &mapped.Metrics.CPUPercent, 100},
-		{"normalizedLoad", sample.LoadNormalized, &mapped.Metrics.NormalizedLoad, math.MaxFloat64},
-		{"memoryAvailablePercent", sample.MemoryAvailablePercent, &mapped.Metrics.MemoryAvailablePercent, 100},
-		{"swapUsedPercent", sample.SwapUsedPercent, &mapped.Metrics.SwapUsedPercent, 100},
-		{"diskAvailablePercent", sample.DiskAvailablePercent, &mapped.Metrics.DiskAvailablePercent, 100},
-		{"cpuPsiSomeAvg60Percent", sample.CPUPressureSomeAvg60, &mapped.Metrics.CPUPressureSomeAvg60Percent, 100},
-		{"memoryPsiFullAvg60Percent", sample.MemoryPressureFullAvg60, &mapped.Metrics.MemoryPressureFullAvg60Percent, 100},
-		{"ioPsiFullAvg60Percent", sample.InputOutputPressureFullAvg60, &mapped.Metrics.InputOutputPressureFullAvg60Percent, 100},
+		{pressure.MetricCPUPercent, sample.CPUPercent, &mapped.Metrics.CPUPercent, 100},
+		{pressure.MetricLoadNormalized, sample.LoadNormalized, &mapped.Metrics.NormalizedLoad, math.MaxFloat64},
+		{pressure.MetricMemoryAvailablePercent, sample.MemoryAvailablePercent, &mapped.Metrics.MemoryAvailablePercent, 100},
+		{pressure.MetricSwapUsedPercent, sample.SwapUsedPercent, &mapped.Metrics.SwapUsedPercent, 100},
+		{pressure.MetricDiskAvailablePercent, sample.DiskAvailablePercent, &mapped.Metrics.DiskAvailablePercent, 100},
+		{pressure.MetricCPUPressureSomeAvg60, sample.CPUPressureSomeAvg60, &mapped.Metrics.CPUPressureSomeAvg60Percent, 100},
+		{pressure.MetricMemoryPressureFullAvg60, sample.MemoryPressureFullAvg60, &mapped.Metrics.MemoryPressureFullAvg60Percent, 100},
+		{pressure.MetricInputOutputPressureFullAvg60, sample.InputOutputPressureFullAvg60, &mapped.Metrics.InputOutputPressureFullAvg60Percent, 100},
 	}
 	for _, metric := range metrics {
 		value, known := metric.signal.Value()
+		excluded := false
+		if _, excluded = unsupported[metric.metric]; excluded {
+			if err := partitionPressureMetric(metric.metric, known, true, &mapped.Missing); err != nil {
+				return hostSampleDTO{}, err
+			}
+			continue
+		}
+		if err := partitionPressureMetric(metric.metric, known, false, &mapped.Missing); err != nil {
+			return hostSampleDTO{}, err
+		}
 		if !known {
-			mapped.Missing = append(mapped.Missing, metric.name)
 			continue
 		}
 		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > metric.maximum {
@@ -257,8 +276,65 @@ func mapHostSample(sample pressure.Sample) (hostSampleDTO, error) {
 		valueCopy := value
 		*metric.destination = &valueCopy
 	}
-	sort.Strings(mapped.Missing)
+	memoryPressure, known := sample.MemoryPressure.Value()
+	_, memoryPressureUnsupported := unsupported[pressure.MetricMemoryPressure]
+	if err := partitionPressureMetric(pressure.MetricMemoryPressure, known, memoryPressureUnsupported, &mapped.Missing); err != nil {
+		return hostSampleDTO{}, err
+	}
+	if known && !memoryPressureUnsupported {
+		switch memoryPressure {
+		case pressure.MemoryPressureNormal, pressure.MemoryPressureWarning, pressure.MemoryPressureCritical:
+		default:
+			return hostSampleDTO{}, errors.New("invalid memory pressure")
+		}
+		memoryPressureCopy := memoryPressure
+		mapped.Metrics.MemoryPressure = &memoryPressureCopy
+	}
+	sort.Slice(mapped.Missing, func(left, right int) bool {
+		return mapped.Missing[left] < mapped.Missing[right]
+	})
 	return mapped, nil
+}
+
+func partitionPressureMetric(metric pressure.Metric, observed, unsupported bool, missing *[]pressure.Metric) error {
+	if unsupported {
+		if observed {
+			return errors.New("unsupported pressure metric was observed")
+		}
+		return nil
+	}
+	if !observed {
+		*missing = append(*missing, metric)
+	}
+	return nil
+}
+
+func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pressure.Metric]struct{}, error) {
+	mapped := append([]pressure.Metric(nil), metrics...)
+	if mapped == nil {
+		mapped = []pressure.Metric{}
+	}
+	set := make(map[pressure.Metric]struct{}, len(mapped))
+	for index, metric := range mapped {
+		switch metric {
+		case pressure.MetricCPUPercent,
+			pressure.MetricLoadNormalized,
+			pressure.MetricMemoryAvailablePercent,
+			pressure.MetricSwapUsedPercent,
+			pressure.MetricDiskAvailablePercent,
+			pressure.MetricCPUPressureSomeAvg60,
+			pressure.MetricMemoryPressureFullAvg60,
+			pressure.MetricInputOutputPressureFullAvg60,
+			pressure.MetricMemoryPressure:
+		default:
+			return nil, nil, errors.New("invalid unsupported pressure metric")
+		}
+		if index > 0 && mapped[index-1] >= metric {
+			return nil, nil, errors.New("unsupported pressure metrics are not sorted and unique")
+		}
+		set[metric] = struct{}{}
+	}
+	return mapped, set, nil
 }
 
 func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging.PressureReason, error) {

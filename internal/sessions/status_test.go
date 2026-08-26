@@ -3,28 +3,30 @@ package sessions
 import (
 	"testing"
 	"time"
+
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
 func TestLifecycleStatusIsIndependentFromAttention(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	process := foregroundProcess{pid: 4312, startTime: "991827", executableBase: "codex"}
+	process := processinfo.Observation{PID: 4312, StartIdentity: "991827", Executable: "codex"}
 	status, valid := parseLifecycleStatus("v1:4312:991827:working:1787745590", process, now)
 	if !valid || status.Kind != StatusWorking || status.Signal != StatusSignalLifecycle {
-		t.Fatalf("working lifecycle = (%+v,%t), want Working/Lifecycle", status, valid)
+		t.Fatalf("working lifecycle mismatch: valid=%t kind=%s signal=%s", valid, status.Kind, status.Signal)
 	}
 	if status.SignalAt != time.Date(2026, time.August, 26, 11, 59, 50, 0, time.UTC) {
-		t.Fatalf("working lifecycle timestamp = %s", status.SignalAt)
+		t.Fatal("working lifecycle timestamp mismatch")
 	}
 
 	status, valid = parseLifecycleStatus("v1:4312:991827:idle:1787745580", process, now)
 	if !valid || status.Kind != StatusIdle || status.Signal != StatusSignalLifecycle {
-		t.Fatalf("idle lifecycle = (%+v,%t), want Idle/Lifecycle", status, valid)
+		t.Fatalf("idle lifecycle mismatch: valid=%t kind=%s signal=%s", valid, status.Kind, status.Signal)
 	}
 }
 
 func TestLifecycleStatusRejectsAbsentMalformedAndFutureFacts(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	process := foregroundProcess{pid: 4312, startTime: "991827", executableBase: "codex"}
+	process := processinfo.Observation{PID: 4312, StartIdentity: "991827", Executable: "codex"}
 	for _, value := range []string{
 		"",
 		"working",
@@ -35,8 +37,8 @@ func TestLifecycleStatusRejectsAbsentMalformedAndFutureFacts(t *testing.T) {
 		"v1:4313:991827:working:1787745590",
 		"v1:4312:991828:working:1787745590",
 	} {
-		if status, valid := parseLifecycleStatus(value, process, now); valid {
-			t.Fatalf("accepted lifecycle %q as %+v", value, status)
+		if _, valid := parseLifecycleStatus(value, process, now); valid {
+			t.Fatal("accepted an absent, malformed, future, or wrong-lifetime lifecycle fact")
 		}
 	}
 }
@@ -44,9 +46,9 @@ func TestLifecycleStatusRejectsAbsentMalformedAndFutureFacts(t *testing.T) {
 func TestLifecycleStatusIsBoundToTheExactForegroundProcessLifetime(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
 	stale := "v1:4312:991827:idle:1787745590"
-	newProcess := foregroundProcess{pid: 4312, startTime: "991828", executableBase: "codex"}
-	if status, valid := parseLifecycleStatus(stale, newProcess, now); valid {
-		t.Fatalf("accepted stale lifecycle from a reused process id: %+v", status)
+	newProcess := processinfo.Observation{PID: 4312, StartIdentity: "991828", Executable: "codex"}
+	if _, valid := parseLifecycleStatus(stale, newProcess, now); valid {
+		t.Fatal("accepted stale lifecycle from a reused process id")
 	}
 }
 
@@ -54,6 +56,6 @@ func TestLiveAgentWithoutLifecycleEvidenceIsRunningNotWorking(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
 	status := runningStatus(now)
 	if status.Kind != StatusRunning || status.Signal != StatusSignalProcess || status.SignalAt != now {
-		t.Fatalf("unobserved live agent status = %+v, want Running/Process at observation", status)
+		t.Fatalf("unobserved live agent status mismatch: kind=%s signal=%s timestamp_match=%t", status.Kind, status.Signal, status.SignalAt == now)
 	}
 }

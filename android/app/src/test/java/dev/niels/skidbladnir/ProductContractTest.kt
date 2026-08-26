@@ -1,6 +1,5 @@
 package dev.niels.skidbladnir
 
-import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -12,7 +11,7 @@ class ProductContractTest {
     @Test
     fun `pairing bearer accepts only canonical 256-bit raw base64url`() {
         val canonical = "A".repeat(43)
-        assertEquals(canonical, GatewayBearer.parse(canonical)?.encoded)
+        assertTrue(GatewayBearer.parse(canonical)?.encoded == canonical)
 
         for (invalid in listOf(
             "",
@@ -31,6 +30,7 @@ class ProductContractTest {
         val inventory = decodeSessionsResponse(
             """
             {
+              "machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},
               "observedAt":"2026-08-25T12:00:00Z",
               "profiles":[{"key":"personal","label":"Personal"}],
               "sessions":[
@@ -72,12 +72,12 @@ class ProductContractTest {
     fun `inventory decoder rejects duplicate picker and session identities`() {
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"},{"key":"personal","label":"Work"}],"sessions":[]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"},{"key":"personal","label":"Work"}],"sessions":[]}""",
             )
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex"},{"key":"work","label":"Codex"}],"sessions":[]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex"},{"key":"work","label":"Codex"}],"sessions":[]}""",
             )
         }
         val first = inventorySession("${'$'}1", "one", "token")
@@ -94,10 +94,10 @@ class ProductContractTest {
     @Test
     fun `forge request omits empty optional drafts but preserves invalid nonempty drafts`() {
         val emptyOptional = encodeCreateSessionRequest(
-            ForgeDraft(cwd = "~/src", profile = "work", optionalName = "", objective = ""),
+            ForgeDraft(machineHandle, cwd = "~/src", profile = "work", optionalName = "", objective = ""),
         )
         val invalidDraft = encodeCreateSessionRequest(
-            ForgeDraft(cwd = "~/src", profile = "work", optionalName = "bad name", objective = "\u001b"),
+            ForgeDraft(machineHandle, cwd = "~/src", profile = "work", optionalName = "bad name", objective = "\u001b"),
         )
 
         assertFalse(emptyOptional.contains("optionalName"))
@@ -107,31 +107,17 @@ class ProductContractTest {
     }
 
     @Test
-    fun `status content names lifecycle signal and age`() {
-        val content = statusContent(
-            status = SessionStatus(
-                kind = SessionStatusKind.Working,
-                signal = SessionStatusSignal.Lifecycle,
-                signalAt = "2026-08-25T11:59:48Z",
-            ),
-            now = Instant.parse("2026-08-25T12:00:00Z"),
-        )
-
-        assertEquals("WORKING", content.kind)
-        assertEquals("lifecycle · 12s", content.evidence)
-        assertEquals("Observed working from lifecycle 12 seconds ago", content.accessibilityLabel)
-    }
-
-    @Test
     fun `pressure decoder keeps missing inputs closed and current`() {
         val sample = unknownPressureSample("2026-08-25T12:00:00Z")
-        val pressure = decodePressureResponse("""{"current":$sample,"history":[$sample]}""")
+        val pressure = decodePressureResponse(
+            """{"unsupported":["memoryPressure"],"current":$sample,"history":[$sample]}""",
+        )
 
         assertEquals(listOf(PressureMetric.MemoryAvailablePercent), pressure.current.missing)
         assertEquals(pressure.current, pressure.history.last())
         assertThrows(ProtocolDecodeException::class.java) {
             decodePressureResponse(
-                """{"current":$sample,"history":[${sample.replace("memoryAvailablePercent", "temperature")}] }""",
+                """{"unsupported":["memoryPressure"],"current":$sample,"history":[${sample.replace("memoryAvailablePercent", "temperature")}] }""",
             )
         }
     }
@@ -144,49 +130,24 @@ class ProductContractTest {
 
         assertThrows(ProtocolDecodeException::class.java) {
             decodePressureResponse(
-                """{"current":$current,"history":[$earlier,$oldest,$current]}""",
+                """{"unsupported":["memoryPressure"],"current":$current,"history":[$earlier,$oldest,$current]}""",
             )
         }
         assertThrows(ProtocolDecodeException::class.java) {
             val malformedTime = unknownPressureSample("not-an-instant")
-            decodePressureResponse("""{"current":$malformedTime,"history":[$malformedTime]}""")
+            decodePressureResponse(
+                """{"unsupported":["memoryPressure"],"current":$malformedTime,"history":[$malformedTime]}""",
+            )
         }
         assertThrows(ProtocolDecodeException::class.java) {
             val disagreement = unknownPressureSample(
                 sampledAt = "2026-08-25T12:00:00Z",
                 includeMissingMemoryMetric = true,
             )
-            decodePressureResponse("""{"current":$disagreement,"history":[$disagreement]}""")
+            decodePressureResponse(
+                """{"unsupported":["memoryPressure"],"current":$disagreement,"history":[$disagreement]}""",
+            )
         }
-    }
-
-    @Test
-    fun `all gateway errors have fixed literal product messages`() {
-        assertEquals("Authentication required.", apiErrorMessage(ApiErrorCode.Unauthenticated))
-        assertEquals("The request is not valid.", apiErrorMessage(ApiErrorCode.InvalidRequest))
-        assertEquals("The request is too large.", apiErrorMessage(ApiErrorCode.RequestTooLarge))
-        assertEquals("Choose a valid working directory.", apiErrorMessage(ApiErrorCode.WorkingDirectoryInvalid))
-        assertEquals(
-            "That directory does not exist or cannot be opened.",
-            apiErrorMessage(ApiErrorCode.WorkingDirectoryUnavailable),
-        )
-        assertEquals("Choose an available profile.", apiErrorMessage(ApiErrorCode.ProfileUnknown))
-        assertEquals(
-            "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.",
-            apiErrorMessage(ApiErrorCode.SessionNameInvalid),
-        )
-        assertEquals("Use 1–240 characters without terminal controls.", apiErrorMessage(ApiErrorCode.ObjectiveInvalid))
-        assertEquals("A session with that name already exists.", apiErrorMessage(ApiErrorCode.SessionNameConflict))
-        assertEquals("That session no longer exists.", apiErrorMessage(ApiErrorCode.SessionNotFound))
-        assertEquals(
-            "The session changed. Refresh before killing it.",
-            apiErrorMessage(ApiErrorCode.SessionIdentityMismatch),
-        )
-        assertEquals(
-            "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.",
-            apiErrorMessage(ApiErrorCode.SessionGroupedConflict),
-        )
-        assertEquals("Skíðblaðnir could not complete the request.", apiErrorMessage(ApiErrorCode.InternalError))
     }
 
     @Test
@@ -201,42 +162,44 @@ class ProductContractTest {
     }
 
     @Test
-    fun `pressure authentication loss requires pairing instead of publishing inventory`() {
-        assertTrue(
-            pressurePollRequiresPairing(
-                GatewayResult.Failure(GatewayFailure.Api(ApiErrorCode.Unauthenticated)),
-            ),
-        )
-        assertFalse(
-            pressurePollRequiresPairing(
-                GatewayResult.Failure(GatewayFailure.Api(ApiErrorCode.InternalError)),
-            ),
-        )
-        assertFalse(pressurePollRequiresPairing(GatewayResult.Failure(GatewayFailure.Transport)))
-    }
-
-    @Test
     fun `dashboard reentry preserves rejected Forge draft but never replays pending Start`() {
         val draft = ForgeDraft(
+            machineHandle = machineHandle,
             cwd = "bad relative directory",
             profile = "personal",
             optionalName = "bad name",
             objective = "Inspect the forge",
         )
         val rejected = dashboardWithForge(
-            ForgeState(draft = draft, pending = false, error = "Choose a valid working directory."),
+            ForgeState(form = ForgeForm(draft), pending = false, error = "Choose a valid working directory."),
         )
 
         val rejectedCarry = forgeCarry(rejected)
-        assertEquals(draft, rejectedCarry.forge?.draft)
+        assertTrue(rejectedCarry.forge?.form?.submission() == draft)
         assertEquals("Choose a valid working directory.", rejectedCarry.forge?.error)
         assertNull(rejectedCarry.recovery)
 
         val pendingCarry = forgeCarry(
-            dashboardWithForge(ForgeState(draft = draft, pending = true, error = null)),
+            dashboardWithForge(ForgeState(form = ForgeForm(draft), pending = true, error = null)),
         )
         assertNull(pendingCarry.forge)
-        assertEquals(draft, (pendingCarry.recovery as ForgeRecovery.RefreshRequired).draft)
+        assertTrue((pendingCarry.recovery as ForgeRecovery.RefreshRequired).draft == draft)
+    }
+
+    @Test
+    fun `terminal actions require both fresh machine state and settled attachment`() {
+        val connected = TerminalUiStatus.Connected(1, TerminalGeometry.Owner)
+        assertFalse(terminalActionAdmissible(machineCanMutate = false, connected))
+        assertFalse(terminalActionAdmissible(machineCanMutate = true, TerminalUiStatus.Preparing))
+        assertFalse(terminalActionAdmissible(machineCanMutate = true, TerminalUiStatus.Verifying))
+        assertFalse(terminalActionAdmissible(machineCanMutate = true, TerminalUiStatus.Connecting))
+        assertTrue(terminalActionAdmissible(machineCanMutate = true, connected))
+        assertTrue(
+            terminalActionAdmissible(
+                machineCanMutate = true,
+                TerminalUiStatus.ReconnectRequired("Devbox: reconnect required."),
+            ),
+        )
     }
 
     @Test
@@ -260,6 +223,36 @@ class ProductContractTest {
     }
 
     @Test
+    fun `terminal upgrade failure preserves owned authentication and machine identity codes`() {
+        assertEquals(ApiErrorCode.ReconnectRequired, terminalUpgradeFailureCode(null, null))
+        assertEquals(GatewayFailure.Transport, decodeGatewayHttpFailure(502, "upstream unavailable"))
+        assertEquals(ApiErrorCode.ReconnectRequired, terminalUpgradeFailureCode(503, "upstream unavailable"))
+        assertEquals(
+            ApiErrorCode.Unauthenticated,
+            terminalUpgradeFailureCode(
+                401,
+                """{"code":"Unauthenticated","message":"Authentication required."}""",
+            ),
+        )
+        assertEquals(
+            ApiErrorCode.MachineIdentityMismatch,
+            terminalUpgradeFailureCode(
+                409,
+                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Pair this machine again."}""",
+            ),
+        )
+        assertEquals(MachineAccess.AuthRequired, terminalAccessLoss(ApiErrorCode.Unauthenticated))
+        assertEquals(MachineAccess.IdentityChanged, terminalAccessLoss(ApiErrorCode.MachineIdentityMismatch))
+        assertEquals(null, terminalAccessLoss(ApiErrorCode.ReconnectRequired))
+        assertThrows(ProtocolDecodeException::class.java) {
+            terminalUpgradeFailureCode(
+                409,
+                """{"code":"MachineIdentityMismatch","message":"Reconnect required."}""",
+            )
+        }
+    }
+
+    @Test
     fun `terminal text sizing is UTF-8 exact and bounded before allocation`() {
         assertEquals(1, "a".utf8ByteCountWithin(4))
         assertEquals(3, "北".utf8ByteCountWithin(4))
@@ -274,6 +267,7 @@ class ProductContractTest {
             decodeSessionsResponse(
                 """
                 {
+                  "machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},
                   "observedAt":"2026-08-25T12:00:00Z",
                   "profiles":[{"key":"personal","label":"Personal"}],
                   "sessions":[{
@@ -301,7 +295,7 @@ class ProductContractTest {
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"id":"${'$'}1","name":"ga-durinn","identityToken":"token","attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"id":"${'$'}1","name":"ga-durinn","identityToken":"token","attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
             )
         }
     }
@@ -335,22 +329,34 @@ class ProductContractTest {
         """{"id":"$id","name":"$name","identityToken":"$identityToken","attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
 
     private fun inventoryWithSessions(vararg sessions: String): String =
-        """{"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"}],"sessions":[${sessions.joinToString()}]}"""
+        """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"}],"sessions":[${sessions.joinToString()}]}"""
 
     private fun dashboardWithForge(forge: ForgeState): SkidbladnirUiState.Dashboard =
         SkidbladnirUiState.Dashboard(
-            inventory = SessionsResponse(
+            machines = listOf(MachineState(
+                machine = machine,
+                access = MachineAccess.Ready,
+                inventory = InventoryState.Fresh(InventorySnapshot(SessionsResponse(
+                    machine = MachineSummary(machineHandle, MachinePlatform.Linux),
                 observedAt = "2026-08-25T12:00:00Z",
                 profiles = listOf(ProfileChoice("personal", "Personal")),
                 sessions = emptyList(),
-            ),
-            pressure = null,
-            inventoryStale = false,
-            inventoryAgeAdvanceSeconds = 0,
+                ), 0)),
+                pressure = PressureState.Reading,
+            )),
+            selectedMachine = machineHandle,
             refreshing = false,
-            error = null,
             forge = forge,
             forgeRecovery = null,
             kill = null,
         )
+
+    private companion object {
+        val machineHandle = requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef"))
+        val machine = PairedMachine(
+            machineHandle,
+            requireNotNull(MachineLabel.parse("Devbox")),
+            requireNotNull(MachineOrigin.parse("https://devbox.example.ts.net:8443")),
+        )
+    }
 }

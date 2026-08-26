@@ -1,3 +1,5 @@
+//go:build linux
+
 package pressure
 
 import (
@@ -11,24 +13,6 @@ import (
 	"syscall"
 )
 
-type metric struct {
-	value float64
-	known bool
-}
-
-func knownMetric(value float64) metric { return metric{value: value, known: true} }
-
-type rawSample struct {
-	cpuPercent             metric
-	loadNormalized         metric
-	memoryAvailablePercent metric
-	swapUsedPercent        metric
-	diskAvailablePercent   metric
-	cpuPSISomeAvg60        metric
-	memoryPSIFullAvg60     metric
-	ioPSIFullAvg60         metric
-}
-
 type cpuCounters struct {
 	total uint64
 	idle  uint64
@@ -40,6 +24,7 @@ type collector struct {
 }
 
 func newCollector() collector { return collector{} }
+func currentPolicy() policy   { return linuxPolicy() }
 
 func (collector *collector) collect() rawSample {
 	sample := rawSample{}

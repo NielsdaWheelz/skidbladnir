@@ -3,7 +3,6 @@
 package integration_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -19,6 +18,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
 const (
@@ -41,7 +42,7 @@ var testSocketRegistry = struct {
 
 type testTmuxServerIdentity struct {
 	pid             int
-	kernelStartTime uint64
+	kernelStartTime processinfo.StartIdentity
 	tmuxStartTime   string
 }
 
@@ -55,43 +56,37 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "integration tests require the explicit CLI tmux capability")
 		os.Exit(2)
 	}
-	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" {
+	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" || os.Getenv("TMUX_TMPDIR") != "" {
 		fmt.Fprintln(os.Stderr, "integration tests refuse an invoking tmux client")
 		os.Exit(2)
 	}
-	privateRoot := ""
-	if os.Getenv(defaultSocketHelperVariable) == "1" {
-		privateRoot = os.Getenv("TMUX_TMPDIR")
-		wantRoot := filepath.Join(os.Getenv(defaultSocketRootVariable), "tmux")
-		if !filepath.IsAbs(privateRoot) || filepath.Clean(privateRoot) != privateRoot || privateRoot != wantRoot {
-			fmt.Fprintln(os.Stderr, "default-socket helper has no exact private tmux root")
-			os.Exit(2)
-		}
-	} else {
-		var err error
-		privateRoot, err = os.MkdirTemp("", "skidbladnir-integration-tmux-")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "create private integration tmux root: %v\n", err)
-			os.Exit(2)
-		}
-		if err := os.Chmod(privateRoot, 0o700); err != nil || os.Setenv("TMUX_TMPDIR", privateRoot) != nil {
-			fmt.Fprintln(os.Stderr, "secure private integration tmux root")
-			os.Exit(2)
-		}
+	temporaryParent, err := filepath.EvalSymlinks("/tmp")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "resolve short integration tmux parent")
+		os.Exit(2)
+	}
+	privateRoot, err := os.MkdirTemp(temporaryParent, "sk-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create private integration tmux root")
+		os.Exit(2)
+	}
+	if err := os.Chmod(privateRoot, 0o700); err != nil || os.Setenv("TMPDIR", privateRoot) != nil || os.Setenv("TMUX_TMPDIR", privateRoot) != nil {
+		fmt.Fprintln(os.Stderr, "secure private integration tmux root")
+		os.Exit(2)
 	}
 	testSocketRegistry.root = privateRoot
 	status := m.Run()
 	if err := cleanupRegisteredTmuxSockets(tmuxPath, privateRoot); err != nil {
-		fmt.Fprintf(os.Stderr, "clean registered integration tmux sockets: %v\n", err)
+		fmt.Fprintln(os.Stderr, "clean registered integration tmux sockets")
 		status = 1
 	}
 	userRoot := filepath.Join(privateRoot, fmt.Sprintf("tmux-%d", os.Getuid()))
 	if err := removeExactPrivateDirectory(userRoot); err != nil {
-		fmt.Fprintf(os.Stderr, "remove private integration tmux user root: %v\n", err)
+		fmt.Fprintln(os.Stderr, "remove private integration tmux user root")
 		status = 1
 	}
 	if err := removeExactPrivateDirectory(privateRoot); err != nil {
-		fmt.Fprintf(os.Stderr, "remove private integration tmux root: %v\n", err)
+		fmt.Fprintln(os.Stderr, "remove private integration tmux root")
 		status = 1
 	}
 	os.Exit(status)
@@ -114,15 +109,20 @@ func registeredTmuxTarget(arguments []string) bool {
 	if len(arguments) == 1 && arguments[0] == "-V" {
 		return true
 	}
-	kind, target := "", ""
-	for index, argument := range arguments {
-		if (argument == "-L" || argument == "-S") && index+1 < len(arguments) && arguments[index+1] != "" {
-			if kind != "" {
-				return false
-			}
-			kind, target = argument, arguments[index+1]
-		}
+	if len(arguments) < 3 || (arguments[0] != "-L" && arguments[0] != "-S") || arguments[1] == "" {
+		return false
 	}
+	commandIndex := 2
+	if arguments[commandIndex] == "-f" {
+		if len(arguments) < 5 || arguments[commandIndex+1] != "/dev/null" {
+			return false
+		}
+		commandIndex += 2
+	}
+	if arguments[commandIndex] == "" || strings.HasPrefix(arguments[commandIndex], "-") {
+		return false
+	}
+	kind, target := arguments[0], arguments[1]
 	testSocketRegistry.Lock()
 	defer testSocketRegistry.Unlock()
 	if kind == "-L" {
@@ -134,6 +134,38 @@ func registeredTmuxTarget(arguments []string) bool {
 		return found
 	}
 	return false
+}
+
+func TestRegisteredTmuxTargetRequiresOneLeadingRegisteredSelector(t *testing.T) {
+	name := randomTmuxSocketName(t, "selector-contract")
+	path := namedTmuxSocketPath(name)
+	for _, testCase := range []struct {
+		name      string
+		arguments []string
+		want      bool
+	}{
+		{name: "version", arguments: []string{"-V"}, want: true},
+		{name: "registered name", arguments: []string{"-L", name, "list-sessions"}, want: true},
+		{name: "registered path", arguments: []string{"-S", path, "list-sessions"}, want: true},
+		{name: "missing selector", arguments: []string{"list-sessions"}},
+		{name: "misplaced selector", arguments: []string{"list-sessions", "-L", name}},
+		{name: "empty selector", arguments: []string{"-L", "", "list-sessions"}},
+		{name: "unregistered selector", arguments: []string{"-L", name + "-other", "list-sessions"}},
+		{name: "duplicate name selector", arguments: []string{"-L", name, "-L", name, "list-sessions"}},
+		{name: "mixed selector", arguments: []string{"-S", path, "-L", name, "list-sessions"}},
+		{name: "attached duplicate name selector", arguments: []string{"-L", name, "-L" + name, "list-sessions"}},
+		{name: "attached mixed path selector", arguments: []string{"-L", name, "-S" + path, "list-sessions"}},
+		{name: "clustered mixed path selector", arguments: []string{"-L", name, "-vS" + path, "list-sessions"}},
+		{name: "clustered duplicate name selector", arguments: []string{"-S", path, "-qL" + name, "list-sessions"}},
+		{name: "unexpected global option", arguments: []string{"-L", name, "-fother", "list-sessions"}},
+		{name: "exact config prefix", arguments: []string{"-L", name, "-f", "/dev/null", "list-sessions"}, want: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := registeredTmuxTarget(testCase.arguments); got != testCase.want {
+				t.Fatalf("registered tmux target decision mismatch: got=%t want=%t", got, testCase.want)
+			}
+		})
+	}
 }
 
 func namedTmuxSocketPath(name string) string {
@@ -150,11 +182,11 @@ func randomTmuxSocketName(t *testing.T, prefix string) string {
 	t.Helper()
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
-		t.Fatalf("mint isolated tmux socket name: %v", err)
+		t.Fatal("mint isolated tmux socket name")
 	}
 	name := prefix + "-" + hex.EncodeToString(random)
 	if len(name) > 64 {
-		t.Fatalf("isolated tmux socket name is too long: %q", name)
+		t.Fatalf("isolated tmux socket name is too long: name_bytes=%d", len(name))
 	}
 	registerTestOwnedSocket(t, name)
 	return name
@@ -163,14 +195,14 @@ func randomTmuxSocketName(t *testing.T, prefix string) string {
 func registerTestOwnedSocket(t *testing.T, name string) string {
 	t.Helper()
 	if name == "" || strings.ContainsRune(name, '/') {
-		t.Fatalf("invalid test-owned tmux socket name: %q", name)
+		t.Fatalf("invalid test-owned tmux socket name: empty=%t contains_separator=%t", name == "", strings.ContainsRune(name, '/'))
 	}
 	path := filepath.Join(testSocketRoot(), fmt.Sprintf("tmux-%d", os.Getuid()), name)
 	registerTestOwnedSocketPath(t, path)
 	testSocketRegistry.Lock()
 	defer testSocketRegistry.Unlock()
 	if _, found := testSocketRegistry.names[name]; found {
-		t.Fatalf("test-owned tmux socket name was already registered: %q", name)
+		t.Fatal("test-owned tmux socket name was already registered")
 	}
 	testSocketRegistry.names[name] = path
 	return path
@@ -181,12 +213,12 @@ func registerTestOwnedSocketPath(t *testing.T, path string) {
 	root := testSocketRoot()
 	clean := filepath.Clean(path)
 	if !filepath.IsAbs(path) || clean != path || !strings.HasPrefix(path, root+string(os.PathSeparator)) {
-		t.Fatalf("test-owned tmux socket escapes the private root: %q", path)
+		t.Fatalf("test-owned tmux socket escapes the private root: absolute=%t clean=%t inside=%t", filepath.IsAbs(path), clean == path, strings.HasPrefix(path, root+string(os.PathSeparator)))
 	}
 	testSocketRegistry.Lock()
 	defer testSocketRegistry.Unlock()
 	if _, found := testSocketRegistry.paths[path]; found {
-		t.Fatalf("test-owned tmux socket path was already registered: %q", path)
+		t.Fatal("test-owned tmux socket path was already registered")
 	}
 	testSocketRegistry.paths[path] = struct{}{}
 }
@@ -209,13 +241,13 @@ func cleanupRegisteredTmuxSockets(tmuxPath, privateRoot string) error {
 	registeredRoot := testSocketRegistry.root
 	testSocketRegistry.Unlock()
 	if registeredRoot != privateRoot {
-		return fmt.Errorf("private socket root changed: registered=%q cleanup=%q", registeredRoot, privateRoot)
+		return errors.New("private socket root changed")
 	}
 	sort.Strings(paths)
 	var cleanupErrors []error
 	for _, path := range paths {
 		if !pathStrictlyInside(privateRoot, path) {
-			cleanupErrors = append(cleanupErrors, fmt.Errorf("registered socket escapes private root: %q", path))
+			cleanupErrors = append(cleanupErrors, errors.New("registered socket escapes private root"))
 			continue
 		}
 		if err := cleanupRegisteredTmuxSocket(tmuxPath, path); err != nil {
@@ -231,10 +263,10 @@ func cleanupRegisteredTmuxSocket(tmuxPath, socketPath string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("stat registered socket %s: %w", socketPath, err)
+		return errors.New("stat registered socket")
 	}
 	if info.Mode()&os.ModeSocket == 0 {
-		return fmt.Errorf("registered socket path is not a socket: %s", socketPath)
+		return errors.New("registered socket path is not a socket")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), testTmuxCleanupTimeout)
@@ -259,7 +291,7 @@ func cleanupRegisteredTmuxSocket(tmuxPath, socketPath string) error {
 		return err
 	}
 	if stillLive {
-		return fmt.Errorf("registered tmux server still answers after cleanup: %s", socketPath)
+		return errors.New("registered tmux server still answers after cleanup")
 	}
 	return unlinkRegisteredStaleSocket(socketPath)
 }
@@ -273,13 +305,13 @@ func queryRegisteredTmuxServer(
 	contextErr := ctx.Err()
 	if err != nil {
 		if contextErr != nil {
-			return testTmuxServerIdentity{}, false, fmt.Errorf("query registered tmux socket %s: %w", socketPath, contextErr)
+			return testTmuxServerIdentity{}, false, errors.New("query registered tmux socket timed out")
 		}
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
 			return testTmuxServerIdentity{}, false, nil
 		}
-		return testTmuxServerIdentity{}, false, fmt.Errorf("query registered tmux socket %s: %w", socketPath, err)
+		return testTmuxServerIdentity{}, false, errors.New("query registered tmux socket")
 	}
 	identity, err := parseTestTmuxServerIdentity(socketPath, output)
 	if err != nil {
@@ -292,50 +324,43 @@ func parseTestTmuxServerIdentity(socketPath string, output []byte) (testTmuxServ
 	pidText, tmuxStartTime, separated := strings.Cut(strings.TrimSpace(string(output)), "|")
 	pid, err := strconv.Atoi(pidText)
 	if err != nil || pid <= 1 || !separated || tmuxStartTime == "" {
-		return testTmuxServerIdentity{}, fmt.Errorf("invalid test-owned tmux server identity: socket=%s output=%q", socketPath, output)
+		return testTmuxServerIdentity{}, errors.New("invalid test-owned tmux server identity")
 	}
-	kernelStartTime := linuxProcessStartTime(pid)
-	if kernelStartTime == 0 {
-		return testTmuxServerIdentity{}, fmt.Errorf("test-owned tmux server has no kernel start time: socket=%s pid=%d", socketPath, pid)
+	kernelStartTime := processStartIdentity(pid)
+	if kernelStartTime == "" {
+		return testTmuxServerIdentity{}, errors.New("test-owned tmux server has no kernel start time")
 	}
 	return testTmuxServerIdentity{pid: pid, kernelStartTime: kernelStartTime, tmuxStartTime: tmuxStartTime}, nil
 }
 
 func verifyRegisteredTmuxProcess(tmuxPath, socketPath string, identity testTmuxServerIdentity) error {
-	processRoot := filepath.Join("/proc", strconv.Itoa(identity.pid))
-	executable, err := os.Readlink(filepath.Join(processRoot, "exe"))
+	observation, err := processinfo.Observe(processinfo.PID(identity.pid))
 	if err != nil {
-		return fmt.Errorf("read registered tmux executable: socket=%s pid=%d: %w", socketPath, identity.pid, err)
-	}
-	commandLine, err := os.ReadFile(filepath.Join(processRoot, "cmdline"))
-	if err != nil {
-		return fmt.Errorf("read registered tmux command line: socket=%s pid=%d: %w", socketPath, identity.pid, err)
+		return errors.New("observe registered tmux process")
 	}
 	expectedExecutable, err := os.Stat(tmuxPath)
 	if err != nil {
-		return fmt.Errorf("stat expected tmux executable %s: %w", tmuxPath, err)
+		return errors.New("stat expected tmux executable")
 	}
-	observedExecutable, err := os.Stat(filepath.Join(processRoot, "exe"))
+	observedExecutable, err := os.Stat(observation.Executable)
 	if err != nil {
-		return fmt.Errorf("stat registered tmux executable: socket=%s pid=%d: %w", socketPath, identity.pid, err)
+		return errors.New("stat registered tmux executable")
 	}
 	if !os.SameFile(expectedExecutable, observedExecutable) {
-		return fmt.Errorf("registered socket process is not the expected tmux executable: socket=%s pid=%d exe=%q", socketPath, identity.pid, executable)
+		return errors.New("registered socket process is not the expected tmux executable")
 	}
-	if !commandLineContainsExactSocket(commandLine, socketPath) {
-		return fmt.Errorf("registered tmux command line does not name its exact socket: socket=%s pid=%d", socketPath, identity.pid)
+	if !commandLineContainsExactSocket(observation.Argv, socketPath) {
+		return errors.New("registered tmux command line does not name its exact socket")
 	}
-	if observed := linuxProcessStartTime(identity.pid); observed != identity.kernelStartTime {
-		return fmt.Errorf("registered tmux process identity changed during inspection: socket=%s pid=%d captured=%d observed=%d",
-			socketPath, identity.pid, identity.kernelStartTime, observed)
+	if observed := processStartIdentity(identity.pid); observed != identity.kernelStartTime {
+		return errors.New("registered tmux process identity changed during inspection")
 	}
 	return nil
 }
 
-func commandLineContainsExactSocket(commandLine []byte, socketPath string) bool {
-	for _, argument := range bytes.Split(commandLine, []byte{0}) {
-		text := string(argument)
-		if text == socketPath || strings.Contains(text, "("+socketPath+")") {
+func commandLineContainsExactSocket(commandLine []string, socketPath string) bool {
+	for _, argument := range commandLine {
+		if argument == socketPath || strings.Contains(argument, "("+socketPath+")") {
 			return true
 		}
 	}
@@ -343,9 +368,8 @@ func commandLineContainsExactSocket(commandLine []byte, socketPath string) bool 
 }
 
 func killRegisteredTmuxServer(tmuxPath, socketPath string, identity testTmuxServerIdentity) error {
-	if observed := linuxProcessStartTime(identity.pid); observed != identity.kernelStartTime {
-		return fmt.Errorf("refusing post-run tmux cleanup after process identity changed: socket=%s pid=%d captured=%d observed=%d",
-			socketPath, identity.pid, identity.kernelStartTime, observed)
+	if observed := processStartIdentity(identity.pid); observed != identity.kernelStartTime {
+		return errors.New("refusing post-run tmux cleanup after process identity changed")
 	}
 	condition := "#{&&:#{==:#{pid}," + strconv.Itoa(identity.pid) + "},#{==:#{start_time}," + identity.tmuxStartTime + "}}"
 	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
@@ -358,18 +382,18 @@ func killRegisteredTmuxServer(tmuxPath, socketPath string, identity testTmuxServ
 	cancel()
 	if err != nil {
 		if contextErr != nil {
-			return fmt.Errorf("kill verified registered tmux server: socket=%s: %w", socketPath, contextErr)
+			return errors.New("kill verified registered tmux server timed out")
 		}
-		return fmt.Errorf("kill verified registered tmux server: socket=%s output=%q error=%w", socketPath, output, err)
+		return errors.New("kill verified registered tmux server")
 	}
 	if strings.TrimSpace(string(output)) != "" {
-		return fmt.Errorf("refusing post-run tmux cleanup after routed identity mismatch: socket=%s output=%q", socketPath, output)
+		return errors.New("refusing post-run tmux cleanup after routed identity mismatch")
 	}
 
 	deadline := time.Now().Add(testTmuxCleanupTimeout)
-	for linuxProcessStartTime(identity.pid) == identity.kernelStartTime {
+	for processStartIdentity(identity.pid) == identity.kernelStartTime {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("verified registered tmux server survived cleanup: socket=%s pid=%d", socketPath, identity.pid)
+			return errors.New("verified registered tmux server survived cleanup")
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
@@ -382,16 +406,16 @@ func unlinkRegisteredStaleSocket(socketPath string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("stat stale registered socket %s: %w", socketPath, err)
+		return errors.New("stat stale registered socket")
 	}
 	if info.Mode()&os.ModeSocket == 0 {
-		return fmt.Errorf("refusing to unlink non-socket registered path: %s", socketPath)
+		return errors.New("refusing to unlink non-socket registered path")
 	}
 	if err := os.Remove(socketPath); err != nil {
-		return fmt.Errorf("unlink stale registered socket %s: %w", socketPath, err)
+		return errors.New("unlink stale registered socket")
 	}
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("registered socket survived exact unlink: %s: %w", socketPath, err)
+		return errors.New("registered socket survived exact unlink")
 	}
 	return nil
 }
@@ -410,13 +434,13 @@ func removeExactPrivateDirectory(path string) error {
 		return nil
 	}
 	if err != nil {
-		return err
+		return errors.New("stat private directory")
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("refusing to remove non-directory private path: %s", path)
+		return errors.New("refusing to remove non-directory private path")
 	}
 	if err := os.Remove(path); err != nil {
-		return err
+		return errors.New("remove private directory")
 	}
 	return nil
 }
@@ -425,19 +449,19 @@ func captureTestTmuxServer(t *testing.T, tmuxPath, socketPath string) testTmuxSe
 	t.Helper()
 	output, err := isolatedTmuxCommand(tmuxPath, "-S", socketPath, "display-message", "-p", "#{pid}|#{start_time}").CombinedOutput()
 	if err != nil {
-		t.Fatalf("capture test-owned tmux server identity: socket=%s output=%q error=%v", socketPath, output, err)
+		t.Fatalf("capture test-owned tmux server identity: output_bytes=%d", len(output))
 	}
 	identity, err := parseTestTmuxServerIdentity(socketPath, output)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("parse test-owned tmux server identity")
 	}
 	return identity
 }
 
 func stopTestTmuxServer(t *testing.T, tmuxPath, socketPath string, identity testTmuxServerIdentity) {
 	t.Helper()
-	if observed := linuxProcessStartTime(identity.pid); observed != identity.kernelStartTime {
-		t.Errorf("refusing tmux cleanup after process identity changed: socket=%s pid=%d captured=%d observed=%d", socketPath, identity.pid, identity.kernelStartTime, observed)
+	if observed := processStartIdentity(identity.pid); observed != identity.kernelStartTime {
+		t.Error("refusing tmux cleanup after process identity changed")
 		return
 	}
 	epoch := fmt.Sprintf("%d:%s", identity.pid, identity.tmuxStartTime)
@@ -448,39 +472,27 @@ func stopTestTmuxServer(t *testing.T, tmuxPath, socketPath string, identity test
 		"kill-server",
 		"display-message -p -l '"+mismatchMarker+"'").CombinedOutput()
 	if err != nil {
-		t.Errorf("kill verified test-owned tmux server: socket=%s output=%q error=%v", socketPath, output, err)
+		t.Errorf("kill verified test-owned tmux server: output_bytes=%d", len(output))
 		return
 	}
 	if strings.TrimSpace(string(output)) != "" {
-		t.Errorf("refusing tmux cleanup after routed identity mismatch: socket=%s output=%q", socketPath, output)
+		t.Error("refusing tmux cleanup after routed identity mismatch")
 		return
 	}
 	deadline := time.Now().Add(testTmuxCleanupTimeout)
-	for linuxProcessStartTime(identity.pid) == identity.kernelStartTime {
+	for processStartIdentity(identity.pid) == identity.kernelStartTime {
 		if time.Now().After(deadline) {
-			t.Errorf("verified test-owned tmux server survived cleanup: socket=%s pid=%d", socketPath, identity.pid)
+			t.Error("verified test-owned tmux server survived cleanup")
 			return
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 }
 
-func linuxProcessStartTime(pid int) uint64 {
-	contents, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+func processStartIdentity(pid int) processinfo.StartIdentity {
+	observation, err := processinfo.Observe(processinfo.PID(pid))
 	if err != nil {
-		return 0
+		return ""
 	}
-	closingParenthesis := strings.LastIndexByte(string(contents), ')')
-	if closingParenthesis < 0 || closingParenthesis+2 >= len(contents) {
-		return 0
-	}
-	fields := strings.Fields(string(contents[closingParenthesis+2:]))
-	if len(fields) < 20 {
-		return 0
-	}
-	startTime, err := strconv.ParseUint(fields[19], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return startTime
+	return observation.StartIdentity
 }

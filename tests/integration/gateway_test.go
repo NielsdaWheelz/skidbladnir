@@ -22,6 +22,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -30,15 +32,15 @@ func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bearer")
 	first, err := auth.Mint(auth.MintOptions{Path: path})
 	if err != nil {
-		t.Fatalf("mint first bearer: %v", err)
+		t.Fatal("mint first bearer")
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(first)
 	if err != nil || len(decoded) != 32 {
-		t.Fatalf("first bearer carries %d decoded bytes, want 32: %v", len(decoded), err)
+		t.Fatalf("first bearer shape mismatch: decode_ok=%t decoded_bytes=%d", err == nil, len(decoded))
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatalf("stat bearer file: %v", err)
+		t.Fatal("stat bearer file")
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("bearer file mode = %04o, want 0600", got)
@@ -51,7 +53,7 @@ func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
 
 	second, err := auth.Mint(auth.MintOptions{Path: path})
 	if err != nil {
-		t.Fatalf("re-mint bearer: %v", err)
+		t.Fatal("re-mint bearer")
 	}
 	if second == first {
 		t.Fatal("re-mint returned the previous bearer")
@@ -64,13 +66,16 @@ func TestPressureMonitorSamplesTheHost(t *testing.T) {
 	monitor := pressure.NewMonitor()
 	snapshot := monitor.Snapshot()
 	if len(snapshot.Window) != 1 || snapshot.Current.ObservedAt.IsZero() {
-		t.Fatalf("monitor did not publish its initial pressure sample: %+v", snapshot)
+		t.Fatalf("monitor initial sample mismatch: window_count=%d observed_at_present=%t", len(snapshot.Window), !snapshot.Current.ObservedAt.IsZero())
 	}
-	if snapshot.Current.MemoryAvailablePercent.Status == pressure.StatusUnknown {
-		t.Fatalf("host /proc meminfo was not sampled: %+v", snapshot.Current.MemoryAvailablePercent)
+	if platform.Current().Kind == platform.KindLinux && snapshot.Current.MemoryAvailablePercent.Status == pressure.StatusUnknown {
+		t.Fatalf("Linux host memory availability status=%s", snapshot.Current.MemoryAvailablePercent.Status)
+	}
+	if platform.Current().Kind == platform.KindDarwin && snapshot.Current.MemoryPressure.Status == pressure.StatusUnknown {
+		t.Fatalf("Darwin host memory pressure status=%s", snapshot.Current.MemoryPressure.Status)
 	}
 	if snapshot.Current.DiskAvailablePercent.Status == pressure.StatusUnknown {
-		t.Fatalf("host statfs was not sampled: %+v", snapshot.Current.DiskAvailablePercent)
+		t.Fatalf("host statfs status=%s", snapshot.Current.DiskAvailablePercent.Status)
 	}
 }
 
@@ -79,15 +84,15 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	socketName := randomTmuxSocketName(t, "skid-gateway")
 	socketPath := namedTmuxSocketPath(socketName)
 	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
-		t.Fatalf("isolated tmux socket unexpectedly exists before test: path=%s error=%v", socketPath, err)
+		t.Fatalf("isolated tmux socket unexpectedly exists before test: absent=%t", os.IsNotExist(err))
 	}
 	agentCommand := filepath.Join(testRoot, "agent-command")
-	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nexec /usr/bin/sleep 300\n"), 0o700); err != nil {
-		t.Fatalf("write test agent command: %v", err)
+	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nexec /bin/sleep 300\n"), 0o700); err != nil {
+		t.Fatal("write test agent command")
 	}
 	for _, home := range []string{"personal", "work", "work2"} {
 		if err := os.Mkdir(filepath.Join(testRoot, home), 0o700); err != nil {
-			t.Fatalf("create %s profile home: %v", home, err)
+			t.Fatal("create profile home")
 		}
 	}
 	manager, err := sessions.New(sessions.Config{
@@ -102,10 +107,10 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 		},
 	})
 	if err != nil {
-		t.Fatalf("create sessions manager: %v", err)
+		t.Fatal("create sessions manager")
 	}
-	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "laptop", "-c", testRoot, "/usr/bin/sleep", "300").CombinedOutput(); err != nil {
-		t.Fatalf("create laptop tmux session: %v: %s", err, output)
+	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "laptop", "-c", testRoot, sleepPath, "300").CombinedOutput(); err != nil {
+		t.Fatalf("create laptop tmux session: output_bytes=%d", len(output))
 	}
 	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
 	t.Cleanup(func() {
@@ -115,7 +120,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	bearerPath := filepath.Join(testRoot, "bearer")
 	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatalf("mint gateway bearer: %v", err)
+		t.Fatal("mint gateway bearer")
 	}
 	firstBearer := bearer
 	monitor := pressure.NewMonitor()
@@ -125,6 +130,8 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 		Pressure: monitor,
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Logger:   logging.New(&logs),
+		Machine:  integrationMachine(t),
+		Platform: platform.Current(),
 	}))
 	t.Cleanup(server.Close)
 
@@ -133,23 +140,29 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	response.Body.Close()
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", "", "", "")
 	if got := response.Header.Get("WWW-Authenticate"); got != "Bearer" {
-		t.Fatalf("unauthenticated WWW-Authenticate = %q, want Bearer", got)
+		t.Fatal("unauthenticated response omitted the Bearer challenge")
 	}
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
-	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	response = requestForMachine(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "", "")
 	assertStatus(t, response, http.StatusOK)
-	response.Body.Close()
+	pairingInventory := decodeObject(t, response)
+	machineEnvelope := pairingInventory["machine"].(map[string]any)
+	handleMatches := machineEnvelope["handle"] == integrationMachineText
+	platformMatches := machineEnvelope["platform"] == string(platform.Current().Kind)
+	if !handleMatches || !platformMatches {
+		t.Fatalf("pairing inventory machine envelope mismatch: handle_match=%t platform_match=%t field_count=%d", handleMatches, platformMatches, len(machineEnvelope))
+	}
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", "", "niels@example.test", "")
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
 	duplicateAuthorization, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/v1/sessions", nil)
 	if err != nil {
-		t.Fatalf("build duplicate-authorization request: %v", err)
+		t.Fatal("build duplicate-authorization request")
 	}
 	duplicateAuthorization.Header.Add("Authorization", "Bearer "+bearer)
 	duplicateAuthorization.Header.Add("Authorization", "Bearer "+bearer)
 	response, err = server.Client().Do(duplicateAuthorization)
 	if err != nil {
-		t.Fatalf("perform duplicate-authorization request: %v", err)
+		t.Fatal("perform duplicate-authorization request")
 	}
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
 
@@ -158,14 +171,14 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	inventory := decodeObject(t, response)
 	profiles := inventory["profiles"].([]any)
 	if got := []string{profiles[0].(map[string]any)["key"].(string), profiles[1].(map[string]any)["key"].(string), profiles[2].(map[string]any)["key"].(string)}; fmt.Sprint(got) != "[personal work work2]" {
-		t.Fatalf("profile order = %v, want [personal work work2]", got)
+		t.Fatalf("profile order mismatch: profile_count=%d", len(got))
 	}
 	laptop := findSession(t, inventory, "laptop")
 	laptopID := laptop["id"].(string)
 	laptopToken := laptop["identityToken"].(string)
 	for _, absent := range []string{"profile", "objective", "character"} {
 		if _, exists := laptop[absent]; exists {
-			t.Fatalf("laptop-created session guessed %s metadata: %+v", absent, laptop)
+			t.Fatalf("laptop-created session guessed %s metadata", absent)
 		}
 	}
 
@@ -197,27 +210,27 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 
 	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "personal", "optionalName": "ga-gateway-test", "objective": "Prove the control plane"})
 	if err != nil {
-		t.Fatalf("encode create request: %v", err)
+		t.Fatal("encode create request")
 	}
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(createBody))
 	assertStatus(t, response, http.StatusCreated)
 	created := decodeObject(t, response)
 	if created["name"] != "ga-gateway-test" || created["profile"] != "personal" || created["objective"] != "Prove the control plane" {
-		t.Fatalf("created card omitted requested metadata: %+v", created)
+		t.Fatal("created card did not preserve the requested name, profile, and objective")
 	}
 	character := created["character"].(map[string]any)
 	if character["key"] == "" || character["displayName"] == "" {
-		t.Fatalf("created card omitted character metadata: %+v", created)
+		t.Fatal("created card omitted character metadata")
 	}
 	createdID := created["id"].(string)
 	createdToken := created["identityToken"].(string)
 	if len(createdToken) < 4 {
-		t.Fatalf("created card omitted its lifetime identity token: %+v", created)
+		t.Fatal("created card omitted its lifetime identity token")
 	}
 
 	secondBearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatalf("rotate gateway bearer: %v", err)
+		t.Fatal("rotate gateway bearer")
 	}
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
@@ -250,16 +263,16 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	inventory = decodeObject(t, response)
 	findSession(t, inventory, "laptop")
 	if got := len(inventory["sessions"].([]any)); got != 1 {
-		t.Fatalf("exact kill left %d sessions, want laptop only: %+v", got, inventory)
+		t.Fatalf("exact kill left %d sessions, want laptop only", got)
 	}
 
 	const groupedPeerName = "laptop-group-peer"
 	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-t", laptopID, "-s", groupedPeerName).CombinedOutput(); err != nil {
-		t.Fatalf("create ordinary grouped peer: output=%q error=%v", output, err)
+		t.Fatalf("create ordinary grouped peer: output_bytes=%d", len(output))
 	}
 	sharedPanePID, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", laptopID, "#{pane_pid}").Output()
 	if err != nil || strings.TrimSpace(string(sharedPanePID)) == "" {
-		t.Fatalf("capture grouped target pane PID: output=%q error=%v", sharedPanePID, err)
+		t.Fatalf("capture grouped target pane PID: command_ok=%t output_present=%t", err == nil, strings.TrimSpace(string(sharedPanePID)) != "")
 	}
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(laptopID), bearer, "niels@example.test", fmt.Sprintf(`{"name":"laptop","identityToken":%q}`, laptopToken))
 	assertError(t, response, http.StatusConflict, "SessionGroupedConflict")
@@ -268,12 +281,14 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	inventory = decodeObject(t, response)
 	unchangedLaptop := findSession(t, inventory, "laptop")
 	findSession(t, inventory, groupedPeerName)
-	if unchangedLaptop["id"] != laptopID || unchangedLaptop["identityToken"] != laptopToken {
-		t.Fatalf("refused grouped HTTP kill changed target identity: before=(%s,%s) after=%+v", laptopID, laptopToken, unchangedLaptop)
+	idUnchanged := unchangedLaptop["id"] == laptopID
+	identityUnchanged := unchangedLaptop["identityToken"] == laptopToken
+	if !idUnchanged || !identityUnchanged {
+		t.Fatalf("refused grouped HTTP kill changed target identity: id_unchanged=%t identity_unchanged=%t", idUnchanged, identityUnchanged)
 	}
 	afterPanePID, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", laptopID, "#{pane_pid}").Output()
 	if err != nil || strings.TrimSpace(string(afterPanePID)) != strings.TrimSpace(string(sharedPanePID)) {
-		t.Fatalf("refused grouped HTTP kill changed shared pane: before=%q after=%q error=%v", sharedPanePID, afterPanePID, err)
+		t.Fatalf("refused grouped HTTP kill changed shared pane: command_ok=%t identity_unchanged=%t", err == nil, strings.TrimSpace(string(afterPanePID)) == strings.TrimSpace(string(sharedPanePID)))
 	}
 
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/pressure", bearer, "niels@example.test", "")
@@ -281,28 +296,51 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	pressureBody := decodeObject(t, response)
 	history := pressureBody["history"].([]any)
 	if len(history) == 0 || len(history) > pressure.HistorySampleLimit || !reflect.DeepEqual(history[len(history)-1], pressureBody["current"]) {
-		t.Fatalf("pressure history does not end at current: %+v", pressureBody)
+		t.Fatalf("pressure history/current mismatch: history_count=%d current_matches_last=%t", len(history), len(history) > 0 && reflect.DeepEqual(history[len(history)-1], pressureBody["current"]))
 	}
 	metrics := pressureBody["current"].(map[string]any)["metrics"].(map[string]any)
-	if _, exists := metrics["memoryAvailablePercent"]; !exists {
-		t.Fatalf("pressure response omitted real /proc memory metric: %+v", pressureBody)
+	unsupported := pressureBody["unsupported"].([]any)
+	if platform.Current().Kind == platform.KindLinux {
+		_, memoryAvailableExists := metrics["memoryAvailablePercent"]
+		memoryPressureUnsupported := containsString(unsupported, "memoryPressure")
+		if !memoryAvailableExists || !memoryPressureUnsupported {
+			t.Fatalf("Linux pressure capability contract is incomplete: memory_available_present=%t memory_pressure_unsupported=%t", memoryAvailableExists, memoryPressureUnsupported)
+		}
+	} else {
+		_, memoryPressureExists := metrics["memoryPressure"]
+		unsupportedComplete := containsString(unsupported, "memoryAvailablePercent") &&
+			containsString(unsupported, "cpuPsiSomeAvg60Percent") && containsString(unsupported, "memoryPsiFullAvg60Percent") &&
+			containsString(unsupported, "ioPsiFullAvg60Percent")
+		if !memoryPressureExists || !unsupportedComplete {
+			t.Fatalf("Darwin pressure capability contract is incomplete: memory_pressure_present=%t unsupported_complete=%t", memoryPressureExists, unsupportedComplete)
+		}
 	}
 	if _, exists := metrics["cpuPercent"]; exists {
-		t.Fatalf("first pressure sample encoded an unavailable CPU delta: %+v", pressureBody)
+		t.Fatal("first pressure sample encoded an unavailable CPU delta")
 	}
 	missing := pressureBody["current"].(map[string]any)["missing"].([]any)
 	if !containsString(missing, "cpuPercent") {
-		t.Fatalf("first pressure sample did not name omitted cpuPercent: %+v", pressureBody)
+		t.Fatalf("first pressure sample did not name omitted cpuPercent: missing_count=%d", len(missing))
 	}
 	logOutput := logs.String()
-	for _, forbidden := range []string{firstBearer, bearer, createdToken, testRoot, "Prove the control plane", "/v1/sessions/" + createdID} {
-		if strings.Contains(logOutput, forbidden) {
-			t.Fatalf("gateway log leaked forbidden request/session content %q: %s", forbidden, logOutput)
+	for _, forbidden := range []struct {
+		name  string
+		value string
+	}{
+		{name: "original bearer", value: firstBearer},
+		{name: "current bearer", value: bearer},
+		{name: "session identity", value: createdToken},
+		{name: "working directory", value: testRoot},
+		{name: "objective", value: "Prove the control plane"},
+		{name: "session-specific route", value: "/v1/sessions/" + createdID},
+	} {
+		if strings.Contains(logOutput, forbidden.value) {
+			t.Fatalf("gateway log leaked forbidden %s", forbidden.name)
 		}
 	}
 	for _, eventName := range []string{"Authentication.Rejected", "Sessions.Listed", "Session.Created", "Session.Killed", "Pressure.Sampled", "Request.Completed"} {
 		if !strings.Contains(logOutput, `"event.name":"`+eventName+`"`) {
-			t.Fatalf("gateway log omitted %s: %s", eventName, logOutput)
+			t.Fatalf("gateway log omitted required event %s", eventName)
 		}
 	}
 }
@@ -324,10 +362,10 @@ func assertBearerResult(t *testing.T, verifier auth.FileVerifier, authorization 
 	t.Helper()
 	got, err := verifier.Verify(authorization)
 	if err != nil {
-		t.Fatalf("verify %q: %v", authorization, err)
+		t.Fatal("verify bearer authorization")
 	}
 	if got != want {
-		t.Fatalf("verify %q = %t, want %t", authorization, got, want)
+		t.Fatalf("bearer authorization result = %t, want %t", got, want)
 	}
 }
 
@@ -342,16 +380,28 @@ func repositoryRoot(t *testing.T) string {
 
 func request(t *testing.T, client *http.Client, method, target, bearer, tailnetLogin, body string) *http.Response {
 	t.Helper()
+	machineHandle := ""
+	if bearer != "" {
+		machineHandle = integrationMachineText
+	}
+	return requestForMachine(t, client, method, target, bearer, machineHandle, tailnetLogin, body)
+}
+
+func requestForMachine(t *testing.T, client *http.Client, method, target, bearer, machineHandle, tailnetLogin, body string) *http.Response {
+	t.Helper()
 	var reader io.Reader
 	if body != "" {
 		reader = bytes.NewBufferString(body)
 	}
 	request, err := http.NewRequestWithContext(context.Background(), method, target, reader)
 	if err != nil {
-		t.Fatalf("build %s request: %v", method, err)
+		t.Fatalf("build request: method=%s", method)
 	}
 	if bearer != "" {
 		request.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	if machineHandle != "" {
+		request.Header.Set("Skidbladnir-Machine", machineHandle)
 	}
 	if tailnetLogin != "" {
 		request.Header.Set("Tailscale-User-Login", tailnetLogin)
@@ -361,7 +411,7 @@ func request(t *testing.T, client *http.Client, method, target, bearer, tailnetL
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		t.Fatalf("perform %s %s: %v", method, target, err)
+		t.Fatalf("perform request: method=%s", method)
 	}
 	return response
 }
@@ -371,7 +421,7 @@ func assertStatus(t *testing.T, response *http.Response, want int) {
 	if response.StatusCode != want {
 		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
-		t.Fatalf("HTTP status = %d, want %d; body=%s", response.StatusCode, want, body)
+		t.Fatalf("HTTP status = %d, want %d; response_body_bytes=%d", response.StatusCode, want, len(body))
 	}
 }
 
@@ -388,6 +438,7 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 		"SessionNameInvalid":          "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.",
 		"ObjectiveInvalid":            "Use 1–240 characters without terminal controls.",
 		"SessionIdentityMismatch":     "The session changed. Refresh before killing it.",
+		"MachineIdentityMismatch":     "The machine identity changed. Pair this machine again.",
 		"SessionGroupedConflict":      "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.",
 	}
 	wantMessage, found := messages[code]
@@ -395,8 +446,24 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 		t.Fatalf("test has no literal message for error code %s", code)
 	}
 	if len(body) != 2 || body["code"] != code || body["message"] != wantMessage {
-		t.Fatalf("error response = %+v, want exact {%s, %s}", body, code, wantMessage)
+		t.Fatalf(
+			"error response did not match exact contract: field_count=%d code_match=%t message_match=%t",
+			len(body),
+			body["code"] == code,
+			body["message"] == wantMessage,
+		)
 	}
+}
+
+const integrationMachineText = "mh-0123456789abcdef0123456789abcdef"
+
+func integrationMachine(t *testing.T) machine.Handle {
+	t.Helper()
+	handle, err := machine.Parse(integrationMachineText)
+	if err != nil {
+		t.Fatal("parse fixed integration machine handle")
+	}
+	return handle
 }
 
 func decodeObject(t *testing.T, response *http.Response) map[string]any {
@@ -404,20 +471,21 @@ func decodeObject(t *testing.T, response *http.Response) map[string]any {
 	defer response.Body.Close()
 	var body map[string]any
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatalf("decode HTTP %d response: %v", response.StatusCode, err)
+		t.Fatalf("decode HTTP response: status=%d", response.StatusCode)
 	}
 	return body
 }
 
 func findSession(t *testing.T, inventory map[string]any, name string) map[string]any {
 	t.Helper()
-	for _, value := range inventory["sessions"].([]any) {
+	sessions := inventory["sessions"].([]any)
+	for _, value := range sessions {
 		session := value.(map[string]any)
 		if session["name"] == name {
 			return session
 		}
 	}
-	t.Fatalf("session %q not found in inventory: %+v", name, inventory)
+	t.Fatalf("expected session not found in inventory: session_count=%d", len(sessions))
 	return nil
 }
 

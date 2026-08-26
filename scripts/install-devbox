@@ -15,13 +15,11 @@ readonly listen_address="127.0.0.1:${listen_port}"
 readonly serve_port="8443"
 readonly binary_target="${expected_home}/.local/bin/skidbladnir"
 readonly notify_target="${expected_home}/.local/bin/skid-notify"
-readonly hooks_source="${repo_dir}/deploy/codex/status-hooks.json"
-readonly retired_hook_target="${expected_home}/.local/bin/skidbladnir-hook"
-readonly retired_hook_socket="/run/user/${expected_uid}/skidbladnir/hook.sock"
-readonly retired_hook_gaps="${expected_home}/.local/state/skidbladnir/hook-gaps"
+readonly hooks_source="${repo_dir}/deploy/devbox/status-hooks.json"
 readonly caddy_config="/etc/caddy/Caddyfile"
 readonly catalogue_target="${expected_home}/.local/share/skidbladnir/characters.json"
 readonly bearer_target="${expected_home}/.config/skidbladnir/bearer"
+readonly machine_handle_target="${expected_home}/.config/skidbladnir/machine-handle"
 readonly unit_target="${expected_home}/.config/systemd/user/${service_name}"
 readonly operation_lock="/run/user/${expected_uid}/skidbladnir-install.lock"
 readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
@@ -33,8 +31,9 @@ readonly -a profile_configs=(
 )
 
 staging_dir=""
-declare -a config_digests=()
-declare -a hook_digests=()
+preflight_service_state=""
+preflight_service_pid=""
+tcp_listener_records=""
 
 die() {
   printf 'skidbladnir devbox: %s\n' "$1" >&2
@@ -43,7 +42,7 @@ die() {
 
 cleanup() {
   local exit_status=$?
-  trap - EXIT
+  trap - EXIT HUP INT TERM
   if [[ -n "$staging_dir" && -d "$staging_dir" ]]; then
     if ! /usr/bin/rm -rf -- "$staging_dir"; then
       printf 'skidbladnir devbox: could not remove staging directory: %s\n' "$staging_dir" >&2
@@ -54,9 +53,25 @@ cleanup() {
 }
 
 trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
+}
+
+read_tcp_listeners() {
+  local port="$1"
+  local detail="$2"
+  local -a arguments=(-H -ltn)
+  if [[ "$detail" == "process" ]]; then
+    arguments=(-H -ltnp)
+  elif [[ "$detail" != "basic" ]]; then
+    die "invalid listener inspection mode"
+  fi
+  tcp_listener_records="$(/usr/bin/ss "${arguments[@]}" "sport = :${port}" 2>&1)" ||
+    die "could not inspect TCP port ${port}"
 }
 
 acquire_operation_lock() {
@@ -72,14 +87,19 @@ acquire_operation_lock() {
 require_owned_directory() {
   local target_directory="$1"
   local expected_mode="${2:-}"
+  local actual_mode
   if [[ -L "$target_directory" || ! -d "$target_directory" ]]; then
     die "expected an owned directory: ${target_directory}"
   fi
   [[ "$(/usr/bin/stat -Lc '%u' -- "$target_directory")" == "$expected_uid" ]] ||
     die "directory has the wrong owner: ${target_directory}"
+  actual_mode="$(/usr/bin/stat -Lc '%a' -- "$target_directory")"
   if [[ -n "$expected_mode" ]]; then
-    [[ "$(/usr/bin/stat -Lc '%a' -- "$target_directory")" == "$expected_mode" ]] ||
+    [[ "$actual_mode" == "$expected_mode" ]] ||
       die "directory has the wrong mode: ${target_directory}"
+  else
+    [[ "$actual_mode" =~ ^[0-7]{3,4}$ ]] || die "directory mode is invalid: ${target_directory}"
+    (( (8#$actual_mode & 8#022) == 0 )) || die "directory is group- or world-writable: ${target_directory}"
   fi
 }
 
@@ -103,13 +123,6 @@ require_optional_regular_file() {
   fi
 }
 
-require_absent() {
-  local target_path="$1"
-  local description="$2"
-  [[ ! -e "$target_path" && ! -L "$target_path" ]] ||
-    die "${description} is still present: ${target_path}"
-}
-
 classify_status_hooks() {
   local hook_file="$1"
   if [[ ! -e "$hook_file" && ! -L "$hook_file" ]]; then
@@ -124,18 +137,7 @@ classify_status_hooks() {
   return 3
 }
 
-optional_file_digest() {
-  local target_file="$1"
-  if [[ ! -e "$target_file" && ! -L "$target_file" ]]; then
-    printf 'absent\n'
-    return
-  fi
-  /usr/bin/sha256sum "$target_file" | /usr/bin/cut -d ' ' -f 1
-}
-
-require_retired_hook_runtime_disabled() {
-  require_absent "$retired_hook_socket" "retired hook socket"
-
+require_status_hook_configuration() {
   local config_file
   local hook_file
   for config_file in "${profile_configs[@]}"; do
@@ -150,23 +152,23 @@ import tomllib
 with open(sys.argv[1], "rb") as stream:
     config = tomllib.load(stream)
 features = config.get("features", {})
-if not isinstance(features, dict) or features.get("hooks") is False or "hooks" in config:
+if not isinstance(features, dict) or features.get("hooks") is False:
     raise SystemExit(1)
+hooks = config.get("hooks")
+if hooks is not None:
+    if not isinstance(hooks, dict) or set(hooks) != {"state"} or not isinstance(hooks["state"], dict):
+        raise SystemExit(1)
+    for identity, review in hooks["state"].items():
+        if (not isinstance(identity, str) or not identity or not isinstance(review, dict) or
+                set(review) != {"trusted_hash"} or
+                not isinstance(review["trusted_hash"], str) or not review["trusted_hash"]):
+            raise SystemExit(1)
 PY
     then
     die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
     fi
   done
 
-  require_optional_regular_file "$retired_hook_target" 755
-  if [[ -e "$retired_hook_gaps" || -L "$retired_hook_gaps" ]]; then
-    require_owned_directory "$retired_hook_gaps" 700
-  fi
-  if [[ -e "$retired_hook_target" || -e "$retired_hook_gaps" ]]; then
-    printf 'Retired hook drain: pending for already-running Codex processes\n'
-  else
-    printf 'Retired hook drain: complete\n'
-  fi
 }
 
 verify_caddy_boundary() {
@@ -213,7 +215,8 @@ PY
     ' >/dev/null || die "Caddy live ingress conflicts with Skidbladnir"
 
   local listener
-  listener="$(/usr/bin/ss -H -ltn "sport = :443")"
+  read_tcp_listeners 443 basic
+  listener="$tcp_listener_records"
   [[ -n "$listener" && "$listener" != *$'\n'* ]] ||
     die "port 443 is not held by one listener"
 }
@@ -250,16 +253,77 @@ atomic_install() {
 
 stop_current_service() {
   local active_state
+  local main_pid
   active_state="$(/usr/bin/systemctl --user show "$service_name" -p ActiveState --value)" || return 1
-  case "$active_state" in
-    active)
-      [[ "$(/usr/bin/systemctl --user show "$service_name" -p KillMode --value)" == "process" ]] || return 1
+  case "$preflight_service_state:$active_state" in
+    active:active)
+      main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
+      [[ "$main_pid" == "$preflight_service_pid" ]] || return 1
+      verify_owned_active_service "$main_pid" || return 1
       /usr/bin/systemctl --user stop "$service_name" || return 1
+      read_tcp_listeners "$listen_port" process
+      [[ -z "$tcp_listener_records" ]] || return 1
       ;;
-    inactive) ;;
-    failed) /usr/bin/systemctl --user reset-failed "$service_name" || return 1 ;;
+    inactive:inactive)
+      read_tcp_listeners "$listen_port" process
+      [[ -z "$tcp_listener_records" ]] || return 1
+      ;;
+    failed:failed)
+      read_tcp_listeners "$listen_port" process
+      [[ -z "$tcp_listener_records" ]] || return 1
+      /usr/bin/systemctl --user reset-failed "$service_name" || return 1
+      ;;
     *) return 1 ;;
   esac
+}
+
+verify_owned_active_service() {
+  local main_pid="$1"
+  local listener
+  require_systemd_property FragmentPath "$unit_target"
+  require_systemd_property DropInPaths ""
+  require_systemd_property KillMode process
+  verify_effective_environment
+  if ! /usr/bin/python3 - "$main_pid" "$binary_target" "$expected_home" "$service_path" <<'PY'
+import os
+import sys
+
+pid_text, expected_executable, expected_home, expected_path = sys.argv[1:]
+if not pid_text.isascii() or not pid_text.isdecimal() or int(pid_text) <= 0:
+    raise SystemExit(1)
+pid = int(pid_text)
+if os.readlink(f"/proc/{pid}/exe") != expected_executable:
+    raise SystemExit(1)
+with open(f"/proc/{pid}/cmdline", "rb") as stream:
+    command_line = stream.read().split(b"\0")
+if len(command_line) < 3 or command_line[-1] != b"":
+    raise SystemExit(1)
+if command_line[:2] != [os.fsencode(expected_executable), b"gateway"]:
+    raise SystemExit(1)
+with open(f"/proc/{pid}/environ", "rb") as stream:
+    entries = [entry for entry in stream.read().split(b"\0") if entry]
+environment = {}
+for entry in entries:
+    name, separator, value = entry.partition(b"=")
+    if not separator or name in environment:
+        raise SystemExit(1)
+    environment[name] = value
+if environment.get(b"HOME") != os.fsencode(expected_home):
+    raise SystemExit(1)
+if environment.get(b"PATH") != os.fsencode(expected_path):
+    raise SystemExit(1)
+if environment.keys() & {b"TMUX", b"TMUX_PANE", b"TMUX_TMPDIR"}:
+    raise SystemExit(1)
+PY
+  then
+    die "active service is not an owned gateway process"
+  fi
+  read_tcp_listeners "$listen_port" process
+  listener="$tcp_listener_records"
+  [[ -n "$listener" && "$listener" != *$'\n'* && "$listener" == *"${listen_address}"* &&
+    "$listener" == *"pid=${main_pid},"* ]] || die "active service is not the sole loopback gateway listener"
+  [[ "$listener" != *"0.0.0.0:${listen_port}"* && "$listener" != *"[::]:${listen_port}"* ]] ||
+    die "active service has a non-loopback listener"
 }
 
 classify_notify() {
@@ -349,7 +413,7 @@ preflight_operation() {
     die "refusing inherited tmux socket state"
 
   local dependency
-  for dependency in cmp curl cut flock git go jq loginctl python3 sha256sum ss systemctl systemd-analyze tailscale tmux; do
+  for dependency in cmp curl flock git go jq loginctl python3 ss systemctl systemd-analyze tailscale tmux; do
     require_command "$dependency"
   done
 }
@@ -366,11 +430,16 @@ preflight_platform() {
   [[ "$(/usr/bin/loginctl show-user "$expected_user" -p Linger --value)" == "yes" ]] ||
     die "systemd user linger is not enabled"
   /usr/bin/systemctl --user show-environment >/dev/null || die "systemd user manager is unavailable"
-  [[ ! -e "${expected_home}/.local/state/skidbladnir/router/enabled" &&
-    ! -L "${expected_home}/.local/state/skidbladnir/router/enabled" ]] ||
-    die "the retired router is still enabled"
   verify_caddy_boundary
-  require_retired_hook_runtime_disabled
+  require_status_hook_configuration
+
+  local profile_key
+  for profile_key in personal work work2; do
+    [[ -f "${expected_home}/bin/codex-${profile_key}" && -x "${expected_home}/bin/codex-${profile_key}" ]] ||
+      die "profile command is unavailable: codex-${profile_key}"
+  done
+  [[ -f "${expected_home}/.local/bin/codex" && -x "${expected_home}/.local/bin/codex" ]] ||
+    die "foreground Codex path is unavailable"
 
   require_owned_directory "${expected_home}/.local"
   require_owned_directory "${expected_home}/.local/bin" 700
@@ -385,6 +454,7 @@ preflight_host() {
   require_optional_regular_file "$binary_target" 755
   require_optional_regular_file "$notify_target" 755
   require_optional_regular_file "$catalogue_target" 644
+  require_optional_regular_file "$machine_handle_target" 600
   require_optional_regular_file "$unit_target" 644
   local catalogue_directory
   catalogue_directory="$(/usr/bin/dirname -- "$catalogue_target")"
@@ -425,18 +495,19 @@ preflight_host() {
   case "$active_state" in
     active)
       local main_pid
-      local listener
-      [[ "$(/usr/bin/systemctl --user show "$service_name" -p KillMode --value)" == "process" ]] ||
-        die "active service loaded with unsafe KillMode"
       main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
-      listener="$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")"
-      [[ "$main_pid" =~ ^[1-9][0-9]*$ && -n "$listener" && "$listener" != *$'\n'* &&
-        "$listener" == *"${listen_address}"* && "$listener" == *"pid=${main_pid},"* ]] ||
-        die "active service does not own ${listen_address}"
+      verify_owned_active_service "$main_pid"
+      [[ "$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)" == "$main_pid" ]] ||
+        die "service process changed during preflight"
+      preflight_service_state="active"
+      preflight_service_pid="$main_pid"
       ;;
     inactive | failed)
-      [[ -z "$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")" ]] ||
+      read_tcp_listeners "$listen_port" process
+      [[ -z "$tcp_listener_records" ]] ||
         die "${listen_address} is already in use"
+      preflight_service_state="$active_state"
+      preflight_service_pid=""
       ;;
     *) die "service is in a transitional state: ${active_state}" ;;
   esac
@@ -459,7 +530,8 @@ preflight_host() {
   current_serve="$(/usr/bin/tailscale serve status --json)"
   current_serve_state="$(serve_state "$current_serve" "${host_name}:${serve_port}")"
   [[ "$current_serve_state" != "conflict" ]] || die "Tailscale Serve configuration conflicts"
-  if [[ "$current_serve_state" == "add" && -n "$(/usr/bin/ss -H -ltn "sport = :${serve_port}")" ]]; then
+  read_tcp_listeners "$serve_port" basic
+  if [[ "$current_serve_state" == "add" && -n "$tcp_listener_records" ]]; then
     die "Tailscale Serve port ${serve_port} is already in use"
   fi
   printf 'Tailscale Serve: %s\n' "$current_serve_state"
@@ -476,20 +548,16 @@ stage_installation() {
     /usr/bin/systemd-analyze --user verify deploy/systemd/skidbladnir.service
     go build -trimpath -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
   )
-  /usr/bin/install -m 0755 -- "$repo_dir/deploy/skid-notify" "$staging_dir/skid-notify"
+  /usr/bin/install -m 0755 -- "$repo_dir/deploy/devbox/skid-notify" "$staging_dir/skid-notify"
   /usr/bin/install -m 0600 -- "$hooks_source" "$staging_dir/status-hooks.json"
   /usr/bin/install -m 0644 -- "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
   /usr/bin/install -m 0644 -- "$repo_dir/deploy/systemd/skidbladnir.service" "$staging_dir/skidbladnir.service"
 
   local config_file
   local classification
-  local hook_file
   local index=0
   for config_file in "${profile_configs[@]}"; do
     classification="$(classify_notify "$config_file")"
-    config_digests[index]="$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)"
-    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
-    hook_digests[index]="$(optional_file_digest "$hook_file")"
     if [[ "$classification" == "add" ]]; then
       {
         printf '%s\n\n' "$desired_notify"
@@ -497,22 +565,6 @@ stage_installation() {
       } >"$staging_dir/config-${index}.toml"
       /usr/bin/chmod 0600 "$staging_dir/config-${index}.toml"
     fi
-    index=$((index + 1))
-  done
-}
-
-verify_profile_digests() {
-  local config_file
-  local current_digest
-  local hook_file
-  local index=0
-  for config_file in "${profile_configs[@]}"; do
-    current_digest="$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)"
-    [[ "$current_digest" == "${config_digests[index]}" ]] ||
-      die "Codex config changed during installation: ${config_file}"
-    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
-    [[ "$(optional_file_digest "$hook_file")" == "${hook_digests[index]}" ]] ||
-      die "Codex hooks changed during installation: ${hook_file}"
     index=$((index + 1))
   done
 }
@@ -528,12 +580,16 @@ wait_for_health() {
   die "gateway health check did not become ready"
 }
 
-authenticated_get() {
+authenticated_machine_get() {
   local request_url="$1"
+  local machine_handle
+  machine_handle="$(/usr/bin/sed -n '1p' "$machine_handle_target")"
   /usr/bin/curl --fail --silent --show-error \
     --header @<(/usr/bin/sed 's/^/Authorization: Bearer /' "$bearer_target") \
-    "$request_url" >/dev/null
+    --header "Skidbladnir-Machine: ${machine_handle}" \
+    "$request_url"
 }
+
 
 require_systemd_property() {
   local property_name="$1"
@@ -569,7 +625,7 @@ verify_effective_exec_start() {
   local effective_exec_start
   local expected_exec_start
   effective_exec_start="$(/usr/bin/systemctl --user show "$service_name" -p ExecStart --value)"
-  expected_exec_start="${binary_target} gateway --listen=${listen_address} --bearer-file=${bearer_target} --catalogue-path=${catalogue_target}"
+  expected_exec_start="${binary_target} gateway --listen=${listen_address} --bearer-file=${bearer_target} --catalogue-path=${catalogue_target} --machine-handle-file=${machine_handle_target}"
   if ! /usr/bin/python3 - "$effective_exec_start" "$binary_target" "$expected_exec_start" <<'PY'
 import sys
 
@@ -592,28 +648,9 @@ PY
   fi
 }
 
-verify_installation() {
-  preflight_host
-  [[ -n "$staging_dir" && -f "$staging_dir/skidbladnir" ]] || die "gateway verification artifact is absent"
-  [[ -e "$bearer_target" ]] || die "bearer is absent"
-  validate_bearer || die "bearer file is invalid"
-  local config_file
-  local hook_file
-  for config_file in "${profile_configs[@]}"; do
-    [[ "$(classify_notify "$config_file")" == "present" ]] ||
-      die "notify is not installed: ${config_file}"
-    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
-    [[ "$(classify_status_hooks "$hook_file")" == "present" ]] ||
-      die "status hooks are not installed: ${hook_file}"
-  done
-  /usr/bin/cmp --silent "$staging_dir/skidbladnir" "$binary_target" || die "installed gateway drifted"
-  /usr/bin/cmp --silent "$repo_dir/deploy/skid-notify" "$notify_target" || die "installed notifier drifted"
-  /usr/bin/cmp --silent "$repo_dir/catalog/characters.json" "$catalogue_target" || die "installed catalogue drifted"
-  /usr/bin/cmp --silent "$repo_dir/deploy/systemd/skidbladnir.service" "$unit_target" || die "installed unit drifted"
+verify_loaded_service_contract() {
   [[ "$(/usr/bin/systemctl --user is-enabled "$service_name")" == "enabled" ]] ||
     die "service is not enabled"
-  [[ "$(/usr/bin/systemctl --user is-active "$service_name")" == "active" ]] ||
-    die "service is not active"
   require_systemd_property FragmentPath "$unit_target"
   require_systemd_property DropInPaths ""
   verify_effective_exec_start
@@ -633,10 +670,11 @@ verify_installation() {
   require_systemd_property SystemCallFilter "~"
   require_systemd_property RootDirectory ""
   require_systemd_property RootImage ""
+}
 
-  local main_pid
+verify_running_gateway_process() {
+  local main_pid="$1"
   local listener
-  main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
   if ! /usr/bin/python3 - \
     "$main_pid" \
     "$binary_target" \
@@ -645,7 +683,8 @@ verify_installation() {
     gateway \
     "--listen=${listen_address}" \
     "--bearer-file=${bearer_target}" \
-    "--catalogue-path=${catalogue_target}" <<'PY'
+    "--catalogue-path=${catalogue_target}" \
+    "--machine-handle-file=${machine_handle_target}" <<'PY'
 import os
 import sys
 
@@ -680,16 +719,53 @@ PY
   then
     die "running gateway process identity or environment drifted"
   fi
-  listener="$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")"
+  read_tcp_listeners "$listen_port" process
+  listener="$tcp_listener_records"
   [[ -n "$listener" && "$listener" != *$'\n'* && "$listener" == *"${listen_address}"* &&
-    "$listener" == *"pid=${main_pid},"* ]] ||
-    die "gateway is not the sole loopback listener"
+    "$listener" == *"pid=${main_pid},"* ]] || die "gateway is not the sole loopback listener"
   [[ "$listener" != *"0.0.0.0:${listen_port}"* && "$listener" != *"[::]:${listen_port}"* ]] ||
     die "gateway has a non-loopback listener"
+}
+
+verify_installation() {
+  preflight_host
+  [[ -n "$staging_dir" && -f "$staging_dir/skidbladnir" ]] || die "gateway verification artifact is absent"
+  [[ -e "$bearer_target" ]] || die "bearer is absent"
+  [[ -e "$machine_handle_target" ]] || die "machine handle is absent"
+  validate_bearer || die "bearer file is invalid"
+  [[ "$("$staging_dir/skidbladnir" machine init --file="$machine_handle_target")" == "$(/usr/bin/sed -n '1p' "$machine_handle_target")" ]] ||
+    die "machine handle is invalid"
+  local config_file
+  local hook_file
+  for config_file in "${profile_configs[@]}"; do
+    [[ "$(classify_notify "$config_file")" == "present" ]] ||
+      die "notify is not installed: ${config_file}"
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    [[ "$(classify_status_hooks "$hook_file")" == "present" ]] ||
+      die "status hooks are not installed: ${hook_file}"
+  done
+  /usr/bin/cmp --silent "$staging_dir/skidbladnir" "$binary_target" || die "installed gateway drifted"
+  /usr/bin/cmp --silent "$repo_dir/deploy/devbox/skid-notify" "$notify_target" || die "installed notifier drifted"
+  /usr/bin/cmp --silent "$repo_dir/catalog/characters.json" "$catalogue_target" || die "installed catalogue drifted"
+  /usr/bin/cmp --silent "$repo_dir/deploy/systemd/skidbladnir.service" "$unit_target" || die "installed unit drifted"
+  [[ "$(/usr/bin/systemctl --user is-enabled "$service_name")" == "enabled" ]] ||
+    die "service is not enabled"
+  [[ "$(/usr/bin/systemctl --user is-active "$service_name")" == "active" ]] ||
+    die "service is not active"
+  verify_loaded_service_contract
+
+  local main_pid
+  main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
+  verify_running_gateway_process "$main_pid"
+  [[ "$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)" == "$main_pid" ]] ||
+    die "service process changed during verification"
 
   [[ "$(/usr/bin/curl --fail --silent --show-error "http://${listen_address}/healthz")" == "ok" ]] ||
     die "loopback health check failed"
-  authenticated_get "http://${listen_address}/v1/sessions"
+  authenticated_machine_get "http://${listen_address}/v1/sessions" |
+    /usr/bin/jq -e --arg machine_handle "$(/usr/bin/sed -n '1p' "$machine_handle_target")" \
+      '.machine == {handle:$machine_handle,platform:"Linux"}' >/dev/null ||
+    die "loopback machine envelope drifted"
 
   local host_name
   local current_serve
@@ -698,7 +774,10 @@ PY
   current_serve="$(/usr/bin/tailscale serve status --json)"
   [[ "$(serve_state "$current_serve" "${host_name}:${serve_port}")" == "present" ]] ||
     die "exact Tailscale Serve route is not installed"
-  authenticated_get "https://${host_name}:${serve_port}/v1/sessions"
+  authenticated_machine_get "https://${host_name}:${serve_port}/v1/sessions" |
+    /usr/bin/jq -e --arg machine_handle "$(/usr/bin/sed -n '1p' "$machine_handle_target")" \
+      '.machine == {handle:$machine_handle,platform:"Linux"}' >/dev/null ||
+    die "Tailnet machine envelope drifted"
   [[ "$(/usr/bin/curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/v1/sessions")" == "401" ]] ||
     die "unauthenticated Tailnet request was not rejected"
   for remote_root in "healthz" ""; do
@@ -712,7 +791,10 @@ PY
 install_devbox() {
   preflight_host
   stage_installation
-  verify_profile_digests
+  if [[ -e "$machine_handle_target" || -L "$machine_handle_target" ]]; then
+    [[ "$("$staging_dir/skidbladnir" machine init --file="$machine_handle_target")" == "$(/usr/bin/sed -n '1p' "$machine_handle_target")" ]] ||
+      die "existing machine handle is invalid"
+  fi
   stop_current_service || die "service could not be safely stopped for installation"
 
   ensure_owned_directory "$(/usr/bin/dirname -- "$binary_target")" 700
@@ -723,21 +805,18 @@ install_devbox() {
   atomic_install "$staging_dir/skid-notify" "$notify_target" 0755
   atomic_install "$staging_dir/characters.json" "$catalogue_target" 0644
   atomic_install "$staging_dir/skidbladnir.service" "$unit_target" 0644
+  "$staging_dir/skidbladnir" machine init --file="$machine_handle_target" >/dev/null
 
   local config_file
   local classification
   local hook_file
   local index=0
   for config_file in "${profile_configs[@]}"; do
-    [[ "$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)" == "${config_digests[index]}" ]] ||
-      die "Codex config changed before publication: ${config_file}"
     classification="$(classify_notify "$config_file")"
     if [[ "$classification" == "add" ]]; then
       atomic_install "$staging_dir/config-${index}.toml" "$config_file" 0600
     fi
     hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
-    [[ "$(optional_file_digest "$hook_file")" == "${hook_digests[index]}" ]] ||
-      die "Codex hooks changed before publication: ${hook_file}"
     classification="$(classify_status_hooks "$hook_file")"
     if [[ "$classification" == "add" ]]; then
       atomic_install "$staging_dir/status-hooks.json" "$hook_file" 0600
@@ -748,7 +827,7 @@ install_devbox() {
   /usr/bin/systemctl --user daemon-reload
   /usr/bin/systemctl --user enable --now "$service_name"
   wait_for_health
-  authenticated_get "http://${listen_address}/v1/sessions"
+  authenticated_machine_get "http://${listen_address}/v1/sessions" >/dev/null
 
   local host_name
   local current_serve

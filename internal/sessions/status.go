@@ -1,44 +1,36 @@
 package sessions
 
 import (
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-type foregroundProcess struct {
-	pid            int
-	startTime      string
-	executableBase string
-	argument1      string
-}
-
-func (manager *Manager) deriveStatus(panePID int, lifecycleValue string, now time.Time) Status {
+func (manager *Manager) deriveStatus(panePID int, paneTTY, lifecycleValue string, now time.Time) Status {
 	now = now.UTC()
-	process, err := observeForegroundProcess(panePID)
+	observed, err := processinfo.ObserveForeground(processinfo.PID(panePID), paneTTY)
 	if err != nil {
 		return Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: now}
 	}
-	if !manager.matchesAgent(process) {
+	if !manager.matchesAgent(observed) {
 		return Status{Kind: StatusShell, Signal: StatusSignalProcess, SignalAt: now}
 	}
-	if lifecycle, valid := parseLifecycleStatus(lifecycleValue, process, now); valid {
+	if lifecycle, valid := parseLifecycleStatus(lifecycleValue, observed, now); valid {
 		return lifecycle
 	}
 	return runningStatus(now)
 }
 
-func parseLifecycleStatus(value string, process foregroundProcess, now time.Time) (Status, bool) {
+func parseLifecycleStatus(value string, observed processinfo.Observation, now time.Time) (Status, bool) {
 	fields := strings.Split(value, ":")
-	if len(fields) != 5 || fields[0] != "v1" || process.pid <= 0 || process.startTime == "" {
+	if len(fields) != 5 || fields[0] != "v1" || observed.PID <= 0 || observed.StartIdentity == "" {
 		return Status{}, false
 	}
 	originPID, err := strconv.Atoi(fields[1])
-	if err != nil || originPID != process.pid || fields[2] != process.startTime {
+	if err != nil || originPID != int(observed.PID) || fields[2] != string(observed.StartIdentity) {
 		return Status{}, false
 	}
 	seconds, err := strconv.ParseInt(fields[4], 10, 64)
@@ -65,77 +57,16 @@ func runningStatus(now time.Time) Status {
 	return Status{Kind: StatusRunning, Signal: StatusSignalProcess, SignalAt: now.UTC()}
 }
 
-func (manager *Manager) matchesAgent(process foregroundProcess) bool {
+func (manager *Manager) matchesAgent(observed processinfo.Observation) bool {
+	base, argument1 := filepath.Base(observed.Executable), observed.Argument(1)
 	for _, profile := range manager.profiles {
 		for _, signature := range profile.ForegroundSignatures {
-			if process.executableBase == signature.ExecutableBase && (signature.Argument1 == "" || process.argument1 == signature.Argument1) {
+			if base == signature.ExecutableBase && (signature.Argument1 == "" || argument1 == signature.Argument1) {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-func observeForegroundProcess(panePID int) (foregroundProcess, error) {
-	contents, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(panePID), "stat"))
-	if err != nil {
-		return foregroundProcess{}, fmt.Errorf("read pane process stat: %w", err)
-	}
-	closingParenthesis := strings.LastIndexByte(string(contents), ')')
-	if closingParenthesis < 0 {
-		return foregroundProcess{}, errors.New("pane process stat has no command terminator")
-	}
-	fields := strings.Fields(string(contents[closingParenthesis+1:]))
-	if len(fields) < 6 {
-		return foregroundProcess{}, errors.New("pane process stat is incomplete")
-	}
-	foregroundPID, err := strconv.Atoi(fields[5])
-	if err != nil || foregroundPID <= 0 {
-		return foregroundProcess{}, errors.New("pane process has no foreground process group")
-	}
-	processRoot := filepath.Join("/proc", strconv.Itoa(foregroundPID))
-	processStat, err := os.ReadFile(filepath.Join(processRoot, "stat"))
-	if err != nil {
-		return foregroundProcess{}, fmt.Errorf("read foreground process stat: %w", err)
-	}
-	startTime, err := parseProcessStartTime(processStat)
-	if err != nil {
-		return foregroundProcess{}, err
-	}
-	executable, err := os.Readlink(filepath.Join(processRoot, "exe"))
-	if err != nil {
-		return foregroundProcess{}, fmt.Errorf("read foreground executable: %w", err)
-	}
-	commandLine, err := os.ReadFile(filepath.Join(processRoot, "cmdline"))
-	if err != nil {
-		return foregroundProcess{}, fmt.Errorf("read foreground command line: %w", err)
-	}
-	arguments := strings.Split(strings.TrimSuffix(string(commandLine), "\x00"), "\x00")
-	if len(arguments) == 0 || arguments[0] == "" {
-		return foregroundProcess{}, errors.New("foreground command line is empty")
-	}
-	process := foregroundProcess{pid: foregroundPID, startTime: startTime, executableBase: filepath.Base(executable)}
-	if len(arguments) > 1 {
-		process.argument1 = arguments[1]
-	}
-	return process, nil
-}
-
-func parseProcessStartTime(contents []byte) (string, error) {
-	closingParenthesis := strings.LastIndexByte(string(contents), ')')
-	if closingParenthesis < 0 {
-		return "", errors.New("foreground process stat has no command terminator")
-	}
-	fields := strings.Fields(string(contents[closingParenthesis+1:]))
-	if len(fields) < 20 {
-		return "", errors.New("foreground process stat is incomplete")
-	}
-	startTime := fields[19]
-	parsed, err := strconv.ParseUint(startTime, 10, 64)
-	if err != nil || parsed == 0 {
-		return "", errors.New("foreground process stat has an invalid start time")
-	}
-	return startTime, nil
 }
 
 func parseAttentionTime(value string, now time.Time) (time.Time, bool) {

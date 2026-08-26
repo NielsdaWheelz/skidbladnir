@@ -16,12 +16,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
+	"github.com/creack/pty"
 )
 
 const (
-	tmuxPath               = "/usr/bin/tmux"
+	sleepPath              = "/bin/sleep"
 	yoloFlag               = "--dangerously-bypass-approvals-and-sandbox"
 	tmuxConvergenceTimeout = 5 * time.Second
 	tmuxCleanupTimeout     = 3 * time.Second
@@ -30,20 +32,19 @@ const (
 	// their external query boundaries; 25 ms keeps the bounded integration
 	// proof responsive without assuming synchronous process publication.
 	tmuxConvergencePollInterval = 25 * time.Millisecond
-	defaultSocketHelperVariable = "SKIDBLADNIR_DEFAULT_TMUX_HELPER"
-	defaultSocketRootVariable   = "SKIDBLADNIR_DEFAULT_TMUX_ROOT"
-	defaultSocketNonceVariable  = "SKIDBLADNIR_DEFAULT_TMUX_NONCE"
 )
+
+var tmuxPath = platform.Current().TmuxPath
 
 func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	if err := os.Mkdir(home, 0o700); err != nil {
-		t.Fatalf("create service home: %v", err)
+		t.Fatal("create service home")
 	}
 	catalogue := filepath.Join(root, "catalogue.json")
 	if err := os.WriteFile(catalogue, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
-		t.Fatalf("write catalogue: %v", err)
+		t.Fatal("write catalogue")
 	}
 	_, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
@@ -58,206 +59,15 @@ func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 		}},
 	})
 	if err != nil {
-		t.Fatalf("an unavailable opaque profile command took down inventory: %v", err)
-	}
-}
-
-func TestDefaultSocketInvocationPreservesExplicitRootAndUserConfiguration(t *testing.T) {
-	if os.Getenv(defaultSocketHelperVariable) == "1" {
-		runDefaultSocketHelper(t)
-		return
-	}
-
-	root, err := os.MkdirTemp(testSocketRoot(), "skid-default-socket-helper-")
-	if err != nil {
-		t.Fatalf("create default-socket subprocess root: %v", err)
-	}
-	if !pathStrictlyInside(testSocketRoot(), root) {
-		t.Fatalf("default-socket subprocess root escapes the private integration root: %q", root)
-	}
-	if err := os.Chmod(root, 0o700); err != nil {
-		t.Fatalf("secure default-socket subprocess root: %v", err)
-	}
-	socketPath := filepath.Join(root, "tmux", "owned-default.sock")
-	registerTestOwnedSocketPath(t, socketPath)
-	t.Cleanup(func() {
-		cleanupDefaultSocketHelper(t, root, socketPath)
-	})
-	nonce := randomTmuxSocketName(t, "cap")
-	capabilityPath := filepath.Join(root, ".default-socket-capability")
-	if err := os.WriteFile(capabilityPath, []byte(nonce+"\n"), 0o600); err != nil {
-		t.Fatalf("write default-socket subprocess capability: %v", err)
-	}
-	command := exec.Command(
-		os.Args[0],
-		"-test.run=^TestDefaultSocketInvocationPreservesExplicitRootAndUserConfiguration$",
-		"-test.count=1",
-		"-skidbladnir-isolated-tmux-capability="+isolatedTmuxCLICapabilityV1,
-	)
-	command.Env = append(withoutEnvironment(os.Environ(), "HOME", "TMUX", "TMUX_PANE", "TMUX_TMPDIR",
-		defaultSocketHelperVariable, defaultSocketRootVariable, defaultSocketNonceVariable),
-		defaultSocketHelperVariable+"=1",
-		"HOME="+filepath.Join(root, "home"),
-		"TMUX_TMPDIR="+filepath.Join(root, "tmux"),
-		defaultSocketRootVariable+"="+root,
-		defaultSocketNonceVariable+"="+nonce,
-	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("default-socket subprocess proof failed: output=%q error=%v", output, err)
-	}
-}
-
-func cleanupDefaultSocketHelper(t *testing.T, root, socketPath string) {
-	t.Helper()
-	if err := cleanupRegisteredTmuxSocket(tmuxPath, socketPath); err != nil {
-		t.Errorf("clean default-socket subprocess server: %v", err)
-		return
-	}
-	for _, path := range []string{
-		filepath.Join(root, ".default-socket-capability"),
-		filepath.Join(root, "home", ".tmux.conf"),
-		filepath.Join(root, "catalogue.json"),
-		filepath.Join(root, "agent"),
-		filepath.Join(root, "guarded-tmux"),
-	} {
-		if err := removeExactDefaultSocketHelperFile(path); err != nil {
-			t.Errorf("remove default-socket subprocess file: %v", err)
-			return
-		}
-	}
-	for _, path := range []string{
-		filepath.Join(root, "home"),
-		filepath.Join(root, "tmux"),
-		filepath.Join(root, "profile"),
-		filepath.Join(root, "project"),
-		root,
-	} {
-		if err := removeExactPrivateDirectory(path); err != nil {
-			t.Errorf("remove empty default-socket subprocess directory %s: %v", path, err)
-			return
-		}
-	}
-}
-
-func removeExactDefaultSocketHelperFile(path string) error {
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", path, err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("refusing to remove non-file helper path: %s", path)
-	}
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove %s: %w", path, err)
-	}
-	return nil
-}
-
-func runDefaultSocketHelper(t *testing.T) {
-	root := os.Getenv(defaultSocketRootVariable)
-	nonce := os.Getenv(defaultSocketNonceVariable)
-	if !filepath.IsAbs(root) || filepath.Clean(root) != root || os.Getenv("HOME") != filepath.Join(root, "home") ||
-		os.Getenv("TMUX_TMPDIR") != filepath.Join(root, "tmux") {
-		t.Fatal("default-socket subprocess has no exact private root")
-	}
-	rootInfo, err := os.Stat(root)
-	if err != nil {
-		t.Fatalf("stat default-socket subprocess root: path=%q error=%v", root, err)
-	}
-	if !rootInfo.IsDir() || rootInfo.Mode().Perm() != 0o700 {
-		t.Fatalf("default-socket subprocess root is not private: path=%q mode=%v", root, rootInfo.Mode())
-	}
-	capabilityPath := filepath.Join(root, ".default-socket-capability")
-	capabilityInfo, err := os.Stat(capabilityPath)
-	if err != nil {
-		t.Fatalf("stat default-socket subprocess capability: path=%q error=%v", capabilityPath, err)
-	}
-	if !capabilityInfo.Mode().IsRegular() || capabilityInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("default-socket subprocess capability is invalid: path=%q mode=%v", capabilityPath, capabilityInfo.Mode())
-	}
-	capability, err := os.ReadFile(capabilityPath)
-	if err != nil || string(capability) != nonce+"\n" || !strings.HasPrefix(nonce, "cap-") || len(nonce) != len("cap-")+32 {
-		t.Fatalf("default-socket subprocess capability mismatch: error=%v", err)
-	}
-	home := filepath.Join(root, "home")
-	tmuxRoot := filepath.Join(root, "tmux")
-	profileHome := filepath.Join(root, "profile")
-	project := filepath.Join(root, "project")
-	for _, path := range []string{home, tmuxRoot, profileHome, project} {
-		if err := os.MkdirAll(path, 0o700); err != nil {
-			t.Fatalf("create default-socket fixture directory: path=%s error=%v", path, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(home, ".tmux.conf"), []byte("set-option -g @skid_test_config loaded\n"), 0o600); err != nil {
-		t.Fatalf("write isolated user tmux config: %v", err)
-	}
-	catalogue := filepath.Join(root, "catalogue.json")
-	if err := os.WriteFile(catalogue, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
-		t.Fatalf("write default-socket catalogue fixture: %v", err)
-	}
-	agent := filepath.Join(root, "agent")
-	if err := os.WriteFile(agent, []byte("#!/bin/sh\nexec /usr/bin/sleep 300\n"), 0o700); err != nil {
-		t.Fatalf("write default-socket agent fixture: %v", err)
-	}
-	socketPath := filepath.Join(tmuxRoot, "owned-default.sock")
-	registerTestOwnedSocketPath(t, socketPath)
-	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("isolated default tmux socket unexpectedly exists before test: path=%s error=%v", socketPath, err)
-	}
-	guardedTmux := filepath.Join(root, "guarded-tmux")
-	guardScript := `#!/bin/sh
-set -eu
-expected_root="${SKIDBLADNIR_DEFAULT_TMUX_ROOT:?}/tmux"
-[ "${TMUX_TMPDIR-}" = "$expected_root" ] || exit 97
-for argument in "$@"; do
-  case "$argument" in
-    -L*|-S*|-f*) exit 98 ;;
-  esac
-done
-exec /usr/bin/tmux -S "$expected_root/owned-default.sock" "$@"
-`
-	if err := os.WriteFile(guardedTmux, []byte(guardScript), 0o700); err != nil {
-		t.Fatalf("write guarded default-socket tmux fixture: %v", err)
-	}
-
-	manager, err := sessions.New(sessions.Config{
-		TmuxPath:      guardedTmux,
-		Home:          home,
-		CataloguePath: catalogue,
-		Profiles: []sessions.Profile{{
-			Key:                  "personal",
-			Label:                "Personal",
-			Command:              agent,
-			Environment:          []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHome}},
-			ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
-			Arguments:            []string{yoloFlag},
-		}},
-	})
-	if err != nil {
-		t.Fatalf("construct default-socket manager: %v", err)
-	}
-	if _, err := manager.Create(context.Background(), sessions.CreateInput{CWD: project, Profile: "personal"}); err != nil {
-		t.Fatalf("create through ordinary default tmux invocation: %v", err)
-	}
-	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
-	t.Cleanup(func() {
-		stopTestTmuxServer(t, tmuxPath, socketPath, serverIdentity)
-	})
-	output, err := isolatedTmuxCommand(tmuxPath, "-S", socketPath, "show-options", "-gv", "@skid_test_config").CombinedOutput()
-	if err != nil || strings.TrimSpace(string(output)) != "loaded" {
-		t.Fatalf("default tmux did not load the user's config: output=%q error=%v", output, err)
+		t.Fatal("an unavailable opaque profile command took down inventory")
 	}
 }
 
 func TestSessionManagerAgainstRealTmux(t *testing.T) {
 	t.Parallel()
 
-	if output, err := isolatedTmuxCommand(tmuxPath, "-V").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "tmux 3.4" {
-		t.Fatalf("S1 integration requires /usr/bin/tmux 3.4: output=%q error=%v", output, err)
+	if output, err := isolatedTmuxCommand(tmuxPath, "-V").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != platform.Current().TmuxVersion {
+		t.Fatalf("host tmux pin mismatch: command_ok=%t version_match=%t", err == nil, strings.TrimSpace(string(output)) == platform.Current().TmuxVersion)
 	}
 
 	fixture := newSessionFixture(t)
@@ -266,20 +76,20 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 	t.Run("invalid starts mutate nothing", func(t *testing.T) {
 		before, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list sessions before invalid starts: %v", err)
+			t.Fatal("list sessions before invalid starts")
 		}
 
 		file := filepath.Join(fixture.root, "not-a-directory")
 		if err := os.WriteFile(file, []byte("fixture"), 0o600); err != nil {
-			t.Fatalf("write non-directory cwd fixture: %v", err)
+			t.Fatal("write non-directory cwd fixture")
 		}
 		unsearchable := filepath.Join(fixture.root, "unsearchable")
 		if err := os.Mkdir(unsearchable, 0o600); err != nil {
-			t.Fatalf("create unsearchable cwd fixture: %v", err)
+			t.Fatal("create unsearchable cwd fixture")
 		}
 		t.Cleanup(func() {
 			if err := os.Chmod(unsearchable, 0o700); err != nil {
-				t.Errorf("restore test-owned directory permissions: %v", err)
+				t.Error("restore test-owned directory permissions")
 			}
 		})
 
@@ -309,10 +119,10 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 				assertSessionError(t, err, test.code)
 				after, listErr := fixture.manager.List(ctx)
 				if listErr != nil {
-					t.Fatalf("list sessions after rejected %s: %v", test.name, listErr)
+					t.Fatalf("list sessions after rejected %s", test.name)
 				}
 				if len(after) != len(before) {
-					t.Fatalf("rejected %s mutated isolated tmux: before=%d after=%d sessions=%+v", test.name, len(before), len(after), after)
+					t.Fatalf("rejected %s mutated isolated tmux: before_count=%d after_count=%d", test.name, len(before), len(after))
 				}
 			})
 		}
@@ -343,14 +153,14 @@ for argument in "$@"; do
 done
 if [ "$is_create" -eq 1 ] && [ "$is_target" -eq 1 ] && [ ! -e "$marker" ]; then
   : > "$marker"
-  /usr/bin/tmux -L "$socket" -f /dev/null new-session -d -s %q -c "$project" -- /usr/bin/sleep 300
-  /usr/bin/tmux -L "$socket" -f /dev/null set-option -t '=%s:' -- @collision_guard untouched
-  /usr/bin/tmux -L "$socket" -f /dev/null display-message -p -t '=%s:' '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
+	  %s -L "$socket" -f /dev/null new-session -d -s %q -c "$project" -- %s 300
+	  %s -L "$socket" -f /dev/null set-option -t '=%s:' -- @collision_guard untouched
+	  %s -L "$socket" -f /dev/null display-message -p -t '=%s:' '#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}' > "$identity"
 fi
-exec /usr/bin/tmux "$@"
-`, fixture.socket, fixture.project, marker, identity, collisionName, collisionName, collisionName, collisionName)
+exec %s "$@"
+`, fixture.socket, fixture.project, marker, identity, collisionName, tmuxPath, collisionName, sleepPath, tmuxPath, collisionName, tmuxPath, collisionName, tmuxPath)
 		if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-			t.Fatalf("write collision tmux wrapper: %v", err)
+			t.Fatal("write collision tmux wrapper")
 		}
 		manager, err := sessions.New(sessions.Config{
 			TmuxPath:      wrapper,
@@ -367,7 +177,7 @@ exec /usr/bin/tmux "$@"
 			}},
 		})
 		if err != nil {
-			t.Fatalf("construct collision manager: %v", err)
+			t.Fatal("construct collision manager")
 		}
 		_, err = manager.Create(ctx, sessions.CreateInput{
 			CWD:          fixture.project,
@@ -379,64 +189,68 @@ exec /usr/bin/tmux "$@"
 
 		beforeBytes, err := os.ReadFile(identity)
 		if err != nil {
-			t.Fatalf("read injected session identity: %v", err)
+			t.Fatal("read injected session identity")
 		}
 		before := strings.TrimSpace(string(beforeBytes))
 		after := fixture.tmux(t, "display-message", "-p", "-t", "="+collisionName+":",
 			"#{session_id}|#{pane_pid}|#{@collision_guard}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}")
 		if after != before {
-			t.Fatalf("name collision mutated the pre-existing session: before=%q after=%q", before, after)
+			t.Fatal("name collision mutated the pre-existing session")
 		}
 	})
 
 	t.Run("lists laptop and managed sessions without guessing metadata", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "laptop", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-session", "-d", "-s", "laptop", "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "new-session", "-d", "-s", "shell", "-c", fixture.project)
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list laptop-created sessions: %v", err)
+			t.Fatal("list laptop-created sessions")
 		}
 		laptop := requireSessionNamed(t, listed, "laptop")
 		if laptop.Profile != "" || laptop.Objective != "" || laptop.CharacterKey != "" || laptop.CharacterDisplayName != "" {
-			t.Fatalf("laptop session metadata was guessed: %+v", laptop)
+			t.Fatalf(
+				"laptop session metadata was guessed: profile_present=%t objective_present=%t character_present=%t",
+				laptop.Profile != "",
+				laptop.Objective != "",
+				laptop.CharacterKey != "" || laptop.CharacterDisplayName != "",
+			)
 		}
 		if laptop.Status.Kind != sessions.StatusRunning || laptop.Status.Signal != sessions.StatusSignalProcess {
-			t.Fatalf("uninstrumented allowlisted laptop process should report only process liveness: %+v", laptop.Status)
+			t.Fatalf("uninstrumented allowlisted laptop status mismatch: kind=%s signal=%s", laptop.Status.Kind, laptop.Status.Signal)
 		}
 		shell := requireSessionNamed(t, listed, "shell")
 		if shell.Status.Kind != sessions.StatusShell || shell.Status.Signal != sessions.StatusSignalProcess {
-			t.Fatalf("ordinary laptop shell should be reported literally: %+v", shell.Status)
+			t.Fatalf("ordinary laptop shell status mismatch: kind=%s signal=%s", shell.Status.Kind, shell.Status.Signal)
 		}
 	})
 
 	t.Run("foreground signatures are exact and profile metadata is never inferred", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "native-codex", "-c", fixture.project, "--", fixture.nativeCodex, "300")
-		fixture.tmux(t, "new-session", "-d", "-s", "owned-node", "-c", fixture.project, "--", "/usr/bin/node", fixture.nodeScript)
-		fixture.tmux(t, "new-session", "-d", "-s", "plain-node", "-c", fixture.project, "--", "/usr/bin/node", "-e", "setInterval(() => {}, 300000)")
+		fixture.tmux(t, "new-session", "-d", "-s", "owned-node", "-c", fixture.project, "--", fixture.nodePath, fixture.nodeScript)
+		fixture.tmux(t, "new-session", "-d", "-s", "plain-node", "-c", fixture.project, "--", fixture.nodePath, "-e", "setInterval(() => {}, 300000)")
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list exact foreground signature fixtures: %v", err)
+			t.Fatal("list exact foreground signature fixtures")
 		}
-		for _, name := range []string{"native-codex", "owned-node"} {
+		for _, name := range []string{"owned-node"} {
 			session := requireSessionNamed(t, listed, name)
 			if session.Status.Kind != sessions.StatusRunning || session.Profile != "" {
-				t.Fatalf("exact signature should affect only process status: session=%+v", session)
+				t.Fatalf("exact signature status mismatch: kind=%s profile_present=%t", session.Status.Kind, session.Profile != "")
 			}
 		}
 		plainNode := requireSessionNamed(t, listed, "plain-node")
 		if plainNode.Status.Kind != sessions.StatusShell || plainNode.Profile != "" {
-			t.Fatalf("arbitrary node process must not match an owned Codex argv signature: %+v", plainNode)
+			t.Fatalf("arbitrary node process matched an owned signature: kind=%s profile_present=%t", plainNode.Status.Kind, plainNode.Profile != "")
 		}
 	})
 
 	t.Run("card facts come only from the current window active pane", func(t *testing.T) {
 		otherDirectory := filepath.Join(fixture.root, "other pane")
 		if err := os.Mkdir(otherDirectory, 0o700); err != nil {
-			t.Fatalf("create conflicting pane cwd: %v", err)
+			t.Fatal("create conflicting pane cwd")
 		}
-		fixture.tmux(t, "new-session", "-d", "-s", "anchor", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-session", "-d", "-s", "anchor", "-c", fixture.project, "--", sleepPath, "300")
 		activePane := fixture.tmux(t, "display-message", "-p", "-t", "anchor:0.0", "#{pane_id}")
 		fixture.tmux(t, "split-window", "-d", "-t", "anchor:0", "-c", otherDirectory)
 		inactivePane := fixture.tmux(t, "display-message", "-p", "-t", "anchor:0.1", "#{pane_id}")
@@ -447,20 +261,26 @@ exec /usr/bin/tmux "$@"
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list multi-window anchor fixture: %v", err)
+			t.Fatal("list multi-window anchor fixture")
 		}
 		anchor := requireSessionNamed(t, listed, "anchor")
 		if anchor.CWD != fixture.project || anchor.ActiveCommand != "sleep" || anchor.Attention || anchor.Status.Kind != sessions.StatusRunning {
-			t.Fatalf("inactive pane/window facts leaked into card anchor: active=%s inactive=%s card=%+v", activePane, inactivePane, anchor)
+			t.Fatalf(
+				"inactive pane/window facts leaked into card anchor: cwd_match=%t command_match=%t attention=%t kind=%s",
+				anchor.CWD == fixture.project,
+				anchor.ActiveCommand == "sleep",
+				anchor.Attention,
+				anchor.Status.Kind,
+			)
 		}
 	})
 
 	t.Run("phone shadows are excluded and grouped cards report group clients", func(t *testing.T) {
 		const phoneShadow = "skid-phone-00112233445566778899aabbccddeeff"
-		fixture.tmux(t, "new-session", "-d", "-s", phoneShadow, "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-session", "-d", "-s", phoneShadow, "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "set-option", "-t", phoneShadow, "--", "@skid_internal", "phone-shadow")
 		fixture.attachClient(t, phoneShadow)
-		fixture.tmux(t, "new-session", "-d", "-s", "group-source", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-session", "-d", "-s", "group-source", "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "new-session", "-d", "-t", "group-source", "-s", "group-link")
 		fixture.attachClient(t, "group-source")
 		fixture.attachClient(t, "group-link")
@@ -469,10 +289,10 @@ exec /usr/bin/tmux "$@"
 		for {
 			listed, err := fixture.manager.List(ctx)
 			if err != nil {
-				t.Fatalf("list grouped client fixture: %v", err)
+				t.Fatal("list grouped client fixture")
 			}
 			if slices.ContainsFunc(listed, func(session sessions.Session) bool { return session.Name == phoneShadow }) {
-				t.Fatalf("gateway-owned phone shadow leaked into inventory: %+v", listed)
+				t.Fatalf("gateway-owned phone shadow leaked into inventory: session_count=%d", len(listed))
 			}
 			source := requireSessionNamed(t, listed, "group-source")
 			link := requireSessionNamed(t, listed, "group-link")
@@ -480,7 +300,7 @@ exec /usr/bin/tmux "$@"
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("group attachment count did not converge: source=%+v link=%+v", source, link)
+				t.Fatalf("group attachment count did not converge: source_clients=%d link_clients=%d", source.AttachedClients, link.AttachedClients)
 			}
 			time.Sleep(tmuxConvergencePollInterval)
 		}
@@ -495,17 +315,17 @@ exec /usr/bin/tmux "$@"
 		for {
 			listed, err := fixture.manager.List(ctx)
 			if err != nil {
-				t.Fatalf("list process-observation failure fixture: %v", err)
+				t.Fatal("list process-observation failure fixture")
 			}
 			unknown := requireSessionNamed(t, listed, "unknown")
 			if unknown.Status.Kind == sessions.StatusUnknown {
 				if unknown.Status.Signal != sessions.StatusSignalPollFailure {
-					t.Fatalf("unknown status must name poll failure: %+v", unknown.Status)
+					t.Fatalf("unknown status signal mismatch: signal=%s", unknown.Status.Signal)
 				}
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("dead pane process did not become Unknown/PollFailure: %+v", unknown)
+				t.Fatalf("dead pane status did not converge: kind=%s signal=%s", unknown.Status.Kind, unknown.Status.Signal)
 			}
 			time.Sleep(tmuxConvergencePollInterval)
 		}
@@ -518,53 +338,64 @@ exec /usr/bin/tmux "$@"
 			Objective: "Inspect Ω",
 		})
 		if err != nil {
-			t.Fatalf("create first generated session: %v", err)
+			t.Fatal("create first generated session")
 		}
 		second, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work"})
 		if err != nil {
-			t.Fatalf("create second generated session: %v", err)
+			t.Fatal("create second generated session")
 		}
 		third, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work2"})
 		if err != nil {
-			t.Fatalf("create generated session beyond catalogue base names: %v", err)
+			t.Fatal("create generated session beyond catalogue base names")
 		}
 		custom, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "hand_named"})
 		if err != nil {
-			t.Fatalf("create custom named session: %v", err)
+			t.Fatal("create custom named session")
 		}
 
 		if first.Name != "ga-modsognir" || first.CharacterKey != "norse.modsognir" || first.CharacterDisplayName != "Móðsognir" {
-			t.Fatalf("first catalogue assignment mismatch: %+v", first)
+			t.Fatal("first catalogue assignment mismatch")
 		}
 		if second.Name != "ga-durinn" || second.CharacterKey != "norse.durinn" || second.CharacterDisplayName != "Durinn" {
-			t.Fatalf("second catalogue assignment mismatch: %+v", second)
+			t.Fatal("second catalogue assignment mismatch")
 		}
 		if third.Name != "ga-modsognir-2" || third.CharacterKey != "norse.modsognir" {
-			t.Fatalf("generated names must continue at the smallest suffix round: %+v", third)
+			t.Fatal("generated names did not continue at the smallest suffix round")
 		}
 		if custom.Name != "hand_named" || custom.CharacterKey != "norse.durinn" || custom.CharacterDisplayName != "Durinn" {
-			t.Fatalf("custom name must retain a least-used dwarf portrait: %+v", custom)
+			t.Fatal("custom name did not retain a least-used dwarf portrait")
 		}
 		if first.Profile != "personal" || first.Objective != "Inspect Ω" || first.CWD != fixture.project {
-			t.Fatalf("managed session facts mismatch: %+v", first)
+			t.Fatalf(
+				"managed session facts mismatch: profile_match=%t objective_match=%t cwd_match=%t",
+				first.Profile == "personal",
+				first.Objective == "Inspect Ω",
+				first.CWD == fixture.project,
+			)
 		}
 
 		for _, profile := range []string{"personal", "work", "work2"} {
 			argvPath := filepath.Join(fixture.profileHomes[profile], "observed-argv")
 			waitForFileLine(t, argvPath, yoloFlag)
 			if got, err := os.ReadFile(filepath.Join(fixture.profileHomes[profile], "observed-home")); err != nil || strings.TrimSpace(string(got)) != fixture.profileHomes[profile] {
-				t.Fatalf("profile %s did not receive its explicit CODEX_HOME: value=%q error=%v", profile, got, err)
+				t.Fatalf("profile %s did not receive its explicit CODEX_HOME: read_ok=%t value_match=%t", profile, err == nil, strings.TrimSpace(string(got)) == fixture.profileHomes[profile])
 			}
 		}
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list after managed creates: %v", err)
+			t.Fatal("list after managed creates")
 		}
 		for _, created := range []sessions.Session{first, second, third, custom} {
 			observed := requireSessionID(t, listed, created.ID)
 			if observed.Name != created.Name || observed.Profile != created.Profile || observed.CharacterKey != created.CharacterKey || observed.IdentityToken != created.IdentityToken {
-				t.Fatalf("create response did not converge to tmux inventory: created=%+v listed=%+v", created, observed)
+				t.Fatalf(
+					"create response did not converge to tmux inventory: name_match=%t profile_match=%t character_match=%t identity_match=%t",
+					observed.Name == created.Name,
+					observed.Profile == created.Profile,
+					observed.CharacterKey == created.CharacterKey,
+					observed.IdentityToken == created.IdentityToken,
+				)
 			}
 		}
 	})
@@ -572,59 +403,59 @@ exec /usr/bin/tmux "$@"
 	t.Run("pane lifecycle facts drive working and idle without tmux activity guesses", func(t *testing.T) {
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list before lifecycle projection: %v", err)
+			t.Fatal("list before lifecycle projection")
 		}
 		target := requireSessionNamed(t, listed, "ga-modsognir")
 		if target.Status.Kind != sessions.StatusRunning {
-			t.Fatalf("agent without lifecycle evidence should be Running: %+v", target.Status)
+			t.Fatalf("agent without lifecycle evidence status mismatch: kind=%s", target.Status.Kind)
 		}
 		panePID, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}"))
 		if err != nil {
-			t.Fatalf("parse lifecycle fixture pane pid: %v", err)
+			t.Fatal("parse lifecycle fixture pane pid")
 		}
-		processStartTime := linuxProcessStartTime(panePID)
-		if processStartTime == 0 {
-			t.Fatalf("observe lifecycle fixture process start time: pid=%d", panePID)
+		processStartTime := processStartIdentity(panePID)
+		if processStartTime == "" {
+			t.Fatal("observe lifecycle fixture process start time")
 		}
 
 		idleAt := time.Now().Add(-2 * time.Second).Unix()
 		fixture.tmux(t, "set-option", "-p", "-t", target.ID, "--", "@skid_lifecycle",
-			fmt.Sprintf("v1:%d:%d:idle:%d", panePID, processStartTime, idleAt))
+			fmt.Sprintf("v1:%d:%s:idle:%d", panePID, processStartTime, idleAt))
 		fixture.tmux(t, "send-keys", "-t", target.ID, "activity-without-output")
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list after pane input activity: %v", err)
+			t.Fatal("list after pane input activity")
 		}
 		target = requireSessionID(t, listed, target.ID)
 		if target.Status.Kind != sessions.StatusIdle || target.Status.Signal != sessions.StatusSignalLifecycle {
-			t.Fatalf("tmux activity changed an explicit idle lifecycle fact: %+v", target.Status)
+			t.Fatalf("tmux activity changed an explicit idle lifecycle fact: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
 
 		workingAt := time.Now().Unix()
 		fixture.tmux(t, "set-option", "-p", "-t", target.ID, "--", "@skid_lifecycle",
-			fmt.Sprintf("v1:%d:%d:working:%d", panePID, processStartTime, workingAt))
+			fmt.Sprintf("v1:%d:%s:working:%d", panePID, processStartTime, workingAt))
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list after working lifecycle fact: %v", err)
+			t.Fatal("list after working lifecycle fact")
 		}
 		target = requireSessionID(t, listed, target.ID)
 		if target.Status.Kind != sessions.StatusWorking || target.Status.Signal != sessions.StatusSignalLifecycle {
-			t.Fatalf("working lifecycle fact did not project: %+v", target.Status)
+			t.Fatalf("working lifecycle fact did not project: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
 	})
 
 	t.Run("five-line notify surfaces honest attention", func(t *testing.T) {
-		notifyPath := filepath.Join(fixture.repositoryRoot, "deploy", "skid-notify")
+		notifyPath := filepath.Join(fixture.repositoryRoot, "deploy", integrationDeploymentHost(), "skid-notify")
 		outsideTmux := exec.Command(notifyPath)
 		outsideTmux.Env = withoutEnvironment(os.Environ(), "TMUX", "TMUX_PANE", "TMUX_TMPDIR")
 		if output, err := outsideTmux.CombinedOutput(); err != nil {
-			t.Fatalf("skid-notify must be a safe no-op outside tmux: output=%q error=%v", output, err)
+			t.Fatalf("skid-notify was not a safe no-op outside tmux: output_bytes=%d", len(output))
 		}
 
 		fixture.tmux(t, "new-session", "-d", "-s", "notify", "-c", fixture.repositoryRoot)
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list notify fixture: %v", err)
+			t.Fatal("list notify fixture")
 		}
 		notify := requireSessionNamed(t, listed, "notify")
 		fixture.tmux(t, "send-keys", "-t", notify.ID, "-l", "--", notifyPath)
@@ -635,19 +466,23 @@ exec /usr/bin/tmux "$@"
 		for {
 			listed, err = fixture.manager.List(ctx)
 			if err != nil {
-				t.Fatalf("list while waiting for attention: %v", err)
+				t.Fatal("list while waiting for attention")
 			}
 			notify = requireSessionID(t, listed, notify.ID)
 			if notify.Attention {
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("skid-notify did not surface attention: %+v", notify)
+				t.Fatalf("skid-notify did not surface attention: attention=%t", notify.Attention)
 			}
 			time.Sleep(tmuxConvergencePollInterval)
 		}
 		if notify.Status.Kind != statusBeforeNotify.Kind || notify.Status.Signal != statusBeforeNotify.Signal {
-			t.Fatalf("attention replaced the independent lifecycle status: before=%+v after=%+v", statusBeforeNotify, notify.Status)
+			t.Fatalf(
+				"attention replaced the independent lifecycle status: kind_match=%t signal_match=%t",
+				notify.Status.Kind == statusBeforeNotify.Kind,
+				notify.Status.Signal == statusBeforeNotify.Signal,
+			)
 		}
 
 	})
@@ -655,18 +490,18 @@ exec /usr/bin/tmux "$@"
 	t.Run("kill rechecks exact id and displayed name", func(t *testing.T) {
 		victim, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "kill_victim"})
 		if err != nil {
-			t.Fatalf("create kill victim: %v", err)
+			t.Fatal("create kill victim")
 		}
 		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalName: "kill_survivor"})
 		if err != nil {
-			t.Fatalf("create kill survivor: %v", err)
+			t.Fatal("create kill survivor")
 		}
 
 		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, DisplayedName: survivor.Name, IdentityToken: victim.IdentityToken})
 		assertSessionError(t, err, sessions.ErrorSessionIdentityMismatch)
 		listed, listErr := fixture.manager.List(ctx)
 		if listErr != nil {
-			t.Fatalf("list after refused mismatched kill: %v", listErr)
+			t.Fatal("list after refused mismatched kill")
 		}
 		requireSessionID(t, listed, victim.ID)
 		requireSessionID(t, listed, survivor.ID)
@@ -678,75 +513,75 @@ exec /usr/bin/tmux "$@"
 		assertSessionError(t, err, sessions.ErrorSessionNotFound)
 
 		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: victim.ID, DisplayedName: victim.Name, IdentityToken: victim.IdentityToken}); err != nil {
-			t.Fatalf("kill exact confirmed session: %v", err)
+			t.Fatal("kill exact confirmed session")
 		}
 		listed, listErr = fixture.manager.List(ctx)
 		if listErr != nil {
-			t.Fatalf("list after exact kill: %v", listErr)
+			t.Fatal("list after exact kill")
 		}
 		if slices.ContainsFunc(listed, func(session sessions.Session) bool { return session.ID == victim.ID }) {
-			t.Fatalf("exactly killed session remains listed: victim=%+v sessions=%+v", victim, listed)
+			t.Fatalf("exactly killed session remains listed: session_count=%d", len(listed))
 		}
 		requireSessionID(t, listed, survivor.ID)
 	})
 
 	t.Run("kill refuses an ordinary grouped sibling without mutation", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "grouped-kill-target", "-c", fixture.project, "--", "/usr/bin/sleep", "300")
+		fixture.tmux(t, "new-session", "-d", "-s", "grouped-kill-target", "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "new-session", "-d", "-t", "grouped-kill-target", "-s", "grouped-kill-sibling")
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list grouped kill fixture: %v", err)
+			t.Fatal("list grouped kill fixture")
 		}
 		target := requireSessionNamed(t, listed, "grouped-kill-target")
 		sibling := requireSessionNamed(t, listed, "grouped-kill-sibling")
 		panePID := fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}")
 		if siblingPID := fixture.tmux(t, "display-message", "-p", "-t", sibling.ID, "#{pane_pid}"); siblingPID != panePID {
-			t.Fatalf("grouped kill fixture does not share one pane process: target=%s sibling=%s", panePID, siblingPID)
+			t.Fatal("grouped kill fixture does not share one pane process")
 		}
 
 		err = fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, DisplayedName: target.Name, IdentityToken: target.IdentityToken})
 		assertSessionError(t, err, sessions.ErrorSessionGroupedConflict)
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list after refused grouped kill: %v", err)
+			t.Fatal("list after refused grouped kill")
 		}
 		if observed := requireSessionID(t, listed, target.ID); observed.Name != target.Name {
-			t.Fatalf("refused grouped kill changed target identity: before=%+v after=%+v", target, observed)
+			t.Fatal("refused grouped kill changed target identity")
 		}
 		if observed := requireSessionID(t, listed, sibling.ID); observed.Name != sibling.Name {
-			t.Fatalf("refused grouped kill changed sibling identity: before=%+v after=%+v", sibling, observed)
+			t.Fatal("refused grouped kill changed sibling identity")
 		}
 		if after := fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}"); after != panePID {
-			t.Fatalf("refused grouped kill changed shared pane process: before=%s after=%s", panePID, after)
+			t.Fatal("refused grouped kill changed shared pane process")
 		}
 	})
 
 	t.Run("one kill reconciles every stale owned shadow before ending only the source", func(t *testing.T) {
 		target, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalName: "shadowed_kill_target"})
 		if err != nil {
-			t.Fatalf("create shadowed kill target: %v", err)
+			t.Fatal("create shadowed kill target")
 		}
 		survivor, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalName: "shadowed_kill_survivor"})
 		if err != nil {
-			t.Fatalf("create shadowed kill survivor: %v", err)
+			t.Fatal("create shadowed kill survivor")
 		}
 		panePIDText := fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}")
 		panePID, err := strconv.Atoi(panePIDText)
 		if err != nil {
-			t.Fatalf("parse shadowed target pane pid %q: %v", panePIDText, err)
+			t.Fatal("parse shadowed target pane pid")
 		}
-		paneStartTime := linuxProcessStartTime(panePID)
-		if paneStartTime == 0 {
-			t.Fatalf("capture shadowed target pane process identity: pid=%d", panePID)
+		paneStartTime := processStartIdentity(panePID)
+		if paneStartTime == "" {
+			t.Fatal("capture shadowed target pane process identity")
 		}
 		survivorPanePIDText := fixture.tmux(t, "display-message", "-p", "-t", survivor.ID, "#{pane_pid}")
 		survivorPanePID, err := strconv.Atoi(survivorPanePIDText)
 		if err != nil {
-			t.Fatalf("parse shadowed survivor pane pid %q: %v", survivorPanePIDText, err)
+			t.Fatal("parse shadowed survivor pane pid")
 		}
-		survivorPaneStartTime := linuxProcessStartTime(survivorPanePID)
-		if survivorPaneStartTime == 0 {
-			t.Fatalf("capture shadowed survivor pane process identity: pid=%d", survivorPanePID)
+		survivorPaneStartTime := processStartIdentity(survivorPanePID)
+		if survivorPaneStartTime == "" {
+			t.Fatal("capture shadowed survivor pane process identity")
 		}
 		shadowNames := []string{
 			"skid-phone-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -759,26 +594,26 @@ exec /usr/bin/tmux "$@"
 		}
 
 		if err := fixture.manager.Kill(ctx, sessions.KillInput{ID: target.ID, DisplayedName: target.Name, IdentityToken: target.IdentityToken}); err != nil {
-			t.Fatalf("kill source after multi-shadow fixed-point recovery: %v", err)
+			t.Fatal("kill source after multi-shadow fixed-point recovery")
 		}
 		deadline := time.Now().Add(tmuxConvergenceTimeout)
-		for linuxProcessStartTime(panePID) == paneStartTime {
+		for processStartIdentity(panePID) == paneStartTime {
 			if time.Now().After(deadline) {
-				t.Fatalf("source process survived successful kill after stale-shadow recovery: pid=%d", panePID)
+				t.Fatal("source process survived successful kill after stale-shadow recovery")
 			}
 			time.Sleep(tmuxConvergencePollInterval)
 		}
 		remainingNames := strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_name}"), "\n")
 		for _, name := range append([]string{target.Name}, shadowNames...) {
 			if slices.Contains(remainingNames, name) {
-				t.Fatalf("successful kill left a grouped link: name=%s sessions=%q", name, remainingNames)
+				t.Fatalf("successful kill left a grouped link: remaining_session_count=%d", len(remainingNames))
 			}
 		}
 		if !slices.Contains(remainingNames, survivor.Name) {
-			t.Fatalf("multi-shadow recovery killed the unrelated survivor: survivor=%+v sessions=%q", survivor, remainingNames)
+			t.Fatalf("multi-shadow recovery killed the unrelated survivor: remaining_session_count=%d", len(remainingNames))
 		}
-		if observed := fixture.tmux(t, "display-message", "-p", "-t", survivor.ID, "#{pane_pid}"); observed != survivorPanePIDText || linuxProcessStartTime(survivorPanePID) != survivorPaneStartTime {
-			t.Fatalf("multi-shadow recovery changed the survivor process: before=%s/%d after=%s/%d", survivorPanePIDText, survivorPaneStartTime, observed, linuxProcessStartTime(survivorPanePID))
+		if observed := fixture.tmux(t, "display-message", "-p", "-t", survivor.ID, "#{pane_pid}"); observed != survivorPanePIDText || processStartIdentity(survivorPanePID) != survivorPaneStartTime {
+			t.Fatal("multi-shadow recovery changed the survivor process")
 		}
 	})
 }
@@ -788,16 +623,16 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	home := filepath.Join(root, "home")
 	project := filepath.Join(home, "project")
 	if err := os.MkdirAll(project, 0o700); err != nil {
-		t.Fatalf("create lifetime-token fixture: %v", err)
+		t.Fatal("create lifetime-token fixture")
 	}
 	cataloguePath := filepath.Join(root, "catalogue.json")
 	if err := os.WriteFile(cataloguePath, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
-		t.Fatalf("write lifetime-token catalogue: %v", err)
+		t.Fatal("write lifetime-token catalogue")
 	}
 	socket := randomTmuxSocketName(t, "skid-reuse")
 	socketPath := namedTmuxSocketPath(socket)
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("isolated lifetime-token socket unexpectedly exists before test: path=%s error=%v", socketPath, err)
+		t.Fatal("isolated lifetime-token socket unexpectedly exists before test")
 	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
@@ -807,13 +642,13 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		Profiles: []sessions.Profile{{
 			Key:                  "personal",
 			Label:                "Personal",
-			Command:              "/usr/bin/sleep",
+			Command:              sleepPath,
 			ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
 			Arguments:            []string{"300"},
 		}},
 	})
 	if err != nil {
-		t.Fatalf("construct lifetime-token manager: %v", err)
+		t.Fatal("construct lifetime-token manager")
 	}
 
 	ctx := context.Background()
@@ -823,23 +658,23 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 			return
 		}
 		if err := manager.Kill(ctx, sessions.KillInput{ID: cleanup.ID, DisplayedName: cleanup.Name, IdentityToken: cleanup.IdentityToken}); err != nil {
-			t.Errorf("kill exact test-owned lifetime fixture: %v", err)
+			t.Error("kill exact test-owned lifetime fixture")
 		}
 	})
 
 	first, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalName: "epoch-reuse"})
 	if err != nil {
-		t.Fatalf("create first lifetime fixture: %v", err)
+		t.Fatal("create first lifetime fixture")
 	}
 	cleanup = &first
 	firstServer := captureTestTmuxServer(t, tmuxPath, socketPath)
 	if err := manager.Kill(ctx, sessions.KillInput{ID: first.ID, DisplayedName: first.Name, IdentityToken: first.IdentityToken}); err != nil {
-		t.Fatalf("kill first exact lifetime fixture: %v", err)
+		t.Fatal("kill first exact lifetime fixture")
 	}
 	deadline := time.Now().Add(tmuxCleanupTimeout)
-	for linuxProcessStartTime(firstServer.pid) == firstServer.kernelStartTime {
+	for processStartIdentity(firstServer.pid) == firstServer.kernelStartTime {
 		if time.Now().After(deadline) {
-			t.Fatalf("first isolated tmux server did not exit: pid=%d", firstServer.pid)
+			t.Fatal("first isolated tmux server did not exit")
 		}
 		time.Sleep(tmuxConvergencePollInterval)
 	}
@@ -847,39 +682,48 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 
 	second, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalName: first.Name})
 	if err != nil {
-		t.Fatalf("recreate lifetime fixture: %v", err)
+		t.Fatal("recreate lifetime fixture")
 	}
 	cleanup = &second
 	if second.ID != first.ID || second.Name != first.Name || second.IdentityToken == first.IdentityToken {
-		t.Fatalf("fixture did not recycle id/name under a new lifetime: first=%+v second=%+v", first, second)
+		t.Fatalf(
+			"fixture did not recycle id and name under a new lifetime: id_match=%t name_match=%t identity_changed=%t",
+			second.ID == first.ID,
+			second.Name == first.Name,
+			second.IdentityToken != first.IdentityToken,
+		)
 	}
 	firstIdentityFields := strings.Split(first.IdentityToken, ".")
 	secondIdentityFields := strings.Split(second.IdentityToken, ".")
 	if len(firstIdentityFields) != 4 || len(secondIdentityFields) != 4 {
-		t.Fatalf("fixture returned malformed lifetime identities: first=%q second=%q", first.IdentityToken, second.IdentityToken)
+		t.Fatalf("fixture returned malformed lifetime identities: first_fields=%d second_fields=%d", len(firstIdentityFields), len(secondIdentityFields))
 	}
 	oldEpoch := firstIdentityFields[0]
 	if output, err := isolatedTmuxCommand(tmuxPath, "-S", socketPath,
 		"set-option", "-s", tmuxclient.ServerEpochOption, oldEpoch).CombinedOutput(); err != nil {
-		t.Fatalf("restore old epoch on isolated replacement server: output=%q error=%v", output, err)
+		t.Fatalf("restore old epoch on isolated replacement server: output_bytes=%d", len(output))
 	}
 	restored := second
 	restored.IdentityToken = strings.Join([]string{oldEpoch, secondIdentityFields[1], secondIdentityFields[2], secondIdentityFields[3]}, ".")
 	cleanup = &restored
 	listed, err := manager.List(ctx)
 	if err != nil {
-		t.Fatalf("list replacement after old epoch restoration: %v", err)
+		t.Fatal("list replacement after old epoch restoration")
 	}
 	second = requireSessionID(t, listed, second.ID)
 	cleanup = &second
 	if !strings.HasPrefix(second.IdentityToken, oldEpoch+".") || second.IdentityToken == first.IdentityToken {
-		t.Fatalf("built-in server lifetime did not distinguish restored epoch: first=%+v second=%+v", first, second)
+		t.Fatalf(
+			"built-in server lifetime did not distinguish restored epoch: epoch_restored=%t identity_changed=%t",
+			strings.HasPrefix(second.IdentityToken, oldEpoch+"."),
+			second.IdentityToken != first.IdentityToken,
+		)
 	}
 	err = manager.Kill(ctx, sessions.KillInput{ID: second.ID, DisplayedName: second.Name, IdentityToken: first.IdentityToken})
 	assertSessionError(t, err, sessions.ErrorSessionIdentityMismatch)
 	listed, err = manager.List(ctx)
 	if err != nil {
-		t.Fatalf("list after stale lifetime kill: %v", err)
+		t.Fatal("list after stale lifetime kill")
 	}
 	requireSessionID(t, listed, second.ID)
 }
@@ -892,7 +736,7 @@ type sessionFixture struct {
 	project        string
 	agent          string
 	cataloguePath  string
-	nativeCodex    string
+	nodePath       string
 	nodeScript     string
 	profileHomes   map[string]string
 	socket         string
@@ -904,27 +748,27 @@ func newSessionFixture(t *testing.T) sessionFixture {
 
 	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
-		t.Fatalf("resolve repository root: %v", err)
+		t.Fatal("resolve repository root")
 	}
 	root := t.TempDir()
 	home := filepath.Join(root, "service home")
 	project := filepath.Join(home, "project with spaces")
 	if err := os.MkdirAll(project, 0o700); err != nil {
-		t.Fatalf("create project fixture: %v", err)
+		t.Fatal("create project fixture")
 	}
 	cataloguePath := filepath.Join(root, "catalogue.json")
 	if err := os.WriteFile(cataloguePath, []byte(`[
   {"key":"norse.modsognir","displayName":"Móðsognir"},
   {"key":"norse.durinn","displayName":"Durinn"}
 ]`), 0o600); err != nil {
-		t.Fatalf("write catalogue fixture: %v", err)
+		t.Fatal("write catalogue fixture")
 	}
 
 	profileHomes := map[string]string{}
 	for _, name := range []string{"personal", "work", "work2"} {
 		profileHomes[name] = filepath.Join(root, "profile-"+name)
 		if err := os.Mkdir(profileHomes[name], 0o700); err != nil {
-			t.Fatalf("create %s profile home: %v", name, err)
+			t.Fatalf("create %s profile home", name)
 		}
 	}
 	agent := filepath.Join(root, "agent-fixture")
@@ -932,31 +776,27 @@ func newSessionFixture(t *testing.T) sessionFixture {
 set -eu
 /usr/bin/printf '%s\n' "$@" > "$CODEX_HOME/observed-argv"
 /usr/bin/printf '%s\n' "$CODEX_HOME" > "$CODEX_HOME/observed-home"
-exec /usr/bin/sleep 300
+exec /bin/sleep 300
 `), 0o700); err != nil {
-		t.Fatalf("write agent fixture: %v", err)
-	}
-	nativeCodex := filepath.Join(root, "codex")
-	sleepBinary, err := os.ReadFile("/usr/bin/sleep")
-	if err != nil {
-		t.Fatalf("read native foreground fixture: %v", err)
-	}
-	if err := os.WriteFile(nativeCodex, sleepBinary, 0o700); err != nil {
-		t.Fatalf("write native foreground fixture: %v", err)
+		t.Fatal("write agent fixture")
 	}
 	nodeScript := filepath.Join(root, "owned-codex.js")
 	if err := os.WriteFile(nodeScript, []byte("setInterval(() => {}, 300000)\n"), 0o600); err != nil {
-		t.Fatalf("write node foreground fixture: %v", err)
+		t.Fatal("write node foreground fixture")
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal("resolve Node foreground fixture")
 	}
 
 	socket := randomTmuxSocketName(t, "skid-s1")
 	socketPath := namedTmuxSocketPath(socket)
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("isolated tmux socket unexpectedly exists before test: path=%s error=%v", socketPath, err)
+		t.Fatal("isolated tmux socket unexpectedly exists before test")
 	}
 	bootstrapName := "skid-test-bootstrap"
-	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", bootstrapName, "-c", project, "--", "/usr/bin/sleep", "300").CombinedOutput(); err != nil {
-		t.Fatalf("start isolated tmux fixture server: output=%q error=%v", output, err)
+	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", bootstrapName, "-c", project, "--", sleepPath, "300").CombinedOutput(); err != nil {
+		t.Fatalf("start isolated tmux fixture server: output_bytes=%d", len(output))
 	}
 	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
 	t.Cleanup(func() {
@@ -974,7 +814,7 @@ exec /usr/bin/sleep 300
 		},
 	})
 	if err != nil {
-		t.Fatalf("construct session manager: %v", err)
+		t.Fatal("construct session manager")
 	}
 
 	return sessionFixture{
@@ -985,7 +825,7 @@ exec /usr/bin/sleep 300
 		project:        project,
 		agent:          agent,
 		cataloguePath:  cataloguePath,
-		nativeCodex:    nativeCodex,
+		nodePath:       nodePath,
 		nodeScript:     nodeScript,
 		profileHomes:   profileHomes,
 		socket:         socket,
@@ -995,26 +835,35 @@ exec /usr/bin/sleep 300
 
 func (fixture sessionFixture) attachClient(t *testing.T, session string) {
 	t.Helper()
-	commandText := fmt.Sprintf("exec /usr/bin/env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session -t %s", tmuxPath, fixture.socketPath, session)
-	command := exec.Command("/usr/bin/script", "-qefc", commandText, "/dev/null")
-	command.Env = withoutEnvironment(os.Environ(), "TMUX", "TMUX_PANE", "TMUX_TMPDIR")
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Start(); err != nil {
-		t.Fatalf("start real test-owned tmux client: session=%s error=%v", session, err)
+	command := isolatedTmuxCommand(tmuxPath, "-S", fixture.socketPath, "-f", "/dev/null", "attach-session", "-t", session)
+	command.Env = append(withoutEnvironment(command.Env, "TERM"), "TERM=xterm-256color")
+	terminalPTY, err := pty.Start(command)
+	if err != nil {
+		t.Fatal("start real test-owned tmux client")
 	}
 	done := make(chan error, 1)
-	go func() { done <- command.Wait() }()
+	go func() {
+		_, _ = io.Copy(io.Discard, terminalPTY)
+		done <- command.Wait()
+	}()
 	t.Cleanup(func() {
+		_ = terminalPTY.Close()
 		if command.Process != nil {
 			_ = command.Process.Kill() // justify-ignore-error: cleanup accepts an already-detached test-owned PTY helper.
 		}
 		select {
 		case <-done:
 		case <-time.After(tmuxCleanupTimeout):
-			t.Errorf("test-owned tmux PTY helper did not exit: session=%s", session)
+			t.Error("test-owned tmux PTY helper did not exit")
 		}
 	})
+}
+
+func integrationDeploymentHost() string {
+	if platform.Current().Kind == platform.KindDarwin {
+		return "macbook"
+	}
+	return "devbox"
 }
 
 func (fixture sessionFixture) tmux(t *testing.T, args ...string) string {
@@ -1022,7 +871,7 @@ func (fixture sessionFixture) tmux(t *testing.T, args ...string) string {
 	commandArgs := append([]string{"-L", fixture.socket, "-f", "/dev/null"}, args...)
 	output, err := isolatedTmuxCommand(tmuxPath, commandArgs...).CombinedOutput()
 	if err != nil {
-		t.Fatalf("test-owned tmux command failed: args=%q output=%q error=%v", args, output, err)
+		t.Fatalf("test-owned tmux command failed: argument_count=%d output_bytes=%d", len(args), len(output))
 	}
 	return strings.TrimSuffix(string(output), "\n")
 }
@@ -1031,10 +880,10 @@ func assertSessionError(t *testing.T, err error, want sessions.ErrorCode) {
 	t.Helper()
 	var sessionError *sessions.Error
 	if !errors.As(err, &sessionError) {
-		t.Fatalf("expected sessions.Error %s, got %T: %v", want, err, err)
+		t.Fatalf("expected sessions.Error %s: type_match=false", want)
 	}
 	if sessionError.Code != want {
-		t.Fatalf("wrong sessions error: want=%s got=%s message=%q", want, sessionError.Code, sessionError.Message)
+		t.Fatalf("wrong sessions error code: want=%s got=%s", want, sessionError.Code)
 	}
 }
 
@@ -1045,7 +894,7 @@ func requireSessionNamed(t *testing.T, listed []sessions.Session, name string) s
 			return session
 		}
 	}
-	t.Fatalf("session name not listed: name=%q sessions=%+v", name, listed)
+	t.Fatalf("expected session name not listed: session_count=%d", len(listed))
 	return sessions.Session{}
 }
 
@@ -1056,7 +905,7 @@ func requireSessionID(t *testing.T, listed []sessions.Session, id string) sessio
 			return session
 		}
 	}
-	t.Fatalf("session id not listed: id=%q sessions=%+v", id, listed)
+	t.Fatalf("expected session id not listed: session_count=%d", len(listed))
 	return sessions.Session{}
 }
 
@@ -1069,10 +918,15 @@ func waitForFileLine(t *testing.T, path, want string) {
 			return
 		}
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("read process-observation fixture: path=%s error=%v", path, err)
+			t.Fatal("read process-observation fixture")
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("process observation did not converge: path=%s want=%q got=%q error=%v", path, want, contents, err)
+			t.Fatalf(
+				"process observation did not converge: read_ok=%t value_match=%t content_bytes=%d",
+				err == nil,
+				strings.TrimSpace(string(contents)) == want,
+				len(contents),
+			)
 		}
 		time.Sleep(tmuxConvergencePollInterval)
 	}

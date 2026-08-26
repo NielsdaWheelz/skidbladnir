@@ -4,11 +4,13 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
 func TestLifecycleValueUsesTheClosedHookEventVocabulary(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	origin := processObservation{pid: 4312, startTime: "991827"}
+	origin := processinfo.Observation{PID: 4312, StartIdentity: "991827"}
 	tests := []struct {
 		event HookEvent
 		want  string
@@ -19,7 +21,7 @@ func TestLifecycleValueUsesTheClosedHookEventVocabulary(t *testing.T) {
 	}
 	for _, test := range tests {
 		if got := lifecycleValue(test.event, origin, now); got != test.want {
-			t.Fatalf("lifecycle value for %s = %q, want %q", test.event, got, test.want)
+			t.Fatalf("lifecycle value mismatch for event %s", test.event)
 		}
 	}
 	if _, err := parseHookEvent("PostToolUse"); err == nil {
@@ -28,79 +30,79 @@ func TestLifecycleValueUsesTheClosedHookEventVocabulary(t *testing.T) {
 }
 
 func TestOnlyTheForegroundCodexAncestorMayPublishPaneLifecycle(t *testing.T) {
-	root := processObservation{pid: 101, parentPID: 50, foregroundProcessGroup: 101, startTime: "1001", executableBase: "codex"}
-	nested := processObservation{pid: 202, parentPID: 101, foregroundProcessGroup: 101, startTime: "2002", executableBase: "codex"}
-	helper := processObservation{pid: 303, parentPID: 202, foregroundProcessGroup: 101, executableBase: "skidbladnir"}
+	root := processinfo.Observation{PID: 101, ParentPID: 50, ForegroundProcessGroup: 101, StartIdentity: "1001", Executable: "codex"}
+	nested := processinfo.Observation{PID: 202, ParentPID: 101, ForegroundProcessGroup: 101, StartIdentity: "2002", Executable: "codex"}
+	helper := processinfo.Observation{PID: 303, ParentPID: 202, ForegroundProcessGroup: 101, Executable: "skidbladnir"}
 
-	if origin, valid := foregroundCodexOrigin([]processObservation{helper, root}); !valid || origin != root {
+	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, root}); !valid || origin.PID != root.PID {
 		t.Fatal("rejected the foreground Codex origin")
 	}
-	if _, valid := foregroundCodexOrigin([]processObservation{helper, nested, root}); valid {
+	if _, valid := foregroundCodexOrigin([]processinfo.Observation{helper, nested, root}); valid {
 		t.Fatal("accepted a nested Codex origin that inherited the pane environment")
 	}
-	nested.foregroundProcessGroup = nested.pid
-	helper.foregroundProcessGroup = nested.pid
-	if _, valid := foregroundCodexOrigin([]processObservation{helper, nested, root}); valid {
+	nested.ForegroundProcessGroup = nested.PID
+	helper.ForegroundProcessGroup = nested.PID
+	if _, valid := foregroundCodexOrigin([]processinfo.Observation{helper, nested, root}); valid {
 		t.Fatal("accepted a nested Codex origin after it became the foreground process group")
 	}
-	if _, valid := foregroundCodexOrigin([]processObservation{helper}); valid {
+	if _, valid := foregroundCodexOrigin([]processinfo.Observation{helper}); valid {
 		t.Fatal("accepted a process ancestry with no Codex origin")
 	}
 }
 
 func TestNodeWrapperAndNativeCodexAreOneForegroundRuntime(t *testing.T) {
-	wrapper := processObservation{
-		pid:                    101,
-		parentPID:              50,
-		foregroundProcessGroup: 101,
-		startTime:              "1001",
-		executableBase:         "node",
-		argument1:              codexNodeEntrypoint,
+	wrapper := processinfo.Observation{
+		PID:                    101,
+		ParentPID:              50,
+		ForegroundProcessGroup: 101,
+		StartIdentity:          "1001",
+		Executable:             "node",
+		Argv:                   []string{"node", codexNodeEntrypoint},
 	}
-	native := processObservation{
-		pid:                    102,
-		parentPID:              wrapper.pid,
-		foregroundProcessGroup: wrapper.pid,
-		startTime:              "1002",
-		executableBase:         "codex",
+	native := processinfo.Observation{
+		PID:                    102,
+		ParentPID:              wrapper.PID,
+		ForegroundProcessGroup: wrapper.PID,
+		StartIdentity:          "1002",
+		Executable:             "codex",
 	}
-	helper := processObservation{pid: 103, parentPID: native.pid, foregroundProcessGroup: wrapper.pid, executableBase: "skidbladnir"}
+	helper := processinfo.Observation{PID: 103, ParentPID: native.PID, ForegroundProcessGroup: wrapper.PID, Executable: "skidbladnir"}
 
-	if origin, valid := foregroundCodexOrigin([]processObservation{helper, native, wrapper}); !valid || origin != wrapper {
-		t.Fatalf("wrapper/native origin = (%+v,%t), want foreground wrapper", origin, valid)
+	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, native, wrapper}); !valid || origin.PID != wrapper.PID {
+		t.Fatalf("wrapper/native origin mismatch: valid=%t wrapper_selected=%t", valid, origin.PID == wrapper.PID)
 	}
 }
 
 func TestNestedWrappedCodexCannotPublishEvenWhenForeground(t *testing.T) {
-	rootWrapper := processObservation{pid: 101, parentPID: 50, foregroundProcessGroup: 201, startTime: "1001", executableBase: "node", argument1: codexNodeEntrypoint}
-	rootNative := processObservation{pid: 102, parentPID: rootWrapper.pid, foregroundProcessGroup: 201, startTime: "1002", executableBase: "codex"}
-	nestedWrapper := processObservation{pid: 201, parentPID: rootNative.pid, foregroundProcessGroup: 201, startTime: "2001", executableBase: "node", argument1: codexNodeEntrypoint}
-	nestedNative := processObservation{pid: 202, parentPID: nestedWrapper.pid, foregroundProcessGroup: 201, startTime: "2002", executableBase: "codex"}
-	helper := processObservation{pid: 203, parentPID: nestedNative.pid, foregroundProcessGroup: 201, executableBase: "skidbladnir"}
+	rootWrapper := processinfo.Observation{PID: 101, ParentPID: 50, ForegroundProcessGroup: 201, StartIdentity: "1001", Executable: "node", Argv: []string{"node", codexNodeEntrypoint}}
+	rootNative := processinfo.Observation{PID: 102, ParentPID: rootWrapper.PID, ForegroundProcessGroup: 201, StartIdentity: "1002", Executable: "codex"}
+	nestedWrapper := processinfo.Observation{PID: 201, ParentPID: rootNative.PID, ForegroundProcessGroup: 201, StartIdentity: "2001", Executable: "node", Argv: []string{"node", codexNodeEntrypoint}}
+	nestedNative := processinfo.Observation{PID: 202, ParentPID: nestedWrapper.PID, ForegroundProcessGroup: 201, StartIdentity: "2002", Executable: "codex"}
+	helper := processinfo.Observation{PID: 203, ParentPID: nestedNative.PID, ForegroundProcessGroup: 201, Executable: "skidbladnir"}
 
-	if _, valid := foregroundCodexOrigin([]processObservation{helper, nestedNative, nestedWrapper, rootNative, rootWrapper}); valid {
+	if _, valid := foregroundCodexOrigin([]processinfo.Observation{helper, nestedNative, nestedWrapper, rootNative, rootWrapper}); valid {
 		t.Fatal("accepted a nested wrapped Codex runtime")
 	}
 }
 
 func TestLifecyclePublicationClearsStaleAttentionWhenWorkBegins(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	origin := processObservation{pid: 4312, startTime: "991827"}
+	origin := processinfo.Observation{PID: 4312, StartIdentity: "991827"}
 	arguments := lifecycleTmuxArguments("%7", HookUserPromptSubmit, origin, now)
 	want := []string{
 		"set-option", "-p", "-t", "%7", "--", "@skid_lifecycle", "v1:4312:991827:working:1787745600",
 		";", "set-option", "-pqu", "-t", "%7", "--", "@skid_attention",
 	}
 	if !slices.Equal(arguments, want) {
-		t.Fatalf("prompt lifecycle arguments = %q, want %q", arguments, want)
+		t.Fatalf("prompt lifecycle command mismatch: argument_count=%d want=%d", len(arguments), len(want))
 	}
 }
 
 func TestStopHookEmitsTheRequiredEmptyJSONObject(t *testing.T) {
 	if got := successOutput(HookStop); got != "{}\n" {
-		t.Fatalf("Stop success output = %q, want empty JSON object", got)
+		t.Fatalf("Stop success output mismatch: output_bytes=%d", len(got))
 	}
 	if got := successOutput(HookSessionStart); got != "" {
-		t.Fatalf("SessionStart success output = %q, want no model context", got)
+		t.Fatalf("SessionStart emitted model context: output_bytes=%d", len(got))
 	}
 }

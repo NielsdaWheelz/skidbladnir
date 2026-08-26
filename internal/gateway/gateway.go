@@ -16,11 +16,16 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-const MaximumBodyBytes int64 = 64 * 1024
+const (
+	MaximumBodyBytes int64 = 64 * 1024
+	machineHeader          = "Skidbladnir-Machine"
+)
 
 type sessionManager interface {
 	Profiles() []sessions.Profile
@@ -37,6 +42,8 @@ type Config struct {
 	Pressure *pressure.Monitor
 	Bearer   auth.FileVerifier
 	Logger   logging.Logger
+	Machine  machine.Handle
+	Platform platform.Descriptor
 }
 
 type Gateway struct {
@@ -44,6 +51,8 @@ type Gateway struct {
 	pressure *pressure.Monitor
 	bearer   auth.FileVerifier
 	logger   logging.Logger
+	machine  machine.Handle
+	platform platform.Descriptor
 	logMutex sync.Mutex
 
 	terminalLifecycle sync.Mutex
@@ -54,11 +63,21 @@ type Gateway struct {
 }
 
 func New(config Config) *Gateway {
+	if config.Machine.String() == "" {
+		panic("gateway machine identity is not configured") // justify-defect: gateway composition must load one canonical machine handle before construction.
+	}
+	switch config.Platform.Kind {
+	case platform.KindLinux, platform.KindDarwin:
+	default:
+		panic("gateway platform is not configured") // justify-defect: platform.Current returns only the closed supported platform union.
+	}
 	return &Gateway{
 		sessions:      config.Sessions,
 		pressure:      config.Pressure,
 		bearer:        config.Bearer,
 		logger:        config.Logger,
+		machine:       config.Machine,
+		platform:      config.Platform,
 		liveTerminals: make(map[uint64]*liveTerminal),
 	}
 }
@@ -102,6 +121,9 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	if !gateway.authenticate(writer, request, route) {
 		return
 	}
+	if !gateway.bindMachine(writer, request) {
+		return
+	}
 	if request.URL.RawQuery != "" {
 		writeError(writer, errorInvalidRequest)
 		return
@@ -125,6 +147,26 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	default:
 		writeError(writer, errorInvalidRequest)
 	}
+}
+
+func (gateway *Gateway) bindMachine(writer http.ResponseWriter, request *http.Request) bool {
+	values := request.Header.Values(machineHeader)
+	if len(values) > 1 || (len(values) == 1 && strings.ContainsRune(values[0], ',')) {
+		writeError(writer, errorInvalidRequest)
+		return false
+	}
+	if len(values) == 0 {
+		if request.Method == http.MethodGet && request.URL.Path == "/v1/sessions" {
+			return true
+		}
+		writeError(writer, errorMachineIdentityMismatch)
+		return false
+	}
+	if values[0] != gateway.machine.String() {
+		writeError(writer, errorMachineIdentityMismatch)
+		return false
+	}
+	return true
 }
 
 func (gateway *Gateway) serveHealth(writer http.ResponseWriter, request *http.Request) {
@@ -206,6 +248,10 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusOK, sessionsResponseDTO{
+		Machine: machineDTO{
+			Handle:   gateway.machine.String(),
+			Platform: gateway.platform.Kind,
+		},
 		ObservedAt: observedAt.Format(time.RFC3339Nano),
 		Profiles:   profiles,
 		Sessions:   cards,
@@ -304,14 +350,19 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
 	startedAt := time.Now()
 	snapshot := gateway.pressure.Snapshot()
-	current, err := mapHostSample(snapshot.Current)
+	unsupported, unsupportedSet, err := mapUnsupportedMetrics(gateway.pressure.Unsupported())
+	if err != nil {
+		writeError(writer, errorInternal)
+		return
+	}
+	current, err := mapHostSample(snapshot.Current, unsupportedSet)
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
 	history := make([]hostSampleDTO, len(snapshot.Window))
 	for index, sample := range snapshot.Window {
-		mapped, mapErr := mapHostSample(sample)
+		mapped, mapErr := mapHostSample(sample, unsupportedSet)
 		if mapErr != nil {
 			writeError(writer, errorInternal)
 			return
@@ -328,7 +379,7 @@ func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
 		panic("invalid pressure-sampled log event") // justify-defect: pressure values were exhaustively mapped.
 	}
 	gateway.log(event)
-	writeJSON(writer, http.StatusOK, pressureResponseDTO{Current: current, History: history})
+	writeJSON(writer, http.StatusOK, pressureResponseDTO{Unsupported: unsupported, Current: current, History: history})
 }
 
 func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *apiError) {

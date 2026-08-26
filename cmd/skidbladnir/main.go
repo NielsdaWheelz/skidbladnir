@@ -14,6 +14,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/statushook"
@@ -30,7 +32,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|machine init|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
 	home, err := os.UserHomeDir()
@@ -46,6 +48,27 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		}
 		if err := statushook.Run(context.Background(), arguments[1], os.Stdin, stdout); err != nil {
 			_, _ = io.WriteString(stderr, "status-hook failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitFailure
+		}
+		return 0
+	case "machine":
+		if len(arguments) == 1 || arguments[1] != "init" {
+			_, _ = io.WriteString(stderr, "usage: skidbladnir machine init [--file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitUsage
+		}
+		flags := flag.NewFlagSet("machine init", flag.ContinueOnError)
+		flags.SetOutput(stderr)
+		path := flags.String("file", filepath.Join(home, ".config", "skidbladnir", "machine-handle"), "machine handle file")
+		if err := flags.Parse(arguments[2:]); err != nil || flags.NArg() != 0 {
+			return exitUsage
+		}
+		handle, err := machine.Init(*path)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "initialize machine: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitFailure
+		}
+		if _, err := fmt.Fprintln(stdout, handle.String()); err != nil {
+			_, _ = io.WriteString(stderr, "write machine handle: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
 			return exitFailure
 		}
 		return 0
@@ -75,29 +98,44 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		flags.SetOutput(stderr)
 		listen := flags.String("listen", "127.0.0.1:7341", "numeric loopback listen address")
 		bearerPath := flags.String("bearer-file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
+		machineHandlePath := flags.String("machine-handle-file", "", "required machine handle file")
 		cataloguePath := flags.String("catalogue-path", filepath.Join(home, ".local", "share", "skidbladnir", "characters.json"), "Dvergatal catalogue")
 		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 0 {
 			return exitUsage
 		}
-		if err := serveGateway(*listen, *bearerPath, *cataloguePath, home, stdout); err != nil {
+		if *machineHandlePath == "" {
+			_, _ = io.WriteString(stderr, "usage: skidbladnir gateway --machine-handle-file=PATH [options]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitUsage
+		}
+		if err := serveGateway(*listen, *bearerPath, *machineHandlePath, *cataloguePath, home, stdout); err != nil {
 			_, _ = fmt.Fprintf(stderr, "gateway: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitFailure
 		}
 		return 0
 	default:
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|machine init|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
 }
 
-func serveGateway(listen, bearerPath, cataloguePath, home string, logOutput io.Writer) error {
+func serveGateway(listen, bearerPath, machineHandlePath, cataloguePath, home string, logOutput io.Writer) error {
+	for _, name := range []string{"TMUX", "TMUX_PANE", "TMUX_TMPDIR"} {
+		if err := os.Unsetenv(name); err != nil {
+			return fmt.Errorf("clear inherited tmux environment: %w", err)
+		}
+	}
+	handle, err := machine.Load(machineHandlePath)
+	if err != nil {
+		return fmt.Errorf("load machine handle: %w", err)
+	}
+	descriptor := platform.Current()
 	profiles := []sessions.Profile{
 		codexProfile(home, "personal", "Personal", ".codex-personal"),
 		codexProfile(home, "work", "Work", ".codex-work"),
 		codexProfile(home, "work2", "Work 2", ".codex-work2"),
 	}
 	manager, err := sessions.New(sessions.Config{
-		TmuxPath:      "/usr/bin/tmux",
+		TmuxPath:      descriptor.TmuxPath,
 		Home:          home,
 		CataloguePath: cataloguePath,
 		Profiles:      profiles,
@@ -114,6 +152,8 @@ func serveGateway(listen, bearerPath, cataloguePath, home string, logOutput io.W
 		Pressure: monitor,
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Logger:   logging.New(logOutput),
+		Machine:  handle,
+		Platform: descriptor,
 	})
 	if err := gateway.ListenAndServe(ctx, listen, handler); err != nil && !errors.Is(err, context.Canceled) {
 		return err

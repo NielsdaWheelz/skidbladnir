@@ -65,7 +65,16 @@ type Sample struct {
 	CPUPressureSomeAvg60         Signal
 	MemoryPressureFullAvg60      Signal
 	InputOutputPressureFullAvg60 Signal
+	MemoryPressure               MemoryPressureSignal
 }
+
+type MemoryPressureSignal struct {
+	Status Status
+	value  MemoryPressure
+	known  bool
+}
+
+func (signal MemoryPressureSignal) Value() (MemoryPressure, bool) { return signal.value, signal.known }
 
 type Snapshot struct {
 	Current Sample
@@ -76,12 +85,13 @@ type Monitor struct {
 	mutex     sync.RWMutex
 	collector collector
 	evaluator evaluator
+	policy    policy
 	current   Sample
 	window    []Sample
 }
 
 func NewMonitor() *Monitor {
-	monitor := &Monitor{collector: newCollector(), evaluator: newEvaluator()}
+	monitor := &Monitor{collector: newCollector(), evaluator: newEvaluator(), policy: currentPolicy()}
 	monitor.sample(time.Now())
 	return monitor
 }
@@ -111,9 +121,11 @@ func (monitor *Monitor) Snapshot() Snapshot {
 	return Snapshot{Current: cloneSample(monitor.current), Window: window}
 }
 
+func (monitor *Monitor) Unsupported() []Metric { return monitor.policy.Unsupported() }
+
 func (monitor *Monitor) sample(observedAt time.Time) {
 	raw := monitor.collector.collect()
-	evaluation := monitor.evaluator.observe(raw, observedAt)
+	evaluation := monitor.evaluator.observeWithPolicy(raw, observedAt, monitor.policy)
 	sample := Sample{
 		ObservedAt:                   observedAt.UTC(),
 		Status:                       evaluation.status,
@@ -126,6 +138,7 @@ func (monitor *Monitor) sample(observedAt time.Time) {
 		CPUPressureSomeAvg60:         signal(raw.cpuPSISomeAvg60, classifyCPUPSI),
 		MemoryPressureFullAvg60:      signal(raw.memoryPSIFullAvg60, classifyFullPSI),
 		InputOutputPressureFullAvg60: signal(raw.ioPSIFullAvg60, classifyFullPSI),
+		MemoryPressure:               memoryPressureSignal(raw.memoryPressure),
 	}
 
 	monitor.mutex.Lock()
@@ -162,7 +175,11 @@ type evaluation struct {
 }
 
 func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time) evaluation {
-	raw := classifyOverall(sample)
+	return evaluator.observeWithPolicy(sample, observedAt, linuxPolicy())
+}
+
+func (evaluator *evaluator) observeWithPolicy(sample rawSample, observedAt time.Time, policy policy) evaluation {
+	raw := classifyOverall(sample, policy)
 	if raw.status == StatusUnknown {
 		evaluator.deescalatingAt = time.Time{}
 		return raw
@@ -200,8 +217,8 @@ func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time) eval
 	return evaluation{status: evaluator.stable, reasons: cloneReasons(evaluator.stableReasons)}
 }
 
-func classifyOverall(sample rawSample) evaluation {
-	signals := [...]struct {
+func classifyOverall(sample rawSample, policy policy) evaluation {
+	signals := []struct {
 		status Status
 		reason Reason
 	}{
@@ -211,6 +228,16 @@ func classifyOverall(sample rawSample) evaluation {
 		{classifyCPUPSI(sample.cpuPSISomeAvg60), ReasonCPUPSI},
 		{classifyFullPSI(sample.memoryPSIFullAvg60), ReasonMemoryPSI},
 		{classifyFullPSI(sample.ioPSIFullAvg60), ReasonIOPSI},
+	}
+	if policy.nativeMemoryPressure {
+		signals = []struct {
+			status Status
+			reason Reason
+		}{
+			{classifyDisk(sample.diskAvailablePercent), ReasonDisk},
+			{classifyLoad(sample.loadNormalized), ReasonLoad},
+			{classifyMemoryPressure(sample.memoryPressure), ReasonMemory},
+		}
 	}
 	result := evaluation{status: StatusNormal}
 	missing := false
@@ -233,6 +260,29 @@ func classifyOverall(sample rawSample) evaluation {
 		result.status = StatusUnknown
 	}
 	return result
+}
+
+func memoryPressureSignal(value memoryPressureMetric) MemoryPressureSignal {
+	if !value.known {
+		return MemoryPressureSignal{Status: StatusUnknown}
+	}
+	return MemoryPressureSignal{Status: classifyMemoryPressure(value), value: value.value, known: true}
+}
+
+func classifyMemoryPressure(value memoryPressureMetric) Status {
+	if !value.known {
+		return StatusUnknown
+	}
+	switch value.value {
+	case MemoryPressureNormal:
+		return StatusNormal
+	case MemoryPressureWarning:
+		return StatusWarm
+	case MemoryPressureCritical:
+		return StatusHot
+	default:
+		panic("invalid memory pressure")
+	}
 }
 
 func signal(value metric, classify func(metric) Status) Signal {

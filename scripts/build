@@ -4,11 +4,30 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 target="${1:-all}"
 android_dir="$repo_dir/android"
-android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+
+case "$(uname -s)" in
+  Darwin)
+    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    if [[ -z "${JAVA_HOME:-}" ]]; then
+      export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    fi
+    ;;
+  Linux)
+    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    ;;
+  *)
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"Only Linux and Darwin hosts are supported"}\n' "$target"
+    exit 2
+    ;;
+esac
 
 android_gradle() {
   if [[ ! -d "$android_sdk" ]]; then
     printf '{"gate":"%s","status":"NOT_RUN","reason":"Android SDK is unavailable at %s"}\n' "$target" "$android_sdk"
+    exit 2
+  fi
+  if [[ -n "${JAVA_HOME:-}" && ! -x "${JAVA_HOME}/bin/java" ]]; then
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"Java is unavailable at %s"}\n' "$target" "$JAVA_HOME"
     exit 2
   fi
   cd "$android_dir"
