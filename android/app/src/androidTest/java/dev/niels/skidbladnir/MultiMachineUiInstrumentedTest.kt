@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -9,9 +10,12 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -20,7 +24,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.concurrent.atomic.AtomicReference
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -34,25 +38,104 @@ class MultiMachineUiInstrumentedTest {
     val compose = createEmptyComposeRule()
 
     @Test
-    fun unreadablePairingExposesOnlyOpaqueRemoval() {
-        val unreadable = UnreadableStoredMachine(
-            encodedHandle = "mh-0123456789abcdef0123456789abcdef",
-            handle = requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")),
+    fun compactDashboardTopBarOwnsTheCreateActionWithoutMachineAdministration() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    MaterialTheme {
+                        Column {
+                            DashboardTopBar(
+                                summary = "4 tmux sessions across 2 machines",
+                                refreshing = false,
+                                canForge = true,
+                                onRefresh = {},
+                                onNewAgent = {},
+                            )
+                            UnreadableMachineStrip(
+                                UnreadableStoredMachine(),
+                            )
+                        }
+                    }
+                }
+            }
+            compose.onNodeWithTag("dashboard-top-bar").assertIsDisplayed()
+            compose.onNodeWithTag("new-agent").assertIsDisplayed().assertIsEnabled()
+            val topBarBounds = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
+            val newAgentBounds = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
+            assertTrue("dashboard top bar exceeds 64 dp", topBarBounds.bottom.value - topBarBounds.top.value <= 64f)
+            assertTrue(
+                "New agent is not in the trailing half of the dashboard top bar",
+                newAgentBounds.left.value > (topBarBounds.left.value + topBarBounds.right.value) / 2f,
+            )
+            compose.onNodeWithText("Add machine").assertDoesNotExist()
+            compose.onNodeWithText("Rename").assertDoesNotExist()
+            compose.onNodeWithText("Remove machine").assertDoesNotExist()
+            compose.onNodeWithText("Remove pairing").assertDoesNotExist()
+            compose.onNodeWithText("Provisioning repair is required outside this app.", substring = true)
+                .assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun machinePressureRestoresMetricsHistoryAndCapabilityDetails() {
+        val current = PressureSample(
+            sampledAt = "2026-08-26T12:00:00Z",
+            level = PressureLevel.Warm,
+            reasons = listOf(PressureReason.Load),
+            metrics = PressureMetrics(
+                cpuPercent = 34.0,
+                normalizedLoad = 1.25,
+                diskAvailablePercent = 61.0,
+                memoryPressure = SystemMemoryPressure.Warning,
+            ),
+            missing = listOf(PressureMetric.SwapUsedPercent),
         )
-        val removed = AtomicReference<String>()
+        val response = PressureResponse(
+            unsupported = listOf(
+                PressureMetric.CpuPsiSomeAvg60Percent,
+                PressureMetric.IoPsiFullAvg60Percent,
+                PressureMetric.MemoryAvailablePercent,
+                PressureMetric.MemoryPsiFullAvg60Percent,
+            ),
+            current = current,
+            history = listOf(
+                current.copy(
+                    sampledAt = "2026-08-26T11:59:55Z",
+                    level = PressureLevel.Normal,
+                    reasons = emptyList(),
+                    metrics = current.metrics.copy(
+                        normalizedLoad = 0.4,
+                        memoryPressure = SystemMemoryPressure.Normal,
+                    ),
+                ),
+                current,
+            ),
+        )
 
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContent {
                     MaterialTheme {
-                        UnreadableMachineStrip(unreadable, removed::set)
+                        MachinePressureStrip(
+                            "MacBook",
+                            PressureState.Stale(response, GatewayFailure.Transport),
+                        )
                     }
                 }
             }
-            compose.onNodeWithText("Unreadable pairing").assertIsDisplayed()
-            compose.onNodeWithText("Update bearer").assertDoesNotExist()
-            compose.onNodeWithText("Remove pairing").performClick()
-            assertEquals(unreadable.encodedHandle, removed.get())
+            compose.onNodeWithText("MACBOOK WARM").assertIsDisplayed()
+            compose.onNodeWithText("STALE").assertIsDisplayed()
+            compose.onNodeWithText("CPU 34%", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("load 1.25", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("disk 61% free", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("memory pressure WARNING", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("Recent pressure history · up to 15 min").assertIsDisplayed()
+            compose.onNodeWithContentDescription("MacBook pressure history: normal, warm").assertIsDisplayed()
+            compose.onNodeWithText("Missing: swap used").assertIsDisplayed()
+            compose.onNodeWithText(
+                "Unsupported: CPU PSI, I/O PSI, memory available, memory PSI",
+            ).assertIsDisplayed()
+            compose.onNodeWithText("Pressure: load").assertIsDisplayed()
         }
     }
 
@@ -157,17 +240,21 @@ class MultiMachineUiInstrumentedTest {
             assertTrue(inventories.values.all { it.profiles.isNotEmpty() })
 
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                compose.onNodeWithText("Add machine").assertDoesNotExist()
+                compose.onNodeWithText("Rename").assertDoesNotExist()
+                compose.onNodeWithText("Remove machine").assertDoesNotExist()
+                compose.onNodeWithTag("new-agent").assertIsDisplayed()
                 credentials.forEach { credential ->
                     waitForTag(machineStripTag(credential), 30_000)
                     compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
-                        .assertTextEquals(credential.machine.label.text)
+                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 }
 
                 scenario.recreate()
                 credentials.forEach { credential ->
                     waitForTag("machine-state-fresh-${credential.machine.handle.encoded}", 30_000)
                     compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
-                        .assertTextEquals(credential.machine.label.text)
+                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 }
 
                 val first = credentials[0]
@@ -285,9 +372,9 @@ class MultiMachineUiInstrumentedTest {
                 waitForTag("machine-nonmutating-${failedHandle.encoded}", 30_000)
                 waitForTag("machine-actionable-${healthy.machine.handle.encoded}", 30_000)
                 compose.onNodeWithTag(stripLabelTag(failed), useUnmergedTree = true)
-                    .assertTextEquals(failed.machine.label.text)
+                    .assertTextContains(failed.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 compose.onNodeWithTag(stripLabelTag(healthy), useUnmergedTree = true)
-                    .assertTextEquals(healthy.machine.label.text)
+                    .assertTextContains(healthy.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
                 compose.onNodeWithTag(filterTag(healthy)).performClick()

@@ -336,26 +336,6 @@ internal fun markInventoryFailure(
     })
 }
 
-internal fun renameMachineLabel(
-    machines: List<MachineState>,
-    handle: MachineHandle,
-    label: MachineLabel,
-): List<MachineState> {
-    require(machines.count { it.machine.handle == handle } == 1)
-    require(
-        machines.none {
-            it.machine.handle != handle && it.machine.label.text.equals(label.text, ignoreCase = true)
-        },
-    )
-    return machines.map { machine ->
-        if (machine.machine.handle == handle) {
-            machine.copy(machine = machine.machine.copy(label = label))
-        } else {
-            machine
-        }
-    }
-}
-
 private fun statusRank(kind: SessionStatusKind): Int = when (kind) {
     SessionStatusKind.Working -> 0
     SessionStatusKind.Running -> 1
@@ -387,7 +367,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
     ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh before killing it."
     ApiErrorCode.SessionGroupedConflict -> "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it."
-    ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Pair this machine again."
+    ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Provisioning repair is required."
     ApiErrorCode.InternalError -> "Skíðblaðnir could not complete the request."
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
 }

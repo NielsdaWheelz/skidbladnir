@@ -111,7 +111,7 @@ internal class GatewayClient {
         }
     }
 
-    fun pair(origin: MachineOrigin, bearer: GatewayBearer): GatewayResult<SessionsResponse> = executeJson(
+    fun verifyBearer(origin: MachineOrigin, bearer: GatewayBearer): GatewayResult<SessionsResponse> = executeJson(
         request = request(origin.encoded.toHttpUrl(), bearer, null, listOf("v1", "sessions")).get().build(),
         expectedStatus = 200,
         decode = ::decodeSessionsResponse,

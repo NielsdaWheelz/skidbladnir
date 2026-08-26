@@ -120,8 +120,12 @@ ever bring the retired machinery back.
 Automatic discovery, a machine registry or coordinator, gateway proxying,
 cross-machine move/broadcast/scheduling/failover/wake, durable inventory,
 shared credentials, public ingress, fleet-wide pressure, arbitrary host setup,
-and Tailscale policy automation are also out of scope. Pairing is explicit;
-Android federation is the whole control plane.
+and Tailscale policy automation are also out of scope. Machine onboarding,
+fresh-install/data-loss recovery, and all machine administration are also out
+of scope: the existing encrypted two-machine collection on the manually managed
+S22+ is an installation precondition, and this repository exposes no
+provisioning ingress. The app has no add, rename, or remove machine capability.
+Android federation is the whole runtime control plane.
 
 ## 3. Platform evidence carried forward
 
@@ -217,6 +221,12 @@ fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
 Signal age begins at the host's own `observedAt - signalAt` and then advances
 with Android monotonic time; host clocks are never compared to each other.
+The dashboard header is one compact row with Refresh and the trailing primary
+`New agent` action. Each pressure strip preserves the full v0 presentation:
+current supported metric values, a categorical severity history covering up to
+15 minutes, explicit missing inputs, explicit platform-unsupported metrics,
+and current pressure reasons. Stale pressure preserves and labels those last
+details; unsupported and missing are never conflated.
 
 ### Attention
 
@@ -385,7 +395,8 @@ history item is `current`.
   handle is 128 random bits encoded as `mh-` plus 32 lowercase hexadecimal
   digits. Gateway startup fails closed on missing, insecure, or malformed
   content and never mints, repairs, or substitutes identity. Intentional
-  deletion creates a new machine and requires remove/re-pair on Android.
+  deletion creates a new machine and requires external provisioning repair on
+  Android.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
   `@skid_objective_b64`, `@skid_character`, `@skid_attention`,
   `@skid_lifecycle`, the
@@ -420,7 +431,7 @@ Errors use only `{code,message}` with this exhaustive v0 mapping:
 | `SessionNameConflict` | 409 | `A session with that name already exists.` |
 | `SessionNotFound` | 404 | `That session no longer exists.` |
 | `SessionIdentityMismatch` | 409 | `The session changed. Refresh before killing it.` |
-| `MachineIdentityMismatch` | 409 | `The machine identity changed. Pair this machine again.` |
+| `MachineIdentityMismatch` | 409 | `The machine identity changed. Provisioning repair is required.` |
 | `SessionGroupedConflict` | 409 | `This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.` |
 | `InternalError` | 500 | `Skíðblaðnir could not complete the request.` |
 
@@ -442,26 +453,28 @@ enum values are defects, with no protocol branch or compatibility state.
 ## 6. Android surface
 
 - Compile/target/min SDK 36; one manually installed package.
-- `MachineStore` persists a collection in app-private preferences; handles,
-  case-insensitive labels, and origins are each unique. Every bearer is
+- `MachineStore` persists the pre-installed collection in app-private
+  preferences; handles, case-insensitive labels, and origins are each unique.
+  Every bearer is
   AES-256-GCM encrypted by Android
   Keystore with a fresh nonce and AAD bound to handle and origin. Origins are
   pinned HTTPS `:8443` endpoints with hostname and no user-info, path, query,
-  or fragment. Labels may be renamed; origins are immutable; bearer rotation
-  re-authenticates the same handle. Bearer bytes must also be unique across
-  pairings, and that uniqueness is checked before any pairing or rotation
+  or fragment. Labels, origins, and handles are immutable in the app; bearer
+  repair re-authenticates the same handle. Bearer bytes must also be unique
+  across installed machines, and that uniqueness is checked before any repair
   request reaches a gateway. An unreadable entry is an opaque quarantine slot:
   its plaintext metadata is never trusted or used as a request destination,
-  it can only be removed and paired again, and it blocks additions, bearer
-  rotations, and renames until cleared. Entry quarantine never clears another
-  entry or the shared key. If the authoritative collection index itself is
-  unreadable, a separately labeled collection quarantine permits only an
-  explicit clear of the pairing
-  preferences; the Keystore key remains and every machine must be paired again.
-  There is no old store reader or migration.
-- Pairing performs one authenticated, headerless inventory read, pins the
-  returned handle, and only then persists the pairing. Subsequent reads and
-  every mutation bind that handle.
+  exposes no in-app destructive recovery, and blocks bearer repair while the
+  collection is incomplete. If the authoritative collection index itself is
+  unreadable, a separately labeled collection quarantine exposes the same
+  fail-closed state. There is no old store reader or migration.
+- The app and repository have no onboarding or machine-administration route.
+  Ordinary upgrades preserve the installed encrypted collection; a fresh
+  install, app-data loss, quarantine, or machine-handle replacement remains
+  fail-closed pending separately scoped operator provisioning. Bearer repair
+  performs one authenticated, headerless inventory read,
+  requires the already pinned handle, and only then rotates the encrypted
+  bearer. Subsequent reads and every mutation bind that handle.
 - Grid, per-machine strips, filters, Forge, and terminal follow §4. The Forge
   preserves invalid drafts; its cwd field disables autocorrect/smart
   punctuation. Inventory snapshots and drafts are process-memory only.
@@ -485,7 +498,7 @@ enum values are defects, with no protocol branch or compatibility state.
   phone terminal exists, and its connection owns one exact `AgentTarget`;
   reconnect re-reads that machine before opening WSS.
   Identity change closes the active terminal and disables that pairing until
-  remove/re-pair.
+  external provisioning repair.
   Rotation, IME resize, Activity/process recreation, and app backgrounding
   cleanly recreate or release the attachment; nothing replays.
 - Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
@@ -538,9 +551,9 @@ Verification follows an 80/20 boundary shape:
 - approved live publication owns Devbox systemd and Mac LaunchAgent install,
   restart, exact Serve/tmux/platform pins, local re-list, isolated bearers, and
   identity-preserving reinstall;
-- approved S22+ instrumentation owns encrypted collection persistence,
-  pairing/repair/rotation/removal, lifecycle reconciliation, terminal behavior,
-  and visible stale-action admission;
+- approved S22+ instrumentation owns encrypted collection read/repair,
+  rotation/quarantine, lifecycle reconciliation,
+  terminal behavior, and visible stale-action admission;
 - one approved physical S22+ product journey owns two-host federation/routing,
   Activity recreation, machine-local outage/recovery, and preserved pairings
   and production tmux lifetimes. It observes production tmux read-only; host

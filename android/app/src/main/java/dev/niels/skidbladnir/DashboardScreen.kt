@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +52,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.Instant
+import java.util.Locale
 
 @Composable
 internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: SkidbladnirController) {
@@ -57,36 +60,30 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
         state.selectedMachine == null || it.machine.handle == state.selectedMachine
     }
     val agents = visibleAgents(state.machines, state.selectedMachine)
+    val canForge = state.machines.any { machine ->
+        (state.selectedMachine == null || machine.machine.handle == state.selectedMachine) &&
+            machine.canMutate &&
+            (machine.inventory as? InventoryState.Fresh)
+                ?.snapshot?.inventory?.profiles?.isNotEmpty() == true
+    }
     Column(
         modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Agents", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    dashboardSummary(agents.size, machines.size),
-                    color = Muted,
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            TextButton(onClick = controller::refresh, enabled = !state.refreshing) {
-                Text(if (state.refreshing) "Reading…" else "Refresh")
-            }
-            TextButton(
-                onClick = controller::addMachine,
-                enabled = state.unreadableMachines.isEmpty(),
-            ) { Text("Add machine") }
-        }
+        DashboardTopBar(
+            summary = dashboardSummary(agents.size, machines.size),
+            refreshing = state.refreshing,
+            canForge = canForge,
+            onRefresh = controller::refresh,
+            onNewAgent = controller::openForge,
+        )
 
         MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
-        machines.forEach {
-            MachineStrip(it, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+        machines.forEach { machine ->
+            key(machine.machine.handle) {
+                MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+            }
         }
-        state.unreadableMachines.forEach { UnreadableMachineStrip(it, controller::removeUnreadableMachine) }
+        state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
 
         state.notice?.let { notice ->
             Surface(
@@ -124,35 +121,15 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                if (state.selectedMachine == null) "Choose the target machine in Forge." else
-                    "New agents use only this machine’s profiles and paths.",
-                color = Muted,
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.weight(1f),
-            )
-            Button(
-                onClick = controller::openForge,
-                enabled = state.machines.any { machine ->
-                    (state.selectedMachine == null || machine.machine.handle == state.selectedMachine) &&
-                        machine.canMutate &&
-                        (machine.inventory as? InventoryState.Fresh)
-                            ?.snapshot?.inventory?.profiles?.isNotEmpty() == true
-                },
-                modifier = Modifier.testTag("new-agent"),
-            ) { Text("New agent") }
-        }
-
         when {
             state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
-                "Pairing recovery required",
-                "Remove each unreadable pairing, then pair that machine again.",
+                "Provisioning repair required",
+                "Saved machine credentials are unreadable. Machine administration is outside this app.",
             )
-            state.machines.isEmpty() -> EmptyState("No paired machines", "Pair a Tailscale-reachable machine to begin.")
+            state.machines.isEmpty() -> EmptyState(
+                "No provisioned machines",
+                "Install machine credentials outside the app to begin.",
+            )
             agents.isEmpty() -> dashboardInventoryWaitCopy(machines)?.let {
                 EmptyState("Sessions not current", it)
             } ?: EmptyState(
@@ -186,14 +163,6 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
     state.forge?.let { forge ->
         ForgeSheet(forge, state.machines, controller::dismissForge, controller::updateForgeDraft, controller::forge)
     }
-    state.rename?.let { rename ->
-        RenameMachineDialog(
-            state = rename,
-            onDraftChange = controller::updateRenameMachineDraft,
-            onDismiss = controller::dismissRenameMachine,
-            onConfirm = controller::confirmRenameMachine,
-        )
-    }
     state.kill?.let { kill ->
         KillConfirmation(
             state = kill,
@@ -207,9 +176,44 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
 }
 
 @Composable
+internal fun DashboardTopBar(
+    summary: String,
+    refreshing: Boolean,
+    canForge: Boolean,
+    onRefresh: () -> Unit,
+    onNewAgent: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .padding(horizontal = 16.dp)
+            .testTag("dashboard-top-bar"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Agents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                summary,
+                color = Muted,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TextButton(onClick = onRefresh, enabled = !refreshing) {
+            Text(if (refreshing) "Reading…" else "Refresh")
+        }
+        Button(onClick = onNewAgent, enabled = canForge, modifier = Modifier.testTag("new-agent")) {
+            Text("New agent")
+        }
+    }
+}
+
+@Composable
 internal fun UnreadableMachineStrip(
     machine: UnreadableStoredMachine,
-    onRemove: (String) -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
@@ -223,16 +227,13 @@ internal fun UnreadableMachineStrip(
             )
             Text(
                 if (machine.collectionWide) {
-                    "Saved pairings cannot be identified safely. Remove them, then pair each machine again."
+                    "Saved machines cannot be identified safely. Provisioning repair is required outside this app."
                 } else {
-                    "Its saved identity and destination are untrusted. Remove it, then pair the machine again."
+                    "Its saved identity and destination are untrusted. Provisioning repair is required outside this app."
                 },
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelMedium,
             )
-            TextButton(onClick = { onRemove(machine.encodedHandle) }) {
-                Text(if (machine.collectionWide) "Remove saved pairings" else "Remove pairing")
-            }
         }
     }
 }
@@ -271,108 +272,166 @@ private fun MachineStrip(
     credentialWritesEnabled: Boolean,
 ) {
     val stale = machine.inventory is InventoryState.Stale
-    Surface(
-        color = RaisedSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .testTag("machine-strip-${machine.machine.handle.encoded}"),
-        shape = RoundedCornerShape(10.dp),
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-            (machine.inventory as? InventoryState.Fresh)?.let { fresh ->
-                Spacer(
-                    Modifier
-                        .size(1.dp)
-                        .testTag(
-                            "machine-inventory-received-${machine.machine.handle.encoded}-${fresh.snapshot.receivedAtElapsedMillis}",
-                        ),
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.testTag(
-                    "machine-state-${machineStateTag(machine)}-${machine.machine.handle.encoded}",
-                ),
-            ) {
-                Text(
-                    machine.machine.label.text,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("machine-strip-label-${machine.machine.handle.encoded}"),
-                )
-                if (stale) Text("STALE", color = Ember, fontWeight = FontWeight.Bold)
-                Text(" · ${pressureSummary(machine.pressure)}", color = pressureStateColor(machine.pressure))
-            }
-            machineStateMessage(machine)?.let { message ->
-                Text(message, color = if (machine.access == MachineAccess.Ready) Ember else Gold, style = MaterialTheme.typography.labelMedium)
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.testTag(
-                    "machine-${if (machine.canMutate) "actionable" else "nonmutating"}-${machine.machine.handle.encoded}",
-                ),
-            ) {
-                TextButton(
-                    onClick = { controller.requestRenameMachine(machine.machine.handle) },
-                    enabled = credentialWritesEnabled,
-                ) {
-                    Text("Rename")
-                }
-                if (machine.access == MachineAccess.AuthRequired) {
-                    TextButton(
-                        onClick = { controller.repairMachine(machine.machine.handle) },
-                        enabled = credentialWritesEnabled,
-                    ) { Text("Update bearer") }
-                }
-                TextButton(onClick = { controller.removeMachine(machine.machine.handle) }) { Text("Remove machine") }
-            }
+    Column {
+        (machine.inventory as? InventoryState.Fresh)?.let { fresh ->
+            Spacer(
+                Modifier
+                    .size(1.dp)
+                    .testTag(
+                        "machine-inventory-received-${machine.machine.handle.encoded}-${fresh.snapshot.receivedAtElapsedMillis}",
+                    ),
+            )
+        }
+        Spacer(
+            Modifier.size(1.dp).testTag(
+                "machine-${if (machine.canMutate) "actionable" else "nonmutating"}-${machine.machine.handle.encoded}",
+            ),
+        )
+        MachinePressureStrip(
+            machineLabel = machine.machine.label.text,
+            state = machine.pressure,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .testTag("machine-strip-${machine.machine.handle.encoded}"),
+            headerModifier = Modifier.testTag(
+                "machine-state-${machineStateTag(machine)}-${machine.machine.handle.encoded}",
+            ),
+            labelModifier = Modifier.testTag("machine-strip-label-${machine.machine.handle.encoded}"),
+            inventoryStale = stale,
+            supportingMessage = machineStateMessage(machine),
+            supportingMessageColor = if (machine.access == MachineAccess.Ready) Ember else Gold,
+        )
+        if (machine.access == MachineAccess.AuthRequired) {
+            TextButton(
+                onClick = { controller.repairMachine(machine.machine.handle) },
+                enabled = credentialWritesEnabled,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) { Text("Update bearer") }
         }
     }
 }
 
 @Composable
-private fun RenameMachineDialog(
-    state: RenameState,
-    onDraftChange: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
+internal fun MachinePressureStrip(
+    machineLabel: String,
+    state: PressureState,
+    modifier: Modifier = Modifier,
+    headerModifier: Modifier = Modifier,
+    labelModifier: Modifier = Modifier,
+    inventoryStale: Boolean = false,
+    supportingMessage: String? = null,
+    supportingMessageColor: Color = Ember,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Rename ${state.machine.label.text}") },
-        text = {
-            Column {
+    val response = when (state) {
+        is PressureState.Fresh -> state.response
+        is PressureState.Stale -> state.response
+        PressureState.Reading, is PressureState.Unavailable -> null
+    }
+    val stale = inventoryStale || state is PressureState.Stale
+    Surface(color = RaisedSurface, modifier = modifier, shape = RoundedCornerShape(10.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = headerModifier) {
                 Text(
-                    "This changes only the label on this phone. The machine handle, origin, and bearer stay unchanged.",
-                    color = Muted,
+                    text = buildString {
+                        append(machineLabel.uppercase(Locale.ROOT))
+                        append(' ')
+                        append(
+                            when (state) {
+                                PressureState.Reading -> "READING"
+                                is PressureState.Fresh -> state.response.current.level.name.uppercase(Locale.ROOT)
+                                is PressureState.Stale -> state.response.current.level.name.uppercase(Locale.ROOT)
+                                is PressureState.Unavailable -> "UNAVAILABLE"
+                            },
+                        )
+                    },
+                    color = pressureStateColor(state),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = labelModifier.weight(1f),
                 )
-                OutlinedTextField(
-                    value = state.draft,
-                    onValueChange = onDraftChange,
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    enabled = !state.pending,
-                    label = { Text("Machine label") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-                )
-                state.error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+                if (stale) Text("STALE", color = Ember, fontWeight = FontWeight.Bold)
+            }
+            if (response != null) {
+                val current = response.current
+                val known = pressureMetricValues(current.metrics)
+                if (known.isNotEmpty()) {
+                    Text(
+                        text = known.joinToString(" · "),
+                        color = Bone,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = 2.dp),
+                        maxLines = 1,
+                    )
+                }
+                if (response.history.isNotEmpty()) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp)
+                            .padding(top = 5.dp)
+                            .semantics {
+                                contentDescription = "$machineLabel pressure history: " +
+                                    response.history.joinToString { it.level.name.lowercase(Locale.ROOT) }
+                            },
+                    ) {
+                        val barWidth = size.width / response.history.size
+                        response.history.forEachIndexed { index, sample ->
+                            val proportion = when (sample.level) {
+                                PressureLevel.Normal -> 0.25f
+                                PressureLevel.Warm -> 0.58f
+                                PressureLevel.Hot -> 1f
+                                PressureLevel.Unknown -> 0.42f
+                            }
+                            drawRect(
+                                color = pressureColor(sample.level),
+                                topLeft = androidx.compose.ui.geometry.Offset(
+                                    x = index * barWidth,
+                                    y = size.height * (1f - proportion),
+                                ),
+                                size = androidx.compose.ui.geometry.Size(
+                                    width = maxOf(1f, barWidth - 1f),
+                                    height = size.height * proportion,
+                                ),
+                            )
+                        }
+                    }
+                    Text(
+                        "Recent pressure history · up to 15 min",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (current.missing.isNotEmpty()) {
+                    Text(
+                        "Missing: ${current.missing.joinToString { pressureMetricLabel(it) }}",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (response.unsupported.isNotEmpty()) {
+                    Text(
+                        "Unsupported: ${response.unsupported.joinToString { pressureMetricLabel(it) }}",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (current.reasons.isNotEmpty()) {
+                    Text(
+                        "Pressure: ${current.reasons.joinToString { pressureReasonLabel(it) }}",
+                        color = pressureColor(current.level),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm, enabled = state.draft.isNotEmpty() && !state.pending) {
-                if (state.pending) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(if (state.pending) "Saving…" else "Save label")
+            supportingMessage?.let {
+                Text(it, color = supportingMessageColor, style = MaterialTheme.typography.labelMedium)
             }
-        },
-        dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !state.pending) { Text("Cancel") } },
-    )
+        }
+    }
 }
 
 @Composable
@@ -600,7 +659,8 @@ private fun machineStateMessage(machine: MachineState): String? = when {
     machine.inventoryRefreshRequired ->
         "${machine.machine.label.text}: confirming the latest tmux inventory. Actions disabled."
     machine.access == MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required. Actions disabled."
-    machine.access == MachineAccess.IdentityChanged -> "${machine.machine.label.text}: identity changed. Remove and pair again."
+    machine.access == MachineAccess.IdentityChanged ->
+        "${machine.machine.label.text}: identity changed. Provisioning repair is required."
     else -> when (val inventory = machine.inventory) {
         InventoryState.Reading -> "${machine.machine.label.text}: reading tmux sessions."
         is InventoryState.Stale -> "${machine.machine.label.text}: ${gatewayFailureMessage(inventory.cause)} Prior sessions are STALE; actions disabled."
@@ -611,13 +671,6 @@ private fun machineStateMessage(machine: MachineState): String? = when {
             PressureState.Reading, is PressureState.Fresh -> null
         }
     }
-}
-
-private fun pressureSummary(state: PressureState): String = when (state) {
-    PressureState.Reading -> "pressure reading"
-    is PressureState.Fresh -> "pressure ${state.response.current.level.name.uppercase()}"
-    is PressureState.Stale -> "pressure STALE · ${state.response.current.level.name.uppercase()}"
-    is PressureState.Unavailable -> "pressure unavailable"
 }
 
 private fun machineStateTag(machine: MachineState): String = when (machineAvailability(machine)) {
@@ -651,6 +704,39 @@ private fun pressureColor(level: PressureLevel): Color = when (level) {
     PressureLevel.Unknown -> Muted
 }
 
+private fun pressureMetricValues(metrics: PressureMetrics): List<String> = buildList {
+    metrics.cpuPercent?.let { add("CPU ${it.toInt()}%") }
+    metrics.memoryAvailablePercent?.let { add("RAM ${it.toInt()}% free") }
+    metrics.swapUsedPercent?.let { add("swap ${it.toInt()}% used") }
+    metrics.normalizedLoad?.let { add("load ${String.format(Locale.ROOT, "%.2f", it)}") }
+    metrics.diskAvailablePercent?.let { add("disk ${it.toInt()}% free") }
+    metrics.cpuPsiSomeAvg60Percent?.let { add("CPU PSI ${it.toInt()}%") }
+    metrics.memoryPsiFullAvg60Percent?.let { add("memory PSI ${it.toInt()}%") }
+    metrics.ioPsiFullAvg60Percent?.let { add("I/O PSI ${it.toInt()}%") }
+    metrics.memoryPressure?.let { add("memory pressure ${it.name.uppercase(Locale.ROOT)}") }
+}
+
+private fun pressureMetricLabel(value: PressureMetric): String = when (value) {
+    PressureMetric.CpuPercent -> "CPU"
+    PressureMetric.NormalizedLoad -> "load"
+    PressureMetric.MemoryAvailablePercent -> "memory available"
+    PressureMetric.SwapUsedPercent -> "swap used"
+    PressureMetric.DiskAvailablePercent -> "disk available"
+    PressureMetric.CpuPsiSomeAvg60Percent -> "CPU PSI"
+    PressureMetric.MemoryPsiFullAvg60Percent -> "memory PSI"
+    PressureMetric.IoPsiFullAvg60Percent -> "I/O PSI"
+    PressureMetric.MemoryPressure -> "system memory pressure"
+}
+
+private fun pressureReasonLabel(reason: PressureReason): String = when (reason) {
+    PressureReason.Memory -> "memory"
+    PressureReason.Disk -> "disk"
+    PressureReason.Load -> "load"
+    PressureReason.CpuPsi -> "CPU pressure"
+    PressureReason.MemoryPsi -> "memory pressure"
+    PressureReason.IoPsi -> "I/O pressure"
+}
+
 private fun labelFor(machines: List<MachineState>, handle: MachineHandle): String =
     machines.singleOrNull { it.machine.handle == handle }?.machine?.label?.text ?: "Machine"
 
@@ -666,7 +752,7 @@ internal fun dashboardInventoryWaitCopy(machines: List<MachineState>): String? =
         MachineAvailability.AuthRequired ->
             "${machine.machine.label.text}: authentication required; its sessions may be out of date."
         MachineAvailability.IdentityChanged ->
-            "${machine.machine.label.text}: identity changed; remove and pair it again."
+            "${machine.machine.label.text}: identity changed; provisioning repair is required."
         MachineAvailability.Reading -> "${machine.machine.label.text}: reading tmux sessions."
         MachineAvailability.Stale ->
             "${machine.machine.label.text}: showing its last inventory; it is STALE and actions are disabled."
@@ -695,7 +781,7 @@ internal fun forgeUnavailableCopy(machine: MachineState): String? = when (machin
     MachineAvailability.AuthRequired ->
         "${machine.machine.label.text} needs an updated bearer. Draft fields and Create are disabled."
     MachineAvailability.IdentityChanged ->
-        "${machine.machine.label.text} identity changed. Remove and pair it again; " +
+        "${machine.machine.label.text} identity changed. Provisioning repair is required; " +
             "draft fields and Create are disabled."
     MachineAvailability.Reading ->
         "${machine.machine.label.text} is reading tmux sessions. " +

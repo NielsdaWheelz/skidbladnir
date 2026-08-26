@@ -17,22 +17,14 @@ import java.util.concurrent.TimeUnit
 
 private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
-internal sealed interface PairingMode {
-    data object Add : PairingMode
-    data class Repair(val handle: MachineHandle) : PairingMode
-}
-
-internal data class PairingDraft(val label: String, val origin: String, val bearer: String)
-
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
 
-    data class Pairing(
-        val mode: PairingMode,
-        val draft: PairingDraft,
+    data class BearerRepair(
+        val machine: PairedMachine,
+        val bearer: String,
         val pending: Boolean,
         val error: String?,
-        val canCancel: Boolean,
     ) : SkidbladnirUiState
 
     data class Dashboard(
@@ -42,7 +34,6 @@ internal sealed interface SkidbladnirUiState {
         val notice: String? = null,
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
-        val rename: RenameState? = null,
         val kill: KillState?,
         val unreadableMachines: List<UnreadableStoredMachine> = emptyList(),
     ) : SkidbladnirUiState
@@ -58,12 +49,6 @@ internal sealed interface SkidbladnirUiState {
 }
 
 internal data class ForgeState(val form: ForgeForm, val pending: Boolean, val error: String?)
-internal data class RenameState(
-    val machine: PairedMachine,
-    val draft: String,
-    val pending: Boolean,
-    val error: String?,
-)
 internal sealed interface ForgeRecovery {
     val draft: ForgeDraft
     data class RefreshRequired(override val draft: ForgeDraft) : ForgeRecovery
@@ -123,19 +108,13 @@ internal fun storedCredentialUnavailable(
     )
 }
 
-internal fun pairingAuthorityConflict(
+internal fun bearerRepairConflict(
     credentials: Collection<MachineCredential>,
     storageComplete: Boolean,
-    repairHandle: MachineHandle?,
-    label: MachineLabel,
-    origin: MachineOrigin,
+    targetHandle: MachineHandle,
     bearer: GatewayBearer,
 ): Boolean = !storageComplete || credentials.any { credential ->
-    credential.machine.handle != repairHandle && (
-        credential.machine.label.text.equals(label.text, ignoreCase = true) ||
-            credential.machine.origin == origin ||
-            credential.bearer == bearer
-        )
+    credential.machine.handle != targetHandle && credential.bearer == bearer
 }
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
@@ -243,36 +222,11 @@ private fun unavailableTerminalStatus(
     val message = when (machine?.access) {
         MachineAccess.AuthRequired -> "${terminal.machine.label.text}: authentication required."
         MachineAccess.IdentityChanged ->
-            "${terminal.machine.label.text}: machine identity changed. Remove and pair it again."
+            "${terminal.machine.label.text}: machine identity changed. Provisioning repair is required."
         MachineAccess.Ready, null -> "${terminal.machine.label.text}: reconnect required."
     }
     return TerminalUiStatus.ReconnectRequired(message)
 }
-
-internal enum class MachineRemovalDestination { PreserveCurrent, Dashboard, Pairing }
-
-internal fun machineRemovalDestination(
-    state: SkidbladnirUiState,
-    removed: MachineHandle,
-    remainingMachines: Int,
-): MachineRemovalDestination = when {
-    remainingMachines == 0 -> MachineRemovalDestination.Pairing
-    state is SkidbladnirUiState.Dashboard -> MachineRemovalDestination.Dashboard
-    state is SkidbladnirUiState.Terminal && state.target.machineHandle == removed ->
-        MachineRemovalDestination.Dashboard
-    else -> MachineRemovalDestination.PreserveCurrent
-}
-
-internal fun removeMachineReferences(
-    dashboard: SkidbladnirUiState.Dashboard,
-    handle: MachineHandle,
-): SkidbladnirUiState.Dashboard = dashboard.copy(
-    selectedMachine = dashboard.selectedMachine.takeUnless { it == handle },
-    forge = dashboard.forge?.takeUnless { it.form.machineHandle == handle },
-    forgeRecovery = dashboard.forgeRecovery?.takeUnless { it.draft.machineHandle == handle },
-    rename = dashboard.rename?.takeUnless { it.machine.handle == handle },
-    kill = dashboard.kill?.takeUnless { it.target.machineHandle == handle },
-)
 
 internal fun dashboardAfterTerminalAccessLoss(
     terminal: SkidbladnirUiState.Terminal,
@@ -287,7 +241,6 @@ internal fun dashboardAfterTerminalAccessLoss(
         notice = machineAccessMessage(machine),
         forge = null,
         forgeRecovery = null,
-        rename = null,
         kill = null,
     )
 }
@@ -324,7 +277,7 @@ private fun machineAccessMessage(machine: MachineState): String = when (machine.
     MachineAccess.Ready -> "${machine.machine.label.text}: reconnect required."
     MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required."
     MachineAccess.IdentityChanged ->
-        "${machine.machine.label.text}: machine identity changed. Remove and pair it again."
+        "${machine.machine.label.text}: machine identity changed. Provisioning repair is required."
 }
 
 private data class PollRuntime(
@@ -485,7 +438,7 @@ internal fun beginStoredMachineRead(
     retainedForgeCarry = when (state) {
         is SkidbladnirUiState.Dashboard -> forgeCarry(state).takeUnless { it == ForgeCarry(null, null) }
         SkidbladnirUiState.Booting -> retainedForgeCarry
-        is SkidbladnirUiState.Pairing, is SkidbladnirUiState.Terminal -> null
+        is SkidbladnirUiState.BearerRepair, is SkidbladnirUiState.Terminal -> null
     },
 )
 
@@ -601,14 +554,10 @@ internal class SkidbladnirController(context: Context) {
                     previous.forEach { machine ->
                         machineStates[machine.machine.handle] = storedCredentialUnavailable(machine.machine, machine)
                     }
-                    if (machineStates.isEmpty()) {
-                        state = pairingState(error = "Stored machines could not be read. No pairing data was cleared.")
-                    } else {
-                        publishDashboard(
-                            refreshing = false,
-                            notice = "Stored machine credentials could not be read. Update each bearer or remove its machine.",
-                        )
-                    }
+                    publishDashboard(
+                        refreshing = false,
+                        notice = "Stored machine credentials could not be read. Provisioning repair is required outside this app.",
+                    )
                 }
                 return@executeCredentialOperation
             }
@@ -640,10 +589,14 @@ internal class SkidbladnirController(context: Context) {
                 unreadableMachines.clear()
                 unreadableMachines += stored.unreadable
                 val storageNotice = stored.unreadable.takeIf { it.isNotEmpty() }?.let {
-                    "Some stored pairings could not be authenticated. Remove and pair them again."
+                    "Some stored machine credentials are unreadable. Provisioning repair is required outside this app."
                 }
                 if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
-                    state = pairingState(error = storageNotice)
+                    publishDashboard(
+                        refreshing = false,
+                        notice = "No machine credentials are provisioned. Machine administration is outside this app.",
+                        carry = reconciliation.forgeCarry,
+                    )
                 } else {
                     publishDashboard(
                         refreshing = reconciled.isNotEmpty(),
@@ -680,112 +633,81 @@ internal class SkidbladnirController(context: Context) {
         client.closeAsync()
     }
 
-    fun addMachine() {
-        if (unreadableMachines.isNotEmpty()) return
-        state = pairingState(canCancel = machineStates.isNotEmpty())
-    }
-
     fun repairMachine(handle: MachineHandle) {
         if (unreadableMachines.isNotEmpty()) return
         val machine = machineStates[handle]?.machine ?: return
-        state = SkidbladnirUiState.Pairing(
-            mode = PairingMode.Repair(handle),
-            draft = PairingDraft(machine.label.text, machine.origin.encoded, ""),
+        state = SkidbladnirUiState.BearerRepair(
+            machine = machine,
+            bearer = "",
             pending = false,
             error = null,
-            canCancel = true,
         )
     }
 
-    fun cancelPairing() {
-        val current = state as? SkidbladnirUiState.Pairing ?: return
-        if (!current.canCancel || current.pending) return
+    fun cancelBearerRepair() {
+        val current = state as? SkidbladnirUiState.BearerRepair ?: return
+        if (current.pending) return
         publishDashboard(refreshing = false)
     }
 
-    fun updatePairingLabel(value: String) = updatePairing { it.copy(label = value) }
-    fun updatePairingOrigin(value: String) = updatePairing { it.copy(origin = value) }
-    fun updatePairingBearer(value: String) = updatePairing { it.copy(bearer = value) }
-
-    private fun updatePairing(transform: (PairingDraft) -> PairingDraft) {
-        val current = state as? SkidbladnirUiState.Pairing ?: return
-        if (!current.pending) state = current.copy(draft = transform(current.draft), error = null)
+    fun updateBearerRepair(value: String) {
+        val current = state as? SkidbladnirUiState.BearerRepair ?: return
+        if (!current.pending) state = current.copy(bearer = value, error = null)
     }
 
-    fun pair() {
-        val current = state as? SkidbladnirUiState.Pairing ?: return
+    fun repairBearer() {
+        val current = state as? SkidbladnirUiState.BearerRepair ?: return
         if (current.pending) return
-        val label = MachineLabel.parse(current.draft.label)
-        val origin = MachineOrigin.parse(current.draft.origin)
-        val bearer = GatewayBearer.parse(current.draft.bearer)
-        val inputError = when {
-            label == null -> "Enter a unique machine label without leading, trailing, or control characters."
-            origin == null -> "Enter an HTTPS machine origin with port 8443 and no path, query, or fragment."
-            bearer == null -> "Enter the 43-character bearer exactly as minted on this machine."
-            else -> null
-        }
-        if (inputError != null) {
-            state = current.copy(error = inputError)
+        val bearer = GatewayBearer.parse(current.bearer)
+        if (bearer == null) {
+            state = current.copy(error = "Enter the 43-character bearer exactly as minted on this machine.")
             return
         }
-        requireNotNull(label); requireNotNull(origin); requireNotNull(bearer)
-        val repair = current.mode as? PairingMode.Repair
-        if (pairingAuthorityConflict(
+        val machine = current.machine
+        if (bearerRepairConflict(
                 credentials.values,
                 storageComplete = unreadableMachines.isEmpty(),
-                repairHandle = repair?.handle,
-                label = label,
-                origin = origin,
+                targetHandle = machine.handle,
                 bearer = bearer,
             )
         ) {
-            state = current.copy(error = "Machine labels, origins, and bearers must be unique.")
+            state = current.copy(error = "Each machine must use a unique bearer.")
             return
         }
         val activeGeneration = generation
         state = current.copy(pending = true, error = null)
         executeCredentialOperation {
-            when (val result = client.pair(origin, bearer)) {
+            when (val result = client.verifyBearer(machine.origin, bearer)) {
                 is GatewayResult.Failure -> main.post {
                     if (!isActiveGeneration(activeGeneration)) return@post
-                    val pairing = state as? SkidbladnirUiState.Pairing ?: return@post
-                    state = pairing.copy(pending = false, error = gatewayFailureMessage(result.failure))
+                    val repair = state as? SkidbladnirUiState.BearerRepair ?: return@post
+                    state = repair.copy(pending = false, error = gatewayFailureMessage(result.failure))
                 }
                 is GatewayResult.Success -> {
                     val returnedHandle = result.value.machine.handle
-                    val expected = repair?.handle
-                    if (expected != null && returnedHandle != expected) {
+                    if (returnedHandle != machine.handle) {
                         main.post {
                             if (!isActiveGeneration(activeGeneration)) return@post
-                            markIdentityChanged(expected)
-                            state = SkidbladnirUiState.Pairing(
-                                current.mode,
-                                current.draft.copy(bearer = ""),
-                                false,
-                                "The machine identity changed. Remove this machine, then pair it again.",
-                                true,
+                            markIdentityChanged(machine.handle)
+                            state = SkidbladnirUiState.BearerRepair(
+                                machine = current.machine,
+                                bearer = "",
+                                pending = false,
+                                error = "The machine identity changed. Provisioning repair is required outside this app.",
                             )
                         }
                         return@executeCredentialOperation
                     }
-                    if (repair == null && credentials.containsKey(returnedHandle)) {
-                        main.post {
-                            if (!isActiveGeneration(activeGeneration)) return@post
-                            val pairing = state as? SkidbladnirUiState.Pairing ?: return@post
-                            state = pairing.copy(pending = false, error = "That machine is already paired.")
-                        }
-                        return@executeCredentialOperation
-                    }
-                    val machine = PairedMachine(returnedHandle, label, origin)
                     val credential = MachineCredential(machine, bearer)
-                    val stored = runCatching {
-                        if (repair == null) store.add(credential) else store.rotateBearer(credential)
-                    }
+                    val stored = runCatching { store.rotateBearer(credential) }
                     if (stored.isFailure) {
                         main.post {
                             if (!isActiveGeneration(activeGeneration)) return@post
-                            val pairing = state as? SkidbladnirUiState.Pairing ?: return@post
-                            state = pairing.copy(pending = false, error = "Pairing worked, but secure machine storage failed.")
+                            val repair = state as? SkidbladnirUiState.BearerRepair ?: return@post
+                            state = repair.copy(
+                                pending = false,
+                                error = "Bearer verification worked, but secure machine storage failed.",
+                            )
                         }
                         return@executeCredentialOperation
                     }
@@ -807,158 +729,6 @@ internal class SkidbladnirController(context: Context) {
         }
     }
 
-    fun removeMachine(handle: MachineHandle) {
-        val machine = machineStates[handle]?.machine ?: return
-        val activeGeneration = generation
-        executeCredentialOperation {
-            if (runCatching { store.remove(handle) }.isFailure) {
-                main.post {
-                    if (!isActiveGeneration(activeGeneration)) return@post
-                    if (machineStates[handle]?.machine != machine) return@post
-                    val notice = "${machine.label.text}: secure machine removal failed. Nothing was removed."
-                    if (state is SkidbladnirUiState.Dashboard) {
-                        publishDashboard(refreshing = false, notice = notice)
-                    } else {
-                        pendingDashboardNotice = notice
-                    }
-                }
-                return@executeCredentialOperation
-            }
-            main.post {
-                if (!isActiveGeneration(activeGeneration)) return@post
-                if (machineStates[handle]?.machine != machine) return@post
-                val current = state
-                val destination = machineRemovalDestination(
-                    current,
-                    handle,
-                    machineStates.size - 1 + unreadableMachines.size,
-                )
-                val remainingDashboard = (current as? SkidbladnirUiState.Dashboard)?.let {
-                    removeMachineReferences(it, handle)
-                }
-                stopPolling(handle)
-                pendingInventoryMutationFences.remove(handle)
-                credentials.remove(handle)
-                machineStates.remove(handle)
-                when (destination) {
-                    MachineRemovalDestination.PreserveCurrent -> Unit
-                    MachineRemovalDestination.Pairing -> {
-                        leaveTerminal()
-                        state = pairingState()
-                    }
-                    MachineRemovalDestination.Dashboard -> {
-                        leaveTerminal()
-                        if (remainingDashboard != null) state = remainingDashboard
-                        publishDashboard(refreshing = false)
-                    }
-                }
-            }
-        }
-    }
-
-    fun removeUnreadableMachine(encodedHandle: String) {
-        val unreadable = unreadableMachines.singleOrNull { it.encodedHandle == encodedHandle } ?: return
-        val activeGeneration = generation
-        executeCredentialOperation {
-            val removed = runCatching { store.removeUnreadable(encodedHandle) }
-            main.post {
-                if (!isActiveGeneration(activeGeneration)) return@post
-                if (unreadableMachines.singleOrNull { it.encodedHandle == encodedHandle } != unreadable) return@post
-                if (removed.isFailure) {
-                    publishDashboard(
-                        refreshing = false,
-                        notice = "Unreadable pairing removal failed. Nothing was removed.",
-                    )
-                    return@post
-                }
-                unreadableMachines.remove(unreadable)
-                if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
-                    state = pairingState()
-                } else {
-                    publishDashboard(
-                        refreshing = false,
-                        notice = unreadableMachines.takeIf { it.isNotEmpty() }?.let {
-                            "Some stored pairings could not be authenticated. Remove and pair them again."
-                        },
-                    )
-                }
-            }
-        }
-    }
-
-    fun requestRenameMachine(handle: MachineHandle) {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val machine = machineStates[handle]?.machine ?: return
-        state = current.copy(rename = RenameState(machine, machine.label.text, pending = false, error = null))
-    }
-
-    fun updateRenameMachineDraft(value: String) {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val rename = current.rename ?: return
-        if (!rename.pending) state = current.copy(rename = rename.copy(draft = value, error = null))
-    }
-
-    fun dismissRenameMachine() {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        if (current.rename?.pending != true) state = current.copy(rename = null)
-    }
-
-    fun confirmRenameMachine() {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val rename = current.rename ?: return
-        if (rename.pending) return
-        val label = MachineLabel.parse(rename.draft)
-        if (label == null) {
-            state = current.copy(
-                rename = rename.copy(
-                    error = "Enter a label without leading, trailing, or control characters.",
-                ),
-            )
-            return
-        }
-        val handle = rename.machine.handle
-        if (machineStates.values.any {
-                it.machine.handle != handle && it.machine.label.text.equals(label.text, ignoreCase = true)
-            }
-        ) {
-            state = current.copy(rename = rename.copy(error = "Machine labels must be unique."))
-            return
-        }
-        if (label == rename.machine.label) {
-            state = current.copy(rename = null)
-            return
-        }
-        if (credentials[handle] == null) return
-        state = current.copy(rename = rename.copy(pending = true, error = null))
-        val activeGeneration = generation
-        executeCredentialOperation {
-            val persisted = runCatching { store.rename(handle, label) }
-            main.post {
-                if (!isActiveGeneration(activeGeneration)) return@post
-                if (persisted.isFailure) {
-                    val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
-                    val activeRename = dashboard.rename?.takeIf { it.machine.handle == handle } ?: return@post
-                    state = dashboard.copy(
-                        rename = activeRename.copy(
-                            pending = false,
-                            error = "The machine label could not be saved.",
-                        ),
-                    )
-                    return@post
-                }
-                val activeCredential = credentials[handle] ?: return@post
-                val renamed = renameMachineLabel(machineStates.values.toList(), handle, label)
-                machineStates.clear()
-                renamed.forEach { machineStates[it.machine.handle] = it }
-                credentials[handle] = activeCredential.copy(machine = activeCredential.machine.copy(label = label))
-                val dashboard = state as? SkidbladnirUiState.Dashboard
-                if (dashboard != null) {
-                    state = dashboard.copy(machines = sortedMachineStates(), rename = null)
-                }
-            }
-        }
-    }
-
     fun selectMachine(handle: MachineHandle?) {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         if (handle != null && machineStates[handle] == null) return
@@ -967,9 +737,15 @@ internal class SkidbladnirController(context: Context) {
 
     fun refresh() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val targets = credentials.keys.filter {
+            current.selectedMachine == null || it == current.selectedMachine
+        }
+        if (targets.isEmpty()) {
+            state = current.copy(refreshing = false)
+            return
+        }
         state = current.copy(refreshing = true, notice = null)
-        val selected = current.selectedMachine
-        credentials.keys.filter { selected == null || it == selected }.forEach { handle ->
+        targets.forEach { handle ->
             requestInventory(handle, generation, requireTrailing = true)
             requestPressure(handle, generation)
         }
@@ -1494,7 +1270,7 @@ internal class SkidbladnirController(context: Context) {
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
             }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.Pairing ->
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair ->
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
         }
         return true
@@ -1567,7 +1343,6 @@ internal class SkidbladnirController(context: Context) {
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
-            rename = null,
             kill = null,
             unreadableMachines = unreadableMachines.toList(),
         )
@@ -1580,9 +1355,6 @@ internal class SkidbladnirController(context: Context) {
     private fun machineCanForge(machine: MachineState): Boolean =
         machine.canMutate &&
             (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.profiles?.isNotEmpty() == true
-
-    private fun pairingState(error: String? = null, canCancel: Boolean = false): SkidbladnirUiState.Pairing =
-        SkidbladnirUiState.Pairing(PairingMode.Add, PairingDraft("", "", ""), false, error, canCancel)
 
     private fun leaveTerminal() {
         terminalOwner = null

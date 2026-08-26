@@ -17,12 +17,9 @@ import javax.crypto.spec.GCMParameterSpec
 private const val MACHINE_KEY_ALIAS = "skidbladnir.machine-bearers.v1"
 private const val MACHINE_PREFERENCES = "skidbladnir.machines"
 private const val MACHINE_HANDLES = "machine.handles"
-private const val MACHINE_INDEX_QUARANTINE = "machine-index"
 private const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
 
 internal data class UnreadableStoredMachine(
-    val encodedHandle: String,
-    val handle: MachineHandle?,
     val collectionWide: Boolean = false,
 )
 internal data class MachineStoreRead(
@@ -45,21 +42,20 @@ internal class MachineStore(
         } catch (_: Exception) {
             return@synchronized MachineStoreRead(
                 emptyList(),
-                listOf(UnreadableStoredMachine(MACHINE_INDEX_QUARANTINE, null, collectionWide = true)),
+                listOf(UnreadableStoredMachine(collectionWide = true)),
             )
         }
         storedHandles.sorted().forEach { encodedHandle ->
-            val handle = MachineHandle.parse(encodedHandle)
             val machine = try {
                 readMachine(encodedHandle)
             } catch (_: Exception) {
-                unreadable += UnreadableStoredMachine(encodedHandle, handle)
+                unreadable += UnreadableStoredMachine()
                 return@forEach
             }
             try {
                 credentials += readCredential(machine)
             } catch (_: Exception) {
-                unreadable += UnreadableStoredMachine(encodedHandle, handle)
+                unreadable += UnreadableStoredMachine()
             }
         }
         MachineStoreRead(
@@ -89,13 +85,6 @@ internal class MachineStore(
         return MachineCredential(machine, bearer)
     }
 
-    fun add(credential: MachineCredential) = synchronized(persistenceLock) {
-        val existing = requireComplete(read())
-        require(existing.none { it.machine.handle == credential.machine.handle })
-        requireUnique(existing, credential)
-        persist(credential, existing.map { it.machine.handle.encoded }.toSet() + credential.machine.handle.encoded)
-    }
-
     fun rotateBearer(credential: MachineCredential) = synchronized(persistenceLock) {
         val existing = requireComplete(read())
         val machine = existing.singleOrNull { it.machine.handle == credential.machine.handle }?.machine
@@ -105,49 +94,6 @@ internal class MachineStore(
             it.machine.handle != credential.machine.handle && it.bearer == credential.bearer
         })
         persist(credential, handles())
-    }
-
-    fun rename(handle: MachineHandle, label: MachineLabel) = synchronized(persistenceLock) {
-        val existing = requireComplete(read())
-        val credential = existing.singleOrNull { it.machine.handle == handle } ?: throw IOException("machine is not paired")
-        val renamed = credential.copy(machine = credential.machine.copy(label = label))
-        requireUnique(existing.filterNot { it.machine.handle == handle }, renamed)
-        if (!preferences.edit().putString(field(handle, "label"), label.text).commit()) {
-            throw IOException("could not persist machine label")
-        }
-    }
-
-    fun remove(handle: MachineHandle) = synchronized(persistenceLock) {
-        removeEncoded(handle.encoded)
-    }
-
-    fun removeUnreadable(encodedHandle: String) = synchronized(persistenceLock) {
-        val unreadable = read().unreadable.singleOrNull { it.encodedHandle == encodedHandle }
-            ?: throw IOException("stored machine is readable or absent")
-        if (unreadable.collectionWide) {
-            if (!preferences.edit().clear().commit()) throw IOException("could not clear unreadable machine index")
-        } else {
-            removeEncoded(encodedHandle)
-        }
-    }
-
-    private fun removeEncoded(encodedHandle: String) {
-        val existing = handles()
-        if (encodedHandle !in existing) throw IOException("machine is not paired")
-        val remaining = existing - encodedHandle
-        val editor = preferences.edit()
-            .putStringSet(MACHINE_HANDLES, remaining)
-            .remove(field(encodedHandle, "label"))
-            .remove(field(encodedHandle, "origin"))
-            .remove(field(encodedHandle, "ciphertext"))
-            .remove(field(encodedHandle, "nonce"))
-        if (!editor.commit()) throw IOException("could not remove machine")
-    }
-
-    fun resetAll() = synchronized(persistenceLock) {
-        if (!preferences.edit().clear().commit()) throw IOException("could not clear machines")
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
     }
 
     private fun persist(credential: MachineCredential, handles: Set<String>) {
@@ -188,12 +134,6 @@ internal class MachineStore(
     private fun requireComplete(read: MachineStoreRead): List<MachineCredential> {
         if (read.unreadable.isNotEmpty()) throw IOException("stored machine collection is incomplete")
         return read.credentials
-    }
-
-    private fun requireUnique(existing: List<MachineCredential>, credential: MachineCredential) {
-        require(existing.none { it.machine.label.text.equals(credential.machine.label.text, ignoreCase = true) })
-        require(existing.none { it.machine.origin == credential.machine.origin })
-        require(existing.none { it.bearer == credential.bearer })
     }
 
     private fun requireKey(): SecretKey {

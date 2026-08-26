@@ -155,6 +155,22 @@ and lifecycle instrumentation; then one physical two-host read-only tmux
 journey proving Activity recreation, machine-local outage fencing, healthy-host
 progress, recovery, and unchanged pairings/lifetimes. All passed on 2026-08-26.
 
+## v0 fixed-topology dashboard cut — delivered
+
+Outcome: the provisioned Devbox and MacBook remain first-class runtime targets,
+while machine administration leaves the app and the dense v0 dashboard returns.
+
+- Removed app add, rename, healthy remove, and quarantine-clear capabilities;
+  bearer repair remains bound to an existing immutable machine.
+- Collapsed the dashboard chrome to one 64 dp row with `New agent` trailing and
+  removed the duplicate create row.
+- Restored each machine's current pressure metrics, 15-minute severity history,
+  missing inputs, platform-unsupported metrics, and pressure reasons.
+
+Acceptance: red pressure component proof, routine static/unit verification, and
+the exact 15-test S22+ platform gate are green. Exact live gateway publication
+and the physical healthy/outage/recovery journey are `NOT_RUN` for this cut.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -173,4 +189,5 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
+| v0 fixed-topology dashboard cut | Implemented; routine and exact 15-test S22+ platform green; live publication and physical product journey `NOT_RUN` |
 | v0.5 push | Not scheduled |

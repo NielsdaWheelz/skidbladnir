@@ -438,7 +438,7 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 		"SessionNameInvalid":          "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.",
 		"ObjectiveInvalid":            "Use 1–240 characters without terminal controls.",
 		"SessionIdentityMismatch":     "The session changed. Refresh before killing it.",
-		"MachineIdentityMismatch":     "The machine identity changed. Pair this machine again.",
+		"MachineIdentityMismatch":     "The machine identity changed. Provisioning repair is required.",
 		"SessionGroupedConflict":      "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.",
 	}
 	wantMessage, found := messages[code]

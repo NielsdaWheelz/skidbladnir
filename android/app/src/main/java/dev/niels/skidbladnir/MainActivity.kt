@@ -114,15 +114,15 @@ private fun SkidbladnirApp(controller: SkidbladnirController) {
         ) {
             CircularProgressIndicator()
         }
-        is SkidbladnirUiState.Pairing -> PairingScreen(state, controller)
+        is SkidbladnirUiState.BearerRepair -> BearerRepairScreen(state, controller)
         is SkidbladnirUiState.Dashboard -> DashboardScreen(state, controller)
         is SkidbladnirUiState.Terminal -> TerminalScreen(state, controller)
     }
 }
 
 @Composable
-private fun PairingScreen(
-    state: SkidbladnirUiState.Pairing,
+private fun BearerRepairScreen(
+    state: SkidbladnirUiState.BearerRepair,
     controller: SkidbladnirController,
 ) {
     Column(
@@ -146,40 +146,18 @@ private fun PairingScreen(
         )
         Spacer(Modifier.height(32.dp))
         Text(
-            text = when (state.mode) {
-                PairingMode.Add -> "Pair a machine"
-                is PairingMode.Repair -> "Update machine bearer"
-            },
+            text = "Update ${state.machine.label.text} bearer",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Medium,
         )
         Text(
-            text = "Use the machine’s Tailscale HTTPS origin and bearer. The bearer stays encrypted and bound to this exact machine on your phone.",
+            text = "Re-authenticate the existing machine at ${state.machine.origin.encoded}. Its identity and destination stay fixed.",
             color = Muted,
             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
         )
         OutlinedTextField(
-            value = state.draft.label,
-            onValueChange = controller::updatePairingLabel,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.pending && state.mode == PairingMode.Add,
-            label = { Text("Machine label") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
-        )
-        OutlinedTextField(
-            value = state.draft.origin,
-            onValueChange = controller::updatePairingOrigin,
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            enabled = !state.pending && state.mode == PairingMode.Add,
-            label = { Text("HTTPS origin · port 8443") },
-            placeholder = { Text("https://macbook.example.ts.net:8443") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-        )
-        OutlinedTextField(
-            value = state.draft.bearer,
-            onValueChange = controller::updatePairingBearer,
+            value = state.bearer,
+            onValueChange = controller::updateBearerRepair,
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.pending,
             label = { Text("Bearer") },
@@ -198,9 +176,8 @@ private fun PairingScreen(
             )
         }
         Button(
-            onClick = controller::pair,
-            enabled = state.draft.label.isNotEmpty() && state.draft.origin.isNotEmpty() &&
-                state.draft.bearer.isNotEmpty() && !state.pending,
+            onClick = controller::repairBearer,
+            enabled = state.bearer.isNotEmpty() && !state.pending,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp),
@@ -212,15 +189,13 @@ private fun PairingScreen(
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            Text(if (state.mode == PairingMode.Add) "Pair machine" else "Update bearer")
+            Text("Update bearer")
         }
-        if (state.canCancel) {
-            TextButton(onClick = controller::cancelPairing, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
-                Text("Back to agents")
-            }
+        TextButton(onClick = controller::cancelBearerRepair, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to agents")
         }
         Text(
-            text = "Tailnet only · each machine is paired independently",
+            text = "Tailnet only · fixed machine identity",
             color = Muted,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(top = 12.dp),

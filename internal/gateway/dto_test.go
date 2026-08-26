@@ -108,7 +108,7 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 		{errorSessionNameConflict, "SessionNameConflict", "A session with that name already exists.", http.StatusConflict},
 		{errorSessionNotFound, "SessionNotFound", "That session no longer exists.", http.StatusNotFound},
 		{errorSessionIdentityMismatch, "SessionIdentityMismatch", "The session changed. Refresh before killing it.", http.StatusConflict},
-		{errorMachineIdentityMismatch, "MachineIdentityMismatch", "The machine identity changed. Pair this machine again.", http.StatusConflict},
+		{errorMachineIdentityMismatch, "MachineIdentityMismatch", "The machine identity changed. Provisioning repair is required.", http.StatusConflict},
 		{errorSessionGroupedConflict, "SessionGroupedConflict", "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.", http.StatusConflict},
 		{errorInternal, "InternalError", "Skíðblaðnir could not complete the request.", http.StatusInternalServerError},
 	}

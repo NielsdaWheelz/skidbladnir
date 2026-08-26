@@ -56,29 +56,6 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `machine label rename preserves authority and rejects case insensitive collisions`() {
-        val initial = listOf(readyMachine(devbox, session()), readyMachine(macBook, session()))
-        val renamed = renameMachineLabel(
-            machines = initial,
-            handle = devboxHandle,
-            label = requireNotNull(MachineLabel.parse("Build Mac")),
-        )
-
-        val updated = renamed.single { it.machine.handle == devboxHandle }.machine
-        assertEquals("Build Mac", updated.label.text)
-        assertEquals(devbox.handle, updated.handle)
-        assertTrue(devbox.origin == updated.origin)
-        assertEquals("Devbox", initial.single { it.machine.handle == devboxHandle }.machine.label.text)
-        assertThrows(IllegalArgumentException::class.java) {
-            renameMachineLabel(
-                initial,
-                devboxHandle,
-                requireNotNull(MachineLabel.parse("macbook")),
-            )
-        }
-    }
-
-    @Test
     fun `inventory requires a strict machine envelope and closed platform`() {
         val inventory = decodeSessionsResponse(inventoryJson(devboxHandle, "Linux"))
         assertEquals(devboxHandle, inventory.machine.handle)
@@ -350,7 +327,7 @@ class MultiMachineContractTest {
         listOf(
             MachineAccess.AuthRequired to "Devbox: authentication required.",
             MachineAccess.IdentityChanged to
-                "Devbox: machine identity changed. Remove and pair it again.",
+                "Devbox: machine identity changed. Provisioning repair is required.",
         ).forEach { (access, expectedNotice) ->
             val lost = readyMachine(devbox, target.session).copy(access = access)
             val dashboard = dashboardAfterTerminalAccessLoss(
@@ -388,7 +365,7 @@ class MultiMachineContractTest {
         listOf(
             MachineAccess.AuthRequired to "Devbox: authentication required.",
             MachineAccess.IdentityChanged to
-                "Devbox: machine identity changed. Remove and pair it again.",
+                "Devbox: machine identity changed. Provisioning repair is required.",
         ).forEach { (access, expectedNotice) ->
             val machines = listOf(
                 readyMachine(devbox, target.session).copy(access = access),
@@ -453,58 +430,29 @@ class MultiMachineContractTest {
         )
 
         assertTrue(
-            pairingAuthorityConflict(
+            bearerRepairConflict(
                 credentials,
                 storageComplete = true,
-                repairHandle = macBookHandle,
-                label = macBook.label,
-                origin = macBook.origin,
+                targetHandle = macBookHandle,
                 bearer = devboxBearer,
             ),
         )
         assertFalse(
-            pairingAuthorityConflict(
+            bearerRepairConflict(
                 credentials,
                 storageComplete = true,
-                repairHandle = macBookHandle,
-                label = macBook.label,
-                origin = macBook.origin,
+                targetHandle = macBookHandle,
                 bearer = macBookBearer,
             ),
         )
         assertTrue(
-            pairingAuthorityConflict(
+            bearerRepairConflict(
                 credentials,
                 storageComplete = false,
-                repairHandle = macBookHandle,
-                label = macBook.label,
-                origin = macBook.origin,
+                targetHandle = macBookHandle,
                 bearer = macBookBearer,
             ),
         )
-    }
-
-    @Test
-    fun `removing the selected machine clears every machine-owned dashboard reference`() {
-        val target = AgentTarget(devboxHandle, session())
-        val draft = ForgeDraft(devboxHandle, "/src", "personal", "name", "objective")
-        val dashboard = SkidbladnirUiState.Dashboard(
-            machines = listOf(readyMachine(devbox, session()), readyMachine(macBook, session())),
-            selectedMachine = devboxHandle,
-            refreshing = false,
-            forge = ForgeState(ForgeForm(draft), pending = false, error = null),
-            forgeRecovery = ForgeRecovery.ReviewReady(draft),
-            rename = RenameState(devbox, "Devbox", pending = false, error = null),
-            kill = KillState(devbox, target, pending = false),
-        )
-
-        val removed = removeMachineReferences(dashboard, devboxHandle)
-        assertEquals(null, removed.selectedMachine)
-        assertEquals(null, removed.forge)
-        assertEquals(null, removed.forgeRecovery)
-        assertEquals(null, removed.rename)
-        assertEquals(null, removed.kill)
-        assertEquals(2, removed.machines.size)
     }
 
     @Test

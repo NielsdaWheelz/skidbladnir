@@ -2,14 +2,17 @@ package dev.niels.skidbladnir
 
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
+import java.io.IOException
+import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -27,7 +30,8 @@ class MachineStoreInstrumentedTest {
             override fun getSharedPreferences(name: String?, mode: Int) =
                 targetContext.getSharedPreferences(testPreferences, mode)
         }
-        val store = MachineStore(context, "skidbladnir.machine-bearers.isolation-instrumented-test")
+        val keyAlias = "skidbladnir.machine-bearers.isolation-instrumented-test"
+        val store = MachineStore(context, keyAlias)
         val devbox = credential(
             "mh-0123456789abcdef0123456789abcdef",
             "Devbox",
@@ -40,19 +44,10 @@ class MachineStoreInstrumentedTest {
             "https://macbook.example.ts.net:8443",
             "B" + "A".repeat(42),
         )
-        val duplicateBearer = credential(
-            "mh-11111111111111111111111111111111",
-            "Build Host",
-            "https://build.example.ts.net:8443",
-            devbox.bearer.encoded,
-        )
 
         try {
-            store.resetAll()
-            store.add(devbox)
-            store.add(macBook)
+            installFixture(targetContext, testPreferences, keyAlias, listOf(devbox, macBook))
 
-            assertThrows(IllegalArgumentException::class.java) { store.add(duplicateBearer) }
             assertThrows(IllegalArgumentException::class.java) {
                 store.rotateBearer(macBook.copy(bearer = devbox.bearer))
             }
@@ -68,112 +63,22 @@ class MachineStoreInstrumentedTest {
 
             val partitioned = store.read()
             assertEquals(listOf(devbox), partitioned.credentials)
-            assertEquals(listOf(macBook.machine.handle), partitioned.unreadable.mapNotNull { it.handle })
-            assertTrue(partitioned.unreadable.isNotEmpty())
+            assertEquals(listOf(UnreadableStoredMachine()), partitioned.unreadable)
             assertEquals(
                 setOf(devbox.machine.handle.encoded, macBook.machine.handle.encoded),
                 preferences.getStringSet("machine.handles", emptySet()),
             )
 
-            store.removeUnreadable(macBook.machine.handle.encoded)
-            assertEquals(listOf(devbox), store.read().credentials)
-
-            preferences.edit()
-                .putStringSet(
-                    "machine.handles",
-                    setOf(devbox.machine.handle.encoded, "not-a-machine-handle"),
-                )
-                .commit()
-            val malformed = store.read()
-            assertEquals(listOf(devbox), malformed.credentials)
-            assertEquals(listOf("not-a-machine-handle"), malformed.unreadable.map { it.encodedHandle })
-            assertEquals(listOf(null), malformed.unreadable.map { it.handle })
-
-            store.removeUnreadable("not-a-machine-handle")
-            assertTrue(store.read().unreadable.isEmpty())
-            assertEquals(listOf(devbox), store.read().credentials)
+            assertThrows(IOException::class.java) {
+                store.rotateBearer(devbox.copy(bearer = requireNotNull(GatewayBearer.parse("C" + "A".repeat(42)))))
+            }
 
             preferences.edit().putString("machine.handles", "corrupt-index").commit()
             val corruptIndex = store.read()
             assertTrue(corruptIndex.credentials.isEmpty())
             assertTrue(corruptIndex.unreadable.single().collectionWide)
-            store.removeUnreadable(corruptIndex.unreadable.single().encodedHandle)
-            assertTrue(store.read().credentials.isEmpty())
-            assertTrue(store.read().unreadable.isEmpty())
-            store.add(devbox)
-            assertEquals(listOf(devbox), store.read().credentials)
         } finally {
-            store.resetAll()
-        }
-    }
-
-    @Test
-    fun concurrentRemovalsAcrossStoreInstancesLeaveNoMachines() {
-        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
-        val testPreferences = "skidbladnir.machines.concurrent-instrumented-test"
-        val preferences = CoordinatedPreferences(
-            targetContext.getSharedPreferences(testPreferences, Context.MODE_PRIVATE),
-        )
-        val context = object : ContextWrapper(targetContext) {
-            override fun getSharedPreferences(name: String?, mode: Int) = preferences
-        }
-        val firstStore = MachineStore(context, "skidbladnir.machine-bearers.concurrent-instrumented-test")
-        val secondStore = MachineStore(context, "skidbladnir.machine-bearers.concurrent-instrumented-test")
-        val devbox = credential(
-            "mh-0123456789abcdef0123456789abcdef",
-            "Devbox",
-            "https://devbox.example.ts.net:8443",
-            "A".repeat(43),
-        )
-        val macBook = credential(
-            "mh-fedcba9876543210fedcba9876543210",
-            "MacBook",
-            "https://macbook.example.ts.net:8443",
-            "B" + "A".repeat(42),
-        )
-        val executor = Executors.newFixedThreadPool(2)
-
-        try {
-            firstStore.resetAll()
-            firstStore.add(devbox)
-            firstStore.add(macBook)
-            preferences.coordinateTwoCollectionReads()
-
-            val first = executor.submit { firstStore.remove(devbox.machine.handle) }
-            assertTrue("first removal did not read storage", preferences.firstRead.await(5, TimeUnit.SECONDS))
-
-            val secondThread = AtomicReference<Thread>()
-            val secondAttempting = CountDownLatch(1)
-            val second = executor.submit {
-                secondThread.set(Thread.currentThread())
-                secondAttempting.countDown()
-                secondStore.remove(macBook.machine.handle)
-            }
-            assertTrue("second removal did not start", secondAttempting.await(5, TimeUnit.SECONDS))
-
-            // Activity replacement can create another store while the old controller still commits.
-            // BLOCKED only proves that the second removal reached the shared serialization boundary.
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-            while (
-                preferences.secondRead.count != 0L &&
-                secondThread.get().state != Thread.State.BLOCKED &&
-                System.nanoTime() < deadline
-            ) {
-                Thread.yield()
-            }
-            assertTrue(
-                "second removal neither read concurrently nor blocked on store serialization",
-                preferences.secondRead.count == 0L || secondThread.get().state == Thread.State.BLOCKED,
-            )
-            preferences.releaseFirst.countDown()
-            first.get(5, TimeUnit.SECONDS)
-            second.get(5, TimeUnit.SECONDS)
-
-            assertTrue(firstStore.read().credentials.isEmpty())
-        } finally {
-            preferences.releaseFirst.countDown()
-            executor.shutdownNow()
-            firstStore.resetAll()
+            resetFixture(targetContext, testPreferences, keyAlias)
         }
     }
 
@@ -185,7 +90,8 @@ class MachineStoreInstrumentedTest {
             override fun getSharedPreferences(name: String?, mode: Int) =
                 targetContext.getSharedPreferences(testPreferences, mode)
         }
-        val store = MachineStore(context, "skidbladnir.machine-bearers.instrumented-test")
+        val keyAlias = "skidbladnir.machine-bearers.instrumented-test"
+        val store = MachineStore(context, keyAlias)
         val devbox = credential(
             "mh-0123456789abcdef0123456789abcdef",
             "Devbox",
@@ -200,9 +106,7 @@ class MachineStoreInstrumentedTest {
         )
 
         try {
-            store.resetAll()
-            store.add(devbox)
-            store.add(macBook)
+            installFixture(targetContext, testPreferences, keyAlias, listOf(devbox, macBook))
 
             val restored = store.read().credentials
             assertEquals(listOf(devbox.machine.handle, macBook.machine.handle), restored.map { it.machine.handle })
@@ -218,22 +122,9 @@ class MachineStoreInstrumentedTest {
             store.rotateBearer(devbox.copy(bearer = rotatedBearer))
             assertTrue(firstNonce != preferences.getString(nonceKey, null))
 
-            val renamedLabel = requireNotNull(MachineLabel.parse("Build Mac"))
-            store.rename(devbox.machine.handle, renamedLabel)
-            val renamed = store.read().credentials.single { it.machine.handle == devbox.machine.handle }
-            assertTrue(
-                renamed.machine.label == renamedLabel &&
-                    renamed.machine.handle == devbox.machine.handle &&
-                    renamed.machine.origin == devbox.machine.origin &&
-                    renamed.bearer == rotatedBearer,
-            )
-            assertThrows(IllegalArgumentException::class.java) {
-                store.rename(devbox.machine.handle, requireNotNull(MachineLabel.parse("macbook")))
-            }
-
-            store.remove(devbox.machine.handle)
-            val remaining = store.read().credentials
-            assertTrue(remaining == listOf(macBook))
+            val rotated = store.read().credentials.single { it.machine.handle == devbox.machine.handle }
+            assertEquals(devbox.machine, rotated.machine)
+            assertEquals(rotatedBearer, rotated.bearer)
 
             preferences.edit()
                 .putString(
@@ -242,10 +133,10 @@ class MachineStoreInstrumentedTest {
                 )
                 .commit()
             val unreadable = store.read()
-            assertTrue(unreadable.credentials.isEmpty())
-            assertEquals(listOf(macBook.machine.handle), unreadable.unreadable.mapNotNull { it.handle })
+            assertEquals(listOf(rotated), unreadable.credentials)
+            assertEquals(listOf(UnreadableStoredMachine()), unreadable.unreadable)
         } finally {
-            store.resetAll()
+            resetFixture(targetContext, testPreferences, keyAlias)
         }
     }
 
@@ -259,28 +150,58 @@ class MachineStoreInstrumentedTest {
             requireNotNull(GatewayBearer.parse(bearer)),
         )
 
-    private class CoordinatedPreferences(
-        private val delegate: SharedPreferences,
-    ) : SharedPreferences by delegate {
-        val firstRead = CountDownLatch(1)
-        val releaseFirst = CountDownLatch(1)
-        val secondRead = CountDownLatch(1)
-        private val coordinatedReads = AtomicInteger(0)
-
-        fun coordinateTwoCollectionReads() {
-            coordinatedReads.set(2)
+    private fun installFixture(
+        context: Context,
+        preferencesName: String,
+        keyAlias: String,
+        credentials: List<MachineCredential>,
+    ) {
+        resetFixture(context, preferencesName, keyAlias)
+        val key = fixtureKey(keyAlias)
+        val editor = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE).edit()
+            .putStringSet("machine.handles", credentials.map { it.machine.handle.encoded }.toSet())
+        credentials.forEach { credential ->
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            cipher.updateAAD(fixtureAssociatedData(credential.machine))
+            val ciphertext = cipher.doFinal(credential.bearer.encoded.toByteArray(StandardCharsets.UTF_8))
+            val prefix = "machine.${credential.machine.handle.encoded}"
+            editor
+                .putString("$prefix.label", credential.machine.label.text)
+                .putString("$prefix.origin", credential.machine.origin.encoded)
+                .putString("$prefix.ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+                .putString("$prefix.nonce", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
         }
-
-        override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? {
-            val snapshot = delegate.getStringSet(key, defValues)?.toMutableSet()
-            when (coordinatedReads.getAndUpdate { remaining -> if (remaining > 0) remaining - 1 else 0 }) {
-                2 -> {
-                    firstRead.countDown()
-                    check(releaseFirst.await(5, TimeUnit.SECONDS)) { "first index read was not released" }
-                }
-                1 -> secondRead.countDown()
-            }
-            return snapshot
-        }
+        check(editor.commit()) { "could not install encrypted machine fixture" }
     }
+
+    private fun resetFixture(context: Context, preferencesName: String, keyAlias: String) {
+        check(context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE).edit().clear().commit()) {
+            "could not clear encrypted machine fixture"
+        }
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
+    }
+
+    private fun fixtureKey(keyAlias: String): SecretKey = KeyGenerator.getInstance(
+        KeyProperties.KEY_ALGORITHM_AES,
+        "AndroidKeyStore",
+    ).run {
+        init(
+            KeyGenParameterSpec.Builder(
+                keyAlias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build(),
+        )
+        generateKey()
+    }
+
+    private fun fixtureAssociatedData(machine: PairedMachine): ByteArray =
+        "dev.niels.skidbladnir.machine.bearer.v1\u0000${machine.handle.encoded}\u0000${machine.origin.encoded}"
+            .toByteArray(StandardCharsets.UTF_8)
+
 }
