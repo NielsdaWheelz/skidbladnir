@@ -85,13 +85,15 @@ fallbacks.
 Skíðblaðnir (app), Hlíðskjálf (grid motif; literal label `Agents`), The Forge
 (new-session sheet; literal `New agent`), and Dvergatal (the append-only dwarf
 catalogue at `catalog/characters.json`, ≥100 entries, original deterministic
-procedural icon portraits) are retained. Gateway-created sessions are named
-`ga-<dwarf>` from a free catalogue key; after the base names are occupied, the
-gateway reuses catalogue characters with the smallest free `-2`, `-3`, … name
-suffix. The key is stored in a tmux user option and deterministically seeds the
-card landmark; v0 owns no raster portrait pack or portrait manifest. The
-catalogue therefore does not cap the number of agents. Domain, error, and
-destructive-action language stays literal.
+procedural icon portraits) are retained. Every visible ordinary session owns a
+valid Dvergatal key in `@skid_character`, whether created from the laptop or
+the gateway. Inventory repairs missing or invalid keys before returning a
+card; valid keys survive tmux rename and process replacement for the tmux
+session lifetime. The key independently seeds the card landmark and never
+defines the tmux name. Gateway-created sessions use an explicit tmux name or
+the smallest free `skidbladnir-<profile>-<N>` name. v0 owns no raster portrait
+pack or portrait manifest. Domain, error, and destructive-action language
+stays literal.
 
 ### Guarantees (cheap, disaster-preventing)
 
@@ -164,13 +166,15 @@ them.
   `session_attached` otherwise. Gateway-owned phone shadows carry
   `@skid_internal=phone-shadow` and never appear as cards.
 
-- **Card facts:** session name, an opaque server-lifetime identity token, dwarf
-  icon portrait when `@skid_character` is set, the declared label for a known
-  `@skid_profile` key or `profile unknown`,
+- **Card facts:** tmux name, an opaque server-lifetime identity token, required
+  dwarf character and icon portrait from `@skid_character`, the declared label
+  for a known `@skid_profile` key or `profile unknown`,
   objective (optional; URL-safe base64 in `@skid_objective_b64`, decoded by the
   gateway), pane cwd and active command when tmux exposes them,
   attached-client count, status chip with its named signal and age, attention
-  badge. Invalid or unknown `@skid_*` metadata is absent, never guessed.
+  badge. Missing or invalid character metadata is assigned from Dvergatal and
+  persisted during inventory; other invalid or unknown `@skid_*` metadata is
+  absent, never guessed.
 - **Status and attention are orthogonal.** Attention is a badge, never a status
   replacement. Every status chip names its signal and age:
   - `WORKING` — an allowlisted foreground agent process has a matching
@@ -182,15 +186,26 @@ them.
   - `UNKNOWN` — the session was enumerated but its required anchor or process
     observation failed. Failure of the inventory-wide `list-sessions` command
     is an `InternalError`, not a fabricated cached card.
-- Laptop-created sessions appear with whatever facts tmux exposes; absence of
-  Skíðblaðnir metadata is displayed, not guessed.
+- Laptop-created sessions appear with whatever facts tmux exposes and receive
+  the same automatic persistent dwarf assignment as gateway-created sessions.
+- Normalization runs under the manager mutation lock after phone-shadow
+  reconciliation. It counts valid characters on visible ordinary sessions,
+  chooses a least-used catalogue entry, and breaks ties by the greatest
+  SHA-256 score of `server epoch + NUL + session id + NUL + character key`.
+  A sorted worklist of unassigned ids drives assignment and committed writes
+  update the count; it does not reorder the manager's returned inventory. Each
+  assignment is one tmux queue guarded by exact server lifetime,
+  session id, observed raw option, and absence of the shadow marker. A lost
+  conditional race is re-read once: preserve a concurrent valid assignment,
+  omit a vanished session, or make one guarded attempt against the new value;
+  an unresolved visible session is `InternalError`.
 - The age source is named honestly (`lifecycle`, `process`, or `poll failure`).
   tmux input/output activity is never lifecycle evidence. The lifecycle value
   is exactly `v1:<foreground-pid>:<kernel-start-time>:<working|idle>:<epoch>`;
   PID and kernel start time prevent a later Codex process in the same pane from
   inheriting stale state.
-- Grid order: attention first, then `WORKING`, `RUNNING`, `IDLE`, `SHELL`, `UNKNOWN`,
-  name, tmux id.
+- The gateway solely owns grid order: attention first, then `WORKING`,
+  `RUNNING`, `IDLE`, `SHELL`, `UNKNOWN`, tmux name, tmux id.
 
 ### Attention
 
@@ -221,19 +236,21 @@ untrusted, or unloaded hooks leave the honest `RUNNING` state.
 
 ### Start (The Forge)
 
-`POST /v1/sessions {cwd, profile, optionalName?, objective?}`:
+`POST /v1/sessions {cwd, profile, optionalTmuxName?, objective?}`:
 
 1. Cwd: ≤4,096 UTF-8 bytes, no NUL/C0/C1; optional leading `~`/`~/` expands
    against the service UID home; must be an existing directory. Failure is
    typed and mutates nothing.
 2. Profile must be one of the four allowlisted commands.
-3. Optional name is 1–64 ASCII letters, digits, underscores, or hyphens,
+3. Optional tmux name is 1–64 ASCII letters, digits, underscores, or hyphens;
    beginning with a letter or digit;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
    Invalid input mutates nothing.
-4. One tmux client command queue creates the session (named `optionalName` or
-   the smallest free catalogue-derived name), initializes the random
-   server-scoped `@skid_server_epoch` if absent, sets `@skid_profile` and
+4. Choose the character independently by least live use with a stable
+   pseudorandom tie-break. One tmux client command queue creates the session
+   (named `optionalTmuxName` or the smallest free
+   `skidbladnir-<profile>-<N>`), initializes the random server-scoped
+   `@skid_server_epoch` if absent, sets `@skid_profile` and
    `@skid_character`, sets encoded `@skid_objective_b64` only when supplied,
    and runs the profile command with its exact row arguments in the cwd. A
    later queue failure
@@ -273,7 +290,7 @@ next open attaches fresh with no byte replay.
 ### Kill
 
 `DELETE /v1/sessions/{id}` requires the client to send the tmux session id, the
-displayed name, and the inventory's opaque `identityToken`. The token binds the
+displayed tmux name, and the inventory's opaque `identityToken`. The token binds the
 session id to the server's random epoch plus built-in PID and start time. One
 tmux client command queues the epoch/PID/start-time/id/name predicate, an
 ungrouped-or-last-link predicate, and `kill-session`; stale tokens, including
@@ -282,7 +299,7 @@ cannot reach the kill branch. Before that queue, the gateway removes only
 identity-proven, unattached phone shadows, then revalidates the target. Any
 remaining grouped sibling is ambiguous and fails closed without mutating the
 selected or sibling session; the user resolves that group in tmux. The app
-confirms destructively ("Kill session ga-durinn? This tmux session and its
+confirms destructively ("Kill session skidbladnir-work-1? This tmux session and its
 processes end now.")
 and never offers kill and detach in the same gesture. There is no working/idle
 gate — the human is looking at the terminal facts; the guarantee is exactness
@@ -348,9 +365,9 @@ Galaxy S22+                       laptop / mosh
 | Method/path | Contract |
 | --- | --- |
 | `GET /v1/sessions` | Observed-at inventory with card facts and per-card opaque `identityToken` above, plus the ordered profile choices for the Forge |
-| `POST /v1/sessions` | `{cwd, profile, optionalName?, objective?}`; typed failures |
+| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; typed failures |
 | `GET /v1/sessions/{id}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before creating any shadow/PTY |
-| `DELETE /v1/sessions/{id}` | `{name,identityToken}`; owned stale-shadow reconciliation, then one-queue exact lifetime/last-link kill |
+| `DELETE /v1/sessions/{id}` | `{tmuxName,identityToken}`; owned stale-shadow reconciliation, then one-queue exact lifetime/last-link kill |
 | `GET /v1/pressure` | Current sample plus recent window |
 
 Errors use only `{code,message}` with this exhaustive S1 mapping:
@@ -478,5 +495,6 @@ stale tokens kill nothing, and ambiguous ordinary groups fail closed without
 mutation; a detached phone leaves its agent running; attention is independent from
 status; an instrumented Codex moves `IDLE -> WORKING -> IDLE`, while an
 uninstrumented live agent remains `RUNNING`; every status chip states its signal
-and age; restart of app or gateway converges to
-`tmux list-sessions` truth.
+and age; first inventory persists one valid dwarf for every visible ordinary
+session, preserves concurrent valid assignment, and never assigns a phone
+shadow; restart of app or gateway converges to `tmux list-sessions` truth.

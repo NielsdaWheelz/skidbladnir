@@ -29,7 +29,6 @@ def load_catalogue() -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     keys: set[str] = set()
     names: set[str] = set()
-    suffixes: set[str] = set()
     for index, entry in enumerate(decoded):
         if not isinstance(entry, dict) or set(entry) != {"key", "displayName", "tradition", "source"}:
             fail(f"catalogue entry {index} has an invalid shape")
@@ -51,12 +50,12 @@ def load_catalogue() -> list[dict[str, str]]:
             fail(f"catalogue entry {index} display name is not NFC")
         if fields["tradition"] in BANNED_TRADITIONS:
             fail(f"catalogue entry {index} uses a forbidden tradition")
-        suffix = fields["key"].rsplit(".", 1)[1]
-        if fields["key"] in keys or fields["displayName"] in names or suffix in suffixes:
-            fail(f"catalogue entry {index} duplicates a runtime identity")
+        if fields["key"] in keys:
+            fail(f"catalogue entry {index} duplicates a key")
+        if fields["displayName"] in names:
+            fail(f"catalogue entry {index} duplicates a display name")
         keys.add(fields["key"])
         names.add(fields["displayName"])
-        suffixes.add(suffix)
         normalized.append(fields)
     return normalized
 

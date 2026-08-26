@@ -15,6 +15,7 @@ platform gate is green; real Codex event delivery and renewed hands-on S22+
 acceptance remain `NOT_RUN`. The Claude Work profile source delta, routine
 verification, isolated tmux integration, exact devbox install/reverify,
 automated S22+ platform gate, and user-reported focused S22+ pass are green.
+The automatic dwarf-identity hard cut is approved and in implementation.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -35,6 +36,7 @@ S1 tmux control plane
  -> S3 Android dashboard
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
  -> v0 profile delta: Claude Work
+ -> v0 identity delta: automatic dwarf identity
  -> v0.5 (optional): push
 ```
 
@@ -58,12 +60,15 @@ sessions and reads pressure.
 - Go gateway: loopback bind, Tailscale Serve mapping, single bearer
   (devbox-minted CLI, constant-time check, re-mint revokes).
 - `GET /v1/sessions`: poller over `list-sessions`/`list-panes` + `/proc`;
-  card facts incl. user-option metadata, independent attention, status chips
-  with age, client count. Exact Codex `WORKING|IDLE` comes only from the narrow
-  process-lifetime-bound hook adapter; otherwise a live agent is `RUNNING`.
-- `POST /v1/sessions`: cwd/name/objective validation, profile-table allowlist,
-  unbounded `ga-<dwarf>[-N]` naming with catalogue reuse, user options set at
-  create, exact row command/environment/argument exec.
+  card facts incl. required character metadata, independent attention, status
+  chips with age, client count. Exact Codex `WORKING|IDLE` comes only from the
+  narrow process-lifetime-bound hook adapter; otherwise a live agent is
+  `RUNNING`. Inventory assigns a persistent Dvergatal key to every visible
+  ordinary session with missing or invalid character metadata.
+- `POST /v1/sessions`: cwd/tmux-name/objective validation, profile-table
+  allowlist, independent character allocation, default
+  `skidbladnir-<profile>-<N>` naming, user options set at create, exact row
+  command/environment/argument exec.
 - `DELETE /v1/sessions/{id}`: inventory `identityToken` binds a random
   tmux-server epoch + built-in PID/start time + id; all lifetime facts, the
   displayed name, ungrouped-or-last-link predicate, and `kill-session` share
@@ -177,6 +182,29 @@ focused S22+ pass of the stock Claude permission UI, shared terminal,
 concurrent attach, reconnect, detach, and exact kill. External gates remain
 `NOT_RUN` without their explicit current-turn approval.
 
+## v0 identity delta — automatic dwarf identity
+
+Outcome: every visible ordinary tmux session has one persistent Dvergatal
+character independent of its operator-owned tmux name, with no management UI.
+
+- Inventory repairs missing or invalid `@skid_character` values after phone-
+  shadow reconciliation and before returning cards; valid values never change.
+- Assignment counts valid characters on visible ordinary sessions, chooses a
+  least-used catalogue entry, and uses a stable SHA-256 score to break ties.
+- Each repair is one exact conditional tmux queue bound to the server lifetime,
+  session id, observed option value, and absence of the shadow marker.
+- Create chooses tmux name and character independently. Generated names are
+  `skidbladnir-<profile>-<N>`; the API hard-cuts to `tmuxName` and
+  `optionalTmuxName`; every successful card has a required character.
+- Android keeps the existing procedural portrait and adds no action or state.
+
+Red: pure allocation/name behavior, required gateway and Android contracts,
+and one isolated real-tmux inventory journey covering persistence, invalid
+repair, concurrent assignment, shadow exclusion, and non-character immutability.
+
+Gate: routine verification plus one isolated real-tmux integration journey.
+No platform or live gate is added.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -195,4 +223,5 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
+| v0 identity delta — automatic dwarf identity | Implementation in progress; external proof `NOT_RUN` |
 | v0.5 push | Not scheduled |
