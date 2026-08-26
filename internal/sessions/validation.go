@@ -125,7 +125,7 @@ func normalizeWorkingDirectory(input, home string) (string, error) {
 
 func validateOptionalName(name string) error {
 	if name != "" && !sessionNamePattern.MatchString(name) {
-		return newSessionError(ErrorSessionNameInvalid, "Use 1–64 letters, numbers, underscores, or hyphens.")
+		return newSessionError(ErrorSessionNameInvalid, "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.")
 	}
 	return nil
 }

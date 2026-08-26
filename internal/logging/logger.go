@@ -289,7 +289,11 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventPressureSampled:
 		fields["skidbladnir.pressure.level"] = event.level
-		fields["skidbladnir.pressure.reasons"] = event.reasons
+		reasons := event.reasons
+		if reasons == nil {
+			reasons = []PressureReason{}
+		}
+		fields["skidbladnir.pressure.reasons"] = reasons
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventAuthenticationRejected:
 		fields["http.route"] = event.route

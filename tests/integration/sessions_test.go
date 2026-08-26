@@ -45,7 +45,7 @@ func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 	if err := os.WriteFile(catalogue, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
 		t.Fatalf("write catalogue: %v", err)
 	}
-	_, err := sessions.New(sessions.Config{
+	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    randomTmuxSocketName(t, "skid-unavailable"),
 		Home:          home,
@@ -58,7 +58,14 @@ func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 		}},
 	})
 	if err != nil {
+		t.Fatalf("an unavailable opaque profile command took down the manager: %v", err)
+	}
+	listed, err := manager.List(context.Background())
+	if err != nil {
 		t.Fatalf("an unavailable opaque profile command took down inventory: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("fresh isolated socket listed unexpected sessions: %+v", listed)
 	}
 }
 
@@ -1011,7 +1018,7 @@ exec /usr/bin/sleep 300
 
 func (fixture sessionFixture) attachClient(t *testing.T, session string) {
 	t.Helper()
-	commandText := fmt.Sprintf("exec /usr/bin/env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session -t %s", tmuxPath, fixture.socketPath, session)
+	commandText := fmt.Sprintf("exec /usr/bin/env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color '%s' -S '%s' -f /dev/null attach-session -t '%s'", tmuxPath, fixture.socketPath, session)
 	command := exec.Command("/usr/bin/script", "-qefc", commandText, "/dev/null")
 	command.Env = withoutEnvironment(os.Environ(), "TMUX", "TMUX_PANE", "TMUX_TMPDIR")
 	command.Stdout = io.Discard

@@ -117,7 +117,7 @@ func TestNodeWrapperAndNativeCodexAreOneForegroundRuntime(t *testing.T) {
 		foregroundProcessGroup: 101,
 		startTime:              "1001",
 		executableBase:         "node",
-		argument1:              codexNodeEntrypoint,
+		argument1:              CodexNodeEntrypoint,
 	}
 	native := processObservation{
 		pid:                    102,
@@ -135,9 +135,9 @@ func TestNodeWrapperAndNativeCodexAreOneForegroundRuntime(t *testing.T) {
 
 func TestNestedWrappedCodexCannotPublishEvenWhenForeground(t *testing.T) {
 	const terminalDevice = 34817
-	rootWrapper := processObservation{pid: 101, parentPID: 50, foregroundProcessGroup: 201, startTime: "1001", executableBase: "node", argument1: codexNodeEntrypoint}
+	rootWrapper := processObservation{pid: 101, parentPID: 50, foregroundProcessGroup: 201, startTime: "1001", executableBase: "node", argument1: CodexNodeEntrypoint}
 	rootNative := processObservation{pid: 102, parentPID: rootWrapper.pid, foregroundProcessGroup: 201, startTime: "1002", executableBase: "codex"}
-	nestedWrapper := processObservation{pid: 201, parentPID: rootNative.pid, foregroundProcessGroup: 201, startTime: "2001", executableBase: "node", argument1: codexNodeEntrypoint}
+	nestedWrapper := processObservation{pid: 201, parentPID: rootNative.pid, foregroundProcessGroup: 201, startTime: "2001", executableBase: "node", argument1: CodexNodeEntrypoint}
 	nestedNative := processObservation{pid: 202, parentPID: nestedWrapper.pid, foregroundProcessGroup: 201, startTime: "2002", executableBase: "codex"}
 	helper := processObservation{pid: 203, parentPID: nestedNative.pid, terminalDevice: terminalDevice, foregroundProcessGroup: 201, executableBase: "skidbladnir"}
 
@@ -156,6 +156,16 @@ func TestLifecyclePublicationClearsStaleAttentionWhenWorkBegins(t *testing.T) {
 	}
 	if !slices.Equal(arguments, want) {
 		t.Fatalf("prompt lifecycle arguments = %q, want %q", arguments, want)
+	}
+	for _, event := range []HookEvent{HookSessionStart, HookStop} {
+		state := "idle"
+		arguments := lifecycleTmuxArguments("%7", event, origin, now)
+		want := []string{
+			"set-option", "-p", "-t", "%7", "--", "@skid_lifecycle", "v1:4312:991827:" + state + ":1787745600",
+		}
+		if !slices.Equal(arguments, want) {
+			t.Fatalf("%s lifecycle arguments = %q, want %q (attention clears only on a submitted prompt)", event, arguments, want)
+		}
 	}
 }
 

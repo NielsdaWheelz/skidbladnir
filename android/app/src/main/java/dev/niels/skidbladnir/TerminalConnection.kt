@@ -61,8 +61,20 @@ internal class TerminalConnection(
         }
     }
 
-    override fun onMessage(webSocket: WebSocket, text: String) {
-        if (stopped.get()) return
+    // OkHttp's reader loop catches listener throws and relabels them as an
+    // ordinary transport failure; a same-system contract violation must instead
+    // surface as the defect it is before that relabeling.
+    private inline fun surfaceProtocolDefect(action: () -> Unit) {
+        try {
+            action()
+        } catch (defect: ProtocolDecodeException) {
+            main.post { throw defect }
+            throw defect
+        }
+    }
+
+    override fun onMessage(webSocket: WebSocket, text: String) = surfaceProtocolDefect {
+        if (stopped.get()) return@surfaceProtocolDefect
         if (text.utf8ByteCountWithin(MAXIMUM_TERMINAL_FRAME_BYTES) == null) {
             throw ProtocolDecodeException(
                 SerializationException("owned terminal text frame exceeded the protocol bound"),
@@ -93,9 +105,9 @@ internal class TerminalConnection(
         }
     }
 
-    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+    override fun onMessage(webSocket: WebSocket, bytes: ByteString) = surfaceProtocolDefect {
         synchronized(monitor) {
-            if (stopped.get()) return
+            if (stopped.get()) return@surfaceProtocolDefect
             if (!connected || bytes.size > MAXIMUM_TERMINAL_FRAME_BYTES) {
                 throw ProtocolDecodeException(
                     SerializationException("terminal binary frame violated ordering or size"),

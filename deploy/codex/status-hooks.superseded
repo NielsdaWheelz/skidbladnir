@@ -1,0 +1,5 @@
+# SHA-256 digests of every previously shipped deploy/codex/status-hooks.json.
+# When status-hooks.json changes, append the digest of the version it replaces
+# (sha256sum of the old file) so installed copies of that version classify as
+# an update instead of a conflict. A hooks.json matching none of these digests
+# and not matching the current file is user-authored and always fails closed.

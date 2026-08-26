@@ -128,7 +128,6 @@ internal fun TerminalScreen(
         TerminalAccessoryRow(
             enabled = state.connection is TerminalUiStatus.Connected,
             onAgents = controller::detachToAgents,
-            onBytes = { controller.sendTerminal(state.attempt, it) },
             onAccessory = { controller.sendTerminalAccessory(state.attempt, it) },
             onDetach = controller::detachToAgents,
         )
@@ -200,7 +199,6 @@ private fun ReconnectPanel(
 private fun TerminalAccessoryRow(
     enabled: Boolean,
     onAgents: () -> Unit,
-    onBytes: (ByteArray) -> Unit,
     onAccessory: (TerminalAccessory) -> Unit,
     onDetach: () -> Unit,
 ) {
@@ -213,16 +211,16 @@ private fun TerminalAccessoryRow(
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             AccessoryButton("Agents", enabled = true, onClick = onAgents)
-            AccessoryButton("Esc", enabled) { onBytes(byteArrayOf(0x1b)) }
-            AccessoryButton("Ctrl-C", enabled) { onBytes(byteArrayOf(0x03)) }
-            AccessoryButton("Tab", enabled) { onBytes(byteArrayOf(0x09)) }
+            AccessoryButton("Esc", enabled) { onAccessory(TerminalAccessory.Escape) }
+            AccessoryButton("Ctrl-C", enabled) { onAccessory(TerminalAccessory.CtrlC) }
+            AccessoryButton("Tab", enabled) { onAccessory(TerminalAccessory.Tab) }
             AccessoryButton("←", enabled, "Left arrow") { onAccessory(TerminalAccessory.Left) }
             AccessoryButton("↑", enabled, "Up arrow") { onAccessory(TerminalAccessory.Up) }
             AccessoryButton("↓", enabled, "Down arrow") { onAccessory(TerminalAccessory.Down) }
             AccessoryButton("→", enabled, "Right arrow") { onAccessory(TerminalAccessory.Right) }
             AccessoryButton("Home", enabled) { onAccessory(TerminalAccessory.Home) }
             AccessoryButton("End", enabled) { onAccessory(TerminalAccessory.End) }
-            AccessoryButton("Newline", enabled, "Insert newline without submitting") { onBytes(byteArrayOf(0x0a)) }
+            AccessoryButton("Newline", enabled, "Insert newline without submitting") { onAccessory(TerminalAccessory.Newline) }
             AccessoryButton("Detach", enabled = true, description = "Detach phone; agent keeps running", onClick = onDetach)
         }
     }

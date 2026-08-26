@@ -16,9 +16,13 @@ import (
 
 const (
 	maximumProcessAncestry = 128
-	codexNodeEntrypoint    = "/home/niels/.local/bin/codex"
 	lifecycleOption        = "@skid_lifecycle"
 )
+
+// CodexNodeEntrypoint is the single owner of the Node-launcher signature: the
+// profile table's foreground signature and the hook's ancestry acceptance must
+// name the same argv[1] or status silently degrades to RUNNING.
+const CodexNodeEntrypoint = "/home/niels/.local/bin/codex"
 
 type HookEvent string
 
@@ -111,7 +115,9 @@ func lifecycleTmuxArguments(pane string, event HookEvent, origin processObservat
 	arguments := []string{
 		"set-option", "-p", "-t", pane, "--", lifecycleOption, lifecycleValue(event, origin, now),
 	}
-	if event != HookStop {
+	// Only a submitted prompt proves the user has seen the pane; SessionStart
+	// resume/clear must not silently drop a pending attention badge.
+	if event == HookUserPromptSubmit {
 		arguments = append(arguments, ";", "set-option", "-pqu", "-t", pane, "--", "@skid_attention")
 	}
 	return arguments
@@ -264,7 +270,7 @@ func foregroundCodexOrigin(ancestry []processObservation, paneTerminalDevice int
 		native := codexAncestors[0]
 		wrapper := codexAncestors[1]
 		if native.executableBase != "codex" ||
-			wrapper.executableBase != "node" || wrapper.argument1 != codexNodeEntrypoint ||
+			wrapper.executableBase != "node" || wrapper.argument1 != CodexNodeEntrypoint ||
 			native.parentPID != wrapper.pid {
 			return processObservation{}, false
 		}
@@ -280,5 +286,5 @@ func foregroundCodexOrigin(ancestry []processObservation, paneTerminalDevice int
 
 func isCodexProcess(process processObservation) bool {
 	return process.executableBase == "codex" ||
-		process.executableBase == "node" && process.argument1 == codexNodeEntrypoint
+		process.executableBase == "node" && process.argument1 == CodexNodeEntrypoint
 }

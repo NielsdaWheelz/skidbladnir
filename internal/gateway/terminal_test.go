@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
+	"github.com/coder/websocket"
 )
 
 func TestTerminalSessionPathIsExact(t *testing.T) {
@@ -59,6 +63,70 @@ func TestTerminalEndHasClosedProtocolProjection(t *testing.T) {
 		if code != test.code || final != test.final {
 			t.Fatalf("terminal end %d projected as (%q,%t), want (%q,%t)", test.ending, code, final, test.code, test.final)
 		}
+	}
+}
+
+func TestTerminalLivenessEndsOnSilentPeerAndSurvivesResponsivePeer(t *testing.T) {
+	endings := make(chan terminalEnd, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		connection, err := websocket.Accept(writer, request, nil)
+		if err != nil {
+			t.Errorf("accept liveness test connection: %v", err)
+			return
+		}
+		defer connection.CloseNow()
+		go func() {
+			for {
+				if _, _, err := connection.Read(context.Background()); err != nil {
+					return
+				}
+			}
+		}()
+		endings <- pumpTerminalLiveness(request.Context(), connection, 25*time.Millisecond, 100*time.Millisecond)
+	}))
+	defer server.Close()
+
+	dial := func() *websocket.Conn {
+		dialContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		connection, _, err := websocket.Dial(dialContext, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+		if err != nil {
+			t.Fatalf("dial liveness test server: %v", err)
+		}
+		return connection
+	}
+
+	responsive := dial()
+	readerContext, stopReader := context.WithCancel(context.Background())
+	go func() {
+		for {
+			if _, _, err := responsive.Read(readerContext); err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case ending := <-endings:
+		t.Fatalf("responsive peer ended liveness with %d", ending)
+	case <-time.After(300 * time.Millisecond):
+	}
+	stopReader()
+	responsive.CloseNow()
+	select {
+	case <-endings:
+	case <-time.After(5 * time.Second):
+		t.Fatal("closed peer never ended the liveness pump")
+	}
+
+	silent := dial()
+	defer silent.CloseNow()
+	select {
+	case ending := <-endings:
+		if ending != terminalPeerClosed {
+			t.Fatalf("silent peer ended liveness with %d, want terminalPeerClosed", ending)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("silent peer was never detected as dead")
 	}
 }
 

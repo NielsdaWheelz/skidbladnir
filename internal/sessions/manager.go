@@ -132,19 +132,6 @@ func (manager *Manager) List(ctx context.Context) ([]Session, error) {
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return nil, err
 	}
-	sort.Slice(sessions, func(left, right int) bool {
-		if sessions[left].Attention != sessions[right].Attention {
-			return sessions[left].Attention
-		}
-		leftRank, rightRank := statusRank(sessions[left].Status.Kind), statusRank(sessions[right].Status.Kind)
-		if leftRank != rightRank {
-			return leftRank < rightRank
-		}
-		if sessions[left].Name != sessions[right].Name {
-			return sessions[left].Name < sessions[right].Name
-		}
-		return sessions[left].ID < sessions[right].ID
-	})
 	return sessions, nil
 }
 
@@ -604,21 +591,4 @@ func parseTmuxBoolean(value string) (bool, error) {
 
 func unknownStatus() Status {
 	return Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: time.Now().UTC()}
-}
-
-func statusRank(status StatusKind) int {
-	switch status {
-	case StatusWorking:
-		return 0
-	case StatusRunning:
-		return 1
-	case StatusIdle:
-		return 2
-	case StatusShell:
-		return 3
-	case StatusUnknown:
-		return 4
-	default:
-		panic("unknown session status")
-	}
 }

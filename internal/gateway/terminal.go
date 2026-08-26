@@ -18,6 +18,8 @@ import (
 const (
 	sessionIdentityHeader      = "Skidbladnir-Session-Identity"
 	terminalPresenceInterval   = 2 * time.Second
+	terminalLivenessInterval   = 10 * time.Second
+	terminalLivenessTimeout    = 5 * time.Second
 	terminalObservationTimeout = 3 * time.Second
 	terminalWriteTimeout       = 5 * time.Second
 	terminalFinalFrameTimeout  = 5 * time.Second
@@ -51,7 +53,7 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	}
 	identityValues := request.Header.Values(sessionIdentityHeader)
 	if len(identityValues) != 1 || identityValues[0] == "" {
-		writeError(writer, errorSessionIdentityMismatch)
+		writeError(writer, errorInvalidRequest)
 		return
 	}
 	identityToken := identityValues[0]
@@ -133,9 +135,13 @@ func (gateway *Gateway) runTerminal(
 		return
 	}
 
-	workerResults := make(chan terminalEnd, 3)
+	workerResults := make(chan terminalEnd, 4)
 	writerDone := make(chan error, 1)
-	workers.Add(4)
+	workers.Add(5)
+	go func() {
+		defer workers.Done()
+		workerResults <- pumpTerminalLiveness(runtimeContext, connection, terminalLivenessInterval, terminalLivenessTimeout)
+	}()
 	go func() {
 		defer workers.Done()
 		writerDone <- pumpTerminalOutput(runtimeContext, connection, queue)
@@ -260,6 +266,28 @@ func pumpTerminalOutput(ctx context.Context, connection *websocket.Conn, queue *
 		cancel()
 		if err != nil {
 			return err
+		}
+	}
+}
+
+func pumpTerminalLiveness(ctx context.Context, connection *websocket.Conn, interval, timeout time.Duration) terminalEnd {
+	// justify-polling: a vanished peer emits no transport close, and the WebSocket
+	// pong reply is observable only to a Ping caller; one ping per interval with a
+	// bounded reply wait releases a dead phone's PTY, tmux client, and shadow
+	// within interval+timeout.
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return terminalPeerClosed
+		case <-ticker.C:
+		}
+		pingContext, cancelPing := context.WithTimeout(ctx, timeout)
+		err := connection.Ping(pingContext)
+		cancelPing()
+		if err != nil {
+			return terminalPeerClosed
 		}
 	}
 }
