@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun SkidbladnirApp(controller: SkidbladnirController) {
     val state = controller.state
+    BackHandler(enabled = state is SkidbladnirUiState.Dashboard && state.forge != null) {
+        controller.dismissForge()
+    }
     BackHandler(enabled = state is SkidbladnirUiState.Terminal) {
         controller.detachToAgents()
     }

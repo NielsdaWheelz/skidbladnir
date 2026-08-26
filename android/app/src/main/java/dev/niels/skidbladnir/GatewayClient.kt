@@ -3,6 +3,7 @@ package dev.niels.skidbladnir
 import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import okhttp3.HttpUrl
@@ -84,6 +85,8 @@ internal fun killFailureIsDefinitive(failure: GatewayFailure): Boolean = when (f
 @Serializable private data class ErrorResponse(val code: String, val message: String)
 
 internal class GatewayClient {
+    private val closeScheduled = AtomicBoolean(false)
+
     internal val http = OkHttpClient.Builder()
         .retryOnConnectionFailure(false)
         .followRedirects(false)
@@ -93,6 +96,20 @@ internal class GatewayClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    fun closeAsync() {
+        if (!closeScheduled.compareAndSet(false, true)) return
+        val dispatcher = http.dispatcher
+        val executor = dispatcher.executorService
+        executor.execute {
+            try {
+                dispatcher.cancelAll()
+                http.connectionPool.evictAll()
+            } finally {
+                executor.shutdown()
+            }
+        }
+    }
 
     fun pair(origin: MachineOrigin, bearer: GatewayBearer): GatewayResult<SessionsResponse> = executeJson(
         request = request(origin.encoded.toHttpUrl(), bearer, null, listOf("v1", "sessions")).get().build(),

@@ -616,8 +616,7 @@ internal class SkidbladnirController(context: Context) {
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
-        client.http.dispatcher.executorService.shutdown()
-        client.http.connectionPool.evictAll()
+        client.closeAsync()
     }
 
     fun addMachine() {

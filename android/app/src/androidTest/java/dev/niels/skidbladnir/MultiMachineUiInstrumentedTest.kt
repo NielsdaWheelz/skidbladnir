@@ -139,6 +139,13 @@ class MultiMachineUiInstrumentedTest {
                         .assertTextEquals(credential.machine.label.text)
                 }
 
+                scenario.recreate()
+                credentials.forEach { credential ->
+                    waitForTag("machine-state-fresh-${credential.machine.handle.encoded}", 30_000)
+                    compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
+                        .assertTextEquals(credential.machine.label.text)
+                }
+
                 val first = credentials[0]
                 val second = credentials[1]
 
@@ -203,8 +210,7 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithText("Cancel").performClick()
             }
         } finally {
-            client.http.dispatcher.executorService.shutdown()
-            client.http.connectionPool.evictAll()
+            client.closeAsync()
         }
     }
 
@@ -238,7 +244,6 @@ class MultiMachineUiInstrumentedTest {
                 waitForTag("machine-state-fresh-${failedHandle.encoded}", 30_000)
                 waitForTag("machine-state-fresh-${healthy.machine.handle.encoded}", 30_000)
 
-                compose.onNodeWithTag("machine-filter-${failedHandle.encoded}").performClick()
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
                 compose.onNodeWithText(
@@ -268,8 +273,7 @@ class MultiMachineUiInstrumentedTest {
             }
         } finally {
             assertTrue("Could not clear outage coordination marker", !readiness.exists() || readiness.delete())
-            client.http.dispatcher.executorService.shutdown()
-            client.http.connectionPool.evictAll()
+            client.closeAsync()
         }
     }
 
@@ -295,7 +299,7 @@ class MultiMachineUiInstrumentedTest {
     }
 
     private fun singleTagWithPrefix(prefix: String): String {
-        val nodes = compose.onAllNodes(hasTagPrefix(prefix)).fetchSemanticsNodes()
+        val nodes = compose.onAllNodes(hasTagPrefix(prefix), useUnmergedTree = true).fetchSemanticsNodes()
         assertEquals("Expected one inventory observation tag for $prefix", 1, nodes.size)
         return requireNotNull(
             nodes.single().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag),
