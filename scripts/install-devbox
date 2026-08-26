@@ -1,0 +1,794 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+readonly repo_dir
+readonly expected_user="niels"
+readonly expected_uid="1000"
+readonly expected_home="/home/niels"
+readonly expected_tailscale_version="1.102.2"
+readonly expected_tmux_version="tmux 3.4"
+readonly service_name="skidbladnir.service"
+readonly listen_port="7341"
+readonly listen_address="127.0.0.1:${listen_port}"
+readonly serve_port="8443"
+readonly binary_target="${expected_home}/.local/bin/skidbladnir"
+readonly notify_target="${expected_home}/.local/bin/skid-notify"
+readonly hooks_source="${repo_dir}/deploy/codex/status-hooks.json"
+readonly retired_hook_target="${expected_home}/.local/bin/skidbladnir-hook"
+readonly retired_hook_socket="/run/user/${expected_uid}/skidbladnir/hook.sock"
+readonly retired_hook_gaps="${expected_home}/.local/state/skidbladnir/hook-gaps"
+readonly caddy_config="/etc/caddy/Caddyfile"
+readonly catalogue_target="${expected_home}/.local/share/skidbladnir/characters.json"
+readonly bearer_target="${expected_home}/.config/skidbladnir/bearer"
+readonly unit_target="${expected_home}/.config/systemd/user/${service_name}"
+readonly operation_lock="/run/user/${expected_uid}/skidbladnir-install.lock"
+readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+readonly desired_notify='notify = ["/home/niels/.local/bin/skid-notify"]'
+readonly -a profile_configs=(
+  "${expected_home}/.codex-personal/config.toml"
+  "${expected_home}/.codex-work/config.toml"
+  "${expected_home}/.codex-work2/config.toml"
+)
+
+staging_dir=""
+declare -a config_digests=()
+declare -a hook_digests=()
+
+die() {
+  printf 'skidbladnir devbox: %s\n' "$1" >&2
+  exit 1
+}
+
+cleanup() {
+  local exit_status=$?
+  trap - EXIT
+  if [[ -n "$staging_dir" && -d "$staging_dir" ]]; then
+    if ! /usr/bin/rm -rf -- "$staging_dir"; then
+      printf 'skidbladnir devbox: could not remove staging directory: %s\n' "$staging_dir" >&2
+      exit_status=1
+    fi
+  fi
+  exit "$exit_status"
+}
+
+trap cleanup EXIT
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
+}
+
+acquire_operation_lock() {
+  require_owned_directory "/run/user/${expected_uid}"
+  if [[ -e "$operation_lock" || -L "$operation_lock" ]]; then
+    require_regular_file "$operation_lock" 600
+  fi
+  exec 9>"$operation_lock"
+  /usr/bin/chmod 0600 "$operation_lock"
+  /usr/bin/flock --exclusive --nonblock 9 || die "another installer operation is running"
+}
+
+require_owned_directory() {
+  local target_directory="$1"
+  local expected_mode="${2:-}"
+  if [[ -L "$target_directory" || ! -d "$target_directory" ]]; then
+    die "expected an owned directory: ${target_directory}"
+  fi
+  [[ "$(/usr/bin/stat -Lc '%u' -- "$target_directory")" == "$expected_uid" ]] ||
+    die "directory has the wrong owner: ${target_directory}"
+  if [[ -n "$expected_mode" ]]; then
+    [[ "$(/usr/bin/stat -Lc '%a' -- "$target_directory")" == "$expected_mode" ]] ||
+      die "directory has the wrong mode: ${target_directory}"
+  fi
+}
+
+require_regular_file() {
+  local target_file="$1"
+  local expected_mode="$2"
+  if [[ -L "$target_file" || ! -f "$target_file" ]]; then
+    die "expected a regular file: ${target_file}"
+  fi
+  [[ "$(/usr/bin/stat -Lc '%u' -- "$target_file")" == "$expected_uid" ]] ||
+    die "file has the wrong owner: ${target_file}"
+  [[ "$(/usr/bin/stat -Lc '%a' -- "$target_file")" == "$expected_mode" ]] ||
+    die "file has the wrong mode: ${target_file}"
+}
+
+require_optional_regular_file() {
+  local target_file="$1"
+  local expected_mode="$2"
+  if [[ -e "$target_file" || -L "$target_file" ]]; then
+    require_regular_file "$target_file" "$expected_mode"
+  fi
+}
+
+require_absent() {
+  local target_path="$1"
+  local description="$2"
+  [[ ! -e "$target_path" && ! -L "$target_path" ]] ||
+    die "${description} is still present: ${target_path}"
+}
+
+classify_status_hooks() {
+  local hook_file="$1"
+  if [[ ! -e "$hook_file" && ! -L "$hook_file" ]]; then
+    printf 'add\n'
+    return
+  fi
+  require_regular_file "$hook_file" 600
+  if /usr/bin/cmp --silent "$hooks_source" "$hook_file"; then
+    printf 'present\n'
+    return
+  fi
+  return 3
+}
+
+optional_file_digest() {
+  local target_file="$1"
+  if [[ ! -e "$target_file" && ! -L "$target_file" ]]; then
+    printf 'absent\n'
+    return
+  fi
+  /usr/bin/sha256sum "$target_file" | /usr/bin/cut -d ' ' -f 1
+}
+
+require_retired_hook_runtime_disabled() {
+  require_absent "$retired_hook_socket" "retired hook socket"
+
+  local config_file
+  local hook_file
+  for config_file in "${profile_configs[@]}"; do
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    if ! classify_status_hooks "$hook_file" >/dev/null; then
+      die "Codex hook configuration conflicts: ${hook_file}"
+    fi
+    if ! /usr/bin/python3 - "$config_file" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as stream:
+    config = tomllib.load(stream)
+features = config.get("features", {})
+if not isinstance(features, dict) or features.get("hooks") is False or "hooks" in config:
+    raise SystemExit(1)
+PY
+    then
+    die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
+    fi
+  done
+
+  require_optional_regular_file "$retired_hook_target" 755
+  if [[ -e "$retired_hook_gaps" || -L "$retired_hook_gaps" ]]; then
+    require_owned_directory "$retired_hook_gaps" 700
+  fi
+  if [[ -e "$retired_hook_target" || -e "$retired_hook_gaps" ]]; then
+    printf 'Retired hook drain: pending for already-running Codex processes\n'
+  else
+    printf 'Retired hook drain: complete\n'
+  fi
+}
+
+verify_caddy_boundary() {
+  [[ -x /usr/bin/caddy ]] || die "/usr/bin/caddy is unavailable"
+  [[ ! -L "$caddy_config" && -f "$caddy_config" ]] || die "Caddy config is not a regular file"
+  [[ "$(/usr/bin/stat -Lc '%u:%a' -- "$caddy_config")" == "0:644" ]] ||
+    die "Caddy config ownership or mode drifted"
+  [[ "$(/usr/bin/systemctl show caddy.service -p ActiveState --value)" == "active" ]] ||
+    die "Caddy service is not active"
+
+  local main_pid
+  main_pid="$(/usr/bin/systemctl show caddy.service -p MainPID --value)"
+  if ! /usr/bin/python3 - "$main_pid" "$caddy_config" <<'PY'
+import os
+import sys
+
+pid_text, config_path = sys.argv[1:]
+if not pid_text.isascii() or not pid_text.isdecimal() or int(pid_text) <= 0:
+    raise SystemExit(1)
+with open(f"/proc/{int(pid_text)}/cmdline", "rb") as stream:
+    command_line = stream.read().split(b"\0")
+expected = [b"/usr/bin/caddy", b"run", b"--environ", b"--config", os.fsencode(config_path), b""]
+if command_line != expected:
+    raise SystemExit(1)
+PY
+  then
+    die "Caddy process identity drifted"
+  fi
+
+  /usr/bin/caddy adapt --config "$caddy_config" --adapter caddyfile 2>/dev/null |
+    /usr/bin/jq -e '
+      (.apps.http.servers | type == "object") and
+      any(.apps.http.servers[]; any(.listen[]?; . == ":443")) and
+      ([.. | objects | select(.handler? == "reverse_proxy") |
+        .upstreams[]?.dial? | select(type == "string" and endswith(":7341"))] | length == 0)
+    ' >/dev/null || die "Caddy effective ingress conflicts with Skidbladnir"
+
+  /usr/bin/curl --fail --silent --show-error http://127.0.0.1:2019/config/ |
+    /usr/bin/jq -e '
+      (.apps.http.servers | type == "object") and
+      any(.apps.http.servers[]; any(.listen[]?; . == ":443")) and
+      ([.. | objects | select(.handler? == "reverse_proxy") |
+        .upstreams[]?.dial? | select(type == "string" and endswith(":7341"))] | length == 0)
+    ' >/dev/null || die "Caddy live ingress conflicts with Skidbladnir"
+
+  local listener
+  listener="$(/usr/bin/ss -H -ltn "sport = :443")"
+  [[ -n "$listener" && "$listener" != *$'\n'* ]] ||
+    die "port 443 is not held by one listener"
+}
+
+ensure_owned_directory() {
+  local target_directory="$1"
+  local create_mode="$2"
+  if [[ -e "$target_directory" || -L "$target_directory" ]]; then
+    require_owned_directory "$target_directory" "$create_mode"
+    return
+  fi
+  /usr/bin/install -d -m "$create_mode" -- "$target_directory"
+}
+
+atomic_install() {
+  local source_file="$1"
+  local target_file="$2"
+  local target_mode="$3"
+  local temporary_file="${target_file}.skidbladnir.$$"
+  if ! /usr/bin/install -m "$target_mode" -- "$source_file" "$temporary_file"; then
+    /usr/bin/rm -f -- "$temporary_file"
+    return 1
+  fi
+  if ! /usr/bin/sync -f "$temporary_file"; then
+    /usr/bin/rm -f -- "$temporary_file"
+    return 1
+  fi
+  if ! /usr/bin/mv -fT -- "$temporary_file" "$target_file"; then
+    /usr/bin/rm -f -- "$temporary_file"
+    return 1
+  fi
+  /usr/bin/sync -f "$(/usr/bin/dirname -- "$target_file")" || return 1
+}
+
+stop_current_service() {
+  local active_state
+  active_state="$(/usr/bin/systemctl --user show "$service_name" -p ActiveState --value)" || return 1
+  case "$active_state" in
+    active)
+      [[ "$(/usr/bin/systemctl --user show "$service_name" -p KillMode --value)" == "process" ]] || return 1
+      /usr/bin/systemctl --user stop "$service_name" || return 1
+      ;;
+    inactive) ;;
+    failed) /usr/bin/systemctl --user reset-failed "$service_name" || return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
+classify_notify() {
+  local config_file="$1"
+  /usr/bin/python3 - "$config_file" "$notify_target" <<'PY'
+import sys
+import tomllib
+
+with open(sys.argv[1], "rb") as stream:
+    config = tomllib.load(stream)
+
+sentinel = object()
+value = config.get("notify", sentinel)
+if value is sentinel:
+    print("add")
+elif value == [sys.argv[2]]:
+    print("present")
+else:
+    raise SystemExit(3)
+PY
+}
+
+validate_bearer() {
+  /usr/bin/python3 - "$bearer_target" <<'PY'
+import base64
+import os
+import stat
+import sys
+
+target = sys.argv[1]
+metadata = os.lstat(target)
+if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+    raise SystemExit(1)
+if metadata.st_uid != 1000 or stat.S_IMODE(metadata.st_mode) != 0o600:
+    raise SystemExit(1)
+with open(target, "rb") as stream:
+    encoded = stream.read()
+if len(encoded) != 44 or not encoded.endswith(b"\n"):
+    raise SystemExit(1)
+token = encoded[:-1]
+try:
+    decoded = base64.b64decode(token + b"=", altchars=b"-_", validate=True)
+except Exception:
+    raise SystemExit(1)
+if len(decoded) != 32 or base64.urlsafe_b64encode(decoded).rstrip(b"=") != token:
+    raise SystemExit(1)
+PY
+}
+
+tailnet_host() {
+  /usr/bin/tailscale status --json |
+    /usr/bin/jq -er '.Self.DNSName | rtrimstr(".")'
+}
+
+serve_state() {
+  local serve_json="$1"
+  local host_port="$2"
+  if /usr/bin/jq -e 'type == "object" and . == {}' <<<"$serve_json" >/dev/null; then
+    printf 'add\n'
+    return
+  fi
+  if /usr/bin/jq -e --arg host_port "$host_port" --arg serve_port "$serve_port" '
+    ((.AllowFunnel // {}) | length == 0) and
+    ((.Services // {}) | length == 0) and
+    ((.Foreground // {}) | length == 0) and
+    (.TCP == {($serve_port):{"HTTPS":true}}) and
+    (.Web == {
+      ($host_port): {
+        "Handlers": {
+          "/v1": {"Proxy":"http://127.0.0.1:7341/v1"}
+        }
+      }
+    }) and
+    ((keys - ["AllowFunnel","Foreground","Services","TCP","Web"]) | length == 0)
+  ' <<<"$serve_json" >/dev/null; then
+    printf 'present\n'
+    return
+  fi
+  printf 'conflict\n'
+}
+
+preflight_operation() {
+  [[ "$(/usr/bin/id -un)" == "$expected_user" ]] || die "must run as ${expected_user}"
+  [[ "$(/usr/bin/id -u)" == "$expected_uid" ]] || die "unexpected uid for ${expected_user}"
+  [[ "${HOME:-}" == "$expected_home" ]] || die "unexpected home directory"
+  [[ -z "${TMUX:-}" && -z "${TMUX_PANE:-}" && -z "${TMUX_TMPDIR:-}" ]] ||
+    die "refusing inherited tmux socket state"
+
+  local dependency
+  for dependency in cmp curl cut flock git go jq loginctl python3 sha256sum ss systemctl systemd-analyze tailscale tmux; do
+    require_command "$dependency"
+  done
+}
+
+preflight_platform() {
+  [[ -x /usr/bin/tmux ]] || die "/usr/bin/tmux is unavailable"
+  [[ "$(/usr/bin/tmux -V)" == "$expected_tmux_version" ]] ||
+    die "${expected_tmux_version} is required at /usr/bin/tmux"
+  [[ "$(/usr/bin/tailscale version | /usr/bin/head -n 1)" == "$expected_tailscale_version" ]] ||
+    die "Tailscale ${expected_tailscale_version} is required"
+  /usr/bin/tailscale status --json |
+    /usr/bin/jq -e '.BackendState == "Running" and .Self.Online == true' >/dev/null ||
+    die "Tailscale is not online"
+  [[ "$(/usr/bin/loginctl show-user "$expected_user" -p Linger --value)" == "yes" ]] ||
+    die "systemd user linger is not enabled"
+  /usr/bin/systemctl --user show-environment >/dev/null || die "systemd user manager is unavailable"
+  [[ ! -e "${expected_home}/.local/state/skidbladnir/router/enabled" &&
+    ! -L "${expected_home}/.local/state/skidbladnir/router/enabled" ]] ||
+    die "the retired router is still enabled"
+  verify_caddy_boundary
+  require_retired_hook_runtime_disabled
+
+  require_owned_directory "${expected_home}/.local"
+  require_owned_directory "${expected_home}/.local/bin" 700
+  require_owned_directory "${expected_home}/.local/share"
+  require_owned_directory "${expected_home}/.config"
+  require_owned_directory "${expected_home}/.config/systemd"
+  require_owned_directory "${expected_home}/.config/systemd/user" 700
+}
+
+preflight_host() {
+  preflight_platform
+  require_optional_regular_file "$binary_target" 755
+  require_optional_regular_file "$notify_target" 755
+  require_optional_regular_file "$catalogue_target" 644
+  require_optional_regular_file "$unit_target" 644
+  local catalogue_directory
+  catalogue_directory="$(/usr/bin/dirname -- "$catalogue_target")"
+  if [[ -e "$catalogue_directory" || -L "$catalogue_directory" ]]; then
+    require_owned_directory "$catalogue_directory" 700
+  fi
+  require_owned_directory "$(/usr/bin/dirname -- "$bearer_target")" 700
+
+  local config_file
+  local classification
+  local hook_file
+  for config_file in "${profile_configs[@]}"; do
+    require_regular_file "$config_file" 600
+    if ! classification="$(classify_notify "$config_file" 2>/dev/null)"; then
+      printf '%s: conflict\n' "$config_file" >&2
+      die "Codex notify configuration conflicts"
+    fi
+    case "$classification" in
+      add | present) printf '%s: %s\n' "$config_file" "$classification" ;;
+      *) die "invalid notify preflight result" ;;
+    esac
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    if ! classification="$(classify_status_hooks "$hook_file" 2>/dev/null)"; then
+      printf '%s: conflict\n' "$hook_file" >&2
+      die "Codex status-hook configuration conflicts"
+    fi
+    printf '%s: %s\n' "$hook_file" "$classification"
+  done
+
+  if [[ -e "$bearer_target" || -L "$bearer_target" ]]; then
+    validate_bearer || die "bearer file is invalid"
+  else
+    die "bearer is absent; mint it separately in a trusted terminal before installation"
+  fi
+
+  local active_state
+  active_state="$(/usr/bin/systemctl --user show "$service_name" -p ActiveState --value)"
+  case "$active_state" in
+    active)
+      local main_pid
+      local listener
+      [[ "$(/usr/bin/systemctl --user show "$service_name" -p KillMode --value)" == "process" ]] ||
+        die "active service loaded with unsafe KillMode"
+      main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
+      listener="$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")"
+      [[ "$main_pid" =~ ^[1-9][0-9]*$ && -n "$listener" && "$listener" != *$'\n'* &&
+        "$listener" == *"${listen_address}"* && "$listener" == *"pid=${main_pid},"* ]] ||
+        die "active service does not own ${listen_address}"
+      ;;
+    inactive | failed)
+      [[ -z "$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")" ]] ||
+        die "${listen_address} is already in use"
+      ;;
+    *) die "service is in a transitional state: ${active_state}" ;;
+  esac
+  local enabled_state
+  if ! enabled_state="$(/usr/bin/systemctl --user is-enabled "$service_name" 2>/dev/null)"; then
+    case "$enabled_state" in
+      disabled | not-found) ;;
+      *) die "service has an unsupported enablement state: ${enabled_state:-unknown}" ;;
+    esac
+  fi
+  case "$enabled_state" in
+    enabled | disabled | not-found) ;;
+    *) die "service has an unsupported enablement state: ${enabled_state}" ;;
+  esac
+
+  local host_name
+  local current_serve
+  local current_serve_state
+  host_name="$(tailnet_host)"
+  current_serve="$(/usr/bin/tailscale serve status --json)"
+  current_serve_state="$(serve_state "$current_serve" "${host_name}:${serve_port}")"
+  [[ "$current_serve_state" != "conflict" ]] || die "Tailscale Serve configuration conflicts"
+  if [[ "$current_serve_state" == "add" && -n "$(/usr/bin/ss -H -ltn "sport = :${serve_port}")" ]]; then
+    die "Tailscale Serve port ${serve_port} is already in use"
+  fi
+  printf 'Tailscale Serve: %s\n' "$current_serve_state"
+}
+
+stage_installation() {
+  staging_dir="$(/usr/bin/mktemp -d)"
+  (
+    cd "$repo_dir"
+    /usr/bin/git diff --check
+    ./scripts/check-catalogue
+    go build ./cmd/... ./internal/...
+    go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
+    /usr/bin/systemd-analyze --user verify deploy/systemd/skidbladnir.service
+    go build -trimpath -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
+  )
+  /usr/bin/install -m 0755 -- "$repo_dir/deploy/skid-notify" "$staging_dir/skid-notify"
+  /usr/bin/install -m 0600 -- "$hooks_source" "$staging_dir/status-hooks.json"
+  /usr/bin/install -m 0644 -- "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
+  /usr/bin/install -m 0644 -- "$repo_dir/deploy/systemd/skidbladnir.service" "$staging_dir/skidbladnir.service"
+
+  local config_file
+  local classification
+  local hook_file
+  local index=0
+  for config_file in "${profile_configs[@]}"; do
+    classification="$(classify_notify "$config_file")"
+    config_digests[index]="$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)"
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    hook_digests[index]="$(optional_file_digest "$hook_file")"
+    if [[ "$classification" == "add" ]]; then
+      {
+        printf '%s\n\n' "$desired_notify"
+        /usr/bin/cat -- "$config_file"
+      } >"$staging_dir/config-${index}.toml"
+      /usr/bin/chmod 0600 "$staging_dir/config-${index}.toml"
+    fi
+    index=$((index + 1))
+  done
+}
+
+verify_profile_digests() {
+  local config_file
+  local current_digest
+  local hook_file
+  local index=0
+  for config_file in "${profile_configs[@]}"; do
+    current_digest="$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)"
+    [[ "$current_digest" == "${config_digests[index]}" ]] ||
+      die "Codex config changed during installation: ${config_file}"
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    [[ "$(optional_file_digest "$hook_file")" == "${hook_digests[index]}" ]] ||
+      die "Codex hooks changed during installation: ${hook_file}"
+    index=$((index + 1))
+  done
+}
+
+wait_for_health() {
+  local attempt
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if /usr/bin/curl --fail --silent "http://${listen_address}/healthz" >/dev/null; then
+      return
+    fi
+    /usr/bin/sleep 0.1
+  done
+  die "gateway health check did not become ready"
+}
+
+authenticated_get() {
+  local request_url="$1"
+  /usr/bin/curl --fail --silent --show-error \
+    --header @<(/usr/bin/sed 's/^/Authorization: Bearer /' "$bearer_target") \
+    "$request_url" >/dev/null
+}
+
+require_systemd_property() {
+  local property_name="$1"
+  local expected_value="$2"
+  local actual_value
+  actual_value="$(/usr/bin/systemctl --user show "$service_name" -p "$property_name" --value)"
+  [[ "$actual_value" == "$expected_value" ]] || die "service ${property_name} drifted"
+}
+
+verify_effective_environment() {
+  local effective_environment
+  effective_environment="$(/usr/bin/systemctl --user show "$service_name" -p Environment --value)"
+  if ! /usr/bin/python3 - "$effective_environment" "$expected_home" "$service_path" <<'PY'
+import shlex
+import sys
+
+value, expected_home, expected_path = sys.argv[1:]
+environment = {}
+for entry in shlex.split(value):
+    name, separator, item = entry.partition("=")
+    if not separator or name in environment:
+        raise SystemExit(1)
+    environment[name] = item
+if environment != {"HOME": expected_home, "PATH": expected_path}:
+    raise SystemExit(1)
+PY
+  then
+    die "service Environment drifted"
+  fi
+}
+
+verify_effective_exec_start() {
+  local effective_exec_start
+  local expected_exec_start
+  effective_exec_start="$(/usr/bin/systemctl --user show "$service_name" -p ExecStart --value)"
+  expected_exec_start="${binary_target} gateway --listen=${listen_address} --bearer-file=${bearer_target} --catalogue-path=${catalogue_target}"
+  if ! /usr/bin/python3 - "$effective_exec_start" "$binary_target" "$expected_exec_start" <<'PY'
+import sys
+
+value, expected_path, expected_argv = sys.argv[1:]
+if value.count("{") != 1 or value.count("}") != 1 or not value.startswith("{ ") or not value.endswith(" }"):
+    raise SystemExit(1)
+fields = {}
+for item in value[2:-2].split(" ; "):
+    key, separator, field_value = item.partition("=")
+    if not separator or key in fields:
+        raise SystemExit(1)
+    fields[key] = field_value
+if fields.get("path") != expected_path or fields.get("argv[]") != expected_argv:
+    raise SystemExit(1)
+if fields.get("ignore_errors") != "no":
+    raise SystemExit(1)
+PY
+  then
+    die "service effective ExecStart drifted"
+  fi
+}
+
+verify_installation() {
+  preflight_host
+  [[ -n "$staging_dir" && -f "$staging_dir/skidbladnir" ]] || die "gateway verification artifact is absent"
+  [[ -e "$bearer_target" ]] || die "bearer is absent"
+  validate_bearer || die "bearer file is invalid"
+  local config_file
+  local hook_file
+  for config_file in "${profile_configs[@]}"; do
+    [[ "$(classify_notify "$config_file")" == "present" ]] ||
+      die "notify is not installed: ${config_file}"
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    [[ "$(classify_status_hooks "$hook_file")" == "present" ]] ||
+      die "status hooks are not installed: ${hook_file}"
+  done
+  /usr/bin/cmp --silent "$staging_dir/skidbladnir" "$binary_target" || die "installed gateway drifted"
+  /usr/bin/cmp --silent "$repo_dir/deploy/skid-notify" "$notify_target" || die "installed notifier drifted"
+  /usr/bin/cmp --silent "$repo_dir/catalog/characters.json" "$catalogue_target" || die "installed catalogue drifted"
+  /usr/bin/cmp --silent "$repo_dir/deploy/systemd/skidbladnir.service" "$unit_target" || die "installed unit drifted"
+  [[ "$(/usr/bin/systemctl --user is-enabled "$service_name")" == "enabled" ]] ||
+    die "service is not enabled"
+  [[ "$(/usr/bin/systemctl --user is-active "$service_name")" == "active" ]] ||
+    die "service is not active"
+  require_systemd_property FragmentPath "$unit_target"
+  require_systemd_property DropInPaths ""
+  verify_effective_exec_start
+  verify_effective_environment
+  require_systemd_property KillMode process
+  require_systemd_property UMask 0022
+  require_systemd_property UnsetEnvironment "TMUX TMUX_PANE TMUX_TMPDIR"
+  require_systemd_property NoNewPrivileges no
+  require_systemd_property PrivateDevices no
+  require_systemd_property PrivateTmp no
+  require_systemd_property PrivateUsers no
+  require_systemd_property ProtectHome no
+  require_systemd_property ProtectSystem no
+  require_systemd_property RestrictNamespaces no
+  require_systemd_property MemoryDenyWriteExecute no
+  require_systemd_property RestrictAddressFamilies "~"
+  require_systemd_property SystemCallFilter "~"
+  require_systemd_property RootDirectory ""
+  require_systemd_property RootImage ""
+
+  local main_pid
+  local listener
+  main_pid="$(/usr/bin/systemctl --user show "$service_name" -p MainPID --value)"
+  if ! /usr/bin/python3 - \
+    "$main_pid" \
+    "$binary_target" \
+    "$expected_home" \
+    "$service_path" \
+    gateway \
+    "--listen=${listen_address}" \
+    "--bearer-file=${bearer_target}" \
+    "--catalogue-path=${catalogue_target}" <<'PY'
+import os
+import sys
+
+pid_text, expected_executable, expected_home, expected_path, *expected_arguments = sys.argv[1:]
+if not pid_text.isascii() or not pid_text.isdecimal() or int(pid_text) <= 0:
+    raise SystemExit(1)
+pid = int(pid_text)
+if os.readlink(f"/proc/{pid}/exe") != expected_executable:
+    raise SystemExit(1)
+with open(f"/proc/{pid}/cmdline", "rb") as stream:
+    command_line = stream.read().split(b"\0")
+if not command_line or command_line[-1] != b"":
+    raise SystemExit(1)
+expected_command_line = [os.fsencode(expected_executable), *(os.fsencode(item) for item in expected_arguments)]
+if command_line[:-1] != expected_command_line:
+    raise SystemExit(1)
+with open(f"/proc/{pid}/environ", "rb") as stream:
+    entries = [entry for entry in stream.read().split(b"\0") if entry]
+environment = {}
+for entry in entries:
+    name, separator, value = entry.partition(b"=")
+    if not separator or name in environment:
+        raise SystemExit(1)
+    environment[name] = value
+if environment.get(b"HOME") != os.fsencode(expected_home):
+    raise SystemExit(1)
+if environment.get(b"PATH") != os.fsencode(expected_path):
+    raise SystemExit(1)
+if environment.keys() & {b"TMUX", b"TMUX_PANE", b"TMUX_TMPDIR"}:
+    raise SystemExit(1)
+PY
+  then
+    die "running gateway process identity or environment drifted"
+  fi
+  listener="$(/usr/bin/ss -H -ltnp "sport = :${listen_port}")"
+  [[ -n "$listener" && "$listener" != *$'\n'* && "$listener" == *"${listen_address}"* &&
+    "$listener" == *"pid=${main_pid},"* ]] ||
+    die "gateway is not the sole loopback listener"
+  [[ "$listener" != *"0.0.0.0:${listen_port}"* && "$listener" != *"[::]:${listen_port}"* ]] ||
+    die "gateway has a non-loopback listener"
+
+  [[ "$(/usr/bin/curl --fail --silent --show-error "http://${listen_address}/healthz")" == "ok" ]] ||
+    die "loopback health check failed"
+  authenticated_get "http://${listen_address}/v1/sessions"
+
+  local host_name
+  local current_serve
+  local remote_root
+  host_name="$(tailnet_host)"
+  current_serve="$(/usr/bin/tailscale serve status --json)"
+  [[ "$(serve_state "$current_serve" "${host_name}:${serve_port}")" == "present" ]] ||
+    die "exact Tailscale Serve route is not installed"
+  authenticated_get "https://${host_name}:${serve_port}/v1/sessions"
+  [[ "$(/usr/bin/curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/v1/sessions")" == "401" ]] ||
+    die "unauthenticated Tailnet request was not rejected"
+  for remote_root in "healthz" ""; do
+    [[ "$(/usr/bin/curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/${remote_root}")" == "404" ]] ||
+      die "non-/v1 Tailnet route is exposed"
+  done
+  printf 'Skíðblaðnir devbox installation is verified.\n'
+  printf 'Codex status hooks are digest-verified; review any new digest once with /hooks in each profile.\n'
+}
+
+install_devbox() {
+  preflight_host
+  stage_installation
+  verify_profile_digests
+  stop_current_service || die "service could not be safely stopped for installation"
+
+  ensure_owned_directory "$(/usr/bin/dirname -- "$binary_target")" 700
+  ensure_owned_directory "$(/usr/bin/dirname -- "$catalogue_target")" 700
+  ensure_owned_directory "$(/usr/bin/dirname -- "$bearer_target")" 700
+  ensure_owned_directory "$(/usr/bin/dirname -- "$unit_target")" 700
+  atomic_install "$staging_dir/skidbladnir" "$binary_target" 0755
+  atomic_install "$staging_dir/skid-notify" "$notify_target" 0755
+  atomic_install "$staging_dir/characters.json" "$catalogue_target" 0644
+  atomic_install "$staging_dir/skidbladnir.service" "$unit_target" 0644
+
+  local config_file
+  local classification
+  local hook_file
+  local index=0
+  for config_file in "${profile_configs[@]}"; do
+    [[ "$(/usr/bin/sha256sum "$config_file" | /usr/bin/cut -d ' ' -f 1)" == "${config_digests[index]}" ]] ||
+      die "Codex config changed before publication: ${config_file}"
+    classification="$(classify_notify "$config_file")"
+    if [[ "$classification" == "add" ]]; then
+      atomic_install "$staging_dir/config-${index}.toml" "$config_file" 0600
+    fi
+    hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
+    [[ "$(optional_file_digest "$hook_file")" == "${hook_digests[index]}" ]] ||
+      die "Codex hooks changed before publication: ${hook_file}"
+    classification="$(classify_status_hooks "$hook_file")"
+    if [[ "$classification" == "add" ]]; then
+      atomic_install "$staging_dir/status-hooks.json" "$hook_file" 0600
+    fi
+    index=$((index + 1))
+  done
+
+  /usr/bin/systemctl --user daemon-reload
+  /usr/bin/systemctl --user enable --now "$service_name"
+  wait_for_health
+  authenticated_get "http://${listen_address}/v1/sessions"
+
+  local host_name
+  local current_serve
+  host_name="$(tailnet_host)"
+  current_serve="$(/usr/bin/tailscale serve status --json)"
+  case "$(serve_state "$current_serve" "${host_name}:${serve_port}")" in
+    add)
+      /usr/bin/tailscale serve --bg --https="$serve_port" --set-path=/v1 "http://${listen_address}/v1"
+      current_serve="$(/usr/bin/tailscale serve status --json)"
+      [[ "$(serve_state "$current_serve" "${host_name}:${serve_port}")" == "present" ]] ||
+        die "Tailscale Serve add did not publish the exact route"
+      ;;
+    present) ;;
+    *) die "Tailscale Serve configuration conflicts" ;;
+  esac
+  verify_installation
+}
+
+verify_devbox() {
+  preflight_host
+  stage_installation
+  verify_installation
+}
+
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: %s {install|verify}\n' "$0" >&2
+  exit 64
+fi
+readonly operation="$1"
+case "$operation" in
+  install | verify) ;;
+  *)
+    printf 'usage: %s {install|verify}\n' "$0" >&2
+    exit 64
+    ;;
+esac
+
+preflight_operation
+acquire_operation_lock
+case "$operation" in
+  install) install_devbox ;;
+  verify) verify_devbox ;;
+esac

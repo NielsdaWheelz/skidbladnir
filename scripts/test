@@ -5,38 +5,6 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 gate="${1:-}"
 shift || true
 android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
-acceptance_mode="${SKIDBLADNIR_ACCEPTANCE:-0}"
-acceptance_reason=""
-
-emit_acceptance_result() {
-  exit_code="$?"
-  if [[ "$exit_code" -eq 0 ]]; then
-    printf '{"gate":"%s","status":"PASS"}\n' "$gate" >&3
-    return
-  fi
-  if [[ -z "$acceptance_reason" ]]; then
-    acceptance_reason='declared gate failed'
-  fi
-  if [[ "$exit_code" -eq 2 ]]; then
-    printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$gate" "$acceptance_reason" >&3
-    return
-  fi
-  printf '{"gate":"%s","status":"FAIL","reason":"%s"}\n' "$gate" "$acceptance_reason" >&3
-}
-
-case "$acceptance_mode" in
-  0) ;;
-  1)
-    exec 3>&1
-    exec 1>&2
-    trap emit_acceptance_result EXIT
-    ;;
-  *)
-    printf 'SKIDBLADNIR_ACCEPTANCE must be 0 or 1\n' >&2
-    exit 64
-    ;;
-esac
-
 run() {
   printf '==> %s\n' "$1"
   shift
@@ -44,10 +12,7 @@ run() {
 }
 
 not_run() {
-  acceptance_reason="$2"
-  if [[ "$acceptance_mode" -eq 0 ]]; then
-    printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
-  fi
+  printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
   exit 2
 }
 
@@ -55,28 +20,41 @@ case "$gate" in
   static)
     cd "$repo_dir"
     run diff-check git diff --check
+    # The inner Bash process owns this expansion.
+    # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run contract go run ./cmd/skidbladnir-contract verify
+    run bash-syntax bash -n scripts/build scripts/install-devbox scripts/test
+    run sh-syntax /bin/sh -n deploy/skid-notify
+    run shellcheck shellcheck scripts/build scripts/install-devbox scripts/test deploy/skid-notify
+    run catalogue-static ./scripts/check-catalogue
+    run terminal-assets-static ./scripts/check-terminal-assets
     run go-mod-verify go mod verify
     run go-vet go vet ./...
     run android-static ./scripts/build android-static
     ;;
   unit)
     cd "$repo_dir"
-    run go-unit go test ./cmd/... ./internal/... ./generated/...
+    run go-unit go test ./cmd/... ./internal/...
+    run android-unit ./scripts/build android-unit
     ;;
   integration)
-    not_run integration 'P1-P3 integration surface is not implemented'
-    ;;
-  component)
-    not_run component 'No host-side Compose/WebView component runtime is implemented before P5'
-    ;;
-  system)
+    if [[ "${1:-}" != '--allow-isolated-tmux-mutation' || "$#" -ne 1 ]]; then
+      not_run integration 'Pass --allow-isolated-tmux-mutation only after explicit current-turn user approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ]]; then
+      not_run integration 'Set SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS=isolated-v1 after explicitly approving tmux tests'
+    fi
+    if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" ]]; then
+      not_run integration 'Integration tests refuse an invoking tmux client'
+    fi
     cd "$repo_dir"
-    run p0-hook-system go test -tags=system ./internal/hooks
-    not_run system 'P3-P4 system surface is not implemented'
+    run tmux-control-plane go test -tags=integration ./tests/integration -count=1 -args \
+      -skidbladnir-isolated-tmux-capability=isolated-cli-v1
     ;;
   platform)
+    if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
+      not_run platform 'Pass --allow-device-mutation only after explicit current-turn user approval'
+    fi
     adb="$android_sdk/platform-tools/adb"
     if [[ ! -x "$adb" ]]; then
       not_run platform 'Pinned Android SDK adb is unavailable'
@@ -91,98 +69,83 @@ case "$gate" in
     if [[ "$model" != 'SM-S906W' || "$api" != '36' ]]; then
       not_run platform 'Connected device is not SM-S906W on API 36'
     fi
+    app_package='dev.niels.skidbladnir'
+    test_package='dev.niels.skidbladnir.test'
+    app_apk="$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
+    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+    pairing_preferences='shared_prefs/skidbladnir.pairing.xml'
+    pairing_digest=''
+    if "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1; then
+      pairing_digest="$(
+        "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
+          sha256sum | cut -d ' ' -f 1
+      )"
+    fi
     "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null
     "$adb" -s "$serial" shell wm dismiss-keyguard >/dev/null
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
       not_run platform 'Connected Android device must be awake and unlocked'
     fi
     cd "$repo_dir/android"
-    run android-platform env ANDROID_HOME="$android_sdk" ANDROID_SERIAL="$serial" ./gradlew :app:connectedDebugAndroidTest --no-daemon
+    run android-platform-build env ANDROID_HOME="$android_sdk" ./gradlew \
+      :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+    run android-platform-app "$adb" -s "$serial" install -r -t "$app_apk"
+    run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
+    instrumentation_status=0
+    instrumentation_output="$(
+      "$adb" -s "$serial" shell am instrument -w \
+        "${test_package}/androidx.test.runner.AndroidJUnitRunner" 2>&1
+    )" || instrumentation_status=$?
+    printf '%s\n' "$instrumentation_output"
+    "$adb" -s "$serial" uninstall "$test_package" >/dev/null || {
+      printf 'could not uninstall the test-only Android package\n' >&2
+      exit 1
+    }
+    if [[ "$instrumentation_status" -ne 0 ]] ||
+      ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' <<<"$instrumentation_output"; then
+      printf 'Android instrumentation failed\n' >&2
+      exit 1
+    fi
+    if [[ -n "$pairing_digest" ]]; then
+      current_pairing_digest="$(
+        "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
+          sha256sum | cut -d ' ' -f 1
+      )"
+      [[ "$current_pairing_digest" == "$pairing_digest" ]] || {
+        printf 'Android instrumentation changed the encrypted pairing state\n' >&2
+        exit 1
+      }
+    fi
+    run android-platform-launch "$adb" -s "$serial" shell am start -n "${app_package}/.MainActivity"
     ;;
   live)
-    not_run live 'P1-P7 live gateway, hook, tmux, terminal, and recovery surfaces are not implemented'
-    ;;
-  upgrade-live)
-    for required_directory in /home/niels/src /home/niels/.codex-personal /home/niels/.codex-work /home/niels/.codex-work2; do
-      if [[ ! -d "$required_directory" ]]; then
-        not_run upgrade-live "Required target directory is unavailable: $required_directory"
-      fi
-    done
-    if ! command -v tmux >/dev/null 2>&1; then
-      not_run upgrade-live 'tmux is unavailable on the target host'
+    if [[ "${1:-}" != '--allow-isolated-tmux-mutation' || "$#" -ne 1 ]]; then
+      not_run live 'Pass --allow-isolated-tmux-mutation only after explicit current-turn user approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ]]; then
+      not_run live 'Set SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS=isolated-v1 after explicitly approving tmux tests'
+    fi
+    if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" ]]; then
+      not_run live 'Live tmux proofs refuse an invoking tmux client'
+    fi
+    if [[ ! -x /usr/bin/tmux ]]; then
+      not_run live 'Pinned /usr/bin/tmux is unavailable on the target host'
     fi
     cd "$repo_dir"
-    run p0-direct-tui-contract go run ./cmd/skidbladnir-contract verify
-    run p0-direct-tui-upgrade-live go test -tags=live ./tests/live -run '^(TestDirectTUIAcrossProfiles|TestDirectTUIHookOrigin|TestDirectTUILifecycle|TestTmuxGroupedBehavior|TestP0PinnedCodexResumeArgvGrammar|TestP0UnmarkedTUIInventoryProcessTrees)$' -count=1
-    ;;
-  e2e)
-    not_run e2e 'P7 end-to-end surface is not implemented'
+    run grouped-tmux go test -tags=live ./tests/live -run '^TestTmuxGroupedBehavior$' -count=1 -args \
+      -skidbladnir-isolated-tmux-capability=isolated-cli-v1
     ;;
   verify)
     "$0" static
     "$repo_dir/scripts/build"
     "$0" unit
-    "$0" integration
-    "$0" component
-    "$0" system
     ;;
   full)
     "$0" verify
-    "$0" platform
-    "$0" live
-    "$0" e2e
-    ;;
-  proof)
-    proof_id="${1:-}"
-    cd "$repo_dir"
-    case "$proof_id" in
-      p0-codex-pin)
-        run "$proof_id" go run ./cmd/skidbladnir-contract verify
-        run p0-resume-grammar go test -tags=live ./tests/live -run '^TestP0PinnedCodexResumeArgvGrammar$' -count=1
-        ;;
-      p0-profile-direct-tui)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIAcrossProfiles$' -count=1
-        ;;
-      p0-hook-origin)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIHookOrigin$' -count=1
-        ;;
-      p0-hook-identity)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIHookIdentity$' -count=1
-        ;;
-      p0-tui-lifecycle)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUILifecycle$' -count=1
-        ;;
-      p0-tmux-handoff)
-        run "$proof_id" go test -tags=live ./tests/live -run '^(TestTmuxGroupedBehavior|TestP0UnmarkedTUIInventoryProcessTrees)$' -count=1
-        ;;
-      p0-tui-keys)
-        run "$proof_id" go test -tags=live ./tests/live -run '^TestDirectTUIKeys$' -count=1
-        ;;
-      p0-android-terminal)
-        "$0" platform
-        ;;
-      '')
-        printf 'usage: %s proof PROOF_ID\n' "$0" >&2
-        exit 64
-        ;;
-      *)
-        not_run proof "Proof is not implemented: $proof_id"
-        ;;
-    esac
-    ;;
-  accept)
-    case "${1:-}" in
-      p0|core|upgrade)
-        go run ./cmd/skidbladnir-contract accept "${1}"
-        ;;
-      *)
-        printf 'usage: %s accept {p0|core|upgrade}\n' "$0" >&2
-        exit 64
-        ;;
-    esac
+    not_run full 'Run integration, platform, and live separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|integration|component|system|platform|live|upgrade-live|e2e|verify|full|proof PROOF_ID|accept {p0|core|upgrade}}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|platform --allow-device-mutation|{integration|live} --allow-isolated-tmux-mutation}\n' "$0" >&2
     exit 64
     ;;
   *)

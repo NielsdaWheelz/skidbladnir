@@ -1,7 +1,9 @@
 # Dvergatal curation and provenance
 
-Status: frozen P0 curation record for `catalog/characters.json`. This file owns
-the catalogue evidence; portrait artifacts remain a P5 deliverable.
+Status: frozen curation record for `catalog/characters.json`. This file owns the
+catalogue evidence. The 2026-08-25 v0 scope reset replaced the superseded raster
+portrait deliverable with deterministic procedural Android icons; v0 has no
+portrait artifact or manifest gate.
 
 ## Acceptance for good content
 
@@ -32,8 +34,8 @@ Every line below is machine-parseable as six pipe-delimited fields:
 `ENTRY|key=...|displayName=...|tradition=...|work=...|locus=...`.
 Keys use the catalogue's ASCII asset-safe grammar. Display names preserve a
 single normalized source spelling or an explicit primary-text epithet and are
-globally unique. Count and uniqueness are checked by the P0 static gate before
-the catalogue is frozen.
+globally unique. Count and uniqueness are checked by the catalogue static gate
+before the catalogue is frozen.
 
 ## Primary sources
 
@@ -53,67 +55,12 @@ the catalogue is frozen.
   publisher-hosted text; the German libretto is authoritative for the
   character classification.
 
-## Portrait production and rights basis
+## V0 icon basis
 
-Portraits are not sourced from these texts as images. P5 must produce one
-original square portrait per key and record the exact artist or generation tool
-and version, generation date, input prompt if applicable, source digest, and
-rights record. No scraped image, book cover, film still, stage photograph,
-rights-holder depiction, or third-party character art is admissible.
-
-- **OldNorse:** repository-owned original vector/painted portraits based only
-  on the cited textual name and public-domain textual motifs; the artist's
-  written assignment gives the repository the necessary reproduction and
-  modification rights.
-- **Tolkien:** repository-owned original portraits derived from textual
-  attributes only, with no Tolkien Estate, publisher, film, game, or illustrator
-  artwork used as a visual source; the commissioned work-for-hire/assignment
-  record must cover repository distribution and derivative resizing.
-- **GermanicOperatic:** repository-owned original portraits based on Wagner's
-  libretto descriptions, never a production still, costume design, recording
-  cover, or other performance asset; the same written assignment and asset
-  digest requirements apply.
-
-These are the production rules, not evidence that portraits already exist.
-Portrait evidence remains open until P5 records the named artist or exact tool
-version and the corresponding rights assignment. Portrait bytes land in P5,
-not in this source record.
-
-## Portrait set acceptance
-
-P0 freezes the set-level production brief and rights method; P5 creates the
-portrait bytes and the per-key `portrait-manifest.v1` records. A good set is
-producible from that brief without importing an unrecorded likeness or a
-missing rights decision:
-
-- Each portrait is an original, single-figure square WebP at a common minimum
-  size of 256×256 pixels. It uses the same head-and-shoulders card framing,
-  neutral background treatment, lighting direction, and restrained detail
-  level across all 101 entries. No text, logo, watermark, border, or extra
-  character appears in the image.
-- The cited work and locus constrain the depiction. A name, epithet, and
-  explicitly described role may inform the face, silhouette, clothing, or one
-  restrained prop; an unsupported modern likeness, actor, illustrator,
-  production costume, film/game design, or invented canonical biography may
-  not. A visual distinction must be explainable by the entry's source or by a
-  neutral compositional choice, not by borrowing a third-party depiction.
-- Every portrait must remain distinguishable from the other 100 at the card
-  thumbnail size and in grayscale: face or silhouette, value grouping, and
-  one source-safe distinguishing cue must survive 64×64 downsampling. Hue
-  alone is never the distinguishing cue. Review records must identify the cue
-  and reject near-duplicates before P5 freezes the manifest; this review
-  criterion does not add a manifest field.
-- The subject/background boundary and facial features must remain legible at
-  64×64 and 200% display scale, with no essential cue at the extreme edge.
-  The portrait supplies no required text or color-only signal; the card's
-  accessible display name remains the authoritative label.
-- For each key, P5 records the exact production method, artist or tool and
-  version, creation date, applicable prompt, source digest, and rights basis
-  and assignment in the manifest. Static QA then checks one record and one
-  square WebP per key, matching SHA-256 and documented asset path, with no
-  orphan record or asset. A failed thumbnail, provenance, digest, or rights
-  check is red; it is never repaired with a placeholder or silently reused
-  portrait.
+Android derives a deterministic procedural dwarf landmark from the catalogue
+key and uses the accessible display name as its authoritative label. v0 imports
+no third-party imagery and owns no raster portrait pack, provenance manifest,
+or rights claim. A raster portrait set requires a new scoped decision.
 
 ## Dedupe and exclusion record
 

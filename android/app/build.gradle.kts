@@ -37,11 +37,6 @@ android {
         animationsDisabled = true
     }
 
-    sourceSets {
-        getByName("main") {
-            java.srcDir(layout.projectDirectory.dir("../../generated/api/kotlin"))
-        }
-    }
 }
 
 dependencies {
@@ -53,6 +48,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.webkit:webkit:1.17.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation("junit:junit:4.13.2")
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
     androidTestImplementation("androidx.test:core-ktx:1.7.0")

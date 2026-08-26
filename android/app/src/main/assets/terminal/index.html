@@ -3,26 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-    <title>Skíðblaðnir terminal platform harness</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+    <title>Skíðblaðnir terminal</title>
     <link rel="stylesheet" href="vendor/xterm-6.0.0.css">
     <link rel="stylesheet" href="terminal.css">
 </head>
 <body>
-<main aria-label="Terminal platform harness">
-    <h1>Terminal platform harness</h1>
-    <p>This is the P0 terminal test screen, not the agent dashboard. Focus the terminal, type with Gboard, and verify the mirrored draft below. There is no app navigation in this harness.</p>
-    <p id="bridge-status">Waiting for native bridge</p>
-    <button id="focus-terminal" type="button">Type in terminal</button>
-    <section id="terminal" aria-label="ANSI and Unicode terminal" aria-describedby="input-status"></section>
-    <section id="draft-proof" aria-label="Editable draft proof">
-        <h2>Editable draft</h2>
-        <output id="draft-value" aria-label="Current editable draft" aria-live="polite">Empty draft</output>
-        <p id="draft-status">Draft: editable; never submitted or saved</p>
-    </section>
-    <p id="input-status">Input: focus the terminal</p>
-    <p id="ime-status">IME: idle</p>
-    <p id="viewport-status" role="status" aria-live="polite">Visual viewport: measuring</p>
+<main>
+    <section id="terminal" aria-label="Agent terminal"></section>
+    <p id="terminal-status" role="status" aria-live="polite">Preparing terminal</p>
 </main>
 <script src="vendor/xterm-6.0.0.js"></script>
 <script src="vendor/xterm-addon-fit-0.11.0.js"></script>
