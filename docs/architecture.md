@@ -355,11 +355,13 @@ Galaxy S22+                       laptop / mosh
   `TMUX` and `TMUX_PANE`, but intentionally honors that process's
   `TMUX_TMPDIR` as the chosen default-server root. Production never inherits
   it.
-- No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
-  `@skid_objective_b64`, `@skid_character`, `@skid_attention`,
-  `@skid_lifecycle`, the
-  server-scoped `@skid_server_epoch`, and the reserved `@skid_internal` shadow
-  marker). Poller state is in-memory and rebuilt on start.
+- No SQLite. `@skid_profile`, `@skid_objective_b64`, `@skid_character`, and the
+  reserved `@skid_internal` marker are session-scoped; `@skid_attention` and
+  `@skid_lifecycle` are pane-scoped; `@skid_server_epoch` is server-scoped.
+  Same-named options at another scope are invariant corruption outside v0.
+  `@skid_internal=phone-shadow` is valid only on a session with the reserved
+  phone-shadow name; any other pairing fails closed as invariant corruption.
+  Poller state is in-memory and rebuilt on start.
 - The API is:
 
 | Method/path | Contract |
