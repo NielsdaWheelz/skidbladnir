@@ -1,270 +1,276 @@
 (function () {
     "use strict";
 
-    var bridgeStatus = document.getElementById("bridge-status");
-    var focusTerminal = document.getElementById("focus-terminal");
-    var inputStatus = document.getElementById("input-status");
-    var imeStatus = document.getElementById("ime-status");
-    var viewportStatus = document.getElementById("viewport-status");
-    var draftValue = document.getElementById("draft-value");
-    var draftStatus = document.getElementById("draft-status");
-    var bridgePort = null;
-    var inputHistory = [];
-    var automaticReplies = [];
-    var compositionValue = "";
-    var compositionActive = false;
-    var compositionCommitObserved = false;
-    var compositionStartOffset = 0;
-    var pendingCompositionValues = [];
-    var visualViewportState = { width: 0, height: 0 };
-    var terminalContainer = document.getElementById("terminal");
+    var terminalHost = document.getElementById("terminal");
+    var terminalStatus = document.getElementById("terminal-status");
+    var pagePort = null;
+    var pageFailed = false;
+    var fitScheduled = false;
+    var maximumInputBytes = 1024 * 1024;
+    var minimumColumns = 80;
+    var minimumFontSize = 6;
+    var maximumFontSize = 14;
+    var lastPublishedColumns = 0;
+    var lastPublishedRows = 0;
     var terminal = new window.Terminal({
-        convertEol: true,
         cursorBlink: true,
         fontFamily: "monospace",
+        fontSize: 14,
         rows: 8,
-        scrollback: 100,
-        ignoreBracketedPasteMode: true,
+        scrollback: 1000,
         screenReaderMode: true,
-        theme: { background: "#101114", foreground: "#f1f2f4" }
+        theme: {
+            background: "#0c0d0f",
+            foreground: "#f3f0e8",
+            cursor: "#d6a85f",
+            selectionBackground: "#725b36",
+            black: "#202328",
+            red: "#e06c75",
+            green: "#98c379",
+            yellow: "#e5c07b",
+            blue: "#61afef",
+            magenta: "#c678dd",
+            cyan: "#56b6c2",
+            white: "#d7dae0",
+            brightBlack: "#5c6370",
+            brightRed: "#ef7b86",
+            brightGreen: "#a9d18e",
+            brightYellow: "#f0cf88",
+            brightBlue: "#75bdf4",
+            brightMagenta: "#d38be8",
+            brightCyan: "#6bc4cf",
+            brightWhite: "#ffffff"
+        }
     });
     var fitAddon = new window.FitAddon.FitAddon();
-    var fitScheduled = false;
     terminal.loadAddon(fitAddon);
-    terminal.open(terminalContainer);
-    terminal.write("\x1b[1;32mSkíðblaðnir\x1b[0m platform harness\r\n");
-    terminal.write("ANSI: \x1b[31mred\x1b[0m  Unicode: 北極星 / 🧭\r\n");
+    terminal.open(terminalHost);
 
-    function sanitizePaste(value) {
-        var normalized = String(value).replace(/\r\n?/g, "\n");
-        return Array.from(normalized).filter(function (character) {
-            var code = character.charCodeAt(0);
-            return code === 0x09 || code === 0x0a || (code > 0x1f && code < 0x7f) || code > 0x9f;
-        }).join("");
+    function send(payload) {
+        if (pagePort) pagePort.postMessage(JSON.stringify(payload));
     }
 
-    function send(kind, value) {
-        if (!bridgePort) return;
-        bridgePort.postMessage(JSON.stringify({ kind: kind, value: value }));
+    function failPage() {
+        if (pageFailed) return;
+        pageFailed = true;
+        send({ kind: "PageFailure" });
+        pagePort = null;
     }
 
-    function inputElement() {
-        return document.querySelector(".xterm-helper-textarea");
-    }
-
-    function automaticReplyKind(data) {
-        if (/^\x1b\[\?[^c]*c$/.test(data)) return "DA1";
-        if (/^\x1b\[>[^c]*c$/.test(data)) return "DA2";
-        if (/^\x1b\[[?]?\d+n$/.test(data)) return "DSR";
-        if (/^\x1b\[[?]?\d+;\d+R$/.test(data)) return "CPR";
-        return "";
-    }
-
-    function updateDraftValue() {
-        var value = window.__skidbladnirHarness.editorValue +
-            pendingCompositionValues.join("") + compositionValue;
-        draftValue.textContent = value || "Empty draft";
-        draftValue.setAttribute("aria-label", "Current editable draft: " + (value || "empty"));
-        draftStatus.textContent = compositionActive || pendingCompositionValues.length > 0
-            ? "Draft: composing; never submitted or saved"
-            : "Draft: editable; never submitted or saved";
-    }
-
-    function updateVisualViewport() {
-        var source = window.visualViewport;
-        var width = source ? source.width : window.innerWidth;
-        var height = source ? source.height : window.innerHeight;
-        visualViewportState.width = Math.round(width || 0);
-        visualViewportState.height = Math.round(height || 0);
-        if (window.__skidbladnirHarness) {
-            window.__skidbladnirHarness.visualViewport = visualViewportState;
+    function utf8ByteCount(value) {
+        if (value.length > maximumInputBytes) return null;
+        var count = 0;
+        for (var index = 0; index < value.length; index += 1) {
+            var code = value.codePointAt(index);
+            if (code > 0xffff) index += 1;
+            count += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+            if (count > maximumInputBytes) return null;
         }
-        viewportStatus.textContent = "Terminal: " + window.__skidbladnirHarness.viewport +
-            " | Visual viewport: " + visualViewportState.width + "x" + visualViewportState.height + " px";
+        return count;
     }
 
-    function fitTerminal() {
-        fitScheduled = false;
-        fitAddon.fit();
-        if (!window.__skidbladnirHarness) return;
-        window.__skidbladnirHarness.viewport = terminal.cols + "x" + terminal.rows;
-        updateVisualViewport();
-        send("resize", window.__skidbladnirHarness.viewport);
-    }
-
-    function scheduleTerminalFit() {
-        if (fitScheduled) return;
-        fitScheduled = true;
-        window.requestAnimationFrame(fitTerminal);
-    }
-
-    function updateDraftFromInput(value) {
-        Array.from(value).forEach(function (character) {
-            if (character === "\x7f" || character === "\b") {
-                window.__skidbladnirHarness.editorValue = Array.from(
-                    window.__skidbladnirHarness.editorValue,
-                ).slice(0, -1).join("");
-            } else {
-                window.__skidbladnirHarness.editorValue += character;
-            }
-        });
-        updateDraftValue();
-    }
-
-    function recordInput(data) {
-        var reply = automaticReplyKind(data);
-        if (reply) {
-            automaticReplies.push(reply);
-            send("terminalReply", reply);
+    function sendInput(value) {
+        if (utf8ByteCount(value) === null) {
+            failPage();
             return;
         }
-        var matchesActiveComposition = compositionActive && data === compositionValue;
-        var matchesPendingComposition = pendingCompositionValues.length > 0 &&
-            data === pendingCompositionValues[0];
-        if (matchesActiveComposition && !matchesPendingComposition) {
-            compositionCommitObserved = true;
-            compositionValue = "";
-        } else if (pendingCompositionValues.length > 0) {
-            pendingCompositionValues.shift();
-        } else if (compositionActive) {
-            compositionCommitObserved = true;
-            compositionValue = "";
-        }
-        var normalized = data.replace(/\r\n?/g, "\n");
-        inputHistory.push(normalized);
-        updateDraftFromInput(normalized);
-        send("input", normalized);
-        inputStatus.textContent = "Input: received through xterm";
+        send({ kind: "Input", value: value });
     }
 
-    terminal.onData(function (data) {
-        recordInput(data);
-    });
+    function pasteInput(value) {
+        sendInput(terminal.modes.bracketedPasteMode ? "\u001b[200~" + value + "\u001b[201~" : value);
+    }
 
-    var terminalInput = inputElement();
-    if (terminalInput) {
-        terminalInput.addEventListener("compositionstart", function (event) {
-            compositionActive = true;
-            compositionCommitObserved = false;
-            compositionStartOffset = terminalInput.value.length;
-            compositionValue = event.data || "";
-            updateDraftValue();
-        });
-        terminalInput.addEventListener("compositionupdate", function (event) {
-            compositionValue = event.data || "";
-            updateDraftValue();
-        });
-        terminalInput.addEventListener("beforeinput", function (event) {
-            if (!event.isComposing || !event.data) return;
-            compositionActive = true;
-            compositionValue = event.data;
-            updateDraftValue();
-        }, true);
-        terminalInput.addEventListener("input", function (event) {
-            if (!event.isComposing || (!event.data && !terminalInput.value)) return;
-            compositionActive = true;
-            var currentValue = terminalInput.value.length >= compositionStartOffset
-                ? terminalInput.value.substring(compositionStartOffset)
-                : "";
-            compositionValue = currentValue || event.data || compositionValue;
-            updateDraftValue();
-        }, true);
-        terminalInput.addEventListener("compositionend", function (event) {
-            compositionActive = false;
-            if (compositionCommitObserved) {
-                compositionCommitObserved = false;
-                compositionValue = "";
-                updateDraftValue();
-                return;
+    function sanitizePaste(value) {
+        value = String(value);
+        if (value.length > maximumInputBytes) return null;
+        var chunks = [];
+        var chunk = "";
+        var byteCount = 0;
+        for (var index = 0; index < value.length; index += 1) {
+            var code = value.codePointAt(index);
+            var character = String.fromCodePoint(code);
+            if (code > 0xffff) index += 1;
+            if (code === 0x0d) {
+                if (value.charCodeAt(index + 1) === 0x0a) index += 1;
+                code = 0x0a;
+                character = "\n";
             }
-            compositionValue = event.data || "";
-            if (compositionValue !== "") pendingCompositionValues.push(compositionValue);
-            compositionValue = "";
-            updateDraftValue();
-        });
+            if (code === 0x09 || code === 0x0a || (code > 0x1f && code < 0x7f) || code > 0x9f) {
+                byteCount += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+                if (byteCount > maximumInputBytes) return null;
+                chunk += character;
+                if (chunk.length >= 4096) {
+                    chunks.push(chunk);
+                    chunk = "";
+                }
+            }
+        }
+        chunks.push(chunk);
+        return chunks.join("");
     }
 
-    focusTerminal.addEventListener("click", function () {
-        terminal.focus();
-        inputStatus.textContent = "Input: terminal focused; type with Gboard";
+    function resizeTerminal() {
+        fitScheduled = false;
+        if (terminalHost.clientWidth === 0 || terminalHost.clientHeight === 0) return;
+        var dimensions = fitAddon.proposeDimensions();
+        if (!dimensions) return;
+        var currentFontSize = terminal.options.fontSize;
+        var targetFontSize = Math.max(
+            minimumFontSize,
+            Math.min(maximumFontSize, currentFontSize * dimensions.cols / minimumColumns)
+        );
+        targetFontSize = Math.floor(targetFontSize * 100) / 100;
+        if (dimensions.cols < minimumColumns && targetFontSize >= currentFontSize - 0.01) {
+            targetFontSize = Math.max(minimumFontSize, currentFontSize - 0.1);
+        }
+        if (Math.abs(targetFontSize - currentFontSize) >= 0.05) {
+            terminal.options.fontSize = targetFontSize;
+            scheduleFit();
+            return;
+        }
+        var columns = Math.max(20, Math.min(240, dimensions.cols));
+        var rows = Math.max(5, Math.min(120, dimensions.rows));
+        if (terminal.cols !== columns || terminal.rows !== rows) terminal.resize(columns, rows);
+        if (pagePort && (columns !== lastPublishedColumns || rows !== lastPublishedRows)) {
+            lastPublishedColumns = columns;
+            lastPublishedRows = rows;
+            send({ kind: "Resize", columns: columns, rows: rows });
+        }
+    }
+
+    function scheduleFit() {
+        if (fitScheduled) return;
+        fitScheduled = true;
+        window.requestAnimationFrame(resizeTerminal);
+    }
+
+    function decodeBase64(value) {
+        var decoded = window.atob(value);
+        var bytes = new Uint8Array(decoded.length);
+        for (var index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
+        return bytes;
+    }
+
+    terminal.onData(function (value) {
+        sendInput(value);
     });
 
-    window.__skidbladnirHarness = {
-        state: "ready",
-        ansiUnicode: "PASS",
-        viewport: "unknown",
-        editorValue: "",
-        inputHistory: inputHistory,
-        automaticReplies: automaticReplies,
-        autoSubmitted: false,
-        ime: "PASS",
-        actualInputElement: inputElement() !== null,
-        screenReaderMode: true,
-        webMessagePort: false,
-        lastAck: "",
-        visualViewport: visualViewportState,
-        resize: function (columns, rows) {
-            terminal.resize(columns, rows);
-            this.viewport = columns + "x" + rows;
-            updateVisualViewport();
-            send("resize", this.viewport);
-        },
-        backspace: function () {
-            terminal.focus();
-            terminal.paste("\x7f");
-        },
-        compose: function (value) {
-            var input = inputElement();
-            terminal.focus();
-            if (input) input.dispatchEvent(new CompositionEvent("compositionstart", { data: "" }));
-            if (input) input.dispatchEvent(new CompositionEvent("compositionupdate", { data: String(value) }));
-            if (input) input.dispatchEvent(new CompositionEvent("compositionend", { data: String(value) }));
-            terminal.paste(String(value));
-            imeStatus.textContent = "IME: composed";
-            this.ime = "PASS";
-        },
-        paste: function (value) {
-            var sanitized = sanitizePaste(value);
-            terminal.focus();
-            terminal.paste(sanitized);
-        },
-        dictation: function (value) {
-            terminal.focus();
-            terminal.paste(String(value));
-        },
-        probeAutomaticReplies: function () {
-            automaticReplies.length = 0;
-            terminal.write("\x1b[c\x1b[>c\x1b[5n\x1b[6n");
-            return "requested";
-        },
-        send: function (kind, value) {
-            send(kind, value);
-        },
-        networkEnabled: false,
-        fileAccess: false,
-        contentAccess: false
-    };
+    var input = document.querySelector(".xterm-helper-textarea");
+    var composition = document.querySelector(".composition-view");
+    var screen = document.querySelector(".xterm-screen");
 
-    updateDraftValue();
-    scheduleTerminalFit();
-    new ResizeObserver(scheduleTerminalFit).observe(terminalContainer);
-    window.addEventListener("resize", scheduleTerminalFit);
-    window.addEventListener("orientationchange", scheduleTerminalFit);
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleTerminalFit);
+    function lockPageViewport() {
+        document.documentElement.scrollLeft = 0;
+        document.documentElement.scrollTop = 0;
+        document.body.scrollLeft = 0;
+        document.body.scrollTop = 0;
+        window.scrollTo(0, 0);
+    }
+
+    function containImeGeometry() {
+        if (!input || !composition || !screen) {
+            failPage();
+            return;
+        }
+        var screenBounds = screen.getBoundingClientRect();
+        var compositionBounds = composition.getBoundingClientRect();
+        var inputBounds = input.getBoundingClientRect();
+        var activeInputLeft = Math.max(compositionBounds.left, inputBounds.left);
+        var boundedLeft = Math.max(screenBounds.left, Math.min(activeInputLeft, screenBounds.right - 1));
+        var maximumWidth = Math.max(screenBounds.right - boundedLeft, 1);
+        composition.style.maxWidth = maximumWidth + "px";
+        composition.style.overflow = "hidden";
+        composition.style.direction = "rtl";
+        input.style.width = Math.min(Math.max(inputBounds.width, 1), maximumWidth) + "px";
+        input.style.maxWidth = maximumWidth + "px";
+        input.style.overflow = "hidden";
+        lockPageViewport();
+    }
+
+    function scheduleImeContainment() {
+        containImeGeometry();
+        window.setTimeout(containImeGeometry, 0);
+        window.requestAnimationFrame(containImeGeometry);
+    }
+
+    function focusTerminal() {
+        if (!input) {
+            failPage();
+            return;
+        }
+        input.focus({ preventScroll: true });
+        scheduleImeContainment();
+    }
+
+    if (input) {
+        ["compositionstart", "compositionend", "beforeinput", "input", "keydown", "focus"]
+            .forEach(function (eventName) {
+                input.addEventListener(eventName, scheduleImeContainment);
+            });
+        input.addEventListener("compositionupdate", function (event) {
+            if (composition && typeof event.data === "string") {
+                composition.textContent = "\u200e" + event.data + "\u200e";
+            }
+            scheduleImeContainment();
+        });
+        input.addEventListener("paste", function (event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            var sanitized = sanitizePaste(event.clipboardData ? event.clipboardData.getData("text/plain") : "");
+            if (sanitized === null) {
+                failPage();
+            } else {
+                pasteInput(sanitized);
+            }
+        }, true);
+    }
+
+    new ResizeObserver(scheduleFit).observe(terminalHost);
+    window.addEventListener("resize", scheduleFit);
+    window.addEventListener("orientationchange", scheduleFit);
+    window.addEventListener("scroll", lockPageViewport);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", scheduleFit);
+        window.visualViewport.addEventListener("scroll", lockPageViewport);
+    }
 
     window.addEventListener("message", function (event) {
-        if (!event.ports || !event.ports.length) return;
-        bridgePort = event.ports[0];
-        bridgePort.onmessage = function (message) {
+        if (!event.ports || event.ports.length !== 1) return;
+        pagePort = event.ports[0];
+        if (pageFailed) {
+            send({ kind: "PageFailure" });
+            pagePort = null;
+            return;
+        }
+        pagePort.onmessage = function (message) {
             var payload = JSON.parse(message.data);
-            if (payload.kind === "ack") {
-                window.__skidbladnirHarness.lastAck = payload.for;
-                bridgeStatus.textContent = "Native WebMessagePort connected";
+            if (payload.kind === "Output") {
+                terminal.write(decodeBase64(payload.data), function () {
+                    terminalStatus.textContent = "Terminal connected";
+                    send({ kind: "OutputApplied", sequence: payload.sequence });
+                });
+            } else if (payload.kind === "Focus") {
+                focusTerminal();
+            } else if (payload.kind === "Accessory") {
+                var suffix = {
+                    Left: "D",
+                    Up: "A",
+                    Down: "B",
+                    Right: "C",
+                    Home: "H",
+                    End: "F"
+                }[payload.key];
+                if (!suffix) {
+                    failPage();
+                    return;
+                }
+                sendInput("\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffix);
+                focusTerminal();
             }
         };
-        bridgePort.start();
-        window.__skidbladnirHarness.webMessagePort = true;
-        bridgeStatus.textContent = "Native WebMessagePort connected";
-        send("ready", "terminal-harness");
+        pagePort.start();
+        send({ kind: "Ready" });
+        scheduleFit();
     });
 }());

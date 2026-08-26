@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Validate the production Dvergatal and its frozen provenance inventory."""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import unicodedata
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+CATALOGUE_PATH = ROOT / "catalog" / "characters.json"
+EVIDENCE_PATH = ROOT / "evidence" / "sources" / "dvergatal.md"
+KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+$")
+BANNED_TRADITIONS = {"FairyTale", "ModernMedia"}
+
+
+def fail(message: str) -> None:
+    raise ValueError(message)
+
+
+def load_catalogue() -> list[dict[str, str]]:
+    decoded = json.loads(CATALOGUE_PATH.read_text(encoding="utf-8"))
+    if not isinstance(decoded, list) or len(decoded) < 100:
+        fail("catalogue must contain at least 100 entries")
+
+    normalized: list[dict[str, str]] = []
+    keys: set[str] = set()
+    names: set[str] = set()
+    suffixes: set[str] = set()
+    for index, entry in enumerate(decoded):
+        if not isinstance(entry, dict) or set(entry) != {"key", "displayName", "tradition", "source"}:
+            fail(f"catalogue entry {index} has an invalid shape")
+        source = entry["source"]
+        if not isinstance(source, dict) or set(source) != {"work", "locus"}:
+            fail(f"catalogue entry {index} has an invalid source shape")
+        fields = {
+            "key": entry["key"],
+            "displayName": entry["displayName"],
+            "tradition": entry["tradition"],
+            "work": source["work"],
+            "locus": source["locus"],
+        }
+        if any(not isinstance(value, str) or not value.strip() for value in fields.values()):
+            fail(f"catalogue entry {index} has an empty or non-string field")
+        if not KEY_PATTERN.fullmatch(fields["key"]):
+            fail(f"catalogue entry {index} has an invalid key")
+        if fields["displayName"] != unicodedata.normalize("NFC", fields["displayName"]):
+            fail(f"catalogue entry {index} display name is not NFC")
+        if fields["tradition"] in BANNED_TRADITIONS:
+            fail(f"catalogue entry {index} uses a forbidden tradition")
+        suffix = fields["key"].rsplit(".", 1)[1]
+        if fields["key"] in keys or fields["displayName"] in names or suffix in suffixes:
+            fail(f"catalogue entry {index} duplicates a runtime identity")
+        keys.add(fields["key"])
+        names.add(fields["displayName"])
+        suffixes.add(suffix)
+        normalized.append(fields)
+    return normalized
+
+
+def load_frozen_inventory() -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for line in EVIDENCE_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("ENTRY|"):
+            continue
+        parts = line.split("|")
+        if len(parts) != 6:
+            fail(f"invalid frozen inventory line: {line}")
+        fields: dict[str, str] = {}
+        for part in parts[1:]:
+            name, separator, value = part.partition("=")
+            if not separator or not value or name in fields:
+                fail(f"invalid frozen inventory field: {part}")
+            fields[name] = value
+        if set(fields) != {"key", "displayName", "tradition", "work", "locus"}:
+            fail(f"invalid frozen inventory shape: {line}")
+        entries.append(fields)
+    if len(entries) < 100:
+        fail("frozen inventory must contain at least 100 entries")
+    return entries
+
+
+def main() -> int:
+    try:
+        catalogue = load_catalogue()
+        inventory = load_frozen_inventory()
+        if catalogue != inventory:
+            fail("catalogue and frozen provenance inventory differ")
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        print(f"catalogue check failed: {error}", file=sys.stderr)
+        return 1
+    print(f"catalogue check passed: {len(catalogue)} entries")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

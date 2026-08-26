@@ -4,6 +4,7 @@ package live
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +19,10 @@ import (
 	"time"
 )
 
-const tmuxBehaviorTimeout = 10 * time.Second
+const (
+	liveTmuxPath        = "/usr/bin/tmux"
+	tmuxBehaviorTimeout = 10 * time.Second
+)
 
 type tmuxBehaviorServer struct {
 	socket          string
@@ -26,6 +30,7 @@ type tmuxBehaviorServer struct {
 	shadow          string
 	pid             int
 	startTime       uint64
+	tmuxStartTime   string
 	fixtures        []tmuxBehaviorProcess
 	lastSessionGone bool
 }
@@ -49,10 +54,15 @@ type tmuxBehaviorPane struct {
 }
 
 func TestTmuxGroupedBehavior(t *testing.T) {
-	if _, err := exec.LookPath("tmux"); err != nil {
-		t.Fatalf("tmux is unavailable: %v", err)
+	if os.Getenv("SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS") != "isolated-v1" {
+		t.Fatal("live tmux proof requires explicit isolated tmux approval")
 	}
-	version, err := exec.Command("tmux", "-V").Output()
+	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" {
+		t.Fatal("live tmux proof refuses an invoking tmux client")
+	}
+	versionCommand := exec.Command(liveTmuxPath, "-V")
+	versionCommand.Env = withoutTmuxEnvironment(os.Environ())
+	version, err := versionCommand.Output()
 	if err != nil || strings.TrimSpace(string(version)) != "tmux 3.4" {
 		t.Fatalf("P0 proof requires exact tmux 3.4, found %q (error=%v)", strings.TrimSpace(string(version)), err)
 	}
@@ -147,19 +157,16 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 
 func newTmuxBehaviorServer(t *testing.T) *tmuxBehaviorServer {
 	t.Helper()
-	id := fmt.Sprintf("skidbladnir_%d_%d", os.Getpid(), time.Now().UnixNano())
-	server := &tmuxBehaviorServer{socket: id, root: "root", shadow: "shadow"}
+	socketPath := registerLiveTmuxSocket(t)
+	server := &tmuxBehaviorServer{socket: socketPath, root: "root", shadow: "shadow"}
 	t.Cleanup(func() {
-		server.cleanup(t)
+		if !server.cleanup(t) {
+			return
+		}
 		// tmux 3.4 can leave a stale alternate socket after the server exits;
 		// all owned process identities are proven gone before removing it.
-		if err := os.Remove(server.socketPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("remove already-stopped test-owned tmux socket %s: %v", server.socketPath(), err)
-		}
-		if _, err := os.Stat(server.socketPath()); err == nil {
-			t.Errorf("test-owned tmux socket survived cleanup: %s", server.socketPath())
-		} else if !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("stat test-owned tmux socket %s: %v", server.socketPath(), err)
+		if err := removeRegisteredLiveStaleSocket(liveTmuxPath, server.socketPath()); err != nil {
+			t.Errorf("remove stopped registered live tmux socket %s: %v", server.socketPath(), err)
 		}
 	})
 	return server
@@ -168,12 +175,12 @@ func newTmuxBehaviorServer(t *testing.T) *tmuxBehaviorServer {
 func (s *tmuxBehaviorServer) start(t *testing.T, cwd, logA, logB string) {
 	t.Helper()
 	s.run(t, "new-session", "-d", "-s", s.root, "-x", "120", "-y", "40", "-c", cwd, fixtureCommand(logA, "A"))
+	s.captureIdentity(t)
 	s.run(t, "set-option", "-g", "window-size", "latest")
 	s.run(t, "set-option", "-g", "status", "off")
 	s.run(t, "split-window", "-t", s.root+":0", "-h", fixtureCommand(logB, "B"))
 	s.run(t, "select-pane", "-t", s.root+":0.0")
 	s.run(t, "new-session", "-d", "-t", s.root, "-s", s.shadow)
-	s.captureIdentity(t)
 	for _, pane := range s.panes(t)[s.root] {
 		s.fixtures = append(s.fixtures, tmuxBehaviorProcess{PID: pane.PID, StartTime: pane.StartTime})
 	}
@@ -192,7 +199,10 @@ done`
 
 func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, flags string, cols, rows int) *tmuxBehaviorClient {
 	t.Helper()
-	attach := fmt.Sprintf("stty cols %d rows %d; exec env -u TMUX -u TMUX_PANE TERM=xterm-256color tmux -L %s -f /dev/null attach-session", cols, rows, shellQuote(server.socket))
+	if err := validateRegisteredLiveSocket(server.socket); err != nil {
+		t.Fatal(err)
+	}
+	attach := fmt.Sprintf("stty cols %d rows %d; exec env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session", cols, rows, shellQuote(liveTmuxPath), shellQuote(server.socket))
 	if flags != "" {
 		attach += " -f " + shellQuote(flags)
 	}
@@ -211,9 +221,6 @@ func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, 
 		t.Fatalf("start PTY client: %v", err)
 	}
 	client := &tmuxBehaviorClient{cmd: cmd, feed: stdin, pid: cmd.Process.Pid, startTime: processStartTime(cmd.Process.Pid), done: make(chan error, 1)}
-	if client.pid <= 0 || client.startTime == 0 || !processAlive(client.pid) {
-		t.Fatalf("invalid /usr/bin/script client identity: pid=%d start=%d", client.pid, client.startTime)
-	}
 	go func() {
 		var copyErr error
 		buffer := make([]byte, 4096)
@@ -238,7 +245,6 @@ func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, 
 		}
 		client.done <- waitErr
 	}()
-	waitForClientAtLeast(t, server, session, 1)
 	t.Cleanup(func() {
 		_ = stdin.Close() // justify-ignore-error: cleanup closes only this test-owned PTY input after tmux teardown.
 		if cmd.Process != nil {
@@ -251,6 +257,10 @@ func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, 
 		}
 		waitForProcessGone(t, client.pid)
 	})
+	if client.pid <= 0 || client.startTime == 0 || !processAlive(client.pid) {
+		t.Fatalf("invalid /usr/bin/script client identity: pid=%d start=%d", client.pid, client.startTime)
+	}
+	waitForClientAtLeast(t, server, session, 1)
 	return client
 }
 
@@ -280,9 +290,10 @@ func (s *tmuxBehaviorServer) run(t *testing.T, args ...string) string {
 }
 
 func (s *tmuxBehaviorServer) command(args ...string) ([]byte, error) {
-	cmdArgs := append([]string{"-L", s.socket, "-f", "/dev/null"}, args...)
-	cmd := exec.Command("tmux", cmdArgs...)
-	cmd.Env = withoutTmuxEnvironment(os.Environ())
+	cmd, err := registeredLiveTmuxCommand(context.Background(), liveTmuxPath, s.socket, args...)
+	if err != nil {
+		return nil, err
+	}
 	out, err := cmd.CombinedOutput()
 	return out, err
 }
@@ -342,12 +353,36 @@ func (s *tmuxBehaviorServer) selectPane(t *testing.T, session string, index int)
 
 func (s *tmuxBehaviorServer) detachClient(t *testing.T, client string) {
 	t.Helper()
-	s.run(t, "detach-client", "-t", client)
+	if observed := processStartTime(s.pid); observed != s.startTime {
+		t.Fatalf("refusing client detach after process identity changed: pid=%d captured=%d observed=%d", s.pid, s.startTime, observed)
+	}
+	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
+	output, err := s.command("if-shell", "-F", s.identityCondition(),
+		"detach-client -t "+shellQuote(client),
+		"display-message -p -l '"+mismatchMarker+"'")
+	if err != nil {
+		t.Fatalf("conditionally detach test-owned client: client=%s error=%v output=%q", client, err, output)
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("refusing client detach after routed identity mismatch: client=%s output=%q", client, output)
+	}
 }
 
 func (s *tmuxBehaviorServer) killSession(t *testing.T, session string) {
 	t.Helper()
-	s.run(t, "kill-session", "-t", session)
+	if observed := processStartTime(s.pid); observed != s.startTime {
+		t.Fatalf("refusing session kill after process identity changed: pid=%d captured=%d observed=%d", s.pid, s.startTime, observed)
+	}
+	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
+	output, err := s.command("if-shell", "-F", s.identityCondition(),
+		"kill-session -t "+shellQuote(session),
+		"display-message -p -l '"+mismatchMarker+"'")
+	if err != nil {
+		t.Fatalf("conditionally kill test-owned session: session=%s error=%v output=%q", session, err, output)
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("refusing session kill after routed identity mismatch: session=%s output=%q", session, output)
+	}
 }
 
 type tmuxBehaviorProcess struct {
@@ -357,10 +392,11 @@ type tmuxBehaviorProcess struct {
 
 func (s *tmuxBehaviorServer) captureIdentity(t *testing.T) {
 	t.Helper()
-	value := strings.TrimSpace(s.run(t, "display-message", "-p", "#{pid}"))
-	pid, err := strconv.Atoi(value)
-	if err != nil || pid <= 0 {
-		t.Fatalf("invalid alternate tmux server PID %q: %v", value, err)
+	value := strings.TrimSpace(s.run(t, "display-message", "-p", "#{pid}|#{start_time}"))
+	pidText, tmuxStartTime, separated := strings.Cut(value, "|")
+	pid, err := strconv.Atoi(pidText)
+	if err != nil || pid <= 0 || !separated || tmuxStartTime == "" {
+		t.Fatalf("invalid alternate tmux server identity %q: %v", value, err)
 	}
 	startTime := processStartTime(pid)
 	if startTime == 0 || !processAlive(pid) {
@@ -368,38 +404,83 @@ func (s *tmuxBehaviorServer) captureIdentity(t *testing.T) {
 	}
 	s.pid = pid
 	s.startTime = startTime
+	s.tmuxStartTime = tmuxStartTime
 }
 
 func (s *tmuxBehaviorServer) assertIdentity(t *testing.T) {
 	t.Helper()
-	observed := processStartTime(s.pid)
-	if observed == 0 || observed != s.startTime || !processAlive(s.pid) {
-		t.Fatalf("alternate tmux server identity changed before teardown: pid=%d start=%d observed=%d", s.pid, s.startTime, observed)
+	if !s.routedIdentityMatches(t) {
+		t.FailNow()
 	}
 }
 
-func (s *tmuxBehaviorServer) cleanup(t *testing.T) {
+func (s *tmuxBehaviorServer) cleanup(t *testing.T) bool {
 	t.Helper()
-	if s.pid <= 0 || s.startTime == 0 {
-		t.Errorf("alternate tmux server identity was not captured")
-		return
+	if s.pid <= 0 || s.startTime == 0 || s.tmuxStartTime == "" {
+		t.Errorf("refusing cleanup because alternate tmux server identity was not captured")
+		return false
 	}
-	_, err := s.command("kill-server")
-	if err != nil && !s.lastSessionGone {
-		t.Errorf("kill test-owned tmux server: %v", err)
+	if s.lastSessionGone {
+		if observed := processStartTime(s.pid); observed == s.startTime && processAlive(s.pid) {
+			t.Errorf("alternate tmux server survived its last session: pid=%d start=%d", s.pid, s.startTime)
+			return false
+		}
+		if output, err := s.command("display-message", "-p", "#{pid}"); err == nil {
+			t.Errorf("refusing stale-socket cleanup because a server still answers: socket=%s routed=%q", s.socket, strings.TrimSpace(string(output)))
+			return false
+		}
+		return true
+	}
+	if observed := processStartTime(s.pid); observed != s.startTime {
+		t.Errorf("refusing cleanup after process identity changed: pid=%d captured=%d observed=%d", s.pid, s.startTime, observed)
+		return false
+	}
+	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
+	output, err := s.command("if-shell", "-F", s.identityCondition(),
+		"kill-server",
+		"display-message -p -l '"+mismatchMarker+"'")
+	if err != nil {
+		t.Errorf("conditionally kill test-owned tmux server: error=%v output=%q", err, output)
+		return false
+	}
+	if strings.TrimSpace(string(output)) != "" {
+		t.Errorf("refusing server kill after routed identity mismatch: output=%q", output)
+		return false
 	}
 	waitForProcessGone(t, s.pid)
 	for _, fixture := range s.fixtures {
 		waitForProcessGone(t, fixture.PID)
 	}
+	return true
+}
+
+func (s *tmuxBehaviorServer) routedIdentityMatches(t *testing.T) bool {
+	t.Helper()
+	output, err := s.command("display-message", "-p", "#{pid}|#{start_time}")
+	if err != nil {
+		t.Errorf("refusing destructive tmux command without routed identity: socket=%s error=%v", s.socket, err)
+		return false
+	}
+	routedPIDText, routedTmuxStart, separated := strings.Cut(strings.TrimSpace(string(output)), "|")
+	routedPID, err := strconv.Atoi(routedPIDText)
+	if err != nil || routedPID != s.pid || !separated || routedTmuxStart != s.tmuxStartTime {
+		t.Errorf("refusing destructive tmux command after socket identity changed: socket=%s captured=%d routed=%q error=%v", s.socket, s.pid, output, err)
+		return false
+	}
+	observed := processStartTime(routedPID)
+	if observed == 0 || observed != s.startTime || !processAlive(routedPID) {
+		t.Errorf("refusing destructive tmux command after process identity changed: pid=%d captured=%d observed=%d", routedPID, s.startTime, observed)
+		return false
+	}
+	return true
+}
+
+func (s *tmuxBehaviorServer) identityCondition() string {
+	return fmt.Sprintf("#{==:#{pid}:#{start_time},%d:%s}", s.pid, s.tmuxStartTime)
 }
 
 func (s *tmuxBehaviorServer) socketPath() string {
-	base := os.Getenv("TMUX_TMPDIR")
-	if base == "" {
-		base = os.TempDir()
-	}
-	return filepath.Join(base, fmt.Sprintf("tmux-%d", os.Getuid()), s.socket)
+	return s.socket
 }
 
 func assertSamePaneSet(t *testing.T, want, got []tmuxBehaviorPane, context string) {
@@ -558,6 +639,26 @@ func processAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
+func processStartTime(pid int) uint64 {
+	contents, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0
+	}
+	closingParenthesis := strings.LastIndexByte(string(contents), ')')
+	if closingParenthesis < 0 || closingParenthesis+2 >= len(contents) {
+		return 0
+	}
+	fields := strings.Fields(string(contents[closingParenthesis+2:]))
+	if len(fields) < 20 {
+		return 0
+	}
+	startTime, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return startTime
+}
+
 func waitUntil(t *testing.T, description string, predicate func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(tmuxBehaviorTimeout)
@@ -577,7 +678,7 @@ func shellQuote(value string) string {
 func withoutTmuxEnvironment(environment []string) []string {
 	result := make([]string, 0, len(environment))
 	for _, entry := range environment {
-		if strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "TMUX_PANE=") {
+		if strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "TMUX_PANE=") || strings.HasPrefix(entry, "TMUX_TMPDIR=") {
 			continue
 		}
 		result = append(result, entry)

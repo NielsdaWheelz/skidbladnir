@@ -1,0 +1,17 @@
+[Unit]
+Description=Skidbladnir tmux gateway
+
+[Service]
+Type=simple
+Environment="HOME=/home/niels"
+Environment="PATH=/home/niels/bin:/home/niels/.local/bin:/home/niels/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+UnsetEnvironment=TMUX TMUX_PANE TMUX_TMPDIR
+ExecStart=%h/.local/bin/skidbladnir gateway --listen=127.0.0.1:7341 --bearer-file=%h/.config/skidbladnir/bearer --catalogue-path=%h/.local/share/skidbladnir/characters.json
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=10s
+KillMode=process
+UMask=0022
+
+[Install]
+WantedBy=default.target
