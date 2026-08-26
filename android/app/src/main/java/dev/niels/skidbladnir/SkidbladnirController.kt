@@ -299,7 +299,7 @@ internal class SkidbladnirController(context: Context) {
         if (profiles.isEmpty()) return
         if (current.forgeRecovery is ForgeRecovery.RefreshRequired) return
         val draft = current.forgeRecovery?.draft
-            ?: ForgeDraft(cwd = "", profile = profiles.first().key, optionalName = "", objective = "")
+            ?: ForgeDraft(cwd = "", profile = profiles.first().key, optionalTmuxName = "", objective = "")
         state = current.copy(
             forgeRecovery = null,
             forge = ForgeState(
