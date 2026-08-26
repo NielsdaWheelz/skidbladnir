@@ -6,6 +6,7 @@
     var pagePort = null;
     var pageFailed = false;
     var fitScheduled = false;
+    var fontsSettled = false;
     var controlState = "Off";
     var pendingProvenKey = null;
     var compositionActive = false;
@@ -23,10 +24,24 @@
         return;
     }
 
+    // xterm reads extendedAnsi as one array anchored at ansi index 16, so the
+    // 24-step grayscale (indices 232-255) lands at offsets 216-239 and the
+    // 6x6x6 cube keeps its library defaults.
+    var ink = [0x0c, 0x0d, 0x0f];
+    var bone = [0xf3, 0xf0, 0xe8];
+    var extendedAnsi = new Array(240);
+    for (var step = 0; step < 24; step += 1) {
+        extendedAnsi[216 + step] = "#" + ink.map(function (channel, index) {
+            var tone = Math.round(channel + (bone[index] - channel) * step / 23);
+            return (tone < 16 ? "0" : "") + tone.toString(16);
+        }).join("");
+    }
+
     terminal = new window.Terminal({
         cursorBlink: true,
-        fontFamily: "monospace",
+        fontFamily: '"JetBrains Mono", monospace',
         fontSize: 14,
+        minimumContrastRatio: 3,
         rows: 8,
         scrollback: 1000,
         screenReaderMode: true,
@@ -34,23 +49,27 @@
             background: "#0c0d0f",
             foreground: "#f3f0e8",
             cursor: "#d6a85f",
-            selectionBackground: "#725b36",
-            black: "#202328",
-            red: "#e06c75",
-            green: "#98c379",
-            yellow: "#e5c07b",
-            blue: "#61afef",
-            magenta: "#c678dd",
-            cyan: "#56b6c2",
-            white: "#d7dae0",
+            cursorAccent: "#0c0d0f",
+            selectionBackground: "#f3f0e84d",
+            selectionInactiveBackground: "#f3f0e826",
+            overviewRulerBorder: "#aaa69d",
+            black: "#15171a",
+            red: "#d74e33",
+            green: "#4f925c",
+            yellow: "#ac7e35",
+            blue: "#538bac",
+            magenta: "#bb5897",
+            cyan: "#459c93",
+            white: "#aaa69d",
             brightBlack: "#5c6370",
-            brightRed: "#ef7b86",
-            brightGreen: "#a9d18e",
-            brightYellow: "#f0cf88",
-            brightBlue: "#75bdf4",
-            brightMagenta: "#d38be8",
-            brightCyan: "#6bc4cf",
-            brightWhite: "#ffffff"
+            brightRed: "#e46c55",
+            brightGreen: "#76b082",
+            brightYellow: "#d6a85f",
+            brightBlue: "#78a9c6",
+            brightMagenta: "#cd70ab",
+            brightCyan: "#64c4ba",
+            brightWhite: "#f3f0e8",
+            extendedAnsi: extendedAnsi
         }
     });
     var fitAddon = new window.FitAddon.FitAddon();
@@ -183,7 +202,7 @@
         var columns = Math.max(20, Math.min(240, dimensions.cols));
         var rows = Math.max(5, Math.min(120, dimensions.rows));
         if (terminal.cols !== columns || terminal.rows !== rows) terminal.resize(columns, rows);
-        if (pagePort && (columns !== lastPublishedColumns || rows !== lastPublishedRows)) {
+        if (fontsSettled && pagePort && (columns !== lastPublishedColumns || rows !== lastPublishedRows)) {
             lastPublishedColumns = columns;
             lastPublishedRows = rows;
             send({ kind: "Resize", columns: columns, rows: rows });
@@ -348,6 +367,22 @@
         window.visualViewport.addEventListener("resize", scheduleFit);
         window.visualViewport.addEventListener("scroll", lockPageViewport);
     }
+
+    function settleFonts() {
+        fontsSettled = true;
+        // xterm caches the cell size measured at open(), before the vendored
+        // face can arrive, and re-measures only on a font option change.
+        terminal._core._charSizeService.measure();
+        scheduleFit();
+    }
+
+    // Geometry stays local until the vendored faces settle, so the 80-column
+    // guarantee is measured in the real font; a rejected load degrades to
+    // monospace rather than withholding geometry.
+    Promise.all([
+        document.fonts.load('14px "JetBrains Mono"'),
+        document.fonts.load('bold 14px "JetBrains Mono"')
+    ]).then(settleFonts, settleFonts);
 
     function accessoryValue(key) {
         var literals = {
