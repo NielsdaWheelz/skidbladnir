@@ -281,7 +281,7 @@ func classifyMemoryPressure(value memoryPressureMetric) Status {
 	case MemoryPressureCritical:
 		return StatusHot
 	default:
-		panic("invalid memory pressure")
+		panic("invalid memory pressure") // justify-defect: the closed collector value escaped its exhaustive boundary.
 	}
 }
 

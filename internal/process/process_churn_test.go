@@ -27,7 +27,7 @@ func TestObserveNeverCombinesFactsAcrossExec(t *testing.T) {
 	if os.Getenv(execChurnHelper) == "1" {
 		command := fmt.Sprintf("exec %s -test.run=^TestObserveNeverCombinesFactsAcrossExec$", shellQuote(executable))
 		if err := syscall.Exec("/bin/sh", []string{"/bin/sh", "-c", command}, os.Environ()); err != nil {
-			panic("exec-churn helper could not replace its process")
+			panic("exec-churn helper could not replace its process") // justify-defect: this branch exists only after a required exec fails.
 		}
 	}
 
@@ -37,8 +37,8 @@ func TestObserveNeverCombinesFactsAcrossExec(t *testing.T) {
 		t.Fatal("start exec-churn helper")
 	}
 	t.Cleanup(func() {
-		_ = helper.Process.Kill()
-		_ = helper.Wait()
+		_ = helper.Process.Kill() // justify-ignore-error: test cleanup accepts an already-exited helper process.
+		_ = helper.Wait()         // justify-ignore-error: an intentional cleanup kill returns the helper exit status.
 	})
 
 	deadline := time.Now().Add(3 * time.Second)

@@ -76,11 +76,17 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
             TextButton(onClick = controller::refresh, enabled = !state.refreshing) {
                 Text(if (state.refreshing) "Reading…" else "Refresh")
             }
-            TextButton(onClick = controller::addMachine) { Text("Add machine") }
+            TextButton(
+                onClick = controller::addMachine,
+                enabled = state.unreadableMachines.isEmpty(),
+            ) { Text("Add machine") }
         }
 
         MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
-        machines.forEach { MachineStrip(it, controller) }
+        machines.forEach {
+            MachineStrip(it, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+        }
+        state.unreadableMachines.forEach { UnreadableMachineStrip(it, controller::removeUnreadableMachine) }
 
         state.notice?.let { notice ->
             Surface(
@@ -142,6 +148,10 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
         }
 
         when {
+            state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
+                "Pairing recovery required",
+                "Remove each unreadable pairing, then pair that machine again.",
+            )
             state.machines.isEmpty() -> EmptyState("No paired machines", "Pair a Tailscale-reachable machine to begin.")
             agents.isEmpty() -> dashboardInventoryWaitCopy(machines)?.let {
                 EmptyState("Sessions not current", it)
@@ -197,6 +207,37 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
 }
 
 @Composable
+internal fun UnreadableMachineStrip(
+    machine: UnreadableStoredMachine,
+    onRemove: (String) -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+            Text(
+                if (machine.collectionWide) "Unreadable pairing index" else "Unreadable pairing",
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                if (machine.collectionWide) {
+                    "Saved pairings cannot be identified safely. Remove them, then pair each machine again."
+                } else {
+                    "Its saved identity and destination are untrusted. Remove it, then pair the machine again."
+                },
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            TextButton(onClick = { onRemove(machine.encodedHandle) }) {
+                Text(if (machine.collectionWide) "Remove saved pairings" else "Remove pairing")
+            }
+        }
+    }
+}
+
+@Composable
 private fun MachineFilters(
     machines: List<MachineState>,
     selected: MachineHandle?,
@@ -224,7 +265,11 @@ private fun MachineFilters(
 }
 
 @Composable
-private fun MachineStrip(machine: MachineState, controller: SkidbladnirController) {
+private fun MachineStrip(
+    machine: MachineState,
+    controller: SkidbladnirController,
+    credentialWritesEnabled: Boolean,
+) {
     val stale = machine.inventory is InventoryState.Stale
     Surface(
         color = RaisedSurface,
@@ -269,11 +314,17 @@ private fun MachineStrip(machine: MachineState, controller: SkidbladnirControlle
                     "machine-${if (machine.canMutate) "actionable" else "nonmutating"}-${machine.machine.handle.encoded}",
                 ),
             ) {
-                TextButton(onClick = { controller.requestRenameMachine(machine.machine.handle) }) {
+                TextButton(
+                    onClick = { controller.requestRenameMachine(machine.machine.handle) },
+                    enabled = credentialWritesEnabled,
+                ) {
                     Text("Rename")
                 }
                 if (machine.access == MachineAccess.AuthRequired) {
-                    TextButton(onClick = { controller.repairMachine(machine.machine.handle) }) { Text("Update bearer") }
+                    TextButton(
+                        onClick = { controller.repairMachine(machine.machine.handle) },
+                        enabled = credentialWritesEnabled,
+                    ) { Text("Update bearer") }
                 }
                 TextButton(onClick = { controller.removeMachine(machine.machine.handle) }) { Text("Remove machine") }
             }

@@ -7,12 +7,15 @@ import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+
+private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
 internal sealed interface PairingMode {
     data object Add : PairingMode
@@ -41,6 +44,7 @@ internal sealed interface SkidbladnirUiState {
         val forgeRecovery: ForgeRecovery?,
         val rename: RenameState? = null,
         val kill: KillState?,
+        val unreadableMachines: List<UnreadableStoredMachine> = emptyList(),
     ) : SkidbladnirUiState
 
     data class Terminal(
@@ -91,6 +95,47 @@ internal fun synchronizeTerminalMachineState(
     terminal.copy(machine = machine.machine, machineCanMutate = machine.canMutate)
 } else {
     terminal
+}
+
+internal fun terminalInventoryReadFailure(
+    machine: MachineState,
+    failure: GatewayFailure,
+): MachineState = markInventoryFailure(listOf(machine), machine.machine.handle, failure).single()
+
+internal fun storedCredentialUnavailable(
+    machine: PairedMachine,
+    current: MachineState? = null,
+): MachineState {
+    require(current == null || current.machine.handle == machine.handle)
+    val failure = GatewayFailure.Api(ApiErrorCode.Unauthenticated)
+    val inventory = current?.let { terminalInventoryReadFailure(it, failure).inventory }
+        ?: InventoryState.Unreachable(failure)
+    val pressure = when (val value = current?.pressure) {
+        is PressureState.Fresh -> PressureState.Stale(value.response, failure)
+        is PressureState.Stale -> PressureState.Stale(value.response, failure)
+        PressureState.Reading, is PressureState.Unavailable, null -> PressureState.Unavailable(failure)
+    }
+    return MachineState(
+        machine = machine,
+        access = MachineAccess.AuthRequired,
+        inventory = inventory,
+        pressure = pressure,
+    )
+}
+
+internal fun pairingAuthorityConflict(
+    credentials: Collection<MachineCredential>,
+    storageComplete: Boolean,
+    repairHandle: MachineHandle?,
+    label: MachineLabel,
+    origin: MachineOrigin,
+    bearer: GatewayBearer,
+): Boolean = !storageComplete || credentials.any { credential ->
+    credential.machine.handle != repairHandle && (
+        credential.machine.label.text.equals(label.text, ignoreCase = true) ||
+            credential.machine.origin == origin ||
+            credential.bearer == bearer
+        )
 }
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
@@ -514,6 +559,7 @@ internal class SkidbladnirController(context: Context) {
     private val client = GatewayClient()
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
+    private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = MachineInventoryOperations(network) { defect ->
         main.post { throw defect }
@@ -543,29 +589,33 @@ internal class SkidbladnirController(context: Context) {
         state = storedMachineRead.readingState
         executeCredentialOperation {
             val stored = try {
-                store.readAll()
+                store.read()
             } catch (_: Exception) {
-                val reset = runCatching { store.resetAll() }.isSuccess
                 main.post {
                     if (!isActiveGeneration(activeGeneration)) return@post
                     retainedStoredMachineForgeCarry = null
                     credentials.clear()
-                    machineStates.clear()
                     pendingInventoryMutationFences.clear()
-                    state = pairingState(
-                        error = if (reset) {
-                            "Stored machines could not be read and were cleared. Pair each machine again."
-                        } else {
-                            "Stored machines could not be read or cleared."
-                        },
-                    )
+                    val previous = machineStates.values.toList()
+                    machineStates.clear()
+                    previous.forEach { machine ->
+                        machineStates[machine.machine.handle] = storedCredentialUnavailable(machine.machine, machine)
+                    }
+                    if (machineStates.isEmpty()) {
+                        state = pairingState(error = "Stored machines could not be read. No pairing data was cleared.")
+                    } else {
+                        publishDashboard(
+                            refreshing = false,
+                            notice = "Stored machine credentials could not be read. Update each bearer or remove its machine.",
+                        )
+                    }
                 }
                 return@executeCredentialOperation
             }
             main.post {
                 val reconciliation = storedMachineRead.reconcileIfCurrent(
                     isCurrent = isActiveGeneration(activeGeneration),
-                    storedCredentials = stored,
+                    storedCredentials = stored.credentials,
                 ) ?: return@post
                 retainedStoredMachineForgeCarry = null
                 val reconciled = reconciliation.machines
@@ -587,8 +637,19 @@ internal class SkidbladnirController(context: Context) {
                     credentials[entry.credential.machine.handle] = entry.credential
                     machineStates[entry.machine.machine.handle] = entry.machine
                 }
-                if (reconciled.isEmpty()) state = pairingState() else {
-                    publishDashboard(refreshing = true, carry = reconciliation.forgeCarry)
+                unreadableMachines.clear()
+                unreadableMachines += stored.unreadable
+                val storageNotice = stored.unreadable.takeIf { it.isNotEmpty() }?.let {
+                    "Some stored pairings could not be authenticated. Remove and pair them again."
+                }
+                if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
+                    state = pairingState(error = storageNotice)
+                } else {
+                    publishDashboard(
+                        refreshing = reconciled.isNotEmpty(),
+                        notice = storageNotice,
+                        carry = reconciliation.forgeCarry,
+                    )
                     reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
                         startPolling(it.credential.machine.handle, activeGeneration)
                     }
@@ -620,11 +681,13 @@ internal class SkidbladnirController(context: Context) {
     }
 
     fun addMachine() {
-        state = pairingState(canCancel = credentials.isNotEmpty())
+        if (unreadableMachines.isNotEmpty()) return
+        state = pairingState(canCancel = machineStates.isNotEmpty())
     }
 
     fun repairMachine(handle: MachineHandle) {
-        val machine = credentials[handle]?.machine ?: return
+        if (unreadableMachines.isNotEmpty()) return
+        val machine = machineStates[handle]?.machine ?: return
         state = SkidbladnirUiState.Pairing(
             mode = PairingMode.Repair(handle),
             draft = PairingDraft(machine.label.text, machine.origin.encoded, ""),
@@ -667,11 +730,16 @@ internal class SkidbladnirController(context: Context) {
         }
         requireNotNull(label); requireNotNull(origin); requireNotNull(bearer)
         val repair = current.mode as? PairingMode.Repair
-        if (repair == null && credentials.values.any {
-                it.machine.label.text.equals(label.text, ignoreCase = true) || it.machine.origin == origin
-            }
+        if (pairingAuthorityConflict(
+                credentials.values,
+                storageComplete = unreadableMachines.isEmpty(),
+                repairHandle = repair?.handle,
+                label = label,
+                origin = origin,
+                bearer = bearer,
+            )
         ) {
-            state = current.copy(error = "Machine labels and origins must be unique.")
+            state = current.copy(error = "Machine labels, origins, and bearers must be unique.")
             return
         }
         val activeGeneration = generation
@@ -740,14 +808,14 @@ internal class SkidbladnirController(context: Context) {
     }
 
     fun removeMachine(handle: MachineHandle) {
-        val credential = credentials[handle] ?: return
+        val machine = machineStates[handle]?.machine ?: return
         val activeGeneration = generation
         executeCredentialOperation {
             if (runCatching { store.remove(handle) }.isFailure) {
                 main.post {
                     if (!isActiveGeneration(activeGeneration)) return@post
-                    if (credentials[handle] != credential) return@post
-                    val notice = "${credential.machine.label.text}: secure machine removal failed. Nothing was removed."
+                    if (machineStates[handle]?.machine != machine) return@post
+                    val notice = "${machine.label.text}: secure machine removal failed. Nothing was removed."
                     if (state is SkidbladnirUiState.Dashboard) {
                         publishDashboard(refreshing = false, notice = notice)
                     } else {
@@ -758,9 +826,13 @@ internal class SkidbladnirController(context: Context) {
             }
             main.post {
                 if (!isActiveGeneration(activeGeneration)) return@post
-                if (credentials[handle] != credential) return@post
+                if (machineStates[handle]?.machine != machine) return@post
                 val current = state
-                val destination = machineRemovalDestination(current, handle, credentials.size - 1)
+                val destination = machineRemovalDestination(
+                    current,
+                    handle,
+                    machineStates.size - 1 + unreadableMachines.size,
+                )
                 val remainingDashboard = (current as? SkidbladnirUiState.Dashboard)?.let {
                     removeMachineReferences(it, handle)
                 }
@@ -779,6 +851,36 @@ internal class SkidbladnirController(context: Context) {
                         if (remainingDashboard != null) state = remainingDashboard
                         publishDashboard(refreshing = false)
                     }
+                }
+            }
+        }
+    }
+
+    fun removeUnreadableMachine(encodedHandle: String) {
+        val unreadable = unreadableMachines.singleOrNull { it.encodedHandle == encodedHandle } ?: return
+        val activeGeneration = generation
+        executeCredentialOperation {
+            val removed = runCatching { store.removeUnreadable(encodedHandle) }
+            main.post {
+                if (!isActiveGeneration(activeGeneration)) return@post
+                if (unreadableMachines.singleOrNull { it.encodedHandle == encodedHandle } != unreadable) return@post
+                if (removed.isFailure) {
+                    publishDashboard(
+                        refreshing = false,
+                        notice = "Unreadable pairing removal failed. Nothing was removed.",
+                    )
+                    return@post
+                }
+                unreadableMachines.remove(unreadable)
+                if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
+                    state = pairingState()
+                } else {
+                    publishDashboard(
+                        refreshing = false,
+                        notice = unreadableMachines.takeIf { it.isNotEmpty() }?.let {
+                            "Some stored pairings could not be authenticated. Remove and pair them again."
+                        },
+                    )
                 }
             }
         }
@@ -1107,7 +1209,11 @@ internal class SkidbladnirController(context: Context) {
                 if (!isCredentialActive(activeGeneration, credential) || terminal.attempt != attempt) return@post
                 when (result) {
                     is GatewayResult.Failure -> {
-                        acceptAccessFailure(credential.machine.handle, result.failure)
+                        if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
+                            updateMachine(credential.machine.handle) {
+                                terminalInventoryReadFailure(it, result.failure)
+                            }
+                        }
                         val active = state as? SkidbladnirUiState.Terminal ?: return@post
                         state = active.copy(connection = TerminalUiStatus.ReconnectRequired(machineError(credential.machine, result.failure)))
                     }
@@ -1221,11 +1327,19 @@ internal class SkidbladnirController(context: Context) {
             inventoryOperation = inventoryOperations.forMachine(handle),
         )
         polling[handle] = runtime
+        // justify-polling: tmux and host pressure expose no push inventory; the product fixes a five-second
+        // foreground cadence, coalesces overlaps, and stopPolling cancels both schedules on loss/background.
         runtime.inventoryFuture = scheduler.scheduleAtFixedRate(
-            { requestInventory(handle, activeGeneration) }, 0, 5, TimeUnit.SECONDS,
+            { requestInventory(handle, activeGeneration) },
+            0,
+            MACHINE_POLL_CADENCE.toMillis(),
+            TimeUnit.MILLISECONDS,
         )
         runtime.pressureFuture = scheduler.scheduleAtFixedRate(
-            { requestPressure(handle, activeGeneration) }, 0, 5, TimeUnit.SECONDS,
+            { requestPressure(handle, activeGeneration) },
+            0,
+            MACHINE_POLL_CADENCE.toMillis(),
+            TimeUnit.MILLISECONDS,
         )
     }
 
@@ -1455,6 +1569,7 @@ internal class SkidbladnirController(context: Context) {
             forgeRecovery = carry.recovery,
             rename = null,
             kill = null,
+            unreadableMachines = unreadableMachines.toList(),
         )
     }
 

@@ -310,6 +310,33 @@ class MultiMachineContractTest {
     }
 
     @Test
+    fun `failed terminal admission read stales only its machine and fences terminal actions`() {
+        val target = AgentTarget(devboxHandle, session())
+        val terminal = SkidbladnirUiState.Terminal(
+            machine = devbox,
+            target = target,
+            machineCanMutate = true,
+            attempt = 2,
+            connection = TerminalUiStatus.Verifying,
+            kill = null,
+        )
+        val healthy = readyMachine(macBook, session())
+        val failed = terminalInventoryReadFailure(
+            readyMachine(devbox, target.session),
+            GatewayFailure.Transport,
+        )
+        val synchronized = synchronizeTerminalMachineState(terminal, failed).copy(
+            connection = TerminalUiStatus.ReconnectRequired("Devbox: reconnect required."),
+        )
+
+        assertTrue(failed.inventory is InventoryState.Stale)
+        assertFalse(failed.canMutate)
+        assertTrue(healthy.inventory is InventoryState.Fresh)
+        assertTrue(healthy.canMutate)
+        assertFalse(terminalActionAdmissible(synchronized.machineCanMutate, synchronized.connection))
+    }
+
+    @Test
     fun `terminal access loss returns to the affected machine dashboard with an actionable notice`() {
         val target = AgentTarget(devboxHandle, session())
         val terminal = SkidbladnirUiState.Terminal(
@@ -414,6 +441,47 @@ class MultiMachineContractTest {
         assertEquals(InventoryState.Reading, afterRotation.machine.inventory)
         assertEquals(PressureState.Reading, afterRotation.machine.pressure)
         assertFalse(afterRotation.machine.inventoryRefreshRequired)
+    }
+
+    @Test
+    fun `repair rejects another machine bearer before contacting any gateway`() {
+        val devboxBearer = requireNotNull(GatewayBearer.parse("A".repeat(43)))
+        val macBookBearer = requireNotNull(GatewayBearer.parse("B".repeat(42) + "E"))
+        val credentials = listOf(
+            MachineCredential(devbox, devboxBearer),
+            MachineCredential(macBook, macBookBearer),
+        )
+
+        assertTrue(
+            pairingAuthorityConflict(
+                credentials,
+                storageComplete = true,
+                repairHandle = macBookHandle,
+                label = macBook.label,
+                origin = macBook.origin,
+                bearer = devboxBearer,
+            ),
+        )
+        assertFalse(
+            pairingAuthorityConflict(
+                credentials,
+                storageComplete = true,
+                repairHandle = macBookHandle,
+                label = macBook.label,
+                origin = macBook.origin,
+                bearer = macBookBearer,
+            ),
+        )
+        assertTrue(
+            pairingAuthorityConflict(
+                credentials,
+                storageComplete = false,
+                repairHandle = macBookHandle,
+                label = macBook.label,
+                origin = macBook.origin,
+                bearer = macBookBearer,
+            ),
+        )
     }
 
     @Test

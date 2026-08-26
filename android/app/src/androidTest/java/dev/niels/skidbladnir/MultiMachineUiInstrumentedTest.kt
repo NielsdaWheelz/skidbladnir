@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -31,6 +32,29 @@ import org.junit.runner.RunWith
 class MultiMachineUiInstrumentedTest {
     @get:Rule
     val compose = createEmptyComposeRule()
+
+    @Test
+    fun unreadablePairingExposesOnlyOpaqueRemoval() {
+        val unreadable = UnreadableStoredMachine(
+            encodedHandle = "mh-0123456789abcdef0123456789abcdef",
+            handle = requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")),
+        )
+        val removed = AtomicReference<String>()
+
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.setContent {
+                    MaterialTheme {
+                        UnreadableMachineStrip(unreadable, removed::set)
+                    }
+                }
+            }
+            compose.onNodeWithText("Unreadable pairing").assertIsDisplayed()
+            compose.onNodeWithText("Update bearer").assertDoesNotExist()
+            compose.onNodeWithText("Remove pairing").performClick()
+            assertEquals(unreadable.encodedHandle, removed.get())
+        }
+    }
 
     @Test
     fun staleTerminalKillConfirmationDisablesConfirmButKeepsCancelAvailable() {
@@ -102,7 +126,7 @@ class MultiMachineUiInstrumentedTest {
             arguments.getString(UI_OPT_IN) == "true",
         )
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context).readAll()
+        val credentials = MachineStore(context).read().credentials
         assertEquals("UI journey requires exactly two existing production pairings", 2, credentials.size)
         val expectedHandles = setOf(
             requireNotNull(MachineHandle.parse(requireNotNull(arguments.getString(DEVBOX_MACHINE)))),
@@ -224,7 +248,7 @@ class MultiMachineUiInstrumentedTest {
         )
         val failedHandle = requireNotNull(MachineHandle.parse(requireNotNull(encodedHandle)))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context).readAll()
+        val credentials = MachineStore(context).read().credentials
         assertEquals(2, credentials.size)
         assertTrue(credentials.any { it.machine.handle == failedHandle })
         val failed = credentials.single { it.machine.handle == failedHandle }

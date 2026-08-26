@@ -13,7 +13,9 @@ import (
 
 func TestObservePreservesEmptyDarwinArguments(t *testing.T) {
 	if os.Getenv("SKIDBLADNIR_EMPTY_ARGV_HELPER") == "1" {
-		_, _ = os.Stdout.WriteString("ready\n")
+		if _, err := os.Stdout.WriteString("ready\n"); err != nil {
+			panic("empty-argument helper could not announce readiness") // justify-defect: the private test protocol requires this write.
+		}
 		time.Sleep(30 * time.Second)
 		return
 	}
@@ -36,8 +38,8 @@ func TestObservePreservesEmptyDarwinArguments(t *testing.T) {
 		t.Fatal("start empty-argument helper")
 	}
 	t.Cleanup(func() {
-		_ = command.Process.Kill()
-		_ = command.Wait()
+		_ = command.Process.Kill() // justify-ignore-error: test cleanup accepts an already-exited helper process.
+		_ = command.Wait()         // justify-ignore-error: an intentional cleanup kill returns the helper exit status.
 	})
 	if ready, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || ready != "ready\n" {
 		t.Fatal("empty-argument helper did not become ready")
