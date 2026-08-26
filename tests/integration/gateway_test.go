@@ -179,10 +179,14 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	laptop := findSession(t, inventory, "laptop")
 	laptopID := laptop["id"].(string)
 	laptopToken := laptop["identityToken"].(string)
-	for _, absent := range []string{"profile", "objective", "character"} {
+	for _, absent := range []string{"profile", "objective"} {
 		if _, exists := laptop[absent]; exists {
 			t.Fatalf("laptop-created session guessed %s metadata: %+v", absent, laptop)
 		}
+	}
+	laptopCharacter := laptop["character"].(map[string]any)
+	if laptopCharacter["key"] == "" || laptopCharacter["displayName"] == "" {
+		t.Fatalf("laptop-created session omitted its normalized character: %+v", laptop)
 	}
 
 	before := len(inventory["sessions"].([]any))
@@ -202,23 +206,23 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"profile":"personal"}`)
 	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalName":null}`)
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":null}`)
 	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalName":""}`)
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":""}`)
 	assertError(t, response, http.StatusUnprocessableEntity, "SessionNameInvalid")
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","objective":""}`)
 	assertError(t, response, http.StatusUnprocessableEntity, "ObjectiveInvalid")
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", strings.Repeat("x", int(gateway.MaximumBodyBytes)+1))
 	assertError(t, response, http.StatusRequestEntityTooLarge, "RequestTooLarge")
 
-	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "claude-work", "optionalName": "ga-gateway-test", "objective": "Prove the control plane"})
+	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "claude-work", "optionalTmuxName": "gateway-test", "objective": "Prove the control plane"})
 	if err != nil {
 		t.Fatalf("encode create request: %v", err)
 	}
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(createBody))
 	assertStatus(t, response, http.StatusCreated)
 	created := decodeObject(t, response)
-	if created["name"] != "ga-gateway-test" || created["profile"] != "claude-work" || created["objective"] != "Prove the control plane" {
+	if created["tmuxName"] != "gateway-test" || created["profile"] != "claude-work" || created["objective"] != "Prove the control plane" {
 		t.Fatalf("created card omitted requested metadata: %+v", created)
 	}
 	character := created["character"].(map[string]any)
@@ -239,7 +243,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
 	bearer = secondBearer
 
-	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", `{"name":"ga-gateway-test"}`)
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", `{"tmuxName":"gateway-test"}`)
 	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
 	staleToken := createdToken
 	if createdToken[3] == '0' {
@@ -247,18 +251,18 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	} else {
 		staleToken = createdToken[:3] + "0" + createdToken[4:]
 	}
-	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"name":"ga-gateway-test","identityToken":%q}`, staleToken))
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"gateway-test","identityToken":%q}`, staleToken))
 	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
 
-	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"name":"laptop","identityToken":%q}`, createdToken))
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"laptop","identityToken":%q}`, createdToken))
 	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
 	inventory = decodeObject(t, response)
 	findSession(t, inventory, "laptop")
-	findSession(t, inventory, "ga-gateway-test")
+	findSession(t, inventory, "gateway-test")
 
-	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"name":"ga-gateway-test","identityToken":%q}`, createdToken))
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(createdID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"gateway-test","identityToken":%q}`, createdToken))
 	assertStatus(t, response, http.StatusNoContent)
 	response.Body.Close()
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
@@ -277,7 +281,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	if err != nil || strings.TrimSpace(string(sharedPanePID)) == "" {
 		t.Fatalf("capture grouped target pane PID: output=%q error=%v", sharedPanePID, err)
 	}
-	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(laptopID), bearer, "niels@example.test", fmt.Sprintf(`{"name":"laptop","identityToken":%q}`, laptopToken))
+	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(laptopID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"laptop","identityToken":%q}`, laptopToken))
 	assertError(t, response, http.StatusConflict, "SessionGroupedConflict")
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
@@ -425,15 +429,15 @@ func decodeObject(t *testing.T, response *http.Response) map[string]any {
 	return body
 }
 
-func findSession(t *testing.T, inventory map[string]any, name string) map[string]any {
+func findSession(t *testing.T, inventory map[string]any, tmuxName string) map[string]any {
 	t.Helper()
 	for _, value := range inventory["sessions"].([]any) {
 		session := value.(map[string]any)
-		if session["name"] == name {
+		if session["tmuxName"] == tmuxName {
 			return session
 		}
 	}
-	t.Fatalf("session %q not found in inventory: %+v", name, inventory)
+	t.Fatalf("tmux session %q not found in inventory: %+v", tmuxName, inventory)
 	return nil
 }
 
