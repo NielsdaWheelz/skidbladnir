@@ -244,12 +244,12 @@ func TestTerminalPresenceAndLastLinkDetachPreserveThePane(t *testing.T) {
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 2, "Constrained")
 	shadow := requireTerminalPhoneShadow(t, fixture)
-	fixture.tmux(t, "detach-client", "-t", requireTerminalLaptopClient(t, fixture, source.ID, source.Name))
+	fixture.tmux(t, "detach-client", "-t", requireTerminalLaptopClient(t, fixture, source.ID, source.TmuxName))
 	requireTerminalPresence(t, connection, "Presence", 1, "Owner")
 
 	removeExactTerminalSourceLink(t, fixture, source, panePID)
 	waitForTerminalCondition(t, "phone shadow became the last grouped link", func() bool {
-		return !terminalSessionExists(t, fixture, source.ID, source.Name) && terminalSessionExists(t, fixture, shadow.id, shadow.name)
+		return !terminalSessionExists(t, fixture, source.ID, source.TmuxName) && terminalSessionExists(t, fixture, shadow.id, shadow.name)
 	})
 	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("PHONE-SURVIVES\r"))
@@ -291,8 +291,8 @@ func TestTerminalDetachLeavesAnAttachedPhoneShadowUntouched(t *testing.T) {
 		return terminalHasOnlyExactClient(t, fixture, unrelatedClient, shadow.id, shadow.name)
 	})
 
-	if !terminalSessionExists(t, fixture, source.ID, source.Name) {
-		t.Fatalf("terminal detach removed source session: id=%s name=%s", source.ID, source.Name)
+	if !terminalSessionExists(t, fixture, source.ID, source.TmuxName) {
+		t.Fatalf("terminal detach removed source session: id=%s name=%s", source.ID, source.TmuxName)
 	}
 	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
 		t.Fatalf("terminal detach removed attached phone shadow: id=%s name=%s", shadow.id, shadow.name)
@@ -760,15 +760,15 @@ func requireTerminalPaneIdentity(t *testing.T, fixture sessionFixture, target st
 func removeExactTerminalSourceLink(t *testing.T, fixture sessionFixture, source sessions.Session, panePID int) {
 	t.Helper()
 	parts := strings.Split(source.IdentityToken, ".")
-	if len(parts) != 4 || "$"+parts[3] != source.ID || !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.Name) {
-		t.Fatalf("test source has invalid lifetime identity: id=%q name=%q token=%q", source.ID, source.Name, source.IdentityToken)
+	if len(parts) != 4 || "$"+parts[3] != source.ID || !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.TmuxName) {
+		t.Fatalf("test source has invalid lifetime identity: id=%q name=%q token=%q", source.ID, source.TmuxName, source.IdentityToken)
 	}
 	conditions := []string{
 		"#{==:#{@skid_server_epoch}," + parts[0] + "}",
 		"#{==:#{pid}," + parts[1] + "}",
 		"#{==:#{start_time}," + parts[2] + "}",
 		"#{==:#{session_id}," + source.ID + "}",
-		"#{==:#{session_name}," + source.Name + "}",
+		"#{==:#{session_name}," + source.TmuxName + "}",
 		"#{==:#{pane_pid}," + strconv.Itoa(panePID) + "}",
 	}
 	condition := conditions[len(conditions)-1]
@@ -779,7 +779,7 @@ func removeExactTerminalSourceLink(t *testing.T, fixture sessionFixture, source 
 	output := fixture.tmux(t, "if-shell", "-F", "-t", source.ID, condition,
 		"kill-session -t '"+source.ID+"'", "display-message -p -l '"+mismatch+"'")
 	if output != "" {
-		t.Fatalf("refused exact test source-link removal: id=%s name=%s output=%q", source.ID, source.Name, output)
+		t.Fatalf("refused exact test source-link removal: id=%s name=%s output=%q", source.ID, source.TmuxName, output)
 	}
 }
 

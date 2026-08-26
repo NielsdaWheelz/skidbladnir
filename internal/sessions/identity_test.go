@@ -5,8 +5,66 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
+
+func TestCharacterSelectionChoosesALeastUsedStableWinner(t *testing.T) {
+	characters := []catalog.Character{
+		{Key: "norse.alpha", DisplayName: "Alpha"},
+		{Key: "norse.beta", DisplayName: "Beta"},
+		{Key: "norse.gamma", DisplayName: "Gamma"},
+	}
+	usage := map[string]int{
+		"norse.alpha": 2,
+		"norse.beta":  0,
+		"norse.gamma": 1,
+	}
+	if got := selectCharacter(characters, usage, "v1-test\x00$7"); got.Key != "norse.beta" {
+		t.Fatalf("least-used character = %q, want norse.beta", got.Key)
+	}
+
+	for key := range usage {
+		usage[key] = 0
+	}
+	first := selectCharacter(characters, usage, "v1-test\x00$7")
+	reversed := []catalog.Character{characters[2], characters[1], characters[0]}
+	second := selectCharacter(reversed, usage, "v1-test\x00$7")
+	if first.Key != "norse.gamma" || second != first {
+		t.Fatalf("stable tied selection = (%+v, %+v), want norse.gamma independent of catalogue order", first, second)
+	}
+}
+
+func TestCharacterSelectionBalancesCommittedSequentialAssignments(t *testing.T) {
+	characters := []catalog.Character{
+		{Key: "norse.alpha", DisplayName: "Alpha"},
+		{Key: "norse.beta", DisplayName: "Beta"},
+		{Key: "norse.gamma", DisplayName: "Gamma"},
+	}
+	usage := map[string]int{}
+	for _, id := range []string{"$1", "$2", "$3", "$4", "$5", "$6"} {
+		selected := selectCharacter(characters, usage, "v1-test\x00"+id)
+		usage[selected.Key]++
+	}
+	for _, character := range characters {
+		if usage[character.Key] != 2 {
+			t.Fatalf("balanced usage[%q] = %d, want 2: %+v", character.Key, usage[character.Key], usage)
+		}
+	}
+}
+
+func TestGeneratedTmuxNamesUseIndependentProfileNamespaces(t *testing.T) {
+	names := map[string]struct{}{
+		"skidbladnir-work-1":     {},
+		"skidbladnir-personal-1": {},
+	}
+	if got := generatedTmuxName(names, "work"); got != "skidbladnir-work-2" {
+		t.Fatalf("generated work tmux name = %q, want skidbladnir-work-2", got)
+	}
+	if got := generatedTmuxName(names, "claude-work"); got != "skidbladnir-claude-work-1" {
+		t.Fatalf("generated Claude tmux name = %q, want skidbladnir-claude-work-1", got)
+	}
+}
 
 func TestSessionIdentityTokenBindsServerLifetimeAndSessionID(t *testing.T) {
 	server := tmuxclient.ServerIdentity{

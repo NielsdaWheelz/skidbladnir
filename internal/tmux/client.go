@@ -12,7 +12,10 @@ import (
 	"strings"
 )
 
-var socketNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+var (
+	socketNamePattern       = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	tmuxCommandTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+)
 
 const (
 	ServerEpochOption      = "@skid_server_epoch"
@@ -166,6 +169,50 @@ func (client Client) KillSessionIfIdentityAndIsolated(ctx context.Context, id, n
 	}
 }
 
+func (client Client) AssignCharacterIfUnchanged(
+	ctx context.Context,
+	id string,
+	expected string,
+	character string,
+	server ServerIdentity,
+) (bool, error) {
+	arguments, err := characterAssignmentArguments(id, expected, character, server)
+	if err != nil {
+		return false, err
+	}
+	output, err := client.Output(ctx, "assign-character-if-unchanged", arguments[0], arguments[1:]...)
+	if err != nil {
+		return false, err
+	}
+	switch output {
+	case "":
+		return true, nil
+	case identityMismatchMarker:
+		return false, nil
+	default:
+		return false, errors.New("tmux conditional character assignment returned unexpected output")
+	}
+}
+
+func characterAssignmentArguments(id, expected, character string, server ServerIdentity) ([]string, error) {
+	if !sessionIDPattern.MatchString(id) || !tmuxCommandTokenPattern.MatchString(character) || !server.valid() {
+		return nil, errors.New("tmux character assignment identity is invalid")
+	}
+	conditions := []string{
+		"#{==:#{" + ServerEpochOption + "}," + formatLiteral(server.Epoch) + "}",
+		"#{==:#{pid}," + formatLiteral(server.PID) + "}",
+		"#{==:#{start_time}," + formatLiteral(server.StartTime) + "}",
+		"#{==:#{session_id}," + formatLiteral(id) + "}",
+		"#{==:#{@skid_character}," + formatLiteral(expected) + "}",
+		"#{!=:#{@skid_internal}," + phoneShadowMarker + "}",
+	}
+	return []string{
+		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
+		"set-option -t '" + id + "' -- @skid_character " + character,
+		"display-message -p -l '" + identityMismatchMarker + "'",
+	}, nil
+}
+
 func killEligibilityCondition(id, name string, server ServerIdentity) string {
 	isolated := "#{||:#{==:#{session_group_size},},#{==:#{session_group_size},1}}"
 	return "#{&&:" + killIdentityCondition(id, name, server) + "," + isolated + "}"
@@ -194,8 +241,15 @@ func killIdentityCondition(id, name string, server ServerIdentity) string {
 		"#{==:#{session_id}," + formatLiteral(id) + "}",
 		"#{==:#{session_name}," + formatLiteral(name) + "}",
 	}
-	return "#{&&:" + conditions[0] + ",#{&&:" + conditions[1] + ",#{&&:" +
-		conditions[2] + ",#{&&:" + conditions[3] + "," + conditions[4] + "}}}}"
+	return andFormatConditions(conditions)
+}
+
+func andFormatConditions(conditions []string) string {
+	condition := conditions[len(conditions)-1]
+	for index := len(conditions) - 2; index >= 0; index-- {
+		condition = "#{&&:" + conditions[index] + "," + condition + "}"
+	}
+	return condition
 }
 
 func (identity ServerIdentity) valid() bool {
