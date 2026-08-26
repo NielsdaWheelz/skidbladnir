@@ -39,6 +39,10 @@ S1 tmux control plane
  -> v0 profile delta: Claude Work
  -> v0 identity delta: automatic dwarf identity
  -> v0 terminal key-deck delta
+ -> v0 design delta D1: terminal theme
+ -> v0 design delta D2: chrome tokens
+ -> v0 design delta D3: dwarf seals
+ -> v0 design delta D4: ornament
  -> v0.5 (optional): push
 ```
 
@@ -215,7 +219,7 @@ duplicate app navigation or lifecycle actions.
 - Exact scope and ownership per [the terminal key-deck plan](terminal-key-deck.md).
 - Hard-cut bottom `Agents`, bottom `Detach`, fixed `Ctrl-C`, and any raw Compose
   or Kotlin-transform byte path; retain PR #5's single ordered versioned
-  `Accessory -> page -> Input` route.
+  `Accessory -> terminal.js -> Input` route.
 - One-shot Ctrl, mode-aware terminal keys, literal IME/dictation/paste safety,
   stable `48dp` targets, and explicit spoken state.
 - No gateway, tmux, public API, customization, macro, or protocol-upgrade work.
@@ -226,6 +230,46 @@ behavior/accessibility proof, each owned by its production builder.
 Gate: routine verification, then one separately approved Android platform and
 hands-on S22+ pass. Real-tmux integration and live gates are not part of this
 unchanged transport boundary.
+
+## v0 design deltas — Niðavellir adoption
+
+[`design-language.md`](design-language.md) owns the visual identity these four
+deltas adopt; each delta has its own implementation-boundary spec, red proofs,
+and gates, and lands as its own change. Order is D1 → D2 → D3 → D4: D1 is
+independent; D2 creates the token system D3 and D4 consume. No gateway, tmux,
+public API, or input-semantics work appears anywhere in D1–D4.
+
+### D1 — terminal theme
+
+Outcome: the terminal renders the derived Niðavellir ANSI/ITheme table in
+vendored JetBrains Mono behind the unchanged bundle-only CSP posture.
+Scope and ownership per [terminal-theme.md](terminal-theme.md). Gate: routine
+verification plus one separately approved platform pass; no integration gate
+for this unchanged transport boundary.
+
+### D2 — chrome tokens
+
+Outcome: one owned token file (color, shape, type, motion, interaction
+states) and every Compose surface — pairing, grid, Forge, terminal chrome,
+key deck styling — consuming it; `SHELL` becomes visually distinct from
+`RUNNING`. Scope and ownership per [chrome-tokens.md](chrome-tokens.md).
+Gate: routine verification plus one separately approved platform pass.
+
+### D3 — dwarf seals
+
+Outcome: the procedural portrait becomes the deterministic Niðavellir seal
+(octagon, mineral field, Younger-Futhark bind-rune, angular figure), a pure
+function of `character.key`. Scope per [dwarf-seals.md](dwarf-seals.md).
+Gate: routine verification; the named 48dp distinguishability check is a
+hands-on device pass and stays `NOT_RUN` until approved.
+
+### D4 — ornament
+
+Outcome: build-time-generated fret and interlace ornament on the Forge and
+pairing surfaces, the valknut empty-state mark, and the adaptive app icon.
+Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
+verification plus icon/ornament checks folded into the next approved platform
+pass.
 
 ## v0.5 — optional, after corrected v0 is in daily use
 
@@ -247,4 +291,8 @@ orchestration, via a new architecture decision.
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
 | v0 identity delta — automatic dwarf identity | Source implemented; routine verification and isolated real-tmux acceptance green |
 | v0 terminal key-deck delta | Implemented; council source review, routine verification, the 19-test S22+ platform gate, and user-reported hands-on acceptance green |
+| v0 design delta D1 — terminal theme | Spec drafted 2026-08-26; review pending; source not started |
+| v0 design delta D2 — chrome tokens | Spec drafted 2026-08-26; review pending; source not started |
+| v0 design delta D3 — dwarf seals | Spec drafted 2026-08-26; review pending; source not started |
+| v0 design delta D4 — ornament | Spec drafted 2026-08-26; review pending; source not started |
 | v0.5 push | Not scheduled |

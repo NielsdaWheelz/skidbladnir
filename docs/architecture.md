@@ -15,6 +15,9 @@ conversation.
 
 Specification precedence: this document owns product behavior, architecture,
 scope, and acceptance; [`roadmap.md`](roadmap.md) owns delivery order;
+[`design-language.md`](design-language.md) owns visual identity — color,
+typography, shape, ornament, motion, and the terminal theme — subordinate to
+this document;
 [`docs/rules`](rules/index.md) applies where it does not conflict with the
 v0 scope. A platform fact that contradicts a premise reopens this document.
 
@@ -437,7 +440,10 @@ is modeled as `UNKNOWN`; only unmodeled defects become the content-free
 - Rotation, IME resize, and process recreation preserve or cleanly recreate
   the attachment; nothing replays.
 - Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
-  semantic labels on all controls. The terminal key deck has `48dp` minimum
+  semantic labels on all controls. Visual identity — palette, typography,
+  shape, ornament, motion, and the terminal theme — follows
+  [`design-language.md`](design-language.md); each of the five status kinds
+  renders with a distinct color. The terminal key deck has `48dp` minimum
   non-overlapping targets, `8dp` spacing, stable traversal, and spoken Ctrl
   state; accessibility beyond this reviewed surface remains best-effort.
 

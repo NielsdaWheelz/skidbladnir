@@ -1,9 +1,9 @@
 # Automatic dwarf identity
 
-Status: approved hard-cut implementation specification, 2026-08-26. No open
-questions. This document is the reviewed scope and red/green plan; the root
-integrator must cut its final behavior into `architecture.md` and delivery into
-`roadmap.md` before production implementation starts.
+Status: implemented, 2026-08-26; routine verification and isolated real-tmux
+acceptance green (see [`roadmap.md`](roadmap.md)). The final behavior is cut
+into [`architecture.md`](architecture.md); this document remains the
+historical scope and red/green plan.
 
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md). Architecture guardrails remain binding.
