@@ -35,6 +35,7 @@ case "$gate" in
   unit)
     cd "$repo_dir"
     run go-unit go test ./cmd/... ./internal/...
+    run codex-config-unit /usr/bin/python3 scripts/check-codex-config --self-test
     run android-unit ./scripts/build android-unit
     ;;
   integration)

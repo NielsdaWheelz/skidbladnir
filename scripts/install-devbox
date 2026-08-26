@@ -143,18 +143,8 @@ require_retired_hook_runtime_disabled() {
     if ! classify_status_hooks "$hook_file" >/dev/null; then
       die "Codex hook configuration conflicts: ${hook_file}"
     fi
-    if ! /usr/bin/python3 - "$config_file" <<'PY'
-import sys
-import tomllib
-
-with open(sys.argv[1], "rb") as stream:
-    config = tomllib.load(stream)
-features = config.get("features", {})
-if not isinstance(features, dict) or features.get("hooks") is False or "hooks" in config:
-    raise SystemExit(1)
-PY
-    then
-    die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
+    if ! /usr/bin/python3 "$repo_dir/scripts/check-codex-config" "$config_file"; then
+      die "Codex config conflicts with repository-owned hooks.json: ${config_file}"
     fi
   done
 

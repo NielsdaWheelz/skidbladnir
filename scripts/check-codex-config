@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Accept only Codex's native hook state beside the owned hooks.json."""
+
+import sys
+import tomllib
+
+
+def accepts(source: str) -> bool:
+    try:
+        config = tomllib.loads(source)
+    except tomllib.TOMLDecodeError:
+        return False
+    features = config.get("features", {})
+    if (
+        not isinstance(features, dict)
+        or "codex_hooks" in features
+        or features.get("hooks", True) is not True
+    ):
+        return False
+    if "hooks" not in config:
+        return True
+    hooks = config["hooks"]
+    return (
+        isinstance(hooks, dict)
+        and set(hooks) == {"state"}
+        and isinstance(hooks["state"], dict)
+    )
+
+
+def self_test() -> int:
+    cases = (
+        ("no hook configuration", 'model = "gpt-5"\n', True),
+        ("explicit hook enablement", "[features]\nhooks = true\n", True),
+        ("opaque native state", '[hooks.state]\nanything = ["opaque", 1]\n', True),
+        ("invalid features table", 'features = "invalid"\n', False),
+        ("disabled hooks", "[features]\nhooks = false\n", False),
+        ("invalid hook feature", '[features]\nhooks = "yes"\n', False),
+        ("deprecated enabled hook feature", "[features]\ncodex_hooks = true\n", False),
+        ("deprecated disabled hook feature", "[features]\ncodex_hooks = false\n", False),
+        (
+            "canonical and deprecated hook features",
+            "[features]\nhooks = true\ncodex_hooks = false\n",
+            False,
+        ),
+        ("invalid hooks table", 'hooks = "invalid"\n', False),
+        ("empty inline hook table", "[hooks]\n", False),
+        ("invalid native state", 'hooks = { state = "invalid" }\n', False),
+        ("inline lifecycle hook", "[hooks.SessionStart]\n", False),
+        (
+            "trust state plus inline hook",
+            '[hooks.state]\ntrusted_hash = "opaque"\n[hooks.UserPromptSubmit]\n',
+            False,
+        ),
+        ("malformed TOML", "[hooks.state\n", False),
+    )
+    for name, source, expected in cases:
+        observed = accepts(source)
+        if observed != expected:
+            print(f"Codex config policy case {name!r} = {observed}, want {expected}", file=sys.stderr)
+            return 1
+    print(f"Codex config policy passed: {len(cases)} cases")
+    return 0
+
+
+def main(arguments: list[str]) -> int:
+    if arguments == ["--self-test"]:
+        return self_test()
+    if len(arguments) != 1:
+        print("usage: check-codex-config {--self-test|CONFIG_PATH}", file=sys.stderr)
+        return 64
+    try:
+        with open(arguments[0], encoding="utf-8") as stream:
+            source = stream.read()
+    except (OSError, UnicodeError) as error:
+        print(f"read Codex config: {error}", file=sys.stderr)
+        return 1
+    if not accepts(source):
+        print(
+            "Codex config must omit features.codex_hooks, leave features.hooks enabled, "
+            "and define at most hooks.state",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -5,9 +5,14 @@ Status: scope reset approved 2026-08-25; S1–S3 source implemented. Daily use o
 activity-derived status, and a colorless/narrow terminal. Their corrective
 source delta is implemented and routine verification is green. Isolated tmux,
 current devbox deployment, and automated S22+ platform acceptance passed on
-2026-08-26 under their explicit gates. Codex hook-digest review and renewed
-hands-on S22+ acceptance remain `NOT_RUN`; prior acceptance does not prove the
-new delta.
+2026-08-26 under their explicit gates. Daily use then exposed a lifecycle-hook
+boundary defect: the helper walked beyond its terminal session into PID 1, and
+deployment preflight rejected Codex's native hook-state table. Its source repair
+and routine verification are green. Transactional deployment and repeatable
+verification, the owned hook-file digest, isolated tmux/live gates, and an
+installed lifecycle-producer smoke are also green. The automated 9-test S22+
+platform gate is green; real Codex event delivery and renewed hands-on S22+
+acceptance remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -131,8 +136,12 @@ rotation, reconnect.
   turns an idle agent active; stale attention remains during a new prompt; a
   prior process lifetime supplies status to a replacement process; ANSI output
   is monochrome; portrait reports fewer than 80 columns; long Gboard input or a
-  rotation moves/scales the outer viewport.
-- Green: pure status and process-lifetime proofs; exact tmux RGB command-shape
+  rotation moves/scales the outer viewport; a lifecycle hook walks beyond its
+  terminal session or can publish to a pane on another terminal; Codex's native
+  hook state blocks an otherwise valid deploy, or a deprecated disable alias
+  passes preflight.
+- Green: pure status, process-lifetime, target-terminal, terminal-session
+  ancestry, and strict hook-config policy proofs; exact tmux RGB command-shape
   proof; compiled Android regression for 80-column geometry, rendered colored
   pixels, and native/page/IME containment.
 - Acceptance: isolated tmux integration, exact devbox install/verify and Codex
@@ -152,8 +161,8 @@ orchestration, via a new architecture decision.
 
 | Slice | Status |
 | --- | --- |
-| S1 tmux control plane | Implemented; corrective lifecycle source, isolated integration/live proof, and devbox install/verify green; Codex hook-digest review and hands-on status proof `NOT_RUN` |
+| S1 tmux control plane | Implemented; terminal-session/native-hook-state repair, routine proof, deploy/reverify, isolated integration/live, hook-file digest, and installed producer smoke green; real Codex delivery and hands-on status proof `NOT_RUN` |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
-| v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
+| v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
 | v0.5 push | Not scheduled |

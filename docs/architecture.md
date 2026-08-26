@@ -198,17 +198,21 @@ clears natively on view; the gateway unsets the option on attach).
 Each Codex profile also has one repository-owned `hooks.json` containing only
 three synchronous command hooks: `SessionStart(startup|resume|clear)` writes
 `IDLE`, `UserPromptSubmit` writes `WORKING` and clears stale attention, and
-`Stop` writes `IDLE`. The helper drains but never parses hook input. It walks
-its own `/proc` ancestry and accepts exactly one logical Codex runtime: either
-a single Codex process, or the pin's direct native-`codex` child plus exact
-Node launcher. That runtime's outer process must be the pane tty's foreground
-process-group leader; a second/nested runtime is ignored even when it takes
-foreground control. The option is bound to the outer process's PID and kernel
-start time. Codex retains its native exact-digest hook review: install
-verifies the file bytes and rejects conflicting user-level hook sources, then
-the user approves a new digest once with `/hooks`; Skíðblaðnir does not edit an
-opaque trust store or bypass Codex review. Missing, untrusted, or unloaded hooks
-leave the honest `RUNNING` state.
+`Stop` writes `IDLE`. The helper drains but never parses hook input. It resolves
+the exact target pane's tty, requires the hook process to share that terminal,
+then walks its own `/proc` ancestry through the terminal's session leader. It
+accepts exactly one logical Codex runtime: either a single Codex process, or
+the pin's direct native-`codex` child plus exact Node launcher. Ancestors beyond
+that terminal-session boundary are never inspected. That runtime's outer
+process must be the pane tty's foreground process-group leader; a second/nested
+runtime is ignored even when it takes foreground control. The option is bound
+to the outer process's PID and kernel start time. Codex retains its native
+exact-digest hook review: install verifies the file bytes, preserves only
+Codex's opaque native `[hooks.state]` data, and rejects conflicting user-level
+hook sources or the deprecated `features.codex_hooks` alias; then the user
+approves a new digest once with `/hooks`.
+Skíðblaðnir does not edit an opaque trust store or bypass Codex review. Missing,
+untrusted, or unloaded hooks leave the honest `RUNNING` state.
 
 ### Start (The Forge)
 
@@ -443,9 +447,11 @@ target/sibling/PID mutation on an isolated `-L` socket); one physical S22+
   concurrent laptop/phone attach with unchanged laptop view, IME/dictation,
   long right-edge input without horizontal drift, stable 80-column geometry
   across rotation, rendered ANSI/true color, reconnect, detach-vs-kill); one
-  status-adapter proof binds lifecycle to the exact foreground process lifetime
-  and rejects inherited nested-Codex traffic; `scripts/test` keeps `static`, `unit`,
-`integration`, `platform`, `live` with that reduced meaning. The retired
+  status-adapter proof binds the process terminal to the exact target pane,
+  bounds observation at that terminal's session leader, binds lifecycle to the
+  exact foreground process lifetime, and rejects inherited nested-Codex traffic;
+  `scripts/test` keeps `static`, `unit`,
+  `integration`, `platform`, `live` with that reduced meaning. The retired
 proof-ledger/acceptance matrix does not return. Existing `evidence/live/`
 records remain as historical platform evidence.
 

@@ -33,13 +33,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "resolve service home: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-		return exitFailure
-	}
-	switch arguments[0] {
-	case "status-hook":
+	if arguments[0] == "status-hook" {
 		if len(arguments) != 2 {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir status-hook {SessionStart|UserPromptSubmit|Stop}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
@@ -49,7 +43,17 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		return 0
-	case "bearer":
+	}
+	if arguments[0] != "bearer" && arguments[0] != "gateway" {
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		return exitUsage
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "resolve service home: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		return exitFailure
+	}
+	if arguments[0] == "bearer" {
 		if len(arguments) == 1 || arguments[1] != "mint" {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir bearer mint [--file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
@@ -70,24 +74,20 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		return 0
-	case "gateway":
-		flags := flag.NewFlagSet("gateway", flag.ContinueOnError)
-		flags.SetOutput(stderr)
-		listen := flags.String("listen", "127.0.0.1:7341", "numeric loopback listen address")
-		bearerPath := flags.String("bearer-file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
-		cataloguePath := flags.String("catalogue-path", filepath.Join(home, ".local", "share", "skidbladnir", "characters.json"), "Dvergatal catalogue")
-		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 0 {
-			return exitUsage
-		}
-		if err := serveGateway(*listen, *bearerPath, *cataloguePath, home, stdout); err != nil {
-			_, _ = fmt.Fprintf(stderr, "gateway: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		return 0
-	default:
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+	}
+	flags := flag.NewFlagSet("gateway", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	listen := flags.String("listen", "127.0.0.1:7341", "numeric loopback listen address")
+	bearerPath := flags.String("bearer-file", filepath.Join(home, ".config", "skidbladnir", "bearer"), "bearer file")
+	cataloguePath := flags.String("catalogue-path", filepath.Join(home, ".local", "share", "skidbladnir", "characters.json"), "Dvergatal catalogue")
+	if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 0 {
 		return exitUsage
 	}
+	if err := serveGateway(*listen, *bearerPath, *cataloguePath, home, stdout); err != nil {
+		_, _ = fmt.Fprintf(stderr, "gateway: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		return exitFailure
+	}
+	return 0
 }
 
 func serveGateway(listen, bearerPath, cataloguePath, home string, logOutput io.Writer) error {
