@@ -57,7 +57,6 @@ internal fun TerminalKeyDeck(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = RaisedSurface,
-        shadowElevation = 6.dp,
     ) {
         Row(
             modifier = Modifier
@@ -87,23 +86,24 @@ internal fun TerminalKeyDeck(
                                 stateDescription = if (armed) "Armed" else "Off"
                             }
                         },
+                    shape = NidavellirShapes.Key,
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = if (armed) Gold.copy(alpha = 0.18f) else Color.Transparent,
                         contentColor = if (armed) Gold else Bone,
-                        disabledContainerColor = Color.Transparent,
-                        disabledContentColor = Muted.copy(alpha = 0.55f),
+                        disabledContainerColor = Muted.copy(alpha = NidavellirMotion.DisabledAlpha.Container),
+                        disabledContentColor = Muted.copy(alpha = NidavellirMotion.DisabledAlpha.Content),
                     ),
                     border = BorderStroke(
                         if (armed) 2.dp else 1.dp,
                         when {
-                            !enabled -> Muted.copy(alpha = 0.35f)
+                            !enabled -> Muted.copy(alpha = NidavellirMotion.DisabledAlpha.Container)
                             armed -> Gold
                             else -> Muted.copy(alpha = 0.65f)
                         },
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
-                    Text(item.label, maxLines = 1)
+                    Text(item.label, fontFamily = NidavellirType.Data, maxLines = 1)
                 }
             }
         }

@@ -24,27 +24,32 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
-internal val Ink = Color(0xFF0C0D0F)
-internal val DeepSurface = Color(0xFF15171A)
-internal val RaisedSurface = Color(0xFF202329)
-internal val Bone = Color(0xFFF3F0E8)
-internal val Muted = Color(0xFFAAA69D)
-internal val Gold = Color(0xFFD6A85F)
-internal val Ember = Color(0xFFE46C55)
-internal val Moss = Color(0xFF76B082)
-internal val Frost = Color(0xFF78A9C6)
+private val NidavellirTypography = Typography().let { base ->
+    base.copy(
+        displayLarge = base.displayLarge.copy(fontFamily = NidavellirType.Display),
+        headlineLarge = base.headlineLarge.copy(fontFamily = NidavellirType.Display),
+        titleLarge = base.titleLarge.copy(fontFamily = NidavellirType.Display),
+    )
+}
+
+private val NidavellirMaterialShapes = Shapes(
+    small = NidavellirShapes.Chip,
+    medium = NidavellirShapes.Card,
+    large = NidavellirShapes.Sheet,
+)
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: SkidbladnirController
@@ -67,6 +72,8 @@ class MainActivity : ComponentActivity() {
                     onSurfaceVariant = Muted,
                     error = Ember,
                 ),
+                shapes = NidavellirMaterialShapes,
+                typography = NidavellirTypography,
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

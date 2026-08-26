@@ -1,8 +1,18 @@
 package dev.niels.skidbladnir
 
+import android.provider.Settings
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +36,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -38,13 +46,22 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -117,7 +134,7 @@ internal fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = NidavellirShapes.Card,
             ) {
                 Row(
                     modifier = Modifier.padding(start = 12.dp),
@@ -141,7 +158,7 @@ internal fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = NidavellirShapes.Card,
             ) {
                 Text(
                     text = state.error,
@@ -221,7 +238,7 @@ private fun ForgeRecoveryBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = NidavellirShapes.Card,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
@@ -246,8 +263,13 @@ private fun ForgeRecoveryBanner(
     }
 }
 
+// M3's `Card(onClick)` hardcodes its internal ripple and never reads
+// LocalIndication, so the card is a plain Surface carrying the same
+// `clickable` the Card built for it — same click action, same merged
+// descendant semantics, same roleless node, same minimum interactive size —
+// with the angular press flash (docs/chrome-tokens.md "Interaction states").
 @Composable
-private fun AgentCard(
+internal fun AgentCard(
     session: AgentSession,
     profiles: List<ProfileChoice>,
     observedAt: Instant,
@@ -255,43 +277,48 @@ private fun AgentCard(
     onKill: () -> Unit,
 ) {
     val status = statusContent(session.status, observedAt)
-    Card(
-        onClick = onOpen,
-        colors = CardDefaults.cardColors(containerColor = DeepSurface),
-        shape = RoundedCornerShape(14.dp),
+    val tone = statusColor(session.status.kind)
+    Surface(
+        color = DeepSurface,
+        shape = NidavellirShapes.Card,
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = AngularIndication,
+                onClick = onOpen,
+            ),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(
+            modifier = Modifier
+                .drawBehind {
+                    drawRect(color = Gold.copy(alpha = 0.25f), size = size.copy(height = 1.dp.toPx()))
+                }
+                .padding(12.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 DwarfPortrait(session.character)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = session.tmuxName,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
                         text = session.character.displayName,
+                        style = MaterialTheme.typography.titleLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = session.tmuxName,
                         color = Muted,
-                        style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (session.attention) {
-                    Text(
-                        text = "!",
-                        color = Ember,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.semantics { contentDescription = "Needs attention" },
-                    )
-                }
+                if (session.attention) AttentionLozenge()
             }
             Surface(
-                color = statusColor(session.status.kind).copy(alpha = 0.18f),
-                shape = RoundedCornerShape(7.dp),
+                color = tone.copy(alpha = 0.18f),
+                shape = NidavellirShapes.Chip,
+                border = BorderStroke(1.dp, tone),
                 modifier = Modifier
                     .padding(top = 10.dp)
                     .semantics { contentDescription = status.accessibilityLabel },
@@ -299,14 +326,16 @@ private fun AgentCard(
                 Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
                     Text(
                         text = status.kind,
-                        color = statusColor(session.status.kind),
+                        color = tone,
                         style = MaterialTheme.typography.labelLarge,
+                        fontFamily = NidavellirType.Data,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = status.evidence,
                         color = Muted,
                         style = MaterialTheme.typography.labelSmall,
+                        fontFamily = NidavellirType.Data,
                     )
                 }
             }
@@ -327,6 +356,7 @@ private fun AgentCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall,
+                    fontFamily = NidavellirType.Data,
                 )
             }
             Row(
@@ -339,12 +369,14 @@ private fun AgentCard(
                     text = agentCardRuntimeFacts(session, profiles).joinToString(" · "),
                     color = Muted,
                     style = MaterialTheme.typography.labelSmall,
+                    fontFamily = NidavellirType.Data,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = "${session.attachedClients} ${if (session.attachedClients == 1) "client" else "clients"}",
                     color = Muted,
                     style = MaterialTheme.typography.labelSmall,
+                    fontFamily = NidavellirType.Data,
                 )
             }
             TextButton(
@@ -356,6 +388,41 @@ private fun AgentCard(
             }
         }
     }
+}
+
+// The attention mark is an Orpiment lozenge — a rotated square, the fret
+// family's atom (design-language.md §6). It pulses 1.0 -> 0.55 on a ~1.6s
+// no-bounce loop, and renders static at full opacity when the system disables
+// animations (§12); opening the card clears attention, which is the WCAG
+// 2.2.2 stop mechanism.
+@Composable
+private fun AttentionLozenge() {
+    val resolver = LocalContext.current.contentResolver
+    val pulsing = remember(resolver) {
+        attentionPulseEnabled(
+            Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f),
+        )
+    }
+    val alpha = if (pulsing) {
+        rememberInfiniteTransition(label = "attention").animateFloat(
+            initialValue = 1f,
+            targetValue = 0.55f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 800, easing = NidavellirMotion.StandardEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "attention alpha",
+        ).value
+    } else {
+        1f
+    }
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .graphicsLayer(rotationZ = 45f, alpha = alpha)
+            .background(Orpiment)
+            .semantics { contentDescription = "Needs attention" },
+    )
 }
 
 internal fun agentCardRuntimeFacts(
@@ -515,9 +582,20 @@ private fun ForgeSheet(
     onDraftChange: ((ForgeDraft) -> ForgeDraft) -> Unit,
     onSubmit: () -> Unit,
 ) {
+    // The one ambient animation in the app: the sheet warms from stone to
+    // firelight once on open (design-language.md §12). A zero animator scale
+    // collapses the tween, so the sheet simply opens lit.
+    var lit by remember { mutableStateOf(false) }
+    val containerColor by animateColorAsState(
+        targetValue = if (lit) ForgeGlow else DeepSurface,
+        animationSpec = NidavellirMotion.ForgeWarmIn,
+        label = "forge warm-in",
+    )
+    LaunchedEffect(Unit) { lit = true }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = DeepSurface,
+        shape = NidavellirShapes.Sheet,
+        containerColor = containerColor,
     ) {
         Column(
             modifier = Modifier
@@ -527,7 +605,12 @@ private fun ForgeSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
-            Text("New agent", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "New agent",
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = NidavellirType.Display,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(
                 "The Forge starts one reviewed launch profile in this directory.",
                 color = Muted,
@@ -657,16 +740,9 @@ internal fun KillConfirmation(
         dismissButton = {
             OutlinedButton(onClick = onDismiss, enabled = !state.pending) { Text("Keep running") }
         },
+        shape = NidavellirShapes.Card,
         containerColor = DeepSurface,
     )
-}
-
-private fun statusColor(kind: SessionStatusKind): Color = when (kind) {
-    SessionStatusKind.Working -> Moss
-    SessionStatusKind.Running -> Frost
-    SessionStatusKind.Idle -> Gold
-    SessionStatusKind.Shell -> Frost
-    SessionStatusKind.Unknown -> Muted
 }
 
 private fun pressureColor(level: PressureLevel): Color = when (level) {

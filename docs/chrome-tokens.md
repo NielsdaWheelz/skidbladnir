@@ -69,10 +69,12 @@ internal object NidavellirType
 
 internal object NidavellirMotion
   EffectsTween   = tween(100ms, standard easing)         // never a spring
-  SpatialSpring  = spring(dampingRatio 0.85–1.0, stiffness 400–1500)
   ForgeWarmIn    = tween(400ms)                          // the one ambient
-  StateLayer     = hover .08f, focus .10f, pressed .10f, dragged .16f
+  StateLayer     = pressed .10f
   DisabledAlpha  = content .38f, container .12f
+  // SpatialSpring and the hover/focus/dragged state-layer constants
+  // (design language §12) join with their first consumer — nothing in this
+  // delta animates layout or has hover/drag surfaces; no speculative tokens.
 
 internal fun statusColor(kind: SessionStatusKind): Color   // exhaustive, injective
 internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean
