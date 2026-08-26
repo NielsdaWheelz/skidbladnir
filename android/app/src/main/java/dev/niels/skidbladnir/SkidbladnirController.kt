@@ -482,7 +482,10 @@ internal class SkidbladnirController(context: Context) {
     fun requestKill(session: AgentSession) {
         when (val current = state) {
             is SkidbladnirUiState.Dashboard -> state = current.copy(kill = KillState(session, false, null))
-            is SkidbladnirUiState.Terminal -> state = current.copy(kill = KillState(session, false, null))
+            is SkidbladnirUiState.Terminal -> {
+                terminalPage?.resetControl()
+                state = current.copy(kill = KillState(session, false, null))
+            }
             else -> Unit
         }
     }
@@ -695,8 +698,10 @@ internal class SkidbladnirController(context: Context) {
     private fun leaveTerminal() {
         terminalOwner = null
         val connection = terminalConnection
+        val page = terminalPage
         terminalConnection = null
         terminalPage = null
+        page?.resetControl()
         connection?.detach()
     }
 
