@@ -13,8 +13,8 @@ verification, the owned hook-file digest, isolated tmux/live gates, and an
 installed lifecycle-producer smoke are also green. The automated 9-test S22+
 platform gate is green; real Codex event delivery and renewed hands-on S22+
 acceptance remain `NOT_RUN`. The Claude Work profile source delta, routine
-verification, isolated tmux integration, and automated S22+ platform gate are
-green; its focused hands-on S22+ acceptance remains `NOT_RUN`.
+verification, isolated tmux integration, exact devbox install/reverify,
+automated S22+ platform gate, and user-reported focused S22+ pass are green.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -194,5 +194,5 @@ orchestration, via a new architecture decision.
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
-| v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, and 9-test S22+ platform gate green; focused hands-on S22+ acceptance `NOT_RUN`; the integration red was not observed before implementation |
+| v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
 | v0.5 push | Not scheduled |
