@@ -224,5 +224,5 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
-| v0 identity delta — automatic dwarf identity | Source implemented and routine verification green; isolated real-tmux acceptance `NOT_RUN` |
+| v0 identity delta — automatic dwarf identity | Source implemented; routine verification and isolated real-tmux acceptance green |
 | v0.5 push | Not scheduled |
