@@ -167,9 +167,9 @@ while machine administration leaves the app and the dense v0 dashboard returns.
 - Restored each machine's current pressure metrics, 15-minute severity history,
   missing inputs, platform-unsupported metrics, and pressure reasons.
 
-Acceptance: red pressure component proof, routine static/unit verification, and
-the exact 15-test S22+ platform gate are green. Exact live gateway publication
-and the physical healthy/outage/recovery journey are `NOT_RUN` for this cut.
+Acceptance: red pressure component proof, routine static/unit verification, the
+exact 15-test S22+ platform gate, exact live gateway publication, and the
+physical healthy/outage/recovery journey are green.
 
 ## v0.5 — optional, after corrected v0 is in daily use
 
@@ -189,5 +189,5 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
-| v0 fixed-topology dashboard cut | Implemented; routine and exact 15-test S22+ platform green; live publication and physical product journey `NOT_RUN` |
+| v0 fixed-topology dashboard cut | Implemented and published; routine, exact 15-test S22+ platform, and physical healthy/outage/recovery product gates green |
 | v0.5 push | Not scheduled |
