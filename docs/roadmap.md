@@ -1,20 +1,19 @@
 # Skíðblaðnir v0 roadmap
 
-Status: scope reset approved 2026-08-25; S1–S3 source implemented. Daily use on
-2026-08-26 reopened three acceptance defects: horizontal Gboard drift, tmux-
-activity-derived status, and a colorless/narrow terminal. Their corrective
-source delta is implemented and routine verification is green. Isolated tmux,
-current devbox deployment, and automated S22+ platform acceptance passed on
-2026-08-26 under their explicit gates. Codex hook-digest review and renewed
-hands-on S22+ acceptance remain `NOT_RUN`; prior acceptance does not prove the
-new delta.
+Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
+implemented. The 2026-08-26 multi-machine hard cut is also implemented and
+accepted: routine verification, isolated Linux and Darwin tmux/API, live
+Devbox and MacBook publication, 15-test S22+ platform instrumentation, and the
+physical two-host outage/recovery journey are green. The earlier corrective
+delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
+`NOT_RUN`; federation acceptance does not substitute for them.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
 
 This document owns delivery order. The [architecture](architecture.md) owns
-behavior and acceptance. Three slices, each an ordinary PR with one observable
-outcome, a red proof observed before implementation, and real-boundary tests.
+behavior and acceptance. Each slice has one observable outcome, a red proof
+observed before implementation, and real-boundary tests.
 No proof ledger, evidence digests, or acceptance matrix — `NOT_RUN` honesty
 and the closed logger survive; the ceremony does not.
 
@@ -27,28 +26,20 @@ S1 tmux control plane
  -> S2 shared terminal
  -> S3 Android dashboard
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
+ -> v0 multi-machine hard cut: Devbox + MacBook federation
  -> v0.5 (optional): push
 ```
 
-## Repo transition (start of S1)
-
-- Retain: `catalog/` (Dvergatal), `android/` harness and its device evidence,
-  `evidence/live/` records (historical platform evidence, no longer gate
-  inputs), `internal/logging`, tmux findings/tests, `scripts/test` skeleton.
-- Prune: hook schemas and `skidbladnir-hook`, hook-trust artifacts under
-  `deploy/codex/`, `cmd/skidbladnir-contract`, `api/*.lock` digests,
-  `generated/`, router-seam code, `codex.lock` enforcement, proof-ledger
-  wiring in `scripts/test`, and the superseded P1 packages.
-- `api/skidbladnir.v1.json` shrinks to the five routes with hand-written DTOs
-  or is dropped entirely; no codegen either way.
-
 ## S1 — tmux control plane
 
-Outcome: an authenticated Tailnet client lists, creates, and kills tmux
-sessions and reads pressure.
+Initial Devbox foundation, later generalized by the multi-machine hard cut
+without retaining a one-host branch.
 
-- Go gateway: loopback bind, Tailscale Serve mapping, single bearer
-  (devbox-minted CLI, constant-time check, re-mint revokes).
+Outcome: an authenticated Tailnet client lists, creates, and kills one host's
+tmux sessions and reads its pressure.
+
+- Go gateway: loopback bind, Tailscale Serve mapping, host-minted bearer
+  (constant-time check; re-mint revokes).
 - `GET /v1/sessions`: poller over `list-sessions`/`list-panes` + `/proc`;
   card facts incl. user-option metadata, independent attention, status chips
   with age, client count. Exact Codex `WORKING|IDLE` comes only from the narrow
@@ -139,6 +130,31 @@ rotation, reconnect.
   digest review, platform instrumentation, then hands-on S22+ prompt/Stop,
   right-edge Gboard/dictation, color, and portrait/rotation checks.
 
+## v0 multi-machine hard cut — delivered
+
+Outcome: one Android collection directly federates independent Devbox and
+MacBook gateways without a coordinator, shared credential, durable inventory,
+or cross-machine operation.
+
+- Added immutable installation handles and authenticated machine binding to
+  the hard-cut API envelope; sessions remain local and are addressed by full
+  machine target.
+- Added the Darwin process/pressure capability, exact tmux/platform pins,
+  LaunchAgent installer, isolated bearer, and separate lifecycle assets while
+  preserving the Linux gateway behavior.
+- Replaced singular Android credential/origin state with encrypted explicit
+  pairings, per-machine polling/failure/admission, visible machine identity,
+  machine-first Forge, one exact machine-bound terminal, and opaque per-entry
+  quarantine that never trusts a failed entry's stored destination.
+- Removed the old envelope/store/UI path with no parser, migration, fallback,
+  or mixed-version window.
+
+Acceptance: routine verification; the same isolated tmux/API suite on Linux
+and Darwin; live Devbox and MacBook install/reinstall; S22+ encrypted pairing
+and lifecycle instrumentation; then one physical two-host read-only tmux
+journey proving Activity recreation, machine-local outage fencing, healthy-host
+progress, recovery, and unchanged pairings/lifetimes. All passed on 2026-08-26.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -156,4 +172,5 @@ orchestration, via a new architecture decision.
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
+| v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
 | v0.5 push | Not scheduled |
