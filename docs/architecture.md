@@ -419,9 +419,17 @@ is modeled as `UNKNOWN`; only unmodeled defects become the content-free
   The tmux phone client explicitly advertises its RGB capability; xterm owns a
   deterministic ANSI palette. The renderer preserves at least 80 columns in
   portrait by adapting glyph scale before publishing PTY geometry, rather than
-  collapsing the TUI into a narrow responsive layout. Accessory row `Agents |
-  Esc | Ctrl-C | Tab | arrows | Home | End | Newline |
-  Detach`; `Newline` sends raw `0x0a`, Enter sends `0x0d`. Paste strips ESC
+  collapsing the TUI into a narrow responsive layout. The
+  [terminal key deck](terminal-key-deck.md) is one stable scrolling row
+  `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End` and
+  contains terminal input only; top `Agents` and Android Back own phone detach.
+  Ctrl is a visible one-shot modifier, clears on the next input or lifecycle
+  boundary, and never transforms composition, dictation, paste, multi-character,
+  Unicode, or uncertain-origin text. Every deck key, including the Ctrl-modified
+  next key, travels the same single ordered page input queue as typed and pasted
+  input; the one-shot Ctrl binds to the next unit of that queue and is applied
+  inside the page, never as a Kotlin-side byte transform. `Line break` sends raw
+  `0x0a`; Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,
   clipboard, and dictation; dictation stays editable and never auto-sends. IME
   composition and non-composition Gboard input stay inside the terminal edge;
@@ -429,7 +437,9 @@ is modeled as `UNKNOWN`; only unmodeled defects become the content-free
 - Rotation, IME resize, and process recreation preserve or cleanly recreate
   the attachment; nothing replays.
 - Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
-  semantic labels on all controls; accessibility beyond labels is best-effort.
+  semantic labels on all controls. The terminal key deck has `48dp` minimum
+  non-overlapping targets, `8dp` spacing, stable traversal, and spoken Ctrl
+  state; accessibility beyond this reviewed surface remains best-effort.
 
 ## 7. Security
 
@@ -500,4 +510,8 @@ status; an instrumented Codex moves `IDLE -> WORKING -> IDLE`, while an
 uninstrumented live agent remains `RUNNING`; every status chip states its signal
 and age; first inventory persists one valid dwarf for every visible ordinary
 session, preserves concurrent valid assignment, and never assigns a phone
-shadow; restart of app or gateway converges to `tmux list-sessions` truth.
+shadow; restart of app or gateway converges to `tmux list-sessions` truth; the
+terminal key deck exposes only the reviewed terminal inputs, one-shot Ctrl never
+alters literal IME/dictation/paste input or survives a lifecycle boundary, and
+leaving through `Agents` or Back detaches the phone while the source process
+continues.

@@ -38,6 +38,7 @@ S1 tmux control plane
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
  -> v0 profile delta: Claude Work
  -> v0 identity delta: automatic dwarf identity
+ -> v0 terminal key-deck delta
  -> v0.5 (optional): push
 ```
 
@@ -206,6 +207,26 @@ repair, concurrent assignment, shadow exclusion, and non-character immutability.
 Gate: routine verification plus one isolated real-tmux integration journey.
 No platform or live gate is added.
 
+## v0 terminal key-deck delta
+
+Outcome: the phone has one composable, accessible terminal-input deck with no
+duplicate app navigation or lifecycle actions.
+
+- Exact scope and ownership per [the terminal key-deck plan](terminal-key-deck.md).
+- Hard-cut bottom `Agents`, bottom `Detach`, fixed `Ctrl-C`, and any raw Compose
+  or Kotlin-transform byte path; retain PR #5's single ordered versioned
+  `Accessory -> page -> Input` route.
+- One-shot Ctrl, mode-aware terminal keys, literal IME/dictation/paste safety,
+  stable `48dp` targets, and explicit spoken state.
+- No gateway, tmux, public API, customization, macro, or protocol-upgrade work.
+
+Red: one real-WebView ordered-input/Ctrl proof and one Compose
+behavior/accessibility proof, each owned by its production builder.
+
+Gate: routine verification, then one separately approved Android platform and
+hands-on S22+ pass. Real-tmux integration and live gates are not part of this
+unchanged transport boundary.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -225,4 +246,5 @@ orchestration, via a new architecture decision.
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
 | v0 identity delta — automatic dwarf identity | Source implemented; routine verification and isolated real-tmux acceptance green |
+| v0 terminal key-deck delta | Implemented; council source review, routine verification, the 19-test S22+ platform gate, and user-reported hands-on acceptance green |
 | v0.5 push | Not scheduled |

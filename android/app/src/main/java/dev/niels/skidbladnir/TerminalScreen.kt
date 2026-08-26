@@ -1,7 +1,6 @@
 package dev.niels.skidbladnir
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,17 +11,19 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,8 @@ internal fun TerminalScreen(
     state: SkidbladnirUiState.Terminal,
     controller: SkidbladnirController,
 ) {
+    var controlState by remember(state.attempt) { mutableStateOf(TerminalControlState.Off) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -52,7 +55,14 @@ internal fun TerminalScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(onClick = controller::detachToAgents) { Text("Agents") }
+            TextButton(
+                onClick = controller::detachToAgents,
+                modifier = Modifier.semantics {
+                    contentDescription = RETURN_TO_AGENTS_DESCRIPTION
+                },
+            ) {
+                Text("Agents")
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = state.session.tmuxName,
@@ -99,6 +109,10 @@ internal fun TerminalScreen(
                                     controller.resizeTerminal(state.attempt, columns, rows)
                                 }
 
+                                override fun onControlStateChanged(newState: TerminalControlState) {
+                                    controlState = newState
+                                }
+
                                 override fun onUnavailable() {
                                     controller.terminalPageFailed(state.attempt)
                                 }
@@ -125,11 +139,10 @@ internal fun TerminalScreen(
             }
         }
 
-        TerminalAccessoryRow(
+        TerminalKeyDeck(
+            controlState = controlState,
             enabled = state.connection is TerminalUiStatus.Connected,
-            onAgents = controller::detachToAgents,
             onAccessory = { controller.sendTerminalAccessory(state.attempt, it) },
-            onDetach = controller::detachToAgents,
         )
     }
 
@@ -187,58 +200,14 @@ private fun ReconnectPanel(
                 onClick = onAgents,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp),
+                    .padding(top = 8.dp)
+                    .semantics {
+                        contentDescription = RETURN_TO_AGENTS_DESCRIPTION
+                    },
             ) {
                 Text("Agents")
             }
         }
-    }
-}
-
-@Composable
-private fun TerminalAccessoryRow(
-    enabled: Boolean,
-    onAgents: () -> Unit,
-    onAccessory: (TerminalAccessory) -> Unit,
-    onDetach: () -> Unit,
-) {
-    Surface(color = RaisedSurface, shadowElevation = 6.dp) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            AccessoryButton("Agents", enabled = true, onClick = onAgents)
-            AccessoryButton("Esc", enabled) { onAccessory(TerminalAccessory.Escape) }
-            AccessoryButton("Ctrl-C", enabled) { onAccessory(TerminalAccessory.CtrlC) }
-            AccessoryButton("Tab", enabled) { onAccessory(TerminalAccessory.Tab) }
-            AccessoryButton("←", enabled, "Left arrow") { onAccessory(TerminalAccessory.Left) }
-            AccessoryButton("↑", enabled, "Up arrow") { onAccessory(TerminalAccessory.Up) }
-            AccessoryButton("↓", enabled, "Down arrow") { onAccessory(TerminalAccessory.Down) }
-            AccessoryButton("→", enabled, "Right arrow") { onAccessory(TerminalAccessory.Right) }
-            AccessoryButton("Home", enabled) { onAccessory(TerminalAccessory.Home) }
-            AccessoryButton("End", enabled) { onAccessory(TerminalAccessory.End) }
-            AccessoryButton("Newline", enabled, "Insert newline without submitting") { onAccessory(TerminalAccessory.Newline) }
-            AccessoryButton("Detach", enabled = true, description = "Detach phone; agent keeps running", onClick = onDetach)
-        }
-    }
-}
-
-@Composable
-private fun AccessoryButton(
-    label: String,
-    enabled: Boolean,
-    description: String = label,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.semantics { contentDescription = description },
-    ) {
-        Text(label, maxLines = 1)
     }
 }
 
@@ -257,3 +226,5 @@ private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (c
     is TerminalUiStatus.ReconnectRequired -> Ember
     TerminalUiStatus.Preparing, TerminalUiStatus.Connecting -> Gold
 }
+
+private const val RETURN_TO_AGENTS_DESCRIPTION = "Return to Agents; session keeps running"
