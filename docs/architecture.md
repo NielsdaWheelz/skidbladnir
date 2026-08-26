@@ -23,13 +23,12 @@ v0 scope. A platform fact that contradicts a premise reopens this document.
 - **tmux is the database and the process supervisor.** Session list, pane
   facts, and user options are the only durable state. Gateway restart means
   "list tmux again", never a recovery protocol.
-- **The agent is an opaque terminal program.** Codex handles `/quit`, `/new`,
-  `resume`, approvals, git, and its own configuration exactly as it normally
-  does. Skíðblaðnir never parses, tracks, or reconstructs its conversations. A
+- **The agent is an opaque terminal program.** Each agent handles its own
+  commands, approvals, git, configuration, resume behavior, and subagents.
+  Skíðblaðnir never parses, tracks, or reconstructs conversations. A
   three-event Codex adapter projects only `working | idle` into the pane; an
-  agent without such an adapter remains honestly `RUNNING`. Any future CLI
-  (Claude Code, OpenCode, Kimi) is just another fixed launch command and may add
-  the same small provider-owned adapter later.
+  agent without such an adapter remains honestly `RUNNING`. Claude Work has no
+  lifecycle adapter in v0. Any future CLI is another fixed launch command.
 - **Android and the laptop are two tmux clients.** One process, one screen,
   one draft; either device attaches and detaches freely.
 
@@ -48,7 +47,7 @@ stopping anything; and kill an exact confirmed session.
 | Host | One Hetzner VPS; Linux, mosh, systemd user service, proven tmux 3.4 |
 | Network | Tailscale Serve TLS on `:8443` to a loopback gateway; Funnel/public ingress forbidden |
 | Auth | One devbox-minted bearer, entered once in the app; every `/v1` request requires it |
-| Profiles | Closed `personal \| work \| work2` command allowlist; callers never supply `CODEX_HOME` or raw commands |
+| Profiles | Closed `personal \| work \| work2 \| claude-work` command allowlist; callers never supply commands, account homes, or permission flags |
 | Runtime | Opaque terminal programs in ordinary tmux sessions; optional provider-owned coarse pane lifecycle, no provenance, thread tracking, payload parsing, or pin enforcement |
 | State | tmux sessions/panes/user options only; no SQLite, facts ledger, or command receipts |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
@@ -56,25 +55,30 @@ stopping anything; and kill an exact confirmed session.
 | Host app | Go, tmux/PTY, `/proc` sampling; standard library HTTP |
 | Trust | The agent is trusted as the devbox user; no hostile same-UID containment claim |
 
-Profile mapping is a closed gateway-config table, initially:
+Profile mapping is one ordered, closed gateway-config table:
 
-| Profile | Command | Environment | Foreground signatures |
-| --- | --- | --- | --- |
-| `personal` | `/home/niels/bin/codex-personal` | `CODEX_HOME=/home/niels/.codex-personal` | native executable basename `codex`; or `node` with exact argv[1] `/home/niels/.local/bin/codex` |
-| `work` | `/home/niels/bin/codex-work` | `CODEX_HOME=/home/niels/.codex-work` | same |
-| `work2` | `/home/niels/bin/codex-work2` | `CODEX_HOME=/home/niels/.codex-work2` | same |
+| Profile / label | Command | Environment | Arguments | Foreground signatures |
+| --- | --- | --- | --- | --- |
+| `personal` / `Codex · Personal` | `/home/niels/bin/codex-personal` | `CODEX_HOME=/home/niels/.codex-personal` | `--dangerously-bypass-approvals-and-sandbox` | native executable basename `codex`; or `node` with exact argv[1] `/home/niels/.local/bin/codex` |
+| `work` / `Codex · Work` | `/home/niels/bin/codex-work` | `CODEX_HOME=/home/niels/.codex-work` | same | same |
+| `work2` / `Codex · Work 2` | `/home/niels/bin/codex-work2` | `CODEX_HOME=/home/niels/.codex-work2` | same | same |
+| `claude-work` / `Claude · Work` | `/home/niels/bin/claude-work` | `CLAUDE_CONFIG_DIR=/home/niels/.claude-work` | `--permission-mode auto` | exact argv[0] `/home/niels/.local/bin/claude` |
 
-Adding a provider is adding one row (`claude`, `opencode`, …) — a config
-change, not a design event; the app renders whatever rows the gateway
-declares. The gateway execs the row's command with its flags in the requested
-cwd. The gateway does not gate launch on binary or configuration inspection;
-the agent sees exactly what a laptop launch would see. Deployment owns the
-exact Codex lifecycle-hook file, while absent/unloaded hooks degrade status to
-`RUNNING` rather than blocking launch. There is no router interception:
-laptop launches are plain shell commands, and their sessions simply appear in
-the inventory. A row also owns exact foreground-process signatures for honest
-status detection; the gateway resolves the pane tty's foreground process group
-through `/proc` and never treats every `node` process as an agent.
+Adding another launch profile is adding one row — a config change, not a
+design event; the app renders whatever rows the gateway declares. The gateway
+execs the row's command with its flags in the requested cwd. The gateway does
+not gate launch on binary or configuration inspection; the agent sees exactly
+what a laptop launch would see. Deployment owns the exact Codex lifecycle-hook
+file, while absent/unloaded hooks degrade status to `RUNNING` rather than
+blocking launch. There is no router interception: laptop launches are plain
+shell commands, and their sessions simply appear in the inventory. A row also
+owns exact foreground-process signatures for honest status detection; the
+gateway resolves the pane tty's foreground process group through `/proc` and
+never treats every `node` process as an agent.
+Every populated foreground selector is conjunctive. A signature has either an
+exact executable basename or an exact absolute argv[0]; optional argv[1] is
+also exact. There are no prefix, version-basename, broad-Node, or fuzzy
+fallbacks.
 
 ### Product language
 
@@ -93,7 +97,7 @@ destructive-action language stays literal.
 
 - Never kill a tmux session other than the exact confirmed target.
 - Detach and kill are visibly different actions; kill always confirms.
-- Validate cwd; allowlist the three profile commands; nothing else launches.
+- Validate cwd; allowlist the four profile commands; nothing else launches.
 - Credentials stay on the devbox; the app holds only its bearer.
 - App or gateway restart re-lists tmux; it never replays input or guesses.
 
@@ -161,8 +165,8 @@ them.
   `@skid_internal=phone-shadow` and never appear as cards.
 
 - **Card facts:** session name, an opaque server-lifetime identity token, dwarf
-  icon portrait when `@skid_character` is set, profile (`@skid_profile` or
-  unknown),
+  icon portrait when `@skid_character` is set, the declared label for a known
+  `@skid_profile` key or `profile unknown`,
   objective (optional; URL-safe base64 in `@skid_objective_b64`, decoded by the
   gateway), pane cwd and active command when tmux exposes them,
   attached-client count, status chip with its named signal and age, attention
@@ -190,10 +194,11 @@ them.
 
 ### Attention
 
-The `notify` line in each profile names `skid-notify`. Codex invokes it on turn
-completion; it reads inherited `$TMUX_PANE`, stores the current Unix epoch in
-`@skid_attention`, and rings the bell. Opening the card clears the flag (bell
-clears natively on view; the gateway unsets the option on attach).
+The `notify` line in each Codex profile names `skid-notify`. Codex invokes it
+on turn completion; it reads inherited `$TMUX_PANE`, stores the current Unix
+epoch in `@skid_attention`, and rings the bell. Opening the card clears the
+flag (bell clears natively on view; the gateway unsets the option on attach).
+Claude Work makes no provider-specific lifecycle or attention promise.
 
 Each Codex profile also has one repository-owned `hooks.json` containing only
 three synchronous command hooks: `SessionStart(startup|resume|clear)` writes
@@ -221,7 +226,7 @@ untrusted, or unloaded hooks leave the honest `RUNNING` state.
 1. Cwd: ≤4,096 UTF-8 bytes, no NUL/C0/C1; optional leading `~`/`~/` expands
    against the service UID home; must be an existing directory. Failure is
    typed and mutates nothing.
-2. Profile must be one of the three allowlisted commands.
+2. Profile must be one of the four allowlisted commands.
 3. Optional name is 1–64 ASCII letters, digits, underscores, or hyphens;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
    Invalid input mutates nothing.
@@ -229,10 +234,11 @@ untrusted, or unloaded hooks leave the honest `RUNNING` state.
    the smallest free catalogue-derived name), initializes the random
    server-scoped `@skid_server_epoch` if absent, sets `@skid_profile` and
    `@skid_character`, sets encoded `@skid_objective_b64` only when supplied,
-   and runs the profile command with YOLO in the cwd. A later queue failure
+   and runs the profile command with its exact row arguments in the cwd. A
+   later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
-   an unproven cleanup kill. No prompt is sent; Codex's own onboarding/trust
-   flows appear in the terminal like any laptop launch.
+   an unproven cleanup kill. No prompt or objective is sent; the agent's own
+   onboarding, permission, and trust flows appear like any laptop launch.
 
 ### Attach and handoff
 
@@ -275,7 +281,8 @@ cannot reach the kill branch. Before that queue, the gateway removes only
 identity-proven, unattached phone shadows, then revalidates the target. Any
 remaining grouped sibling is ambiguous and fails closed without mutating the
 selected or sibling session; the user resolves that group in tmux. The app
-confirms destructively ("Kill session ga-durinn? Codex and its work end now.")
+confirms destructively ("Kill session ga-durinn? This tmux session and its
+processes end now.")
 and never offers kill and detach in the same gesture. There is no working/idle
 gate — the human is looking at the terminal facts; the guarantee is exactness
 of target, not semantic safety.
@@ -303,14 +310,14 @@ Galaxy S22+                       laptop / mosh
      v                            ordinary tmux client
   Go gateway ---- tmux commands ----> tmux server (the database)
      |                                  |
-     `-- /proc sampling                 `-- panes running codex-* / anything
+     `-- /proc sampling                 `-- panes running agents / anything
 ```
 
 - One systemd user service runs the gateway. Bind loopback; a path-scoped
   Tailscale Serve mapping on `:8443` exposes `/v1` only; `/healthz` stays
   loopback. Port `443` remains owned by the devbox's existing Caddy service. Its
   unit uses `KillMode=process` and the operator's normal `0022` umask; it must
-  not impose sandbox properties inherited by gateway-started tmux/Codex
+  not impose sandbox properties inherited by gateway-started tmux/agent
   descendants. Gateway restart never kills the tmux database or changes the
   stock agent runtime. Installation verifies both the loaded systemd directive
   and the running gateway environment before acceptance. The unit supplies the
@@ -320,7 +327,7 @@ Galaxy S22+                       laptop / mosh
   `TMUX_TMPDIR` so gateway commands cannot follow an invoking client's socket.
   Acceptance also pins `/usr/bin/tmux -V` to `tmux 3.4`, rejects every retired
   hook registration or live hook socket, owns the exact narrow lifecycle hook
-  file for each profile, and
+  file for each Codex profile, and
   proves Caddy is active on `:443` with no effective reverse-proxy upstream to
   gateway port `7341`. During the one-time cutover, the old helper binary and
   gap directory may remain inert at their original paths only so Codex
@@ -420,7 +427,7 @@ is modeled as `UNKNOWN`; only unmodeled defects become the content-free
   homes.
 - Logs carry names, timings, and typed errors — never terminal bytes,
   objectives, prompts, tokens, or credentials.
-- YOLO agents share the devbox UID; containment requires a separate UID/VM
+- Launched agents share the devbox UID; containment requires a separate UID/VM
   and is explicitly out of scope.
 
 ## 8. Upgrade ladder (deliberately not in v0)
@@ -467,7 +474,7 @@ Acceptance is one sentence per guarantee in §2 plus: laptop and phone share
 one pane/PID/draft with laptop geometry and focus unchanged; a kill ends only
 the unambiguously last session named by the freshly confirmed lifetime token,
 stale tokens kill nothing, and ambiguous ordinary groups fail closed without
-mutation; a detached phone leaves Codex running; attention is independent from
+mutation; a detached phone leaves its agent running; attention is independent from
 status; an instrumented Codex moves `IDLE -> WORKING -> IDLE`, while an
 uninstrumented live agent remains `RUNNING`; every status chip states its signal
 and age; restart of app or gateway converges to

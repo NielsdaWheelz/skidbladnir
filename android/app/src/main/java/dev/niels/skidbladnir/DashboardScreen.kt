@@ -163,6 +163,7 @@ internal fun DashboardScreen(
                 ) { session ->
                     AgentCard(
                         session = session,
+                        profiles = inventory.profiles,
                         observedAt = Instant.parse(inventory.observedAt)
                             .plusSeconds(state.inventoryAgeAdvanceSeconds),
                         onOpen = { controller.openTerminal(session) },
@@ -224,6 +225,7 @@ private fun ForgeRecoveryBanner(
 @Composable
 private fun AgentCard(
     session: AgentSession,
+    profiles: List<ProfileChoice>,
     observedAt: Instant,
     onOpen: () -> Unit,
     onKill: () -> Unit,
@@ -315,10 +317,7 @@ private fun AgentCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = listOfNotNull(
-                        session.profile ?: "profile unknown",
-                        session.activeCommand,
-                    ).joinToString(" · "),
+                    text = agentCardRuntimeFacts(session, profiles).joinToString(" · "),
                     color = Muted,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.weight(1f),
@@ -339,6 +338,15 @@ private fun AgentCard(
         }
     }
 }
+
+internal fun agentCardRuntimeFacts(
+    session: AgentSession,
+    profiles: List<ProfileChoice>,
+): List<String> = listOfNotNull(
+    session.profile?.let { key -> profiles.firstOrNull { it.key == key }?.label }
+        ?: "profile unknown",
+    session.activeCommand,
+)
 
 @Composable
 private fun DwarfPortrait(character: CharacterSummary) {
@@ -521,7 +529,7 @@ private fun ForgeSheet(
         ) {
             Text("New agent", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(
-                "The Forge starts one allowlisted Codex profile in this directory.",
+                "The Forge starts one reviewed launch profile in this directory.",
                 color = Muted,
                 modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
             )
@@ -618,7 +626,7 @@ internal fun KillConfirmation(
         title = { Text("Kill session ${state.target.name}?") },
         text = {
             Column {
-                Text("Codex and its work end now.")
+                Text("This tmux session and its processes end now.")
                 Text(
                     "Detach leaves it running. Kill does not.",
                     color = Muted,

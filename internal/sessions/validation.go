@@ -56,8 +56,14 @@ func validateProfiles(profiles []Profile) ([]Profile, error) {
 			return nil, fmt.Errorf("profile %s has no foreground signature", profile.Key)
 		}
 		for _, signature := range profile.ForegroundSignatures {
-			if signature.ExecutableBase == "" || filepath.Base(signature.ExecutableBase) != signature.ExecutableBase || hasTerminalControl(signature.ExecutableBase) {
+			if signature.ExecutableBase == "" && signature.Argument0 == "" {
+				return nil, fmt.Errorf("profile %s has no foreground process identity", profile.Key)
+			}
+			if signature.ExecutableBase != "" && (filepath.Base(signature.ExecutableBase) != signature.ExecutableBase || hasTerminalControl(signature.ExecutableBase)) {
 				return nil, fmt.Errorf("profile %s has an invalid foreground executable", profile.Key)
+			}
+			if signature.Argument0 != "" && (!filepath.IsAbs(signature.Argument0) || !utf8.ValidString(signature.Argument0) || strings.ContainsRune(signature.Argument0, 0)) {
+				return nil, fmt.Errorf("profile %s has an invalid foreground argument zero", profile.Key)
 			}
 			if !utf8.ValidString(signature.Argument1) || strings.ContainsRune(signature.Argument1, 0) {
 				return nil, fmt.Errorf("profile %s has an invalid foreground argument", profile.Key)

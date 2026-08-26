@@ -532,6 +532,10 @@ exec /usr/bin/tmux "$@"
 		if err != nil {
 			t.Fatalf("create custom named session: %v", err)
 		}
+		claude, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "claude-work"})
+		if err != nil {
+			t.Fatalf("create Claude work session: %v", err)
+		}
 
 		if first.Name != "ga-modsognir" || first.CharacterKey != "norse.modsognir" || first.CharacterDisplayName != "Móðsognir" {
 			t.Fatalf("first catalogue assignment mismatch: %+v", first)
@@ -552,16 +556,17 @@ exec /usr/bin/tmux "$@"
 		for _, profile := range []string{"personal", "work", "work2"} {
 			argvPath := filepath.Join(fixture.profileHomes[profile], "observed-argv")
 			waitForFileLine(t, argvPath, yoloFlag)
-			if got, err := os.ReadFile(filepath.Join(fixture.profileHomes[profile], "observed-home")); err != nil || strings.TrimSpace(string(got)) != fixture.profileHomes[profile] {
-				t.Fatalf("profile %s did not receive its explicit CODEX_HOME: value=%q error=%v", profile, got, err)
-			}
+			waitForFileLine(t, filepath.Join(fixture.profileHomes[profile], "observed-home"), fixture.profileHomes[profile])
 		}
+		waitForFileLine(t, filepath.Join(fixture.profileHomes["claude-work"], "observed-argv"), "--permission-mode\nauto")
+		waitForFileLine(t, filepath.Join(fixture.profileHomes["claude-work"], "observed-home"), fixture.profileHomes["claude-work"])
+		waitForFileLine(t, filepath.Join(fixture.profileHomes["claude-work"], "observed-cwd"), fixture.project)
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatalf("list after managed creates: %v", err)
 		}
-		for _, created := range []sessions.Session{first, second, third, custom} {
+		for _, created := range []sessions.Session{first, second, third, custom, claude} {
 			observed := requireSessionID(t, listed, created.ID)
 			if observed.Name != created.Name || observed.Profile != created.Profile || observed.CharacterKey != created.CharacterKey || observed.IdentityToken != created.IdentityToken {
 				t.Fatalf("create response did not converge to tmux inventory: created=%+v listed=%+v", created, observed)
@@ -921,7 +926,7 @@ func newSessionFixture(t *testing.T) sessionFixture {
 	}
 
 	profileHomes := map[string]string{}
-	for _, name := range []string{"personal", "work", "work2"} {
+	for _, name := range []string{"personal", "work", "work2", "claude-work"} {
 		profileHomes[name] = filepath.Join(root, "profile-"+name)
 		if err := os.Mkdir(profileHomes[name], 0o700); err != nil {
 			t.Fatalf("create %s profile home: %v", name, err)
@@ -935,6 +940,16 @@ set -eu
 exec /usr/bin/sleep 300
 `), 0o700); err != nil {
 		t.Fatalf("write agent fixture: %v", err)
+	}
+	claudeAgent := filepath.Join(root, "claude-agent-fixture")
+	if err := os.WriteFile(claudeAgent, []byte(`#!/bin/sh
+set -eu
+/usr/bin/printf '%s\n' "$@" > "$CLAUDE_CONFIG_DIR/observed-argv"
+/usr/bin/printf '%s\n' "$CLAUDE_CONFIG_DIR" > "$CLAUDE_CONFIG_DIR/observed-home"
+/usr/bin/pwd -P > "$CLAUDE_CONFIG_DIR/observed-cwd"
+exec /usr/bin/sleep 300
+`), 0o700); err != nil {
+		t.Fatalf("write Claude agent fixture: %v", err)
 	}
 	nativeCodex := filepath.Join(root, "codex")
 	sleepBinary, err := os.ReadFile("/usr/bin/sleep")
@@ -968,9 +983,10 @@ exec /usr/bin/sleep 300
 		Home:          home,
 		CataloguePath: cataloguePath,
 		Profiles: []sessions.Profile{
-			{Key: "personal", Label: "Personal", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["personal"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
-			{Key: "work", Label: "Work", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["work"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
-			{Key: "work2", Label: "Work 2", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["work2"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
+			{Key: "personal", Label: "Codex · Personal", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["personal"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
+			{Key: "work", Label: "Codex · Work", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["work"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
+			{Key: "work2", Label: "Codex · Work 2", Command: agent, Environment: []sessions.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["work2"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
+			{Key: "claude-work", Label: "Claude · Work", Command: claudeAgent, Environment: []sessions.EnvironmentVariable{{Name: "CLAUDE_CONFIG_DIR", Value: profileHomes["claude-work"]}}, ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}}, Arguments: []string{"--permission-mode", "auto"}},
 		},
 	})
 	if err != nil {

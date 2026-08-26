@@ -12,6 +12,7 @@ type Config struct {
 
 type ForegroundSignature struct {
 	ExecutableBase string
+	Argument0      string
 	Argument1      string
 }
 
