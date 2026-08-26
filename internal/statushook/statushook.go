@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -30,6 +31,8 @@ const (
 type processObservation struct {
 	pid                    int
 	parentPID              int
+	sessionID              int
+	terminalDevice         int
 	foregroundProcessGroup int
 	startTime              string
 	executableBase         string
@@ -49,11 +52,26 @@ func Run(ctx context.Context, eventText string, input io.Reader, output io.Write
 		_, err := io.WriteString(output, successOutput(event))
 		return err
 	}
+	paneTerminalCommand := exec.CommandContext(
+		ctx,
+		"/usr/bin/tmux",
+		"display-message", "-p", "-t", pane, "#{pane_tty}",
+	)
+	paneTerminalCommand.Stderr = io.Discard
+	paneTerminalPath, err := paneTerminalCommand.Output()
+	if err != nil {
+		return errors.New("read tmux pane terminal")
+	}
+	var paneTerminal syscall.Stat_t
+	if err := syscall.Stat(strings.TrimSuffix(string(paneTerminalPath), "\n"), &paneTerminal); err != nil ||
+		paneTerminal.Mode&syscall.S_IFMT != syscall.S_IFCHR {
+		return errors.New("read tmux pane terminal")
+	}
 	ancestry, err := observeProcessAncestry("/proc", os.Getpid())
 	if err != nil {
 		return err
 	}
-	if origin, valid := foregroundCodexOrigin(ancestry); valid {
+	if origin, valid := foregroundCodexOrigin(ancestry, int(paneTerminal.Rdev)); valid {
 		command := exec.CommandContext(
 			ctx,
 			"/usr/bin/tmux",
@@ -125,6 +143,8 @@ func observeProcessAncestry(procRoot string, initialPID int) ([]processObservati
 	ancestry := make([]processObservation, 0, 8)
 	seen := make(map[int]struct{}, 8)
 	pid := initialPID
+	sessionID := 0
+	terminalDevice := 0
 	for len(ancestry) < maximumProcessAncestry {
 		if _, duplicate := seen[pid]; duplicate {
 			return nil, errors.New("process ancestry contains a cycle")
@@ -134,13 +154,34 @@ func observeProcessAncestry(procRoot string, initialPID int) ([]processObservati
 		if err != nil {
 			return nil, err
 		}
+		if len(ancestry) == 0 {
+			sessionID = observation.sessionID
+			terminalDevice = observation.terminalDevice
+		}
+		nextPID, err := nextTerminalSessionPID(observation, sessionID, terminalDevice)
+		if err != nil {
+			return nil, err
+		}
 		ancestry = append(ancestry, observation)
-		if observation.parentPID <= 0 || observation.pid == 1 {
+		if nextPID == 0 {
 			return ancestry, nil
 		}
-		pid = observation.parentPID
+		pid = nextPID
 	}
-	return nil, errors.New("process ancestry exceeds its closed bound")
+	return nil, errors.New("terminal-session ancestry exceeds its closed bound")
+}
+
+func nextTerminalSessionPID(observation processObservation, sessionID, terminalDevice int) (int, error) {
+	if observation.sessionID != sessionID || observation.terminalDevice != terminalDevice {
+		return 0, errors.New("process ancestry left the terminal session before its leader")
+	}
+	if observation.pid == sessionID {
+		return 0, nil
+	}
+	if observation.parentPID <= 0 {
+		return 0, errors.New("process ancestry ended before its terminal session leader")
+	}
+	return observation.parentPID, nil
 }
 
 func observeProcess(procRoot string, pid int) (processObservation, error) {
@@ -149,44 +190,63 @@ func observeProcess(procRoot string, pid int) (processObservation, error) {
 	if err != nil {
 		return processObservation{}, fmt.Errorf("read hook process stat: %w", err)
 	}
-	closingParenthesis := strings.LastIndexByte(string(contents), ')')
-	if closingParenthesis < 0 {
-		return processObservation{}, errors.New("hook process stat has no command terminator")
-	}
-	fields := strings.Fields(string(contents[closingParenthesis+1:]))
-	if len(fields) < 20 {
-		return processObservation{}, errors.New("hook process stat is incomplete")
-	}
-	parentPID, parentErr := strconv.Atoi(fields[1])
-	foregroundProcessGroup, foregroundErr := strconv.Atoi(fields[5])
-	startTime, startTimeErr := strconv.ParseUint(fields[19], 10, 64)
-	if parentErr != nil || parentPID < 0 || foregroundErr != nil || startTimeErr != nil || startTime == 0 {
-		return processObservation{}, errors.New("hook process stat has invalid ancestry")
+	observation, err := parseProcessStat(pid, contents)
+	if err != nil {
+		return processObservation{}, err
 	}
 	executable, err := os.Readlink(filepath.Join(processRoot, "exe"))
 	if err != nil {
 		return processObservation{}, fmt.Errorf("read hook process executable: %w", err)
 	}
-	commandLine, err := os.ReadFile(filepath.Join(processRoot, "cmdline"))
-	if err != nil {
-		return processObservation{}, fmt.Errorf("read hook process command line: %w", err)
-	}
-	arguments := strings.Split(strings.TrimSuffix(string(commandLine), "\x00"), "\x00")
-	observation := processObservation{
-		pid:                    pid,
-		parentPID:              parentPID,
-		foregroundProcessGroup: foregroundProcessGroup,
-		startTime:              fields[19],
-		executableBase:         filepath.Base(executable),
-	}
-	if len(arguments) > 1 {
-		observation.argument1 = arguments[1]
+	observation.executableBase = filepath.Base(executable)
+	if observation.executableBase == "node" {
+		commandLine, err := os.ReadFile(filepath.Join(processRoot, "cmdline"))
+		if err != nil {
+			return processObservation{}, fmt.Errorf("read hook process command line: %w", err)
+		}
+		if _, remainder, present := strings.Cut(string(commandLine), "\x00"); present {
+			observation.argument1, _, _ = strings.Cut(remainder, "\x00")
+		}
 	}
 	return observation, nil
 }
 
-func foregroundCodexOrigin(ancestry []processObservation) (processObservation, bool) {
-	if len(ancestry) == 0 || ancestry[0].foregroundProcessGroup <= 0 {
+func parseProcessStat(pid int, contents []byte) (processObservation, error) {
+	stat := string(contents)
+	closingParenthesis := strings.LastIndexByte(stat, ')')
+	if closingParenthesis < 0 {
+		return processObservation{}, errors.New("hook process stat has no command terminator")
+	}
+	fields := strings.Fields(stat[closingParenthesis+1:])
+	if len(fields) < 20 {
+		return processObservation{}, errors.New("hook process stat is incomplete")
+	}
+	parentPID, parentErr := strconv.Atoi(fields[1])
+	sessionID, sessionErr := strconv.Atoi(fields[3])
+	terminalDevice, terminalErr := strconv.Atoi(fields[4])
+	foregroundProcessGroup, foregroundErr := strconv.Atoi(fields[5])
+	startTime, startTimeErr := strconv.ParseUint(fields[19], 10, 64)
+	if parentErr != nil || parentPID < 0 ||
+		sessionErr != nil || sessionID <= 0 ||
+		terminalErr != nil || terminalDevice <= 0 ||
+		foregroundErr != nil || foregroundProcessGroup <= 0 ||
+		startTimeErr != nil || startTime == 0 {
+		return processObservation{}, errors.New("hook process stat has invalid ancestry")
+	}
+	return processObservation{
+		pid:                    pid,
+		parentPID:              parentPID,
+		sessionID:              sessionID,
+		terminalDevice:         terminalDevice,
+		foregroundProcessGroup: foregroundProcessGroup,
+		startTime:              fields[19],
+	}, nil
+}
+
+func foregroundCodexOrigin(ancestry []processObservation, paneTerminalDevice int) (processObservation, bool) {
+	if len(ancestry) == 0 ||
+		ancestry[0].terminalDevice != paneTerminalDevice ||
+		ancestry[0].foregroundProcessGroup <= 0 {
 		return processObservation{}, false
 	}
 	foregroundProcessGroup := ancestry[0].foregroundProcessGroup
