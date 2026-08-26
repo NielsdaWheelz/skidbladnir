@@ -15,7 +15,8 @@ platform gate is green; real Codex event delivery and renewed hands-on S22+
 acceptance remain `NOT_RUN`. The Claude Work profile source delta, routine
 verification, isolated tmux integration, exact devbox install/reverify,
 automated S22+ platform gate, and user-reported focused S22+ pass are green.
-The automatic dwarf-identity hard cut is approved and in implementation.
+The automatic dwarf-identity hard cut is source implemented and routine
+verification is green; isolated real-tmux acceptance remains `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -223,5 +224,5 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine, host external, and automated physical-device proof green; named real-Codex/hands-on checks remain `NOT_RUN` |
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
-| v0 identity delta — automatic dwarf identity | Implementation in progress; external proof `NOT_RUN` |
+| v0 identity delta — automatic dwarf identity | Source implemented and routine verification green; isolated real-tmux acceptance `NOT_RUN` |
 | v0.5 push | Not scheduled |
