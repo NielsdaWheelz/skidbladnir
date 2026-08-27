@@ -1040,7 +1040,7 @@ case "$gate" in
     gh auth status >/dev/null 2>&1 ||
       not_run published-release 'GitHub authentication is unavailable'
     published_repo='NielsdaWheelz/skidbladnir'
-    [[ "$(gh repo view --repo "$published_repo" --json nameWithOwner,visibility \
+    [[ "$(gh repo view "$published_repo" --json nameWithOwner,visibility \
       --jq '[.nameWithOwner,.visibility] | join(" ")')" == "$published_repo PUBLIC" ]] || {
       printf 'Published-release repository is not the exact public repository.\n' >&2
       exit 1

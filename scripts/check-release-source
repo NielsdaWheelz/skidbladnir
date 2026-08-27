@@ -87,7 +87,7 @@ esac
   exit 1
 }
 gh auth status >/dev/null 2>&1
-repo_identity="$(gh repo view --repo "$repo_name" --json nameWithOwner,visibility \
+repo_identity="$(gh repo view "$repo_name" --json nameWithOwner,visibility \
   --jq '[.nameWithOwner,.visibility] | join(" ")')"
 [[ "$repo_identity" == "$repo_name PUBLIC" ]] || {
   printf 'Release requires the public %s repository\n' "$repo_name" >&2
