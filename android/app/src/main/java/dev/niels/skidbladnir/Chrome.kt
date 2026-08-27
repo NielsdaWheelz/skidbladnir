@@ -60,6 +60,35 @@ internal fun NoticePanel(
     }
 }
 
+@Composable
+internal fun DetachButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = DeepSurface,
+        border = BorderStroke(1.dp, Gold.copy(alpha = 0.40f)),
+        shape = NidavellirShapes.Chip,
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = AngularIndication(NidavellirShapes.Chip),
+            role = Role.Button,
+            onClick = onClick,
+        ),
+    ) {
+        Box(
+            modifier = Modifier.minimumInteractiveComponentSize().padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Detach",
+                color = Gold,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+    }
+}
+
 // The one destructive control (destructive-chrome.md). Its signal is geometry:
 // Cleft is the only asymmetric shape in the product, so architecture.md's
 // "detach and kill are visibly different actions" survives greyscale without an

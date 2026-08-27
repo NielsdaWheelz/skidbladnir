@@ -539,9 +539,11 @@ generalized to the component's own shape as §12 already required);
 under sail, replacing D4's prow icon, with the whole adaptive-icon set
 generated and drift-gated); **(8) the Hlíðskjálf mark**
 ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke rule and legibility
-invariants, the mark on every Dwarves surface).
-The numbers are delta numbers, not positions; with D7 landed the grain has no
-gaps left, and the roadmap's D-numbers and these agree.
+invariants, the mark on every Dwarves surface); **(9) detach chrome**
+([detach-chrome.md](detach-chrome.md) — the stock long terminal action hard-cut
+to one symmetric, literal `Detach` control using the existing D2/D6 grammar).
+The numbers are delta numbers, not positions; D1–D9 each have one owner, and
+the roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

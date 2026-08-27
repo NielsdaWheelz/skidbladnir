@@ -72,10 +72,10 @@ visible, which it was not at any size the app previously drew it.
   lockup, 18 dp inheriting content colour on the two return affordances, 48 dp
   Muted-at-40% on the empty state. `HlidskjalfMark` is the single composable;
   no site draws the valknut directly.
-- **The detach control gets no mark.** `Detach · session keeps running` names
-  what the action does to the session, not where it goes. A mark there would
-  assert the button means "go to Dwarves" when it means "detach", which is the
-  visibly-distinct-actions guarantee architecture owns.
+- **The detach control gets no mark.** `Detach` names what the action does, not
+  where it goes. A mark there would assert the button means "go to Dwarves"
+  when it means "detach", which is the visibly-distinct-actions guarantee
+  architecture owns.
 - **The mark stays in-app.** The launcher identity is D7's; §8's "the app
   icon's core" phrasing is not this delta's to spend.
 

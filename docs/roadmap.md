@@ -42,6 +42,7 @@ S1 tmux control plane
  -> v0 design delta D6: destructive and notice chrome
  -> v0 design delta D5: the Forge seal
  -> v0 dashboard pull-to-refresh delta
+ -> v0 design delta D9: detach chrome
  -> v0.5 (optional): push
 ```
 
@@ -339,18 +340,20 @@ matters.
 
 - Dashboard, Forge, navigation, and pairing copy use `Dwarf` / `Dwarves` for
   the Dvergatal-backed persona.
-- Detach and recovery copy name the `session`; `agent` is reserved for the
-  opaque foreground terminal program.
+- Recovery copy names the `session`; `agent` is reserved for the opaque
+  foreground terminal program. The later D9 hard-cuts the top action to the
+  literal `Detach`.
 - HTTP `/sessions`, tmux identity, internal target types, and test selectors do
   not change.
 
-Red: a `SHELL` card is still called an agent even though no agent process is
-present, and Detach promises that a transient agent rather than the tmux
-session keeps running.
+Historical red: a `SHELL` card is still called an agent even though no agent
+process is present, and Detach promises that a transient agent rather than the
+tmux session keeps running.
 
-Acceptance: focused Android unit proof for detach lifetime copy, compiled
-instrumentation assertions for dashboard language, routine verification, and
-the next separately approved platform pass for rendered-device confirmation.
+Historical acceptance: focused Android unit proof for detach lifetime copy,
+compiled instrumentation assertions for dashboard language, routine
+verification, and the next separately approved platform pass for
+rendered-device confirmation.
 
 ## v0 design delta D7 — the launcher mark
 
@@ -440,6 +443,20 @@ and no essential first-row text or control obscured by the indicator. Gateway,
 tmux, and transport boundaries are
 unchanged and require no integration or live gate.
 
+## v0 design delta D9 — detach chrome
+
+Outcome: the terminal header hard-cuts the stock long detach `TextButton` to a
+purpose-built, symmetric Niðavellir control whose entire visible and spoken
+content is `Detach`. Kill remains Ember, `Cleft`, literal, and confirmed;
+Android Back and all phone-only detach behavior remain unchanged.
+This supersedes the product-language delta's visible detach lifetime copy and
+its pure string proof; recovery language remains unchanged.
+
+Scope, component contract, cleanup, work split, and red proof per
+[detach-chrome.md](detach-chrome.md). Gate: routine verification plus one
+separately approved S22+ platform pass and hands-on header glance. No
+integration or live gate for the unchanged lifecycle boundary.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -473,4 +490,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27; merged 45-test platform and hands-on native threshold/resistance/viewport checks `NOT_RUN` |
+| v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0.5 push | Not scheduled |

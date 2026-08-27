@@ -558,10 +558,10 @@ enum values are defects, with no protocol branch or compatibility state.
   collapsing the TUI into a narrow responsive layout. The
   [terminal key deck](terminal-key-deck.md) is one stable scrolling row
   `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End` and
-  contains terminal input only; top `Detach · session keeps running` and Android
-  Back own phone detach. Ctrl is a visible one-shot modifier, clears on the
-  next input or lifecycle boundary, and never rewrites IME, dictation, or
-  paste text. Deck, typed, composed, and pasted input share one page-owned
+  contains terminal input only; top `Detach` and Android Back own phone
+  detach. Ctrl is a visible one-shot modifier, clears on the next input or
+  lifecycle boundary, and never rewrites IME, dictation, or paste text. Deck,
+  typed, composed, and pasted input share one page-owned
   ordered ingress. Targets are at least `48dp` square with at least `8dp`
   separation. `Line break` sends raw `0x0a`; Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,

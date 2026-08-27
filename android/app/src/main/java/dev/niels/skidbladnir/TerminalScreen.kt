@@ -16,7 +16,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -56,10 +55,9 @@ internal fun TerminalScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(
+            DetachButton(
                 onClick = controller::detachToAgents,
-                modifier = Modifier.testTag("terminal-detach"),
-            ) { Text(terminalDetachActionLabel()) }
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "${state.machine.machine.label.text} · ${state.target.session.tmuxName}",
@@ -257,5 +255,3 @@ private fun terminalStatusTag(connection: TerminalUiStatus): String = when (conn
 
 internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =
     "${machineLabel.text} terminal is frozen. No input will be replayed."
-
-internal fun terminalDetachActionLabel(): String = "Detach · session keeps running"

@@ -216,11 +216,6 @@ class ProductContractTest {
     }
 
     @Test
-    fun `terminal detach copy promises the session lifetime rather than the foreground agent`() {
-        assertEquals("Detach · session keeps running", terminalDetachActionLabel())
-    }
-
-    @Test
     fun `terminal protocol accepts only the fixed server variants`() {
         assertEquals(
             TerminalServerEvent.Hello(2, TerminalGeometry.Constrained),
