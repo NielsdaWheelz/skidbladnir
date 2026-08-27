@@ -51,11 +51,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -68,7 +67,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import java.util.Locale
 
 /**
  * The monotonic receipt of a machine's freshest inventory, published on that machine's real strip
@@ -97,13 +95,19 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
         )
     }
 }
-
 @Composable
 internal fun DashboardMain(
     state: SkidbladnirUiState.Dashboard,
     controller: SkidbladnirController,
     onVerify: () -> Unit,
 ) {
+    var selectedPressureHandle by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedPressureMachine = selectedPressureHandle?.let { handle ->
+        state.machines.singleOrNull { it.machine.handle.encoded == handle }
+    }
+    if (selectedPressureHandle != null && selectedPressureMachine == null) {
+        LaunchedEffect(selectedPressureHandle) { selectedPressureHandle = null }
+    }
     val machines = state.machines.filter {
         state.selectedMachine == null || it.machine.handle == state.selectedMachine
     }
@@ -118,7 +122,12 @@ internal fun DashboardMain(
             MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
-                    MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+                    MachineStrip(
+                        machine = machine,
+                        controller = controller,
+                        credentialWritesEnabled = state.unreadableMachines.isEmpty(),
+                        onShowPressure = { selectedPressureHandle = machine.machine.handle.encoded },
+                    )
                 }
             }
             state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
@@ -158,6 +167,13 @@ internal fun DashboardMain(
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             ForgeSeal(canForge = canForge, onClick = controller::openForge)
         }
+    }
+    selectedPressureMachine?.let { machine ->
+        MachinePressureDetailsSheet(
+            machine = machine.machine,
+            state = machine.pressure,
+            onDismiss = { selectedPressureHandle = null },
+        )
     }
 }
 
@@ -404,166 +420,39 @@ private fun MachineStrip(
     machine: MachineState,
     controller: SkidbladnirController,
     credentialWritesEnabled: Boolean,
+    onShowPressure: () -> Unit,
 ) {
     val handle = machine.machine.handle.encoded
     val fresh = machine.inventory as? InventoryState.Fresh
-    Column {
-        MachinePressureStrip(
-            machineLabel = machine.machine.label.text,
+    Column(
+        modifier = Modifier
+            .testTag("machine-state-${machineStateTag(machine)}-$handle")
+            .semantics {
+                if (fresh != null) machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
+            },
+    ) {
+        MachinePressureRail(
+            machine = machine.machine,
             state = machine.pressure,
+            onOpenDetails = onShowPressure,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-                .testTag("machine-strip-$handle"),
-            headerModifier = Modifier
-                .testTag("machine-state-${machineStateTag(machine)}-$handle")
-                .semantics {
-                    if (fresh != null) machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
-                },
-            labelModifier = Modifier.testTag("machine-strip-label-$handle"),
-            inventoryStale = machine.inventory is InventoryState.Stale,
-            supporting = machineNotice(machine),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
         )
+        machineNotice(machine)?.let {
+            Text(
+                it.message,
+                color = noticeToneColor(it.tone),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
+            )
+        }
         if (machineAvailability(machine) == MachineAvailability.AuthRequired) {
             TextButton(
                 onClick = controller::requestFleetReconnect,
                 enabled = credentialWritesEnabled,
                 modifier = Modifier.padding(horizontal = 16.dp),
             ) { Text("Reconnect fleet") }
-        }
-    }
-}
-
-@Composable
-internal fun MachinePressureStrip(
-    machineLabel: String,
-    state: PressureState,
-    inventoryStale: Boolean,
-    supporting: MachineNotice?,
-    modifier: Modifier = Modifier,
-    headerModifier: Modifier = Modifier,
-    labelModifier: Modifier = Modifier,
-) {
-    val response = when (state) {
-        is PressureState.Fresh -> state.response
-        is PressureState.Stale -> state.response
-        PressureState.Reading, is PressureState.Unavailable -> null
-    }
-    val stale = inventoryStale || state is PressureState.Stale
-    Surface(color = RaisedSurface, modifier = modifier, shape = NidavellirShapes.Card) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = headerModifier) {
-                Text(
-                    text = buildString {
-                        append(machineLabel.uppercase(Locale.ROOT))
-                        append(' ')
-                        append(
-                            when (state) {
-                                PressureState.Reading -> "READING"
-                                is PressureState.Fresh -> state.response.current.level.name.uppercase(Locale.ROOT)
-                                is PressureState.Stale -> state.response.current.level.name.uppercase(Locale.ROOT)
-                                is PressureState.Unavailable -> "UNAVAILABLE"
-                            },
-                        )
-                    },
-                    color = pressureStateColor(state),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontFamily = NidavellirType.Data,
-                    fontWeight = FontWeight.Bold,
-                    modifier = labelModifier.weight(1f),
-                )
-                if (stale) {
-                    Text(
-                        "STALE",
-                        color = noticeToneColor(NoticeTone.Degraded),
-                        fontFamily = NidavellirType.Data,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-            if (response != null) {
-                val current = response.current
-                val known = pressureMetricValues(current.metrics)
-                if (known.isNotEmpty()) {
-                    Text(
-                        text = known.joinToString(" · "),
-                        color = Bone,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontFamily = NidavellirType.Data,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(top = 2.dp),
-                        maxLines = 1,
-                    )
-                }
-                if (response.history.isNotEmpty()) {
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(16.dp)
-                            .padding(top = 5.dp)
-                            .semantics {
-                                contentDescription = "$machineLabel pressure history: " +
-                                    response.history.joinToString { it.level.name.lowercase(Locale.ROOT) }
-                            },
-                    ) {
-                        val barWidth = size.width / response.history.size
-                        response.history.forEachIndexed { index, sample ->
-                            val proportion = when (sample.level) {
-                                PressureLevel.Normal -> 0.25f
-                                PressureLevel.Warm -> 0.58f
-                                PressureLevel.Hot -> 1f
-                                PressureLevel.Unknown -> 0.42f
-                            }
-                            drawRect(
-                                color = pressureColor(sample.level),
-                                topLeft = Offset(
-                                    x = index * barWidth,
-                                    y = size.height * (1f - proportion),
-                                ),
-                                size = Size(
-                                    width = maxOf(1f, barWidth - 1f),
-                                    height = size.height * proportion,
-                                ),
-                            )
-                        }
-                    }
-                    Text(
-                        "Recent pressure history · up to 15 min",
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = NidavellirType.Data,
-                    )
-                }
-                if (current.missing.isNotEmpty()) {
-                    Text(
-                        "Missing: ${current.missing.joinToString { pressureMetricLabel(it) }}",
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = NidavellirType.Data,
-                    )
-                }
-                if (response.unsupported.isNotEmpty()) {
-                    Text(
-                        "Unsupported: ${response.unsupported.joinToString { pressureMetricLabel(it) }}",
-                        color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = NidavellirType.Data,
-                    )
-                }
-                if (current.reasons.isNotEmpty()) {
-                    Text(
-                        "Pressure: ${current.reasons.joinToString { pressureReasonLabel(it) }}",
-                        color = pressureColor(current.level),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = NidavellirType.Data,
-                    )
-                }
-            }
-            supporting?.let {
-                Text(it.message, color = noticeToneColor(it.tone), style = MaterialTheme.typography.labelMedium)
-            }
         }
     }
 }
@@ -757,52 +646,6 @@ internal fun EmptyState(
             Text(body, color = noticeToneColor(tone), modifier = Modifier.padding(top = 8.dp))
         }
     }
-}
-
-private fun pressureStateColor(state: PressureState): Color = when (state) {
-    PressureState.Reading -> Gold
-    is PressureState.Fresh -> pressureColor(state.response.current.level)
-    is PressureState.Stale, is PressureState.Unavailable -> Muted
-}
-
-private fun pressureColor(level: PressureLevel): Color = when (level) {
-    PressureLevel.Normal -> Moss
-    PressureLevel.Warm -> Gold
-    PressureLevel.Hot -> Ember
-    PressureLevel.Unknown -> Muted
-}
-
-private fun pressureMetricValues(metrics: PressureMetrics): List<String> = buildList {
-    metrics.cpuPercent?.let { add("CPU ${it.toInt()}%") }
-    metrics.memoryAvailablePercent?.let { add("RAM ${it.toInt()}% free") }
-    metrics.swapUsedPercent?.let { add("swap ${it.toInt()}% used") }
-    metrics.normalizedLoad?.let { add("load ${String.format(Locale.ROOT, "%.2f", it)}") }
-    metrics.diskAvailablePercent?.let { add("disk ${it.toInt()}% free") }
-    metrics.cpuPsiSomeAvg60Percent?.let { add("CPU PSI ${it.toInt()}%") }
-    metrics.memoryPsiFullAvg60Percent?.let { add("memory PSI ${it.toInt()}%") }
-    metrics.ioPsiFullAvg60Percent?.let { add("I/O PSI ${it.toInt()}%") }
-    metrics.memoryPressure?.let { add("memory pressure ${it.name.uppercase(Locale.ROOT)}") }
-}
-
-private fun pressureMetricLabel(value: PressureMetric): String = when (value) {
-    PressureMetric.CpuPercent -> "CPU"
-    PressureMetric.NormalizedLoad -> "load"
-    PressureMetric.MemoryAvailablePercent -> "memory available"
-    PressureMetric.SwapUsedPercent -> "swap used"
-    PressureMetric.DiskAvailablePercent -> "disk available"
-    PressureMetric.CpuPsiSomeAvg60Percent -> "CPU PSI"
-    PressureMetric.MemoryPsiFullAvg60Percent -> "memory PSI"
-    PressureMetric.IoPsiFullAvg60Percent -> "I/O PSI"
-    PressureMetric.MemoryPressure -> "system memory pressure"
-}
-
-private fun pressureReasonLabel(reason: PressureReason): String = when (reason) {
-    PressureReason.Memory -> "memory"
-    PressureReason.Disk -> "disk"
-    PressureReason.Load -> "load"
-    PressureReason.CpuPsi -> "CPU pressure"
-    PressureReason.MemoryPsi -> "memory pressure"
-    PressureReason.IoPsi -> "I/O pressure"
 }
 
 internal fun forgeRecoveryMessage(

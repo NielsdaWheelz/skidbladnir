@@ -144,7 +144,7 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 
 Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
 `SHELL` Bronze · `UNKNOWN` Muted. Pressure keeps Normal Moss · Warm Gold ·
-Hot Ember · Unknown Muted.
+Hot Ember · Unknown/missing Muted; display-only Informational is Frost.
 
 ### Severity tones
 
@@ -189,9 +189,9 @@ never text/icon foreground:
 
 `#400B0B → #A12424 → #EE7B06 → #FFA904 → #FFDB00` follows the physical
 tempering sequence; contrast against Ink rises monotonically (1.18 → >10), so
-the ramp encodes "intensifying" for free. Use only for ordered intensity
-(pressure history, any future meter); never as categorical chips. Interpolate
-between stops in Oklab, not sRGB, to avoid muddy midpoints.
+the ramp encodes "intensifying" for free. Use only for a future continuous
+meter, never categorical pressure history or chips. Interpolate between stops
+in Oklab, not sRGB, to avoid muddy midpoints.
 
 ### Budget
 
@@ -498,9 +498,14 @@ it as a red test, not an assumption.
   slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
   semantics owned by [terminal-key-deck.md](terminal-key-deck.md). Ctrl
   armed = Gold 18% fill + Gold label + selected semantics.
-- **Pressure strip**: level colors per §5; any future continuous meter uses
-  the forge-heat ramp (§5) with the arc path cached in `drawWithCache`'s
-  build phase and only the sweep/color read per-frame.
+- **Pressure rail**: RaisedSurface card, 10dp cuts, one header, one horizontally
+  scrolling non-wrapping gem row, then the unchanged 16dp categorical history
+  band with no title. The whole rail is one disclosure control. Static gems use
+  the 4dp chip cut, Data face, state color at 18% fill plus same-color hairline,
+  and redundant `i | N | W | H | ?` marks; they are not nested controls or
+  cloisonné pigment fills. The machine-bound details sheet uses the existing
+  12dp top-cut sheet and panel language, with no second history band.
+
 ## 14. Accessibility floor
 
 48dp targets and 8dp spacing where architecture/key-deck specs demand;

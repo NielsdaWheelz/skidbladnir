@@ -455,9 +455,9 @@ func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
 		writeError(writer, errorInternal)
 		return
 	}
-	history := make([]hostSampleDTO, len(snapshot.Window))
+	history := make([]pressureHistoryDTO, len(snapshot.Window))
 	for index, sample := range snapshot.Window {
-		mapped, mapErr := mapHostSample(sample, gateway.unsupportedMetricSet)
+		mapped, mapErr := mapPressureHistory(sample)
 		if mapErr != nil {
 			writeError(writer, errorInternal)
 			return

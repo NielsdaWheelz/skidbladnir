@@ -119,29 +119,45 @@ type killSessionRequest struct {
 }
 
 type pressureResponseDTO struct {
-	Unsupported []pressure.Metric `json:"unsupported"`
-	Current     hostSampleDTO     `json:"current"`
-	History     []hostSampleDTO   `json:"history"`
+	Unsupported []pressure.Metric    `json:"unsupported"`
+	Current     hostSampleDTO        `json:"current"`
+	History     []pressureHistoryDTO `json:"history"`
 }
 
 type hostSampleDTO struct {
 	SampledAt string             `json:"sampledAt"`
 	Level     string             `json:"level"`
+	Phase     pressure.Phase     `json:"phase"`
 	Reasons   []string           `json:"reasons"`
-	Metrics   pressureMetricsDTO `json:"metrics"`
+	Signals   pressureSignalsDTO `json:"signals"`
 	Missing   []pressure.Metric  `json:"missing"`
 }
 
-type pressureMetricsDTO struct {
-	CPUPercent                          *float64                 `json:"cpuPercent,omitempty"`
-	NormalizedLoad                      *float64                 `json:"normalizedLoad,omitempty"`
-	MemoryAvailablePercent              *float64                 `json:"memoryAvailablePercent,omitempty"`
-	SwapUsedPercent                     *float64                 `json:"swapUsedPercent,omitempty"`
-	DiskAvailablePercent                *float64                 `json:"diskAvailablePercent,omitempty"`
-	CPUPressureSomeAvg60Percent         *float64                 `json:"cpuPsiSomeAvg60Percent,omitempty"`
-	MemoryPressureFullAvg60Percent      *float64                 `json:"memoryPsiFullAvg60Percent,omitempty"`
-	InputOutputPressureFullAvg60Percent *float64                 `json:"ioPsiFullAvg60Percent,omitempty"`
-	MemoryPressure                      *pressure.MemoryPressure `json:"memoryPressure,omitempty"`
+type pressureSignalsDTO struct {
+	CPUPercent                          *pressureSignalDTO       `json:"cpuPercent,omitempty"`
+	NormalizedLoad                      *pressureSignalDTO       `json:"normalizedLoad,omitempty"`
+	MemoryAvailablePercent              *pressureSignalDTO       `json:"memoryAvailablePercent,omitempty"`
+	SwapUsedPercent                     *pressureSignalDTO       `json:"swapUsedPercent,omitempty"`
+	DiskAvailablePercent                *pressureSignalDTO       `json:"diskAvailablePercent,omitempty"`
+	CPUPressureSomeAvg60Percent         *pressureSignalDTO       `json:"cpuPsiSomeAvg60Percent,omitempty"`
+	MemoryPressureFullAvg60Percent      *pressureSignalDTO       `json:"memoryPsiFullAvg60Percent,omitempty"`
+	InputOutputPressureFullAvg60Percent *pressureSignalDTO       `json:"ioPsiFullAvg60Percent,omitempty"`
+	MemoryPressure                      *memoryPressureSignalDTO `json:"memoryPressure,omitempty"`
+}
+
+type pressureSignalDTO struct {
+	Value float64               `json:"value"`
+	State pressure.SignalStatus `json:"state"`
+}
+
+type memoryPressureSignalDTO struct {
+	Value pressure.MemoryPressure `json:"value"`
+	State pressure.SignalStatus   `json:"state"`
+}
+
+type pressureHistoryDTO struct {
+	SampledAt string `json:"sampledAt"`
+	Level     string `json:"level"`
 }
 
 func mapProfiles(profiles []sessions.Profile) ([]profileDTO, error) {
@@ -226,11 +242,9 @@ func sessionPriority(kind string) int {
 }
 
 func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struct{}) (hostSampleDTO, error) {
-	level := string(sample.Status)
-	switch sample.Status {
-	case pressure.StatusNormal, pressure.StatusWarm, pressure.StatusHot, pressure.StatusUnknown:
-	default:
-		return hostSampleDTO{}, errors.New("invalid pressure status")
+	level, err := mapPressureLevel(sample.Status)
+	if err != nil {
+		return hostSampleDTO{}, err
 	}
 	reasons := make([]string, len(sample.Reasons))
 	for index, reason := range sample.Reasons {
@@ -244,23 +258,30 @@ func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struc
 	mapped := hostSampleDTO{
 		SampledAt: sample.ObservedAt.Format(time.RFC3339Nano),
 		Level:     level,
+		Phase:     sample.Phase,
 		Reasons:   reasons,
 		Missing:   []pressure.Metric{},
 	}
+	switch sample.Phase {
+	case pressure.PhaseSteady, pressure.PhaseRecovering:
+	default:
+		return hostSampleDTO{}, errors.New("invalid pressure phase")
+	}
 	metrics := [...]struct {
-		metric      pressure.Metric
-		signal      pressure.Signal
-		destination **float64
-		maximum     float64
+		metric        pressure.Metric
+		signal        pressure.Signal
+		destination   **pressureSignalDTO
+		maximum       float64
+		informational bool
 	}{
-		{pressure.MetricCPUPercent, sample.CPUPercent, &mapped.Metrics.CPUPercent, 100},
-		{pressure.MetricLoadNormalized, sample.LoadNormalized, &mapped.Metrics.NormalizedLoad, math.MaxFloat64},
-		{pressure.MetricMemoryAvailablePercent, sample.MemoryAvailablePercent, &mapped.Metrics.MemoryAvailablePercent, 100},
-		{pressure.MetricSwapUsedPercent, sample.SwapUsedPercent, &mapped.Metrics.SwapUsedPercent, 100},
-		{pressure.MetricDiskAvailablePercent, sample.DiskAvailablePercent, &mapped.Metrics.DiskAvailablePercent, 100},
-		{pressure.MetricCPUPressureSomeAvg60, sample.CPUPressureSomeAvg60, &mapped.Metrics.CPUPressureSomeAvg60Percent, 100},
-		{pressure.MetricMemoryPressureFullAvg60, sample.MemoryPressureFullAvg60, &mapped.Metrics.MemoryPressureFullAvg60Percent, 100},
-		{pressure.MetricInputOutputPressureFullAvg60, sample.InputOutputPressureFullAvg60, &mapped.Metrics.InputOutputPressureFullAvg60Percent, 100},
+		{pressure.MetricCPUPercent, sample.CPUPercent, &mapped.Signals.CPUPercent, 100, true},
+		{pressure.MetricLoadNormalized, sample.LoadNormalized, &mapped.Signals.NormalizedLoad, math.MaxFloat64, false},
+		{pressure.MetricMemoryAvailablePercent, sample.MemoryAvailablePercent, &mapped.Signals.MemoryAvailablePercent, 100, false},
+		{pressure.MetricSwapUsedPercent, sample.SwapUsedPercent, &mapped.Signals.SwapUsedPercent, 100, true},
+		{pressure.MetricDiskAvailablePercent, sample.DiskAvailablePercent, &mapped.Signals.DiskAvailablePercent, 100, false},
+		{pressure.MetricCPUPressureSomeAvg60, sample.CPUPressureSomeAvg60, &mapped.Signals.CPUPressureSomeAvg60Percent, 100, false},
+		{pressure.MetricMemoryPressureFullAvg60, sample.MemoryPressureFullAvg60, &mapped.Signals.MemoryPressureFullAvg60Percent, 100, false},
+		{pressure.MetricInputOutputPressureFullAvg60, sample.InputOutputPressureFullAvg60, &mapped.Signals.InputOutputPressureFullAvg60Percent, 100, false},
 	}
 	for _, metric := range metrics {
 		value, known := metric.signal.Value()
@@ -279,8 +300,10 @@ func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struc
 		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > metric.maximum {
 			return hostSampleDTO{}, errors.New("invalid pressure metric")
 		}
-		valueCopy := value
-		*metric.destination = &valueCopy
+		if !validSignalStatus(metric.signal.Status, metric.informational) {
+			return hostSampleDTO{}, errors.New("invalid pressure signal status")
+		}
+		*metric.destination = &pressureSignalDTO{Value: value, State: metric.signal.Status}
 	}
 	memoryPressure, known := sample.MemoryPressure.Value()
 	_, memoryPressureUnsupported := unsupported[pressure.MetricMemoryPressure]
@@ -288,18 +311,43 @@ func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struc
 		return hostSampleDTO{}, err
 	}
 	if known && !memoryPressureUnsupported {
-		switch memoryPressure {
-		case pressure.MemoryPressureNormal, pressure.MemoryPressureWarning, pressure.MemoryPressureCritical:
+		switch {
+		case memoryPressure == pressure.MemoryPressureNormal && sample.MemoryPressure.Status == pressure.SignalStatusNormal,
+			memoryPressure == pressure.MemoryPressureWarning && sample.MemoryPressure.Status == pressure.SignalStatusWarm,
+			memoryPressure == pressure.MemoryPressureCritical && sample.MemoryPressure.Status == pressure.SignalStatusHot:
 		default:
-			return hostSampleDTO{}, errors.New("invalid memory pressure")
+			return hostSampleDTO{}, errors.New("invalid memory pressure signal")
 		}
-		memoryPressureCopy := memoryPressure
-		mapped.Metrics.MemoryPressure = &memoryPressureCopy
+		mapped.Signals.MemoryPressure = &memoryPressureSignalDTO{Value: memoryPressure, State: sample.MemoryPressure.Status}
 	}
 	sort.Slice(mapped.Missing, func(left, right int) bool {
 		return mapped.Missing[left] < mapped.Missing[right]
 	})
 	return mapped, nil
+}
+
+func mapPressureHistory(sample pressure.Sample) (pressureHistoryDTO, error) {
+	level, err := mapPressureLevel(sample.Status)
+	if err != nil {
+		return pressureHistoryDTO{}, err
+	}
+	return pressureHistoryDTO{SampledAt: sample.ObservedAt.Format(time.RFC3339Nano), Level: level}, nil
+}
+
+func mapPressureLevel(status pressure.Status) (string, error) {
+	switch status {
+	case pressure.StatusNormal, pressure.StatusWarm, pressure.StatusHot, pressure.StatusUnknown:
+		return string(status), nil
+	default:
+		return "", errors.New("invalid pressure status")
+	}
+}
+
+func validSignalStatus(status pressure.SignalStatus, informational bool) bool {
+	if informational {
+		return status == pressure.SignalStatusInformational
+	}
+	return status == pressure.SignalStatusNormal || status == pressure.SignalStatusWarm || status == pressure.SignalStatusHot
 }
 
 func partitionPressureMetric(metric pressure.Metric, observed, unsupported bool, missing *[]pressure.Metric) error {
