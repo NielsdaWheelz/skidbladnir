@@ -19,7 +19,8 @@ import kotlinx.coroutines.launch
 // off-grammar, so this draws an inset copy of the component's own cut-corner
 // outline at Bone, fading in and out at the pressed state-layer alpha. §12
 // mandates one implementation used everywhere, so the shape is the caller's —
-// the card presses as a Card, the kill control presses as a Cleft.
+// the card presses as a Card, the kill control as a Cleft, the Forge seal as
+// an Octagon.
 // A data class, not an object: structural equals/hashCode let a call site
 // construct `AngularIndication(NidavellirShapes.Cleft)` inline without
 // Modifier.clickable churning across recompositions, which is the guarantee

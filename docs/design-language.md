@@ -122,7 +122,7 @@ darker than Ink; never use `#000000` anywhere (OLED smear).
 | DeepSurface | `#15171A` | ~1dp; cards at rest, dialogs |
 | RaisedSurface | `#202329` | ~4–6dp; raised card elements, chips ground |
 | Overlook | `#2E2F31` | 12dp (14% white); reserved for a future topmost sheet |
-| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; The Forge sheet only — the one firelit room in the app |
+| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; The Forge sheet and the lit Forge seal (§13) — the app's only firelit surfaces |
 
 ### Text and accents
 
@@ -211,7 +211,13 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
   forbids the icon that would otherwise carry it. A second asymmetric shape
   would spend the distinction, so adding one reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
-  the side is a regular octagon; circles are elvish in this grammar.
+  the side is an octagon; circles are elvish in this grammar. The exactly
+  regular cut is (2−√2)/2 ≈ 29.29%; 29% is the shipped round number, which puts
+  each vertex 0.16dp from its regular position on a 56dp frame and leaves the
+  axis edges 2.4% longer than the diagonals (23.52dp against 22.97dp). Both are
+  below the perceptual floor for a hairline outline, and not worth re-cutting
+  every seal already struck. Whatever draws the octagon reads the same shipped constant
+  the clip does, so a frame and its clip can never disagree.
 - **Badges are lozenges.** The attention badge is a rotated square (diamond),
   the fret family's atom, in Orpiment.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
@@ -280,10 +286,22 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
   placing sequential font glyphs — and [dwarf-seals.md](dwarf-seals.md)
   owns its geometry. Never transliterate labels, never rune-encode meaning
   a user must read.
+- **The unstruck seal** is the create mark: the §11 seal with every trait at
+  zero — an octagon frame around a bare stave crossed by one horizontal bar,
+  and nothing else. No mineral, no beard, no facet mask, no initial. It is the
+  blank a dwarf is struck from, and it is honest: the catalogue identity is
+  assigned after creation, so the client cannot draw the seal it is about to
+  make. Its crossbar is perpendicular to the stave, which no Younger Futhark
+  branch ever is, so the mark cannot be read as a rune — that is enforced as a
+  proof, not asserted. [forge-seal.md](forge-seal.md) owns its geometry.
 - **No horned helmets, drinking horns, axes, or hammer clip-art.** The horned
   helmet is a 19th-century invention with zero archaeological support; the
   rest is tourist-shop register. The app's dwarvenness is structural, not
-  propped.
+  propped. Reconsidered once, for the create action (D5), and re-rejected:
+  provenance was never the objection — Skíðblaðnir and Mjölnir come from one
+  wager (*Skáldskaparmál* 35) — but Skíðblaðnir loses that wager, Mjölnir marks
+  the wielder rather than the smith, and the silhouette dies at 24dp monoline.
+  The register is the objection, and it does not improve.
 
 ## 9. Typography
 
@@ -445,6 +463,13 @@ it as a red test, not an assumption.
   Muted at 40% on the empty grid. One composable, semantics-silent everywhere.
   The detach control carries no mark: it names what happens to the session, not
   where the button goes.
+- **The Forge seal**: the create control. A 56dp octagon anchored at the
+  dashboard's bottom trailing corner over the grid, carrying the unstruck
+  seal (§8). Lit = ForgeGlow field, Gold frame and mark; cold = DeepSurface
+  field, mark in Muted at §12's disabled content alpha — field and hue both
+  change, never opacity alone. Icon-only, spoken `New dwarf`, no ornament,
+  and the lit/cold flip does not animate. [forge-seal.md](forge-seal.md) owns
+  its geometry.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
   slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
@@ -467,7 +492,8 @@ prose. Reduced-motion fallbacks per §12. Ornament is always
 Never: rounded corners; circular ripples; drop shadows; smooth decorative
 gradients (Oklab ordinal ramps excepted); `#000000`; zoomorphic chrome;
 Elder Futhark; rune-transliterated UI text; blackletter; Tolkien scripts;
-horned-helmet/axe/horn clip-art; Cinzel-register imperial caps; more than one
+horned-helmet/axe/horn/hammer clip-art (reconsidered for the create
+action and re-rejected, §8); Cinzel-register imperial caps; more than one
 ambient animation; ornament on error or destructive surfaces; unlicensed or
 GPL knot code; fonts outside §9's table without a license entry here.
 
@@ -492,15 +518,17 @@ Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
 build-time fret pipeline, Forge/empty-state art, app icon);
+**(5) the Forge seal** ([forge-seal.md](forge-seal.md) — §8's unstruck seal and
+the bottom-anchored create control, on the octagon geometry it extracts);
 **(6) destructive and notice chrome**
 ([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
 `Cleft` kill geometry, one shared notice panel, and `AngularIndication`
 generalized to the component's own shape as §12 already required);
 **(8) the Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's
 stroke rule and legibility invariants, the mark on every Dwarves surface).
-The numbers are delta numbers, not positions: 5 and 7 are claimed by the
-forge seal and the launcher mark, each specified on its own branch, so the
-grain has gaps and the roadmap's D-numbers and these agree.
+The numbers are delta numbers, not positions: 7 is claimed by the launcher
+mark, specified on its own branch, so the grain has a gap there and the
+roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

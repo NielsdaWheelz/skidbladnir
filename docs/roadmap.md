@@ -40,6 +40,7 @@ S1 tmux control plane
  -> v0 product-language delta: dwarves
  -> v0 design delta D8: the Hlíðskjálf mark
  -> v0 design delta D6: destructive and notice chrome
+ -> v0 design delta D5: the Forge seal
  -> v0.5 (optional): push
 ```
 
@@ -259,11 +260,14 @@ S22+ platform gate.
 
 ## v0 design deltas — Niðavellir adoption
 
-[`design-language.md`](design-language.md) owns the visual identity these four
-deltas adopt; each delta has its own implementation-boundary spec, red proofs,
-and gates, and lands as its own change. Order is D1 → D2 → D3 → D4: D1 is
-independent; D2 creates the token system D3 and D4 consume. No gateway, tmux,
-public API, or input-semantics work appears anywhere in D1–D4.
+[`design-language.md`](design-language.md) owns the visual identity these
+deltas adopt; each has its own implementation-boundary spec, red proofs, and
+gates, and lands as its own change. Landing order is D1 → D2 → D3 → D4 → D8 →
+D6 → D5: D1 is independent; D2 creates the token system every later one
+consumes; D5 lands last because it reshapes the dashboard chrome the others
+established. D7, the launcher mark, is specified on its own branch and has not
+landed — the numbers are delta numbers, not positions. No gateway, tmux, public
+API, or input-semantics work appears in any of them.
 
 ### D1 — terminal theme
 
@@ -313,6 +317,19 @@ Scope per [destructive-chrome.md](destructive-chrome.md). Numbered 6 because
 verification, plus the three rendered proofs (cleft asymmetry, disabled cue
 and spoken target, notice-panel consumers) folded into the next approved
 platform pass.
+
+### D5 — the Forge seal
+
+Outcome: the create action leaves the dashboard header and becomes a
+bottom-trailing 56dp octagonal control carrying the unstruck seal — the D3
+seal with every trait at zero — lit when a machine can create and cold when
+none can. Scope per [forge-seal.md](forge-seal.md). It shares the header with
+the dashboard pull-to-refresh delta, which owns the other button; the two split
+by concern — pull-to-refresh owns the refresh gesture and the inventory intent,
+D5 owns the dashboard's action chrome — and each proves only its own half, so
+the code merges in either order. Gate: routine verification plus one separately
+approved platform pass; the mark's legibility and the lit/cold glance are
+hands-on and stay `NOT_RUN` until approved.
 
 ## v0 product-language delta — dwarves
 
@@ -396,4 +413,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D6 — destructive and notice chrome | Implemented and verified; adversarial review applied (Role.Button, two contrast floors, an EmptyState severity contradiction); routine verification green (45 JVM tests) and the 35-test instrumented suite green on the physical S22+ (devbox debug-signed run); the cleft proof is mutation-checked; the hands-on cleft/stale glance stays `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
+| v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0.5 push | Not scheduled |
