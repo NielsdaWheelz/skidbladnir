@@ -256,7 +256,7 @@ class ProductContractTest {
             ApiErrorCode.MachineIdentityMismatch,
             terminalUpgradeFailureCode(
                 409,
-                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Provisioning repair is required."}""",
+                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Fleet reset is required."}""",
             ),
         )
         assertEquals(MachineAccess.AuthRequired, terminalAccessLoss(ApiErrorCode.Unauthenticated))

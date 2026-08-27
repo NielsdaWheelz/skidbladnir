@@ -219,8 +219,16 @@ if [[ "${1:-}" == '--config-only' && "$#" -eq 1 ]]; then
   printf 'Android signing configuration accepted\n'
   exit
 fi
+if [[ "${1:-}" == '--public-apk' && "$#" -ge 2 ]]; then
+  shift
+  for apk in "$@"; do
+    verify_apk "$apk"
+  done
+  printf 'Android public signing identity accepted: %s APK(s)\n' "$#"
+  exit
+fi
 if [[ "$#" -lt 1 ]]; then
-  printf 'usage: %s [--self-test|--config-only|APK...]\n' "$0" >&2
+  printf 'usage: %s [--self-test|--config-only|--public-apk APK...|APK...]\n' "$0" >&2
   exit 64
 fi
 

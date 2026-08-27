@@ -20,11 +20,9 @@ private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
 
-    data class BearerRepair(
-        val machine: PairedMachine,
-        val bearer: BearerDraft,
-        val pending: Boolean,
-        val error: String?,
+    data class FleetConnect(
+        val mode: FleetConnectMode,
+        val phase: FleetConnectPhase,
     ) : SkidbladnirUiState
 
     data class Dashboard(
@@ -71,15 +69,6 @@ internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: Ter
         is TerminalUiStatus.Connected, is TerminalUiStatus.ReconnectRequired -> true
         TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> false
     }
-
-internal fun bearerRepairConflict(
-    credentials: Collection<MachineCredential>,
-    storageComplete: Boolean,
-    targetHandle: MachineHandle,
-    bearer: GatewayBearer,
-): Boolean = !storageComplete || credentials.any { credential ->
-    credential.machine.handle != targetHandle && credential.bearer == bearer
-}
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
 internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
@@ -231,7 +220,7 @@ private fun machineAccessMessage(machine: MachineState): String = when (machine.
     MachineAccess.Ready -> "${machine.machine.label.text}: reconnect required."
     MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required."
     MachineAccess.IdentityChanged ->
-        "${machine.machine.label.text}: machine identity changed. Provisioning repair is required."
+        "${machine.machine.label.text}: machine identity changed. Fleet reset is required."
 }
 
 private data class PollRuntime(
@@ -435,7 +424,7 @@ internal fun beginStoredMachineRead(
     retainedForgeCarry = when (state) {
         is SkidbladnirUiState.Dashboard -> forgeCarry(state).takeUnless { it == ForgeCarry(null, null) }
         SkidbladnirUiState.Booting -> retainedForgeCarry
-        is SkidbladnirUiState.BearerRepair, is SkidbladnirUiState.Terminal -> null
+        is SkidbladnirUiState.FleetConnect, is SkidbladnirUiState.Terminal -> null
     },
 )
 
@@ -524,11 +513,24 @@ internal class SkidbladnirController(context: Context) {
     private var terminalOwner: Any? = null
     private var createdTerminalAdmission: CreatedTerminalAdmission? = null
     private var nextTerminalAttempt = 1
+    private var pendingFleetScan: String? = null
 
     fun start() {
         if (foreground) return
         foreground = true
-        val activeGeneration = ++generation
+        val connectState = state as? SkidbladnirUiState.FleetConnect
+        ++generation
+        if (connectState?.phase == FleetConnectPhase.Scanning) {
+            machineStates.values.filter { it.access == MachineAccess.Ready }.forEach {
+                startPolling(it.machine.handle, generation)
+            }
+            pendingFleetScan?.let { encoded ->
+                pendingFleetScan = null
+                acceptFleetScan(encoded)
+            }
+            return
+        }
+        val activeGeneration = generation
         awaitedInventoryReads.clear()
         val storedMachineRead = beginStoredMachineRead(
             state = state,
@@ -556,17 +558,34 @@ internal class SkidbladnirController(context: Context) {
                 unreadableMachines.clear()
                 unreadableMachines += stored.unreadable
                 val storageNotice = stored.unreadable.takeIf { it.isNotEmpty() }?.let {
-                    "Some stored machine credentials are unreadable. Provisioning repair is required outside this app."
+                    "Saved fleet credentials are unreadable. Fleet reset is required outside this app."
                 }
                 if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
-                    publishDashboard(
-                        notice = "No machine credentials are provisioned. Machine administration is outside this app.",
-                        carry = reconciliation.forgeCarry,
+                    state = SkidbladnirUiState.FleetConnect(
+                        mode = FleetConnectMode.Install,
+                        phase = if (
+                            connectState?.phase == FleetConnectPhase.Connecting ||
+                            connectState?.phase == FleetConnectPhase.Failed
+                        ) {
+                            FleetConnectPhase.Failed
+                        } else {
+                            FleetConnectPhase.Ready
+                        },
                     )
                     return@post
                 }
                 reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
                     startPolling(it.credential.machine.handle, activeGeneration)
+                }
+                if (connectState?.mode == FleetConnectMode.Reconnect) {
+                    state = connectState.copy(
+                        phase = if (connectState.phase == FleetConnectPhase.Connecting) {
+                            FleetConnectPhase.Failed
+                        } else {
+                            connectState.phase
+                        },
+                    )
+                    return@post
                 }
                 publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
             }
@@ -587,133 +606,113 @@ internal class SkidbladnirController(context: Context) {
         when (val current = state) {
             is SkidbladnirUiState.Dashboard -> state = current.copy(refreshing = awaitedInventoryReads.isActive)
             is SkidbladnirUiState.Terminal -> publishDashboard()
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> Unit
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> Unit
         }
     }
 
     fun close() {
         stopForBackground()
+        pendingFleetScan = null
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
         client.closeAsync()
     }
 
-    fun repairMachine(handle: MachineHandle) {
-        if (unreadableMachines.isNotEmpty()) return
-        val machine = machineStates[handle]?.machine ?: return
-        state = SkidbladnirUiState.BearerRepair(
-            machine = machine,
-            bearer = BearerDraft(""),
-            pending = false,
-            error = null,
-        )
+    fun requestFleetScan() {
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.phase != FleetConnectPhase.Ready && current.phase != FleetConnectPhase.Failed) return
+        state = current.copy(phase = FleetConnectPhase.Scanning)
     }
 
-    fun cancelBearerRepair() {
-        val current = state as? SkidbladnirUiState.BearerRepair ?: return
-        if (current.pending) return
+    fun requestFleetReconnect() {
+        if (state !is SkidbladnirUiState.Dashboard) return
+        if (unreadableMachines.isNotEmpty() || credentials.size != 3 || machineStates.size != 3) {
+            publishDashboard(notice = "The installed fleet is incomplete. Fleet reset is required outside this app.")
+            return
+        }
+        state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Reconnect, FleetConnectPhase.Scanning)
+    }
+
+    fun cancelFleetReconnect() {
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.mode != FleetConnectMode.Reconnect || current.phase == FleetConnectPhase.Connecting) return
         publishDashboard()
     }
 
-    fun updateBearerRepair(value: String) {
-        val current = state as? SkidbladnirUiState.BearerRepair ?: return
-        if (!current.pending) state = current.copy(bearer = BearerDraft(value), error = null)
+    fun cancelFleetScan() {
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.phase == FleetConnectPhase.Scanning) state = current.copy(phase = FleetConnectPhase.Ready)
     }
 
-    fun repairBearer() {
-        val current = state as? SkidbladnirUiState.BearerRepair ?: return
-        if (current.pending) return
-        val bearer = GatewayBearer.parse(current.bearer.text)
-        if (bearer == null) {
-            state = current.copy(error = "Enter the 43-character bearer exactly as minted on this machine.")
+    fun failFleetScan() {
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.phase == FleetConnectPhase.Scanning) state = current.copy(phase = FleetConnectPhase.Failed)
+    }
+
+    fun acceptFleetScan(encoded: String) {
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.phase != FleetConnectPhase.Scanning) return
+        if (!foreground) {
+            pendingFleetScan = encoded
             return
         }
-        val machine = current.machine
-        if (bearerRepairConflict(
-                credentials.values,
-                storageComplete = unreadableMachines.isEmpty(),
-                targetHandle = machine.handle,
-                bearer = bearer,
-            )
-        ) {
-            state = current.copy(error = "Each machine must use a unique bearer.")
+        val invite = parseFleetInvite(encoded)
+        if (invite == null) {
+            state = current.copy(phase = FleetConnectPhase.Failed)
             return
         }
         val activeGeneration = generation
-        val candidate = MachineCredential(machine, bearer)
-        state = current.copy(pending = true, error = null)
-        executeCredentialOperation {
-            when (val result = client.listSessions(candidate)) {
-                is GatewayResult.Failure -> main.post {
-                    if (!isActiveGeneration(activeGeneration)) return@post
-                    acceptRepairFailure(machine, result.failure)
+        val mode = current.mode
+        state = current.copy(phase = FleetConnectPhase.Connecting)
+        redeemFleetInvite(invite, network, client::redeemPairing).whenComplete { connected, completionFailure ->
+            if (completionFailure != null || connected == null) {
+                main.post { failFleetConnectionIfCurrent(activeGeneration, mode) }
+                return@whenComplete
+            }
+            executeCredentialOperation {
+                if (!isActiveGeneration(activeGeneration)) return@executeCredentialOperation
+                val stored = when (mode) {
+                    FleetConnectMode.Install -> store.installFixedFleet(connected) == FleetInstallation.Installed
+                    FleetConnectMode.Reconnect -> store.reconnectFixedFleet(connected) == FleetReconnection.Reconnected
                 }
-                is GatewayResult.Success -> {
-                    if (result.value.machine.handle != machine.handle) {
-                        main.post {
-                            if (!isActiveGeneration(activeGeneration)) return@post
-                            acceptRepairFailure(
-                                machine,
-                                GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch),
-                            )
-                        }
-                        return@executeCredentialOperation
+                main.post {
+                    if (!isActiveGeneration(activeGeneration)) return@post
+                    val active = state as? SkidbladnirUiState.FleetConnect ?: return@post
+                    if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
+                    if (!stored) {
+                        state = active.copy(phase = FleetConnectPhase.Failed)
+                        return@post
                     }
-                    val rotation = store.rotateBearer(candidate)
-                    val receivedAt = SystemClock.elapsedRealtime()
-                    main.post {
-                        if (!isActiveGeneration(activeGeneration)) return@post
-                        when (rotation) {
-                            BearerRotation.Rotated -> acceptRotatedBearer(candidate, result.value, receivedAt, activeGeneration)
-                            BearerRotation.BearerInUse -> failRepair("Each machine must use a unique bearer.")
-                            BearerRotation.MachineUnavailable -> failRepair(
-                                "This machine is no longer provisioned on this device. Provisioning repair is required outside this app.",
-                            )
-                            BearerRotation.StorageUnavailable -> failRepair(
-                                "Bearer verification worked, but secure machine storage failed.",
-                            )
-                        }
-                    }
+                    acceptConnectedFleet(connected, activeGeneration)
                 }
             }
         }
     }
 
-    private fun acceptRepairFailure(machine: PairedMachine, failure: GatewayFailure) {
-        if (failure == GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch)) {
-            markIdentityChanged(machine.handle)
-            state = SkidbladnirUiState.BearerRepair(
-                machine = machine,
-                bearer = BearerDraft(""),
-                pending = false,
-                error = "The machine identity changed. Provisioning repair is required outside this app.",
-            )
-            return
+    private fun failFleetConnectionIfCurrent(activeGeneration: Long, mode: FleetConnectMode) {
+        if (!isActiveGeneration(activeGeneration)) return
+        val current = state as? SkidbladnirUiState.FleetConnect ?: return
+        if (current.mode == mode && current.phase == FleetConnectPhase.Connecting) {
+            state = current.copy(phase = FleetConnectPhase.Failed)
         }
-        failRepair(gatewayFailureMessage(failure))
     }
 
-    private fun failRepair(message: String) {
-        val repair = state as? SkidbladnirUiState.BearerRepair ?: return
-        state = repair.copy(pending = false, error = message)
-    }
-
-    private fun acceptRotatedBearer(
-        credential: MachineCredential,
-        inventory: SessionsResponse,
-        receivedAtElapsedMillis: Long,
-        activeGeneration: Long,
-    ) {
-        val handle = credential.machine.handle
-        credentials[handle] = credential
-        machineStates[handle] = MachineState(
-            credential.machine,
-            MachineAccess.Ready,
-            InventoryState.Fresh(InventorySnapshot(inventory, receivedAtElapsedMillis)),
-            PressureState.Reading,
-        )
-        startPolling(handle, activeGeneration)
+    private fun acceptConnectedFleet(connected: List<MachineCredential>, activeGeneration: Long) {
+        polling.keys.toList().forEach(::stopPolling)
+        credentials.clear()
+        machineStates.clear()
+        unreadableMachines.clear()
+        connected.forEach { credential ->
+            credentials[credential.machine.handle] = credential
+            machineStates[credential.machine.handle] = MachineState(
+                credential.machine,
+                MachineAccess.Ready,
+                InventoryState.Reading,
+                PressureState.Reading,
+            )
+            startPolling(credential.machine.handle, activeGeneration)
+        }
         publishDashboard()
     }
 
@@ -744,7 +743,7 @@ internal class SkidbladnirController(context: Context) {
     private fun unrefreshableNotice(selected: MachineHandle?): String {
         val visible = machineStates.values.filter { selected == null || it.machine.handle == selected }
         if (visible.isEmpty()) {
-            return "No machine credentials are provisioned. Machine administration is outside this app."
+            return "No fleet is connected."
         }
         return visible.joinToString(" ", transform = ::machineAccessMessage)
     }
@@ -1017,7 +1016,7 @@ internal class SkidbladnirController(context: Context) {
                 } else {
                     return
                 }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> return
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
         }
     }
 
@@ -1025,7 +1024,7 @@ internal class SkidbladnirController(context: Context) {
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (current.kill?.pending == true) current else current.copy(kill = null)
             is SkidbladnirUiState.Terminal -> if (current.kill?.pending == true) current else current.copy(kill = null)
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> current
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> current
         }
     }
 
@@ -1034,7 +1033,7 @@ internal class SkidbladnirController(context: Context) {
         val kill = when (current) {
             is SkidbladnirUiState.Dashboard -> current.kill
             is SkidbladnirUiState.Terminal -> current.kill
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> null
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> null
         } ?: return
         if (kill.pending) return
         val machine = machineStates[kill.target.machineHandle] ?: return
@@ -1050,7 +1049,7 @@ internal class SkidbladnirController(context: Context) {
                 } else {
                     return
                 }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> return
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> return
         }
         val activeGeneration = generation
         runtime.inventoryOperation.submitMutation(
@@ -1278,7 +1277,7 @@ internal class SkidbladnirController(context: Context) {
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
             }
-            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair ->
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect ->
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
         }
         return true

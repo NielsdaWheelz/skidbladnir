@@ -40,6 +40,29 @@ private val signingMaterial = providers.environmentVariable("SKIDBLADNIR_ANDROID
     .orNull
     ?.let(::loadSigningMaterial)
 
+private val configuredVersionName = providers.gradleProperty("skidbladnir.versionName").orNull
+private val configuredVersionCode = providers.gradleProperty("skidbladnir.versionCode").orNull
+require((configuredVersionName == null) == (configuredVersionCode == null)) {
+    "skidbladnir.versionName and skidbladnir.versionCode must be supplied together"
+}
+if (configuredVersionName != null) {
+    require(configuredVersionName.matches(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"))) {
+        "skidbladnir.versionName must be canonical MAJOR.MINOR.PATCH"
+    }
+}
+private val resolvedVersionCode = configuredVersionCode?.toIntOrNull() ?: 1
+require(configuredVersionCode == null || resolvedVersionCode in 2..2_100_000_000) {
+    "skidbladnir.versionCode must be a valid increasing Android version code"
+}
+gradle.taskGraph.whenReady {
+    require(
+        allTasks.none { task -> task.name.contains("release", ignoreCase = true) } ||
+            configuredVersionName != null
+    ) {
+        "Every release task requires explicit skidbladnir.versionName and skidbladnir.versionCode"
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -54,8 +77,8 @@ android {
         applicationId = "dev.niels.skidbladnir"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = resolvedVersionCode
+        versionName = configuredVersionName ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -140,6 +163,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.webkit:webkit:1.17.0")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

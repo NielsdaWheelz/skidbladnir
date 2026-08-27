@@ -1,0 +1,297 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+case "$(uname -s)" in
+  Darwin)
+    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    digest_command=(shasum -a 256)
+    native_archive='skidbladnir-darwin-arm64.tar.gz'
+    ;;
+  Linux)
+    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    digest_command=(sha256sum)
+    native_archive='skidbladnir-linux-amd64.tar.gz'
+    ;;
+  *)
+    printf 'Release checks support only Linux and Darwin\n' >&2
+    exit 1
+    ;;
+esac
+
+parse_tag() {
+  local tag="$1"
+  [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  release_major="${BASH_REMATCH[1]}"
+  release_minor="${BASH_REMATCH[2]}"
+  release_patch="${BASH_REMATCH[3]}"
+  ((${#release_major} <= 4 && release_major <= 2100 && release_minor <= 999 && release_patch <= 999)) || return 1
+  release_version_name="${release_major}.${release_minor}.${release_patch}"
+  release_version_code=$((release_major * 1000000 + release_minor * 1000 + release_patch))
+  ((release_version_code > 1 && release_version_code <= 2100000000))
+}
+
+validate_sha() {
+  [[ "$1" =~ ^[0-9a-f]{40}$ ]]
+}
+
+validate_manifest() {
+  local manifest="$1"
+  local tag="$2"
+  local sha="$3"
+  local platform="$4"
+  jq -e \
+    --arg tag "$tag" \
+    --arg sha "$sha" \
+    --arg platform "$platform" \
+    'type == "object" and
+     keys == ["platform", "sourceSha", "version"] and
+     .version == $tag and .sourceSha == $sha and .platform == $platform' \
+    <<<"$manifest" >/dev/null
+}
+
+file_mode() {
+  case "$(uname -s)" in
+    Darwin) stat -f '%Lp' "$1" ;;
+    Linux) stat -c '%a' "$1" ;;
+  esac
+}
+
+find_apkanalyzer() {
+  local candidate
+  while IFS= read -r candidate; do
+    [[ -x "$candidate" ]] && printf '%s\n' "$candidate"
+  done < <(find "$android_sdk" -path '*/bin/apkanalyzer' -type f 2>/dev/null | sort)
+}
+
+verify_archive() (
+  set -euo pipefail
+  local archive="$1"
+  local tag="$2"
+  local sha="$3"
+  local platform="$4"
+  local goos="$5"
+  local goarch="$6"
+  local entries
+  local manifest
+  local staging_dir
+  local build_info
+  entries="$(tar -tzf "$archive")"
+  [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
+    printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  manifest="$(tar -xOzf "$archive" release.json)"
+  validate_manifest "$manifest" "$tag" "$sha" "$platform" || {
+    printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  staging_dir="$(mktemp -d -t skidbladnir-archive-check.XXXXXX)"
+  case "$staging_dir" in
+    /tmp/skidbladnir-archive-check.* | /private/tmp/skidbladnir-archive-check.*) ;;
+    *) printf 'Unexpected archive-check staging directory\n' >&2; return 1 ;;
+  esac
+  trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
+  tar -xzf "$archive" -C "$staging_dir"
+  [[ -f "$staging_dir/skidbladnir" && ! -L "$staging_dir/skidbladnir" &&
+    "$(file_mode "$staging_dir/skidbladnir")" == 755 ]] || {
+    printf '%s does not contain one mode-0755 regular binary\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  for member in characters.json release.json; do
+    [[ -f "$staging_dir/$member" && ! -L "$staging_dir/$member" &&
+      "$(file_mode "$staging_dir/$member")" == 644 ]] || {
+      printf '%s member %s is not a mode-0644 regular file\n' "$(basename "$archive")" "$member" >&2
+      return 1
+    }
+  done
+  build_info="$(go version -m "$staging_dir/skidbladnir")" || {
+    printf '%s binary has no readable Go build identity\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  grep -Fqx $'\tbuild\tGOOS='"$goos" <<<"$build_info" || {
+    printf '%s binary GOOS does not match %s\n' "$(basename "$archive")" "$goos" >&2
+    return 1
+  }
+  grep -Fqx $'\tbuild\tGOARCH='"$goarch" <<<"$build_info" || {
+    printf '%s binary GOARCH does not match %s\n' "$(basename "$archive")" "$goarch" >&2
+    return 1
+  }
+)
+
+self_test() {
+  local observed
+  local expected
+  local name
+  local tag
+  while IFS='|' read -r name tag expected; do
+    if parse_tag "$tag"; then
+      observed="pass:${release_version_name}:${release_version_code}"
+    else
+      observed='fail'
+    fi
+    [[ "$observed" == "$expected" ]] || {
+      printf 'Release tag case %s = %s, want %s\n' "$name" "$observed" "$expected" >&2
+      return 1
+    }
+  done <<'CASES'
+next release|v0.2.0|pass:0.2.0:2000
+patch release|v1.2.3|pass:1.2.3:1002003
+leading zero|v0.02.0|fail
+missing v|0.2.0|fail
+prerelease|v0.2.0-rc1|fail
+minor overflow|v0.1000.0|fail
+major overflow|v99999999999999999999.0.0|fail
+initial collision|v0.0.1|fail
+CASES
+
+  validate_sha '0123456789abcdef0123456789abcdef01234567' || return 1
+  if validate_sha '0123456789abcdef'; then
+    printf 'Short source SHA was accepted\n' >&2
+    return 1
+  fi
+  validate_manifest \
+    '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64' || return 1
+  if validate_manifest \
+    '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0","legacy":true}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Unknown release manifest key was accepted\n' >&2
+    return 1
+  fi
+  printf 'Release policy passed: 8 tag cases and strict SHA/manifest cases\n'
+}
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+
+if [[ "${1:-}" == '--android-version' && "$#" -eq 2 ]]; then
+  parse_tag "$2" || {
+    printf 'Release tag must be canonical vMAJOR.MINOR.PATCH with a monotonic Android code\n' >&2
+    exit 1
+  }
+  printf '%s %s\n' "$release_version_name" "$release_version_code"
+  exit
+fi
+
+public_assets=''
+if [[ "${1:-}" == '--public-assets' ]]; then
+  public_assets=1
+  shift
+fi
+if [[ "$#" -ne 3 ]]; then
+  printf 'usage: %s [--public-assets] RELEASE_DIRECTORY TAG SOURCE_SHA\n' "$0" >&2
+  exit 64
+fi
+
+release_dir="$1"
+tag="$2"
+sha="$3"
+parse_tag "$tag" || {
+  printf 'Release tag must be canonical vMAJOR.MINOR.PATCH with a monotonic Android code\n' >&2
+  exit 1
+}
+validate_sha "$sha" || {
+  printf 'Release source SHA must be one full lowercase Git SHA-1\n' >&2
+  exit 1
+}
+[[ -d "$release_dir" ]] || {
+  printf 'Release directory is unavailable\n' >&2
+  exit 1
+}
+
+expected_assets=$'SHA256SUMS\nandroid-signing-cert.sha256\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
+observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort)"
+[[ "$observed_assets" == "$expected_assets" ]] || {
+  printf 'Release directory does not contain the exact five owned assets\n' >&2
+  exit 1
+}
+[[ -z "$(find "$release_dir" -mindepth 1 -maxdepth 1 ! -type f -print -quit)" ]] || {
+  printf 'Every release asset must be a regular file\n' >&2
+  exit 1
+}
+
+cmp -s "$repo_dir/android/app-signing-cert.sha256" "$release_dir/android-signing-cert.sha256" || {
+  printf 'Release signer fingerprint differs from the repository pin\n' >&2
+  exit 1
+}
+
+expected_checksum_names=$'android-signing-cert.sha256\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
+awk '
+  !/^[0-9a-f]{64}  [A-Za-z0-9._-]+$/ { invalid = 1 }
+  END { exit invalid || NR != 4 }
+' "$release_dir/SHA256SUMS" || {
+  printf 'SHA256SUMS is not the strict four-asset manifest\n' >&2
+  exit 1
+}
+observed_checksum_names="$(awk '{ print $2 }' "$release_dir/SHA256SUMS" | sort)"
+[[ "$observed_checksum_names" == "$expected_checksum_names" ]] || {
+  printf 'SHA256SUMS does not name each non-checksum asset exactly once\n' >&2
+  exit 1
+}
+(cd "$release_dir" && "${digest_command[@]}" -c SHA256SUMS >/dev/null) || {
+  printf 'Release checksum verification failed\n' >&2
+  exit 1
+}
+
+verify_archive "$release_dir/skidbladnir-linux-amd64.tar.gz" "$tag" "$sha" \
+  'linux-amd64' linux amd64
+verify_archive "$release_dir/skidbladnir-darwin-arm64.tar.gz" "$tag" "$sha" \
+  'darwin-arm64' darwin arm64
+if [[ -n "$public_assets" ]]; then
+  "$repo_dir/scripts/check-android-signing" --public-apk \
+    "$release_dir/skidbladnir-android.apk"
+else
+  SKIDBLADNIR_ANDROID_SIGNING_CONFIG="${SKIDBLADNIR_ANDROID_SIGNING_CONFIG:-}" \
+    "$repo_dir/scripts/check-android-signing" "$release_dir/skidbladnir-android.apk"
+fi
+
+apkanalyzer="$(find_apkanalyzer | tail -n 1)"
+[[ -x "$apkanalyzer" ]] || {
+  printf 'Android apkanalyzer is unavailable under the configured SDK\n' >&2
+  exit 1
+}
+[[ "$($apkanalyzer manifest version-name "$release_dir/skidbladnir-android.apk")" == "$release_version_name" ]] || {
+  printf 'APK versionName does not match the release tag\n' >&2
+  exit 1
+}
+[[ "$($apkanalyzer manifest version-code "$release_dir/skidbladnir-android.apk")" == "$release_version_code" ]] || {
+  printf 'APK versionCode does not match the canonical release code\n' >&2
+  exit 1
+}
+[[ "$($apkanalyzer manifest application-id "$release_dir/skidbladnir-android.apk")" == 'dev.niels.skidbladnir' ]] || {
+  printf 'APK application id is not the production package\n' >&2
+  exit 1
+}
+[[ "$($apkanalyzer manifest min-sdk "$release_dir/skidbladnir-android.apk")" == 36 &&
+  "$($apkanalyzer manifest target-sdk "$release_dir/skidbladnir-android.apk")" == 36 ]] || {
+  printf 'APK SDK boundary is not exact API 36\n' >&2
+  exit 1
+}
+[[ "$($apkanalyzer manifest debuggable "$release_dir/skidbladnir-android.apk")" == false ]] || {
+  printf 'APK is debuggable instead of a production release\n' >&2
+  exit 1
+}
+if "$apkanalyzer" manifest permissions "$release_dir/skidbladnir-android.apk" |
+  grep -Fqx 'android.permission.CAMERA'; then
+  printf 'APK unexpectedly requests camera permission\n' >&2
+  exit 1
+fi
+
+staging_dir="$(mktemp -d -t skidbladnir-release-check.XXXXXX)"
+case "$staging_dir" in
+  /tmp/skidbladnir-release-check.* | /private/tmp/skidbladnir-release-check.*) ;;
+  *) printf 'Unexpected release-check staging directory\n' >&2; exit 1 ;;
+esac
+trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
+tar -xzf "$release_dir/$native_archive" -C "$staging_dir" skidbladnir
+native_version="$("$staging_dir/skidbladnir" version)"
+[[ "$native_version" == "$tag $sha" ]] || {
+  printf 'Native host binary reports %q, want %s %s\n' "$native_version" "$tag" "$sha" >&2
+  exit 1
+}
+
+printf 'Release verified: %s at %s\n' "$tag" "$sha"

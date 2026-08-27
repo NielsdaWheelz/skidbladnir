@@ -17,6 +17,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
@@ -41,6 +42,7 @@ type Config struct {
 	Sessions sessionManager
 	Pressure *pressure.Monitor
 	Bearer   auth.FileVerifier
+	Pairing  *pairing.Slot
 	Logger   logging.Logger
 	Machine  machine.Handle
 	Platform platform.Descriptor
@@ -50,6 +52,7 @@ type Gateway struct {
 	sessions sessionManager
 	pressure *pressure.Monitor
 	bearer   auth.FileVerifier
+	pairing  *pairing.Slot
 	logger   logging.Logger
 	machine  machine.Handle
 	platform platform.Descriptor
@@ -76,11 +79,15 @@ func New(config Config) *Gateway {
 	default:
 		panic("gateway platform is not configured") // justify-defect: platform.Current returns only the closed supported platform union.
 	}
+	if config.Pairing == nil {
+		panic("gateway pairing slot is not configured") // justify-defect: every gateway process owns exactly one in-memory pairing slot.
+	}
 	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	return &Gateway{
 		sessions:             config.Sessions,
 		pressure:             config.Pressure,
 		bearer:               config.Bearer,
+		pairing:              config.Pairing,
 		logger:               config.Logger,
 		machine:              config.Machine,
 		platform:             config.Platform,
@@ -93,7 +100,10 @@ func New(config Config) *Gateway {
 func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
 	startedAt := time.Now()
-	route := requestRoute(request.URL.Path)
+	route := logging.RouteUnmatched
+	if request.URL.RawPath == "" {
+		route = requestRoute(request.URL.Path)
+	}
 	defer func() {
 		if tracked.status == 0 {
 			return
@@ -113,6 +123,10 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		}
 		gateway.log(event)
 	}()
+	if request.URL.RawPath != "" {
+		writeError(tracked, errorInvalidRequest)
+		return
+	}
 	gateway.serveHTTP(tracked, request, route)
 }
 
@@ -125,7 +139,15 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	if !gateway.authenticate(writer, request, route) {
+	if request.URL.Path == "/v1/pairing-invites" {
+		gateway.createPairingInvite(writer, request, route)
+		return
+	}
+	if request.URL.Path == "/v1/pairings" {
+		gateway.redeemPairingInvite(writer, request)
+		return
+	}
+	if _, authenticated := gateway.authenticate(writer, request, route); !authenticated {
 		return
 	}
 	if !gateway.bindMachine(writer, request) {
@@ -163,9 +185,6 @@ func (gateway *Gateway) bindMachine(writer http.ResponseWriter, request *http.Re
 		return false
 	}
 	if len(values) == 0 {
-		if request.Method == http.MethodGet && request.URL.Path == "/v1/sessions" {
-			return true
-		}
 		writeError(writer, errorMachineIdentityMismatch)
 		return false
 	}
@@ -186,18 +205,19 @@ func (gateway *Gateway) serveHealth(writer http.ResponseWriter, request *http.Re
 	_, _ = io.WriteString(writer, "ok\n") // justify-ignore-error: the client disconnecting after the health status is not actionable.
 }
 
-func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.Request, route logging.Route) bool {
+func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.Request, route logging.Route) (auth.Credential, bool) {
+	var zero auth.Credential
 	values := request.Header.Values("Authorization")
-	authorization := ""
-	if len(values) == 1 {
-		authorization = values[0]
+	if len(values) > 1 || len(values) == 1 && strings.ContainsRune(values[0], ',') {
+		writeError(writer, errorInvalidRequest)
+		return zero, false
 	}
-	valid, err := gateway.bearer.Verify(authorization)
+	credential, err := gateway.bearer.Read()
 	if err != nil {
 		writeError(writer, errorInternal)
-		return false
+		return zero, false
 	}
-	if len(values) != 1 || !valid {
+	if len(values) != 1 || !credential.Verify(values[0]) {
 		writer.Header().Set("WWW-Authenticate", "Bearer")
 		writeError(writer, errorUnauthenticated)
 		event, eventErr := logging.NewAuthenticationRejected(route)
@@ -205,9 +225,88 @@ func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.R
 			panic("invalid authentication-rejected log event") // justify-defect: requestRoute closes route names.
 		}
 		gateway.log(event)
+		return zero, false
+	}
+	return credential, true
+}
+
+func (gateway *Gateway) createPairingInvite(writer http.ResponseWriter, request *http.Request, route logging.Route) {
+	if request.Method != http.MethodPost {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	credential, authenticated := gateway.authenticate(writer, request, route)
+	if !authenticated {
+		return
+	}
+	if !gateway.bindMachine(writer, request) {
+		return
+	}
+	if !requireEmptyRequest(request) {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	invite, err := gateway.pairing.Create(time.Now(), gateway.machine, credential)
+	if err != nil {
+		writeError(writer, errorInternal)
+		return
+	}
+	writeJSON(writer, http.StatusCreated, pairingInviteResponseDTO{
+		PairingInviteToken: invite.Token.String(),
+		ExpiresAt:          invite.ExpiresAt.Format(time.RFC3339Nano),
+		Machine:            gateway.machineDTO(),
+	})
+}
+
+func (gateway *Gateway) redeemPairingInvite(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	authorizationValues := request.Header.Values("Authorization")
+	machineValues := request.Header.Values(machineHeader)
+	if len(authorizationValues) > 1 || len(authorizationValues) == 1 && strings.ContainsRune(authorizationValues[0], ',') ||
+		len(machineValues) > 1 || len(machineValues) == 1 && strings.ContainsRune(machineValues[0], ',') || !requireEmptyRequest(request) {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	credential, err := gateway.bearer.Read()
+	if err != nil {
+		writeError(writer, errorInternal)
+		return
+	}
+	encodedToken := ""
+	if len(authorizationValues) == 1 {
+		presentedToken, canonicalScheme := strings.CutPrefix(authorizationValues[0], "Skidbladnir-Invite ")
+		if canonicalScheme {
+			encodedToken = presentedToken
+		}
+	}
+	var expectedMachine machine.Handle
+	if len(machineValues) == 1 {
+		parsedMachine, parseErr := machine.Parse(machineValues[0])
+		if parseErr == nil {
+			expectedMachine = parsedMachine
+		}
+	}
+	if err := gateway.pairing.Redeem(time.Now(), encodedToken, expectedMachine, credential); err != nil {
+		writeError(writer, errorPairingInviteRejected)
+		return
+	}
+	writeJSON(writer, http.StatusOK, pairingResponseDTO{Machine: gateway.machineDTO(), Bearer: credential.CanonicalBearer()})
+}
+
+func (gateway *Gateway) machineDTO() machineDTO {
+	return machineDTO{Handle: gateway.machine.String(), Platform: gateway.platform.Kind}
+}
+
+func requireEmptyRequest(request *http.Request) bool {
+	if request.URL.RawQuery != "" || request.ContentLength != 0 || len(request.TransferEncoding) != 0 || request.Header.Get("Content-Type") != "" || request.Header.Get("Content-Encoding") != "" {
 		return false
 	}
-	return true
+	var one [1]byte
+	read, err := request.Body.Read(one[:])
+	return read == 0 && errors.Is(err, io.EOF)
 }
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
@@ -252,10 +351,7 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusOK, sessionsResponseDTO{
-		Machine: machineDTO{
-			Handle:   gateway.machine.String(),
-			Platform: gateway.platform.Kind,
-		},
+		Machine:    gateway.machineDTO(),
 		ObservedAt: observedAt.Format(time.RFC3339Nano),
 		Profiles:   profiles,
 		Sessions:   cards,
@@ -517,6 +613,10 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteHealth
 	case path == "/v1/sessions":
 		return logging.RouteSessions
+	case path == "/v1/pairing-invites":
+		return logging.RoutePairingInvites
+	case path == "/v1/pairings":
+		return logging.RoutePairings
 	case path == "/v1/pressure":
 		return logging.RoutePressure
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
@@ -19,9 +18,10 @@ const (
 	lifecycleOption        = "@skid_lifecycle"
 )
 
-// codexNodeEntrypoint is the platform-pinned Codex Node entrypoint; the
-// platform descriptor is its single owner.
-var codexNodeEntrypoint = platform.Current().CodexNodeEntrypoint
+type Config struct {
+	TmuxPath            string
+	CodexNodeEntrypoint string
+}
 
 type HookEvent string
 
@@ -31,7 +31,7 @@ const (
 	HookStop             HookEvent = "Stop"
 )
 
-func Run(ctx context.Context, eventText string, input io.Reader, output io.Writer) error {
+func Run(ctx context.Context, config Config, eventText string, input io.Reader, output io.Writer) error {
 	event, err := parseHookEvent(eventText)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func Run(ctx context.Context, eventText string, input io.Reader, output io.Write
 	}
 	paneTerminalCommand := exec.CommandContext(
 		ctx,
-		platform.Current().TmuxPath,
+		config.TmuxPath,
 		"display-message", "-p", "-t", pane, "#{pane_tty}",
 	)
 	paneTerminalCommand.Stderr = io.Discard
@@ -66,10 +66,10 @@ func Run(ctx context.Context, eventText string, input io.Reader, output io.Write
 	if err != nil {
 		return err
 	}
-	if origin, valid := foregroundCodexOrigin(ancestry, paneTerminal); valid {
+	if origin, valid := foregroundCodexOrigin(ancestry, paneTerminal, config.CodexNodeEntrypoint); valid {
 		command := exec.CommandContext(
 			ctx,
-			platform.Current().TmuxPath,
+			config.TmuxPath,
 			lifecycleTmuxArguments(pane, event, origin, time.Now())...,
 		)
 		command.Stdout = io.Discard
@@ -133,7 +133,7 @@ func validPaneID(value string) bool {
 	return true
 }
 
-func foregroundCodexOrigin(ancestry []processinfo.Observation, paneTerminal processinfo.TerminalDevice) (processinfo.Observation, bool) {
+func foregroundCodexOrigin(ancestry []processinfo.Observation, paneTerminal processinfo.TerminalDevice, codexNodeEntrypoint string) (processinfo.Observation, bool) {
 	terminalAncestry, valid := exactTerminalSessionAncestry(ancestry, paneTerminal)
 	if !valid || terminalAncestry[0].ForegroundProcessGroup <= 0 {
 		return processinfo.Observation{}, false
@@ -141,7 +141,7 @@ func foregroundCodexOrigin(ancestry []processinfo.Observation, paneTerminal proc
 	foregroundProcessGroup := terminalAncestry[0].ForegroundProcessGroup
 	codexAncestors := make([]processinfo.Observation, 0, 2)
 	for _, process := range terminalAncestry[1:] {
-		if isCodexProcess(process) {
+		if isCodexProcess(process, codexNodeEntrypoint) {
 			codexAncestors = append(codexAncestors, process)
 		}
 	}
@@ -183,7 +183,7 @@ func exactTerminalSessionAncestry(ancestry []processinfo.Observation, paneTermin
 	return nil, false
 }
 
-func isCodexProcess(process processinfo.Observation) bool {
+func isCodexProcess(process processinfo.Observation, codexNodeEntrypoint string) bool {
 	return process.ExecutableBase() == "codex" ||
 		process.ExecutableBase() == "node" && process.Argument(1) == codexNodeEntrypoint
 }

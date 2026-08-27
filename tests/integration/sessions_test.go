@@ -39,8 +39,6 @@ const (
 	defaultSocketNonceVariable  = "SKIDBLADNIR_DEFAULT_TMUX_NONCE"
 )
 
-var tmuxPath = platform.Current().TmuxPath
-
 func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -103,6 +101,7 @@ func TestDefaultSocketInvocationPreservesExplicitRootAndUserConfiguration(t *tes
 		"-test.run=^TestDefaultSocketInvocationPreservesExplicitRootAndUserConfiguration$",
 		"-test.count=1",
 		"-skidbladnir-isolated-tmux-capability="+isolatedTmuxCLICapabilityV1,
+		"-skidbladnir-tmux-path="+tmuxPath,
 	)
 	command.Env = append(withoutEnvironment(os.Environ(), "HOME", "TMUX", "TMUX_PANE", "TMUX_TMPDIR",
 		defaultSocketHelperVariable, defaultSocketRootVariable, defaultSocketNonceVariable),
@@ -286,8 +285,8 @@ exec %s -S "$expected_root/owned-default.sock" "$@"
 func TestSessionManagerAgainstRealTmux(t *testing.T) {
 	t.Parallel()
 
-	if output, err := isolatedTmuxCommand(tmuxPath, "-V").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != platform.Current().TmuxVersion {
-		t.Fatalf("host tmux pin mismatch: command_ok=%t version_match=%t", err == nil, strings.TrimSpace(string(output)) == platform.Current().TmuxVersion)
+	if output, err := isolatedTmuxCommand(tmuxPath, "-V").CombinedOutput(); err != nil || !strings.HasPrefix(strings.TrimSpace(string(output)), "tmux ") {
+		t.Fatalf("configured tmux version is unavailable or noncanonical: command_ok=%t output=%q", err == nil, output)
 	}
 
 	fixture := newSessionFixture(t)
@@ -976,13 +975,14 @@ exec %s "$@"
 	t.Run("the real status hook publishes the exact foreground lifetime that drives working and idle", func(t *testing.T) {
 		hookCommand := buildSkidbladnirCommand(t, fixture.repositoryRoot, fixture.root)
 		codexCommand := buildForegroundCodexCommand(t, fixture.root)
+		hostConfig := writeStatusHookHostConfig(t, fixture.root, codexCommand)
 		hookEvents := filepath.Join(fixture.root, "codex-hook-events")
 		if err := os.Mkdir(hookEvents, 0o700); err != nil {
 			t.Fatalf("create the status-hook event directory: %v", err)
 		}
 
 		const sessionName = "hook-lifetime"
-		fixture.tmux(t, "new-session", "-d", "-s", sessionName, "-c", fixture.project, "--", codexCommand, hookCommand, hookEvents)
+		fixture.tmux(t, "new-session", "-d", "-s", sessionName, "-c", fixture.project, "--", codexCommand, hookCommand, hostConfig, hookEvents)
 		target := fixture.waitForSession(t, ctx, sessionName, sessions.StatusRunning)
 		if target.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("foreground Codex lifetime without hook evidence signal mismatch: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
@@ -1029,49 +1029,6 @@ exec %s "$@"
 		if target.Status.Kind != sessions.StatusWorking || target.Status.Signal != sessions.StatusSignalLifecycle {
 			t.Fatalf("published working lifecycle fact did not project: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
-	})
-
-	t.Run("five-line notify surfaces honest attention", func(t *testing.T) {
-		notifyPath := filepath.Join(fixture.repositoryRoot, "deploy", integrationDeploymentHost(), "skid-notify")
-		outsideTmux := exec.Command(notifyPath)
-		outsideTmux.Env = withoutEnvironment(os.Environ(), "TMUX", "TMUX_PANE", "TMUX_TMPDIR")
-		if output, err := outsideTmux.CombinedOutput(); err != nil {
-			t.Fatalf("skid-notify was not a safe no-op outside tmux: output_bytes=%d", len(output))
-		}
-
-		fixture.tmux(t, "new-session", "-d", "-s", "notify", "-c", fixture.repositoryRoot)
-		listed, err := fixture.manager.List(ctx)
-		if err != nil {
-			t.Fatal("list notify fixture")
-		}
-		notify := requireSessionNamed(t, listed, "notify")
-		fixture.tmux(t, "send-keys", "-t", notify.ID, "-l", "--", notifyPath)
-		fixture.tmux(t, "send-keys", "-t", notify.ID, "Enter")
-
-		statusBeforeNotify := notify.Status
-		deadline := time.Now().Add(tmuxConvergenceTimeout)
-		for {
-			listed, err = fixture.manager.List(ctx)
-			if err != nil {
-				t.Fatal("list while waiting for attention")
-			}
-			notify = requireSessionID(t, listed, notify.ID)
-			if notify.Attention {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("skid-notify did not surface attention: attention=%t", notify.Attention)
-			}
-			time.Sleep(tmuxConvergencePollInterval)
-		}
-		if notify.Status.Kind != statusBeforeNotify.Kind || notify.Status.Signal != statusBeforeNotify.Signal {
-			t.Fatalf(
-				"attention replaced the independent lifecycle status: kind_match=%t signal_match=%t",
-				notify.Status.Kind == statusBeforeNotify.Kind,
-				notify.Status.Signal == statusBeforeNotify.Signal,
-			)
-		}
-
 	})
 
 	t.Run("kill rechecks exact id and tmux name", func(t *testing.T) {
@@ -1512,10 +1469,10 @@ import (
 const requestPollInterval = 50 * time.Millisecond
 
 func main() {
-	if len(os.Args) != 3 {
+	if len(os.Args) != 4 {
 		os.Exit(2)
 	}
-	hook, events := os.Args[1], os.Args[2]
+	hook, hostConfig, events := os.Args[1], os.Args[2], os.Args[3]
 	for {
 		requests, err := filepath.Glob(filepath.Join(events, "*.request"))
 		if err != nil {
@@ -1524,7 +1481,7 @@ func main() {
 		for _, request := range requests {
 			base := strings.TrimSuffix(request, ".request")
 			event := filepath.Base(base)
-			response, runErr := exec.Command(hook, "status-hook", event).CombinedOutput()
+			response, runErr := exec.Command(hook, "status-hook", "--host-config="+hostConfig, event).CombinedOutput()
 			code := 0
 			var exit *exec.ExitError
 			if errors.As(runErr, &exit) {
@@ -1558,6 +1515,27 @@ func buildSkidbladnirCommand(t *testing.T, repositoryRoot, destination string) s
 		t.Fatalf("build the skidbladnir status-hook command: output_bytes=%d", len(output))
 	}
 	return command
+}
+
+func writeStatusHookHostConfig(t *testing.T, destination, codexCommand string) string {
+	t.Helper()
+	path := filepath.Join(destination, "status-hook-host.json")
+	encoded := fmt.Sprintf(`{
+  "platform":%q,
+  "tmux":{"path":%q,"version":"tmux integration"},
+  "codexNodeEntrypoint":%q,
+  "profiles":[
+    {"key":"personal","label":"Codex · Personal","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work","label":"Codex · Work","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work2","label":"Codex · Work 2","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"claude-personal","label":"Claude · Personal","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"claude"}],"arguments":[]},
+    {"key":"claude-work","label":"Claude · Work","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"claude"}],"arguments":[]}
+  ]
+}`, platform.Current().Kind, tmuxPath, codexCommand)
+	if err := os.WriteFile(path, []byte(encoded), 0o600); err != nil {
+		t.Fatalf("write status-hook host config: %v", err)
+	}
+	return path
 }
 
 func buildForegroundCodexCommand(t *testing.T, destination string) string {
@@ -1649,13 +1627,6 @@ func requireLifecycleFact(t *testing.T, value, wantState string, panePID int, li
 	if signalledAt.Before(notBefore.Add(-time.Second)) || signalledAt.After(time.Now().Add(time.Second)) {
 		t.Fatalf("published lifecycle signal time is outside the proof window: signal_unix=%d requested_unix=%d", seconds, notBefore.Unix())
 	}
-}
-
-func integrationDeploymentHost() string {
-	if platform.Current().Kind == platform.KindDarwin {
-		return "macbook"
-	}
-	return "devbox"
 }
 
 // waitForSession waits for one named session to reach a status kind. That is

@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+case "$(uname -s)" in
+  Darwin) digest_command=(shasum -a 256) ;;
+  Linux) digest_command=(sha256sum) ;;
+  *) printf 'Release supports only Linux and Darwin\n' >&2; exit 1 ;;
+esac
+
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
+  exit 64
+fi
+
+tag="$1"
+preflight="$("$repo_dir/scripts/check-release-source" "$tag")"
+IFS=$'\t' read -r sha run_id <<<"$preflight"
+[[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[0-9]+$ ]] || {
+  printf 'Release source preflight returned invalid evidence\n' >&2
+  exit 1
+}
+
+cd "$repo_dir"
+
+staging_dir="$(mktemp -d -t skidbladnir-release.XXXXXX)"
+case "$staging_dir" in
+  /tmp/skidbladnir-release.* | /private/tmp/skidbladnir-release.*) ;;
+  *) printf 'Unexpected release staging directory\n' >&2; exit 1 ;;
+esac
+trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
+release_dir="$staging_dir/assets"
+"$repo_dir/scripts/build" release-assets "$tag" "$sha" "$release_dir"
+
+signer="$(sed -n '1p' "$release_dir/android-signing-cert.sha256")"
+asset_digest() {
+  local asset="$1"
+  awk -v asset="$asset" '$2 == asset { print $1 }' "$release_dir/SHA256SUMS"
+}
+signer_asset_digest="$(asset_digest android-signing-cert.sha256)"
+apk_digest="$(asset_digest skidbladnir-android.apk)"
+darwin_digest="$(asset_digest skidbladnir-darwin-arm64.tar.gz)"
+linux_digest="$(asset_digest skidbladnir-linux-amd64.tar.gz)"
+checksums_digest="$("${digest_command[@]}" "$release_dir/SHA256SUMS" | awk '{ print $1 }')"
+notes_file="$staging_dir/release-notes.md"
+cat > "$notes_file" <<EOF
+# Skíðblaðnir $tag
+
+- Source: \`$sha\`
+- Verify run: \`$run_id\`
+- Android signer SHA-256: \`$signer\`
+
+## Install
+
+1. The fleet owner pins this exact tag and all five asset digests in
+   \`dev-server\`, converges Devbox, Arch, and MacBook, then runs fleet doctor.
+2. On the phone, download \`skidbladnir-android.apk\` from this release and
+   approve installation from the browser when Android asks.
+3. Install Tailscale from Google Play, sign into the fleet tailnet, and leave
+   Tailscale connected.
+4. Open Skíðblaðnir and tap **Connect**.
+5. On the MacBook, run \`./skidbladnir invite\` in \`dev-server\`, then scan
+   the fresh QR within five minutes. The QR works once.
+
+## Update order
+
+Converge and verify all three hosts first; update the phone second. Mixed
+versions and ordinary APK downgrade are not supported.
+
+## Assets
+
+| Asset | SHA-256 |
+|---|---|
+| \`skidbladnir-android.apk\` | \`$apk_digest\` |
+| \`skidbladnir-linux-amd64.tar.gz\` | \`$linux_digest\` |
+| \`skidbladnir-darwin-arm64.tar.gz\` | \`$darwin_digest\` |
+| \`android-signing-cert.sha256\` | \`$signer_asset_digest\` |
+| \`SHA256SUMS\` | \`$checksums_digest\` |
+
+## Known limits
+
+Android 16/API 36, Linux amd64, and Darwin arm64 only. The topology is fixed
+to one tailnet, three owner-managed hosts, five configured profiles, and two
+trusted phones. There is no app store, automatic update, downgrade, mixed-
+version compatibility, public ingress, fleet discovery, or embedded Tailscale
+login. GitHub is used for installation and updates, never at runtime.
+EOF
+
+gh release create "$tag" \
+  "$release_dir/skidbladnir-android.apk" \
+  "$release_dir/skidbladnir-linux-amd64.tar.gz" \
+  "$release_dir/skidbladnir-darwin-arm64.tar.gz" \
+  "$release_dir/SHA256SUMS" \
+  "$release_dir/android-signing-cert.sha256" \
+  --draft \
+  --target "$sha" \
+  --title "Skíðblaðnir $tag" \
+  --notes-file "$notes_file"
+
+printf 'Draft release created: %s at %s (verify run %s)\n' "$tag" "$sha" "$run_id"

@@ -21,18 +21,18 @@ private const val GCM_TAG_BITS = 128
 private const val BEARER_KEY_BITS = 256
 private const val MACHINE_HANDLES_FIELD = "machine.handles"
 private const val BEARER_ASSOCIATED_CONTEXT = "dev.niels.skidbladnir.machine.bearer.v1"
+internal const val FLEET_QUARANTINE_FIELD = "machine.collection.quarantined"
 
 /** The at-rest form of one bearer: base64 AES-GCM ciphertext plus its base64 nonce. */
 internal data class SealedBearer(val ciphertext: String, val nonce: String)
 
 /**
- * Single owner of the externally provisioned at-rest format: which preference file holds the
+ * Single owner of the paired-fleet at-rest format: which preference file holds the
  * collection, how a machine's fields are keyed inside it, which Android Keystore entry protects the
  * bearers, and the AES-256-GCM sealing whose AAD binds every bearer to its handle and origin.
  *
- * The app never provisions machines, so the format is owned here rather than in a writer: the
- * production read path, the bearer-repair write path, and the instrumented persistence gate all
- * speak this one definition.
+ * The production read path, atomic Connect/Reconnect writers, and the instrumented persistence
+ * gate all speak this one definition.
  */
 internal class MachineStorage(
     private val preferencesName: String,
@@ -62,6 +62,28 @@ internal class MachineStorage(
         cipher.updateAAD(associatedData(machine))
         val plaintext = String(cipher.doFinal(decode(sealed.ciphertext)), StandardCharsets.UTF_8)
         return GatewayBearer.parse(plaintext) ?: throw IOException("stored bearer is not canonical")
+    }
+
+    /**
+     * Destructive whole-fleet quarantine for an unconfirmed preference rollback. Removing this
+     * alias makes either encrypted snapshot that can survive disk unreadable after restart. There
+     * is no in-app repair after this boundary; the user must reset app data and connect again.
+     */
+    fun destroyBearerKeyForQuarantine() {
+        try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
+            // justify-service-invariant-check: Android Keystore exposes deletion only through this
+            // synchronous query/delete/query boundary; the alias is private to this storage owner.
+            check(!keyStore.containsAlias(keyAlias)) { "fleet credential key survived quarantine" }
+        } catch (_: GeneralSecurityException) {
+            // justify-defect: returning with this alias present could resurrect a disk-confirmed
+            // credential target after restart, so Keystore failure cannot become a UI outcome.
+            throw IllegalStateException("fleet credential key quarantine failed")
+        } catch (_: IOException) {
+            // justify-defect: Android Keystore failed to load, so deletion cannot be proven.
+            throw IllegalStateException("fleet credential key quarantine failed")
+        }
     }
 
     private fun decode(value: String): ByteArray = try {
@@ -106,101 +128,74 @@ internal data class MachineStoreRead(
     val unreadable: List<UnreadableStoredMachine>,
 )
 
-internal sealed interface MachineProvisioning {
-    data object Provisioned : MachineProvisioning
-    data object AlreadyProvisioned : MachineProvisioning
-    data object InvalidCollection : MachineProvisioning
-    data object StorageUnavailable : MachineProvisioning
+internal sealed interface FleetInstallation {
+    data object Installed : FleetInstallation
+    data object StoreNotEmpty : FleetInstallation
+    data object InvalidFleet : FleetInstallation
+    data object StorageUnavailable : FleetInstallation
 }
 
-internal sealed interface BearerRotation {
-    data object Rotated : BearerRotation
-    /** The candidate bearer already authorizes a different installed machine. */
-    data object BearerInUse : BearerRotation
-    /** The store no longer holds this exact machine, or the collection is incomplete. */
-    data object MachineUnavailable : BearerRotation
-    data object StorageUnavailable : BearerRotation
+internal sealed interface FleetReconnection {
+    data object Reconnected : FleetReconnection
+    data object FleetMismatch : FleetReconnection
+    data object StorageUnavailable : FleetReconnection
 }
 
 internal class MachineStore(context: Context, private val storage: MachineStorage) {
     private val preferences = storage.preferences(context)
 
     /**
-     * Reads the externally provisioned collection. This is the app's ingress for machine
+     * Reads the paired collection. This is the app's ingress for machine
      * credentials, so every entry is validated here and the uniqueness architecture §6 promises —
      * handle, case-insensitive label, origin, and bearer — is enforced across the collection.
-     * Entries that fail validation or collide are quarantined rather than returned.
+     * Any incomplete, invalid, or colliding collection is quarantined as a whole so no partial
+     * fleet becomes request authority.
      */
     fun read(): MachineStoreRead = synchronized(persistenceLock) { readLocked() }
 
     /**
-     * Installs the fixed two-machine collection exactly once for the external operator boundary.
-     * The app has no caller for this method: only signed instrumentation can reach it. Any existing
-     * production preference, including a partial or quarantined collection, blocks replacement.
+     * Installs the exact fixed fleet once. Any existing preference, including a partial or
+     * quarantined collection, blocks replacement. All bearers are sealed before the single commit.
      */
-    fun provisionFixedCollection(credentials: List<MachineCredential>): MachineProvisioning =
+    fun installFixedFleet(credentials: List<MachineCredential>): FleetInstallation =
         synchronized(persistenceLock) {
-            if (preferences.all.isNotEmpty()) return@synchronized MachineProvisioning.AlreadyProvisioned
-            val handles = credentials.map { it.machine.handle.encoded }.toSet()
-            if (credentials.size != 2 || handles.size != 2 || uniqueCredentials(credentials).size != 2) {
-                return@synchronized MachineProvisioning.InvalidCollection
+            if (preferences.all.isNotEmpty()) return@synchronized FleetInstallation.StoreNotEmpty
+            if (!isExactFleet(credentials)) return@synchronized FleetInstallation.InvalidFleet
+            if (!commitFleet(credentials, MachineStoreRead(emptyList(), emptyList()))) {
+                return@synchronized FleetInstallation.StorageUnavailable
             }
-            val sealedCredentials = try {
-                credentials.map { it to storage.seal(it.machine, it.bearer) }
-            } catch (_: GeneralSecurityException) {
-                // justify-ignore-error: no preference mutation has occurred; the operator receives a
-                // closed storage outcome and must repair the device Keystore boundary.
-                return@synchronized MachineProvisioning.StorageUnavailable
-            }
-            val editor = preferences.edit().putStringSet(storage.handlesField, handles)
-            sealedCredentials.forEach { (credential, sealed) ->
-                putCredential(editor, credential, sealed)
-            }
-            if (!editor.commit()) return@synchronized MachineProvisioning.StorageUnavailable
-
-            val observed = readLocked()
-            val expected = credentials.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }
-            if (observed.credentials != expected || observed.unreadable.isNotEmpty()) {
-                // The store was proven empty on entry, so clearing only this failed transaction is
-                // the safe rollback. A failed rollback remains visibly unavailable to the app.
-                preferences.edit().clear().commit()
-                return@synchronized MachineProvisioning.StorageUnavailable
-            }
-            MachineProvisioning.Provisioned
+            FleetInstallation.Installed
         }
 
-    fun rotateBearer(credential: MachineCredential): BearerRotation = synchronized(persistenceLock) {
+    /** Rotates all three bearers only for the exact complete installed identities. */
+    fun reconnectFixedFleet(credentials: List<MachineCredential>): FleetReconnection = synchronized(persistenceLock) {
         val stored = readLocked()
-        if (stored.unreadable.isNotEmpty()) return@synchronized BearerRotation.MachineUnavailable
-        if (stored.credentials.none { it.machine == credential.machine }) {
-            return@synchronized BearerRotation.MachineUnavailable
-        }
-        if (stored.credentials.any {
-                it.machine.handle != credential.machine.handle && it.bearer == credential.bearer
-            }
-        ) {
-            return@synchronized BearerRotation.BearerInUse
-        }
-        try {
-            persist(credential, handles())
-        } catch (_: IOException) {
-            // justify-ignore-error: the encrypted preference write either lands or does not; the
-            // product only needs the caller to know that verification outran storage.
-            return@synchronized BearerRotation.StorageUnavailable
-        } catch (_: GeneralSecurityException) {
-            // justify-ignore-error: the Keystore entry is unusable on this device; repair is the
-            // same product outcome as a failed write.
-            return@synchronized BearerRotation.StorageUnavailable
-        }
-        BearerRotation.Rotated
+        if (
+            stored.unreadable.isNotEmpty() ||
+            stored.credentials.size != 3 ||
+            !isExactFleet(credentials) ||
+            stored.credentials.map { it.machine } != credentials.map { it.machine }
+        ) return@synchronized FleetReconnection.FleetMismatch
+        if (!commitFleet(credentials, stored)) return@synchronized FleetReconnection.StorageUnavailable
+        FleetReconnection.Reconnected
     }
 
     private fun readLocked(): MachineStoreRead {
+        if (preferences.all.isEmpty()) return MachineStoreRead(emptyList(), emptyList())
         val storedHandles = try {
             handles()
         } catch (_: IOException) {
-            // justify-ignore-error: the collection index is externally provisioned, so an
-            // unreadable index is the modeled collection-wide quarantine, not a defect.
+            // justify-ignore-error: an unreadable persisted index is the modeled collection-wide
+            // quarantine, not a defect or an invitation to trust partial fields.
+            return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
+        }
+        if (storedHandles.size != 3) {
+            return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
+        }
+        val expectedFields = setOf(storage.handlesField) + storedHandles.flatMap { handle ->
+            listOf("label", "origin", "ciphertext", "nonce").map { name -> storage.field(handle, name) }
+        }
+        if (preferences.all.keys != expectedFields) {
             return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
         }
         val readable = mutableListOf<MachineCredential>()
@@ -222,9 +217,17 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
             readable += credential
         }
         val unique = uniqueCredentials(readable)
+        if (
+            quarantined != 0 ||
+            unique.size != 3 ||
+            unique.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }.map { it.machine.label.text } !=
+            listOf("Arch", "Devbox", "MacBook")
+        ) {
+            return MachineStoreRead(emptyList(), List(storedHandles.size) { UnreadableStoredMachine() })
+        }
         return MachineStoreRead(
             unique.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) },
-            List(quarantined + readable.size - unique.size) { UnreadableStoredMachine() },
+            emptyList(),
         )
     }
 
@@ -264,35 +267,75 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         ),
     )
 
-    @SuppressLint("UseKtx") // justify-override: a credential write must fail loudly, and the KTX
-    // edit {} helper discards the commit result this branch depends on.
-    private fun persist(credential: MachineCredential, handles: Set<String>) {
-        val sealed = storage.seal(credential.machine, credential.bearer)
-        val editor = preferences.edit()
-            .putStringSet(storage.handlesField, handles)
-        putCredential(editor, credential, sealed)
-        if (!editor.commit()) throw IOException("could not persist machine")
+    private fun isExactFleet(credentials: List<MachineCredential>): Boolean =
+        credentials.map { it.machine.label.text } == listOf("Arch", "Devbox", "MacBook") &&
+            uniqueCredentials(credentials).size == 3 &&
+            credentials.map { it.machine.handle }.distinct().size == 3
+
+    @SuppressLint("UseKtx") // justify-override: this credential transaction must observe commit.
+    private fun commitFleet(
+        credentials: List<MachineCredential>,
+        priorRead: MachineStoreRead,
+    ): Boolean {
+        val sealed = try {
+            credentials.map { it to storage.seal(it.machine, it.bearer) }
+        } catch (_: GeneralSecurityException) {
+            // justify-ignore-error: every seal happens before preference mutation, so a broken
+            // Keystore leaves the prior collection byte-for-byte observable.
+            return false
+        }
+        val target = linkedMapOf<String, Any>(
+            storage.handlesField to credentials.map { it.machine.handle.encoded }.toSet(),
+        )
+        sealed.forEach { (credential, bearer) -> putEncodedCredential(target, credential, bearer) }
+        val committed = replacePreferencesWithVerifiedRollback(
+            preferences = preferences,
+            target = target,
+            verifyTarget = { readLocked() == MachineStoreRead(credentials, emptyList()) },
+            onUnconfirmedRollback = storage::destroyBearerKeyForQuarantine,
+        )
+        if (committed) return true
+
+        val recovered = readLocked()
+        val safe = if (priorRead.credentials.isEmpty() && priorRead.unreadable.isEmpty()) {
+            recovered.credentials.isEmpty()
+        } else {
+            recovered == priorRead ||
+                (recovered.credentials.isEmpty() && recovered.unreadable.isNotEmpty())
+        }
+        if (!safe) forceFleetQuarantine(preferences)
+        val proven = readLocked()
+        // justify-service-invariant-check: SharedPreferences has no type that can promise its
+        // documented process-visible editor mutation; reaching this branch means the platform
+        // neither restored the exact prior fleet nor exposed the quarantine we just wrote.
+        check(
+            if (priorRead.credentials.isEmpty() && priorRead.unreadable.isEmpty()) {
+                proven.credentials.isEmpty()
+            } else {
+                proven == priorRead || (proven.credentials.isEmpty() && proven.unreadable.isNotEmpty())
+            },
+        ) { "failed fleet transaction did not fail closed" }
+        return false
     }
 
-    private fun putCredential(
-        editor: SharedPreferences.Editor,
+    private fun putEncodedCredential(
+        encoded: MutableMap<String, Any>,
         credential: MachineCredential,
         sealed: SealedBearer,
     ) {
         val handle = credential.machine.handle.encoded
-        editor
-            .putString(storage.field(handle, "label"), credential.machine.label.text)
-            .putString(storage.field(handle, "origin"), credential.machine.origin.encoded)
-            .putString(storage.field(handle, "ciphertext"), sealed.ciphertext)
-            .putString(storage.field(handle, "nonce"), sealed.nonce)
+        encoded[storage.field(handle, "label")] = credential.machine.label.text
+        encoded[storage.field(handle, "origin")] = credential.machine.origin.encoded
+        encoded[storage.field(handle, "ciphertext")] = sealed.ciphertext
+        encoded[storage.field(handle, "nonce")] = sealed.nonce
     }
 
     private fun handles(): Set<String> {
         val stored = try {
-            preferences.getStringSet(storage.handlesField, emptySet())
+            preferences.getStringSet(storage.handlesField, null)
         } catch (failure: ClassCastException) {
-            // justify-ignore-error: preferences are provisioned outside the app, so a wrongly typed
-            // index entry is unreadable input rather than a broken app invariant.
+            // justify-ignore-error: a wrongly typed persisted index is unreadable input and must
+            // remain quarantined rather than becoming request authority.
             throw IOException("stored machine index is not a handle set", failure)
         }
         return stored?.toSet() ?: throw IOException("stored machine index is absent")
@@ -302,8 +345,7 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         val value = try {
             preferences.getString(storage.field(encodedHandle, name), null)
         } catch (failure: ClassCastException) {
-            // justify-ignore-error: the same externally provisioned boundary; a wrongly typed field
-            // quarantines its machine.
+            // justify-ignore-error: a wrongly typed persisted field quarantines the collection.
             throw IOException("stored machine field is not text", failure)
         }
         return value ?: throw IOException("incomplete stored machine")
@@ -312,4 +354,95 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
     private companion object {
         val persistenceLock = Any()
     }
+}
+
+/**
+ * Replaces one preference collection while treating commit's Boolean as disk acknowledgement only:
+ * Android mutates the process-visible map before that result is known. Any rejected write restores
+ * and verifies the exact encoded pre-state; an unconfirmed restoration becomes one opaque marker.
+ */
+@SuppressLint("UseKtx") // justify-override: every credential transition must observe commit.
+internal fun replacePreferencesWithVerifiedRollback(
+    preferences: SharedPreferences,
+    target: Map<String, Any>,
+    verifyTarget: () -> Boolean,
+    onUnconfirmedRollback: () -> Unit,
+): Boolean {
+    val prior = snapshotEncodedPreferences(preferences) ?: run {
+        forceFleetQuarantine(preferences)
+        return false
+    }
+    val canonicalTarget = copyEncodedPreferences(target) ?: run {
+        forceFleetQuarantine(preferences)
+        return false
+    }
+    val committed = replaceEncodedPreferences(preferences, canonicalTarget)
+    if (
+        committed &&
+        snapshotEncodedPreferences(preferences) == canonicalTarget &&
+        verifyTarget()
+    ) return true
+
+    val restored = replaceEncodedPreferences(preferences, prior)
+    if (restored && snapshotEncodedPreferences(preferences) == prior) return false
+    if (committed) {
+        // A disk-confirmed target plus an unconfirmed restore can otherwise become readable after
+        // restart. Destroy durable decryption authority before exposing the process quarantine.
+        try {
+            onUnconfirmedRollback()
+        } finally {
+            forceFleetQuarantine(preferences)
+        }
+    } else {
+        forceFleetQuarantine(preferences)
+    }
+    return false
+}
+
+@SuppressLint("UseKtx") // justify-override: quarantine must be process-visible before returning.
+private fun forceFleetQuarantine(preferences: SharedPreferences) {
+    replaceEncodedPreferences(preferences, mapOf(FLEET_QUARANTINE_FIELD to true))
+    // justify-service-invariant-check: SharedPreferences.Editor mutates process memory even when
+    // commit reports a disk failure; the boundary provides no stronger typed acknowledgement.
+    check(snapshotEncodedPreferences(preferences) == mapOf(FLEET_QUARANTINE_FIELD to true)) {
+        "could not quarantine failed fleet storage"
+    }
+}
+
+@SuppressLint("UseKtx") // justify-override: restoration must observe commit.
+private fun replaceEncodedPreferences(
+    preferences: SharedPreferences,
+    encoded: Map<String, Any>,
+): Boolean {
+    val editor = preferences.edit().clear()
+    encoded.toSortedMap().forEach { (key, value) ->
+        when (value) {
+            is String -> editor.putString(key, value)
+            is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+            is Int -> editor.putInt(key, value)
+            is Long -> editor.putLong(key, value)
+            is Float -> editor.putFloat(key, value)
+            is Boolean -> editor.putBoolean(key, value)
+            else -> return false
+        }
+    }
+    return editor.commit()
+}
+
+private fun snapshotEncodedPreferences(preferences: SharedPreferences): Map<String, Any>? =
+    copyEncodedPreferences(preferences.all)
+
+private fun copyEncodedPreferences(encoded: Map<String, *>): Map<String, Any>? {
+    val copied = linkedMapOf<String, Any>()
+    encoded.toSortedMap().forEach { (key, value) ->
+        copied[key] = when (value) {
+            is String, is Int, is Long, is Float, is Boolean -> value
+            is Set<*> -> {
+                if (value.any { it !is String }) return null
+                value.filterIsInstance<String>().toSet()
+            }
+            else -> return null
+        }
+    }
+    return copied
 }

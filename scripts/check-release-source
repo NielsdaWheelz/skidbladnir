@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo_name='NielsdaWheelz/skidbladnir'
+
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
+  exit 64
+fi
+
+tag="$1"
+"$repo_dir/scripts/check-release" --android-version "$tag" >/dev/null
+for command in gh git jq; do
+  command -v "$command" >/dev/null || {
+    printf 'Required release command is unavailable: %s\n' "$command" >&2
+    exit 1
+  }
+done
+
+cd "$repo_dir"
+[[ "$(git branch --show-current)" == main ]] || {
+  printf 'Release must run from main\n' >&2
+  exit 1
+}
+[[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+  printf 'Release requires a clean worktree and index\n' >&2
+  exit 1
+}
+gh auth status >/dev/null 2>&1
+repo_identity="$(gh repo view --repo "$repo_name" --json nameWithOwner,visibility \
+  --jq '[.nameWithOwner,.visibility] | join(" ")')"
+[[ "$repo_identity" == "$repo_name PUBLIC" ]] || {
+  printf 'Release requires the public %s repository\n' "$repo_name" >&2
+  exit 1
+}
+
+git fetch --quiet origin main --tags
+sha="$(git rev-parse HEAD)"
+[[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git rev-parse origin/main)" ]] || {
+  printf 'Release HEAD is not exact origin/main\n' >&2
+  exit 1
+}
+read -r _ candidate_version_code < <("$repo_dir/scripts/check-release" --android-version "$tag")
+while IFS= read -r existing_tag; do
+  if read -r _ existing_version_code < <(
+    "$repo_dir/scripts/check-release" --android-version "$existing_tag" 2>/dev/null
+  ) && ((existing_version_code >= candidate_version_code)); then
+    printf 'Release tag %s does not increase the Android version code beyond %s\n' \
+      "$tag" "$existing_tag" >&2
+    exit 1
+  fi
+done < <(git tag --list 'v*')
+if git show-ref --verify --quiet "refs/tags/$tag" ||
+  git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1 ||
+  gh release view "$tag" --repo "$repo_name" >/dev/null 2>&1; then
+  printf 'Release tag already exists and will not be replaced: %s\n' "$tag" >&2
+  exit 1
+fi
+
+run_id="$(
+  gh run list \
+    --repo "$repo_name" \
+    --workflow verify.yml \
+    --branch main \
+    --commit "$sha" \
+    --status success \
+    --limit 20 \
+    --json databaseId,headSha,conclusion \
+    --jq 'map(select(.headSha == "'"$sha"'" and .conclusion == "success")) | first | .databaseId // empty'
+)"
+[[ "$run_id" =~ ^[0-9]+$ ]] || {
+  printf 'No successful verify run exists for exact origin/main SHA %s\n' "$sha" >&2
+  exit 1
+}
+
+printf '%s\t%s\n' "$sha" "$run_id"

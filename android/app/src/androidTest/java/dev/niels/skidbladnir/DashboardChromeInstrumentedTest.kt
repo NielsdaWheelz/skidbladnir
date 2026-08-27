@@ -275,8 +275,8 @@ class DashboardChromeInstrumentedTest {
     fun theTopBarKeepsTheMarkLeadingTheTitleOnOneRow() {
         // The mark took 32dp (24dp glyph + 8dp arrangement spacing) out of a row that is a
         // fixed 64dp tall. The equivalent assertions in MultiMachineUiInstrumentedTest sit
-        // behind an assumeTrue for provisioned machines, so they do not run on an
-        // unprovisioned device — this composes the bar directly so the mark-and-title
+        // behind an assumeTrue for a connected fleet, so they do not run on an
+        // empty-store device — this composes the bar directly so the mark-and-title
         // geometry is proved on every run.
         compose.setContent {
             MaterialTheme {

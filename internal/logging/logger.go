@@ -35,17 +35,19 @@ func (method Method) valid() bool {
 type Route string
 
 const (
-	RouteHealth    Route = "/healthz"
-	RouteSessions  Route = "/v1/sessions"
-	RouteSession   Route = "/v1/sessions/{id}"
-	RouteTerminal  Route = "/v1/sessions/{id}/terminal"
-	RoutePressure  Route = "/v1/pressure"
-	RouteUnmatched Route = "unmatched"
+	RouteHealth         Route = "/healthz"
+	RouteSessions       Route = "/v1/sessions"
+	RouteSession        Route = "/v1/sessions/{id}"
+	RouteTerminal       Route = "/v1/sessions/{id}/terminal"
+	RoutePressure       Route = "/v1/pressure"
+	RoutePairingInvites Route = "/v1/pairing-invites"
+	RoutePairings       Route = "/v1/pairings"
+	RouteUnmatched      Route = "unmatched"
 )
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RouteUnmatched:
+	case RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -67,6 +69,7 @@ const (
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
+	ErrorPairingInviteRejected       ErrorCode = "PairingInviteRejected"
 	ErrorMachineIdentityMismatch     ErrorCode = "MachineIdentityMismatch"
 	ErrorSessionGroupedConflict      ErrorCode = "SessionGroupedConflict"
 	ErrorInternal                    ErrorCode = "InternalError"
@@ -85,6 +88,7 @@ func (code ErrorCode) valid() bool {
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,
+		ErrorPairingInviteRejected,
 		ErrorMachineIdentityMismatch,
 		ErrorSessionGroupedConflict,
 		ErrorInternal:

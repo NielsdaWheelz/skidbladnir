@@ -6,37 +6,20 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 
 private val NidavellirTypography = Typography().let { base ->
     base.copy(
@@ -54,10 +37,12 @@ private val NidavellirMaterialShapes = Shapes(
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: SkidbladnirController
+    private lateinit var scanner: FleetScanner
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         controller = SkidbladnirController(applicationContext)
+        scanner = FleetScanner(this)
         enableEdgeToEdge()
         setContent {
             MaterialTheme(
@@ -83,7 +68,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
-                    SkidbladnirApp(controller)
+                    SkidbladnirApp(controller, scanner) { openOrInstallTailscale(this) }
                 }
             }
         }
@@ -106,13 +91,32 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SkidbladnirApp(controller: SkidbladnirController) {
+private fun SkidbladnirApp(
+    controller: SkidbladnirController,
+    scanner: FleetScanner,
+    onTailscale: () -> Unit,
+) {
     val state = controller.state
+    val context = LocalContext.current
     BackHandler(enabled = state is SkidbladnirUiState.Dashboard && state.forge != null) {
         controller.dismissForge()
     }
     BackHandler(enabled = state is SkidbladnirUiState.Terminal) {
         controller.detachToAgents()
+    }
+    BackHandler(
+        enabled = state is SkidbladnirUiState.FleetConnect &&
+            state.mode == FleetConnectMode.Reconnect &&
+            state.phase != FleetConnectPhase.Connecting,
+    ) { controller.cancelFleetReconnect() }
+    if (state is SkidbladnirUiState.FleetConnect && state.phase == FleetConnectPhase.Scanning) {
+        LaunchedEffect(state) {
+            scanner.scan(
+                onResult = controller::acceptFleetScan,
+                onCancelled = controller::cancelFleetScan,
+                onFailure = controller::failFleetScan,
+            )
+        }
     }
     when (state) {
         SkidbladnirUiState.Booting -> Box(
@@ -123,91 +127,13 @@ private fun SkidbladnirApp(controller: SkidbladnirController) {
         ) {
             CircularProgressIndicator()
         }
-        is SkidbladnirUiState.BearerRepair -> BearerRepairScreen(state, controller)
+        is SkidbladnirUiState.FleetConnect -> FleetConnectScreen(
+            state = state,
+            tailscaleInstalled = tailscaleInstalled(context),
+            onConnect = controller::requestFleetScan,
+            onTailscale = onTailscale,
+        )
         is SkidbladnirUiState.Dashboard -> DashboardScreen(state, controller)
         is SkidbladnirUiState.Terminal -> TerminalScreen(state, controller)
-    }
-}
-
-@Composable
-private fun BearerRepairScreen(
-    state: SkidbladnirUiState.BearerRepair,
-    controller: SkidbladnirController,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = "SKÍÐBLAÐNIR",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = "Your dwarves, aboard.",
-            color = Muted,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Spacer(Modifier.height(32.dp))
-        Text(
-            text = "Update ${state.machine.label.text} bearer",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            text = "Re-authenticate the existing machine at ${state.machine.origin.encoded}. Its identity and destination stay fixed.",
-            color = Muted,
-            modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-        )
-        OutlinedTextField(
-            value = state.bearer.text,
-            onValueChange = controller::updateBearerRepair,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.pending,
-            label = { Text("Bearer") },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                autoCorrectEnabled = false,
-            ),
-        )
-        if (state.error != null) {
-            Text(
-                text = state.error,
-                color = noticeToneColor(NoticeTone.Failure),
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-        Button(
-            onClick = controller::repairBearer,
-            enabled = state.bearer.text.isNotEmpty() && !state.pending,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 20.dp),
-        ) {
-            if (state.pending) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-            Text("Update bearer")
-        }
-        TextButton(onClick = controller::cancelBearerRepair, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
-            BackToDwarvesContent(tag = "bearer-repair-dwarves-mark")
-        }
-        Text(
-            text = "Tailnet only · fixed machine identity",
-            color = Muted,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
     }
 }

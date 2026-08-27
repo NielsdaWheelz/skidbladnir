@@ -454,7 +454,7 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
         MachineAvailability.AuthRequired ->
             MachineNotice("$label: authentication required. Actions disabled.", tone)
         MachineAvailability.IdentityChanged ->
-            MachineNotice("$label: identity changed. Provisioning repair is required.", tone)
+            MachineNotice("$label: identity changed. Fleet reset is required.", tone)
         MachineAvailability.Refreshing ->
             MachineNotice("$label: confirming the latest tmux inventory. Actions disabled.", tone)
         MachineAvailability.Reading -> MachineNotice("$label: reading tmux sessions.", tone)
@@ -527,6 +527,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"), SessionGroupedConflict("SessionGroupedConflict"),
+    PairingInviteRejected("PairingInviteRejected"),
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
 }
@@ -544,7 +545,8 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
     ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh before killing it."
     ApiErrorCode.SessionGroupedConflict -> "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it."
-    ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Provisioning repair is required."
+    ApiErrorCode.PairingInviteRejected -> "This fleet invite is invalid, expired, or already used."
+    ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Fleet reset is required."
     ApiErrorCode.InternalError -> "Skíðblaðnir could not complete the request."
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
 }
