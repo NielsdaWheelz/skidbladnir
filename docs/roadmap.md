@@ -375,5 +375,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
-| v0 design delta D7 — the launcher mark | Source implemented; all three generator reds observed, then green; routine verification (static, build, unit) green, the ornament drift gate green over five generated files; the instrumented monochrome proof and the hands-on launcher glance `NOT_RUN`, both needing the device and the pinned signing identity this host does not have |
+| v0 design delta D7 — the launcher mark | Implemented; all three generator reds observed, then green; routine verification (static, build, unit) green, the ornament drift gate green over five generated files; the approved S22+ platform gate green at `OK (34 tests)`, the instrumented monochrome proof among them; the hands-on launcher glance `NOT_RUN` |
 | v0.5 push | Not scheduled |

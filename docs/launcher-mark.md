@@ -1,10 +1,11 @@
 # Design delta D7: the launcher mark
 
 Status: implemented 2026-08-27. Proofs 1, 2 and 3 were each observed red,
-then green; `scripts/test verify` — static, build and unit — is green on this
-host, and the ornament drift gate inside it is green over five generated
-files. Proof 4 and the hands-on glance are `NOT_RUN`: both need the device and
-the pinned signing identity this host does not have.
+then green; `scripts/test verify` — static, build and unit — is green, and the
+ornament drift gate inside it is green over five generated files. The
+separately approved S22+ platform gate is green — `OK (34 tests)`, proof 4
+among them, on the physical device. The hands-on glance is `NOT_RUN`: it is a
+human-eye check and no gate substitutes for it.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) owns visual identity and wins on
@@ -395,7 +396,10 @@ without a second caller.
 - Routine verification green, including `ornament-static` over the enlarged
   generated set.
 - One separately approved S22+ platform pass green, including proof 4 and the
-  existing suites re-run unchanged.
+  existing suites re-run unchanged. Done: `OK (34 tests)`, 33 existing plus
+  proof 4. The gate refuses to run against an install that does not carry the
+  pinned signing identity, so replacing a foreign-signed build first is part of
+  the run and costs the app's pairing state.
 - One hands-on glance: the icon reads as a ship at arm's length on the home
   screen and in the app switcher, and the themed-icon variant is still a ship.
   Without the device this is `NOT_RUN`, never pass.
