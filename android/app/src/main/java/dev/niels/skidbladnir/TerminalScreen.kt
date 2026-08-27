@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -77,14 +76,13 @@ internal fun TerminalScreen(
                     modifier = Modifier.testTag(terminalStatusTag(state.connection)),
                 )
             }
-            TextButton(
-                onClick = { controller.requestKill(state.target) },
+            KillButton(
+                machineLabel = state.machine.machine.label,
+                target = state.target,
                 enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                colors = ButtonDefaults.textButtonColors(contentColor = Ember),
+                onClick = { controller.requestKill(state.target) },
                 modifier = Modifier.testTag("terminal-kill"),
-            ) {
-                Text("Kill")
-            }
+            )
         }
 
         Box(
@@ -207,7 +205,7 @@ private fun ReconnectPanel(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(message, color = Ember, modifier = Modifier.padding(top = 8.dp))
+            Text(message, color = noticeToneColor(NoticeTone.Failure), modifier = Modifier.padding(top = 8.dp))
             Text(
                 terminalReconnectSafetyCopy(machineLabel),
                 color = Muted,
@@ -226,7 +224,7 @@ private fun ReconnectPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
             ) {
-                Text("Back to Dwarves")
+                BackToDwarvesContent(tag = "terminal-dwarves-mark")
             }
         }
     }
@@ -245,7 +243,7 @@ private fun terminalPresence(state: SkidbladnirUiState.Terminal): String = when 
 
 private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (connection) {
     is TerminalUiStatus.Connected -> Moss
-    is TerminalUiStatus.ReconnectRequired -> Ember
+    is TerminalUiStatus.ReconnectRequired -> noticeToneColor(NoticeTone.Failure)
     TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> Gold
 }
 

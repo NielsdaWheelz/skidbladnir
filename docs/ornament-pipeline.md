@@ -53,7 +53,10 @@ phone at runtime beyond drawing pre-built paths.
      so no corner mitering path exists yet; a future framed border re-opens
      the corner rule in the design language, not here).
   2. **Valknut**: the tricursal form — three interlocked triangles,
-     Borromean topology, straight lines only.
+     Borromean topology, straight lines only. The break width cut at each
+     crossing is `_VALKNUT_GAP`, which carries its own derivation;
+     [hlidskjalf-mark.md](hlidskjalf-mark.md) owns why that value and not
+     another.
   3. **Launcher mark**: Skíðblaðnir under sail — cut stems, a square sail in
      three gores, a shield row at the sheer, a masthead vane — authored as
      straight-edged polygon constants and emitted as the whole adaptive-icon
@@ -84,10 +87,11 @@ phone at runtime beyond drawing pre-built paths.
   from a single cached cell (`drawWithCache` + repeating shader per design
   language §7). Present only on the Forge — chips, cards, and the key deck
   gain no ornament in this delta.
-- **Empty grid state**: when the inventory is genuinely empty, the valknut
-  renders centered in Muted with the existing literal empty-state text
-  unchanged; the mark is decorative and unlabeled (the text carries the
-  semantics).
+- **The valknut**: [hlidskjalf-mark.md](hlidskjalf-mark.md) owns every surface
+  the mark renders on and its legibility contract. This document owns only its
+  generation. It stays decorative and unlabeled wherever it appears — the
+  literal text beside it carries the semantics — and it never renders beside a
+  degraded or repair state.
 - **App icon**: the launcher identity is the launcher mark — the app is named
   for the vessel; the valknut marks Hlíðskjálf inside the app, never the
   launcher. The adaptive icon is four generated resources: an Ink background

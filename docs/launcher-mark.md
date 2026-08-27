@@ -4,8 +4,11 @@ Status: implemented 2026-08-27. Proofs 1, 2 and 3 were each observed red,
 then green; `scripts/test verify` — static, build and unit — is green, and the
 ornament drift gate inside it is green over five generated files. The
 separately approved S22+ platform gate is green — `OK (34 tests)`, proof 4
-among them, on the physical device. The hands-on glance is `NOT_RUN`: it is a
-human-eye check and no gate substitutes for it.
+among them, on the physical device. That run was on the D7 branch before it
+merged D6 and D8, whose own instrumented tests were not in it; verification is
+green again on the merged tree, but the device gate has not been re-run there.
+The hands-on glance is `NOT_RUN`: it is a human-eye check and no gate
+substitutes for it.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) owns visual identity and wins on
@@ -14,16 +17,16 @@ every value here; [`roadmap.md`](roadmap.md) owns delivery order;
 this delta extends. This document owns the launcher identity. Testing standard
 is [`rules/testing.md`](rules/testing.md).
 
-Numbered D7 because the forge-seal delta claims D5 and the
-destructive-chrome delta claims D6. Neither document is in this branch, so
-neither is linked here.
+Numbered D7 because the forge-seal delta claims D5 and
+[`destructive-chrome.md`](destructive-chrome.md) claims D6. D5 is not in the
+tree, so it is not linked here.
 
-**Sequencing.** D7 landed first and owns the `scripts/gen-ornament` merge.
-The Hlíðskjálf-mark work (`_VALKNUT_GAP`, `ValknutStrokeRatio`,
-`HlidskjalfMark`, `OrnamentTest`) is not in this branch — the generator here
-still carries `_valknut(gap: float = 0.10)` and no `OrnamentTest` exists — so
-that work rebases onto D7's generator. It owns the valknut entirely; D7 owns
-the icon resources. D5 owns `Theme.kt`, `AngularIndication.kt` and the
+**Sequencing.** D7 was written against a tree where the Hlíðskjálf-mark work
+was still in flight, and D8 landed first; D7 merges onto D8's generator rather
+than the reverse. The two share `scripts/gen-ornament` and nothing else in it:
+D8 owns `_VALKNUT_GAP`, `_valknut` and `Ornament.kt`, D7 owns the icon
+resources, and the merge keeps both untouched — the valknut constant here is
+D8's `0.36`. D5 owns `Theme.kt`, `AngularIndication.kt` and the
 `drawOrnamentBand` collapse. No path overlaps.
 
 ## Outcome and final state
@@ -397,9 +400,10 @@ without a second caller.
   generated set.
 - One separately approved S22+ platform pass green, including proof 4 and the
   existing suites re-run unchanged. Done: `OK (34 tests)`, 33 existing plus
-  proof 4. The gate refuses to run against an install that does not carry the
-  pinned signing identity, so replacing a foreign-signed build first is part of
-  the run and costs the app's pairing state.
+  proof 4, on the D7 branch before it merged D6 and D8. The gate refuses to run
+  against an install that does not carry the pinned signing identity, so
+  replacing a foreign-signed build first is part of the run and costs the app's
+  pairing state.
 - One hands-on glance: the icon reads as a ship at arm's length on the home
   screen and in the app switcher, and the themed-icon variant is still a ship.
   Without the device this is `NOT_RUN`, never pass.
