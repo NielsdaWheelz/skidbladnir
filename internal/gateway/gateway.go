@@ -55,6 +55,11 @@ type Gateway struct {
 	platform platform.Descriptor
 	logMutex sync.Mutex
 
+	// The declared pressure capability is constant for one running gateway, so
+	// it is projected onto the wire union once, here, instead of per request.
+	unsupportedMetrics   []pressure.Metric
+	unsupportedMetricSet map[pressure.Metric]struct{}
+
 	terminalLifecycle sync.Mutex
 	liveMutex         sync.Mutex
 	liveTerminals     map[uint64]*liveTerminal
@@ -71,14 +76,17 @@ func New(config Config) *Gateway {
 	default:
 		panic("gateway platform is not configured") // justify-defect: platform.Current returns only the closed supported platform union.
 	}
+	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	return &Gateway{
-		sessions:      config.Sessions,
-		pressure:      config.Pressure,
-		bearer:        config.Bearer,
-		logger:        config.Logger,
-		machine:       config.Machine,
-		platform:      config.Platform,
-		liveTerminals: make(map[uint64]*liveTerminal),
+		sessions:             config.Sessions,
+		pressure:             config.Pressure,
+		bearer:               config.Bearer,
+		logger:               config.Logger,
+		machine:              config.Machine,
+		platform:             config.Platform,
+		unsupportedMetrics:   unsupportedMetrics,
+		unsupportedMetricSet: unsupportedMetricSet,
+		liveTerminals:        make(map[uint64]*liveTerminal),
 	}
 }
 
@@ -350,19 +358,14 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
 	startedAt := time.Now()
 	snapshot := gateway.pressure.Snapshot()
-	unsupported, unsupportedSet, err := mapUnsupportedMetrics(gateway.pressure.Unsupported())
-	if err != nil {
-		writeError(writer, errorInternal)
-		return
-	}
-	current, err := mapHostSample(snapshot.Current, unsupportedSet)
+	current, err := mapHostSample(snapshot.Current, gateway.unsupportedMetricSet)
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
 	history := make([]hostSampleDTO, len(snapshot.Window))
 	for index, sample := range snapshot.Window {
-		mapped, mapErr := mapHostSample(sample, unsupportedSet)
+		mapped, mapErr := mapHostSample(sample, gateway.unsupportedMetricSet)
 		if mapErr != nil {
 			writeError(writer, errorInternal)
 			return
@@ -379,7 +382,7 @@ func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
 		panic("invalid pressure-sampled log event") // justify-defect: pressure values were exhaustively mapped.
 	}
 	gateway.log(event)
-	writeJSON(writer, http.StatusOK, pressureResponseDTO{Unsupported: unsupported, Current: current, History: history})
+	writeJSON(writer, http.StatusOK, pressureResponseDTO{Unsupported: gateway.unsupportedMetrics, Current: current, History: history})
 }
 
 func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *apiError) {

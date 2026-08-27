@@ -257,8 +257,7 @@ func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struc
 	}
 	for _, metric := range metrics {
 		value, known := metric.signal.Value()
-		excluded := false
-		if _, excluded = unsupported[metric.metric]; excluded {
+		if _, excluded := unsupported[metric.metric]; excluded {
 			if err := partitionPressureMetric(metric.metric, known, true, &mapped.Missing); err != nil {
 				return hostSampleDTO{}, err
 			}
@@ -309,13 +308,14 @@ func partitionPressureMetric(metric pressure.Metric, observed, unsupported bool,
 	return nil
 }
 
-func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pressure.Metric]struct{}, error) {
-	mapped := append([]pressure.Metric(nil), metrics...)
-	if mapped == nil {
-		mapped = []pressure.Metric{}
-	}
-	set := make(map[pressure.Metric]struct{}, len(mapped))
-	for index, metric := range mapped {
+// mapUnsupportedMetrics projects one platform's declared pressure capability
+// onto the closed wire union. internal/pressure owns the sorted, unique
+// canonical set and establishes that invariant when it constructs the policy,
+// so the gateway only has to close the enum once, when it is composed.
+func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pressure.Metric]struct{}) {
+	mapped := make([]pressure.Metric, 0, len(metrics))
+	set := make(map[pressure.Metric]struct{}, len(metrics))
+	for _, metric := range metrics {
 		switch metric {
 		case pressure.MetricCPUPercent,
 			pressure.MetricLoadNormalized,
@@ -327,14 +327,12 @@ func mapUnsupportedMetrics(metrics []pressure.Metric) ([]pressure.Metric, map[pr
 			pressure.MetricInputOutputPressureFullAvg60,
 			pressure.MetricMemoryPressure:
 		default:
-			return nil, nil, errors.New("invalid unsupported pressure metric")
+			panic("declared pressure capability names a metric outside the closed wire union") // justify-defect: the host policy and this same-system closed schema ship together; an unknown enum value must never reach a client.
 		}
-		if index > 0 && mapped[index-1] >= metric {
-			return nil, nil, errors.New("unsupported pressure metrics are not sorted and unique")
-		}
+		mapped = append(mapped, metric)
 		set[metric] = struct{}{}
 	}
-	return mapped, set, nil
+	return mapped, set
 }
 
 func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging.PressureReason, error) {

@@ -156,7 +156,7 @@ private fun BearerRepairScreen(
             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
         )
         OutlinedTextField(
-            value = state.bearer,
+            value = state.bearer.text,
             onValueChange = controller::updateBearerRepair,
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.pending,
@@ -177,7 +177,7 @@ private fun BearerRepairScreen(
         }
         Button(
             onClick = controller::repairBearer,
-            enabled = state.bearer.isNotEmpty() && !state.pending,
+            enabled = state.bearer.text.isNotEmpty() && !state.pending,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp),

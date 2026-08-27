@@ -1,7 +1,6 @@
 package sessions
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -9,10 +8,13 @@ import (
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func (manager *Manager) deriveStatus(panePID int, paneTTY, lifecycleValue string, now time.Time) Status {
+func (manager *Manager) deriveStatus(panePID int, lifecycleValue string, now time.Time) Status {
 	now = now.UTC()
-	observed, err := processinfo.ObserveForeground(processinfo.PID(panePID), paneTTY)
+	observed, err := processinfo.ObserveForeground(processinfo.PID(panePID))
 	if err != nil {
+		// justify-ignore-error: every foreground observation failure (absent,
+		// protected, or unstable process) is this card's modeled
+		// Unknown/PollFailure state; the scheduled poll is the only retry.
 		return Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: now}
 	}
 	if !manager.matchesAgent(observed) {
@@ -58,7 +60,7 @@ func runningStatus(now time.Time) Status {
 }
 
 func (manager *Manager) matchesAgent(observed processinfo.Observation) bool {
-	base, argument1 := filepath.Base(observed.Executable), observed.Argument(1)
+	base, argument1 := observed.ExecutableBase(), observed.Argument(1)
 	for _, profile := range manager.profiles {
 		for _, signature := range profile.ForegroundSignatures {
 			if base == signature.ExecutableBase && (signature.Argument1 == "" || argument1 == signature.Argument1) {

@@ -400,47 +400,61 @@ exec %s "$@"
 		}
 	})
 
-	t.Run("pane lifecycle facts drive working and idle without tmux activity guesses", func(t *testing.T) {
-		listed, err := fixture.manager.List(ctx)
-		if err != nil {
-			t.Fatal("list before lifecycle projection")
-		}
-		target := requireSessionNamed(t, listed, "ga-modsognir")
-		if target.Status.Kind != sessions.StatusRunning {
-			t.Fatalf("agent without lifecycle evidence status mismatch: kind=%s", target.Status.Kind)
-		}
-		panePID, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}"))
-		if err != nil {
-			t.Fatal("parse lifecycle fixture pane pid")
-		}
-		processStartTime := processStartIdentity(panePID)
-		if processStartTime == "" {
-			t.Fatal("observe lifecycle fixture process start time")
+	t.Run("the real status hook publishes the exact foreground lifetime that drives working and idle", func(t *testing.T) {
+		hookCommand := buildSkidbladnirCommand(t, fixture.repositoryRoot, fixture.root)
+		codexCommand := buildForegroundCodexCommand(t, fixture.root)
+		hookEvents := filepath.Join(fixture.root, "codex-hook-events")
+		if err := os.Mkdir(hookEvents, 0o700); err != nil {
+			t.Fatalf("create the status-hook event directory: %v", err)
 		}
 
-		idleAt := time.Now().Add(-2 * time.Second).Unix()
-		fixture.tmux(t, "set-option", "-p", "-t", target.ID, "--", "@skid_lifecycle",
-			fmt.Sprintf("v1:%d:%s:idle:%d", panePID, processStartTime, idleAt))
+		const sessionName = "hook-lifetime"
+		fixture.tmux(t, "new-session", "-d", "-s", sessionName, "-c", fixture.project, "--", codexCommand, hookCommand, hookEvents)
+		target := fixture.waitForSession(t, ctx, sessionName, sessions.StatusRunning)
+		if target.Status.Signal != sessions.StatusSignalProcess {
+			t.Fatalf("foreground Codex lifetime without hook evidence signal mismatch: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
+		}
+		paneID := fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_id}")
+		panePID, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", target.ID, "#{pane_pid}"))
+		if err != nil {
+			t.Fatalf("parse the foreground Codex pane pid: %v", err)
+		}
+		lifetime := string(processStartIdentity(panePID))
+		if lifetime == "" {
+			t.Fatal("observe the foreground Codex process start identity")
+		}
+
+		endedAt := requestHookEvent(t, hookEvents, "Stop")
+		requireLifecycleFact(t, fixture.tmux(t, "show-options", "-pqv", "-t", paneID, "@skid_lifecycle"), "idle", panePID, lifetime, endedAt)
+		if got := readHookResponse(t, hookEvents, "Stop"); got != "{}\n" {
+			t.Fatalf("Stop hook response = %q, want the Codex acknowledgement {}", got)
+		}
 		fixture.tmux(t, "send-keys", "-t", target.ID, "activity-without-output")
-		listed, err = fixture.manager.List(ctx)
+		listed, err := fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatal("list after pane input activity")
 		}
 		target = requireSessionID(t, listed, target.ID)
 		if target.Status.Kind != sessions.StatusIdle || target.Status.Signal != sessions.StatusSignalLifecycle {
-			t.Fatalf("tmux activity changed an explicit idle lifecycle fact: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
+			t.Fatalf("tmux activity changed the published idle lifecycle fact: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
 
-		workingAt := time.Now().Unix()
-		fixture.tmux(t, "set-option", "-p", "-t", target.ID, "--", "@skid_lifecycle",
-			fmt.Sprintf("v1:%d:%s:working:%d", panePID, processStartTime, workingAt))
+		fixture.tmux(t, "set-option", "-p", "-t", paneID, "--", "@skid_attention", fmt.Sprint(time.Now().Unix()))
+		startedAt := requestHookEvent(t, hookEvents, "UserPromptSubmit")
+		requireLifecycleFact(t, fixture.tmux(t, "show-options", "-pqv", "-t", paneID, "@skid_lifecycle"), "working", panePID, lifetime, startedAt)
+		if got := readHookResponse(t, hookEvents, "UserPromptSubmit"); got != "" {
+			t.Fatalf("UserPromptSubmit hook wrote %d response bytes, want silence", len(got))
+		}
+		if got := fixture.tmux(t, "show-options", "-pqv", "-t", paneID, "@skid_attention"); got != "" {
+			t.Fatalf("a new Codex turn left the pane attention flag set: attention_bytes=%d", len(got))
+		}
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatal("list after working lifecycle fact")
+			t.Fatal("list after the working lifecycle fact")
 		}
 		target = requireSessionID(t, listed, target.ID)
 		if target.Status.Kind != sessions.StatusWorking || target.Status.Signal != sessions.StatusSignalLifecycle {
-			t.Fatalf("working lifecycle fact did not project: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
+			t.Fatalf("published working lifecycle fact did not project: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
 	})
 
@@ -859,11 +873,195 @@ func (fixture sessionFixture) attachClient(t *testing.T, session string) {
 	})
 }
 
+// foregroundCodexProgram is the pane's foreground Codex lifetime for the
+// status-hook proof. It owns the pane's foreground process group and runs the
+// real skidbladnir status hook as its own child whenever the test publishes an
+// event request, which is exactly how Codex invokes its lifecycle hooks. It is
+// compiled rather than scripted because the hook and the card projection both
+// identify Codex by the kernel's executable, not by a wrapper's arguments.
+const foregroundCodexProgram = `package main
+
+import (
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// justify-polling: this stand-in owns no channel back to the test process, so
+// a published request file is the only signal available; 50 ms keeps the
+// bounded proof responsive and the loop ends with the pane.
+const requestPollInterval = 50 * time.Millisecond
+
+func main() {
+	if len(os.Args) != 3 {
+		os.Exit(2)
+	}
+	hook, events := os.Args[1], os.Args[2]
+	for {
+		requests, err := filepath.Glob(filepath.Join(events, "*.request"))
+		if err != nil {
+			os.Exit(3)
+		}
+		for _, request := range requests {
+			base := strings.TrimSuffix(request, ".request")
+			event := filepath.Base(base)
+			response, runErr := exec.Command(hook, "status-hook", event).CombinedOutput()
+			code := 0
+			var exit *exec.ExitError
+			if errors.As(runErr, &exit) {
+				code = exit.ExitCode()
+			} else if runErr != nil {
+				code = -1
+			}
+			if err := os.WriteFile(base+".response", response, 0o600); err != nil {
+				os.Exit(4)
+			}
+			if err := os.WriteFile(base+".status", []byte(strconv.Itoa(code)+"\n"), 0o600); err != nil {
+				os.Exit(5)
+			}
+			if err := os.Remove(request); err != nil {
+				os.Exit(6)
+			}
+		}
+		time.Sleep(requestPollInterval)
+	}
+}
+`
+
+// buildSkidbladnirCommand compiles the shipped CLI so the proof exercises the
+// real "skidbladnir status-hook" binary instead of a test double of it.
+func buildSkidbladnirCommand(t *testing.T, repositoryRoot, destination string) string {
+	t.Helper()
+	command := filepath.Join(destination, "skidbladnir")
+	build := exec.Command(goToolPath(t), "build", "-o", command, "./cmd/skidbladnir")
+	build.Dir = repositoryRoot
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the skidbladnir status-hook command: output_bytes=%d", len(output))
+	}
+	return command
+}
+
+func buildForegroundCodexCommand(t *testing.T, destination string) string {
+	t.Helper()
+	source := filepath.Join(destination, "codex-source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("create the foreground Codex source directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "main.go"), []byte(foregroundCodexProgram), 0o600); err != nil {
+		t.Fatalf("write the foreground Codex source: %v", err)
+	}
+	command := filepath.Join(destination, "codex")
+	build := exec.Command(goToolPath(t), "build", "-o", command, "main.go")
+	build.Dir = source
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the foreground Codex command: output_bytes=%d", len(output))
+	}
+	return command
+}
+
+func goToolPath(t *testing.T) string {
+	t.Helper()
+	path, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("resolve the Go toolchain: %v", err)
+	}
+	return path
+}
+
+// requestHookEvent publishes one Codex lifecycle event to the foreground Codex
+// stand-in and returns when the real hook has exited successfully, so every
+// tmux fact it published is already durable.
+func requestHookEvent(t *testing.T, events, event string) time.Time {
+	t.Helper()
+	requestedAt := time.Now()
+	if err := os.WriteFile(filepath.Join(events, event+".request"), nil, 0o600); err != nil {
+		t.Fatalf("request the %s status hook: %v", event, err)
+	}
+	statusPath := filepath.Join(events, event+".status")
+	deadline := time.Now().Add(tmuxConvergenceTimeout)
+	for {
+		contents, err := os.ReadFile(statusPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("read the %s status-hook exit status: %v", event, err)
+		}
+		if status := strings.TrimSpace(string(contents)); err == nil && status != "" {
+			if status != "0" {
+				t.Fatalf("the %s status hook exited with status %s, want 0", event, status)
+			}
+			return requestedAt
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the %s status hook did not report an exit status inside the proof window", event)
+		}
+		time.Sleep(tmuxConvergencePollInterval)
+	}
+}
+
+func readHookResponse(t *testing.T, events, event string) string {
+	t.Helper()
+	response, err := os.ReadFile(filepath.Join(events, event+".response"))
+	if err != nil {
+		t.Fatalf("read the %s status-hook response: %v", event, err)
+	}
+	return string(response)
+}
+
+// requireLifecycleFact holds the published pane fact to the exact foreground
+// lifetime: the same PID, the same kernel start identity, the expected state,
+// and a signal time inside this proof's window. A fact that names anything
+// else could survive process replacement.
+func requireLifecycleFact(t *testing.T, value, wantState string, panePID int, lifetime string, notBefore time.Time) {
+	t.Helper()
+	fields := strings.Split(value, ":")
+	if len(fields) != 5 {
+		t.Fatalf("published lifecycle fact has %d fields, want 5", len(fields))
+	}
+	if fields[0] != "v1" || fields[1] != strconv.Itoa(panePID) || fields[2] != lifetime || fields[3] != wantState {
+		t.Fatalf(
+			"published lifecycle fact does not name the exact foreground lifetime: version=%q pid_match=%t start_identity_match=%t state=%q want_state=%q",
+			fields[0], fields[1] == strconv.Itoa(panePID), fields[2] == lifetime, fields[3], wantState,
+		)
+	}
+	seconds, err := strconv.ParseInt(fields[4], 10, 64)
+	if err != nil {
+		t.Fatalf("published lifecycle fact has an unparsable signal time: %v", err)
+	}
+	signalledAt := time.Unix(seconds, 0)
+	if signalledAt.Before(notBefore.Add(-time.Second)) || signalledAt.After(time.Now().Add(time.Second)) {
+		t.Fatalf("published lifecycle signal time is outside the proof window: signal_unix=%d requested_unix=%d", seconds, notBefore.Unix())
+	}
+}
+
 func integrationDeploymentHost() string {
 	if platform.Current().Kind == platform.KindDarwin {
 		return "macbook"
 	}
 	return "devbox"
+}
+
+// waitForSession waits for one named session to reach a status kind. That is
+// the pane's own convergence, not a retry of a failing assertion.
+func (fixture sessionFixture) waitForSession(t *testing.T, ctx context.Context, name string, want sessions.StatusKind) sessions.Session {
+	t.Helper()
+	deadline := time.Now().Add(tmuxConvergenceTimeout)
+	for {
+		listed, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatalf("list while waiting for session %s", name)
+		}
+		observed := requireSessionNamed(t, listed, name)
+		if observed.Status.Kind == want {
+			return observed
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session %s did not converge: kind=%s want_kind=%s signal=%s", name, observed.Status.Kind, want, observed.Status.Signal)
+		}
+		time.Sleep(tmuxConvergencePollInterval)
+	}
 }
 
 func (fixture sessionFixture) tmux(t *testing.T, args ...string) string {

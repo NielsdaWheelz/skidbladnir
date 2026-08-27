@@ -30,12 +30,27 @@ readonly hooks_source="${repo_dir}/deploy/macbook/status-hooks.json"
 readonly notify_source="${repo_dir}/deploy/macbook/skid-notify"
 readonly launch_agent_source="${repo_dir}/deploy/launchd/${service_label}.plist"
 readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-readonly desired_notify='notify = ["/Users/nnandal/.local/bin/skid-notify"]'
-readonly operation_lock="${expected_home}/.local/state/skidbladnir/install.lock"
+readonly desired_notify="notify = [\"${notify_target}\"]"
+readonly state_directory="${expected_home}/.local/state/skidbladnir"
+readonly operation_lock="${state_directory}/install.lock"
+readonly gateway_log="${state_directory}/gateway.log"
+readonly gateway_error_log="${state_directory}/gateway.error.log"
+readonly retained_log_bytes=1048576
+readonly health_probe_attempts=50
+readonly health_probe_interval_seconds="0.1"
+readonly teardown_probe_attempts=50
+readonly teardown_probe_interval_seconds="0.1"
 readonly -a profile_configs=(
   "${expected_home}/.codex-personal/config.toml"
   "${expected_home}/.codex-work/config.toml"
   "${expected_home}/.codex-work2/config.toml"
+)
+readonly -a required_executables=(
+  /bin/cat /bin/chmod /bin/launchctl /bin/mkdir /bin/mv /bin/ps /bin/rm /bin/sleep
+  /usr/bin/awk /usr/bin/cmp /usr/bin/curl /usr/bin/dirname /usr/bin/git /usr/bin/grep
+  /usr/bin/head /usr/bin/id /usr/bin/install /usr/bin/jq /usr/bin/mktemp /usr/bin/plutil
+  /usr/bin/python3 /usr/bin/sed /usr/bin/shlock /usr/bin/stat /usr/bin/sw_vers /usr/bin/tail
+  /usr/bin/uname /usr/sbin/lsof
 )
 
 staging_dir=""
@@ -45,6 +60,7 @@ preflight_launch_pid=""
 launchd_print_state=""
 launchd_print_output=""
 port_listener_records=""
+config_notify_states=()
 
 die() {
   printf 'skidbladnir macbook: %s\n' "$1" >&2
@@ -68,10 +84,6 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
-}
 
 require_directory() {
   local target_directory="$1"
@@ -119,7 +131,7 @@ ensure_directory() {
 
 acquire_operation_lock() {
   ensure_directory "${expected_home}/.local/state" 700
-  ensure_directory "${expected_home}/.local/state/skidbladnir" 700
+  ensure_directory "$state_directory" 700
   if ! /usr/bin/shlock -p "$$" -f "$operation_lock"; then
     die "another installer operation is running"
   fi
@@ -129,12 +141,12 @@ acquire_operation_lock() {
 
 classify_notify() {
   local config_file="$1"
-  /usr/bin/python3 - "$config_file" "$desired_notify" <<'PY'
+  /usr/bin/python3 - "$config_file" "$notify_target" <<'PY'
 import json
 import re
 import sys
 
-config_path, desired_notify = sys.argv[1:]
+config_path, notify_target = sys.argv[1:]
 with open(config_path, "r", encoding="utf-8", newline=None) as stream:
     lines = stream.read().splitlines()
 
@@ -226,13 +238,59 @@ def nonempty_string(encoded):
     if not isinstance(value, str) or not value:
         raise ValueError("trusted_hash must be nonempty")
 
+def string_array(encoded):
+    encoded = encoded.strip()
+    if not (encoded.startswith("[") and encoded.endswith("]")):
+        raise ValueError("notify must be a single-line array of strings")
+    items = []
+    index = 1
+    end = len(encoded) - 1
+    expecting_value = True
+    while index < end:
+        character = encoded[index]
+        if character.isspace():
+            index += 1
+        elif character == ",":
+            if expecting_value:
+                raise ValueError("invalid array separator")
+            expecting_value = True
+            index += 1
+        elif not expecting_value:
+            raise ValueError("missing array separator")
+        elif character == '"':
+            close = index + 1
+            escaped = False
+            while close < end:
+                if escaped:
+                    escaped = False
+                elif encoded[close] == "\\":
+                    escaped = True
+                elif encoded[close] == '"':
+                    break
+                close += 1
+            if close >= end:
+                raise ValueError("unterminated basic string")
+            items.append(json.loads(encoded[index:close + 1]))
+            index = close + 1
+            expecting_value = False
+        elif character == "'":
+            close = encoded.find("'", index + 1)
+            if close < 0 or close >= end:
+                raise ValueError("unterminated literal string")
+            items.append(encoded[index + 1:close])
+            index = close + 1
+            expecting_value = False
+        else:
+            raise ValueError("notify elements must be strings")
+    return items
+
 current_table = ()
 notify = []
 hook_identities = set()
 hook_assignments = set()
 hook_tables = set()
 try:
-    for line_number, original in enumerate(lines, 1):
+    for original in lines:
         code = strip_comment(original).strip()
         if not code:
             continue
@@ -290,7 +348,7 @@ try:
         if starts_with(assigned, ("notify",)):
             if assigned != ("notify",):
                 raise SystemExit(3)
-            notify.append((line_number, original))
+            notify.append(string_array(code[separator + 1:]))
 except (UnicodeError, ValueError, json.JSONDecodeError):
     raise SystemExit(3)
 
@@ -299,7 +357,7 @@ if hook_identities != {assigned[2] for assigned in hook_assignments}:
 
 if not notify:
     print("add")
-elif notify == [(1, desired_notify)]:
+elif notify == [[notify_target]]:
     print("present")
 else:
     raise SystemExit(3)
@@ -373,16 +431,22 @@ serve_state() {
 }
 
 preflight() {
+  # Preflight proves the exact artifacts the installer uses: every hard-coded absolute path at that
+  # path, the version-pinned tmux and Tailscale binaries at their pins below, and the one
+  # PATH-resolved tool through PATH. A name resolved here that is not the artifact invoked later
+  # would prove nothing.
+  local executable
+  for executable in "${required_executables[@]}"; do
+    [[ -x "$executable" ]] || die "required executable is unavailable: ${executable}"
+  done
+  command -v go >/dev/null 2>&1 || die "required command is unavailable: go"
+
   [[ "$(/usr/bin/id -un)" == "$expected_user" ]] || die "must run as ${expected_user}"
   [[ "$(/usr/bin/id -u)" == "$expected_uid" ]] || die "unexpected uid"
   [[ "${HOME:-}" == "$expected_home" ]] || die "unexpected home directory"
   [[ -z "${TMUX:-}" && -z "${TMUX_PANE:-}" && -z "${TMUX_TMPDIR:-}" ]] ||
     die "refusing inherited tmux socket state"
 
-  local command
-  for command in cmp curl git go jq lsof plutil ps shlock; do
-    require_command "$command"
-  done
   [[ "$(/usr/bin/sw_vers -productVersion)" == "$expected_product_version" ]] || die "macOS version drifted"
   [[ "$(/usr/bin/sw_vers -buildVersion)" == "$expected_build_version" ]] || die "macOS build drifted"
   [[ "$(/usr/bin/uname -r)" == "$expected_darwin_version" ]] || die "Darwin version drifted"
@@ -415,7 +479,8 @@ preflight() {
   validate_bearer || die "bearer is invalid"
 
   local config_file
-  local classification
+  local notify_state
+  local hook_state
   local hook_file
   local profile_key
   for profile_key in personal work work2; do
@@ -428,9 +493,14 @@ preflight() {
     require_directory "$(/usr/bin/dirname "$config_file")"
     require_regular_file "$config_file" 600
     hook_file="$(/usr/bin/dirname "$config_file")/hooks.json"
-    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
-    classification="$(classify_hooks "$hook_file")"
-    [[ "$classification" != "conflict" ]] || die "Codex hook configuration conflicts: ${hook_file}"
+    notify_state="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
+    case "$notify_state" in
+      add | present) printf '%s: %s\n' "$config_file" "$notify_state" ;;
+      *) die "invalid notify preflight result: ${config_file}" ;;
+    esac
+    hook_state="$(classify_hooks "$hook_file")"
+    [[ "$hook_state" != "conflict" ]] || die "Codex hook configuration conflicts: ${hook_file}"
+    printf '%s: %s\n' "$hook_file" "$hook_state"
   done
 
   local host_name
@@ -452,25 +522,29 @@ stage() {
     /usr/bin/git diff --check
     ./scripts/check-catalogue
     go test ./cmd/... ./internal/...
-		go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
+    go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
     go build -trimpath -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
     /usr/bin/plutil -lint "$launch_agent_source" >/dev/null
     /usr/bin/jq -e . "$hooks_source" >/dev/null
   )
+  verify_launch_agent_contract
   /usr/bin/install -m 0755 "$notify_source" "$staging_dir/skid-notify"
   /usr/bin/install -m 0600 "$hooks_source" "$staging_dir/status-hooks.json"
   /usr/bin/install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
   /usr/bin/install -m 0644 "$launch_agent_source" "$staging_dir/${service_label}.plist"
 
   local config_file
-  local classification
   local index=0
   for config_file in "${profile_configs[@]}"; do
-    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
-    if [[ "$classification" == "add" ]]; then
+    config_notify_states[index]="$(classify_notify "$config_file")" ||
+      die "Codex notify configuration conflicts: ${config_file}"
+    if [[ "${config_notify_states[index]}" == "add" ]]; then
+      # The rewrite is generated from the staged byte-exact copy, never from the live file, so the
+      # publication guard in install_macbook can prove the source is still exactly what was rewritten.
+      /usr/bin/install -m 0600 "$config_file" "$staging_dir/config-${index}.source.toml"
       {
         printf '%s\n\n' "$desired_notify"
-        /bin/cat "$config_file"
+        /bin/cat "$staging_dir/config-${index}.source.toml"
       } >"$staging_dir/config-${index}.toml"
       /bin/chmod 0600 "$staging_dir/config-${index}.toml"
     fi
@@ -493,6 +567,19 @@ atomic_install() {
   fi
 }
 
+bootout_service() {
+  local bootout_status=0
+  local bootout_output
+  # launchctl reports EINPROGRESS (36) while a job with a graceful ExitTimeOut is still terminating,
+  # and ESRCH (3) or 113 once the service is already gone. Teardown completion is established by the
+  # port and service-state checks that follow, never by this exit status.
+  bootout_output="$(/bin/launchctl bootout "${service_domain}/${service_label}" 2>&1)" || bootout_status=$?
+  case "$bootout_status" in
+    0 | 3 | 36 | 113) ;;
+    *) die "could not boot out the LaunchAgent (status ${bootout_status}): ${bootout_output}" ;;
+  esac
+}
+
 stop_loaded_job() {
   local launch_state
   local main_pid
@@ -503,8 +590,9 @@ stop_loaded_job() {
       main_pid="$(launchd_pid "$launch_state")"
       [[ "$main_pid" == "$preflight_launch_pid" ]] || die "LaunchAgent process changed after preflight"
       verify_running_gateway "$main_pid"
-      /bin/launchctl bootout "${service_domain}/${service_label}"
+      bootout_service
       wait_for_port_free "$listen_port"
+      wait_for_service_absent
       ;;
     absent)
       read_launchd_service
@@ -517,13 +605,38 @@ stop_loaded_job() {
 
 wait_for_health() {
   local attempt
-  for ((attempt = 0; attempt < 50; attempt++)); do
+  # justify-polling: launchd reports that it started the job, never that the gateway bound and began
+  # serving, and the gateway publishes readiness only by answering a loopback request. 100 ms observes
+  # a local start without visible delay and 50 attempts bound the wait at five seconds before failing.
+  for ((attempt = 0; attempt < health_probe_attempts; attempt++)); do
     if /usr/bin/curl --fail --silent "http://${listen_address}/healthz" >/dev/null; then
       return
     fi
-    /bin/sleep 0.1
+    /bin/sleep "$health_probe_interval_seconds"
   done
   die "gateway health check did not become ready"
+}
+
+rotate_gateway_log() {
+  # launchd appends to a StandardOutPath/StandardErrorPath file for the whole life of the job and
+  # rotates nothing, so the installer owns retention. Every install boots the job out first, which
+  # closes these descriptors; a stream that has reached retained_log_bytes then keeps only its last
+  # retained_log_bytes in a single .retained generation and restarts empty under the new job. On-disk
+  # history is bounded at one retained generation per stream plus what the running gateway has
+  # appended since that install.
+  local log_file="$1"
+  local staged_name="$2"
+  local retained_file="${log_file}.retained"
+  [[ ! -L "$log_file" ]] || die "gateway log is a symbolic link: ${log_file}"
+  [[ -f "$log_file" ]] || return 0
+  [[ "$(/usr/bin/stat -f '%u' "$log_file")" == "$expected_uid" ]] ||
+    die "gateway log has the wrong owner: ${log_file}"
+  [[ "$(/usr/bin/stat -f '%z' "$log_file")" -ge "$retained_log_bytes" ]] || return 0
+  [[ ! -L "$retained_file" ]] || die "retained gateway log is a symbolic link: ${retained_file}"
+  /usr/bin/tail -c "$retained_log_bytes" "$log_file" >"$staging_dir/$staged_name"
+  atomic_install "$staging_dir/$staged_name" "$retained_file" 0600 ||
+    die "could not retain the previous gateway log: ${retained_file}"
+  : >"$log_file"
 }
 
 machine_get() {
@@ -536,23 +649,29 @@ machine_get() {
     "$url"
 }
 
-verify_plist() {
-  /usr/bin/plutil -convert json -o - "$launch_agent_target" |
-    /usr/bin/jq -e --arg path "$service_path" '
-      .Label == "dev.niels.skidbladnir" and
-      .ProgramArguments == [
-        "/Users/nnandal/.local/bin/skidbladnir",
-        "gateway",
-        "--listen=127.0.0.1:7341",
-        "--bearer-file=/Users/nnandal/.config/skidbladnir/bearer",
-        "--catalogue-path=/Users/nnandal/.local/share/skidbladnir/characters.json",
-        "--machine-handle-file=/Users/nnandal/.config/skidbladnir/machine-handle"
-      ] and
-      .EnvironmentVariables == {HOME:"/Users/nnandal",PATH:$path} and
-      .WorkingDirectory == "/Users/nnandal" and
+verify_launch_agent_contract() {
+  # The installer's pins are the single owner of the LaunchAgent contract: this proves the shipped
+  # source asset against them once per run, and cmp proves the installed copy is that exact source.
+  /usr/bin/plutil -convert json -o - "$launch_agent_source" |
+    /usr/bin/jq -e \
+      --arg label "$service_label" \
+      --arg binary "$binary_target" \
+      --arg listen "--listen=${listen_address}" \
+      --arg bearer "--bearer-file=${bearer_target}" \
+      --arg catalogue "--catalogue-path=${catalogue_target}" \
+      --arg machine_handle "--machine-handle-file=${machine_handle_target}" \
+      --arg home "$expected_home" \
+      --arg path "$service_path" \
+      --arg out_log "$gateway_log" \
+      --arg error_log "$gateway_error_log" '
+      .Label == $label and
+      .ProgramArguments == [$binary, "gateway", $listen, $bearer, $catalogue, $machine_handle] and
+      .EnvironmentVariables == {HOME:$home,PATH:$path} and
+      .WorkingDirectory == $home and
       .RunAtLoad == true and .KeepAlive == {SuccessfulExit:false} and
       .AbandonProcessGroup == true and .ThrottleInterval == 2 and
-      .ExitTimeOut == 10 and .Umask == 18
+      .ExitTimeOut == 10 and .Umask == 18 and
+      .StandardOutPath == $out_log and .StandardErrorPath == $error_log
     ' >/dev/null || die "LaunchAgent contract drifted"
 }
 
@@ -586,14 +705,32 @@ require_port_free() {
 wait_for_port_free() {
   local port="$1"
   local attempt
-  for ((attempt = 0; attempt < 50; attempt++)); do
+  # justify-polling: launchd boots a job out asynchronously and offers no completion event, so the
+  # released listener is the only observable fact. 100 ms matches the graceful shutdown this gateway
+  # performs and 50 attempts bound the wait at five seconds, comfortably past the plist's ExitTimeOut.
+  for ((attempt = 0; attempt < teardown_probe_attempts; attempt++)); do
     read_port_listeners "$port"
     if [[ -z "$port_listener_records" ]]; then
       return
     fi
-    /bin/sleep 0.1
+    /bin/sleep "$teardown_probe_interval_seconds"
   done
   die "TCP port ${port} did not become free"
+}
+
+wait_for_service_absent() {
+  local attempt
+  # justify-polling: launchd removes a booted-out job from its domain only after reaping the process,
+  # asynchronously and with no completion event, so the empty domain is the only observable fact.
+  # 100 ms matches the reap this immediately follows and 50 attempts bound the wait at five seconds.
+  for ((attempt = 0; attempt < teardown_probe_attempts; attempt++)); do
+    read_launchd_service
+    if [[ "$launchd_print_state" == "absent" ]]; then
+      return
+    fi
+    /bin/sleep "$teardown_probe_interval_seconds"
+  done
+  die "LaunchAgent did not boot out"
 }
 
 launchd_pid() {
@@ -681,7 +818,6 @@ preflight_launchd_service() {
     /usr/bin/grep -Eq "^[[:space:]]*program = ${binary_target}$" <<<"$launch_state" || die "LaunchAgent program drifted"
     [[ -e "$launch_agent_target" ]] || die "loaded LaunchAgent plist is absent"
     /usr/bin/cmp -s "$launch_agent_source" "$launch_agent_target" || die "loaded LaunchAgent plist drifted"
-    verify_plist
     main_pid="$(launchd_pid "$launch_state")"
     verify_running_gateway "$main_pid"
     read_launchd_service
@@ -714,7 +850,6 @@ verify_installation() {
   /usr/bin/cmp -s "$notify_source" "$notify_target" || die "installed notifier drifted"
   /usr/bin/cmp -s "$repo_dir/catalog/characters.json" "$catalogue_target" || die "installed catalogue drifted"
   /usr/bin/cmp -s "$launch_agent_source" "$launch_agent_target" || die "installed LaunchAgent drifted"
-  verify_plist
 
   local config_file
   local hook_file
@@ -743,16 +878,19 @@ verify_installation() {
     die "loopback machine envelope drifted"
 
   local host_name
+  local remote_root
   host_name="$(tailnet_host)"
   [[ "$(serve_state "$("$tailscale_path" serve status --json)" "${host_name}:${serve_port}")" == "present" ]] ||
     die "exact Tailscale Serve route is not installed"
   machine_get "https://${host_name}:${serve_port}/v1/sessions" |
     /usr/bin/jq -e --arg machine_handle "$machine_handle" '.machine == {handle:$machine_handle,platform:"Darwin"}' >/dev/null ||
     die "Tailnet machine envelope drifted"
-  [[ "$(/usr/bin/curl --silent --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/v1/sessions")" == "401" ]] ||
+  [[ "$(/usr/bin/curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/v1/sessions")" == "401" ]] ||
     die "unauthenticated Tailnet request was not rejected"
-  [[ "$(/usr/bin/curl --silent --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/healthz")" == "404" ]] ||
-    die "health endpoint is exposed to the tailnet"
+  for remote_root in "healthz" ""; do
+    [[ "$(/usr/bin/curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://${host_name}:${serve_port}/${remote_root}")" == "404" ]] ||
+      die "non-/v1 Tailnet route is exposed"
+  done
   printf 'Skíðblaðnir MacBook installation is verified.\n'
   printf 'Codex status hooks are digest-verified; review each new digest once with /hooks.\n'
 }
@@ -764,6 +902,8 @@ install_macbook() {
       die "existing machine handle is invalid"
   fi
   stop_loaded_job
+  rotate_gateway_log "$gateway_log" gateway-log.retained
+  rotate_gateway_log "$gateway_error_log" gateway-error-log.retained
   ensure_directory "${expected_home}/.local/bin" 700
   ensure_directory "${expected_home}/.local/share" 700
   ensure_directory "${expected_home}/.local/share/skidbladnir" 700
@@ -774,12 +914,12 @@ install_macbook() {
   "$staging_dir/skidbladnir" machine init --file="$machine_handle_target" >/dev/null
 
   local config_file
-  local classification
   local hook_file
   local index=0
   for config_file in "${profile_configs[@]}"; do
-    classification="$(classify_notify "$config_file")" || die "Codex notify configuration conflicts: ${config_file}"
-    if [[ "$classification" == "add" ]]; then
+    if [[ "${config_notify_states[index]}" == "add" ]]; then
+      /usr/bin/cmp -s "$staging_dir/config-${index}.source.toml" "$config_file" ||
+        die "Codex config changed during installation: ${config_file}"
       atomic_install "$staging_dir/config-${index}.toml" "$config_file" 0600
     fi
     hook_file="$(/usr/bin/dirname "$config_file")/hooks.json"
@@ -789,8 +929,10 @@ install_macbook() {
     index=$((index + 1))
   done
   atomic_install "$staging_dir/${service_label}.plist" "$launch_agent_target" 0644
-  /bin/launchctl bootstrap "$service_domain" "$launch_agent_target"
-  /bin/launchctl kickstart -k "${service_domain}/${service_label}"
+  /bin/launchctl bootstrap "$service_domain" "$launch_agent_target" ||
+    die "could not bootstrap the LaunchAgent"
+  /bin/launchctl kickstart -k "${service_domain}/${service_label}" ||
+    die "could not start the LaunchAgent"
   wait_for_health
 
   local host_name

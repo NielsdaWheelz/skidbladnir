@@ -18,6 +18,10 @@ const (
 	lifecycleOption        = "@skid_lifecycle"
 )
 
+// codexNodeEntrypoint is the platform-pinned Codex Node entrypoint; the
+// platform descriptor is its single owner.
+var codexNodeEntrypoint = platform.Current().CodexNodeEntrypoint
+
 type HookEvent string
 
 const (

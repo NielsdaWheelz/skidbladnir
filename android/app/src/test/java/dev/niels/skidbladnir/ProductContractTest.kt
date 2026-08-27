@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -94,10 +95,10 @@ class ProductContractTest {
     @Test
     fun `forge request omits empty optional drafts but preserves invalid nonempty drafts`() {
         val emptyOptional = encodeCreateSessionRequest(
-            ForgeDraft(machineHandle, cwd = "~/src", profile = "work", optionalName = "", objective = ""),
+            ForgeDraft(machineHandle, cwd = "~/src", profile = workProfile, optionalName = "", objective = ""),
         )
         val invalidDraft = encodeCreateSessionRequest(
-            ForgeDraft(machineHandle, cwd = "~/src", profile = "work", optionalName = "bad name", objective = "\u001b"),
+            ForgeDraft(machineHandle, cwd = "~/src", profile = workProfile, optionalName = "bad name", objective = "\u001b"),
         )
 
         assertFalse(emptyOptional.contains("optionalName"))
@@ -166,7 +167,7 @@ class ProductContractTest {
         val draft = ForgeDraft(
             machineHandle = machineHandle,
             cwd = "bad relative directory",
-            profile = "personal",
+            profile = personalProfile,
             optionalName = "bad name",
             objective = "Inspect the forge",
         )
@@ -338,8 +339,8 @@ class ProductContractTest {
                 access = MachineAccess.Ready,
                 inventory = InventoryState.Fresh(InventorySnapshot(SessionsResponse(
                     machine = MachineSummary(machineHandle, MachinePlatform.Linux),
-                observedAt = "2026-08-25T12:00:00Z",
-                profiles = listOf(ProfileChoice("personal", "Personal")),
+                observedAt = Instant.parse("2026-08-25T12:00:00Z"),
+                profiles = listOf(ProfileChoice(personalProfile, "Personal")),
                 sessions = emptyList(),
                 ), 0)),
                 pressure = PressureState.Reading,
@@ -353,6 +354,8 @@ class ProductContractTest {
 
     private companion object {
         val machineHandle = requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef"))
+        val personalProfile = requireNotNull(ProfileKey.parse("personal"))
+        val workProfile = requireNotNull(ProfileKey.parse("work"))
         val machine = PairedMachine(
             machineHandle,
             requireNotNull(MachineLabel.parse("Devbox")),

@@ -406,7 +406,10 @@ history item is `current`.
   one `Skidbladnir-Machine` header matching the gateway installation handle;
   only the initial authenticated pairing `GET /v1/sessions` may omit it. A
   missing required or wrong handle fails before mutation, WSS upgrade, or tmux
-  invocation. The API is:
+  invocation. Profile and session DTOs carry no machine fields: machine
+  identity appears only in the top-level envelope, and Android composes each
+  session with its machine target client-side, so a gateway cannot mislabel
+  local facts as another machine's. The API is:
 
 | Method/path | Contract |
 | --- | --- |
@@ -454,15 +457,15 @@ enum values are defects, with no protocol branch or compatibility state.
 
 - Compile/target/min SDK 36; one manually installed package.
 - `MachineStore` persists the pre-installed collection in app-private
-  preferences; handles, case-insensitive labels, and origins are each unique.
-  Every bearer is
+  preferences; handles, case-insensitive labels, origins, and bearer bytes are
+  each unique, enforced at the store read boundary — every member of a
+  colliding group is quarantined. Every bearer is
   AES-256-GCM encrypted by Android
   Keystore with a fresh nonce and AAD bound to handle and origin. Origins are
   pinned HTTPS `:8443` endpoints with hostname and no user-info, path, query,
   or fragment. Labels, origins, and handles are immutable in the app; bearer
-  repair re-authenticates the same handle. Bearer bytes must also be unique
-  across installed machines, and that uniqueness is checked before any repair
-  request reaches a gateway. An unreadable entry is an opaque quarantine slot:
+  repair re-authenticates the same handle. An unreadable entry is an opaque
+  quarantine slot:
   its plaintext metadata is never trusted or used as a request destination,
   exposes no in-app destructive recovery, and blocks bearer repair while the
   collection is incomplete. If the authoritative collection index itself is
@@ -472,9 +475,10 @@ enum values are defects, with no protocol branch or compatibility state.
   Ordinary upgrades preserve the installed encrypted collection; a fresh
   install, app-data loss, quarantine, or machine-handle replacement remains
   fail-closed pending separately scoped operator provisioning. Bearer repair
-  performs one authenticated, headerless inventory read,
-  requires the already pinned handle, and only then rotates the encrypted
-  bearer. Subsequent reads and every mutation bind that handle.
+  performs one authenticated inventory read bound to the already pinned
+  handle — the gateway's `409 MachineIdentityMismatch` is the identity
+  verdict — and only then rotates the encrypted bearer. Every read and
+  mutation binds that handle.
 - Grid, per-machine strips, filters, Forge, and terminal follow §4. The Forge
   preserves invalid drafts; its cwd field disables autocorrect/smart
   punctuation. Inventory snapshots and drafts are process-memory only.
@@ -522,8 +526,10 @@ enum values are defects, with no protocol branch or compatibility state.
   server lifetime, id, and name before any PTY/shadow mutation, and the stream
   closes on mismatch. Android never supplies raw tmux targets, commands, or
   homes.
-- Logs carry names, timings, and typed errors — never terminal bytes,
-  objectives, prompts, tokens, or credentials.
+- Logs carry names, timings, and typed errors — never terminal bytes, cwd,
+  objectives, prompts, origins, bearers, account data, or other credentials.
+  The machine handle may appear in protocol diagnostics; it is opaque and
+  non-secret.
 - YOLO agents share their host UID; containment requires a separate UID/VM and
   is explicitly out of scope.
 

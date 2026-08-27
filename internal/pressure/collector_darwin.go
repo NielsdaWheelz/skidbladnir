@@ -47,46 +47,16 @@ static struct skid_pressure_sample skid_collect_pressure(void) {
   if (statfs("/", &disk) == 0 && disk.f_blocks > 0) { out.disk_blocks = disk.f_blocks; out.disk_available = disk.f_bavail; out.valid |= 32; }
   return out;
 }
-
-static int skid_host_port_send_right_references(mach_port_urefs_t *references) {
-  mach_port_t host = mach_host_self();
-  if (!MACH_PORT_VALID(host)) return -1;
-  kern_return_t result = mach_port_get_refs(mach_task_self(), host, MACH_PORT_RIGHT_SEND, references);
-  mach_port_deallocate(mach_task_self(), host);
-  return result == KERN_SUCCESS ? 0 : -1;
-}
 */
 import "C"
 
-type cpuCounters struct {
-	total uint64
-	idle  uint64
-}
-type collector struct {
-	previousCPU    cpuCounters
-	hasPreviousCPU bool
-}
-
-func newCollector() collector { return collector{} }
-func currentPolicy() policy   { return darwinPolicy() }
-
-func hostPortSendRightReferences() (uint32, bool) {
-	var references C.mach_port_urefs_t
-	if C.skid_host_port_send_right_references(&references) != 0 {
-		return 0, false
-	}
-	return uint32(references), true
-}
+func currentPolicy() policy { return darwinPolicy() }
 
 func (collector *collector) collect() rawSample {
 	raw := C.skid_collect_pressure()
 	sample := rawSample{}
 	if raw.valid&1 != 0 {
-		current := cpuCounters{total: uint64(raw.cpu_total), idle: uint64(raw.cpu_idle)}
-		if collector.hasPreviousCPU {
-			sample.cpuPercent = cpuUsage(collector.previousCPU, current)
-		}
-		collector.previousCPU, collector.hasPreviousCPU = current, true
+		sample.cpuPercent = collector.cpuPercent(cpuCounters{total: uint64(raw.cpu_total), idle: uint64(raw.cpu_idle)})
 	}
 	if raw.valid&6 == 6 {
 		sample.loadNormalized = knownMetric(float64(raw.load) / float64(raw.logical_cpus))
@@ -112,15 +82,4 @@ func (collector *collector) collect() rawSample {
 		sample.diskAvailablePercent = knownMetric(float64(raw.disk_available) * 100 / float64(raw.disk_blocks))
 	}
 	return sample
-}
-
-func cpuUsage(previous, current cpuCounters) metric {
-	if current.total <= previous.total || current.idle < previous.idle {
-		return metric{}
-	}
-	total, idle := current.total-previous.total, current.idle-previous.idle
-	if idle > total {
-		return metric{}
-	}
-	return knownMetric(float64(total-idle) * 100 / float64(total))
 }

@@ -130,9 +130,9 @@ func serveGateway(listen, bearerPath, machineHandlePath, cataloguePath, home str
 	}
 	descriptor := platform.Current()
 	profiles := []sessions.Profile{
-		codexProfile(home, "personal", "Personal", ".codex-personal"),
-		codexProfile(home, "work", "Work", ".codex-work"),
-		codexProfile(home, "work2", "Work 2", ".codex-work2"),
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "personal", "Personal"),
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "work", "Work"),
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "work2", "Work 2"),
 	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      descriptor.TmuxPath,
@@ -161,17 +161,17 @@ func serveGateway(listen, bearerPath, machineHandlePath, cataloguePath, home str
 	return nil
 }
 
-func codexProfile(home, key, label, codexHomeName string) sessions.Profile {
+func codexProfile(home, codexNodeEntrypoint, key, label string) sessions.Profile {
 	return sessions.Profile{
 		Key:     key,
 		Label:   label,
 		Command: filepath.Join(home, "bin", "codex-"+key),
 		Environment: []sessions.EnvironmentVariable{
-			{Name: "CODEX_HOME", Value: filepath.Join(home, codexHomeName)},
+			{Name: "CODEX_HOME", Value: filepath.Join(home, ".codex-"+key)},
 		},
 		ForegroundSignatures: []sessions.ForegroundSignature{
 			{ExecutableBase: "codex"},
-			{ExecutableBase: "node", Argument1: filepath.Join(home, ".local", "bin", "codex")},
+			{ExecutableBase: "node", Argument1: codexNodeEntrypoint},
 		},
 		Arguments: []string{"--dangerously-bypass-approvals-and-sandbox"},
 	}

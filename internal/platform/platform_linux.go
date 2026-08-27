@@ -3,5 +3,5 @@
 package platform
 
 func current() Descriptor {
-	return Descriptor{Kind: KindLinux, TmuxPath: "/usr/bin/tmux", TmuxVersion: "tmux 3.4"}
+	return Descriptor{Kind: KindLinux, TmuxPath: "/usr/bin/tmux", TmuxVersion: "tmux 3.4", CodexNodeEntrypoint: "/home/niels/.local/bin/codex"}
 }

@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.serialization.SerializationException
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -64,29 +63,23 @@ internal class TerminalConnection(
     override fun onMessage(webSocket: WebSocket, text: String) {
         if (stopped.get()) return
         if (text.utf8ByteCountWithin(MAXIMUM_TERMINAL_FRAME_BYTES) == null) {
-            throw ProtocolDecodeException(
-                SerializationException("owned terminal text frame exceeded the protocol bound"),
-            ) // justify-defect: only the gateway writes server text frames, so an oversized frame is a same-system contract violation.
+            // justify-defect: only the gateway writes server text frames, so an oversized frame is
+            // a same-system contract violation.
+            throw ProtocolDecodeException("terminal text frame exceeded the protocol bound")
         }
         val event = decodeTerminalServerEvent(text)
         when (event) {
             is TerminalServerEvent.Hello -> synchronized(monitor) {
                 if (stopped.get()) return
-                if (connected) {
-                    throw ProtocolDecodeException(
-                        SerializationException("terminal sent Hello more than once"),
-                    ) // justify-defect: the gateway owns the closed terminal event sequence.
-                }
+                // justify-defect: the gateway owns the closed terminal event sequence.
+                if (connected) throw ProtocolDecodeException("terminal sent Hello more than once")
                 connected = true
                 observer.onPresence(event.attachedClients, event.geometry)
             }
             is TerminalServerEvent.Presence -> synchronized(monitor) {
                 if (stopped.get()) return
-                if (!connected) {
-                    throw ProtocolDecodeException(
-                        SerializationException("terminal sent Presence before Hello"),
-                    ) // justify-defect: the gateway owns the closed terminal event sequence.
-                }
+                // justify-defect: the gateway owns the closed terminal event sequence.
+                if (!connected) throw ProtocolDecodeException("terminal sent Presence before Hello")
                 observer.onPresence(event.attachedClients, event.geometry)
             }
             is TerminalServerEvent.Error -> fail(event.code)
@@ -96,10 +89,9 @@ internal class TerminalConnection(
     override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
         synchronized(monitor) {
             if (stopped.get()) return
+            // justify-defect: the gateway serializes Hello before bounded PTY output.
             if (!connected || bytes.size > MAXIMUM_TERMINAL_FRAME_BYTES) {
-                throw ProtocolDecodeException(
-                    SerializationException("terminal binary frame violated ordering or size"),
-                ) // justify-defect: the gateway serializes Hello before bounded PTY output.
+                throw ProtocolDecodeException("terminal binary frame violated ordering or size")
             }
             page.write(bytes.toByteArray())
         }
@@ -128,8 +120,10 @@ internal class TerminalConnection(
     fun resize(columns: Int, rows: Int) {
         val encoded = try {
             encodeTerminalResize(columns, rows)
-        } catch (failure: IllegalArgumentException) {
-            throw ProtocolDecodeException(failure) // justify-defect: the owned page emits only geometry inside the closed protocol bounds.
+        } catch (_: IllegalArgumentException) {
+            // justify-defect: the owned page emits only geometry inside the closed protocol bounds,
+            // and the reason stays a fixed literal so no terminal content can reach a log.
+            throw ProtocolDecodeException("terminal geometry left the closed protocol bounds")
         }
         synchronized(monitor) {
             if (stopped.get()) return

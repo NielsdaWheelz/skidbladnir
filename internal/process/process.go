@@ -2,11 +2,20 @@ package process
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 )
 
 const coherentObservationAttempts = 8
+
+// ErrProcessAbsent and ErrProcessNotPermitted are the closed set of stable
+// per-process observation failures. Every other observation error is a
+// transient or malformed kernel read.
+var (
+	ErrProcessAbsent       = errors.New("process is absent")
+	ErrProcessNotPermitted = errors.New("process is outside the caller's observation boundary")
+)
 
 type PID int
 type StartIdentity string
@@ -35,10 +44,15 @@ func Observe(pid PID) (Observation, error) {
 		return Observation{}, errors.New("invalid process id")
 	}
 	var previous Observation
+	var lastFailure error
 	hasPrevious := false
 	for attempt := 0; attempt < coherentObservationAttempts; attempt++ {
 		current, err := observeOnce(pid)
 		if err != nil {
+			if errors.Is(err, ErrProcessAbsent) || errors.Is(err, ErrProcessNotPermitted) {
+				return Observation{}, err
+			}
+			lastFailure = err
 			hasPrevious = false
 			continue
 		}
@@ -46,6 +60,9 @@ func Observe(pid PID) (Observation, error) {
 			return current, nil
 		}
 		previous, hasPrevious = current, true
+	}
+	if lastFailure != nil {
+		return Observation{}, fmt.Errorf("process observation did not stabilize: %w", lastFailure)
 	}
 	return Observation{}, errors.New("process observation did not stabilize")
 }
@@ -60,6 +77,11 @@ func equalObservation(left, right Observation) bool {
 		slices.Equal(left.Argv, right.Argv)
 }
 
+// ObserveAncestry walks from initial toward PID 1 and returns the observable
+// prefix of the chain. The walk ends successfully at PID 1, at a parentless
+// process, or at the first ancestor outside the caller's observation boundary
+// (a protected or already-exited process); the caller-owned chain the walk
+// exists to capture is always complete before that frontier.
 func ObserveAncestry(initial PID, limit int) ([]Observation, error) {
 	if initial <= 0 || limit <= 0 {
 		return nil, errors.New("invalid process ancestry request")
@@ -74,6 +96,13 @@ func ObserveAncestry(initial PID, limit int) ([]Observation, error) {
 		seen[pid] = struct{}{}
 		observation, err := Observe(pid)
 		if err != nil {
+			if pid != initial && (errors.Is(err, ErrProcessAbsent) || errors.Is(err, ErrProcessNotPermitted)) {
+				// justify-ignore-error: an unobservable ancestor is the privilege or
+				// lifetime frontier of the walk, and the observed prefix is the
+				// modeled successful result; only the initial process must be
+				// observable for the walk to mean anything.
+				return ancestry, nil
+			}
 			return nil, err
 		}
 		ancestry = append(ancestry, observation)
@@ -85,8 +114,8 @@ func ObserveAncestry(initial PID, limit int) ([]Observation, error) {
 	return nil, errors.New("process ancestry exceeds its closed bound")
 }
 
-func ObserveForeground(panePID PID, paneTTY string) (Observation, error) {
-	foreground, err := foregroundProcessGroup(panePID, paneTTY)
+func ObserveForeground(panePID PID) (Observation, error) {
+	foreground, err := foregroundProcessGroup(panePID)
 	if err != nil {
 		return Observation{}, err
 	}

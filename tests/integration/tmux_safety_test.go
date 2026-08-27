@@ -62,12 +62,12 @@ func TestMain(m *testing.M) {
 	}
 	temporaryParent, err := filepath.EvalSymlinks("/tmp")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "resolve short integration tmux parent")
+		fmt.Fprintf(os.Stderr, "resolve short integration tmux parent: %v\n", err)
 		os.Exit(2)
 	}
 	privateRoot, err := os.MkdirTemp(temporaryParent, "sk-")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "create private integration tmux root")
+		fmt.Fprintf(os.Stderr, "create private integration tmux root: %v\n", err)
 		os.Exit(2)
 	}
 	if err := os.Chmod(privateRoot, 0o700); err != nil || os.Setenv("TMPDIR", privateRoot) != nil || os.Setenv("TMUX_TMPDIR", privateRoot) != nil {
@@ -77,16 +77,16 @@ func TestMain(m *testing.M) {
 	testSocketRegistry.root = privateRoot
 	status := m.Run()
 	if err := cleanupRegisteredTmuxSockets(tmuxPath, privateRoot); err != nil {
-		fmt.Fprintln(os.Stderr, "clean registered integration tmux sockets")
+		fmt.Fprintf(os.Stderr, "clean registered integration tmux sockets: %v\n", err)
 		status = 1
 	}
 	userRoot := filepath.Join(privateRoot, fmt.Sprintf("tmux-%d", os.Getuid()))
 	if err := removeExactPrivateDirectory(userRoot); err != nil {
-		fmt.Fprintln(os.Stderr, "remove private integration tmux user root")
+		fmt.Fprintf(os.Stderr, "remove private integration tmux user root: %v\n", err)
 		status = 1
 	}
 	if err := removeExactPrivateDirectory(privateRoot); err != nil {
-		fmt.Fprintln(os.Stderr, "remove private integration tmux root")
+		fmt.Fprintf(os.Stderr, "remove private integration tmux root: %v\n", err)
 		status = 1
 	}
 	os.Exit(status)
@@ -279,7 +279,7 @@ func cleanupRegisteredTmuxSocket(tmuxPath, socketPath string) error {
 		if err := verifyRegisteredTmuxProcess(tmuxPath, socketPath, identity); err != nil {
 			return err
 		}
-		if err := killRegisteredTmuxServer(tmuxPath, socketPath, identity); err != nil {
+		if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, identity); err != nil {
 			return err
 		}
 	}
@@ -313,14 +313,14 @@ func queryRegisteredTmuxServer(
 		}
 		return testTmuxServerIdentity{}, false, errors.New("query registered tmux socket")
 	}
-	identity, err := parseTestTmuxServerIdentity(socketPath, output)
+	identity, err := parseTestTmuxServerIdentity(output)
 	if err != nil {
 		return testTmuxServerIdentity{}, false, err
 	}
 	return identity, true, nil
 }
 
-func parseTestTmuxServerIdentity(socketPath string, output []byte) (testTmuxServerIdentity, error) {
+func parseTestTmuxServerIdentity(output []byte) (testTmuxServerIdentity, error) {
 	pidText, tmuxStartTime, separated := strings.Cut(strings.TrimSpace(string(output)), "|")
 	pid, err := strconv.Atoi(pidText)
 	if err != nil || pid <= 1 || !separated || tmuxStartTime == "" {
@@ -367,9 +367,15 @@ func commandLineContainsExactSocket(commandLine []string, socketPath string) boo
 	return false
 }
 
-func killRegisteredTmuxServer(tmuxPath, socketPath string, identity testTmuxServerIdentity) error {
+// killVerifiedTestTmuxServer is the single owner of identity-guarded teardown
+// for a test-created tmux server. It refuses unless the exact captured PID is
+// still running its captured kernel lifetime, routes the kill through a tmux
+// condition that the addressed server must satisfy with its own PID and start
+// time, and then waits for that exact process to leave. Every teardown path
+// calls it so the guard cannot drift between callers.
+func killVerifiedTestTmuxServer(tmuxPath, socketPath string, identity testTmuxServerIdentity) error {
 	if observed := processStartIdentity(identity.pid); observed != identity.kernelStartTime {
-		return errors.New("refusing post-run tmux cleanup after process identity changed")
+		return errors.New("refusing tmux cleanup after process identity changed")
 	}
 	condition := "#{&&:#{==:#{pid}," + strconv.Itoa(identity.pid) + "},#{==:#{start_time}," + identity.tmuxStartTime + "}}"
 	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
@@ -382,20 +388,20 @@ func killRegisteredTmuxServer(tmuxPath, socketPath string, identity testTmuxServ
 	cancel()
 	if err != nil {
 		if contextErr != nil {
-			return errors.New("kill verified registered tmux server timed out")
+			return errors.New("kill verified test-owned tmux server timed out")
 		}
-		return errors.New("kill verified registered tmux server")
+		return fmt.Errorf("kill verified test-owned tmux server: output_bytes=%d", len(output))
 	}
 	if strings.TrimSpace(string(output)) != "" {
-		return errors.New("refusing post-run tmux cleanup after routed identity mismatch")
+		return errors.New("refusing tmux cleanup after routed identity mismatch")
 	}
 
 	deadline := time.Now().Add(testTmuxCleanupTimeout)
 	for processStartIdentity(identity.pid) == identity.kernelStartTime {
 		if time.Now().After(deadline) {
-			return errors.New("verified registered tmux server survived cleanup")
+			return errors.New("verified test-owned tmux server survived cleanup")
 		}
-		time.Sleep(25 * time.Millisecond)
+		time.Sleep(tmuxConvergencePollInterval)
 	}
 	return nil
 }
@@ -451,7 +457,7 @@ func captureTestTmuxServer(t *testing.T, tmuxPath, socketPath string) testTmuxSe
 	if err != nil {
 		t.Fatalf("capture test-owned tmux server identity: output_bytes=%d", len(output))
 	}
-	identity, err := parseTestTmuxServerIdentity(socketPath, output)
+	identity, err := parseTestTmuxServerIdentity(output)
 	if err != nil {
 		t.Fatal("parse test-owned tmux server identity")
 	}
@@ -460,32 +466,8 @@ func captureTestTmuxServer(t *testing.T, tmuxPath, socketPath string) testTmuxSe
 
 func stopTestTmuxServer(t *testing.T, tmuxPath, socketPath string, identity testTmuxServerIdentity) {
 	t.Helper()
-	if observed := processStartIdentity(identity.pid); observed != identity.kernelStartTime {
-		t.Error("refusing tmux cleanup after process identity changed")
-		return
-	}
-	epoch := fmt.Sprintf("%d:%s", identity.pid, identity.tmuxStartTime)
-	condition := "#{==:#{pid}:#{start_time}," + epoch + "}"
-	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
-	output, err := isolatedTmuxCommand(tmuxPath, "-S", socketPath,
-		"if-shell", "-F", condition,
-		"kill-server",
-		"display-message -p -l '"+mismatchMarker+"'").CombinedOutput()
-	if err != nil {
-		t.Errorf("kill verified test-owned tmux server: output_bytes=%d", len(output))
-		return
-	}
-	if strings.TrimSpace(string(output)) != "" {
-		t.Error("refusing tmux cleanup after routed identity mismatch")
-		return
-	}
-	deadline := time.Now().Add(testTmuxCleanupTimeout)
-	for processStartIdentity(identity.pid) == identity.kernelStartTime {
-		if time.Now().After(deadline) {
-			t.Error("verified test-owned tmux server survived cleanup")
-			return
-		}
-		time.Sleep(25 * time.Millisecond)
+	if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, identity); err != nil {
+		t.Errorf("stop test-owned tmux server: %v", err)
 	}
 }
 

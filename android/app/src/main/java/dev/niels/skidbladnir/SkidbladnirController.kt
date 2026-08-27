@@ -22,7 +22,7 @@ internal sealed interface SkidbladnirUiState {
 
     data class BearerRepair(
         val machine: PairedMachine,
-        val bearer: String,
+        val bearer: BearerDraft,
         val pending: Boolean,
         val error: String?,
     ) : SkidbladnirUiState
@@ -39,9 +39,8 @@ internal sealed interface SkidbladnirUiState {
     ) : SkidbladnirUiState
 
     data class Terminal(
-        val machine: PairedMachine,
+        val machine: MachineState,
         val target: AgentTarget,
-        val machineCanMutate: Boolean,
         val attempt: Int,
         val connection: TerminalUiStatus,
         val kill: KillState?,
@@ -72,41 +71,6 @@ internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: Ter
         is TerminalUiStatus.Connected, is TerminalUiStatus.ReconnectRequired -> true
         TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> false
     }
-
-internal fun synchronizeTerminalMachineState(
-    terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState,
-): SkidbladnirUiState.Terminal = if (terminal.target.machineHandle == machine.machine.handle) {
-    terminal.copy(machine = machine.machine, machineCanMutate = machine.canMutate)
-} else {
-    terminal
-}
-
-internal fun terminalInventoryReadFailure(
-    machine: MachineState,
-    failure: GatewayFailure,
-): MachineState = markInventoryFailure(listOf(machine), machine.machine.handle, failure).single()
-
-internal fun storedCredentialUnavailable(
-    machine: PairedMachine,
-    current: MachineState? = null,
-): MachineState {
-    require(current == null || current.machine.handle == machine.handle)
-    val failure = GatewayFailure.Api(ApiErrorCode.Unauthenticated)
-    val inventory = current?.let { terminalInventoryReadFailure(it, failure).inventory }
-        ?: InventoryState.Unreachable(failure)
-    val pressure = when (val value = current?.pressure) {
-        is PressureState.Fresh -> PressureState.Stale(value.response, failure)
-        is PressureState.Stale -> PressureState.Stale(value.response, failure)
-        PressureState.Reading, is PressureState.Unavailable, null -> PressureState.Unavailable(failure)
-    }
-    return MachineState(
-        machine = machine,
-        access = MachineAccess.AuthRequired,
-        inventory = inventory,
-        pressure = pressure,
-    )
-}
 
 internal fun bearerRepairConflict(
     credentials: Collection<MachineCredential>,
@@ -153,7 +117,7 @@ internal fun advanceForgeRecovery(
 ): ForgeRecovery? {
     if (recovery !is ForgeRecovery.RefreshRequired) return recovery
     val machine = machines.singleOrNull { it.machine.handle == recovery.draft.machineHandle }
-    return if (machine?.inventory is InventoryState.Fresh && !machine.inventoryRefreshRequired) {
+    return if (machine?.inventory is InventoryState.Fresh) {
         ForgeRecovery.ReviewReady(recovery.draft)
     } else {
         recovery
@@ -162,82 +126,71 @@ internal fun advanceForgeRecovery(
 
 internal fun createdTerminalAdmissionStatus(
     terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState?,
     completedMutationFence: Long,
     requiredMutationFence: Long,
 ): TerminalUiStatus {
     require(terminal.connection == TerminalUiStatus.Verifying)
     require(completedMutationFence >= 0 && requiredMutationFence > 0)
     if (completedMutationFence < requiredMutationFence) return TerminalUiStatus.Verifying
-    return availableTerminalStatus(terminal, machine, TerminalUiStatus.Preparing)
+    return availableTerminalStatus(terminal, TerminalUiStatus.Preparing)
 }
 
-internal fun terminalPageAdmissionStatus(
-    terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState?,
-): TerminalUiStatus {
+internal fun terminalPageAdmissionStatus(terminal: SkidbladnirUiState.Terminal): TerminalUiStatus {
     require(terminal.connection == TerminalUiStatus.Preparing)
-    return availableTerminalStatus(terminal, machine, TerminalUiStatus.Connecting)
+    return availableTerminalStatus(terminal, TerminalUiStatus.Connecting)
 }
 
 internal fun terminalReadAdmissionStatus(
     terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState?,
     exactLifetimeAvailable: Boolean,
 ): TerminalUiStatus {
     require(terminal.connection == TerminalUiStatus.Verifying)
-    val unavailable = unavailableTerminalStatus(terminal, machine)
-    if (unavailable != null) return unavailable
+    unavailableTerminalStatus(terminal)?.let { return it }
     return if (exactLifetimeAvailable) TerminalUiStatus.Preparing else TerminalUiStatus.ReconnectRequired(
-        "${terminal.machine.label.text}: that session lifetime is no longer available.",
+        "${terminal.machine.machine.label.text}: that session lifetime is no longer available.",
     )
 }
 
 private fun availableTerminalStatus(
     terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState?,
     available: TerminalUiStatus,
 ): TerminalUiStatus {
-    val unavailable = unavailableTerminalStatus(terminal, machine)
-    if (unavailable != null) return unavailable
-    requireNotNull(machine)
-    val inventory = (machine.inventory as InventoryState.Fresh).snapshot.inventory
-    val exact = machine.machine.handle == terminal.target.machineHandle &&
-        inventory.machine.handle == terminal.target.machineHandle &&
-        inventory.sessions.any {
+    unavailableTerminalStatus(terminal)?.let { return it }
+    val inventory = terminal.machine.inventory
+    // justify-service-invariant-check: canMutate is a derived property, so the compiler cannot
+    // narrow the Fresh inventory variant that an admitted machine already guarantees.
+    check(inventory is InventoryState.Fresh)
+    val response = inventory.snapshot.inventory
+    val exact = terminal.machine.machine.handle == terminal.target.machineHandle &&
+        response.machine.handle == terminal.target.machineHandle &&
+        response.sessions.any {
             it.id == terminal.target.session.id &&
                 it.name == terminal.target.session.name &&
                 it.identityToken == terminal.target.session.identityToken
         }
     return if (exact) available else TerminalUiStatus.ReconnectRequired(
-        "${terminal.machine.label.text}: that session lifetime is no longer available.",
+        "${terminal.machine.machine.label.text}: that session lifetime is no longer available.",
     )
 }
 
 private fun unavailableTerminalStatus(
     terminal: SkidbladnirUiState.Terminal,
-    machine: MachineState?,
 ): TerminalUiStatus.ReconnectRequired? {
-    if (terminal.kill?.pending != true && machine?.canMutate == true) return null
-    val message = when (machine?.access) {
-        MachineAccess.AuthRequired -> "${terminal.machine.label.text}: authentication required."
-        MachineAccess.IdentityChanged ->
-            "${terminal.machine.label.text}: machine identity changed. Provisioning repair is required."
-        MachineAccess.Ready, null -> "${terminal.machine.label.text}: reconnect required."
-    }
-    return TerminalUiStatus.ReconnectRequired(message)
+    if (terminal.kill?.pending != true && terminal.machine.canMutate) return null
+    return TerminalUiStatus.ReconnectRequired(machineAccessMessage(terminal.machine))
 }
 
 internal fun dashboardAfterTerminalAccessLoss(
     terminal: SkidbladnirUiState.Terminal,
     machines: List<MachineState>,
+    refreshing: Boolean,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == terminal.target.machineHandle }
     require(machine.access != MachineAccess.Ready)
     return SkidbladnirUiState.Dashboard(
         machines = machines,
         selectedMachine = machine.machine.handle,
-        refreshing = machines.any { it.inventory == InventoryState.Reading },
+        refreshing = refreshing,
         notice = machineAccessMessage(machine),
         forge = null,
         forgeRecovery = null,
@@ -249,6 +202,7 @@ internal fun dashboardAfterMachineAccessLoss(
     dashboard: SkidbladnirUiState.Dashboard,
     machines: List<MachineState>,
     handle: MachineHandle,
+    refreshing: Boolean,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == handle }
     require(machine.access != MachineAccess.Ready)
@@ -262,7 +216,7 @@ internal fun dashboardAfterMachineAccessLoss(
         } else {
             dashboard.selectedMachine
         },
-        refreshing = machines.any { it.inventory == InventoryState.Reading },
+        refreshing = refreshing,
         notice = message,
         forge = if (affectedForge?.pending == true) {
             affectedForge.copy(pending = false, error = message)
@@ -325,18 +279,14 @@ internal class CoalescingPollLane {
     }
 }
 
-internal class InventoryOperationLane {
-    private val executor: Executor
-    private val onDefect: (RuntimeException) -> Unit
+internal class InventoryOperationLane(
+    private val executor: Executor,
+    private val onDefect: (RuntimeException) -> Unit,
+) {
     private val queued = ArrayDeque<() -> Unit>()
     private var draining = false
     private var submittedMutationFence = 0L
     private var completedMutationFence = 0L
-
-    constructor(executor: Executor, onDefect: (RuntimeException) -> Unit = { throw it }) {
-        this.executor = executor
-        this.onDefect = onDefect
-    }
 
     @Synchronized
     fun submitRead(action: (Long) -> Unit) {
@@ -344,7 +294,7 @@ internal class InventoryOperationLane {
     }
 
     @Synchronized
-    fun submitMutation(onReserved: (Long) -> Unit = {}, action: (Long) -> Unit): Long {
+    fun submitMutation(onReserved: (Long) -> Unit, action: (Long) -> Unit) {
         val fence = ++submittedMutationFence
         onReserved(fence)
         enqueue {
@@ -354,7 +304,6 @@ internal class InventoryOperationLane {
                 synchronized(this) { completedMutationFence = fence }
             }
         }
-        return fence
     }
 
     private fun enqueue(action: () -> Unit) {
@@ -384,7 +333,7 @@ internal class InventoryOperationLane {
 
 internal class MachineInventoryOperations(
     private val executor: Executor,
-    private val onDefect: (RuntimeException) -> Unit = { throw it },
+    private val onDefect: (RuntimeException) -> Unit,
 ) {
     private val lanes = ConcurrentHashMap<MachineHandle, InventoryOperationLane>()
 
@@ -408,8 +357,12 @@ internal class StoredMachineRead internal constructor(
     private val currentMachines: List<MachineState>,
     val retainedForgeCarry: ForgeCarry?,
 ) {
-    fun reconcile(storedCredentials: List<MachineCredential>): ReconciledStoredControllerState =
-        ReconciledStoredControllerState(
+    fun reconcileIfCurrent(
+        isCurrent: Boolean,
+        storedCredentials: List<MachineCredential>,
+    ): ReconciledStoredControllerState? {
+        if (!isCurrent) return null
+        return ReconciledStoredControllerState(
             machines = reconcileStoredMachines(
                 currentCredentials = currentCredentials,
                 currentMachines = currentMachines,
@@ -419,11 +372,7 @@ internal class StoredMachineRead internal constructor(
                 forgeAuthoritySurvives(it, currentCredentials, storedCredentials)
             } ?: ForgeCarry(null, null),
         )
-
-    fun reconcileIfCurrent(
-        isCurrent: Boolean,
-        storedCredentials: List<MachineCredential>,
-    ): ReconciledStoredControllerState? = if (isCurrent) reconcile(storedCredentials) else null
+    }
 }
 
 internal fun beginStoredMachineRead(
@@ -508,16 +457,20 @@ internal class SkidbladnirController(context: Context) {
     private val credentialOperations = Executors.newSingleThreadExecutor { task ->
         Thread(task, "skidbladnir-machine-store").apply { isDaemon = true }
     }
-    private val store = MachineStore(context.applicationContext)
+    private val store = MachineStore(context.applicationContext, MachineStorage.production)
     private val client = GatewayClient()
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
     private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
-    private val inventoryOperations = MachineInventoryOperations(network) { defect ->
-        main.post { throw defect }
-    }
-    private val pendingInventoryMutationFences = linkedMapOf<MachineHandle, Long>()
+    private val inventoryOperations = MachineInventoryOperations(network, ::surfaceDefect)
+
+    /**
+     * Machines whose inventory the operator is waiting on: the app-wide read indicator has exactly
+     * one owner, set when a read is admitted and cleared when that machine's read lands or its
+     * polling stops. Main thread only.
+     */
+    private val refreshingMachines = mutableSetOf<MachineHandle>()
     private var pendingDashboardNotice: String? = null
     private var retainedStoredMachineForgeCarry: ForgeCarry? = null
     @Volatile private var foreground = false
@@ -532,6 +485,7 @@ internal class SkidbladnirController(context: Context) {
         if (foreground) return
         foreground = true
         val activeGeneration = ++generation
+        refreshingMachines.clear()
         val storedMachineRead = beginStoredMachineRead(
             state = state,
             currentCredentials = credentials.values,
@@ -541,26 +495,7 @@ internal class SkidbladnirController(context: Context) {
         retainedStoredMachineForgeCarry = storedMachineRead.retainedForgeCarry
         state = storedMachineRead.readingState
         executeCredentialOperation {
-            val stored = try {
-                store.read()
-            } catch (_: Exception) {
-                main.post {
-                    if (!isActiveGeneration(activeGeneration)) return@post
-                    retainedStoredMachineForgeCarry = null
-                    credentials.clear()
-                    pendingInventoryMutationFences.clear()
-                    val previous = machineStates.values.toList()
-                    machineStates.clear()
-                    previous.forEach { machine ->
-                        machineStates[machine.machine.handle] = storedCredentialUnavailable(machine.machine, machine)
-                    }
-                    publishDashboard(
-                        refreshing = false,
-                        notice = "Stored machine credentials could not be read. Provisioning repair is required outside this app.",
-                    )
-                }
-                return@executeCredentialOperation
-            }
+            val stored = store.read()
             main.post {
                 val reconciliation = storedMachineRead.reconcileIfCurrent(
                     isCurrent = isActiveGeneration(activeGeneration),
@@ -568,18 +503,6 @@ internal class SkidbladnirController(context: Context) {
                 ) ?: return@post
                 retainedStoredMachineForgeCarry = null
                 val reconciled = reconciliation.machines
-                val resetHandles = reconciled.mapNotNull { entry ->
-                    val current = credentials[entry.credential.machine.handle]
-                    entry.credential.machine.handle.takeUnless {
-                        current != null &&
-                            current.bearer == entry.credential.bearer &&
-                            current.machine.origin == entry.credential.machine.origin
-                    }
-                }
-                pendingInventoryMutationFences.keys.retainAll(
-                    reconciled.map { it.credential.machine.handle }.toSet(),
-                )
-                resetHandles.forEach(pendingInventoryMutationFences::remove)
                 credentials.clear()
                 machineStates.clear()
                 reconciled.forEach { entry ->
@@ -593,20 +516,16 @@ internal class SkidbladnirController(context: Context) {
                 }
                 if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
                     publishDashboard(
-                        refreshing = false,
                         notice = "No machine credentials are provisioned. Machine administration is outside this app.",
                         carry = reconciliation.forgeCarry,
                     )
-                } else {
-                    publishDashboard(
-                        refreshing = reconciled.isNotEmpty(),
-                        notice = storageNotice,
-                        carry = reconciliation.forgeCarry,
-                    )
-                    reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
-                        startPolling(it.credential.machine.handle, activeGeneration)
-                    }
+                    return@post
                 }
+                reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
+                    startPolling(it.credential.machine.handle, activeGeneration)
+                    refreshingMachines += it.credential.machine.handle
+                }
+                publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
             }
         }
     }
@@ -620,9 +539,10 @@ internal class SkidbladnirController(context: Context) {
             runtime.pressureFuture?.cancel(false)
         }
         polling.clear()
+        refreshingMachines.clear()
         leaveTerminal()
         val current = state
-        if (current is SkidbladnirUiState.Terminal) publishDashboard(refreshing = false)
+        if (current is SkidbladnirUiState.Terminal) publishDashboard()
     }
 
     fun close() {
@@ -638,7 +558,7 @@ internal class SkidbladnirController(context: Context) {
         val machine = machineStates[handle]?.machine ?: return
         state = SkidbladnirUiState.BearerRepair(
             machine = machine,
-            bearer = "",
+            bearer = BearerDraft(""),
             pending = false,
             error = null,
         )
@@ -647,18 +567,18 @@ internal class SkidbladnirController(context: Context) {
     fun cancelBearerRepair() {
         val current = state as? SkidbladnirUiState.BearerRepair ?: return
         if (current.pending) return
-        publishDashboard(refreshing = false)
+        publishDashboard()
     }
 
     fun updateBearerRepair(value: String) {
         val current = state as? SkidbladnirUiState.BearerRepair ?: return
-        if (!current.pending) state = current.copy(bearer = value, error = null)
+        if (!current.pending) state = current.copy(bearer = BearerDraft(value), error = null)
     }
 
     fun repairBearer() {
         val current = state as? SkidbladnirUiState.BearerRepair ?: return
         if (current.pending) return
-        val bearer = GatewayBearer.parse(current.bearer)
+        val bearer = GatewayBearer.parse(current.bearer.text)
         if (bearer == null) {
             state = current.copy(error = "Enter the 43-character bearer exactly as minted on this machine.")
             return
@@ -675,58 +595,81 @@ internal class SkidbladnirController(context: Context) {
             return
         }
         val activeGeneration = generation
+        val candidate = MachineCredential(machine, bearer)
         state = current.copy(pending = true, error = null)
         executeCredentialOperation {
-            when (val result = client.verifyBearer(machine.origin, bearer)) {
+            when (val result = client.listSessions(candidate)) {
                 is GatewayResult.Failure -> main.post {
                     if (!isActiveGeneration(activeGeneration)) return@post
-                    val repair = state as? SkidbladnirUiState.BearerRepair ?: return@post
-                    state = repair.copy(pending = false, error = gatewayFailureMessage(result.failure))
+                    acceptRepairFailure(machine, result.failure)
                 }
                 is GatewayResult.Success -> {
-                    val returnedHandle = result.value.machine.handle
-                    if (returnedHandle != machine.handle) {
+                    if (result.value.machine.handle != machine.handle) {
                         main.post {
                             if (!isActiveGeneration(activeGeneration)) return@post
-                            markIdentityChanged(machine.handle)
-                            state = SkidbladnirUiState.BearerRepair(
-                                machine = current.machine,
-                                bearer = "",
-                                pending = false,
-                                error = "The machine identity changed. Provisioning repair is required outside this app.",
+                            acceptRepairFailure(
+                                machine,
+                                GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch),
                             )
                         }
                         return@executeCredentialOperation
                     }
-                    val credential = MachineCredential(machine, bearer)
-                    val stored = runCatching { store.rotateBearer(credential) }
-                    if (stored.isFailure) {
-                        main.post {
-                            if (!isActiveGeneration(activeGeneration)) return@post
-                            val repair = state as? SkidbladnirUiState.BearerRepair ?: return@post
-                            state = repair.copy(
-                                pending = false,
-                                error = "Bearer verification worked, but secure machine storage failed.",
-                            )
-                        }
-                        return@executeCredentialOperation
-                    }
+                    val rotation = store.rotateBearer(candidate)
                     val receivedAt = SystemClock.elapsedRealtime()
                     main.post {
                         if (!isActiveGeneration(activeGeneration)) return@post
-                        credentials[returnedHandle] = credential
-                        machineStates[returnedHandle] = MachineState(
-                            machine,
-                            MachineAccess.Ready,
-                            InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
-                            PressureState.Reading,
-                        )
-                        publishDashboard(refreshing = true)
-                        startPolling(returnedHandle, activeGeneration)
+                        when (rotation) {
+                            BearerRotation.Rotated -> acceptRotatedBearer(candidate, result.value, receivedAt, activeGeneration)
+                            BearerRotation.BearerInUse -> failRepair("Each machine must use a unique bearer.")
+                            BearerRotation.MachineUnavailable -> failRepair(
+                                "This machine is no longer provisioned on this device. Provisioning repair is required outside this app.",
+                            )
+                            BearerRotation.StorageUnavailable -> failRepair(
+                                "Bearer verification worked, but secure machine storage failed.",
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    private fun acceptRepairFailure(machine: PairedMachine, failure: GatewayFailure) {
+        if (failure == GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch)) {
+            markIdentityChanged(machine.handle)
+            state = SkidbladnirUiState.BearerRepair(
+                machine = machine,
+                bearer = BearerDraft(""),
+                pending = false,
+                error = "The machine identity changed. Provisioning repair is required outside this app.",
+            )
+            return
+        }
+        failRepair(gatewayFailureMessage(failure))
+    }
+
+    private fun failRepair(message: String) {
+        val repair = state as? SkidbladnirUiState.BearerRepair ?: return
+        state = repair.copy(pending = false, error = message)
+    }
+
+    private fun acceptRotatedBearer(
+        credential: MachineCredential,
+        inventory: SessionsResponse,
+        receivedAtElapsedMillis: Long,
+        activeGeneration: Long,
+    ) {
+        val handle = credential.machine.handle
+        credentials[handle] = credential
+        machineStates[handle] = MachineState(
+            credential.machine,
+            MachineAccess.Ready,
+            InventoryState.Fresh(InventorySnapshot(inventory, receivedAtElapsedMillis)),
+            PressureState.Reading,
+        )
+        startPolling(handle, activeGeneration)
+        refreshingMachines += handle
+        publishDashboard()
     }
 
     fun selectMachine(handle: MachineHandle?) {
@@ -737,33 +680,43 @@ internal class SkidbladnirController(context: Context) {
 
     fun refresh() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val targets = credentials.keys.filter {
-            current.selectedMachine == null || it == current.selectedMachine
-        }
-        if (targets.isEmpty()) {
-            state = current.copy(refreshing = false)
-            return
-        }
-        state = current.copy(refreshing = true, notice = null)
+        val activeGeneration = generation
+        // Only machines that still own live polling work can be refreshed; a machine whose access
+        // failed says so instead of silently dropping the request.
+        val targets = polling.keys.filter { current.selectedMachine == null || it == current.selectedMachine }
         targets.forEach { handle ->
-            requestInventory(handle, generation, requireTrailing = true)
-            requestPressure(handle, generation)
+            requestPressure(handle, activeGeneration)
+            awaitInventory(handle, activeGeneration)
         }
+        state = current.copy(
+            refreshing = refreshingMachines.isNotEmpty(),
+            notice = if (targets.any(refreshingMachines::contains)) {
+                null
+            } else {
+                unrefreshableNotice(current.selectedMachine)
+            },
+        )
+    }
+
+    private fun unrefreshableNotice(selected: MachineHandle?): String {
+        val visible = machineStates.values.filter { selected == null || it.machine.handle == selected }
+        if (visible.isEmpty()) {
+            return "No machine credentials are provisioned. Machine administration is outside this app."
+        }
+        return visible.joinToString(" ", transform = ::machineAccessMessage)
     }
 
     fun openForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val handle = current.selectedMachine
-        if (handle == null) {
-            if (machineStates.values.none(::machineCanForge)) return
-            state = current.copy(forge = ForgeState(ForgeForm(null, "", "", "", ""), false, null))
-            return
+        val admissible = if (handle == null) {
+            machineStates.values.any { it.canForge }
+        } else {
+            machineStates[handle]?.canForge == true
         }
-        val machine = machineStates[handle] ?: return
-        if (!machineCanForge(machine)) return
-        val profiles = (machine.inventory as InventoryState.Fresh).snapshot.inventory.profiles
+        if (!admissible) return
         state = current.copy(
-            forge = ForgeState(ForgeForm(handle, "", profiles.first().key, "", ""), false, null),
+            forge = ForgeState(ForgeForm(handle, "", null, "", ""), pending = false, error = null),
         )
     }
 
@@ -786,11 +739,7 @@ internal class SkidbladnirController(context: Context) {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
         if (forge.pending) return
-        val proposed = transform(forge.form)
-        val updated = if (proposed.machineHandle == forge.form.machineHandle) proposed else proposed.copy(
-            cwd = "",
-            profile = "",
-        )
+        val updated = changeForgeDraft(forge.form, transform(forge.form))
         if (updated.machineHandle != null && machineStates[updated.machineHandle] == null) return
         state = current.copy(forge = forge.copy(form = updated, error = null))
     }
@@ -817,7 +766,7 @@ internal class SkidbladnirController(context: Context) {
                         AgentTarget(credential.machine.handle, result.value),
                         mutationFence,
                     )
-                    requestInventory(credential.machine.handle, activeGeneration, requireTrailing = true)
+                    awaitInventory(credential.machine.handle, activeGeneration)
                 }
                 is GatewayResult.Failure -> main.post {
                     if (!isCredentialActive(activeGeneration, credential)) return@post
@@ -840,7 +789,7 @@ internal class SkidbladnirController(context: Context) {
                             ),
                         )
                     }
-                    requestInventory(credential.machine.handle, activeGeneration, requireTrailing = true)
+                    awaitInventory(credential.machine.handle, activeGeneration)
                 }
             }
         }
@@ -849,16 +798,14 @@ internal class SkidbladnirController(context: Context) {
     fun openTerminal(target: AgentTarget) {
         val machine = machineStates[target.machineHandle] ?: return
         if (!machine.canMutate) return
-        enterTerminal(target)
+        enterTerminal(machine, target)
     }
 
-    private fun enterTerminal(target: AgentTarget) {
-        val machine = machineStates[target.machineHandle] ?: return
+    private fun enterTerminal(machine: MachineState, target: AgentTarget) {
         leaveTerminal()
         state = SkidbladnirUiState.Terminal(
-            machine = machine.machine,
+            machine = machine,
             target = target,
-            machineCanMutate = machine.canMutate,
             attempt = nextTerminalAttempt++,
             connection = TerminalUiStatus.Preparing,
             kill = null,
@@ -870,9 +817,8 @@ internal class SkidbladnirController(context: Context) {
         leaveTerminal()
         val attempt = nextTerminalAttempt++
         state = SkidbladnirUiState.Terminal(
-            machine = machine.machine,
+            machine = machine,
             target = target,
-            machineCanMutate = machine.canMutate,
             attempt = attempt,
             connection = TerminalUiStatus.Verifying,
             kill = null,
@@ -883,7 +829,7 @@ internal class SkidbladnirController(context: Context) {
     fun terminalPageReady(attempt: Int, page: TerminalPage) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         if (current.attempt != attempt || current.connection != TerminalUiStatus.Preparing) return
-        when (val admission = terminalPageAdmissionStatus(current, machineStates[current.target.machineHandle])) {
+        when (val admission = terminalPageAdmissionStatus(current)) {
             TerminalUiStatus.Connecting -> Unit
             is TerminalUiStatus.ReconnectRequired -> {
                 leaveTerminal()
@@ -891,14 +837,16 @@ internal class SkidbladnirController(context: Context) {
                 return
             }
             TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, is TerminalUiStatus.Connected ->
+                // justify-defect: terminalPageAdmissionStatus answers a Preparing terminal with
+                // exactly Connecting or ReconnectRequired, so any other value is a same-system
+                // contract violation in owned code.
                 error("terminal page admission produced an impossible state")
         }
         val credential = credentials[current.target.machineHandle]
         if (credential == null) {
             leaveTerminal()
             publishDashboard(
-                refreshing = false,
-                notice = "${current.machine.label.text}: the machine pairing is no longer available.",
+                notice = "${current.machine.machine.label.text}: the machine pairing is no longer available.",
             )
             return
         }
@@ -957,9 +905,8 @@ internal class SkidbladnirController(context: Context) {
     fun reattachTerminal() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val handle = current.target.machineHandle
-        if (!terminalActionAdmissible(machineStates[handle]?.canMutate == true, current.connection)) return
-        val unavailable = unavailableTerminalStatus(current, machineStates[handle])
-        if (unavailable != null) {
+        if (!terminalActionAdmissible(current.machine.canMutate, current.connection)) return
+        unavailableTerminalStatus(current)?.let { unavailable ->
             leaveTerminal()
             state = current.copy(connection = unavailable)
             return
@@ -969,8 +916,7 @@ internal class SkidbladnirController(context: Context) {
         if (credential == null || runtime == null) {
             leaveTerminal()
             publishDashboard(
-                refreshing = false,
-                notice = "${current.machine.label.text}: the machine pairing is no longer available.",
+                notice = "${current.machine.machine.label.text}: the machine pairing is no longer available.",
             )
             return
         }
@@ -986,9 +932,7 @@ internal class SkidbladnirController(context: Context) {
                 when (result) {
                     is GatewayResult.Failure -> {
                         if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
-                            updateMachine(credential.machine.handle) {
-                                terminalInventoryReadFailure(it, result.failure)
-                            }
+                            updateMachine(credential.machine.handle) { it.inventoryFailed(result.failure) }
                         }
                         val active = state as? SkidbladnirUiState.Terminal ?: return@post
                         state = active.copy(connection = TerminalUiStatus.ReconnectRequired(machineError(credential.machine, result.failure)))
@@ -1000,13 +944,10 @@ internal class SkidbladnirController(context: Context) {
                                 it.name == current.target.session.name &&
                                 it.identityToken == current.target.session.identityToken
                         }
-                        val connection = terminalReadAdmissionStatus(
-                            terminal,
-                            machineStates[current.target.machineHandle],
-                            exact,
-                        )
+                        val active = state as? SkidbladnirUiState.Terminal ?: return@post
+                        val connection = terminalReadAdmissionStatus(active, exact)
                         if (connection is TerminalUiStatus.ReconnectRequired) leaveTerminal()
-                        state = terminal.copy(connection = connection)
+                        state = active.copy(connection = connection)
                     }
                 }
             }
@@ -1015,7 +956,7 @@ internal class SkidbladnirController(context: Context) {
 
     fun detachToAgents() {
         leaveTerminal()
-        publishDashboard(refreshing = true)
+        publishDashboard()
         refresh()
     }
 
@@ -1030,7 +971,7 @@ internal class SkidbladnirController(context: Context) {
                 } else {
                     return
                 }
-            else -> return
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> return
         }
     }
 
@@ -1038,7 +979,7 @@ internal class SkidbladnirController(context: Context) {
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (current.kill?.pending == true) current else current.copy(kill = null)
             is SkidbladnirUiState.Terminal -> if (current.kill?.pending == true) current else current.copy(kill = null)
-            else -> current
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> current
         }
     }
 
@@ -1047,24 +988,23 @@ internal class SkidbladnirController(context: Context) {
         val kill = when (current) {
             is SkidbladnirUiState.Dashboard -> current.kill
             is SkidbladnirUiState.Terminal -> current.kill
-            else -> null
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> null
         } ?: return
+        if (kill.pending) return
         val machine = machineStates[kill.target.machineHandle] ?: return
-        val actionAdmissible = when (current) {
-            is SkidbladnirUiState.Dashboard -> machine.canMutate
-            is SkidbladnirUiState.Terminal ->
-                terminalActionAdmissible(machine.canMutate, current.connection)
-            else -> false
-        }
-        if (kill.pending || !actionAdmissible) return
         val credential = credentials[kill.target.machineHandle] ?: return
         val runtime = polling[kill.target.machineHandle] ?: return
+        val pending = kill.copy(pending = true)
         state = when (current) {
-            is SkidbladnirUiState.Dashboard -> current.copy(kill = kill.copy(pending = true))
-            is SkidbladnirUiState.Terminal -> {
-                leaveTerminal(); current.copy(kill = kill.copy(pending = true))
-            }
-            else -> return
+            is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = pending) else return
+            is SkidbladnirUiState.Terminal ->
+                if (terminalActionAdmissible(machine.canMutate, current.connection)) {
+                    leaveTerminal()
+                    current.copy(kill = pending)
+                } else {
+                    return
+                }
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> return
         }
         val activeGeneration = generation
         runtime.inventoryOperation.submitMutation(
@@ -1077,8 +1017,8 @@ internal class SkidbladnirController(context: Context) {
                     is GatewayResult.Success -> {
                         leaveTerminal()
                         removeTargetFromSnapshot(kill.target)
-                        publishDashboard(refreshing = true)
-                        requestInventory(kill.target.machineHandle, activeGeneration, requireTrailing = true)
+                        awaitInventory(kill.target.machineHandle, activeGeneration)
+                        publishDashboard()
                     }
                     is GatewayResult.Failure -> {
                         if (acceptAccessFailure(kill.target.machineHandle, result.failure)) return@post
@@ -1089,8 +1029,8 @@ internal class SkidbladnirController(context: Context) {
                             "${kill.machine.label.text}: kill outcome unknown. Agents are refreshing."
                         }
                         markInventoryFailed(kill.target.machineHandle, result.failure)
-                        publishDashboard(refreshing = true, notice = message)
-                        requestInventory(kill.target.machineHandle, activeGeneration, requireTrailing = true)
+                        awaitInventory(kill.target.machineHandle, activeGeneration)
+                        publishDashboard(notice = message)
                     }
                 }
             }
@@ -1120,16 +1060,27 @@ internal class SkidbladnirController(context: Context) {
     }
 
     private fun stopPolling(handle: MachineHandle) {
+        refreshingMachines.remove(handle)
         polling.remove(handle)?.let { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
         }
     }
 
-    private fun requestInventory(handle: MachineHandle, activeGeneration: Long, requireTrailing: Boolean = false) {
-        val runtime = polling[handle] ?: return
-        val credential = credentials[handle] ?: return
-        if (!runtime.inventory.tryStart(requireTrailing)) return
+    /** Requests an inventory read and, when one was admitted, shows the operator it is in flight. */
+    private fun awaitInventory(handle: MachineHandle, activeGeneration: Long) {
+        if (requestInventory(handle, activeGeneration, requireTrailing = true)) refreshingMachines += handle
+    }
+
+    /** Returns whether a read that will publish a result was admitted for this machine. */
+    private fun requestInventory(
+        handle: MachineHandle,
+        activeGeneration: Long,
+        requireTrailing: Boolean = false,
+    ): Boolean {
+        val runtime = polling[handle] ?: return false
+        val credential = credentials[handle] ?: return false
+        if (!runtime.inventory.tryStart(requireTrailing)) return requireTrailing
         runtime.inventoryOperation.submitRead { completedMutationFence ->
             try {
                 do {
@@ -1140,6 +1091,7 @@ internal class SkidbladnirController(context: Context) {
                 throw defect
             }
         }
+        return true
     }
 
     private fun requestPressure(handle: MachineHandle, activeGeneration: Long) {
@@ -1160,30 +1112,33 @@ internal class SkidbladnirController(context: Context) {
         val receivedAt = SystemClock.elapsedRealtime()
         main.post {
             if (!isCredentialActive(activeGeneration, credential)) return@post
-            if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready) return@post
-            val requiredFence = pendingInventoryMutationFences[credential.machine.handle]
-            if (requiredFence != null && completedMutationFence < requiredFence) return@post
-            when (result) {
-                is GatewayResult.Failure -> {
-                    if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
-                        markInventoryFailed(credential.machine.handle, result.failure)
+            val handle = credential.machine.handle
+            refreshingMachines.remove(handle)
+            val machine = machineStates[handle]
+            if (machine != null && machine.access == MachineAccess.Ready &&
+                mutationFenceSatisfied(machine.inventory, completedMutationFence)
+            ) {
+                when (result) {
+                    is GatewayResult.Failure -> if (!acceptAccessFailure(handle, result.failure)) {
+                        markInventoryFailed(handle, result.failure)
+                    }
+                    is GatewayResult.Success -> if (acceptMachineIdentity(credential, result.value)) {
+                        updateMachine(handle) {
+                            it.copy(
+                                access = MachineAccess.Ready,
+                                inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
+                            )
+                        }
                     }
                 }
-                is GatewayResult.Success -> if (acceptMachineIdentity(credential, result.value)) {
-                    if (requiredFence != null) pendingInventoryMutationFences.remove(credential.machine.handle)
-                    updateMachine(credential.machine.handle) {
-                        it.copy(
-                            access = MachineAccess.Ready,
-                            inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
-                            inventoryRefreshRequired = false,
-                        )
-                    }
-                }
+                advanceCreatedTerminalAdmission(handle, completedMutationFence)
             }
-            advanceCreatedTerminalAdmission(credential.machine.handle, completedMutationFence)
             publishDashboardIfVisible()
         }
     }
+
+    private fun mutationFenceSatisfied(inventory: InventoryState, completedMutationFence: Long): Boolean =
+        inventory !is InventoryState.Superseded || completedMutationFence >= inventory.requiredMutationFence
 
     private fun advanceCreatedTerminalAdmission(handle: MachineHandle, completedMutationFence: Long) {
         val admission = createdTerminalAdmission ?: return
@@ -1198,7 +1153,6 @@ internal class SkidbladnirController(context: Context) {
         }
         val connection = createdTerminalAdmissionStatus(
             terminal,
-            machineStates[handle],
             completedMutationFence,
             admission.requiredMutationFence,
         )
@@ -1214,14 +1168,12 @@ internal class SkidbladnirController(context: Context) {
             if (!isCredentialActive(activeGeneration, credential)) return@post
             if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready) return@post
             when (result) {
-                is GatewayResult.Success -> updateMachine(credential.machine.handle) { it.copy(pressure = PressureState.Fresh(result.value)) }
+                is GatewayResult.Success -> updateMachine(credential.machine.handle) {
+                    it.copy(pressure = PressureState.Fresh(result.value))
+                }
                 is GatewayResult.Failure -> if (!acceptAccessFailure(credential.machine.handle, result.failure)) {
-                    updateMachine(credential.machine.handle) { machine ->
-                        machine.copy(pressure = when (val pressure = machine.pressure) {
-                            is PressureState.Fresh -> PressureState.Stale(pressure.response, result.failure)
-                            is PressureState.Stale -> PressureState.Stale(pressure.response, result.failure)
-                            PressureState.Reading, is PressureState.Unavailable -> PressureState.Unavailable(result.failure)
-                        })
+                    updateMachine(credential.machine.handle) {
+                        it.copy(pressure = it.pressure.downgraded(result.failure))
                     }
                 }
             }
@@ -1243,30 +1195,28 @@ internal class SkidbladnirController(context: Context) {
             else -> return false
         }
         stopPolling(handle)
-        pendingInventoryMutationFences.remove(handle)
         updateMachine(handle) { machine ->
             machine.copy(
                 access = access,
-                inventoryRefreshRequired = false,
-                inventory = when (val inventory = machine.inventory) {
-                    is InventoryState.Fresh -> InventoryState.Stale(inventory.snapshot, failure)
-                    is InventoryState.Stale -> InventoryState.Stale(inventory.snapshot, failure)
-                    InventoryState.Reading, is InventoryState.Unreachable -> InventoryState.Unreachable(failure)
-                },
-                pressure = when (val pressure = machine.pressure) {
-                    is PressureState.Fresh -> PressureState.Stale(pressure.response, failure)
-                    is PressureState.Stale -> PressureState.Stale(pressure.response, failure)
-                    PressureState.Reading, is PressureState.Unavailable -> PressureState.Unavailable(failure)
-                },
+                inventory = machine.inventory.downgraded(failure),
+                pressure = machine.pressure.downgraded(failure),
             )
         }
         val machines = sortedMachineStates()
         when (val current = state) {
-            is SkidbladnirUiState.Dashboard ->
-                state = dashboardAfterMachineAccessLoss(current, machines, handle)
+            is SkidbladnirUiState.Dashboard -> state = dashboardAfterMachineAccessLoss(
+                current,
+                machines,
+                handle,
+                refreshing = refreshingMachines.isNotEmpty(),
+            )
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()
-                state = dashboardAfterTerminalAccessLoss(current, machines)
+                state = dashboardAfterTerminalAccessLoss(
+                    current,
+                    machines,
+                    refreshing = refreshingMachines.isNotEmpty(),
+                )
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
             }
@@ -1281,32 +1231,52 @@ internal class SkidbladnirController(context: Context) {
     }
 
     private fun markInventoryFailed(handle: MachineHandle, failure: GatewayFailure) {
-        updateMachine(handle) { machine ->
-            markInventoryFailure(listOf(machine), handle, failure).single()
-        }
+        updateMachine(handle) { it.inventoryFailed(failure) }
     }
 
     private fun requireInventoryRefresh(handle: MachineHandle, fence: Long) {
-        pendingInventoryMutationFences[handle] = fence
-        updateMachine(handle) { it.copy(inventoryRefreshRequired = true) }
+        updateMachine(handle) { machine ->
+            when (val inventory = machine.inventory) {
+                is InventoryState.Fresh ->
+                    machine.copy(inventory = InventoryState.Superseded(inventory.snapshot, fence))
+                is InventoryState.Superseded, is InventoryState.Stale,
+                is InventoryState.Unreachable, InventoryState.Reading,
+                -> machine
+            }
+        }
         val dashboard = state as? SkidbladnirUiState.Dashboard
         if (dashboard != null) state = dashboard.copy(machines = sortedMachineStates())
     }
 
     private fun clearInventoryRefresh(handle: MachineHandle) {
-        pendingInventoryMutationFences.remove(handle)
-        updateMachine(handle) { it.copy(inventoryRefreshRequired = false) }
+        updateMachine(handle) { machine ->
+            when (val inventory = machine.inventory) {
+                is InventoryState.Superseded ->
+                    machine.copy(inventory = InventoryState.Fresh(inventory.snapshot))
+                is InventoryState.Fresh, is InventoryState.Stale,
+                is InventoryState.Unreachable, InventoryState.Reading,
+                -> machine
+            }
+        }
     }
 
     private fun removeTargetFromSnapshot(target: AgentTarget) {
         updateMachine(target.machineHandle) { machine ->
-            val inventory = machine.inventory as? InventoryState.Fresh ?: return@updateMachine machine
-            val response = inventory.snapshot.inventory
-            machine.copy(inventory = InventoryState.Fresh(inventory.snapshot.copy(
-                inventory = response.copy(sessions = response.sessions.filterNot {
-                    it.id == target.session.id && it.identityToken == target.session.identityToken
-                }),
-            )))
+            val trimmed = machine.inventory.lastSnapshot()?.let { snapshot ->
+                snapshot.copy(
+                    inventory = snapshot.inventory.copy(
+                        sessions = snapshot.inventory.sessions.filterNot {
+                            it.id == target.session.id && it.identityToken == target.session.identityToken
+                        },
+                    ),
+                )
+            } ?: return@updateMachine machine
+            machine.copy(inventory = when (val inventory = machine.inventory) {
+                is InventoryState.Fresh -> InventoryState.Fresh(trimmed)
+                is InventoryState.Superseded -> InventoryState.Superseded(trimmed, inventory.requiredMutationFence)
+                is InventoryState.Stale -> InventoryState.Stale(trimmed, inventory.cause)
+                InventoryState.Reading, is InventoryState.Unreachable -> inventory
+            })
         }
     }
 
@@ -1315,7 +1285,7 @@ internal class SkidbladnirController(context: Context) {
         val updated = transform(machine)
         machineStates[handle] = updated
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (terminal.target.machineHandle == handle) state = synchronizeTerminalMachineState(terminal, updated)
+        if (terminal.target.machineHandle == handle) state = terminal.copy(machine = updated)
     }
 
     private fun publishDashboardIfVisible() {
@@ -1323,14 +1293,13 @@ internal class SkidbladnirController(context: Context) {
         val carry = forgeCarry(current)
         state = current.copy(
             machines = sortedMachineStates(),
-            refreshing = machineStates.values.any { it.inventory == InventoryState.Reading },
+            refreshing = refreshingMachines.isNotEmpty(),
             forge = carry.forge,
             forgeRecovery = advanceForgeRecovery(carry.recovery, machineStates.values),
         )
     }
 
     private fun publishDashboard(
-        refreshing: Boolean,
         notice: String? = null,
         carry: ForgeCarry = forgeCarry(state),
     ) {
@@ -1339,7 +1308,7 @@ internal class SkidbladnirController(context: Context) {
         state = SkidbladnirUiState.Dashboard(
             machines = sortedMachineStates(),
             selectedMachine = (state as? SkidbladnirUiState.Dashboard)?.selectedMachine,
-            refreshing = refreshing,
+            refreshing = refreshingMachines.isNotEmpty(),
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
@@ -1351,10 +1320,6 @@ internal class SkidbladnirController(context: Context) {
     private fun sortedMachineStates(): List<MachineState> = machineStates.values.sortedBy {
         it.machine.label.text.lowercase(Locale.ROOT)
     }
-
-    private fun machineCanForge(machine: MachineState): Boolean =
-        machine.canMutate &&
-            (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.profiles?.isNotEmpty() == true
 
     private fun leaveTerminal() {
         terminalOwner = null
@@ -1368,19 +1333,21 @@ internal class SkidbladnirController(context: Context) {
     private fun machineError(machine: PairedMachine, failure: GatewayFailure): String =
         "${machine.label.text}: ${gatewayFailureMessage(failure)}"
 
+    // justify-defect: worker executors and the inventory lanes otherwise swallow same-system
+    // invariant failures; rethrowing on the main looper makes them fatal where they are visible.
+    private fun surfaceDefect(defect: RuntimeException) {
+        main.post { throw defect }
+    }
+
     private fun executeNetwork(action: () -> Unit) {
         network.execute {
-            try { action() } catch (defect: RuntimeException) {
-                main.post { throw defect }
-            }
+            try { action() } catch (defect: RuntimeException) { surfaceDefect(defect) }
         }
     }
 
     private fun executeCredentialOperation(action: () -> Unit) {
         credentialOperations.execute {
-            try { action() } catch (defect: RuntimeException) {
-                main.post { throw defect }
-            }
+            try { action() } catch (defect: RuntimeException) { surfaceDefect(defect) }
         }
     }
 

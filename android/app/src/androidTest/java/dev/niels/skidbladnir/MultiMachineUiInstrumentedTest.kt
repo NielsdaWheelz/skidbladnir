@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.time.Instant
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -60,13 +61,20 @@ class MultiMachineUiInstrumentedTest {
             }
             compose.onNodeWithTag("dashboard-top-bar").assertIsDisplayed()
             compose.onNodeWithTag("new-agent").assertIsDisplayed().assertIsEnabled()
-            val topBarBounds = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
-            val newAgentBounds = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
-            assertTrue("dashboard top bar exceeds 64 dp", topBarBounds.bottom.value - topBarBounds.top.value <= 64f)
+
+            val topBar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
+            val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+            val newAgent = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
             assertTrue(
-                "New agent is not in the trailing half of the dashboard top bar",
-                newAgentBounds.left.value > (topBarBounds.left.value + topBarBounds.right.value) / 2f,
+                "the dashboard top bar is not one row: New agent sits outside the bar",
+                newAgent.top >= topBar.top && newAgent.bottom <= topBar.bottom,
             )
+            assertTrue(
+                "the dashboard top bar stacks its title above New agent instead of sharing one row",
+                newAgent.top < title.bottom && title.top < newAgent.bottom,
+            )
+            assertTrue("New agent does not trail the dashboard title", newAgent.left >= title.right)
+
             compose.onNodeWithText("Add machine").assertDoesNotExist()
             compose.onNodeWithText("Rename").assertDoesNotExist()
             compose.onNodeWithText("Remove machine").assertDoesNotExist()
@@ -79,7 +87,7 @@ class MultiMachineUiInstrumentedTest {
     @Test
     fun machinePressureRestoresMetricsHistoryAndCapabilityDetails() {
         val current = PressureSample(
-            sampledAt = "2026-08-26T12:00:00Z",
+            sampledAt = Instant.parse("2026-08-26T12:00:00Z"),
             level = PressureLevel.Warm,
             reasons = listOf(PressureReason.Load),
             metrics = PressureMetrics(
@@ -100,7 +108,7 @@ class MultiMachineUiInstrumentedTest {
             current = current,
             history = listOf(
                 current.copy(
-                    sampledAt = "2026-08-26T11:59:55Z",
+                    sampledAt = Instant.parse("2026-08-26T11:59:55Z"),
                     level = PressureLevel.Normal,
                     reasons = emptyList(),
                     metrics = current.metrics.copy(
@@ -153,31 +161,36 @@ class MultiMachineUiInstrumentedTest {
             identityToken = "v1-0123456789abcdef0123456789abcdef.100.200.1",
             attachedClients = 1,
             attention = false,
-            status = SessionStatus(SessionStatusKind.Working, SessionStatusSignal.Lifecycle, "2026-08-26T11:59:55Z"),
+            status = SessionStatus(
+                SessionStatusKind.Working,
+                SessionStatusSignal.Lifecycle,
+                Instant.parse("2026-08-26T11:59:55Z"),
+            ),
         )
         val target = AgentTarget(handle, session)
+        val stale = MachineState(
+            machine = machine,
+            access = MachineAccess.Ready,
+            inventory = InventoryState.Stale(
+                InventorySnapshot(
+                    SessionsResponse(
+                        MachineSummary(handle, MachinePlatform.Linux),
+                        Instant.parse("2026-08-26T12:00:00Z"),
+                        emptyList(),
+                        listOf(session),
+                    ),
+                    receivedAtElapsedMillis = 1_000,
+                ),
+                GatewayFailure.Transport,
+            ),
+            pressure = PressureState.Reading,
+        )
         val terminal = SkidbladnirUiState.Terminal(
-            machine,
-            target,
-            machineCanMutate = true,
+            machine = stale,
+            target = target,
             attempt = 1,
             connection = TerminalUiStatus.Connected(1, TerminalGeometry.Owner),
             kill = KillState(machine, target, pending = false),
-        )
-        val projection = synchronizeTerminalMachineState(
-            terminal,
-            MachineState(
-                machine,
-                MachineAccess.Ready,
-                InventoryState.Stale(
-                    InventorySnapshot(
-                        SessionsResponse(MachineSummary(handle, MachinePlatform.Linux), "2026-08-26T12:00:00Z", emptyList(), listOf(session)),
-                        receivedAtElapsedMillis = 1_000,
-                    ),
-                    GatewayFailure.Transport,
-                ),
-                PressureState.Reading,
-            ),
         )
 
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
@@ -185,10 +198,10 @@ class MultiMachineUiInstrumentedTest {
                 activity.setContent {
                     MaterialTheme {
                         KillConfirmation(
-                            state = requireNotNull(projection.kill),
+                            state = requireNotNull(terminal.kill),
                             actionAdmissible = terminalActionAdmissible(
-                                projection.machineCanMutate,
-                                projection.connection,
+                                terminal.machine.canMutate,
+                                terminal.connection,
                             ),
                             onDismiss = {},
                             onConfirm = {},
@@ -209,7 +222,7 @@ class MultiMachineUiInstrumentedTest {
             arguments.getString(UI_OPT_IN) == "true",
         )
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context).read().credentials
+        val credentials = MachineStore(context, MachineStorage.production).read().credentials
         assertEquals("UI journey requires exactly two existing production pairings", 2, credentials.size)
         val expectedHandles = setOf(
             requireNotNull(MachineHandle.parse(requireNotNull(arguments.getString(DEVBOX_MACHINE)))),
@@ -252,7 +265,7 @@ class MultiMachineUiInstrumentedTest {
 
                 scenario.recreate()
                 credentials.forEach { credential ->
-                    waitForTag("machine-state-fresh-${credential.machine.handle.encoded}", 30_000)
+                    waitForTag(freshMachineTag(credential), 30_000)
                     compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
                         .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 }
@@ -285,6 +298,10 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag(forgeMachineTag(first)).assertIsSelected()
                 val firstProfiles = inventories.getValue(first).profiles
                 compose.onAllNodesWithTag(forgeProfileTag(first)).assertCountEquals(firstProfiles.size)
+                firstProfiles.indices.forEach {
+                    compose.onAllNodesWithTag(forgeProfileTag(first))[it].assertIsNotSelected()
+                }
+                compose.onNodeWithTag("forge-submit").assertIsNotEnabled()
                 compose.onAllNodesWithTag(forgeProfileTag(first))[0].performClick()
                 compose.onAllNodesWithTag(forgeProfileTag(first))[0].assertIsSelected()
                 compose.onAllNodesWithTag(forgeProfileTag(second)).assertCountEquals(0)
@@ -335,7 +352,7 @@ class MultiMachineUiInstrumentedTest {
         )
         val failedHandle = requireNotNull(MachineHandle.parse(requireNotNull(encodedHandle)))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context).read().credentials
+        val credentials = MachineStore(context, MachineStorage.production).read().credentials
         assertEquals(2, credentials.size)
         assertTrue(credentials.any { it.machine.handle == failedHandle })
         val failed = credentials.single { it.machine.handle == failedHandle }
@@ -352,8 +369,8 @@ class MultiMachineUiInstrumentedTest {
 
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
-                waitForTag("machine-state-fresh-${failedHandle.encoded}", 30_000)
-                waitForTag("machine-state-fresh-${healthy.machine.handle.encoded}", 30_000)
+                waitForTag(freshMachineTag(failed), 30_000)
+                waitForTag(freshMachineTag(healthy), 30_000)
 
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
@@ -364,22 +381,24 @@ class MultiMachineUiInstrumentedTest {
                 assertTrue("Could not publish outage coordination marker", readiness.createNewFile())
 
                 waitForTag("machine-state-stale-${failedHandle.encoded}", 30_000)
-                val healthyAtOutage = singleTagWithPrefix(inventoryReceivedPrefix(healthy))
+                val healthyAtOutage = requireNotNull(inventoryObservation(healthy))
                 compose.waitUntil(30_000) {
-                    singleTagWithPrefix(inventoryReceivedPrefix(healthy)) != healthyAtOutage
+                    inventoryObservation(healthy).let { it != null && it != healthyAtOutage }
                 }
-                waitForTag("machine-state-fresh-${healthy.machine.handle.encoded}", 30_000)
-                waitForTag("machine-nonmutating-${failedHandle.encoded}", 30_000)
-                waitForTag("machine-actionable-${healthy.machine.handle.encoded}", 30_000)
+                waitForTag(freshMachineTag(healthy), 30_000)
                 compose.onNodeWithTag(stripLabelTag(failed), useUnmergedTree = true)
                     .assertTextContains(failed.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 compose.onNodeWithTag(stripLabelTag(healthy), useUnmergedTree = true)
                     .assertTextContains(healthy.machine.label.text.uppercase(Locale.ROOT), substring = true)
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
+
+                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
+                compose.onNodeWithTag(killTag(failedTarget)).assertIsNotEnabled()
+
                 compose.onNodeWithTag(filterTag(healthy)).performClick()
                 compose.onNodeWithTag("new-agent").assertIsEnabled()
-                compose.onNodeWithTag("machine-filter-${failedHandle.encoded}").performClick()
+                compose.onNodeWithTag(filterTag(failed)).performClick()
                 compose.onNodeWithTag("new-agent").assertIsNotEnabled()
             }
         } finally {
@@ -409,13 +428,13 @@ class MultiMachineUiInstrumentedTest {
         node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag)?.startsWith(prefix) == true
     }
 
-    private fun singleTagWithPrefix(prefix: String): String {
-        val nodes = compose.onAllNodes(hasTagPrefix(prefix), useUnmergedTree = true).fetchSemanticsNodes()
-        assertEquals("Expected one inventory observation tag for $prefix", 1, nodes.size)
-        return requireNotNull(
-            nodes.single().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag),
-        )
-    }
+    /** The machine strip's own record of when its freshest inventory arrived. */
+    private fun inventoryObservation(credential: MachineCredential): Long? =
+        compose.onAllNodesWithTag(freshMachineTag(credential), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .singleOrNull()
+            ?.config
+            ?.getOrNull(MachineInventoryObservationKey)
 
     private fun <Value> gatewaySuccess(result: GatewayResult<Value>): Value {
         assertTrue("Expected gateway success", result is GatewayResult.Success)
@@ -424,6 +443,9 @@ class MultiMachineUiInstrumentedTest {
 
     private fun machineStripTag(credential: MachineCredential) =
         "machine-strip-${credential.machine.handle.encoded}"
+
+    private fun freshMachineTag(credential: MachineCredential) =
+        "machine-state-fresh-${credential.machine.handle.encoded}"
 
     private fun stripLabelTag(credential: MachineCredential) =
         "machine-strip-label-${credential.machine.handle.encoded}"
@@ -448,9 +470,6 @@ class MultiMachineUiInstrumentedTest {
 
     private fun forgeProfileTag(credential: MachineCredential) =
         "forge-profile-${credential.machine.handle.encoded}"
-
-    private fun inventoryReceivedPrefix(credential: MachineCredential) =
-        "machine-inventory-received-${credential.machine.handle.encoded}-"
 
     private companion object {
         const val UI_OPT_IN = "skidbladnir.multiMachineUi"

@@ -50,6 +50,6 @@ func TestObservePreservesEmptyDarwinArguments(t *testing.T) {
 		t.Fatal("observe empty-argument helper process")
 	}
 	if !slices.Equal(observed.Argv, expected) {
-		t.Fatalf("observed argument vector did not preserve empty arguments: argument_count=%d want=%d", len(observed.Argv), len(expected))
+		t.Fatalf("observed argument vector = %q, want %q", observed.Argv, expected)
 	}
 }

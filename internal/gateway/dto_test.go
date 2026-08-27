@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -27,67 +28,98 @@ func TestSessionProjectionKeepsAttentionIndependentFromLifecycleStatus(t *testin
 		},
 	}, observedAt)
 	if err != nil {
-		t.Fatal("project running session")
+		t.Fatalf("project running session: %v", err)
 	}
 	if !card.Attention || card.Status.Kind != "Running" || card.Status.Signal != "Process" {
 		t.Fatalf("attention replaced or widened status: attention=%t kind=%s signal=%s", card.Attention, card.Status.Kind, card.Status.Signal)
 	}
 }
 
-func TestPressureProjectionPartitionsEveryMetricByPlatform(t *testing.T) {
-	allMetrics := []pressure.Metric{
-		pressure.MetricCPUPercent,
+// pressureMetricUniverse is the closed `PressureMetric` union of the wire
+// schema; each value is also the metric's exact JSON key under `metrics`.
+var pressureMetricUniverse = []pressure.Metric{
+	pressure.MetricCPUPercent,
+	pressure.MetricCPUPressureSomeAvg60,
+	pressure.MetricDiskAvailablePercent,
+	pressure.MetricInputOutputPressureFullAvg60,
+	pressure.MetricLoadNormalized,
+	pressure.MetricMemoryAvailablePercent,
+	pressure.MetricMemoryPressure,
+	pressure.MetricMemoryPressureFullAvg60,
+	pressure.MetricSwapUsedPercent,
+}
+
+// declaredUnsupportedByPlatform is the capability contract: Linux never
+// observes native memory pressure, and Darwin never observes the Linux memory
+// percentage or any PSI signal. internal/pressure owns the declaration; this
+// table owns the promise the wire schema makes about it.
+var declaredUnsupportedByPlatform = map[platform.Kind][]pressure.Metric{
+	platform.KindLinux: {pressure.MetricMemoryPressure},
+	platform.KindDarwin: {
 		pressure.MetricCPUPressureSomeAvg60,
-		pressure.MetricDiskAvailablePercent,
 		pressure.MetricInputOutputPressureFullAvg60,
 		pressure.MetricMemoryAvailablePercent,
-		pressure.MetricMemoryPressure,
 		pressure.MetricMemoryPressureFullAvg60,
-		pressure.MetricLoadNormalized,
-		pressure.MetricSwapUsedPercent,
+	},
+}
+
+func TestPressureResponsePartitionsEveryMetricOfTheDeclaredHostCapability(t *testing.T) {
+	host := platform.Current().Kind
+	monitor := pressure.NewMonitor()
+	want, declared := declaredUnsupportedByPlatform[host], monitor.Unsupported()
+	if !slices.Equal(declared, want) {
+		t.Fatalf("%s declared unsupported capability = %v, want %v", host, declared, want)
 	}
-	slices.Sort(allMetrics)
-	for _, testCase := range []struct {
-		name        string
-		unsupported []pressure.Metric
-	}{
-		{name: "Linux", unsupported: []pressure.Metric{pressure.MetricMemoryPressure}},
-		{name: "Darwin", unsupported: []pressure.Metric{
-			pressure.MetricCPUPressureSomeAvg60,
-			pressure.MetricInputOutputPressureFullAvg60,
-			pressure.MetricMemoryAvailablePercent,
-			pressure.MetricMemoryPressureFullAvg60,
-		}},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			unsupported, unsupportedSet, err := mapUnsupportedMetrics(testCase.unsupported)
-			if err != nil {
-				t.Fatal("map unsupported metrics")
-			}
-			unique := slices.Compact(append([]pressure.Metric(nil), unsupported...))
-			if !slices.IsSorted(unsupported) || len(unique) != len(unsupported) {
-				t.Fatal("unsupported metrics are not sorted and unique")
-			}
-			mapped, err := mapHostSample(pressure.Sample{
-				ObservedAt: time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC),
-				Status:     pressure.StatusUnknown,
-			}, unsupportedSet)
-			if err != nil {
-				t.Fatal("map absent sample")
-			}
-			partition := append(append([]pressure.Metric(nil), mapped.Missing...), unsupported...)
-			slices.Sort(partition)
-			if !slices.Equal(partition, allMetrics) {
-				t.Fatalf("missing + unsupported = %v, want complete metric universe %v", partition, allMetrics)
-			}
-			for _, metric := range mapped.Missing {
-				if _, found := unsupportedSet[metric]; found {
-					t.Fatalf("metric %q is both missing and unsupported", metric)
-				}
-			}
-		})
+	if !slices.IsSorted(declared) || len(slices.Compact(append([]pressure.Metric(nil), declared...))) != len(declared) {
+		t.Fatalf("%s declared unsupported capability is not sorted and unique: %v", host, declared)
 	}
 
+	unsupported, unsupportedSet := mapUnsupportedMetrics(monitor.Unsupported())
+	snapshot := monitor.Snapshot()
+	current, err := mapHostSample(snapshot.Current, unsupportedSet)
+	if err != nil {
+		t.Fatalf("project the observed %s pressure sample: %v", host, err)
+	}
+	payload, err := json.Marshal(pressureResponseDTO{Unsupported: unsupported, Current: current, History: []hostSampleDTO{current}})
+	if err != nil {
+		t.Fatalf("encode the pressure response: %v", err)
+	}
+	var body struct {
+		Unsupported []pressure.Metric `json:"unsupported"`
+		Current     struct {
+			Metrics map[string]json.RawMessage `json:"metrics"`
+			Missing []pressure.Metric          `json:"missing"`
+		} `json:"current"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		t.Fatalf("decode the pressure response: %v", err)
+	}
+
+	if !slices.Equal(body.Unsupported, want) {
+		t.Fatalf("%s response unsupported = %v, want the declared capability %v", host, body.Unsupported, want)
+	}
+	for _, metric := range body.Current.Missing {
+		if slices.Contains(body.Unsupported, metric) {
+			t.Fatalf("metric %q is reported both missing and unsupported on %s", metric, host)
+		}
+	}
+	absent := make([]pressure.Metric, 0, len(pressureMetricUniverse))
+	for _, metric := range pressureMetricUniverse {
+		if _, published := body.Current.Metrics[string(metric)]; !published {
+			absent = append(absent, metric)
+		}
+	}
+	if len(body.Current.Metrics)+len(absent) != len(pressureMetricUniverse) {
+		t.Fatalf(
+			"published metric keys escape the closed union on %s: published_count=%d absent_count=%d union_count=%d",
+			host, len(body.Current.Metrics), len(absent), len(pressureMetricUniverse),
+		)
+	}
+	partition := append(append([]pressure.Metric(nil), body.Current.Missing...), body.Unsupported...)
+	slices.Sort(partition)
+	if !slices.Equal(partition, absent) {
+		t.Fatalf("%s missing + unsupported = %v, want exactly the absent metric keys %v", host, partition, absent)
+	}
 }
 
 func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
@@ -122,12 +154,12 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 			if response.StatusCode != test.status {
 				t.Fatalf("status = %d, want %d", response.StatusCode, test.status)
 			}
-			if response.Header.Get("Content-Type") != "application/json" {
-				t.Fatal("error response content type is not application/json")
+			if got := response.Header.Get("Content-Type"); got != "application/json" {
+				t.Fatalf("error response content type = %q, want application/json", got)
 			}
 			var body map[string]string
 			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-				t.Fatal("decode error response")
+				t.Fatalf("decode error response: %v", err)
 			}
 			if len(body) != 2 || body["code"] != test.code || body["message"] != test.message {
 				t.Fatalf(

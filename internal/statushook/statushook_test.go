@@ -1,6 +1,7 @@
 package statushook
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestLifecycleValueUsesTheClosedHookEventVocabulary(t *testing.T) {
 	}
 	for _, test := range tests {
 		if got := lifecycleValue(test.event, origin, now); got != test.want {
-			t.Fatalf("lifecycle value mismatch for event %s", test.event)
+			t.Fatalf("lifecycle value for event %s = %q, want %q", test.event, got, test.want)
 		}
 	}
 	if _, err := parseHookEvent("PostToolUse"); err == nil {
@@ -34,8 +35,8 @@ func TestOnlyTheForegroundCodexAncestorMayPublishPaneLifecycle(t *testing.T) {
 	nested := processinfo.Observation{PID: 202, ParentPID: 101, ForegroundProcessGroup: 101, StartIdentity: "2002", Executable: "codex"}
 	helper := processinfo.Observation{PID: 303, ParentPID: 202, ForegroundProcessGroup: 101, Executable: "skidbladnir"}
 
-	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, root}); !valid || origin.PID != root.PID {
-		t.Fatal("rejected the foreground Codex origin")
+	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, root}); !valid || !reflect.DeepEqual(origin, root) {
+		t.Fatalf("foreground Codex origin = %+v valid=%t, want %+v", origin, valid, root)
 	}
 	if _, valid := foregroundCodexOrigin([]processinfo.Observation{helper, nested, root}); valid {
 		t.Fatal("accepted a nested Codex origin that inherited the pane environment")
@@ -68,8 +69,8 @@ func TestNodeWrapperAndNativeCodexAreOneForegroundRuntime(t *testing.T) {
 	}
 	helper := processinfo.Observation{PID: 103, ParentPID: native.PID, ForegroundProcessGroup: wrapper.PID, Executable: "skidbladnir"}
 
-	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, native, wrapper}); !valid || origin.PID != wrapper.PID {
-		t.Fatalf("wrapper/native origin mismatch: valid=%t wrapper_selected=%t", valid, origin.PID == wrapper.PID)
+	if origin, valid := foregroundCodexOrigin([]processinfo.Observation{helper, native, wrapper}); !valid || !reflect.DeepEqual(origin, wrapper) {
+		t.Fatalf("wrapper/native origin = %+v valid=%t, want wrapper %+v", origin, valid, wrapper)
 	}
 }
 
@@ -94,15 +95,15 @@ func TestLifecyclePublicationClearsStaleAttentionWhenWorkBegins(t *testing.T) {
 		";", "set-option", "-pqu", "-t", "%7", "--", "@skid_attention",
 	}
 	if !slices.Equal(arguments, want) {
-		t.Fatalf("prompt lifecycle command mismatch: argument_count=%d want=%d", len(arguments), len(want))
+		t.Fatalf("prompt lifecycle arguments = %q, want %q", arguments, want)
 	}
 }
 
 func TestStopHookEmitsTheRequiredEmptyJSONObject(t *testing.T) {
 	if got := successOutput(HookStop); got != "{}\n" {
-		t.Fatalf("Stop success output mismatch: output_bytes=%d", len(got))
+		t.Fatalf("Stop success output = %q, want %q", got, "{}\n")
 	}
 	if got := successOutput(HookSessionStart); got != "" {
-		t.Fatalf("SessionStart emitted model context: output_bytes=%d", len(got))
+		t.Fatalf("SessionStart success output = %q, want empty", got)
 	}
 }

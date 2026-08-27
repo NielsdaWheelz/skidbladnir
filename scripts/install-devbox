@@ -23,17 +23,27 @@ readonly machine_handle_target="${expected_home}/.config/skidbladnir/machine-han
 readonly unit_target="${expected_home}/.config/systemd/user/${service_name}"
 readonly operation_lock="/run/user/${expected_uid}/skidbladnir-install.lock"
 readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-readonly desired_notify='notify = ["/home/niels/.local/bin/skid-notify"]'
+readonly desired_notify="notify = [\"${notify_target}\"]"
+readonly health_probe_attempts=50
+readonly health_probe_interval_seconds="0.1"
 readonly -a profile_configs=(
   "${expected_home}/.codex-personal/config.toml"
   "${expected_home}/.codex-work/config.toml"
   "${expected_home}/.codex-work2/config.toml"
+)
+readonly -a required_executables=(
+  /usr/bin/caddy /usr/bin/cat /usr/bin/chmod /usr/bin/cmp /usr/bin/curl /usr/bin/dirname
+  /usr/bin/flock /usr/bin/git /usr/bin/head /usr/bin/id /usr/bin/install /usr/bin/jq
+  /usr/bin/loginctl /usr/bin/mktemp /usr/bin/mv /usr/bin/python3 /usr/bin/rm /usr/bin/sed
+  /usr/bin/sleep /usr/bin/ss /usr/bin/stat /usr/bin/sync /usr/bin/systemctl
+  /usr/bin/systemd-analyze /usr/bin/tailscale /usr/bin/tmux
 )
 
 staging_dir=""
 preflight_service_state=""
 preflight_service_pid=""
 tcp_listener_records=""
+config_notify_states=()
 
 die() {
   printf 'skidbladnir devbox: %s\n' "$1" >&2
@@ -56,10 +66,6 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-
-require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "required command is unavailable: $1"
-}
 
 read_tcp_listeners() {
   local port="$1"
@@ -165,14 +171,12 @@ if hooks is not None:
             raise SystemExit(1)
 PY
     then
-    die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
+      die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
     fi
   done
-
 }
 
 verify_caddy_boundary() {
-  [[ -x /usr/bin/caddy ]] || die "/usr/bin/caddy is unavailable"
   [[ ! -L "$caddy_config" && -f "$caddy_config" ]] || die "Caddy config is not a regular file"
   [[ "$(/usr/bin/stat -Lc '%u:%a' -- "$caddy_config")" == "0:644" ]] ||
     die "Caddy config ownership or mode drifted"
@@ -406,20 +410,23 @@ serve_state() {
 }
 
 preflight_operation() {
+  # Preflight proves the exact artifacts the installer uses: every hard-coded absolute path at that
+  # path, and the one PATH-resolved tool through PATH. A name resolved here that is not the artifact
+  # invoked later would prove nothing.
+  local executable
+  for executable in "${required_executables[@]}"; do
+    [[ -x "$executable" ]] || die "required executable is unavailable: ${executable}"
+  done
+  command -v go >/dev/null 2>&1 || die "required command is unavailable: go"
+
   [[ "$(/usr/bin/id -un)" == "$expected_user" ]] || die "must run as ${expected_user}"
   [[ "$(/usr/bin/id -u)" == "$expected_uid" ]] || die "unexpected uid for ${expected_user}"
   [[ "${HOME:-}" == "$expected_home" ]] || die "unexpected home directory"
   [[ -z "${TMUX:-}" && -z "${TMUX_PANE:-}" && -z "${TMUX_TMPDIR:-}" ]] ||
     die "refusing inherited tmux socket state"
-
-  local dependency
-  for dependency in cmp curl flock git go jq loginctl python3 ss systemctl systemd-analyze tailscale tmux; do
-    require_command "$dependency"
-  done
 }
 
 preflight_platform() {
-  [[ -x /usr/bin/tmux ]] || die "/usr/bin/tmux is unavailable"
   [[ "$(/usr/bin/tmux -V)" == "$expected_tmux_version" ]] ||
     die "${expected_tmux_version} is required at /usr/bin/tmux"
   [[ "$(/usr/bin/tailscale version | /usr/bin/head -n 1)" == "$expected_tailscale_version" ]] ||
@@ -554,14 +561,17 @@ stage_installation() {
   /usr/bin/install -m 0644 -- "$repo_dir/deploy/systemd/skidbladnir.service" "$staging_dir/skidbladnir.service"
 
   local config_file
-  local classification
   local index=0
   for config_file in "${profile_configs[@]}"; do
-    classification="$(classify_notify "$config_file")"
-    if [[ "$classification" == "add" ]]; then
+    config_notify_states[index]="$(classify_notify "$config_file")" ||
+      die "Codex notify configuration conflicts: ${config_file}"
+    if [[ "${config_notify_states[index]}" == "add" ]]; then
+      # The rewrite is generated from the staged byte-exact copy, never from the live file, so the
+      # publication guard in install_devbox can prove the source is still exactly what was rewritten.
+      /usr/bin/install -m 0600 -- "$config_file" "$staging_dir/config-${index}.source.toml"
       {
         printf '%s\n\n' "$desired_notify"
-        /usr/bin/cat -- "$config_file"
+        /usr/bin/cat -- "$staging_dir/config-${index}.source.toml"
       } >"$staging_dir/config-${index}.toml"
       /usr/bin/chmod 0600 "$staging_dir/config-${index}.toml"
     fi
@@ -571,11 +581,14 @@ stage_installation() {
 
 wait_for_health() {
   local attempt
-  for ((attempt = 0; attempt < 50; attempt++)); do
+  # justify-polling: systemd reports that it started the unit, never that the gateway bound and began
+  # serving, and the gateway publishes readiness only by answering a loopback request. 100 ms observes
+  # a local start without visible delay and 50 attempts bound the wait at five seconds before failing.
+  for ((attempt = 0; attempt < health_probe_attempts; attempt++)); do
     if /usr/bin/curl --fail --silent "http://${listen_address}/healthz" >/dev/null; then
       return
     fi
-    /usr/bin/sleep 0.1
+    /usr/bin/sleep "$health_probe_interval_seconds"
   done
   die "gateway health check did not become ready"
 }
@@ -589,7 +602,6 @@ authenticated_machine_get() {
     --header "Skidbladnir-Machine: ${machine_handle}" \
     "$request_url"
 }
-
 
 require_systemd_property() {
   local property_name="$1"
@@ -808,17 +820,16 @@ install_devbox() {
   "$staging_dir/skidbladnir" machine init --file="$machine_handle_target" >/dev/null
 
   local config_file
-  local classification
   local hook_file
   local index=0
   for config_file in "${profile_configs[@]}"; do
-    classification="$(classify_notify "$config_file")"
-    if [[ "$classification" == "add" ]]; then
+    if [[ "${config_notify_states[index]}" == "add" ]]; then
+      /usr/bin/cmp --silent "$staging_dir/config-${index}.source.toml" "$config_file" ||
+        die "Codex config changed during installation: ${config_file}"
       atomic_install "$staging_dir/config-${index}.toml" "$config_file" 0600
     fi
     hook_file="$(/usr/bin/dirname -- "$config_file")/hooks.json"
-    classification="$(classify_status_hooks "$hook_file")"
-    if [[ "$classification" == "add" ]]; then
+    if [[ "$(classify_status_hooks "$hook_file")" == "add" ]]; then
       atomic_install "$staging_dir/status-hooks.json" "$hook_file" 0600
     fi
     index=$((index + 1))

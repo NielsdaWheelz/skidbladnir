@@ -8,12 +8,16 @@ shift || true
 case "$(uname -s)" in
   Darwin)
     android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    pinned_tmux='/opt/homebrew/bin/tmux'
+    digest_command=(shasum -a 256)
     if [[ -z "${JAVA_HOME:-}" ]]; then
       export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
     fi
     ;;
   Linux)
     android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    pinned_tmux='/usr/bin/tmux'
+    digest_command=(sha256sum)
     ;;
   *)
     printf '{"gate":"%s","status":"NOT_RUN","reason":"Only Linux and Darwin hosts are supported"}\n' "${gate:-unknown}"
@@ -30,6 +34,106 @@ run() {
 not_run() {
   printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
   exit 2
+}
+
+content_digest() {
+  "${digest_command[@]}" | cut -d ' ' -f 1
+}
+
+run_publication_gate() {
+  local gate_name="$1"
+  shift
+  local gate_label
+  local approval_flag
+  local capability_variable
+  local capability_value
+  local required_uname
+  local home_directory
+  local installer
+  case "$gate_name" in
+    devbox)
+      gate_label='Devbox'
+      approval_flag='--allow-live-devbox-publication'
+      capability_variable='SKIDBLADNIR_ALLOW_DEVBOX_PUBLICATION'
+      capability_value='devbox-publication-v1'
+      required_uname='Linux'
+      home_directory='/home/niels'
+      installer='./scripts/install-devbox'
+      ;;
+    macbook)
+      gate_label='MacBook'
+      approval_flag='--allow-live-macbook-publication'
+      capability_variable='SKIDBLADNIR_ALLOW_MACBOOK_PUBLICATION'
+      capability_value='macbook-publication-v1'
+      required_uname='Darwin'
+      home_directory='/Users/nnandal'
+      installer='./scripts/install-macbook'
+      ;;
+    *)
+      printf 'unknown publication gate: %s\n' "$gate_name" >&2
+      exit 64
+      ;;
+  esac
+  if [[ "${1:-}" != "$approval_flag" || "$#" -ne 1 ]]; then
+    not_run "$gate_name" "Pass ${approval_flag} only after explicit current-turn user approval"
+  fi
+  if [[ "${!capability_variable:-}" != "$capability_value" ]]; then
+    not_run "$gate_name" "Set ${capability_variable}=${capability_value} after explicitly approving the live ${gate_label} install"
+  fi
+  if [[ "$(uname -s)" != "$required_uname" ]]; then
+    not_run "$gate_name" "The ${gate_label} publication gate must run on its ${required_uname} target"
+  fi
+  if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
+    not_run "$gate_name" "${gate_label} publication refuses inherited tmux socket state"
+  fi
+
+  local loopback_origin='http://127.0.0.1:7341'
+  local handle_path="${home_directory}/.config/skidbladnir/machine-handle"
+  local bearer_path="${home_directory}/.config/skidbladnir/bearer"
+  local before_handle=''
+  local installed_handle
+  local installed_lifetime_digest
+  if [[ -f "$handle_path" && ! -L "$handle_path" ]]; then
+    before_handle="$(sed -n '1p' "$handle_path")"
+  fi
+  cd "$repo_dir"
+  run "${gate_name}-install" "$installer" install
+  installed_handle="$(sed -n '1p' "$handle_path")"
+  [[ -z "$before_handle" || "$installed_handle" == "$before_handle" ]] || {
+    printf '%s install changed the existing machine handle\n' "$gate_label" >&2
+    exit 1
+  }
+  installed_lifetime_digest="$(machine_lifetime_digest "$loopback_origin" "$bearer_path" "$installed_handle")"
+  run "${gate_name}-reinstall" "$installer" install
+  [[ "$(sed -n '1p' "$handle_path")" == "$installed_handle" ]] || {
+    printf '%s reinstall changed the machine handle\n' "$gate_label" >&2
+    exit 1
+  }
+  [[ "$(machine_lifetime_digest "$loopback_origin" "$bearer_path" "$installed_handle")" == "$installed_lifetime_digest" ]] || {
+    printf '%s reinstall changed the exact tmux lifetime inventory\n' "$gate_label" >&2
+    exit 1
+  }
+}
+
+machine_lifetime_digest() {
+  local origin="$1"
+  local bearer_file="$2"
+  local handle="$3"
+  # One read-only inventory GET normalized to the exact tmux lifetimes a machine publishes, so
+  # comparing this digest before and after a gate proves no production session was created,
+  # renamed, or killed on that machine.
+  curl --fail --silent --show-error \
+    --header @<(sed 's/^/Authorization: Bearer /' "$bearer_file") \
+    --header "Skidbladnir-Machine: ${handle}" \
+    "${origin}/v1/sessions" |
+    jq -e -c '
+      if (.sessions | type) != "array" then
+        error("session inventory array required")
+      else
+        {machine, sessions: ([.sessions[] | {id,name,identityToken}] | sort_by(.id,.name,.identityToken))}
+      end
+    ' |
+    content_digest
 }
 
 android_instrumentation_timeout_seconds=90
@@ -286,12 +390,19 @@ case "$gate" in
   static)
     cd "$repo_dir"
     run diff-check git diff --check
-    # The inner Bash process owns this expansion.
+    # justify-override: SC2016 — the single-quoted text is the inner Bash process's own source, and
+    # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
     run bash-syntax bash -n scripts/build scripts/install-devbox scripts/install-macbook scripts/test
     run sh-syntax /bin/sh -n deploy/devbox/skid-notify deploy/macbook/skid-notify
-    # The inner POSIX shell owns this expansion.
+    run shell-indentation awk \
+      '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
+       END { exit found ? 1 : 0 }' \
+      scripts/build scripts/install-devbox scripts/install-macbook scripts/test \
+      deploy/devbox/skid-notify deploy/macbook/skid-notify
+    # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
+    # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
       scripts/build scripts/test scripts/install-devbox scripts/install-macbook \
@@ -306,9 +417,9 @@ case "$gate" in
     run terminal-assets-static ./scripts/check-terminal-assets
     run go-mod-verify go mod verify
     run go-vet go vet ./...
-		run integration-compile go test -tags=integration -c -o /dev/null ./tests/integration
-		run integration-host-compile go test -tags=integration -run '^$' ./internal/machine ./internal/process ./internal/pressure
-		run live-compile go test -tags=live -c -o /dev/null ./tests/live
+    run integration-compile go test -tags=integration -c -o /dev/null ./tests/integration
+    run integration-host-compile go test -tags=integration -c -o /dev/null ./internal/machine ./internal/process ./internal/pressure
+    run live-compile go test -tags=live -c -o /dev/null ./tests/live
     run android-static ./scripts/build android-static
     ;;
   unit)
@@ -323,8 +434,11 @@ case "$gate" in
     if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ]]; then
       not_run integration 'Set SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS=isolated-v1 after explicitly approving tmux tests'
     fi
-		if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
+    if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
       not_run integration 'Integration tests refuse an invoking tmux client'
+    fi
+    if [[ ! -x "$pinned_tmux" ]]; then
+      not_run integration "Pinned ${pinned_tmux} is unavailable on the target host"
     fi
     cd "$repo_dir"
     run host-kernel-contracts go test -tags=integration ./internal/machine ./internal/process ./internal/pressure -count=1
@@ -339,10 +453,10 @@ case "$gate" in
     if [[ ! -x "$adb" ]]; then
       not_run platform 'Pinned Android SDK adb is unavailable'
     fi
-		devices=()
-		while IFS= read -r device; do
-			devices+=("$device")
-		done < <("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+    devices=()
+    while IFS= read -r device; do
+      devices+=("$device")
+    done < <("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
     if [[ "${#devices[@]}" -ne 1 ]]; then
       not_run platform 'Exactly one connected Android device is required'
     fi
@@ -356,12 +470,12 @@ case "$gate" in
     test_package='dev.niels.skidbladnir.test'
     app_apk="$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
     test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-		pairing_preferences='shared_prefs/skidbladnir.machines.xml'
+    pairing_preferences='shared_prefs/skidbladnir.machines.xml'
     pairing_digest=''
     if "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1; then
       pairing_digest="$(
         "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-          sha256sum | cut -d ' ' -f 1
+          content_digest
       )"
     fi
     "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null
@@ -394,7 +508,7 @@ case "$gate" in
     if [[ -n "$pairing_digest" ]]; then
       current_pairing_digest="$(
         "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-          sha256sum | cut -d ' ' -f 1
+          content_digest
       )"
       [[ "$current_pairing_digest" == "$pairing_digest" ]] || {
         printf 'Android instrumentation changed the encrypted pairing state\n' >&2
@@ -442,6 +556,21 @@ case "$gate" in
       "$devbox_handle" == "$macbook_handle" ]]; then
       not_run product 'Two distinct canonical machine handles are required'
     fi
+    # The journey's destructive UI surface targets whichever pairing sorts first, so the read-only
+    # promise this gate is approved under can only be kept by fingerprinting both production tmux
+    # servers. The MacBook is observed over its loopback gateway; the Devbox needs its own origin and
+    # bearer, and without them the two-host guarantee is unobservable and the gate is NOT_RUN.
+    macbook_origin='http://127.0.0.1:7341'
+    macbook_bearer_file='/Users/nnandal/.config/skidbladnir/bearer'
+    devbox_origin="${SKIDBLADNIR_DEVBOX_ORIGIN:-}"
+    devbox_bearer_file="${SKIDBLADNIR_DEVBOX_BEARER_FILE:-}"
+    machine_origin_pattern='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?:8443$'
+    if [[ ! "$devbox_origin" =~ $machine_origin_pattern ]]; then
+      not_run product 'Set SKIDBLADNIR_DEVBOX_ORIGIN to the paired Devbox HTTPS :8443 origin'
+    fi
+    if [[ ! -f "$devbox_bearer_file" || -L "$devbox_bearer_file" ]]; then
+      not_run product 'Set SKIDBLADNIR_DEVBOX_BEARER_FILE to the Devbox bearer readable on this host'
+    fi
     app_package='dev.niels.skidbladnir'
     test_package='dev.niels.skidbladnir.test'
     app_apk="$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
@@ -460,13 +589,32 @@ case "$gate" in
       not_run product 'The requested MacBook handle does not match the installed service'
     pairing_digest="$(
       "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-        shasum -a 256 | cut -d ' ' -f 1
+        content_digest
     )"
     "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null
     "$adb" -s "$serial" shell wm dismiss-keyguard >/dev/null
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
       not_run product 'Connected Android device must be awake and unlocked'
     fi
+
+    # Both exact journeys run the instrumentation in raw mode (-r) because only the raw protocol
+    # reports a per-test outcome: INSTRUMENTATION_STATUS_CODE: 0 for a test that actually ran and
+    # passed, and a negative code for error (-1), failure (-2), ignored (-3), and assumption-skipped
+    # (-4). JUnit counts an assumption-skipped test as successful and the pretty summary still reads
+    # "OK (1 test)", so only this per-test evidence keeps a NOT_RUN journey from reading as a pass.
+    assert_one_executed_test() {
+      local proof_name="$1"
+      local output_file="$2"
+      local passed_tests
+      local unpassed_tests
+      passed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: 0[[:space:]]*$' "$output_file" || true)"
+      unpassed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: -[0-9]+[[:space:]]*$' "$output_file" || true)"
+      if [[ "$passed_tests" -ne 1 || "$unpassed_tests" -ne 0 ]]; then
+        printf '%s did not execute exactly one passing test (passed %s, not passed %s)\n' \
+          "$proof_name" "$passed_tests" "$unpassed_tests" >&2
+        return 1
+      fi
+    }
 
     run_exact_product_test() {
       local proof_name="$1"
@@ -476,14 +624,14 @@ case "$gate" in
       local output_file
       output_file="$(mktemp -t skidbladnir-product-exact.XXXXXX)"
       run_bounded_to_file "$android_instrumentation_timeout_seconds" "$output_file" \
-        "$adb" -s "$serial" shell am instrument -w \
+        "$adb" -s "$serial" shell am instrument -r -w \
         -e class "$selector" \
         "$@" \
         "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
       cat "$output_file"
-      if [[ "$instrumentation_status" -ne 0 ]] || ! grep -Eq '^OK \(1 test\)$' "$output_file"; then
+      if [[ "$instrumentation_status" -ne 0 ]] || ! assert_one_executed_test "$proof_name" "$output_file"; then
         rm -f "$output_file"
-        printf '%s failed\n' "$proof_name" >&2
+        printf '%s failed (instrumentation status %s)\n' "$proof_name" "$instrumentation_status" >&2
         return 1
       fi
       rm -f "$output_file"
@@ -502,11 +650,28 @@ case "$gate" in
       return "$child_status"
     }
 
+    bootout_macbook_service() {
+      # launchctl reports EINPROGRESS (36) while the plist's graceful ExitTimeOut shutdown is still
+      # running and ESRCH (3) or 113 once the job is already gone, so its exit status cannot stand in
+      # for teardown; wait_for_macbook_gateway owns that fact. Any other status is a real failure.
+      local bootout_status=0
+      local bootout_output
+      bootout_output="$(launchctl bootout "${launch_domain}/${launch_label}" 2>&1)" || bootout_status=$?
+      case "$bootout_status" in
+        0 | 3 | 36 | 113) ;;
+        *)
+          printf 'could not boot out the MacBook LaunchAgent (status %s): %s\n' \
+            "$bootout_status" "$bootout_output" >&2
+          return 1
+          ;;
+      esac
+    }
+
     restore_macbook_product_service() {
       if ! launchctl print "${launch_domain}/${launch_label}" >/dev/null 2>&1; then
-        launchctl bootstrap "$launch_domain" "$launch_plist"
+        launchctl bootstrap "$launch_domain" "$launch_plist" || return 1
       fi
-      launchctl kickstart -k "${launch_domain}/${launch_label}"
+      launchctl kickstart -k "${launch_domain}/${launch_label}" || return 1
       wait_for_macbook_gateway up
     }
 
@@ -524,7 +689,7 @@ case "$gate" in
         "$android_process_termination_grace_seconds" \
         "$android_process_reap_timeout_seconds" \
         "$instrumentation_output_file" \
-        "$adb" -s "$serial" shell am instrument -w \
+        "$adb" -s "$serial" shell am instrument -r -w \
         -e class "$selector" \
         -e skidbladnir.failedMachine "$macbook_handle" \
         "${test_package}/androidx.test.runner.AndroidJUnitRunner" &
@@ -559,7 +724,7 @@ case "$gate" in
       fi
 
       service_restore_required=1
-      launchctl bootout "${launch_domain}/${launch_label}"
+      bootout_macbook_service || return 1
       wait_for_macbook_gateway down
       if wait_for_instrumentation; then
         instrumentation_status=0
@@ -568,10 +733,10 @@ case "$gate" in
       fi
       cat "$instrumentation_output_file"
       if [[ "$instrumentation_status" -ne 0 ]] ||
-        ! grep -Eq '^OK \(1 test\)$' "$instrumentation_output_file"; then
+        ! assert_one_executed_test "$proof_name" "$instrumentation_output_file"; then
         rm -f "$instrumentation_output_file"
         instrumentation_output_file=''
-        printf '%s failed\n' "$proof_name" >&2
+        printf '%s failed (instrumentation status %s)\n' "$proof_name" "$instrumentation_status" >&2
         return 1
       fi
       rm -f "$instrumentation_output_file"
@@ -598,24 +763,18 @@ case "$gate" in
       return 1
     }
 
-    installed_macbook_lifetime_digest() {
-      local installed_handle
-      installed_handle="$(sed -n '1p' "$macbook_handle_path")"
-      curl --fail --silent --show-error \
-        --header @<(sed 's/^/Authorization: Bearer /' '/Users/nnandal/.config/skidbladnir/bearer') \
-        --header "Skidbladnir-Machine: ${installed_handle}" \
-        'http://127.0.0.1:7341/v1/sessions' |
-        jq -e -c '
-          if (.sessions | type) != "array" then
-            error("session inventory array required")
-          else
-            {machine, sessions: ([.sessions[] | {id,name,identityToken}] | sort_by(.id,.name,.identityToken))}
-          end
-        ' |
-        shasum -a 256 | cut -d ' ' -f 1
+    paired_lifetime_digests() {
+      local macbook_digest
+      local devbox_digest
+      macbook_digest="$(machine_lifetime_digest "$macbook_origin" "$macbook_bearer_file" "$macbook_handle")" ||
+        return 1
+      devbox_digest="$(machine_lifetime_digest "$devbox_origin" "$devbox_bearer_file" "$devbox_handle")" ||
+        return 1
+      printf '%s %s\n' "$macbook_digest" "$devbox_digest"
     }
 
-    macbook_lifetime_digest="$(installed_macbook_lifetime_digest)"
+    paired_lifetime_digest="$(paired_lifetime_digests)" ||
+      not_run product 'Both paired gateways must answer a read-only inventory GET before the journey'
 
     service_restore_required=''
     test_package_installed=''
@@ -639,13 +798,13 @@ case "$gate" in
         (cd "$repo_dir" && ./scripts/install-macbook verify) || exit_status=1
         [[ "$(sed -n '1p' "$macbook_handle_path" 2>/dev/null || true)" == "$macbook_handle" ]] || exit_status=1
       fi
-      [[ "$(installed_macbook_lifetime_digest 2>/dev/null || true)" == "$macbook_lifetime_digest" ]] || exit_status=1
+      [[ "$(paired_lifetime_digests 2>/dev/null || true)" == "$paired_lifetime_digest" ]] || exit_status=1
       if [[ -n "$test_package_installed" ]]; then
         "$adb" -s "$serial" uninstall "$test_package" >/dev/null || exit_status=1
       fi
       current_pairing_digest="$(
         "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" 2>/dev/null |
-          shasum -a 256 | cut -d ' ' -f 1
+          content_digest
       )"
       [[ "$current_pairing_digest" == "$pairing_digest" ]] || exit_status=1
       exit "$exit_status"
@@ -677,8 +836,8 @@ case "$gate" in
       printf 'MacBook recovery changed the machine handle\n' >&2
       exit 1
     }
-    [[ "$(installed_macbook_lifetime_digest)" == "$macbook_lifetime_digest" ]] || {
-      printf 'MacBook recovery changed the exact tmux lifetime inventory\n' >&2
+    [[ "$(paired_lifetime_digests)" == "$paired_lifetime_digest" ]] || {
+      printf 'Recovery changed the exact tmux lifetime inventory of a paired machine\n' >&2
       exit 1
     }
     run_exact_product_test recovered-production-ui \
@@ -692,7 +851,7 @@ case "$gate" in
     test_package_installed=''
     current_pairing_digest="$(
       "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-        shasum -a 256 | cut -d ' ' -f 1
+        content_digest
     )"
     [[ "$current_pairing_digest" == "$pairing_digest" ]] || {
       printf 'Physical product journey changed the encrypted pairing state\n' >&2
@@ -708,124 +867,23 @@ case "$gate" in
     if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ]]; then
       not_run live 'Set SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS=isolated-v1 after explicitly approving tmux tests'
     fi
-		if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
+    if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
       not_run live 'Live tmux proofs refuse an invoking tmux client'
     fi
     if [[ "$(uname -s)" != 'Linux' ]]; then
       not_run live 'The grouped-session proof is Linux-only; use integration for cross-host tmux acceptance'
     fi
-    if [[ ! -x /usr/bin/tmux ]]; then
-      not_run live 'Pinned /usr/bin/tmux is unavailable on the target host'
+    if [[ ! -x "$pinned_tmux" ]]; then
+      not_run live "Pinned ${pinned_tmux} is unavailable on the target host"
     fi
     cd "$repo_dir"
     run grouped-tmux go test -tags=live ./tests/live \
       -run '^(TestTmuxGroupedBehavior|TestRegisteredLiveTmuxCommandRejectsSecondarySocketSelectors)$' -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1
     ;;
-	devbox)
-		if [[ "${1:-}" != '--allow-live-devbox-publication' || "$#" -ne 1 ]]; then
-			not_run devbox 'Pass --allow-live-devbox-publication only after explicit current-turn user approval'
-		fi
-		if [[ "${SKIDBLADNIR_ALLOW_DEVBOX_PUBLICATION:-}" != 'devbox-publication-v1' ]]; then
-			not_run devbox 'Set SKIDBLADNIR_ALLOW_DEVBOX_PUBLICATION=devbox-publication-v1 after explicitly approving the live Devbox install'
-		fi
-		if [[ "$(uname -s)" != 'Linux' ]]; then
-			not_run devbox 'The Devbox publication gate must run on its Linux target'
-		fi
-		if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
-			not_run devbox 'Devbox publication refuses inherited tmux socket state'
-		fi
-		machine_handle_path='/home/niels/.config/skidbladnir/machine-handle'
-		devbox_lifetime_digest() {
-			local installed_handle
-			installed_handle="$(sed -n '1p' "$machine_handle_path")"
-			curl --fail --silent --show-error \
-				--header @<(sed 's/^/Authorization: Bearer /' '/home/niels/.config/skidbladnir/bearer') \
-				--header "Skidbladnir-Machine: ${installed_handle}" \
-				'http://127.0.0.1:7341/v1/sessions' |
-				jq -e -c '
-					if (.sessions | type) != "array" then
-						error("session inventory array required")
-					else
-						{machine, sessions: ([.sessions[] | {id,name,identityToken}] | sort_by(.id,.name,.identityToken))}
-					end
-				' |
-				sha256sum | cut -d ' ' -f 1
-		}
-		before_handle=''
-		if [[ -f "$machine_handle_path" && ! -L "$machine_handle_path" ]]; then
-			before_handle="$(sed -n '1p' "$machine_handle_path")"
-		fi
-		cd "$repo_dir"
-		run devbox-install ./scripts/install-devbox install
-		installed_handle="$(sed -n '1p' "$machine_handle_path")"
-		installed_lifetime_digest="$(devbox_lifetime_digest)"
-		[[ -z "$before_handle" || "$installed_handle" == "$before_handle" ]] || {
-			printf 'Devbox install changed the existing machine handle\n' >&2
-			exit 1
-		}
-		run devbox-reinstall ./scripts/install-devbox install
-		[[ "$(sed -n '1p' "$machine_handle_path")" == "$installed_handle" ]] || {
-			printf 'Devbox reinstall changed the machine handle\n' >&2
-			exit 1
-		}
-		[[ "$(devbox_lifetime_digest)" == "$installed_lifetime_digest" ]] || {
-			printf 'Devbox reinstall changed the exact tmux lifetime inventory\n' >&2
-			exit 1
-		}
-		;;
-	macbook)
-		if [[ "${1:-}" != '--allow-live-macbook-publication' || "$#" -ne 1 ]]; then
-			not_run macbook 'Pass --allow-live-macbook-publication only after explicit current-turn user approval'
-		fi
-		if [[ "${SKIDBLADNIR_ALLOW_MACBOOK_PUBLICATION:-}" != 'macbook-publication-v1' ]]; then
-			not_run macbook 'Set SKIDBLADNIR_ALLOW_MACBOOK_PUBLICATION=macbook-publication-v1 after explicitly approving the live MacBook install'
-		fi
-		if [[ "$(uname -s)" != 'Darwin' ]]; then
-			not_run macbook 'The MacBook publication gate must run on its Darwin target'
-		fi
-		if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
-			not_run macbook 'MacBook publication refuses inherited tmux socket state'
-		fi
-		machine_handle_path='/Users/nnandal/.config/skidbladnir/machine-handle'
-		macbook_publication_lifetime_digest() {
-			local installed_handle
-			installed_handle="$(sed -n '1p' "$machine_handle_path")"
-			curl --fail --silent --show-error \
-				--header @<(sed 's/^/Authorization: Bearer /' '/Users/nnandal/.config/skidbladnir/bearer') \
-				--header "Skidbladnir-Machine: ${installed_handle}" \
-				'http://127.0.0.1:7341/v1/sessions' |
-				jq -e -c '
-					if (.sessions | type) != "array" then
-						error("session inventory array required")
-					else
-						{machine, sessions: ([.sessions[] | {id,name,identityToken}] | sort_by(.id,.name,.identityToken))}
-					end
-				' |
-				shasum -a 256 | cut -d ' ' -f 1
-		}
-		before_handle=''
-		if [[ -f "$machine_handle_path" && ! -L "$machine_handle_path" ]]; then
-			before_handle="$(sed -n '1p' "$machine_handle_path")"
-		fi
-		cd "$repo_dir"
-		run macbook-install ./scripts/install-macbook install
-		installed_handle="$(sed -n '1p' "$machine_handle_path")"
-		installed_lifetime_digest="$(macbook_publication_lifetime_digest)"
-		[[ -z "$before_handle" || "$installed_handle" == "$before_handle" ]] || {
-			printf 'MacBook install changed the existing machine handle\n' >&2
-			exit 1
-		}
-		run macbook-reinstall ./scripts/install-macbook install
-		[[ "$(sed -n '1p' "$machine_handle_path")" == "$installed_handle" ]] || {
-			printf 'MacBook reinstall changed the machine handle\n' >&2
-			exit 1
-		}
-		[[ "$(macbook_publication_lifetime_digest)" == "$installed_lifetime_digest" ]] || {
-			printf 'MacBook reinstall changed the exact tmux lifetime inventory\n' >&2
-			exit 1
-		}
-		;;
+  devbox | macbook)
+    run_publication_gate "$gate" "$@"
+    ;;
   verify)
     "$0" static
     "$repo_dir/scripts/build"
@@ -836,7 +894,7 @@ case "$gate" in
     not_run full 'Run integration, live, devbox, macbook, platform, and product separately after explicit approval for each external boundary'
     ;;
   '')
-		printf 'usage: %s {static|unit|verify|full|platform --allow-device-mutation|product --allow-device-mutation --allow-two-host-read-only-tmux --allow-macbook-service-restart|{integration|live} --allow-isolated-tmux-mutation|devbox --allow-live-devbox-publication|macbook --allow-live-macbook-publication}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|platform --allow-device-mutation|product --allow-device-mutation --allow-two-host-read-only-tmux --allow-macbook-service-restart|{integration|live} --allow-isolated-tmux-mutation|devbox --allow-live-devbox-publication|macbook --allow-live-macbook-publication}\n' "$0" >&2
     exit 64
     ;;
   *)

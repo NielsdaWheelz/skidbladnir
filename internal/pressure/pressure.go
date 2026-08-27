@@ -125,7 +125,7 @@ func (monitor *Monitor) Unsupported() []Metric { return monitor.policy.Unsupport
 
 func (monitor *Monitor) sample(observedAt time.Time) {
 	raw := monitor.collector.collect()
-	evaluation := monitor.evaluator.observeWithPolicy(raw, observedAt, monitor.policy)
+	evaluation := monitor.evaluator.observe(raw, observedAt, monitor.policy)
 	sample := Sample{
 		ObservedAt:                   observedAt.UTC(),
 		Status:                       evaluation.status,
@@ -174,11 +174,7 @@ type evaluation struct {
 	reasons []Reason
 }
 
-func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time) evaluation {
-	return evaluator.observeWithPolicy(sample, observedAt, linuxPolicy())
-}
-
-func (evaluator *evaluator) observeWithPolicy(sample rawSample, observedAt time.Time, policy policy) evaluation {
+func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time, policy policy) evaluation {
 	raw := classifyOverall(sample, policy)
 	if raw.status == StatusUnknown {
 		evaluator.deescalatingAt = time.Time{}
@@ -217,40 +213,36 @@ func (evaluator *evaluator) observeWithPolicy(sample rawSample, observedAt time.
 	return evaluation{status: evaluator.stable, reasons: cloneReasons(evaluator.stableReasons)}
 }
 
+// requiredClassifiers is the closed table of metrics a policy may declare as
+// classification inputs; newPolicy admits required metrics only from this
+// table, so the required set and the classifier set cannot drift apart.
+var requiredClassifiers = map[Metric]struct {
+	reason   Reason
+	classify func(rawSample) Status
+}{
+	MetricMemoryAvailablePercent:       {ReasonMemory, func(sample rawSample) Status { return classifyMemory(sample.memoryAvailablePercent) }},
+	MetricDiskAvailablePercent:         {ReasonDisk, func(sample rawSample) Status { return classifyDisk(sample.diskAvailablePercent) }},
+	MetricLoadNormalized:               {ReasonLoad, func(sample rawSample) Status { return classifyLoad(sample.loadNormalized) }},
+	MetricCPUPressureSomeAvg60:         {ReasonCPUPSI, func(sample rawSample) Status { return classifyCPUPSI(sample.cpuPSISomeAvg60) }},
+	MetricMemoryPressureFullAvg60:      {ReasonMemoryPSI, func(sample rawSample) Status { return classifyFullPSI(sample.memoryPSIFullAvg60) }},
+	MetricInputOutputPressureFullAvg60: {ReasonIOPSI, func(sample rawSample) Status { return classifyFullPSI(sample.ioPSIFullAvg60) }},
+	MetricMemoryPressure:               {ReasonMemory, func(sample rawSample) Status { return classifyMemoryPressure(sample.memoryPressure) }},
+}
+
 func classifyOverall(sample rawSample, policy policy) evaluation {
-	signals := []struct {
-		status Status
-		reason Reason
-	}{
-		{classifyMemory(sample.memoryAvailablePercent), ReasonMemory},
-		{classifyDisk(sample.diskAvailablePercent), ReasonDisk},
-		{classifyLoad(sample.loadNormalized), ReasonLoad},
-		{classifyCPUPSI(sample.cpuPSISomeAvg60), ReasonCPUPSI},
-		{classifyFullPSI(sample.memoryPSIFullAvg60), ReasonMemoryPSI},
-		{classifyFullPSI(sample.ioPSIFullAvg60), ReasonIOPSI},
-	}
-	if policy.nativeMemoryPressure {
-		signals = []struct {
-			status Status
-			reason Reason
-		}{
-			{classifyDisk(sample.diskAvailablePercent), ReasonDisk},
-			{classifyLoad(sample.loadNormalized), ReasonLoad},
-			{classifyMemoryPressure(sample.memoryPressure), ReasonMemory},
-		}
-	}
 	result := evaluation{status: StatusNormal}
 	missing := false
-	for _, signal := range signals {
-		switch signal.status {
+	for _, metric := range policy.required {
+		classifier := requiredClassifiers[metric]
+		switch classifier.classify(sample) {
 		case StatusHot:
 			result.status = StatusHot
-			result.reasons = append(result.reasons, signal.reason)
+			result.reasons = append(result.reasons, classifier.reason)
 		case StatusWarm:
 			if result.status != StatusHot {
 				result.status = StatusWarm
 			}
-			result.reasons = append(result.reasons, signal.reason)
+			result.reasons = append(result.reasons, classifier.reason)
 		case StatusUnknown:
 			missing = true
 		case StatusNormal:

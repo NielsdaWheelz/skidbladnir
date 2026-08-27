@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
@@ -43,6 +44,8 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
@@ -51,8 +54,16 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.time.Instant
 import java.util.Locale
+
+/**
+ * The monotonic receipt of a machine's freshest inventory, published on that machine's real strip
+ * header. It lets the acceptance journey observe that reads keep landing for one machine while
+ * another is out, without adding an invisible node to the layout.
+ */
+internal val MachineInventoryObservationKey =
+    SemanticsPropertyKey<Long>("SkidbladnirMachineInventoryObservation")
+internal var SemanticsPropertyReceiver.machineInventoryObservation by MachineInventoryObservationKey
 
 @Composable
 internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: SkidbladnirController) {
@@ -60,12 +71,7 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
         state.selectedMachine == null || it.machine.handle == state.selectedMachine
     }
     val agents = visibleAgents(state.machines, state.selectedMachine)
-    val canForge = state.machines.any { machine ->
-        (state.selectedMachine == null || machine.machine.handle == state.selectedMachine) &&
-            machine.canMutate &&
-            (machine.inventory as? InventoryState.Fresh)
-                ?.snapshot?.inventory?.profiles?.isNotEmpty() == true
-    }
+    val canForge = machines.any(MachineState::canForge)
     Column(
         modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding(),
     ) {
@@ -192,7 +198,7 @@ internal fun DashboardTopBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).testTag("dashboard-title")) {
             Text("Agents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
                 summary,
@@ -271,38 +277,27 @@ private fun MachineStrip(
     controller: SkidbladnirController,
     credentialWritesEnabled: Boolean,
 ) {
-    val stale = machine.inventory is InventoryState.Stale
+    val handle = machine.machine.handle.encoded
+    val fresh = machine.inventory as? InventoryState.Fresh
     Column {
-        (machine.inventory as? InventoryState.Fresh)?.let { fresh ->
-            Spacer(
-                Modifier
-                    .size(1.dp)
-                    .testTag(
-                        "machine-inventory-received-${machine.machine.handle.encoded}-${fresh.snapshot.receivedAtElapsedMillis}",
-                    ),
-            )
-        }
-        Spacer(
-            Modifier.size(1.dp).testTag(
-                "machine-${if (machine.canMutate) "actionable" else "nonmutating"}-${machine.machine.handle.encoded}",
-            ),
-        )
         MachinePressureStrip(
             machineLabel = machine.machine.label.text,
             state = machine.pressure,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp)
-                .testTag("machine-strip-${machine.machine.handle.encoded}"),
-            headerModifier = Modifier.testTag(
-                "machine-state-${machineStateTag(machine)}-${machine.machine.handle.encoded}",
-            ),
-            labelModifier = Modifier.testTag("machine-strip-label-${machine.machine.handle.encoded}"),
-            inventoryStale = stale,
+                .testTag("machine-strip-$handle"),
+            headerModifier = Modifier
+                .testTag("machine-state-${machineStateTag(machine)}-$handle")
+                .semantics {
+                    if (fresh != null) machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
+                },
+            labelModifier = Modifier.testTag("machine-strip-label-$handle"),
+            inventoryStale = machine.inventory is InventoryState.Stale,
             supportingMessage = machineStateMessage(machine),
-            supportingMessageColor = if (machine.access == MachineAccess.Ready) Ember else Gold,
+            supportingMessageColor = machineStateMessageColor(machine),
         )
-        if (machine.access == MachineAccess.AuthRequired) {
+        if (machineAvailability(machine) == MachineAvailability.AuthRequired) {
             TextButton(
                 onClick = { controller.repairMachine(machine.machine.handle) },
                 enabled = credentialWritesEnabled,
@@ -442,15 +437,11 @@ private fun AgentCard(
     onKill: () -> Unit,
 ) {
     val session = agent.target.session
-    val inventory = when (val value = machine.inventory) {
-        is InventoryState.Fresh -> value.snapshot
-        is InventoryState.Stale -> value.snapshot
-        InventoryState.Reading, is InventoryState.Unreachable -> return
-    }
+    val snapshot = machine.inventory.lastSnapshot() ?: return
     val status = statusContent(
         session.status,
-        Instant.parse(inventory.inventory.observedAt).plusMillis(
-            (android.os.SystemClock.elapsedRealtime() - inventory.receivedAtElapsedMillis).coerceAtLeast(0),
+        snapshot.inventory.observedAt.plusMillis(
+            (SystemClock.elapsedRealtime() - snapshot.receivedAtElapsedMillis).coerceAtLeast(0),
         ),
     )
     Card(
@@ -477,7 +468,11 @@ private fun AgentCard(
             }
             if (!machine.canMutate) {
                 Text(
-                    if (machine.inventoryRefreshRequired) "REFRESHING · actions disabled" else "STALE · actions disabled",
+                    if (machine.inventory is InventoryState.Superseded) {
+                        "REFRESHING · actions disabled"
+                    } else {
+                        "STALE · actions disabled"
+                    },
                     color = Ember,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(top = 7.dp),
@@ -531,11 +526,7 @@ private fun ForgeSheet(
     val selected = state.form.machineHandle?.let { handle ->
         machines.singleOrNull { it.machine.handle == handle }
     }
-    val inventory = when (val state = selected?.inventory) {
-        is InventoryState.Fresh -> state.snapshot.inventory
-        is InventoryState.Stale -> state.snapshot.inventory
-        InventoryState.Reading, is InventoryState.Unreachable, null -> null
-    }
+    val inventory = selected?.inventory?.lastSnapshot()?.inventory
     val fieldsEnabled = !state.pending && selected?.canMutate == true
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -553,7 +544,7 @@ private fun ForgeSheet(
                 machines.forEach { machine ->
                     FilterChip(
                         selected = machine.machine.handle == state.form.machineHandle,
-                        onClick = { onDraftChange { changeForgeMachine(it, machine.machine.handle) } },
+                        onClick = { onDraftChange { it.copy(machineHandle = machine.machine.handle) } },
                         enabled = !state.pending && machine.canMutate,
                         label = { Text(forgeMachineChoiceLabel(machine)) },
                         modifier = Modifier.testTag("forge-machine-${machine.machine.handle.encoded}"),
@@ -602,8 +593,7 @@ private fun ForgeSheet(
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
                 onClick = onSubmit,
-                enabled = state.form.cwd.isNotBlank() && state.form.profile.isNotBlank() &&
-                    !state.pending && selected?.canMutate == true,
+                enabled = state.form.submission() != null && !state.pending && selected?.canMutate == true,
                 modifier = Modifier.fillMaxWidth().testTag("forge-submit"),
             ) {
                 if (state.pending) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
@@ -655,22 +645,54 @@ private fun EmptyState(title: String, body: String) {
     }
 }
 
-private fun machineStateMessage(machine: MachineState): String? = when {
-    machine.inventoryRefreshRequired ->
-        "${machine.machine.label.text}: confirming the latest tmux inventory. Actions disabled."
-    machine.access == MachineAccess.AuthRequired -> "${machine.machine.label.text}: authentication required. Actions disabled."
-    machine.access == MachineAccess.IdentityChanged ->
-        "${machine.machine.label.text}: identity changed. Provisioning repair is required."
-    else -> when (val inventory = machine.inventory) {
-        InventoryState.Reading -> "${machine.machine.label.text}: reading tmux sessions."
-        is InventoryState.Stale -> "${machine.machine.label.text}: ${gatewayFailureMessage(inventory.cause)} Prior sessions are STALE; actions disabled."
-        is InventoryState.Unreachable -> "${machine.machine.label.text}: ${gatewayFailureMessage(inventory.cause)}"
-        is InventoryState.Fresh -> when (val pressure = machine.pressure) {
-            is PressureState.Stale -> "${machine.machine.label.text}: pressure is STALE. Sessions remain current."
-            is PressureState.Unavailable -> "${machine.machine.label.text}: pressure unavailable. Sessions remain current."
+/**
+ * Single classifier for what a machine can currently do. Every machine-state message, tag, colour,
+ * and Forge affordance reads this one derivation, so a new access or inventory variant breaks the
+ * build in exactly one place.
+ */
+private sealed interface MachineAvailability {
+    data object Ready : MachineAvailability
+    data object Refreshing : MachineAvailability
+    data object AuthRequired : MachineAvailability
+    data object IdentityChanged : MachineAvailability
+    data object Reading : MachineAvailability
+    data class Stale(val cause: GatewayFailure) : MachineAvailability
+    data class Unavailable(val cause: GatewayFailure) : MachineAvailability
+}
+
+private fun machineAvailability(machine: MachineState): MachineAvailability = when (machine.access) {
+    MachineAccess.AuthRequired -> MachineAvailability.AuthRequired
+    MachineAccess.IdentityChanged -> MachineAvailability.IdentityChanged
+    MachineAccess.Ready -> when (val inventory = machine.inventory) {
+        InventoryState.Reading -> MachineAvailability.Reading
+        is InventoryState.Fresh -> MachineAvailability.Ready
+        is InventoryState.Superseded -> MachineAvailability.Refreshing
+        is InventoryState.Stale -> MachineAvailability.Stale(inventory.cause)
+        is InventoryState.Unreachable -> MachineAvailability.Unavailable(inventory.cause)
+    }
+}
+
+private fun machineStateMessage(machine: MachineState): String? {
+    val label = machine.machine.label.text
+    return when (val availability = machineAvailability(machine)) {
+        MachineAvailability.AuthRequired -> "$label: authentication required. Actions disabled."
+        MachineAvailability.IdentityChanged -> "$label: identity changed. Provisioning repair is required."
+        MachineAvailability.Refreshing -> "$label: confirming the latest tmux inventory. Actions disabled."
+        MachineAvailability.Reading -> "$label: reading tmux sessions."
+        is MachineAvailability.Stale ->
+            "$label: ${gatewayFailureMessage(availability.cause)} Prior sessions are STALE; actions disabled."
+        is MachineAvailability.Unavailable -> "$label: ${gatewayFailureMessage(availability.cause)}"
+        MachineAvailability.Ready -> when (machine.pressure) {
+            is PressureState.Stale -> "$label: pressure is STALE. Sessions remain current."
+            is PressureState.Unavailable -> "$label: pressure unavailable. Sessions remain current."
             PressureState.Reading, is PressureState.Fresh -> null
         }
     }
+}
+
+private fun machineStateMessageColor(machine: MachineState): Color = when (machine.access) {
+    MachineAccess.Ready -> Ember
+    MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> Gold
 }
 
 private fun machineStateTag(machine: MachineState): String = when (machineAvailability(machine)) {
@@ -679,8 +701,8 @@ private fun machineStateTag(machine: MachineState): String = when (machineAvaila
     MachineAvailability.AuthRequired -> "auth"
     MachineAvailability.IdentityChanged -> "identity"
     MachineAvailability.Reading -> "reading"
-    MachineAvailability.Stale -> "stale"
-    MachineAvailability.Unavailable -> "unreachable"
+    is MachineAvailability.Stale -> "stale"
+    is MachineAvailability.Unavailable -> "unreachable"
 }
 
 private fun pressureStateColor(state: PressureState): Color = when (state) {
@@ -745,19 +767,16 @@ internal fun dashboardSummary(sessionCount: Int, machineCount: Int): String =
         "$machineCount ${if (machineCount == 1) "machine" else "machines"}"
 
 internal fun dashboardInventoryWaitCopy(machines: List<MachineState>): String? = machines.mapNotNull { machine ->
+    val label = machine.machine.label.text
     when (machineAvailability(machine)) {
         MachineAvailability.Ready -> null
-        MachineAvailability.Refreshing ->
-            "${machine.machine.label.text}: confirming the latest tmux inventory."
-        MachineAvailability.AuthRequired ->
-            "${machine.machine.label.text}: authentication required; its sessions may be out of date."
-        MachineAvailability.IdentityChanged ->
-            "${machine.machine.label.text}: identity changed; provisioning repair is required."
-        MachineAvailability.Reading -> "${machine.machine.label.text}: reading tmux sessions."
-        MachineAvailability.Stale ->
-            "${machine.machine.label.text}: showing its last inventory; it is STALE and actions are disabled."
-        MachineAvailability.Unavailable ->
-            "${machine.machine.label.text}: unavailable; its sessions cannot be read."
+        MachineAvailability.Refreshing -> "$label: confirming the latest tmux inventory."
+        MachineAvailability.AuthRequired -> "$label: authentication required; its sessions may be out of date."
+        MachineAvailability.IdentityChanged -> "$label: identity changed; provisioning repair is required."
+        MachineAvailability.Reading -> "$label: reading tmux sessions."
+        is MachineAvailability.Stale ->
+            "$label: showing its last inventory; it is STALE and actions are disabled."
+        is MachineAvailability.Unavailable -> "$label: unavailable; its sessions cannot be read."
     }
 }.takeIf(List<String>::isNotEmpty)?.joinToString(" ")
 
@@ -769,48 +788,25 @@ internal fun forgeMachineChoiceLabel(machine: MachineState): String = machine.ma
     MachineAvailability.AuthRequired -> " · AUTH REQUIRED"
     MachineAvailability.IdentityChanged -> " · RE-PAIR"
     MachineAvailability.Reading -> " · READING"
-    MachineAvailability.Stale -> " · STALE"
-    MachineAvailability.Unavailable -> " · UNAVAILABLE"
+    is MachineAvailability.Stale -> " · STALE"
+    is MachineAvailability.Unavailable -> " · UNAVAILABLE"
 }
 
-internal fun forgeUnavailableCopy(machine: MachineState): String? = when (machineAvailability(machine)) {
-    MachineAvailability.Ready -> null
-    MachineAvailability.Refreshing ->
-        "${machine.machine.label.text} is confirming its latest tmux inventory. " +
-            "Draft fields and Create are disabled."
-    MachineAvailability.AuthRequired ->
-        "${machine.machine.label.text} needs an updated bearer. Draft fields and Create are disabled."
-    MachineAvailability.IdentityChanged ->
-        "${machine.machine.label.text} identity changed. Provisioning repair is required; " +
-            "draft fields and Create are disabled."
-    MachineAvailability.Reading ->
-        "${machine.machine.label.text} is reading tmux sessions. " +
-            "Draft fields and Create are disabled until the inventory is fresh."
-    MachineAvailability.Stale ->
-        "${machine.machine.label.text} inventory is STALE. " +
-            "Draft fields and Create are disabled until a fresh read succeeds."
-    MachineAvailability.Unavailable ->
-        "${machine.machine.label.text} is unavailable. Draft fields and Create are disabled until it reconnects."
-}
-
-private enum class MachineAvailability {
-    Ready,
-    Refreshing,
-    AuthRequired,
-    IdentityChanged,
-    Reading,
-    Stale,
-    Unavailable,
-}
-
-private fun machineAvailability(machine: MachineState): MachineAvailability = when {
-    machine.access == MachineAccess.AuthRequired -> MachineAvailability.AuthRequired
-    machine.access == MachineAccess.IdentityChanged -> MachineAvailability.IdentityChanged
-    machine.inventoryRefreshRequired -> MachineAvailability.Refreshing
-    else -> when (machine.inventory) {
-        InventoryState.Reading -> MachineAvailability.Reading
-        is InventoryState.Fresh -> MachineAvailability.Ready
-        is InventoryState.Stale -> MachineAvailability.Stale
-        is InventoryState.Unreachable -> MachineAvailability.Unavailable
+internal fun forgeUnavailableCopy(machine: MachineState): String? {
+    val label = machine.machine.label.text
+    return when (machineAvailability(machine)) {
+        MachineAvailability.Ready -> null
+        MachineAvailability.Refreshing ->
+            "$label is confirming its latest tmux inventory. Draft fields and Create are disabled."
+        MachineAvailability.AuthRequired ->
+            "$label needs an updated bearer. Draft fields and Create are disabled."
+        MachineAvailability.IdentityChanged ->
+            "$label identity changed. Provisioning repair is required; draft fields and Create are disabled."
+        MachineAvailability.Reading ->
+            "$label is reading tmux sessions. Draft fields and Create are disabled until the inventory is fresh."
+        is MachineAvailability.Stale ->
+            "$label inventory is STALE. Draft fields and Create are disabled until a fresh read succeeds."
+        is MachineAvailability.Unavailable ->
+            "$label is unavailable. Draft fields and Create are disabled until it reconnects."
     }
 }

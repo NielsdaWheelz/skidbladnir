@@ -1,14 +1,20 @@
 package dev.niels.skidbladnir
 
 import java.net.URI
+import java.net.URISyntaxException
 import java.time.DateTimeException
 import java.time.Duration
 import java.time.Instant
 import java.util.Locale
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -19,21 +25,33 @@ import kotlinx.serialization.json.jsonPrimitive
 
 internal val productJson = Json { explicitNulls = false; ignoreUnknownKeys = false }
 
-internal class ProtocolDecodeException(cause: Throwable) :
-    RuntimeException("Protocol payload could not be decoded.", cause)
+// justify-defect: the app and the gateway own one closed wire schema, so an undecodable protocol
+// payload is a same-system contract violation. The reason is content-free by construction — a fixed
+// literal or a failure class name, never the offending payload or a cause that embeds it — so the
+// architecture §7 credential-free/content-free log guarantee holds even when the platform prints
+// this fatal defect.
+internal class ProtocolDecodeException(reason: String) :
+    RuntimeException("Protocol payload could not be decoded: $reason.")
 
 internal inline fun <Value> decodeProtocol(block: () -> Value): Value = try {
     block()
 } catch (failure: ProtocolDecodeException) {
     throw failure
 } catch (failure: SerializationException) {
-    throw ProtocolDecodeException(failure)
+    throw ProtocolDecodeException(failure.javaClass.simpleName)
 } catch (failure: DateTimeException) {
-    throw ProtocolDecodeException(failure)
+    throw ProtocolDecodeException(failure.javaClass.simpleName)
 } catch (failure: NoSuchElementException) {
-    throw ProtocolDecodeException(failure)
+    throw ProtocolDecodeException(failure.javaClass.simpleName)
 } catch (failure: IllegalArgumentException) {
-    throw ProtocolDecodeException(failure)
+    throw ProtocolDecodeException(failure.javaClass.simpleName)
+}
+
+internal object IsoInstantSerializer : KSerializer<Instant> {
+    override val descriptor =
+        PrimitiveSerialDescriptor("dev.niels.skidbladnir.IsoInstant", PrimitiveKind.STRING)
+    override fun deserialize(decoder: Decoder): Instant = Instant.parse(decoder.decodeString())
+    override fun serialize(encoder: Encoder, value: Instant) = encoder.encodeString(value.toString())
 }
 
 internal class MachineHandle private constructor(val encoded: String) {
@@ -62,16 +80,35 @@ internal class MachineLabel private constructor(val text: String) {
 internal class MachineOrigin private constructor(val encoded: String) {
     companion object {
         fun parse(candidate: String): MachineOrigin? {
-            val uri = try { URI(candidate) } catch (_: Exception) { return null }
+            val uri = try {
+                URI(candidate)
+            } catch (_: URISyntaxException) {
+                // justify-ignore-error: an origin that is not even a URI is simply not an origin; the
+                // only classification this parser owns is accepted or rejected.
+                return null
+            }
             if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.port != 8443) return null
             if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
             if (uri.rawPath !in setOf("", "/") || candidate.any(Char::isWhitespace)) return null
-            val canonicalHost = uri.host.lowercase(Locale.ROOT)
-            val authority = if (canonicalHost.contains(':')) "[$canonicalHost]" else canonicalHost
-            return MachineOrigin("https://$authority:8443/")
+            // URI.getHost() already returns the RFC 2732 bracketed form for an IPv6 literal, so the
+            // canonical authority is the lowercased host verbatim. Re-bracketing it would produce a
+            // value that neither this parser nor OkHttp can read back.
+            return MachineOrigin("https://${uri.host.lowercase(Locale.ROOT)}:8443/")
         }
     }
     override fun equals(other: Any?): Boolean = other is MachineOrigin && encoded == other.encoded
+    override fun hashCode(): Int = encoded.hashCode()
+    override fun toString(): String = encoded
+}
+
+internal class ProfileKey private constructor(val encoded: String) {
+    companion object {
+        fun parse(candidate: String): ProfileKey? {
+            if (candidate.isEmpty() || candidate.any(Char::isISOControl)) return null
+            return ProfileKey(candidate)
+        }
+    }
+    override fun equals(other: Any?): Boolean = other is ProfileKey && encoded == other.encoded
     override fun hashCode(): Int = encoded.hashCode()
     override fun toString(): String = encoded
 }
@@ -80,13 +117,18 @@ internal data class PairedMachine(val handle: MachineHandle, val label: MachineL
 internal data class AgentTarget(val machineHandle: MachineHandle, val session: AgentSession)
 internal enum class MachinePlatform { Linux, Darwin }
 internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
+internal data class ProfileChoice(val key: ProfileKey, val label: String)
 
 @Serializable private data class WireMachineSummary(val handle: String, val platform: WireMachinePlatform)
 @Serializable private enum class WireMachinePlatform { Linux, Darwin }
-@Serializable internal data class ProfileChoice(val key: String, val label: String)
+@Serializable private data class WireProfileChoice(val key: String, val label: String)
 @Serializable internal enum class SessionStatusKind { Working, Running, Idle, Shell, Unknown }
 @Serializable internal enum class SessionStatusSignal { Lifecycle, Process, PollFailure }
-@Serializable internal data class SessionStatus(val kind: SessionStatusKind, val signal: SessionStatusSignal, val signalAt: String)
+@Serializable internal data class SessionStatus(
+    val kind: SessionStatusKind,
+    val signal: SessionStatusSignal,
+    @Serializable(with = IsoInstantSerializer::class) val signalAt: Instant,
+)
 @Serializable internal data class CharacterSummary(val key: String, val displayName: String)
 
 @Serializable
@@ -106,7 +148,7 @@ internal data class AgentSession(
 
 internal data class SessionsResponse(
     val machine: MachineSummary,
-    val observedAt: String,
+    val observedAt: Instant,
     val profiles: List<ProfileChoice>,
     val sessions: List<AgentSession>,
 )
@@ -114,8 +156,8 @@ internal data class SessionsResponse(
 @Serializable
 private data class WireSessionsResponse(
     val machine: WireMachineSummary,
-    val observedAt: String,
-    val profiles: List<ProfileChoice>,
+    @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
+    val profiles: List<WireProfileChoice>,
     val sessions: List<AgentSession>,
 )
 
@@ -151,7 +193,7 @@ internal data class PressureMetrics(
 
 @Serializable
 internal data class PressureSample(
-    val sampledAt: String,
+    @Serializable(with = IsoInstantSerializer::class) val sampledAt: Instant,
     val level: PressureLevel,
     val reasons: List<PressureReason>,
     val metrics: PressureMetrics,
@@ -168,7 +210,7 @@ internal data class PressureResponse(
 internal data class ForgeDraft(
     val machineHandle: MachineHandle,
     val cwd: String,
-    val profile: String,
+    val profile: ProfileKey,
     val optionalName: String,
     val objective: String,
 )
@@ -176,7 +218,7 @@ internal data class ForgeDraft(
 internal data class ForgeForm(
     val machineHandle: MachineHandle?,
     val cwd: String,
-    val profile: String,
+    val profile: ProfileKey?,
     val optionalName: String,
     val objective: String,
 ) {
@@ -188,13 +230,18 @@ internal data class ForgeForm(
         draft.objective,
     )
 
-    fun submission(): ForgeDraft? = machineHandle?.let {
-        ForgeDraft(it, cwd, profile, optionalName, objective)
+    fun submission(): ForgeDraft? {
+        if (machineHandle == null || profile == null || cwd.isBlank()) return null
+        return ForgeDraft(machineHandle, cwd, profile, optionalName, objective)
     }
 }
 
-internal fun changeForgeMachine(form: ForgeForm, machineHandle: MachineHandle): ForgeForm =
-    if (form.machineHandle == machineHandle) form else form.copy(machineHandle = machineHandle, cwd = "", profile = "")
+/**
+ * Single owner of the Forge draft transition: a machine change clears the machine-scoped working
+ * directory and profile while preserving the machine-independent name and objective.
+ */
+internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeForm =
+    if (proposed.machineHandle == current.machineHandle) proposed else proposed.copy(cwd = "", profile = null)
 
 internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
 internal fun killConfirmationTitle(label: MachineLabel, target: AgentTarget): String =
@@ -214,18 +261,20 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         encodedSession.jsonObject.requireAbsentOrNonNull(setOf("profile", "objective", "character", "cwd", "activeCommand"))
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
-    val observedAt = Instant.parse(wire.observedAt)
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
-    require(wire.profiles.all { it.key.isNotEmpty() && it.label.isNotEmpty() })
-    require(wire.profiles.map(ProfileChoice::key).allUnique())
-    require(wire.profiles.map(ProfileChoice::label).allUnique())
+    val profiles = wire.profiles.map { profile ->
+        require(profile.label.isNotEmpty())
+        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label)
+    }
+    require(profiles.map(ProfileChoice::key).allUnique())
+    require(profiles.map(ProfileChoice::label).allUnique())
     require(wire.sessions.map(AgentSession::id).allUnique())
     require(wire.sessions.map(AgentSession::identityToken).allUnique())
-    wire.sessions.forEach { acceptSession(it, observedAt) }
+    wire.sessions.forEach { acceptSession(it, wire.observedAt) }
     SessionsResponse(
-        MachineSummary(handle, MachinePlatform.valueOf(wire.machine.platform.name)),
+        MachineSummary(handle, acceptMachinePlatform(wire.machine.platform)),
         wire.observedAt,
-        wire.profiles,
+        profiles,
         wire.sessions,
     )
 }
@@ -266,51 +315,88 @@ internal fun decodeAgentSession(encoded: String): AgentSession = decodeProtocol 
 }
 
 internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson.encodeToString(
-    CreateSessionRequest(draft.cwd, draft.profile, draft.optionalName.ifEmpty { null }, draft.objective.ifEmpty { null }),
+    CreateSessionRequest(
+        draft.cwd,
+        draft.profile.encoded,
+        draft.optionalName.ifEmpty { null },
+        draft.objective.ifEmpty { null },
+    ),
 )
 internal fun encodeKillSessionRequest(session: AgentSession): String =
     productJson.encodeToString(KillSessionRequest(session.name, session.identityToken))
 
 internal data class InventorySnapshot(val inventory: SessionsResponse, val receivedAtElapsedMillis: Long)
+
 internal sealed interface InventoryState {
     data object Reading : InventoryState
     data class Fresh(val snapshot: InventorySnapshot) : InventoryState
+    /** A mutation landed on this machine and the snapshot has not caught up with it yet. */
+    data class Superseded(val snapshot: InventorySnapshot, val requiredMutationFence: Long) : InventoryState
     data class Stale(val snapshot: InventorySnapshot, val cause: GatewayFailure) : InventoryState
     data class Unreachable(val cause: GatewayFailure) : InventoryState
 }
+
 internal sealed interface PressureState {
     data object Reading : PressureState
     data class Fresh(val response: PressureResponse) : PressureState
     data class Stale(val response: PressureResponse, val cause: GatewayFailure) : PressureState
     data class Unavailable(val cause: GatewayFailure) : PressureState
 }
+
 internal sealed interface MachineAccess {
     data object Ready : MachineAccess
     data object AuthRequired : MachineAccess
     data object IdentityChanged : MachineAccess
 }
+
+internal fun InventoryState.lastSnapshot(): InventorySnapshot? = when (this) {
+    is InventoryState.Fresh -> snapshot
+    is InventoryState.Superseded -> snapshot
+    is InventoryState.Stale -> snapshot
+    InventoryState.Reading, is InventoryState.Unreachable -> null
+}
+
+/** Single owner of the read-failure downgrade: a failed read never discards another machine's facts. */
+internal fun InventoryState.downgraded(cause: GatewayFailure): InventoryState = when (this) {
+    is InventoryState.Fresh -> InventoryState.Stale(snapshot, cause)
+    is InventoryState.Superseded -> InventoryState.Stale(snapshot, cause)
+    is InventoryState.Stale -> InventoryState.Stale(snapshot, cause)
+    InventoryState.Reading, is InventoryState.Unreachable -> InventoryState.Unreachable(cause)
+}
+
+internal fun PressureState.downgraded(cause: GatewayFailure): PressureState = when (this) {
+    is PressureState.Fresh -> PressureState.Stale(response, cause)
+    is PressureState.Stale -> PressureState.Stale(response, cause)
+    PressureState.Reading, is PressureState.Unavailable -> PressureState.Unavailable(cause)
+}
+
 internal data class MachineState(
     val machine: PairedMachine,
     val access: MachineAccess,
     val inventory: InventoryState,
     val pressure: PressureState,
-    val inventoryRefreshRequired: Boolean = false,
 ) {
-    val canMutate: Boolean get() =
-        access == MachineAccess.Ready && inventory is InventoryState.Fresh && !inventoryRefreshRequired
+    val canMutate: Boolean get() = when (access) {
+        MachineAccess.Ready -> inventory is InventoryState.Fresh
+        MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
+    }
+
+    val canForge: Boolean get() = when (access) {
+        MachineAccess.Ready ->
+            inventory is InventoryState.Fresh && inventory.snapshot.inventory.profiles.isNotEmpty()
+        MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
+    }
+
+    fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
 }
+
 internal data class VisibleAgent(val machine: PairedMachine, val target: AgentTarget)
 
 internal fun visibleAgents(machines: List<MachineState>, selectedMachine: MachineHandle?): List<VisibleAgent> = machines
     .asSequence()
     .filter { selectedMachine == null || it.machine.handle == selectedMachine }
     .flatMap { state ->
-        val snapshot = when (val inventory = state.inventory) {
-            is InventoryState.Fresh -> inventory.snapshot
-            is InventoryState.Stale -> inventory.snapshot
-            InventoryState.Reading, is InventoryState.Unreachable -> null
-        }
-        snapshot?.inventory?.sessions.orEmpty().asSequence().map { session ->
+        state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().asSequence().map { session ->
             VisibleAgent(state.machine, AgentTarget(state.machine.handle, session))
         }
     }
@@ -322,19 +408,6 @@ internal fun visibleAgents(machines: List<MachineState>, selectedMachine: Machin
             .thenBy { it.target.session.id },
     )
     .toList()
-
-internal fun markInventoryFailure(
-    machines: List<MachineState>,
-    handle: MachineHandle,
-    failure: GatewayFailure,
-): List<MachineState> = machines.map { state ->
-    if (state.machine.handle != handle) return@map state
-    state.copy(inventory = when (val inventory = state.inventory) {
-        is InventoryState.Fresh -> InventoryState.Stale(inventory.snapshot, failure)
-        is InventoryState.Stale -> InventoryState.Stale(inventory.snapshot, failure)
-        InventoryState.Reading, is InventoryState.Unreachable -> InventoryState.Unreachable(failure)
-    })
-}
 
 private fun statusRank(kind: SessionStatusKind): Int = when (kind) {
     SessionStatusKind.Working -> 0
@@ -376,14 +449,14 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
 internal data class StatusContent(val kind: String, val evidence: String, val accessibilityLabel: String)
+
 internal fun statusContent(status: SessionStatus, now: Instant): StatusContent {
     val signal = when (status.signal) {
         SessionStatusSignal.Lifecycle -> "lifecycle"
         SessionStatusSignal.Process -> "process"
         SessionStatusSignal.PollFailure -> "poll failure"
     }
-    val elapsed = Duration.between(Instant.parse(status.signalAt), now)
-    if (elapsed.isNegative) throw SerializationException("status signal is after observation")
+    val elapsed = Duration.between(status.signalAt, now)
     val age = when {
         elapsed.seconds < 60 -> "${elapsed.seconds}s"
         elapsed.toMinutes() < 60 -> "${elapsed.toMinutes()}m"
@@ -432,7 +505,7 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
             if (payload.message != apiErrorMessage(code)) throw SerializationException("incorrect API error message")
             TerminalServerEvent.Error(code)
         }
-        else -> throw SerializationException("unknown terminal event kind: $kind")
+        else -> throw SerializationException("unknown terminal event kind")
     }
 }
 
@@ -452,6 +525,11 @@ private fun JsonObject.requireAbsentOrNonNull(optionalKeys: Set<String>) {
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
 
+private fun acceptMachinePlatform(platform: WireMachinePlatform): MachinePlatform = when (platform) {
+    WireMachinePlatform.Linux -> MachinePlatform.Linux
+    WireMachinePlatform.Darwin -> MachinePlatform.Darwin
+}
+
 private fun acceptSession(session: AgentSession, observedAt: Instant?) {
     require(session.id.isNotEmpty() && session.name.isNotEmpty() && session.identityToken.isNotEmpty())
     require(session.attachedClients >= 0)
@@ -464,12 +542,10 @@ private fun acceptSession(session: AgentSession, observedAt: Instant?) {
         SessionStatusKind.Unknown -> session.status.signal == SessionStatusSignal.PollFailure
     }
     require(legal)
-    val signalAt = Instant.parse(session.status.signalAt)
-    if (observedAt != null) require(!signalAt.isAfter(observedAt))
+    if (observedAt != null) require(!session.status.signalAt.isAfter(observedAt))
 }
 
 private fun acceptPressureSample(sample: PressureSample, unsupported: Set<PressureMetric>): Instant {
-    val sampledAt = Instant.parse(sample.sampledAt)
     require(sample.missing.distinct().size == sample.missing.size)
     require(sample.reasons.distinct().size == sample.reasons.size && sample.missing.none(unsupported::contains))
     val values = mapOf<PressureMetric, Any?>(
@@ -507,7 +583,7 @@ private fun acceptPressureSample(sample: PressureSample, unsupported: Set<Pressu
             sample.level in setOf(PressureLevel.Warm, PressureLevel.Hot),
     )
     require(sample.metrics.memoryPressure != SystemMemoryPressure.Critical || sample.level == PressureLevel.Hot)
-    return sampledAt
+    return sample.sampledAt
 }
 
 private fun pressureMetricWireName(metric: PressureMetric): String = when (metric) {

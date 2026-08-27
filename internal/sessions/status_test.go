@@ -14,8 +14,8 @@ func TestLifecycleStatusIsIndependentFromAttention(t *testing.T) {
 	if !valid || status.Kind != StatusWorking || status.Signal != StatusSignalLifecycle {
 		t.Fatalf("working lifecycle mismatch: valid=%t kind=%s signal=%s", valid, status.Kind, status.Signal)
 	}
-	if status.SignalAt != time.Date(2026, time.August, 26, 11, 59, 50, 0, time.UTC) {
-		t.Fatal("working lifecycle timestamp mismatch")
+	if want := time.Date(2026, time.August, 26, 11, 59, 50, 0, time.UTC); status.SignalAt != want {
+		t.Fatalf("working lifecycle timestamp = %s, want %s", status.SignalAt, want)
 	}
 
 	status, valid = parseLifecycleStatus("v1:4312:991827:idle:1787745580", process, now)
@@ -56,6 +56,6 @@ func TestLiveAgentWithoutLifecycleEvidenceIsRunningNotWorking(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
 	status := runningStatus(now)
 	if status.Kind != StatusRunning || status.Signal != StatusSignalProcess || status.SignalAt != now {
-		t.Fatalf("unobserved live agent status mismatch: kind=%s signal=%s timestamp_match=%t", status.Kind, status.Signal, status.SignalAt == now)
+		t.Fatalf("unobserved live agent status = kind=%s signal=%s signalAt=%s, want kind=%s signal=%s signalAt=%s", status.Kind, status.Signal, status.SignalAt, StatusRunning, StatusSignalProcess, now)
 	}
 }

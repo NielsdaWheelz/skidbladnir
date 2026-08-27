@@ -5,17 +5,19 @@ package process
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func observeOnce(pid PID) (Observation, error) {
 	root := filepath.Join("/proc", strconv.Itoa(int(pid)))
 	contents, err := os.ReadFile(filepath.Join(root, "stat"))
 	if err != nil {
-		return Observation{}, fmt.Errorf("read process stat: %w", err)
+		return Observation{}, classifyProcError(err, "read process stat")
 	}
 	fields, err := statFields(contents)
 	if err != nil {
@@ -30,11 +32,11 @@ func observeOnce(pid PID) (Observation, error) {
 	}
 	executable, err := os.Readlink(filepath.Join(root, "exe"))
 	if err != nil {
-		return Observation{}, fmt.Errorf("read process executable: %w", err)
+		return Observation{}, classifyProcError(err, "read process executable")
 	}
 	line, err := os.ReadFile(filepath.Join(root, "cmdline"))
 	if err != nil {
-		return Observation{}, fmt.Errorf("read process command line: %w", err)
+		return Observation{}, classifyProcError(err, "read process command line")
 	}
 	argv := splitArgv(line)
 	if len(argv) == 0 {
@@ -43,15 +45,30 @@ func observeOnce(pid PID) (Observation, error) {
 	return Observation{PID: pid, ParentPID: PID(parent), ProcessGroup: PID(group), ForegroundProcessGroup: PID(foreground), Executable: executable, Argv: argv, StartIdentity: StartIdentity(fields[19])}, nil
 }
 
-func foregroundProcessGroup(panePID PID, _ string) (PID, error) {
-	observation, err := observeOnce(panePID)
+func classifyProcError(err error, action string) error {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return ErrProcessAbsent
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return ErrProcessNotPermitted
+	}
+	return fmt.Errorf("%s: %w", action, err)
+}
+
+func foregroundProcessGroup(panePID PID) (PID, error) {
+	contents, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(int(panePID)), "stat"))
+	if err != nil {
+		return 0, classifyProcError(err, "read pane process stat")
+	}
+	fields, err := statFields(contents)
 	if err != nil {
 		return 0, err
 	}
-	if observation.ForegroundProcessGroup <= 0 {
+	foreground, err := strconv.Atoi(fields[5])
+	if err != nil || foreground <= 0 {
 		return 0, errors.New("pane has no foreground process group")
 	}
-	return observation.ForegroundProcessGroup, nil
+	return PID(foreground), nil
 }
 
 func statFields(contents []byte) ([]string, error) {

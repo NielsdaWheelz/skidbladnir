@@ -13,28 +13,13 @@ import (
 	"syscall"
 )
 
-type cpuCounters struct {
-	total uint64
-	idle  uint64
-}
-
-type collector struct {
-	previousCPU    cpuCounters
-	hasPreviousCPU bool
-}
-
-func newCollector() collector { return collector{} }
-func currentPolicy() policy   { return linuxPolicy() }
+func currentPolicy() policy { return linuxPolicy() }
 
 func (collector *collector) collect() rawSample {
 	sample := rawSample{}
 	if contents, err := os.ReadFile("/proc/stat"); err == nil {
 		if counters, ok := parseCPUCounters(contents); ok {
-			if collector.hasPreviousCPU {
-				sample.cpuPercent = cpuUsage(collector.previousCPU, counters)
-			}
-			collector.previousCPU = counters
-			collector.hasPreviousCPU = true
+			sample.cpuPercent = collector.cpuPercent(counters)
 		}
 	}
 	if contents, err := os.ReadFile("/proc/loadavg"); err == nil {
@@ -72,18 +57,6 @@ func (collector *collector) collect() rawSample {
 		sample.ioPSIFullAvg60 = parsePSI(contents, "full")
 	}
 	return sample
-}
-
-func cpuUsage(previous, current cpuCounters) metric {
-	if current.total <= previous.total || current.idle < previous.idle {
-		return metric{}
-	}
-	total := current.total - previous.total
-	idle := current.idle - previous.idle
-	if idle > total {
-		return metric{}
-	}
-	return knownMetric(float64(total-idle) * 100 / float64(total))
 }
 
 func parseCPUCounters(contents []byte) (cpuCounters, bool) {

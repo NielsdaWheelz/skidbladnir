@@ -332,23 +332,23 @@ func (manager *Manager) inspect(ctx context.Context, id string, server tmuxclien
 	}
 	session := Session{ID: id, Name: name, IdentityToken: identityToken}
 	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", id,
-		"#{session_id}|#{pane_id}|#{pane_pid}|#{pane_tty}|#{window_bell_flag}|#{session_attached}|#{session_group_attached}")
+		"#{session_id}|#{pane_id}|#{pane_pid}|#{window_bell_flag}|#{session_attached}|#{session_group_attached}")
 	if err != nil {
 		session.Status = unknownStatus()
 		return session, true, nil
 	}
 	fields := strings.Split(anchor, "|")
-	if len(fields) != 7 || fields[0] != id || !paneIDPattern.MatchString(fields[1]) || fields[3] == "" {
+	if len(fields) != 6 || fields[0] != id || !paneIDPattern.MatchString(fields[1]) {
 		session.Status = unknownStatus()
 		return session, true, nil
 	}
 	panePID, paneErr := strconv.Atoi(fields[2])
-	bell, bellErr := parseTmuxBoolean(fields[4])
-	attached, attachedErr := strconv.Atoi(fields[5])
+	bell, bellErr := parseTmuxBoolean(fields[3])
+	attached, attachedErr := strconv.Atoi(fields[4])
 	groupAttached := attached
 	var groupErr error
-	if fields[6] != "" {
-		groupAttached, groupErr = strconv.Atoi(fields[6])
+	if fields[5] != "" {
+		groupAttached, groupErr = strconv.Atoi(fields[5])
 	}
 	if paneErr != nil || panePID <= 0 || bellErr != nil || attachedErr != nil || attached < 0 || groupErr != nil || groupAttached < 0 {
 		session.Status = unknownStatus()
@@ -399,7 +399,7 @@ func (manager *Manager) inspect(ctx context.Context, id string, server tmuxclien
 		return session, true, nil
 	}
 	now := time.Now().UTC()
-	session.Status = manager.deriveStatus(panePID, fields[3], lifecycle, now)
+	session.Status = manager.deriveStatus(panePID, lifecycle, now)
 	_, notified := parseAttentionTime(attention, now)
 	session.Attention = bell || notified
 	return session, true, nil

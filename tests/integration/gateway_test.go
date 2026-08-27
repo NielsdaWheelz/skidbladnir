@@ -32,7 +32,7 @@ func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bearer")
 	first, err := auth.Mint(auth.MintOptions{Path: path})
 	if err != nil {
-		t.Fatal("mint first bearer")
+		t.Fatalf("mint first bearer: %v", err)
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(first)
 	if err != nil || len(decoded) != 32 {
@@ -40,7 +40,7 @@ func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatal("stat bearer file")
+		t.Fatalf("stat bearer file: %v", err)
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("bearer file mode = %04o, want 0600", got)
@@ -53,7 +53,7 @@ func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
 
 	second, err := auth.Mint(auth.MintOptions{Path: path})
 	if err != nil {
-		t.Fatal("re-mint bearer")
+		t.Fatalf("re-mint bearer: %v", err)
 	}
 	if second == first {
 		t.Fatal("re-mint returned the previous bearer")
@@ -88,11 +88,11 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	}
 	agentCommand := filepath.Join(testRoot, "agent-command")
 	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nexec /bin/sleep 300\n"), 0o700); err != nil {
-		t.Fatal("write test agent command")
+		t.Fatalf("write test agent command: %v", err)
 	}
 	for _, home := range []string{"personal", "work", "work2"} {
 		if err := os.Mkdir(filepath.Join(testRoot, home), 0o700); err != nil {
-			t.Fatal("create profile home")
+			t.Fatalf("create %s profile home: %v", home, err)
 		}
 	}
 	manager, err := sessions.New(sessions.Config{
@@ -107,7 +107,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 		},
 	})
 	if err != nil {
-		t.Fatal("create sessions manager")
+		t.Fatalf("create sessions manager: %v", err)
 	}
 	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "laptop", "-c", testRoot, sleepPath, "300").CombinedOutput(); err != nil {
 		t.Fatalf("create laptop tmux session: output_bytes=%d", len(output))
@@ -120,7 +120,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	bearerPath := filepath.Join(testRoot, "bearer")
 	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatal("mint gateway bearer")
+		t.Fatalf("mint gateway bearer: %v", err)
 	}
 	firstBearer := bearer
 	monitor := pressure.NewMonitor()
@@ -156,13 +156,13 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
 	duplicateAuthorization, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/v1/sessions", nil)
 	if err != nil {
-		t.Fatal("build duplicate-authorization request")
+		t.Fatalf("build duplicate-authorization request: %v", err)
 	}
 	duplicateAuthorization.Header.Add("Authorization", "Bearer "+bearer)
 	duplicateAuthorization.Header.Add("Authorization", "Bearer "+bearer)
 	response, err = server.Client().Do(duplicateAuthorization)
 	if err != nil {
-		t.Fatal("perform duplicate-authorization request")
+		t.Fatalf("perform duplicate-authorization request: %v", err)
 	}
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
 
@@ -210,7 +210,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 
 	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "personal", "optionalName": "ga-gateway-test", "objective": "Prove the control plane"})
 	if err != nil {
-		t.Fatal("encode create request")
+		t.Fatalf("encode create request: %v", err)
 	}
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(createBody))
 	assertStatus(t, response, http.StatusCreated)
@@ -230,7 +230,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 
 	secondBearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatal("rotate gateway bearer")
+		t.Fatalf("rotate gateway bearer: %v", err)
 	}
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
@@ -362,7 +362,7 @@ func assertBearerResult(t *testing.T, verifier auth.FileVerifier, authorization 
 	t.Helper()
 	got, err := verifier.Verify(authorization)
 	if err != nil {
-		t.Fatal("verify bearer authorization")
+		t.Fatalf("verify bearer authorization: %v", err)
 	}
 	if got != want {
 		t.Fatalf("bearer authorization result = %t, want %t", got, want)
@@ -461,7 +461,7 @@ func integrationMachine(t *testing.T) machine.Handle {
 	t.Helper()
 	handle, err := machine.Parse(integrationMachineText)
 	if err != nil {
-		t.Fatal("parse fixed integration machine handle")
+		t.Fatalf("parse fixed integration machine handle: %v", err)
 	}
 	return handle
 }

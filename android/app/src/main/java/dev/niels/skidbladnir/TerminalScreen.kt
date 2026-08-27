@@ -45,7 +45,7 @@ internal fun TerminalScreen(
             .background(Ink)
             .systemBarsPadding()
             .imePadding()
-            .testTag("terminal-screen-${state.machine.handle.encoded}"),
+            .testTag("terminal-screen-${state.machine.machine.handle.encoded}"),
     ) {
         Row(
             modifier = Modifier
@@ -60,13 +60,13 @@ internal fun TerminalScreen(
             ) { Text(terminalDetachActionLabel()) }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${state.machine.label.text} · ${state.target.session.name}",
+                    text = "${state.machine.machine.label.text} · ${state.target.session.name}",
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${state.machine.label.text} · ${terminalPresence(state)}",
+                    text = "${state.machine.machine.label.text} · ${terminalPresence(state)}",
                     color = terminalPresenceColor(state.connection),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
@@ -75,7 +75,7 @@ internal fun TerminalScreen(
             }
             TextButton(
                 onClick = { controller.requestKill(state.target) },
-                enabled = terminalActionAdmissible(state.machineCanMutate, state.connection),
+                enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
                 colors = ButtonDefaults.textButtonColors(contentColor = Ember),
                 modifier = Modifier.testTag("terminal-kill"),
             ) {
@@ -122,14 +122,14 @@ internal fun TerminalScreen(
             }
 
             when (val connection = state.connection) {
-                TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.label.text} and session lifetime…")
+                TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.machine.label.text} and session lifetime…")
                 TerminalUiStatus.Preparing -> TerminalWaiting("Preparing terminal…")
                 TerminalUiStatus.Connecting -> TerminalWaiting("Connecting…")
                 is TerminalUiStatus.Connected -> Unit
                 is TerminalUiStatus.ReconnectRequired -> ReconnectPanel(
-                    machineLabel = state.machine.label,
+                    machineLabel = state.machine.machine.label,
                     message = connection.message,
-                    actionAdmissible = terminalActionAdmissible(state.machineCanMutate, state.connection),
+                    actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
                     onReattach = controller::reattachTerminal,
                     onAgents = controller::detachToAgents,
                 )
@@ -147,7 +147,7 @@ internal fun TerminalScreen(
     state.kill?.let { kill ->
         KillConfirmation(
             state = kill,
-            actionAdmissible = terminalActionAdmissible(state.machineCanMutate, state.connection),
+            actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
             onDismiss = controller::dismissKill,
             onConfirm = controller::confirmKill,
         )

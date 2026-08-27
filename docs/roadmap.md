@@ -27,6 +27,7 @@ S1 tmux control plane
  -> S3 Android dashboard
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
  -> v0 multi-machine hard cut: Devbox + MacBook federation
+ -> v0 fixed-topology dashboard cut: external provisioning + dense dashboard
  -> v0.5 (optional): push
 ```
 
@@ -171,6 +172,26 @@ Acceptance: red pressure component proof, routine static/unit verification, the
 exact 15-test S22+ platform gate, exact live gateway publication, and the
 physical healthy/outage/recovery journey are green.
 
+## v0 review corrective layer
+
+Outcome: an adversarial review of the multi-machine and fixed-topology cuts
+against the reviewed contract and the repository rules, with every confirmed
+finding fixed at the source.
+
+- Darwin ancestry observation now ends cleanly at the privilege/lifetime
+  frontier instead of failing at root-owned `launchd`, so the Mac status hook
+  can publish `@skid_lifecycle` at all; the faked hook proof in the
+  integration suite was replaced by one that executes the real hook binary.
+- Gateway, installer, dashboard, store, and test-suite findings (error-cause
+  fidelity, ingress uniqueness quarantine, IPv6 origins, machine-bound bearer
+  repair, exhaustive sealed matching, single-owner dedup, honest gate
+  detection of skipped journeys, both-host read-only guards) fixed per
+  `docs/rules`.
+
+Acceptance: routine static and unit gates are green. Both isolated host tmux
+gates, live publication, the platform gate, and the physical product journey
+are `NOT_RUN` for this layer; the acceptance rows above predate it.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -190,4 +211,5 @@ orchestration, via a new architecture decision.
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
 | v0 fixed-topology dashboard cut | Implemented and published; routine, exact 15-test S22+ platform, and physical healthy/outage/recovery product gates green |
+| v0 review corrective layer | Source implemented; routine gates green; every external gate `NOT_RUN` for this layer |
 | v0.5 push | Not scheduled |

@@ -6,7 +6,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,6 +30,16 @@ internal class GatewayBearer private constructor(internal val encoded: String) {
     override fun equals(other: Any?): Boolean = other is GatewayBearer && encoded == other.encoded
     override fun hashCode(): Int = encoded.hashCode()
     override fun toString(): String = "GatewayBearer(redacted)"
+}
+
+/**
+ * Raw bearer-repair input, not yet canonical. It redacts itself so no generated `toString` of the
+ * UI state can print credential material.
+ */
+internal class BearerDraft(val text: String) {
+    override fun equals(other: Any?): Boolean = other is BearerDraft && text == other.text
+    override fun hashCode(): Int = text.hashCode()
+    override fun toString(): String = "BearerDraft(redacted)"
 }
 
 internal data class MachineCredential(
@@ -111,12 +120,6 @@ internal class GatewayClient {
         }
     }
 
-    fun verifyBearer(origin: MachineOrigin, bearer: GatewayBearer): GatewayResult<SessionsResponse> = executeJson(
-        request = request(origin.encoded.toHttpUrl(), bearer, null, listOf("v1", "sessions")).get().build(),
-        expectedStatus = 200,
-        decode = ::decodeSessionsResponse,
-    )
-
     fun listSessions(credential: MachineCredential): GatewayResult<SessionsResponse> = executeJson(
         request = authorizedRequest(credential, listOf("v1", "sessions")).get().build(),
         expectedStatus = 200,
@@ -165,25 +168,20 @@ internal class GatewayClient {
             .build()
     }
 
-    private fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder = request(
-        origin = credential.machine.origin.encoded.toHttpUrl(),
-        bearer = credential.bearer,
-        machineHandle = credential.machine.handle,
-        segments = segments,
-    )
-
-    private fun request(
-        origin: HttpUrl,
-        bearer: GatewayBearer,
-        machineHandle: MachineHandle?,
-        segments: List<String>,
-    ): Request.Builder {
-        val url = origin.newBuilder().apply { segments.forEach(::addPathSegment) }.build()
+    /**
+     * Every `/v1` request the app makes is bound to a pinned machine: the app never pairs, so there
+     * is no headerless variant. A gateway that answers this origin with another installation's
+     * identity fails with `409 MachineIdentityMismatch` before it discloses anything.
+     */
+    private fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder {
+        val url = credential.machine.origin.encoded.toHttpUrl().newBuilder()
+            .apply { segments.forEach(::addPathSegment) }
+            .build()
         return Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer ${bearer.encoded}")
+            .header("Authorization", "Bearer ${credential.bearer.encoded}")
             .header("Accept", "application/json")
-            .apply { machineHandle?.let { header("Skidbladnir-Machine", it.encoded) } }
+            .header("Skidbladnir-Machine", credential.machine.handle.encoded)
     }
 
     private fun <Value> executeJson(

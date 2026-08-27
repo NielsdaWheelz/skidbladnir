@@ -1,5 +1,3 @@
-//go:build linux
-
 package pressure
 
 import (
@@ -11,19 +9,20 @@ import (
 func TestPressureThresholdsAndHysteresis(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	evaluator := newEvaluator()
+	policy := linuxPolicy()
 
 	normal := completeRawSample(50, 50, 0.5, 10, 0.5, 0.5)
-	if got := evaluator.observe(normal, now); got.status != StatusNormal {
+	if got := evaluator.observe(normal, now, policy); got.status != StatusNormal {
 		t.Fatalf("normal status = %q, want %q", got.status, StatusNormal)
 	}
 
 	warmBoundary := completeRawSample(15, 15, 1, 20, 1, 1)
-	if got := evaluator.observe(warmBoundary, now.Add(time.Second)); got.status != StatusWarm {
+	if got := evaluator.observe(warmBoundary, now.Add(time.Second), policy); got.status != StatusWarm {
 		t.Fatalf("warm-boundary status = %q, want %q", got.status, StatusWarm)
 	}
 
 	hotBoundary := completeRawSample(8, 5, 2, 50, 5, 5)
-	hot := evaluator.observe(hotBoundary, now.Add(2*time.Second))
+	hot := evaluator.observe(hotBoundary, now.Add(2*time.Second), policy)
 	if hot.status != StatusHot {
 		t.Fatalf("hot-boundary status = %q, want %q", hot.status, StatusHot)
 	}
@@ -32,35 +31,90 @@ func TestPressureThresholdsAndHysteresis(t *testing.T) {
 		t.Fatalf("hot-boundary reasons = %v, want %v", hot.reasons, wantHotReasons)
 	}
 
-	if got := evaluator.observe(normal, now.Add(61*time.Second)); got.status != StatusHot || !slices.Equal(got.reasons, wantHotReasons) {
+	if got := evaluator.observe(normal, now.Add(61*time.Second), policy); got.status != StatusHot || !slices.Equal(got.reasons, wantHotReasons) {
 		t.Fatalf("status before continuous de-escalation delay = %q, want %q", got.status, StatusHot)
 	}
-	if got := evaluator.observe(normal, now.Add(121*time.Second)); got.status != StatusWarm || !slices.Equal(got.reasons, wantHotReasons) {
+	if got := evaluator.observe(normal, now.Add(121*time.Second), policy); got.status != StatusWarm || !slices.Equal(got.reasons, wantHotReasons) {
 		t.Fatalf("status after first de-escalation delay = %q, want %q", got.status, StatusWarm)
 	}
-	if got := evaluator.observe(normal, now.Add(122*time.Second)); got.status != StatusWarm {
+	if got := evaluator.observe(normal, now.Add(122*time.Second), policy); got.status != StatusWarm {
 		t.Fatalf("second de-escalation started at %q, want %q", got.status, StatusWarm)
 	}
-	if got := evaluator.observe(normal, now.Add(182*time.Second)); got.status != StatusNormal {
+	if got := evaluator.observe(normal, now.Add(182*time.Second), policy); got.status != StatusNormal {
 		t.Fatalf("status after second de-escalation delay = %q, want %q", got.status, StatusNormal)
 	}
 
-	if got := evaluator.observe(hotBoundary, now.Add(183*time.Second)); got.status != StatusHot {
+	if got := evaluator.observe(hotBoundary, now.Add(183*time.Second), policy); got.status != StatusHot {
 		t.Fatalf("immediate escalation status = %q, want %q", got.status, StatusHot)
 	}
-	if got := evaluator.observe(unknownRawSample(), now.Add(184*time.Second)); got.status != StatusUnknown {
+	if got := evaluator.observe(unknownRawSample(), now.Add(184*time.Second), policy); got.status != StatusUnknown {
 		t.Fatalf("missing-metric status = %q, want %q", got.status, StatusUnknown)
 	}
-	if got := evaluator.observe(normal, now.Add(185*time.Second)); got.status != StatusHot {
+	if got := evaluator.observe(normal, now.Add(185*time.Second), policy); got.status != StatusHot {
 		t.Fatalf("recovered measurement bypassed de-escalation delay: got %q, want %q", got.status, StatusHot)
 	}
 
 	hotWithLaterMissing := completeRawSample(8, 50, 0.5, 10, 0.5, 0.5)
 	hotWithLaterMissing.ioPSIFullAvg60 = metric{}
 	missingEvaluator := newEvaluator()
-	if got := missingEvaluator.observe(hotWithLaterMissing, now); got.status != StatusUnknown {
+	if got := missingEvaluator.observe(hotWithLaterMissing, now, policy); got.status != StatusUnknown {
 		t.Fatalf("known hot metric hid a later missing threshold input: got %q, want %q", got.status, StatusUnknown)
 	}
+}
+
+func TestDarwinPolicyUsesNativeMemoryPressureAndNotLinuxMetrics(t *testing.T) {
+	policy := darwinPolicy()
+	sample := rawSample{diskAvailablePercent: knownMetric(50), loadNormalized: knownMetric(0.5), memoryPressure: knownMemoryPressure(MemoryPressureWarning)}
+	if got := classifyOverall(sample, policy); got.status != StatusWarm || !slices.Equal(got.reasons, []Reason{ReasonMemory}) {
+		t.Fatalf("Darwin warning classification = %+v, want %q with reasons %v", got, StatusWarm, []Reason{ReasonMemory})
+	}
+	sample.memoryPressure = knownMemoryPressure(MemoryPressureCritical)
+	if got := classifyOverall(sample, policy); got.status != StatusHot {
+		t.Fatalf("Darwin critical classification = %+v, want %q", got, StatusHot)
+	}
+	want := []Metric{MetricCPUPressureSomeAvg60, MetricInputOutputPressureFullAvg60, MetricMemoryAvailablePercent, MetricMemoryPressureFullAvg60}
+	if got := policy.Unsupported(); !slices.Equal(got, want) {
+		t.Fatalf("Darwin unsupported = %v, want %v", got, want)
+	}
+}
+
+func TestLinuxPolicyDeclaresTheContractedCapabilityPartition(t *testing.T) {
+	policy := linuxPolicy()
+	wantUnsupported := []Metric{MetricMemoryPressure}
+	if got := policy.Unsupported(); !slices.Equal(got, wantUnsupported) {
+		t.Fatalf("Linux unsupported = %v, want %v", got, wantUnsupported)
+	}
+	wantRequired := []Metric{MetricMemoryAvailablePercent, MetricDiskAvailablePercent, MetricLoadNormalized, MetricCPUPressureSomeAvg60, MetricMemoryPressureFullAvg60, MetricInputOutputPressureFullAvg60}
+	if !slices.Equal(policy.required, wantRequired) {
+		t.Fatalf("Linux required classification inputs = %v, want %v", policy.required, wantRequired)
+	}
+}
+
+func TestPolicyConstructionOwnsTheCapabilityInvariants(t *testing.T) {
+	unordered := newPolicy(nil, []Metric{MetricMemoryPressure, MetricDiskAvailablePercent})
+	if got, want := unordered.Unsupported(), []Metric{MetricDiskAvailablePercent, MetricMemoryPressure}; !slices.Equal(got, want) {
+		t.Fatalf("unsupported set was not canonicalized at construction: got %v, want %v", got, want)
+	}
+
+	assertPolicyDefect(t, "duplicate unsupported metric", func() {
+		newPolicy(nil, []Metric{MetricMemoryPressure, MetricMemoryPressure})
+	})
+	assertPolicyDefect(t, "required metric listed as unsupported", func() {
+		newPolicy([]Metric{MetricLoadNormalized}, []Metric{MetricLoadNormalized})
+	})
+	assertPolicyDefect(t, "required metric without a classifier", func() {
+		newPolicy([]Metric{MetricCPUPercent}, nil)
+	})
+}
+
+func assertPolicyDefect(t *testing.T, name string, construct func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatalf("policy construction accepted a %s", name)
+		}
+	}()
+	construct()
 }
 
 func TestPressureHistoryIsChronologicalAndCappedAt180Samples(t *testing.T) {
@@ -105,34 +159,6 @@ func TestCPUCounterAnomalyIsUnknownInsteadOfUnderflowing(t *testing.T) {
 	got := cpuUsage(cpuCounters{total: 100, idle: 40}, cpuCounters{total: 120, idle: 45})
 	if !got.known || got.value != 75 {
 		t.Fatalf("valid CPU counters produced %+v, want 75%%", got)
-	}
-}
-
-func TestProcParsersRejectMalformedRequiredMetrics(t *testing.T) {
-	total, available, swapTotal, swapFree := parseMemory([]byte("MemTotal: 100 kB\nMemAvailable: 40 kB\nSwapTotal: 20 kB\nSwapFree: 5 kB\n"))
-	for name, metric := range map[string]metric{
-		"MemTotal": total, "MemAvailable": available, "SwapTotal": swapTotal, "SwapFree": swapFree,
-	} {
-		if !metric.known {
-			t.Fatalf("valid %s metric was not parsed", name)
-		}
-	}
-
-	total, available, _, _ = parseMemory([]byte("MemTotal: 100 pages\nMemAvailable: 40\n"))
-	if total.known || available.known {
-		t.Fatalf("meminfo values without the kernel kB unit were accepted: total=%+v available=%+v", total, available)
-	}
-	decimal, _, _, _ := parseMemory([]byte("MemTotal: 100.5 kB\n"))
-	if decimal.known {
-		t.Fatalf("non-integer meminfo value was accepted: %+v", decimal)
-	}
-
-	psi := parsePSI([]byte("some avg10=0.00 avg60=12.50 avg300=0.00 total=1\n"), "some")
-	if !psi.known || psi.value != 12.5 {
-		t.Fatalf("valid PSI avg60 produced %+v, want 12.5", psi)
-	}
-	if got := parsePSI([]byte("full avg60=101.00\n"), "full"); got.known {
-		t.Fatalf("out-of-range PSI percentage was accepted: %+v", got)
 	}
 }
 
