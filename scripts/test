@@ -522,17 +522,17 @@ case "$gate" in
     # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run bash-syntax bash -n scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run bash-syntax bash -n scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' \
-      scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
     # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
-      scripts/build scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
-    run shellcheck shellcheck scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run shellcheck shellcheck scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"

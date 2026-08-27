@@ -58,16 +58,14 @@ build_host_archive() {
   local goarch="$4"
   local platform="$5"
   local output="$6"
-  local cgo_enabled
   local staging_dir
   case "$goos/$goarch" in
-    linux/amd64) cgo_enabled=0 ;;
+    linux/amd64) ;;
     darwin/arm64)
       [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
         printf 'Darwin arm64 release binaries require a native Darwin arm64 builder\n' >&2
         return 1
       }
-      cgo_enabled=1
       ;;
     *)
       printf 'Unsupported release host target: %s/%s\n' "$goos" "$goarch" >&2
@@ -79,9 +77,8 @@ build_host_archive() {
     /tmp/skidbladnir-host-release.* | /private/tmp/skidbladnir-host-release.*) ;;
     *) printf 'Unexpected host-release staging directory\n' >&2; exit 1 ;;
   esac
-  GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" go build -trimpath \
-    -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
-    -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
+  "$repo_dir/scripts/build-host-binary" \
+    "$repo_dir" "$tag" "$sha" "$goos" "$goarch" "$staging_dir/skidbladnir"
   install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
   jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
     '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"

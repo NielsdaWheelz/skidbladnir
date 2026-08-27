@@ -89,7 +89,6 @@ verify_archive() (
   local build_info
   local expected_go_version
   local expected_binary
-  local cgo_enabled
   entries="$(tar -tzf "$archive")"
   [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
     printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
@@ -123,19 +122,9 @@ verify_archive() (
     printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
     return 1
   }
-  case "$goos/$goarch" in
-    linux/amd64) cgo_enabled=0 ;;
-    darwin/arm64) cgo_enabled=1 ;;
-    *) return 1 ;;
-  esac
   expected_binary="$staging_dir/expected-skidbladnir"
-  (
-    cd "$repo_dir"
-    GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" \
-      go build -trimpath \
-        -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
-        -o "$expected_binary" ./cmd/skidbladnir
-  ) || {
+  "$repo_dir/scripts/build-host-binary" \
+    "$repo_dir" "$tag" "$sha" "$goos" "$goarch" "$expected_binary" || {
     printf '%s exact-source binary reproduction failed\n' "$(basename "$archive")" >&2
     return 1
   }
@@ -160,6 +149,10 @@ verify_archive() (
     printf '%s binary GOARCH does not match %s\n' "$(basename "$archive")" "$goarch" >&2
     return 1
   }
+  if grep -Fq $'\tbuild\tvcs=' <<<"$build_info"; then
+    printf '%s binary contains checkout-dependent VCS metadata\n' "$(basename "$archive")" >&2
+    return 1
+  fi
 )
 
 self_test() {

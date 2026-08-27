@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ne 6 ]]; then
+  printf 'usage: %s SOURCE_DIRECTORY TAG SOURCE_SHA GOOS GOARCH OUTPUT\n' "$0" >&2
+  exit 64
+fi
+
+source_dir="$(cd "$1" && pwd -P)"
+tag="$2"
+sha="$3"
+goos="$4"
+goarch="$5"
+output="$6"
+
+[[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+  printf 'Host binary release tag is not canonical\n' >&2
+  exit 1
+}
+[[ "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git -C "$source_dir" rev-parse HEAD)" ]] || {
+  printf 'Host binary source SHA does not match the source checkout\n' >&2
+  exit 1
+}
+[[ "$output" == /* && ! -e "$output" && -d "$(dirname "$output")" ]] || {
+  printf 'Host binary output must be a new file under an existing absolute directory\n' >&2
+  exit 1
+}
+
+case "$goos/$goarch" in
+  linux/amd64) cgo_enabled=0 ;;
+  darwin/arm64) cgo_enabled=1 ;;
+  *)
+    printf 'Unsupported release host target: %s/%s\n' "$goos" "$goarch" >&2
+    exit 1
+    ;;
+esac
+
+cd "$source_dir"
+GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" \
+  go build -buildvcs=false -mod=readonly -trimpath \
+    -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
+    -o "$output" ./cmd/skidbladnir
