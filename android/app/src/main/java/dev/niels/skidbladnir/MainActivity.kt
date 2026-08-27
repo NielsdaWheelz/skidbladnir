@@ -71,7 +71,9 @@ class MainActivity : ComponentActivity() {
                     onSurface = Bone,
                     surfaceVariant = RaisedSurface,
                     onSurfaceVariant = Muted,
-                    error = Ember,
+                    // Unread by app code; the slot stays for M3-internal error
+                    // state such as text fields (destructive-chrome.md).
+                    error = noticeToneColor(NoticeTone.Failure),
                 ),
                 shapes = NidavellirMaterialShapes,
                 typography = NidavellirTypography,
@@ -178,7 +180,7 @@ private fun BearerRepairScreen(
         if (state.error != null) {
             Text(
                 text = state.error,
-                color = MaterialTheme.colorScheme.error,
+                color = noticeToneColor(NoticeTone.Failure),
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
