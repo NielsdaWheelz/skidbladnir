@@ -241,8 +241,22 @@ fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
 Signal age begins at the host's own `observedAt - signalAt` and then advances
 with Android monotonic time; host clocks are never compared to each other.
-The dashboard header is one compact row with Refresh and the trailing primary
-`New dwarf` action. Each pressure strip preserves the full v0 presentation:
+The dashboard header is one compact row with the trailing primary `New dwarf`
+action. Automatic five-second reconciliation remains primary. Standard
+pull-to-refresh over the dwarf collection is the sole manual verification
+shortcut: it snapshots the current machine filter, requests inventory only,
+and remains visibly active until a post-request inventory read has landed for
+every live target. A pre-request read cannot satisfy that intent. Fixed chrome
+does not pull, existing collection content remains in place, and there is no
+tap, overflow, contextual-retry, or custom-accessibility equivalent. The pull
+owner is active only when the visible scope has a live poller; otherwise the
+same collection is inert and its access/provisioning outcome remains visible.
+Forge outcome-unknown recovery copy is target-aware: a visible ready target
+teaches the pull, a ready target hidden by another filter first names the
+filter change, authentication names bearer repair, and a changed or missing
+identity names external provisioning repair. Review-ready copy remains a
+past-tense fact, not another verification command.
+Each pressure strip preserves the full v0 presentation:
 current supported metric values, a categorical severity history covering up to
 15 minutes, explicit missing inputs, explicit platform-unsupported metrics,
 and current pressure reasons. Stale pressure preserves and labels those last
@@ -660,3 +674,13 @@ lifecycle boundary, and leaving through the top detach action or Back detaches
 only the phone; Linux pressure is unchanged and Darwin capabilities are honest;
 app, gateway, and LaunchAgent restart converge to each local
 `tmux list-sessions` truth.
+
+Dashboard acceptance additionally requires: a threshold pull at the top of an
+empty, short, stale, reading, or populated dwarf collection verifies only the
+current filter's live machine targets; a below-threshold release, a release
+while the collection remains away from the top, or a pull while verification
+is already active adds no work; a pull
+racing an ordinary inventory read requires exactly one later coalesced read;
+the shared indicator retains content and ends only after every targeted read
+lands or its poller stops; and manual verification performs no pressure,
+mutation, or terminal-input operation.

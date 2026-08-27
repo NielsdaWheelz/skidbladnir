@@ -246,21 +246,142 @@ class MultiMachineContractTest {
     fun `overlapping poll ticks coalesce into exactly one trailing run`() {
         val lane = CoalescingPollLane()
 
-        assertTrue("the leading tick must be admitted", lane.tryStart())
-        assertFalse("a tick must never run beside the leading one", lane.tryStart(requireTrailing = true))
-        assertFalse("further ticks must coalesce into that same trailing run", lane.tryStart(requireTrailing = true))
-        assertTrue("coalesced ticks owe exactly one trailing run", lane.finish())
-        assertFalse("the trailing run releases the lane", lane.finish())
+        val leading = checkNotNull(lane.request())
+        assertTrue("the leading tick must start immediately", leading.startsNow)
 
-        assertTrue("an idle lane admits the next tick", lane.tryStart())
-        assertFalse("a scheduled tick with no trailing requirement is dropped", lane.tryStart())
-        assertFalse("a dropped tick owes no trailing run", lane.finish())
+        val verification = checkNotNull(lane.request(requireTrailing = true))
+        assertFalse("verification must not run beside the leading read", verification.startsNow)
+        assertTrue(
+            "a read that began before verification must not satisfy it",
+            leading.sequence < verification.sequence,
+        )
+        assertEquals(
+            "further requests must share the same one trailing read",
+            verification,
+            lane.request(requireTrailing = true),
+        )
 
-        assertTrue(lane.tryStart())
-        assertFalse(lane.tryStart(requireTrailing = true))
+        val awaited = AwaitedInventoryReads()
+        awaited.requireRead(devboxHandle, verification.sequence)
+        awaited.requireRead(macBookHandle, sequence = 1L)
+        assertTrue("a required read must make the shared indicator active", awaited.isActive)
+        awaited.readLanded(macBookHandle, completedSequence = 1L)
+        assertTrue("one machine landing must not finish another machine's indicator", awaited.isActive)
+        awaited.readLanded(devboxHandle, leading.sequence)
+        assertTrue("the pre-request result cleared the newer verification", awaited.isActive)
+
+        val trailing = checkNotNull(lane.finish(leading.sequence))
+        assertEquals("the required trailing read did not start", verification.sequence, trailing.sequence)
+        assertTrue("the trailing read must start after the leading result", trailing.startsNow)
+        val laterVerification = checkNotNull(lane.request(requireTrailing = true))
+        awaited.requireRead(devboxHandle, laterVerification.sequence)
+        awaited.readLanded(devboxHandle, trailing.sequence)
+        assertTrue("an active trailing read cleared a later programmatic verification", awaited.isActive)
+        val laterTrailing = checkNotNull(lane.finish(trailing.sequence))
+        assertEquals(
+            "the later verification did not reserve one new trailing read",
+            laterVerification.sequence,
+            laterTrailing.sequence,
+        )
+        assertTrue("the later trailing read did not start after the active read", laterTrailing.startsNow)
+        awaited.readLanded(devboxHandle, laterTrailing.sequence)
+        assertFalse("the later post-request result did not satisfy verification", awaited.isActive)
+        assertNull("exactly one later trailing result must release the lane", lane.finish(laterTrailing.sequence))
+
+        val ordinary = checkNotNull(lane.request())
+        assertTrue("an idle lane must admit the next tick", ordinary.startsNow)
+        assertNull("an overlapping ordinary tick must be dropped", lane.request())
+        assertNull("a dropped tick must not add a trailing run", lane.finish(ordinary.sequence))
+
+        checkNotNull(lane.request())
+        checkNotNull(lane.request(requireTrailing = true))
         lane.abort()
-        assertTrue("an aborted lane admits the next tick without a stale trailing run", lane.tryStart())
-        assertFalse(lane.finish())
+        val afterAbort = checkNotNull(lane.request())
+        assertTrue("an aborted lane must admit a new run without stale trailing work", afterAbort.startsNow)
+        awaited.requireRead(devboxHandle, afterAbort.sequence)
+        awaited.stop(devboxHandle)
+        assertFalse("stopping the poller must finish its pending indicator", awaited.isActive)
+        assertNull(lane.finish(afterAbort.sequence))
+    }
+
+    @Test
+    fun `promoted verification read follows a queued mutation and observes its fence`() {
+        val executor = Executors.newSingleThreadExecutor()
+        val operations = InventoryOperationLane(executor) { defect -> throw defect }
+        val lane = CoalescingPollLane()
+        val leadingStarted = CountDownLatch(1)
+        val releaseLeading = CountDownLatch(1)
+        val trailingLanded = CountDownLatch(1)
+        val mutationCompleted = AtomicBoolean(false)
+        val trailingFollowedMutation = AtomicBoolean(false)
+        val reservedMutationFence = AtomicLong()
+        val trailingMutationFence = AtomicLong(-1L)
+        val trailingReadSequence = AtomicLong(-1L)
+        val leading = checkNotNull(lane.request())
+        val awaited = AwaitedInventoryReads()
+
+        try {
+            submitCoalescedInventoryRead(operations, lane, leading) { run, completedMutationFence ->
+                if (run.sequence == leading.sequence) {
+                    leadingStarted.countDown()
+                    check(releaseLeading.await(5, TimeUnit.SECONDS))
+                } else {
+                    trailingFollowedMutation.set(mutationCompleted.get())
+                    trailingMutationFence.set(completedMutationFence)
+                    trailingReadSequence.set(run.sequence)
+                    trailingLanded.countDown()
+                }
+            }
+            assertTrue("the leading inventory read did not start", leadingStarted.await(5, TimeUnit.SECONDS))
+
+            operations.submitMutation(onReserved = reservedMutationFence::set) {
+                mutationCompleted.set(true)
+            }
+            val verification = checkNotNull(lane.request(requireTrailing = true))
+            awaited.requireRead(devboxHandle, verification.sequence)
+
+            releaseLeading.countDown()
+            assertTrue("the promoted verification read did not land", trailingLanded.await(5, TimeUnit.SECONDS))
+            assertTrue("the promoted verification overtook the queued mutation", trailingFollowedMutation.get())
+            assertEquals(
+                "the promoted verification reused the leading read's stale mutation fence",
+                reservedMutationFence.get(),
+                trailingMutationFence.get(),
+            )
+            assertEquals("the required trailing sequence did not run", verification.sequence, trailingReadSequence.get())
+            awaited.readLanded(devboxHandle, leading.sequence)
+            assertTrue("the pre-mutation leading result cleared the awaited verification", awaited.isActive)
+            awaited.readLanded(devboxHandle, trailingReadSequence.get())
+            assertFalse("the post-mutation trailing result did not satisfy verification", awaited.isActive)
+        } finally {
+            releaseLeading.countDown()
+            executor.shutdownNow()
+            assertTrue("inventory executor did not terminate", executor.awaitTermination(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `manual inventory verification targets only live machines in the current filter`() {
+        val bothLive = listOf(devboxHandle, macBookHandle)
+
+        assertEquals(
+            "All must snapshot every live poller",
+            setOf(devboxHandle, macBookHandle),
+            visibleInventoryTargets(bothLive, selectedMachine = null),
+        )
+        assertEquals(
+            "a machine filter must target only its live poller",
+            setOf(macBookHandle),
+            visibleInventoryTargets(bothLive, selectedMachine = macBookHandle),
+        )
+        assertTrue(
+            "a selected machine without a live poller must add no work",
+            visibleInventoryTargets(listOf(macBookHandle), selectedMachine = devboxHandle).isEmpty(),
+        )
+        assertTrue(
+            "an empty live collection must add no work",
+            visibleInventoryTargets(emptyList(), selectedMachine = null).isEmpty(),
+        )
     }
 
     @Test

@@ -392,6 +392,15 @@ internal data class MachineState(
 
 internal data class VisibleAgent(val machine: PairedMachine, val target: AgentTarget)
 
+internal fun visibleInventoryTargets(
+    liveMachineHandles: Collection<MachineHandle>,
+    selectedMachine: MachineHandle?,
+): Set<MachineHandle> = when {
+    selectedMachine == null -> liveMachineHandles.toSet()
+    selectedMachine in liveMachineHandles -> setOf(selectedMachine)
+    else -> emptySet()
+}
+
 internal fun visibleAgents(machines: List<MachineState>, selectedMachine: MachineHandle?): List<VisibleAgent> = machines
     .asSequence()
     .filter { selectedMachine == null || it.machine.handle == selectedMachine }

@@ -38,6 +38,7 @@ S1 tmux control plane
  -> v0 design delta D3: dwarf seals
  -> v0 design delta D4: ornament
  -> v0 product-language delta: dwarves
+ -> v0 dashboard pull-to-refresh delta
  -> v0.5 (optional): push
 ```
 
@@ -316,6 +317,32 @@ Acceptance: focused Android unit proof for detach lifetime copy, compiled
 instrumentation assertions for dashboard language, routine verification, and
 the next separately approved platform pass for rendered-device confirmation.
 
+## v0 dashboard pull-to-refresh delta
+
+Outcome: the dashboard removes its header `Refresh` action and makes standard
+pull-to-refresh over the dwarf collection the sole manual inventory shortcut.
+
+- `All` targets every live machine poller; a machine filter targets only that
+  machine. Pressure, mutations, and terminal input remain outside the intent.
+- Empty and populated states share one lazy collection. Fixed chrome stays in
+  place and the last snapshot remains visible while checking.
+- An awaited monotonic inventory-read sequence prevents a pre-pull poll result
+  from finishing a newer pull; the existing per-machine coalescing lane owns
+  the one required trailing read.
+- No tap, overflow, contextual Retry, fallback, old controller alias, or second
+  empty-state body remains.
+- Forge recovery names pull only for a ready target in scope; otherwise it
+  names the required filter, bearer, or external provisioning repair first.
+
+Red: pure target-selection and awaited-read ordering proof, then real Compose
+gesture/header behavior on the approved S22+ runtime.
+
+Acceptance: routine verification, one separately approved S22+ platform pass,
+and one hands-on pull confirming native threshold/resistance, stable viewport,
+and no essential first-row text or control obscured by the indicator. Gateway,
+tmux, and transport boundaries are
+unchanged and require no integration or live gate.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -344,4 +371,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
+| v0 dashboard pull-to-refresh delta | Source implemented; red observed; routine verification and the signed 36-test S22+ platform gate green on 2026-08-27; hands-on native threshold/resistance/viewport check `NOT_RUN` |
 | v0.5 push | Not scheduled |
