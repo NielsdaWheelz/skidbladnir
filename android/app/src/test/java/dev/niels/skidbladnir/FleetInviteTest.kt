@@ -32,6 +32,10 @@ class FleetInviteTest {
                 "\"label\":\"Arch\"",
                 "\"label\":\"Arch\",\"label\":\"Arch\"",
             ),
+            "escaped duplicate machine field" to validInvite.replace(
+                "\"label\":\"Arch\"",
+                "\"label\":\"Arch\",\"\\u006cabel\":\"Arch\"",
+            ),
             "null field" to validInvite.replace("\"Arch\"", "null"),
             "noncanonical origin" to validInvite.replace("https://arch.example.ts.net:8443/", "HTTPS://arch.example.ts.net:8443/"),
             "duplicate handle" to validInvite.replace("mh-22222222222222222222222222222222", "mh-11111111111111111111111111111111"),
@@ -104,15 +108,46 @@ class FleetInviteTest {
 
         assertEquals(
             GatewayFailure.Api(ApiErrorCode.PairingInviteRejected),
-            decodeGatewayHttpFailure(
+            decodePairingHttpFailure(
                 401,
                 """{"code":"PairingInviteRejected","message":"This fleet invite is invalid, expired, or already used."}""",
             ),
         )
         assertThrows(ProtocolDecodeException::class.java) {
+            decodePairingHttpFailure(
+                409,
+                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Fleet reset is required."}""",
+            )
+        }
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodePairingHttpFailure(
+                422,
+                """{"code":"ProfileUnknown","message":"Choose an available profile."}""",
+            )
+        }
+        assertThrows(ProtocolDecodeException::class.java) {
             decodePairingResponse(
                 """{"machine":{"handle":"${invite.machines[0].machine.handle.encoded}","platform":"Linux"},"bearer":"short"}""",
             )
+        }
+    }
+
+    @Test
+    fun `pairing DTOs reject literal and escaped duplicate semantic keys`() {
+        val handle = "mh-0123456789abcdef0123456789abcdef"
+        for (encoded in listOf(
+            """{"machine":{"handle":"$handle","platform":"Linux"},"bearer":"${"A".repeat(43)}","bearer":"${"B".repeat(43)}"}""",
+            """{"machine":{"handle":"$handle","platform":"Linux"},"bearer":"${"A".repeat(43)}","bea\u0072er":"${"B".repeat(43)}"}""",
+        )) {
+            assertThrows(ProtocolDecodeException::class.java) { decodePairingResponse(encoded) }
+        }
+        for (encoded in listOf(
+            """{"code":"InvalidRequest","code":"InternalError","message":"Internal server error."}""",
+            """{"code":"InvalidRequest","co\u0064e":"InternalError","message":"Internal server error."}""",
+        )) {
+            assertThrows(ProtocolDecodeException::class.java) {
+                decodePairingHttpFailure(500, encoded)
+            }
         }
     }
 

@@ -17,13 +17,20 @@ import java.util.concurrent.TimeUnit
 
 private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
+internal enum class FleetResetReason { InviteIdentityMismatch, StoredFleetUnusable }
+
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
 
     data class FleetConnect(
         val mode: FleetConnectMode,
         val phase: FleetConnectPhase,
-    ) : SkidbladnirUiState
+        val resetReason: FleetResetReason? = null,
+    ) : SkidbladnirUiState {
+        init {
+            require((phase == FleetConnectPhase.ResetRequired) == (resetReason != null))
+        }
+    }
 
     data class Dashboard(
         val machines: List<MachineState>,
@@ -45,7 +52,17 @@ internal sealed interface SkidbladnirUiState {
     ) : SkidbladnirUiState
 }
 
+internal fun fleetReconnectCanCancel(state: SkidbladnirUiState.FleetConnect): Boolean =
+    state.mode == FleetConnectMode.Reconnect &&
+        state.phase != FleetConnectPhase.Connecting &&
+        (state.phase != FleetConnectPhase.ResetRequired ||
+            state.resetReason == FleetResetReason.InviteIdentityMismatch)
+
 internal data class ForgeState(val form: ForgeForm, val pending: Boolean, val error: String?)
+private data class PendingFleetPersistence(
+    val mode: FleetConnectMode,
+    val credentials: List<MachineCredential>,
+)
 internal sealed interface ForgeRecovery {
     val draft: ForgeDraft
     data class RefreshRequired(override val draft: ForgeDraft) : ForgeRecovery
@@ -514,11 +531,15 @@ internal class SkidbladnirController(context: Context) {
     private var createdTerminalAdmission: CreatedTerminalAdmission? = null
     private var nextTerminalAttempt = 1
     private var pendingFleetScan: String? = null
+    @Volatile private var pendingFleetPersistence: PendingFleetPersistence? = null
 
     fun start() {
         if (foreground) return
         foreground = true
         val connectState = state as? SkidbladnirUiState.FleetConnect
+        val interruptedPersistence = pendingFleetPersistence?.takeIf {
+            connectState?.phase == FleetConnectPhase.Connecting && connectState.mode == it.mode
+        }
         ++generation
         if (connectState?.phase == FleetConnectPhase.Scanning) {
             machineStates.values.filter { it.access == MachineAccess.Ready }.forEach {
@@ -557,8 +578,20 @@ internal class SkidbladnirController(context: Context) {
                 }
                 unreadableMachines.clear()
                 unreadableMachines += stored.unreadable
+                val interruptedDisposition = interruptedPersistence?.let {
+                    resumedFleetPersistenceDisposition(it.mode, it.credentials, stored)
+                }
+                if (pendingFleetPersistence == interruptedPersistence) pendingFleetPersistence = null
                 val storageNotice = stored.unreadable.takeIf { it.isNotEmpty() }?.let {
                     "Saved fleet credentials are unreadable. Fleet reset is required outside this app."
+                }
+                if (machineStates.isEmpty() && unreadableMachines.isNotEmpty()) {
+                    state = SkidbladnirUiState.FleetConnect(
+                        mode = interruptedPersistence?.mode ?: connectState?.mode ?: FleetConnectMode.Install,
+                        phase = FleetConnectPhase.ResetRequired,
+                        resetReason = FleetResetReason.StoredFleetUnusable,
+                    )
+                    return@post
                 }
                 if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
                     state = SkidbladnirUiState.FleetConnect(
@@ -576,6 +609,18 @@ internal class SkidbladnirController(context: Context) {
                 }
                 reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
                     startPolling(it.credential.machine.handle, activeGeneration)
+                }
+                if (interruptedDisposition == FleetPersistenceDisposition.Connected) {
+                    publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
+                    return@post
+                }
+                if (interruptedDisposition == FleetPersistenceDisposition.ResetRequired) {
+                    state = SkidbladnirUiState.FleetConnect(
+                        mode = checkNotNull(interruptedPersistence).mode,
+                        phase = FleetConnectPhase.ResetRequired,
+                        resetReason = FleetResetReason.StoredFleetUnusable,
+                    )
+                    return@post
                 }
                 if (connectState?.mode == FleetConnectMode.Reconnect) {
                     state = connectState.copy(
@@ -613,6 +658,7 @@ internal class SkidbladnirController(context: Context) {
     fun close() {
         stopForBackground()
         pendingFleetScan = null
+        pendingFleetPersistence = null
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
@@ -636,7 +682,7 @@ internal class SkidbladnirController(context: Context) {
 
     fun cancelFleetReconnect() {
         val current = state as? SkidbladnirUiState.FleetConnect ?: return
-        if (current.mode != FleetConnectMode.Reconnect || current.phase == FleetConnectPhase.Connecting) return
+        if (!fleetReconnectCanCancel(current)) return
         publishDashboard()
     }
 
@@ -662,31 +708,76 @@ internal class SkidbladnirController(context: Context) {
             state = current.copy(phase = FleetConnectPhase.Failed)
             return
         }
+        if (current.mode == FleetConnectMode.Reconnect &&
+            !reconnectInviteMatchesInstalled(invite, credentials.values)
+        ) {
+            state = current.copy(
+                phase = FleetConnectPhase.ResetRequired,
+                resetReason = FleetResetReason.InviteIdentityMismatch,
+            )
+            return
+        }
         val activeGeneration = generation
         val mode = current.mode
         state = current.copy(phase = FleetConnectPhase.Connecting)
         redeemFleetInvite(invite, network, client::redeemPairing).whenComplete { connected, completionFailure ->
-            if (completionFailure != null || connected == null) {
+            if (completionFailure != null) {
+                val cause = completionFailure.cause ?: completionFailure
+                surfaceDefect(
+                    cause as? RuntimeException
+                        ?: IllegalStateException("fleet redemption failed exceptionally"),
+                )
+                return@whenComplete
+            }
+            if (connected == null) {
                 main.post { failFleetConnectionIfCurrent(activeGeneration, mode) }
                 return@whenComplete
             }
+            pendingFleetPersistence = PendingFleetPersistence(mode, connected)
             executeCredentialOperation {
                 if (!isActiveGeneration(activeGeneration)) return@executeCredentialOperation
-                val stored = when (mode) {
-                    FleetConnectMode.Install -> store.installFixedFleet(connected) == FleetInstallation.Installed
-                    FleetConnectMode.Reconnect -> store.reconnectFixedFleet(connected) == FleetReconnection.Reconnected
-                }
+                val disposition = persistConnectedFleet(mode, connected)
                 main.post {
                     if (!isActiveGeneration(activeGeneration)) return@post
                     val active = state as? SkidbladnirUiState.FleetConnect ?: return@post
                     if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
-                    if (!stored) {
-                        state = active.copy(phase = FleetConnectPhase.Failed)
-                        return@post
+                    pendingFleetPersistence = null
+                    when (disposition) {
+                        FleetPersistenceDisposition.Connected -> acceptConnectedFleet(connected, activeGeneration)
+                        FleetPersistenceDisposition.RetryWithFreshInvite ->
+                            state = active.copy(phase = FleetConnectPhase.Failed)
+                        FleetPersistenceDisposition.ResetRequired ->
+                            state = active.copy(
+                                phase = FleetConnectPhase.ResetRequired,
+                                resetReason = FleetResetReason.StoredFleetUnusable,
+                            )
                     }
-                    acceptConnectedFleet(connected, activeGeneration)
                 }
             }
+        }
+    }
+
+    private fun persistConnectedFleet(
+        mode: FleetConnectMode,
+        connected: List<MachineCredential>,
+    ): FleetPersistenceDisposition = when (mode) {
+        FleetConnectMode.Install -> {
+            val result = store.installFixedFleet(connected)
+            val durable = if (result == FleetInstallation.StorageUnavailable) {
+                store.read()
+            } else {
+                MachineStoreRead(emptyList(), emptyList())
+            }
+            fleetInstallationDisposition(result, durable, connected)
+        }
+        FleetConnectMode.Reconnect -> {
+            val result = store.reconnectFixedFleet(connected)
+            val durable = if (result == FleetReconnection.StorageUnavailable) {
+                store.read()
+            } else {
+                MachineStoreRead(emptyList(), emptyList())
+            }
+            fleetReconnectionDisposition(result, durable, connected)
         }
     }
 

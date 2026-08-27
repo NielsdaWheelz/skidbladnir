@@ -27,6 +27,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/statushook"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 const (
@@ -69,7 +70,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir status-hook --host-config=PATH {SessionStart|UserPromptSubmit|Stop}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
-		config, err := hostconfig.Load(*hostConfigPath, platform.Current().Kind)
+		config, err := loadRuntimeHostConfig(*hostConfigPath, platform.Current().Kind)
 		if err != nil {
 			_, _ = io.WriteString(stderr, "status-hook host configuration failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitFailure
@@ -201,16 +202,9 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		return fmt.Errorf("load machine handle: %w", err)
 	}
 	descriptor := platform.Current()
-	host, err := hostconfig.Load(hostConfigPath, descriptor.Kind)
+	host, err := loadRuntimeHostConfig(hostConfigPath, descriptor.Kind)
 	if err != nil {
-		return fmt.Errorf("load host configuration: %w", err)
-	}
-	tmuxVersion, err := observedTmuxVersion(host.Tmux.Path)
-	if err != nil {
-		return err
-	}
-	if err := host.ValidateTmuxVersion(tmuxVersion); err != nil {
-		return err
+		return fmt.Errorf("validate host configuration: %w", err)
 	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      host.Tmux.Path,
@@ -238,6 +232,21 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		return err
 	}
 	return nil
+}
+
+func loadRuntimeHostConfig(path string, runtime platform.Kind) (hostconfig.Config, error) {
+	config, err := hostconfig.Load(path, runtime)
+	if err != nil {
+		return hostconfig.Config{}, err
+	}
+	tmuxVersion, err := observedTmuxVersion(config.Tmux.Path)
+	if err != nil {
+		return hostconfig.Config{}, err
+	}
+	if err := config.ValidateTmuxVersion(tmuxVersion); err != nil {
+		return hostconfig.Config{}, err
+	}
+	return config, nil
 }
 
 func observedTmuxVersion(path string) (string, error) {
@@ -283,10 +292,8 @@ func requestPairingInvitation(ctx context.Context, client *http.Client, origin s
 	if err := response.Body.Close(); err != nil {
 		return pairingInvitation{}, errors.New("close pairing invitation response")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
 	var invite pairingInvitation
-	if err := decoder.Decode(&invite); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
+	if err := strictjson.Decode(encoded, &invite); err != nil {
 		return pairingInvitation{}, errors.New("decode pairing invitation")
 	}
 	parsedHandle, err := machine.Parse(invite.Machine.Handle)
@@ -300,7 +307,8 @@ func requestPairingInvitation(ctx context.Context, client *http.Client, origin s
 		return pairingInvitation{}, errors.New("pairing invitation token is invalid")
 	}
 	expiresAt, err := time.Parse(time.RFC3339Nano, invite.ExpiresAt)
-	if err != nil || !expiresAt.After(time.Now().UTC()) {
+	now := time.Now().UTC()
+	if err != nil || !expiresAt.After(now) || expiresAt.After(now.Add(5*time.Minute)) {
 		return pairingInvitation{}, errors.New("pairing invitation expiry is invalid")
 	}
 	return invite, nil

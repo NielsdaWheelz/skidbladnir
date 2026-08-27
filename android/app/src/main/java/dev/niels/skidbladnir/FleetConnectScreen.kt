@@ -23,44 +23,55 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 internal enum class FleetConnectMode { Install, Reconnect }
-internal enum class FleetConnectPhase { Ready, Scanning, Connecting, Failed }
+internal enum class FleetConnectPhase { Ready, Scanning, Connecting, Failed, ResetRequired }
 
 internal data class FleetConnectContent(
     val title: String,
     val body: String,
-    val primaryAction: String,
-    val externalBoundary: String,
+    val primaryAction: String?,
+    val externalBoundary: String?,
     val progress: String?,
     val failure: String?,
+    val primaryEnabled: Boolean,
+    val tailscaleActionVisible: Boolean,
 )
 
 internal fun fleetConnectContent(mode: FleetConnectMode, phase: FleetConnectPhase): FleetConnectContent =
     FleetConnectContent(
-        title = when (mode) {
+        title = if (phase == FleetConnectPhase.ResetRequired) {
+            "Fleet reset required"
+        } else when (mode) {
             FleetConnectMode.Install -> "Connect your fleet"
             FleetConnectMode.Reconnect -> "Reconnect fleet"
         },
-        body = when (mode) {
+        body = if (phase == FleetConnectPhase.ResetRequired) {
+            "Saved fleet credentials cannot be repaired in this app. Reset the app’s data, then connect again."
+        } else when (mode) {
             FleetConnectMode.Install ->
                 "Sign in to Tailscale, then scan a fresh fleet invite from your MacBook."
             FleetConnectMode.Reconnect ->
                 "Scan a fresh fleet invite from your MacBook to reconnect the exact installed machines."
         },
-        primaryAction = when (mode) {
+        primaryAction = if (phase == FleetConnectPhase.ResetRequired) null else when (mode) {
             FleetConnectMode.Install -> "Connect"
             FleetConnectMode.Reconnect -> "Reconnect fleet"
         },
-        externalBoundary = "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
+        externalBoundary = if (phase == FleetConnectPhase.ResetRequired) null else
+            "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
         progress = when (phase) {
             FleetConnectPhase.Scanning -> "Scanning a fresh fleet invite…"
             FleetConnectPhase.Connecting -> "Connecting to 3 machines…"
-            FleetConnectPhase.Ready, FleetConnectPhase.Failed -> null
+            FleetConnectPhase.Ready, FleetConnectPhase.Failed, FleetConnectPhase.ResetRequired -> null
         },
         failure = when (phase) {
             FleetConnectPhase.Failed ->
                 "Couldn’t connect the whole fleet. Nothing was saved. Create and scan a new fleet invite."
-            FleetConnectPhase.Ready, FleetConnectPhase.Scanning, FleetConnectPhase.Connecting -> null
+            FleetConnectPhase.Ready, FleetConnectPhase.Scanning, FleetConnectPhase.Connecting,
+            FleetConnectPhase.ResetRequired,
+            -> null
         },
+        primaryEnabled = phase == FleetConnectPhase.Ready || phase == FleetConnectPhase.Failed,
+        tailscaleActionVisible = phase != FleetConnectPhase.ResetRequired,
     )
 
 @Composable
@@ -110,23 +121,27 @@ internal fun FleetConnectScreen(
             NoticePanel(tone = NoticeTone.Failure, body = content.failure)
         }
         Spacer(Modifier.height(20.dp))
-        Button(
-            onClick = onConnect,
-            enabled = !pending,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(content.primaryAction) }
-        OutlinedButton(
-            onClick = onTailscale,
-            enabled = !pending,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-        ) { Text(if (tailscaleInstalled) "Open Tailscale" else "Install Tailscale") }
-        Text(
-            text = content.externalBoundary,
-            color = Muted,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(top = 12.dp),
-        )
+        content.primaryAction?.let { action ->
+            Button(
+                onClick = onConnect,
+                enabled = content.primaryEnabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(action) }
+        }
+        if (content.tailscaleActionVisible) {
+            OutlinedButton(
+                onClick = onTailscale,
+                enabled = !pending,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            ) { Text(if (tailscaleInstalled) "Open Tailscale" else "Install Tailscale") }
+            Text(
+                text = checkNotNull(content.externalBoundary),
+                color = Muted,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
     }
 }

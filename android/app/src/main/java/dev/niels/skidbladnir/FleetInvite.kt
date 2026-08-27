@@ -14,14 +14,6 @@ import kotlinx.serialization.json.jsonObject
 private const val FLEET_INVITE_KIND = "skidbladnir.fleet-invite.v1"
 private const val MAXIMUM_FLEET_INVITE_BYTES = 4_096
 private val FLEET_LABELS = listOf("Arch", "Devbox", "MacBook")
-private val FLEET_INVITE_FIELD_COUNTS = mapOf(
-    "kind" to 1,
-    "machines" to 1,
-    "label" to 3,
-    "origin" to 3,
-    "machineHandle" to 3,
-    "pairingInviteToken" to 3,
-)
 
 internal class PairingInviteToken private constructor(internal val encoded: String) {
     companion object {
@@ -49,8 +41,8 @@ internal fun redeemFleetInvite(
     val redeems = invite.machines.map { machine ->
         CompletableFuture.supplyAsync({ redeem(machine) }, executor)
     }
-    return CompletableFuture.allOf(*redeems.toTypedArray()).handle { _, completionFailure ->
-        if (completionFailure != null) null else acceptPairingResults(invite, redeems.map { it.join() })
+    return CompletableFuture.allOf(*redeems.toTypedArray()).thenApply {
+        acceptPairingResults(invite, redeems.map { it.join() })
     }
 }
 
@@ -89,12 +81,8 @@ private data class WireFleetInviteMachine(
 
 internal fun parseFleetInvite(encoded: String): FleetInvite? {
     if (encoded.toByteArray(StandardCharsets.UTF_8).size !in 1..MAXIMUM_FLEET_INVITE_BYTES) return null
-    if (FLEET_INVITE_FIELD_COUNTS.any { (field, count) ->
-            Regex("\"$field\"\\s*:").findAll(encoded).count() != count
-        }
-    ) return null
     return try {
-        val element = productJson.parseToJsonElement(encoded).jsonObject
+        val element = strictJsonObject(encoded)
         if (element.keys != setOf("kind", "machines") || element.values.any { it is JsonNull }) return null
         val machineElements = element.getValue("machines").jsonArray
         if (machineElements.size != FLEET_LABELS.size) return null

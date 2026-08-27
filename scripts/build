@@ -58,13 +58,28 @@ build_host_archive() {
   local goarch="$4"
   local platform="$5"
   local output="$6"
+  local cgo_enabled
   local staging_dir
+  case "$goos/$goarch" in
+    linux/amd64) cgo_enabled=0 ;;
+    darwin/arm64)
+      [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
+        printf 'Darwin arm64 release binaries require a native Darwin arm64 builder\n' >&2
+        return 1
+      }
+      cgo_enabled=1
+      ;;
+    *)
+      printf 'Unsupported release host target: %s/%s\n' "$goos" "$goarch" >&2
+      return 1
+      ;;
+  esac
   staging_dir="$(mktemp -d -t skidbladnir-host-release.XXXXXX)"
   case "$staging_dir" in
     /tmp/skidbladnir-host-release.* | /private/tmp/skidbladnir-host-release.*) ;;
     *) printf 'Unexpected host-release staging directory\n' >&2; exit 1 ;;
   esac
-  GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath \
+  GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" go build -trimpath \
     -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
     -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
   install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
@@ -91,6 +106,12 @@ case "$target" in
     tag="$2"
     sha="$3"
     output_dir="$4"
+    [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
+      printf 'Release assets require the native Darwin arm64 signing host\n' >&2
+      exit 1
+    }
+    export GOTOOLCHAIN=local
+    "$repo_dir/scripts/check-go-toolchain" >/dev/null
     read -r version_name version_code < <("$repo_dir/scripts/check-release" --android-version "$tag")
     [[ "$sha" == "$(git -C "$repo_dir" rev-parse HEAD)" && "$sha" =~ ^[0-9a-f]{40}$ ]] || {
       printf 'Release source SHA must equal the current exact HEAD\n' >&2

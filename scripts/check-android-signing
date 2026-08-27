@@ -103,6 +103,21 @@ read_pin() {
   printf '%s\n' "$pin"
 }
 
+extract_apk_signer_digest() {
+  awk '
+    index($0, "Signer #") == 1 && index($0, " certificate SHA-256 digest: ") > 0 {
+      count++
+      digest = $0
+      sub(/^Signer #1 certificate SHA-256 digest: /, "", digest)
+      if (count != 1 || length(digest) != 64 || digest !~ /^[0-9a-f]+$/) invalid = 1
+    }
+    END {
+      if (invalid || count != 1) exit 1
+      print digest
+    }
+  '
+}
+
 validate_config() {
   local config_file="$1"
   local password
@@ -159,7 +174,7 @@ verify_apk() {
   expected_pin="$(read_pin)"
   if ! observed_pin="$(
     "$apksigner" verify --print-certs "$apk" 2>/dev/null |
-      sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+      extract_apk_signer_digest
   )"; then
     printf 'APK signature verification failed\n' >&2
     return 1
@@ -203,9 +218,25 @@ relative password|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=password\nke
 whitespace|fail|storeFile = /tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
 invalid alias|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=not/valid\n
 CASES
+  expected='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  observed="$(
+    printf 'Signer #1 certificate SHA-256 digest: %s\n' "$expected" |
+      extract_apk_signer_digest
+  )" || return 1
+  [[ "$observed" == "$expected" ]] || {
+    printf 'Single APK signer digest was not accepted\n' >&2
+    return 1
+  }
+  if printf '%s\n' \
+    "Signer #1 certificate SHA-256 digest: $expected" \
+    'Signer #2 certificate SHA-256 digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' |
+    extract_apk_signer_digest >/dev/null; then
+    printf 'Additional APK signer digest was accepted\n' >&2
+    return 1
+  fi
   unlink "$fixture"
   rmdir "$fixture_dir"
-  printf 'Android signing policy passed: 9 cases\n'
+  printf 'Android signing policy passed: 9 config cases and exact-one APK signer\n'
 }
 
 if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then

@@ -101,6 +101,20 @@ class MachineStoreInstrumentedTest {
         assertEquals(FleetReconnection.FleetMismatch, store.reconnectFixedFleet(fleet))
         assertEquals(FleetInstallation.StoreNotEmpty, store.installFixedFleet(fleet))
 
+        resetFixture()
+        assertEquals(FleetInstallation.Installed, store.installFixedFleet(fleet))
+        preferences().edit()
+            .putString(
+                storage.field(fleet.first().machine.handle.encoded, "origin"),
+                "https://ARCH.example.ts.net:8443/",
+            )
+            .commit()
+        val noncanonicalOrigin = store.read()
+        assertTrue(noncanonicalOrigin.credentials.isEmpty())
+        assertEquals(3, noncanonicalOrigin.unreadable.size)
+        assertEquals(FleetReconnection.FleetMismatch, store.reconnectFixedFleet(fleet))
+        assertEquals(FleetInstallation.StoreNotEmpty, store.installFixedFleet(fleet))
+
         preferences().edit().putString("legacy.bearer", "must-not-be-read").commit()
         assertTrue(store.read().unreadable.single().collectionWide)
         preferences().edit().putString(storage.handlesField, "corrupt-index").commit()

@@ -4,6 +4,54 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 repo_name='NielsdaWheelz/skidbladnir'
 
+immutable_release_policy_enabled() {
+  local policy
+  local observed_keys
+  policy="$(cat)" || return 1
+  ((${#policy} <= 4096)) || return 1
+  observed_keys="$(
+    jq --stream -er 'select(length == 2 and (.[0] | length) == 1) | .[0][0]' \
+      <<<"$policy" | LC_ALL=C sort
+  )" || return 1
+  [[ "$observed_keys" == $'enabled\nenforced_by_owner' ]] || return 1
+  jq -e '
+    type == "object" and
+    .enabled == true and
+    (.enforced_by_owner | type == "boolean")
+  ' <<<"$policy" >/dev/null
+}
+
+self_test() {
+  if printf '%s\n' '{"enabled":false,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'Disabled immutable-release policy was accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\n' '{"enforced_by_owner":false}' | immutable_release_policy_enabled; then
+    printf 'Missing immutable-release policy state was accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\n' '{"enabled":false,"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'Duplicate immutable-release policy field was accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\n' \
+    '{"enabled":false,"enforced_by_owner":false}{"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'Concatenated immutable-release policy documents were accepted\n' >&2
+    return 1
+  fi
+  printf '%s\n' '{"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled || return 1
+  printf 'Immutable-release source policy passed\n'
+}
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+
 if [[ "$#" -ne 1 ]]; then
   printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
   exit 64
@@ -23,6 +71,17 @@ cd "$repo_dir"
   printf 'Release must run from main\n' >&2
   exit 1
 }
+origin_url="$(git remote get-url origin)" || {
+  printf 'Release requires the canonical GitHub origin remote\n' >&2
+  exit 1
+}
+case "$origin_url" in
+  git@github.com:NielsdaWheelz/skidbladnir.git | https://github.com/NielsdaWheelz/skidbladnir.git) ;;
+  *)
+    printf 'Release origin does not identify %s\n' "$repo_name" >&2
+    exit 1
+    ;;
+esac
 [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
   printf 'Release requires a clean worktree and index\n' >&2
   exit 1
@@ -32,6 +91,19 @@ repo_identity="$(gh repo view --repo "$repo_name" --json nameWithOwner,visibilit
   --jq '[.nameWithOwner,.visibility] | join(" ")')"
 [[ "$repo_identity" == "$repo_name PUBLIC" ]] || {
   printf 'Release requires the public %s repository\n' "$repo_name" >&2
+  exit 1
+}
+immutable_release_settings="$(
+  gh api --method GET \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    "repos/$repo_name/immutable-releases"
+)" || {
+  printf 'GitHub immutable-release policy is unavailable for %s\n' "$repo_name" >&2
+  exit 1
+}
+immutable_release_policy_enabled <<<"$immutable_release_settings" || {
+  printf 'Release requires GitHub immutable releases to be enabled for %s\n' "$repo_name" >&2
   exit 1
 }
 

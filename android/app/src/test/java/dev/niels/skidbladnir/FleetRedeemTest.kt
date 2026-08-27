@@ -2,12 +2,14 @@ package dev.niels.skidbladnir
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,6 +62,27 @@ class FleetRedeemTest {
             assertTrue(calls.values.all { it.get() == 1 })
         } finally {
             release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `same-system pairing defects remain exceptional after every redeem settles`() {
+        val invite = fleetInvite()
+        val executor = Executors.newFixedThreadPool(3)
+        try {
+            val result = redeemFleetInvite(invite, executor) { invited ->
+                if (invited.machine.label.text == "Devbox") {
+                    throw ProtocolDecodeException("fixture")
+                }
+                GatewayResult.Failure(GatewayFailure.Transport)
+            }
+
+            val failure = assertThrows(ExecutionException::class.java) {
+                result.get(2, TimeUnit.SECONDS)
+            }
+            assertTrue(failure.cause is ProtocolDecodeException)
+        } finally {
             executor.shutdownNow()
         }
     }

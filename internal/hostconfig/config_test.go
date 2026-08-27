@@ -74,6 +74,7 @@ func TestParseRejectsEveryNoncanonicalHostConfigShape(t *testing.T) {
 		{name: "null optional signature member", encoded: strings.Replace(validLinuxConfig, `"executableBase":"codex"`, `"executableBase":null`, 1), runtime: platform.KindLinux},
 		{name: "null argument", encoded: strings.Replace(validLinuxConfig, `"arguments":["--dangerously-bypass-approvals-and-sandbox"]`, `"arguments":[null]`, 1), runtime: platform.KindLinux},
 		{name: "relative command", encoded: strings.Replace(validLinuxConfig, `"command":"/home/niels/bin/codex-personal"`, `"command":"bin/codex-personal"`, 1), runtime: platform.KindLinux},
+		{name: "invalid UTF-8", encoded: strings.Replace(validLinuxConfig, "Codex · Personal", "Codex \xff Personal", 1), runtime: platform.KindLinux},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

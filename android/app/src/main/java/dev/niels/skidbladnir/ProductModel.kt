@@ -263,7 +263,7 @@ internal fun killConfirmationTitle(label: MachineLabel, target: AgentTarget): St
 @Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
-    val element = productJson.parseToJsonElement(encoded).jsonObject
+    val element = strictJsonObject(encoded)
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
         encodedSession.jsonObject.requireAbsentOrNonNull(setOf("profile", "objective", "cwd", "activeCommand"))
     }
@@ -287,7 +287,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
 }
 
 internal fun decodePressureResponse(encoded: String): PressureResponse = decodeProtocol {
-    val element = productJson.parseToJsonElement(encoded).jsonObject
+    val element = strictJsonObject(encoded)
     val samples = listOf(element.getValue("current")) + element.getValue("history").jsonArray
     samples.forEach { sample ->
         sample.jsonObject.getValue("metrics").jsonObject.requireAbsentOrNonNull(
@@ -316,7 +316,7 @@ internal fun decodePressureResponse(encoded: String): PressureResponse = decodeP
 }
 
 internal fun decodeAgentSession(encoded: String): AgentSession = decodeProtocol {
-    val element = productJson.parseToJsonElement(encoded).jsonObject
+    val element = strictJsonObject(encoded)
     element.requireAbsentOrNonNull(setOf("profile", "objective", "cwd", "activeCommand"))
     productJson.decodeFromJsonElement<AgentSession>(element).also { acceptSession(it, null) }
 }
@@ -591,7 +591,7 @@ internal sealed interface TerminalServerEvent {
 @Serializable private data class TerminalDetach(val kind: String)
 
 internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = decodeProtocol {
-    val objectValue = productJson.parseToJsonElement(encoded).jsonObject
+    val objectValue = strictJsonObject(encoded)
     when (val kind = objectValue.requiredString("kind")) {
         "Hello", "Presence" -> {
             objectValue.requireExactKeys(setOf("kind", "attachedClients", "geometry"))

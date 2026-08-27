@@ -26,6 +26,17 @@ internal const val FLEET_QUARANTINE_FIELD = "machine.collection.quarantined"
 /** The at-rest form of one bearer: base64 AES-GCM ciphertext plus its base64 nonce. */
 internal data class SealedBearer(val ciphertext: String, val nonce: String)
 
+internal fun sealFleetOrNull(
+    credentials: List<MachineCredential>,
+    seal: (PairedMachine, GatewayBearer) -> SealedBearer,
+): List<Pair<MachineCredential, SealedBearer>>? = try {
+    credentials.map { credential -> credential to seal(credential.machine, credential.bearer) }
+} catch (_: GeneralSecurityException) {
+    null
+} catch (_: IOException) {
+    null
+}
+
 /**
  * Single owner of the paired-fleet at-rest format: which preference file holds the
  * collection, how a machine's fields are keyed inside it, which Android Keystore entry protects the
@@ -127,6 +138,9 @@ internal data class MachineStoreRead(
     val credentials: List<MachineCredential>,
     val unreadable: List<UnreadableStoredMachine>,
 )
+
+internal fun parseStoredMachineOrigin(encoded: String): MachineOrigin? =
+    MachineOrigin.parse(encoded)?.takeIf { it.encoded == encoded }
 
 internal sealed interface FleetInstallation {
     data object Installed : FleetInstallation
@@ -251,7 +265,7 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         val handle = MachineHandle.parse(encodedHandle) ?: throw IOException("invalid stored machine handle")
         val label = MachineLabel.parse(requireField(encodedHandle, "label"))
             ?: throw IOException("invalid stored machine label")
-        val origin = MachineOrigin.parse(requireField(encodedHandle, "origin"))
+        val origin = parseStoredMachineOrigin(requireField(encodedHandle, "origin"))
             ?: throw IOException("invalid stored machine origin")
         return PairedMachine(handle, label, origin)
     }
@@ -277,13 +291,9 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         credentials: List<MachineCredential>,
         priorRead: MachineStoreRead,
     ): Boolean {
-        val sealed = try {
-            credentials.map { it to storage.seal(it.machine, it.bearer) }
-        } catch (_: GeneralSecurityException) {
-            // justify-ignore-error: every seal happens before preference mutation, so a broken
-            // Keystore leaves the prior collection byte-for-byte observable.
-            return false
-        }
+        // Every seal happens before preference mutation. Android Keystore can fail through either
+        // its security API or KeyStore.load I/O, and both leave the prior collection observable.
+        val sealed = sealFleetOrNull(credentials, storage::seal) ?: return false
         val target = linkedMapOf<String, Any>(
             storage.handlesField to credentials.map { it.machine.handle.encoded }.toSet(),
         )

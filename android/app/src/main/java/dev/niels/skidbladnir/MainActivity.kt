@@ -105,9 +105,7 @@ private fun SkidbladnirApp(
         controller.detachToAgents()
     }
     BackHandler(
-        enabled = state is SkidbladnirUiState.FleetConnect &&
-            state.mode == FleetConnectMode.Reconnect &&
-            state.phase != FleetConnectPhase.Connecting,
+        enabled = state is SkidbladnirUiState.FleetConnect && fleetReconnectCanCancel(state),
     ) { controller.cancelFleetReconnect() }
     if (state is SkidbladnirUiState.FleetConnect && state.phase == FleetConnectPhase.Scanning) {
         LaunchedEffect(state) {

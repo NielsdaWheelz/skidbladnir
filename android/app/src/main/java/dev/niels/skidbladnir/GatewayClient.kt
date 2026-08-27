@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -86,7 +87,7 @@ internal data class PairingResponse(
 )
 
 internal fun decodePairingResponse(encoded: String): PairingResponse = decodeProtocol {
-    val wire = productJson.decodeFromString<WirePairingResponse>(encoded)
+    val wire = productJson.decodeFromJsonElement<WirePairingResponse>(strictJsonObject(encoded))
     PairingResponse(
         machine = MachineSummary(
             requireNotNull(MachineHandle.parse(wire.machine.handle)),
@@ -139,6 +140,7 @@ internal class GatewayClient {
         request = pairingRequest(machine),
         expectedStatus = 200,
         decode = ::decodePairingResponse,
+        decodeFailure = ::decodePairingHttpFailure,
     )
 
     internal fun pairingRequest(machine: FleetInviteMachine): Request {
@@ -211,9 +213,10 @@ internal class GatewayClient {
         request: Request,
         expectedStatus: Int,
         decode: (String) -> Value,
+        decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
     ): GatewayResult<Value> = try {
         http.newCall(request).execute().use { response ->
-            decodeGatewayResponse(response, expectedStatus, decode)
+            decodeGatewayResponse(response, expectedStatus, decode, decodeFailure)
         }
     } catch (_: IOException) {
         GatewayResult.Failure(GatewayFailure.Transport)
@@ -225,6 +228,7 @@ internal fun <Value> decodeGatewayResponse(
     response: Response,
     expectedStatus: Int,
     decode: (String) -> Value,
+    decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
 ): GatewayResult<Value> {
     if (response.code in setOf(502, 503, 504)) return GatewayResult.Failure(GatewayFailure.Transport)
     val bodylessSuccess = response.code == expectedStatus && expectedStatus == 204
@@ -246,7 +250,7 @@ internal fun <Value> decodeGatewayResponse(
         return GatewayResult.Success(decodeProtocol { decode(encoded) })
     }
     return if (response.code != expectedStatus) {
-        GatewayResult.Failure(decodeGatewayHttpFailure(response.code, encoded))
+        GatewayResult.Failure(decodeFailure(response.code, encoded))
     } else {
         GatewayResult.Success(decodeProtocol { decode(encoded) })
     }
@@ -254,7 +258,7 @@ internal fun <Value> decodeGatewayResponse(
 
 internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
     if (status == 502 || status == 503 || status == 504) return@decodeProtocol GatewayFailure.Transport
-    val response = productJson.decodeFromString<ErrorResponse>(encoded)
+    val response = productJson.decodeFromJsonElement<ErrorResponse>(strictJsonObject(encoded))
     val code = parseApiErrorCode(response.code)
     if (
         code == ApiErrorCode.ReconnectRequired ||
@@ -264,6 +268,17 @@ internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFail
         throw SerializationException("HTTP error response disagreed with the owned protocol")
     }
     GatewayFailure.Api(code)
+}
+
+internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFailure {
+    val failure = decodeGatewayHttpFailure(status, encoded)
+    if (failure is GatewayFailure.Api && failure.code !in setOf(
+            ApiErrorCode.PairingInviteRejected,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.InternalError,
+        )
+    ) throw ProtocolDecodeException("pairing route error set")
+    return failure
 }
 
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {

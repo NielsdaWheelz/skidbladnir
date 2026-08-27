@@ -22,13 +22,17 @@ esac
 
 parse_tag() {
   local tag="$1"
+  local major
+  local minor
+  local patch
   [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-  release_major="${BASH_REMATCH[1]}"
-  release_minor="${BASH_REMATCH[2]}"
-  release_patch="${BASH_REMATCH[3]}"
-  ((${#release_major} <= 4 && release_major <= 2100 && release_minor <= 999 && release_patch <= 999)) || return 1
-  release_version_name="${release_major}.${release_minor}.${release_patch}"
-  release_version_code=$((release_major * 1000000 + release_minor * 1000 + release_patch))
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+  patch="${BASH_REMATCH[3]}"
+  ((${#major} <= 4 && ${#minor} <= 3 && ${#patch} <= 3)) || return 1
+  ((10#$major <= 2100 && 10#$minor <= 999 && 10#$patch <= 999)) || return 1
+  release_version_name="${major}.${minor}.${patch}"
+  release_version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
   ((release_version_code > 1 && release_version_code <= 2100000000))
 }
 
@@ -41,6 +45,12 @@ validate_manifest() {
   local tag="$2"
   local sha="$3"
   local platform="$4"
+  local observed_keys
+  observed_keys="$(
+    jq --stream -er 'select(length == 2 and (.[0] | length) == 1) | .[0][0]' \
+      <<<"$manifest" | LC_ALL=C sort
+  )" || return 1
+  [[ "$observed_keys" == $'platform\nsourceSha\nversion' ]] || return 1
   jq -e \
     --arg tag "$tag" \
     --arg sha "$sha" \
@@ -77,6 +87,9 @@ verify_archive() (
   local manifest
   local staging_dir
   local build_info
+  local expected_go_version
+  local expected_binary
+  local cgo_enabled
   entries="$(tar -tzf "$archive")"
   [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
     printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
@@ -106,8 +119,37 @@ verify_archive() (
       return 1
     }
   done
+  cmp -s "$repo_dir/catalog/characters.json" "$staging_dir/characters.json" || {
+    printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  case "$goos/$goarch" in
+    linux/amd64) cgo_enabled=0 ;;
+    darwin/arm64) cgo_enabled=1 ;;
+    *) return 1 ;;
+  esac
+  expected_binary="$staging_dir/expected-skidbladnir"
+  (
+    cd "$repo_dir"
+    GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" \
+      go build -trimpath \
+        -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
+        -o "$expected_binary" ./cmd/skidbladnir
+  ) || {
+    printf '%s exact-source binary reproduction failed\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  cmp -s "$expected_binary" "$staging_dir/skidbladnir" || {
+    printf '%s binary differs from the exact release source\n' "$(basename "$archive")" >&2
+    return 1
+  }
   build_info="$(go version -m "$staging_dir/skidbladnir")" || {
     printf '%s binary has no readable Go build identity\n' "$(basename "$archive")" >&2
+    return 1
+  }
+  expected_go_version="$(GOTOOLCHAIN=local go env GOVERSION)" || return 1
+  [[ "${build_info%%$'\n'*}" == "$staging_dir/skidbladnir: $expected_go_version" ]] || {
+    printf '%s binary Go toolchain differs from the checked local toolchain\n' "$(basename "$archive")" >&2
     return 1
   }
   grep -Fqx $'\tbuild\tGOOS='"$goos" <<<"$build_info" || {
@@ -142,6 +184,8 @@ leading zero|v0.02.0|fail
 missing v|0.2.0|fail
 prerelease|v0.2.0-rc1|fail
 minor overflow|v0.1000.0|fail
+minor arithmetic overflow|v0.18446744073709551618.0|fail
+patch arithmetic overflow|v0.0.18446744073709551618|fail
 major overflow|v99999999999999999999.0.0|fail
 initial collision|v0.0.1|fail
 CASES
@@ -160,7 +204,19 @@ CASES
     printf 'Unknown release manifest key was accepted\n' >&2
     return 1
   fi
-  printf 'Release policy passed: 8 tag cases and strict SHA/manifest cases\n'
+  if validate_manifest \
+    '{"platform":"wrong","platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Duplicate release manifest key was accepted\n' >&2
+    return 1
+  fi
+  if validate_manifest \
+    '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Concatenated release manifests were accepted\n' >&2
+    return 1
+  fi
+  printf 'Release policy passed: 10 tag cases and strict SHA/manifest cases\n'
 }
 
 if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
@@ -194,6 +250,7 @@ parse_tag "$tag" || {
   printf 'Release tag must be canonical vMAJOR.MINOR.PATCH with a monotonic Android code\n' >&2
   exit 1
 }
+GOTOOLCHAIN=local "$repo_dir/scripts/check-go-toolchain" >/dev/null
 validate_sha "$sha" || {
   printf 'Release source SHA must be one full lowercase Git SHA-1\n' >&2
   exit 1
