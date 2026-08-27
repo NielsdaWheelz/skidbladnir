@@ -244,8 +244,6 @@ class DashboardChromeInstrumentedTest {
             MaterialTheme {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
-                    refreshing = false,
-                    onRefresh = {},
                 )
             }
         }
@@ -274,46 +272,36 @@ class DashboardChromeInstrumentedTest {
     }
 
     @Test
-    fun theTopBarStaysOneRowWithTheMarkLeadingAndRefreshTrailing() {
+    fun theTopBarKeepsTheMarkLeadingTheTitleOnOneRow() {
         // The mark took 32dp (24dp glyph + 8dp arrangement spacing) out of a row that is a
         // fixed 64dp tall. The equivalent assertions in MultiMachineUiInstrumentedTest sit
         // behind an assumeTrue for provisioned machines, so they do not run on an
-        // unprovisioned device — this composes the bar directly so the crowding is proved
-        // on every run. The trailing control is Refresh: the create action left this row
-        // for the Forge seal (forge-seal.md), and Refresh is the pull-to-refresh delta's
-        // to remove, not this one's.
+        // unprovisioned device — this composes the bar directly so the mark-and-title
+        // geometry is proved on every run.
         compose.setContent {
             MaterialTheme {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
-                    refreshing = false,
-                    onRefresh = {},
                 )
             }
         }
 
-        compose.onNodeWithText("Refresh").assertIsDisplayed()
-
         val bar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
         val mark = compose.onNodeWithTag("dashboard-mark", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val refresh = compose.onNodeWithText("Refresh").getUnclippedBoundsInRoot()
 
         assertTrue(
-            "the trailing control must stay inside the one 64dp row, not be pushed out of " +
-                "it by the mark: bar=$bar refresh=$refresh",
-            refresh.top >= bar.top && refresh.bottom <= bar.bottom,
+            "the mark and title must stay inside the one 64dp row: bar=$bar mark=$mark title=$title",
+            mark.top >= bar.top && mark.bottom <= bar.bottom &&
+                title.top >= bar.top && title.bottom <= bar.bottom,
         )
         assertTrue(
-            "mark, title and the trailing control must share one row rather than stack: " +
-                "mark=$mark title=$title refresh=$refresh",
-            refresh.top < title.bottom && title.top < refresh.bottom &&
-                mark.top < title.bottom && title.top < mark.bottom,
+            "mark and title must share one row rather than stack: mark=$mark title=$title",
+            mark.top < title.bottom && title.top < mark.bottom,
         )
         assertTrue(
-            "reading order across the row is mark, then title, then the trailing control: " +
-                "mark=$mark title=$title refresh=$refresh",
-            mark.right <= title.left && title.right <= refresh.left,
+            "reading order across the row is mark, then title: mark=$mark title=$title",
+            mark.right <= title.left,
         )
     }
 

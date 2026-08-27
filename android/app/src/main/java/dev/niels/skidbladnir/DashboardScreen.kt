@@ -15,6 +15,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,8 +29,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +51,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshState
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -91,103 +99,7 @@ internal var SemanticsPropertyReceiver.machineInventoryObservation by MachineInv
 
 @Composable
 internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: SkidbladnirController) {
-    val machines = state.machines.filter {
-        state.selectedMachine == null || it.machine.handle == state.selectedMachine
-    }
-    val agents = visibleAgents(state.machines, state.selectedMachine)
-    val canForge = machines.any(MachineState::canForge)
-    Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            DashboardTopBar(
-                summary = dashboardSummary(agents.size, machines.size),
-                refreshing = state.refreshing,
-                onRefresh = controller::refresh,
-            )
-
-            MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
-            machines.forEach { machine ->
-                key(machine.machine.handle) {
-                    MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
-                }
-            }
-            state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
-
-            state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
-
-            state.forgeRecovery?.let { recovery ->
-                NoticePanel(
-                    tone = NoticeTone.Armed,
-                    body = when (recovery) {
-                        is ForgeRecovery.RefreshRequired ->
-                            "${labelFor(state.machines, recovery.draft.machineHandle)}: create outcome unknown. Refresh before reviewing this draft."
-                        is ForgeRecovery.ReviewReady ->
-                            "${labelFor(state.machines, recovery.draft.machineHandle)} refreshed. Review its sessions before resuming this draft."
-                    },
-                    actions = if (recovery is ForgeRecovery.ReviewReady) {
-                        {
-                            TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
-                            TextButton(onClick = controller::discardForgeRecovery) { Text("Discard") }
-                        }
-                    } else {
-                        null
-                    },
-                )
-            }
-
-            when {
-                state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
-                    "Provisioning repair required",
-                    "Saved machine credentials are unreadable. Machine administration is outside this app.",
-                    tone = NoticeTone.Failure,
-                )
-                state.machines.isEmpty() -> EmptyState(
-                    "No provisioned machines",
-                    "Install machine credentials outside the app to begin.",
-                )
-                agents.isEmpty() -> dashboardInventoryWaitCopy(machines)?.let {
-                    EmptyState("Sessions not current", it.message, tone = it.tone)
-                } ?: EmptyState(
-                    "No tmux sessions",
-                    "Create a dwarf here, or launch tmux on the visible " +
-                        if (machines.size == 1) "machine." else "machines.",
-                    ornament = true,
-                )
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(170.dp),
-                    modifier = Modifier.fillMaxSize().testTag("agents-grid"),
-                    // Bottom clears the seal: its 16dp margin, its 56dp side,
-                    // and a 12dp gap (forge-seal.md, "Placement and semantics").
-                    contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 84.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(
-                        items = agents,
-                        key = { "${it.target.machineHandle.encoded}:${it.target.session.id}:${it.target.session.identityToken}" },
-                    ) { agent ->
-                        val machineState = state.machines.single { it.machine.handle == agent.target.machineHandle }
-                        AgentCard(
-                            agent,
-                            machineState,
-                            onOpen = { controller.openTerminal(agent.target) },
-                            onKill = { controller.requestKill(agent.target) },
-                        )
-                    }
-                }
-            }
-        }
-
-        // The create affordance left the header for here (forge-seal.md,
-        // "Placement and semantics"): anchored over the grid, and rendered in
-        // every dashboard state including zero machines, where it is cold.
-        // Absence is displayed, not hidden. The 16dp margin is the wrapper's,
-        // not the seal's — padding threaded into ForgeSeal would grow its
-        // semantics bounds past its ink, and the grid's bottom inset below is
-        // measured against those bounds.
-        Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-            ForgeSeal(canForge = canForge, onClick = controller::openForge)
-        }
-    }
+    DashboardMain(state, controller, controller::verifyVisibleInventory)
 
     state.forge?.let { forge ->
         ForgeSheet(forge, state.machines, controller::dismissForge, controller::updateForgeDraft, controller::forge)
@@ -205,10 +117,225 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
 }
 
 @Composable
+internal fun DashboardMain(
+    state: SkidbladnirUiState.Dashboard,
+    controller: SkidbladnirController,
+    onVerify: () -> Unit,
+) {
+    val machines = state.machines.filter {
+        state.selectedMachine == null || it.machine.handle == state.selectedMachine
+    }
+    val agents = visibleAgents(state.machines, state.selectedMachine)
+    val canForge = machines.any(MachineState::canForge)
+    Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            DashboardTopBar(
+                summary = dashboardSummary(agents.size, machines.size),
+            )
+
+            MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
+            machines.forEach { machine ->
+                key(machine.machine.handle) {
+                    MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+                }
+            }
+            state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
+
+            state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
+
+            state.forgeRecovery?.let { recovery ->
+                NoticePanel(
+                    tone = NoticeTone.Armed,
+                    body = forgeRecoveryMessage(state, recovery),
+                    actions = if (recovery is ForgeRecovery.ReviewReady) {
+                        {
+                            TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
+                            TextButton(onClick = controller::discardForgeRecovery) { Text("Discard") }
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+
+            DashboardDwarfCollection(
+                state = state,
+                onVerify = onVerify,
+                onOpen = controller::openTerminal,
+                onKill = controller::requestKill,
+            )
+        }
+
+        // The create affordance left the header for here (forge-seal.md,
+        // "Placement and semantics"): anchored over the grid, and rendered in
+        // every dashboard state including zero machines, where it is cold.
+        // Absence is displayed, not hidden. The 16dp margin is the wrapper's,
+        // not the seal's — padding threaded into ForgeSeal would grow its
+        // semantics bounds past its ink, and the grid's bottom inset below is
+        // measured against those bounds.
+        Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+            ForgeSeal(canForge = canForge, onClick = controller::openForge)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DashboardDwarfCollection(
+    state: SkidbladnirUiState.Dashboard,
+    onVerify: () -> Unit,
+    onOpen: (AgentTarget) -> Unit,
+    onKill: (AgentTarget) -> Unit,
+) {
+    val machines = state.machines.filter {
+        state.selectedMachine == null || it.machine.handle == state.selectedMachine
+    }
+    val agents = visibleAgents(state.machines, state.selectedMachine)
+    val gridState = rememberLazyGridState()
+    val topPadding = PullToRefreshDefaults.PositionalThreshold + 12.dp
+    if (machines.any { it.access == MachineAccess.Ready }) {
+        PullableDwarfCollection(state = state, onVerify = onVerify) {
+            DashboardDwarfGrid(state, machines, agents, gridState, topPadding, onOpen, onKill)
+        }
+    } else {
+        DashboardDwarfGrid(state, machines, agents, gridState, topPadding, onOpen, onKill)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PullableDwarfCollection(
+    state: SkidbladnirUiState.Dashboard,
+    onVerify: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val pullState = rememberPullToRefreshState()
+    PullToRefreshBox(
+        isRefreshing = state.refreshing,
+        onRefresh = {
+            if (!state.refreshing) onVerify()
+        },
+        modifier = Modifier.fillMaxSize(),
+        state = pullState,
+        indicator = {
+            DwarfCollectionPullIndicator(
+                state = pullState,
+                isRefreshing = state.refreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        },
+    ) {
+        content()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DwarfCollectionPullIndicator(
+    state: PullToRefreshState,
+    isRefreshing: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    PullToRefreshDefaults.IndicatorBox(
+        state = state,
+        isRefreshing = isRefreshing,
+        modifier = modifier,
+        containerColor = Color.Transparent,
+        elevation = 0.dp,
+    ) {
+        when {
+            isRefreshing -> CircularProgressIndicator(
+                modifier = Modifier.size(24.dp).semantics {
+                    contentDescription = "Checking tmux sessions"
+                },
+                color = Gold,
+                strokeWidth = 2.dp,
+            )
+            state.distanceFraction > 0f -> CircularProgressIndicator(
+                progress = { state.distanceFraction.coerceIn(0f, 1f) },
+                modifier = Modifier.size(24.dp),
+                color = Gold,
+                strokeWidth = 2.dp,
+                trackColor = Color.Transparent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardDwarfGrid(
+    state: SkidbladnirUiState.Dashboard,
+    machines: List<MachineState>,
+    agents: List<VisibleAgent>,
+    gridState: LazyGridState,
+    topPadding: Dp,
+    onOpen: (AgentTarget) -> Unit,
+    onKill: (AgentTarget) -> Unit,
+) {
+    val bottomPadding = 84.dp
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(170.dp),
+            modifier = Modifier.fillMaxSize().testTag("agents-grid"),
+            state = gridState,
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                top = topPadding,
+                end = 12.dp,
+                bottom = bottomPadding,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (agents.isEmpty()) {
+                item(
+                    key = "dashboard-empty-state",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
+                        when {
+                            state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
+                                "Provisioning repair required",
+                                "Saved machine credentials are unreadable. Machine administration is outside this app.",
+                                tone = NoticeTone.Failure,
+                            )
+                            state.machines.isEmpty() -> EmptyState(
+                                "No provisioned machines",
+                                "Install machine credentials outside the app to begin.",
+                            )
+                            else -> dashboardInventoryWaitCopy(machines)?.let {
+                                EmptyState("Sessions not current", it.message, tone = it.tone)
+                            } ?: EmptyState(
+                                "No tmux sessions",
+                                "Create a dwarf here, or launch tmux on the visible " +
+                                    if (machines.size == 1) "machine." else "machines.",
+                                ornament = true,
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(
+                    items = agents,
+                    key = { "${it.target.machineHandle.encoded}:${it.target.session.id}:${it.target.session.identityToken}" },
+                ) { agent ->
+                    val machineState = state.machines.single { it.machine.handle == agent.target.machineHandle }
+                    AgentCard(
+                        agent,
+                        machineState,
+                        onOpen = { onOpen(agent.target) },
+                        onKill = { onKill(agent.target) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun DashboardTopBar(
     summary: String,
-    refreshing: Boolean,
-    onRefresh: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -242,9 +369,6 @@ internal fun DashboardTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        TextButton(onClick = onRefresh, enabled = !refreshing) {
-            Text(if (refreshing) "Reading…" else "Refresh")
-        }
     }
 }
 
@@ -270,7 +394,11 @@ private fun MachineFilters(
     onSelect: (MachineHandle?) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .testTag("machine-filters"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FilterChip(
@@ -942,7 +1070,8 @@ internal fun KillConfirmation(
             Text(when {
                 state.pending -> "The exact tmux lifetime on ${state.machine.label.text} is being killed."
                 !actionAdmissible ->
-                    "${state.machine.label.text} inventory is not fresh. Kill is disabled; cancel and refresh."
+                    "${state.machine.label.text} inventory is not fresh. Kill is disabled. " +
+                        "Cancel, return to Dwarves, then pull down to check again."
                 else -> "This kills only the confirmed tmux lifetime on ${state.machine.label.text}. It cannot be undone."
             })
         },
@@ -1038,8 +1167,34 @@ private fun pressureReasonLabel(reason: PressureReason): String = when (reason) 
     PressureReason.IoPsi -> "I/O pressure"
 }
 
-private fun labelFor(machines: List<MachineState>, handle: MachineHandle): String =
-    machines.singleOrNull { it.machine.handle == handle }?.machine?.label?.text ?: "Machine"
+internal fun forgeRecoveryMessage(
+    dashboard: SkidbladnirUiState.Dashboard,
+    recovery: ForgeRecovery,
+): String {
+    val target = dashboard.machines.singleOrNull {
+        it.machine.handle == recovery.draft.machineHandle
+    }
+    val label = target?.machine?.label?.text ?: "Machine"
+    return when (recovery) {
+        is ForgeRecovery.RefreshRequired -> {
+            val repair = when (target?.access) {
+                null, MachineAccess.IdentityChanged ->
+                    "Provisioning repair is required before reviewing this draft."
+                MachineAccess.AuthRequired -> "Update bearer before reviewing this draft."
+                MachineAccess.Ready -> if (
+                    dashboard.selectedMachine == null || dashboard.selectedMachine == target.machine.handle
+                ) {
+                    "Pull down to check again before reviewing this draft."
+                } else {
+                    "Select $label, then pull down to check again before reviewing this draft."
+                }
+            }
+            "$label: create outcome unknown. $repair"
+        }
+        is ForgeRecovery.ReviewReady ->
+            "$label refreshed. Review its sessions before resuming this draft."
+    }
+}
 
 internal fun dashboardSummary(sessionCount: Int, machineCount: Int): String =
     "$sessionCount tmux ${if (sessionCount == 1) "session" else "sessions"} across " +

@@ -52,10 +52,9 @@ dwarf` header action. That conflict is unavoidable and resolves by hand to
 P2R's pull-to-refresh prose plus D5's Forge-seal sentence, with the header
 described as title and summary only.
 
-Neither delta deletes `DashboardTopBar`. It stays a real composable while either
-button lives in it: after D5 alone it is the title block plus `Refresh`. Once
-both have landed it is a title block, and inlining it is a one-line cleanup
-owned by whichever merges second.
+Neither delta deletes `DashboardTopBar`. After both land it remains the fixed
+64dp title-and-summary block; D8's mark composes there, while verification and
+the create action live outside it.
 
 ## Scope
 
@@ -177,7 +176,7 @@ reports a fact the app holds (`MachineState.canForge`), never activity.
 ```text
 Box(fillMaxSize, Ink, systemBarsPadding)
 |- Column(fillMaxSize)
-|  |- title + summary            <- inlined; no click surface, no fixed height
+|  |- DashboardTopBar            <- title + summary; fixed 64dp; no click surface
 |  |- MachineFilters / MachineStrip* / notices / recovery
 |  `- PullToRefreshBox           <- P2R
 |     `- LazyVerticalGrid        <- contentPadding bottom 84dp

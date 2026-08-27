@@ -41,6 +41,7 @@ S1 tmux control plane
  -> v0 design delta D8: the Hlíðskjálf mark
  -> v0 design delta D6: destructive and notice chrome
  -> v0 design delta D5: the Forge seal
+ -> v0 dashboard pull-to-refresh delta
  -> v0.5 (optional): push
 ```
 
@@ -323,13 +324,12 @@ platform pass.
 Outcome: the create action leaves the dashboard header and becomes a
 bottom-trailing 56dp octagonal control carrying the unstruck seal — the D3
 seal with every trait at zero — lit when a machine can create and cold when
-none can. Scope per [forge-seal.md](forge-seal.md). It shares the header with
-the dashboard pull-to-refresh delta, which owns the other button; the two split
-by concern — pull-to-refresh owns the refresh gesture and the inventory intent,
-D5 owns the dashboard's action chrome — and each proves only its own half, so
-the code merges in either order. Gate: routine verification plus one separately
-approved platform pass; the mark's legibility and the lit/cold glance are
-hands-on and stay `NOT_RUN` until approved.
+none can. Scope per [forge-seal.md](forge-seal.md). It composes with the
+dashboard pull-to-refresh delta by concern: pull-to-refresh owns the
+collection gesture and inventory intent, D5 owns the dashboard's action chrome,
+and each proves only its own half. Gate: routine verification plus one
+separately approved platform pass; the mark's legibility and the lit/cold
+glance are hands-on and stay `NOT_RUN` until approved.
 
 ## v0 product-language delta — dwarves
 
@@ -414,6 +414,32 @@ ornament drift gate, routine verification, and the next separately approved
 platform pass plus one hands-on 18dp glance for rendered-device confirmation.
 Scope per [hlidskjalf-mark.md](hlidskjalf-mark.md).
 
+## v0 dashboard pull-to-refresh delta
+
+Outcome: the dashboard removes its header `Refresh` action and makes standard
+pull-to-refresh over the dwarf collection the sole manual inventory shortcut.
+
+- `All` targets every live machine poller; a machine filter targets only that
+  machine. Pressure, mutations, and terminal input remain outside the intent.
+- Empty and populated states share one lazy collection. Fixed chrome stays in
+  place and the last snapshot remains visible while checking.
+- An awaited monotonic inventory-read sequence prevents a pre-pull poll result
+  from finishing a newer pull; the existing per-machine coalescing lane owns
+  the one required trailing read.
+- No tap, overflow, contextual Retry, fallback, old controller alias, or second
+  empty-state body remains.
+- Forge recovery names pull only for a ready target in scope; otherwise it
+  names the required filter, bearer, or external provisioning repair first.
+
+Red: pure target-selection and awaited-read ordering proof, then real Compose
+gesture/header behavior on the approved S22+ runtime.
+
+Acceptance: routine verification, one separately approved S22+ platform pass,
+and one hands-on pull confirming native threshold/resistance, stable viewport,
+and no essential first-row text or control obscured by the indicator. Gateway,
+tmux, and transport boundaries are
+unchanged and require no integration or live gate.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -446,4 +472,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D7 — the launcher mark | Implemented; all three generator reds observed, then green; routine verification (static, build, unit) green, the ornament drift gate green over five generated files; the approved S22+ platform gate green at `OK (34 tests)`, the instrumented monochrome proof among them, run on the D7 branch before it merged D6 and D8 and not re-run on the merged tree; the hands-on launcher glance `NOT_RUN` |
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
+| v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27; merged 45-test platform and hands-on native threshold/resistance/viewport checks `NOT_RUN` |
 | v0.5 push | Not scheduled |

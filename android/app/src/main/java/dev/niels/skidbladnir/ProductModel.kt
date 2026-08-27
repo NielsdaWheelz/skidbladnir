@@ -459,11 +459,12 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
             MachineNotice("$label: confirming the latest tmux inventory. Actions disabled.", tone)
         MachineAvailability.Reading -> MachineNotice("$label: reading tmux sessions.", tone)
         is MachineAvailability.Stale -> MachineNotice(
-            "$label: ${gatewayFailureMessage(availability.cause)} Prior sessions are STALE; actions disabled.",
+            "$label: ${gatewayFailureMessage(availability.cause)} Prior sessions are STALE; actions disabled. " +
+                "Pull down to check again.",
             tone,
         )
         is MachineAvailability.Unavailable ->
-            MachineNotice("$label: ${gatewayFailureMessage(availability.cause)}", tone)
+            MachineNotice("$label: ${gatewayFailureMessage(availability.cause)} Pull down to check again.", tone)
         MachineAvailability.Ready -> when (machine.pressure) {
             is PressureState.Stale ->
                 MachineNotice("$label: pressure is STALE. Sessions remain current.", tone)
@@ -485,6 +486,15 @@ internal fun machineStateTag(machine: MachineState): String = when (machineAvail
 }
 
 internal data class VisibleAgent(val machine: PairedMachine, val target: AgentTarget)
+
+internal fun visibleInventoryTargets(
+    liveMachineHandles: Collection<MachineHandle>,
+    selectedMachine: MachineHandle?,
+): Set<MachineHandle> = when {
+    selectedMachine == null -> liveMachineHandles.toSet()
+    selectedMachine in liveMachineHandles -> setOf(selectedMachine)
+    else -> emptySet()
+}
 
 internal fun visibleAgents(machines: List<MachineState>, selectedMachine: MachineHandle?): List<VisibleAgent> = machines
     .asSequence()

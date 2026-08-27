@@ -247,36 +247,64 @@ private data class CreatedTerminalAdmission(
     val requiredMutationFence: Long,
 )
 
+internal data class PollRun(val sequence: Long, val startsNow: Boolean)
+
 internal class CoalescingPollLane {
-    private var inFlight = false
-    private var trailingRequired = false
+    private var activeSequence: Long? = null
+    private var trailingSequence: Long? = null
+    private var nextSequence = 1L
 
     @Synchronized
-    fun tryStart(requireTrailing: Boolean = false): Boolean {
-        if (!inFlight) {
-            inFlight = true
-            return true
+    fun request(requireTrailing: Boolean = false): PollRun? {
+        if (activeSequence == null) {
+            val sequence = nextSequence++
+            activeSequence = sequence
+            return PollRun(sequence, startsNow = true)
         }
-        if (requireTrailing) trailingRequired = true
-        return false
+        if (!requireTrailing) return null
+        val sequence = trailingSequence ?: nextSequence++.also { trailingSequence = it }
+        return PollRun(sequence, startsNow = false)
     }
 
     @Synchronized
-    fun finish(): Boolean {
-        check(inFlight)
-        if (trailingRequired) {
-            trailingRequired = false
-            return true
+    fun finish(completedSequence: Long): PollRun? {
+        check(activeSequence == completedSequence)
+        val trailing = trailingSequence
+        if (trailing != null) {
+            activeSequence = trailing
+            trailingSequence = null
+            return PollRun(trailing, startsNow = true)
         }
-        inFlight = false
-        return false
+        activeSequence = null
+        return null
     }
 
     @Synchronized
     fun abort() {
-        inFlight = false
-        trailingRequired = false
+        activeSequence = null
+        trailingSequence = null
     }
+}
+
+internal class AwaitedInventoryReads {
+    private val requiredSequenceByMachine = mutableMapOf<MachineHandle, Long>()
+
+    val isActive: Boolean get() = requiredSequenceByMachine.isNotEmpty()
+
+    fun requireRead(handle: MachineHandle, sequence: Long) {
+        val current = requiredSequenceByMachine[handle]
+        check(current == null || sequence >= current)
+        requiredSequenceByMachine[handle] = sequence
+    }
+
+    fun readLanded(handle: MachineHandle, completedSequence: Long) {
+        val required = requiredSequenceByMachine[handle] ?: return
+        if (completedSequence >= required) requiredSequenceByMachine.remove(handle)
+    }
+
+    fun stop(handle: MachineHandle) { requiredSequenceByMachine.remove(handle) }
+
+    fun clear() { requiredSequenceByMachine.clear() }
 }
 
 internal class InventoryOperationLane(
@@ -327,6 +355,26 @@ internal class InventoryOperationLane(
             } catch (defect: RuntimeException) {
                 onDefect(defect)
             }
+        }
+    }
+}
+
+internal fun submitCoalescedInventoryRead(
+    operations: InventoryOperationLane,
+    polls: CoalescingPollLane,
+    initialRun: PollRun,
+    read: (PollRun, Long) -> Unit,
+) {
+    operations.submitRead { completedMutationFence ->
+        try {
+            read(initialRun, completedMutationFence)
+            val trailing = polls.finish(initialRun.sequence)
+            if (trailing != null) {
+                submitCoalescedInventoryRead(operations, polls, trailing, read)
+            }
+        } catch (defect: RuntimeException) {
+            polls.abort()
+            throw defect
         }
     }
 }
@@ -465,12 +513,8 @@ internal class SkidbladnirController(context: Context) {
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = MachineInventoryOperations(network, ::surfaceDefect)
 
-    /**
-     * Machines whose inventory the operator is waiting on: the app-wide read indicator has exactly
-     * one owner, set when a read is admitted and cleared when that machine's read lands or its
-     * polling stops. Main thread only.
-     */
-    private val refreshingMachines = mutableSetOf<MachineHandle>()
+    /** Main-thread owner of the app-wide inventory-read indicator. */
+    private val awaitedInventoryReads = AwaitedInventoryReads()
     private var pendingDashboardNotice: String? = null
     private var retainedStoredMachineForgeCarry: ForgeCarry? = null
     @Volatile private var foreground = false
@@ -485,7 +529,7 @@ internal class SkidbladnirController(context: Context) {
         if (foreground) return
         foreground = true
         val activeGeneration = ++generation
-        refreshingMachines.clear()
+        awaitedInventoryReads.clear()
         val storedMachineRead = beginStoredMachineRead(
             state = state,
             currentCredentials = credentials.values,
@@ -523,7 +567,6 @@ internal class SkidbladnirController(context: Context) {
                 }
                 reconciled.filter { it.machine.access == MachineAccess.Ready }.forEach {
                     startPolling(it.credential.machine.handle, activeGeneration)
-                    refreshingMachines += it.credential.machine.handle
                 }
                 publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
             }
@@ -539,10 +582,13 @@ internal class SkidbladnirController(context: Context) {
             runtime.pressureFuture?.cancel(false)
         }
         polling.clear()
-        refreshingMachines.clear()
+        awaitedInventoryReads.clear()
         leaveTerminal()
-        val current = state
-        if (current is SkidbladnirUiState.Terminal) publishDashboard()
+        when (val current = state) {
+            is SkidbladnirUiState.Dashboard -> state = current.copy(refreshing = awaitedInventoryReads.isActive)
+            is SkidbladnirUiState.Terminal -> publishDashboard()
+            SkidbladnirUiState.Booting, is SkidbladnirUiState.BearerRepair -> Unit
+        }
     }
 
     fun close() {
@@ -668,7 +714,6 @@ internal class SkidbladnirController(context: Context) {
             PressureState.Reading,
         )
         startPolling(handle, activeGeneration)
-        refreshingMachines += handle
         publishDashboard()
     }
 
@@ -678,19 +723,17 @@ internal class SkidbladnirController(context: Context) {
         state = current.copy(selectedMachine = handle)
     }
 
-    fun refresh() {
+    fun verifyVisibleInventory() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val activeGeneration = generation
         // Only machines that still own live polling work can be refreshed; a machine whose access
         // failed says so instead of silently dropping the request.
-        val targets = polling.keys.filter { current.selectedMachine == null || it == current.selectedMachine }
-        targets.forEach { handle ->
-            requestPressure(handle, activeGeneration)
-            awaitInventory(handle, activeGeneration)
-        }
+        val targets = visibleInventoryTargets(polling.keys, current.selectedMachine)
+        var requested = false
+        targets.forEach { handle -> if (awaitInventory(handle, activeGeneration)) requested = true }
         state = current.copy(
-            refreshing = refreshingMachines.isNotEmpty(),
-            notice = if (targets.any(refreshingMachines::contains)) {
+            refreshing = awaitedInventoryReads.isActive,
+            notice = if (requested) {
                 null
             } else {
                 unrefreshableNotice(current.selectedMachine)
@@ -773,23 +816,25 @@ internal class SkidbladnirController(context: Context) {
                     if (acceptAccessFailure(credential.machine.handle, result.failure)) return@post
                     val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
                     val activeForge = dashboard.forge ?: return@post
+                    awaitInventory(credential.machine.handle, activeGeneration)
                     if (createFailureIsDefinitive(result.failure)) {
                         clearInventoryRefresh(credential.machine.handle)
                         state = dashboard.copy(
                             machines = sortedMachineStates(),
+                            refreshing = awaitedInventoryReads.isActive,
                             forge = activeForge.copy(pending = false, error = machineError(credential.machine, result.failure)),
                         )
                     } else {
                         markInventoryFailed(credential.machine.handle, result.failure)
                         state = dashboard.copy(
                             machines = sortedMachineStates(),
+                            refreshing = awaitedInventoryReads.isActive,
                             forge = null,
                             forgeRecovery = ForgeRecovery.RefreshRequired(
                                 checkNotNull(activeForge.form.submission()),
                             ),
                         )
                     }
-                    awaitInventory(credential.machine.handle, activeGeneration)
                 }
             }
         }
@@ -957,7 +1002,7 @@ internal class SkidbladnirController(context: Context) {
     fun detachToAgents() {
         leaveTerminal()
         publishDashboard()
-        refresh()
+        verifyVisibleInventory()
     }
 
     fun requestKill(target: AgentTarget) {
@@ -1024,10 +1069,11 @@ internal class SkidbladnirController(context: Context) {
                     is GatewayResult.Failure -> {
                         if (acceptAccessFailure(kill.target.machineHandle, result.failure)) return@post
                         leaveTerminal()
-                        val message = if (killFailureIsDefinitive(result.failure)) {
-                            machineError(kill.machine, result.failure)
-                        } else {
-                            "${kill.machine.label.text}: kill outcome unknown. Sessions are refreshing."
+                        val message = when {
+                            result.failure == GatewayFailure.Api(ApiErrorCode.SessionIdentityMismatch) ->
+                                "${kill.machine.label.text}: the session changed. Pull down to check again before killing it."
+                            killFailureIsDefinitive(result.failure) -> machineError(kill.machine, result.failure)
+                            else -> "${kill.machine.label.text}: kill outcome unknown. Sessions are refreshing."
                         }
                         markInventoryFailed(kill.target.machineHandle, result.failure)
                         awaitInventory(kill.target.machineHandle, activeGeneration)
@@ -1044,11 +1090,12 @@ internal class SkidbladnirController(context: Context) {
             inventoryOperation = inventoryOperations.forMachine(handle),
         )
         polling[handle] = runtime
+        awaitInventory(handle, activeGeneration)
         // justify-polling: tmux and host pressure expose no push inventory; the product fixes a five-second
         // foreground cadence, coalesces overlaps, and stopPolling cancels both schedules on loss/background.
         runtime.inventoryFuture = scheduler.scheduleAtFixedRate(
             { requestInventory(handle, activeGeneration) },
-            0,
+            MACHINE_POLL_CADENCE.toMillis(),
             MACHINE_POLL_CADENCE.toMillis(),
             TimeUnit.MILLISECONDS,
         )
@@ -1061,46 +1108,53 @@ internal class SkidbladnirController(context: Context) {
     }
 
     private fun stopPolling(handle: MachineHandle) {
-        refreshingMachines.remove(handle)
+        awaitedInventoryReads.stop(handle)
         polling.remove(handle)?.let { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
         }
     }
 
-    /** Requests an inventory read and, when one was admitted, shows the operator it is in flight. */
-    private fun awaitInventory(handle: MachineHandle, activeGeneration: Long) {
-        if (requestInventory(handle, activeGeneration, requireTrailing = true)) refreshingMachines += handle
+    /** Requests an inventory read and keeps its post-request sequence visible until it lands. */
+    private fun awaitInventory(handle: MachineHandle, activeGeneration: Long): Boolean {
+        val requiredSequence = requestInventory(handle, activeGeneration, requireTrailing = true) ?: return false
+        awaitedInventoryReads.requireRead(handle, requiredSequence)
+        return true
     }
 
-    /** Returns whether a read that will publish a result was admitted for this machine. */
+    /** Returns the admitted or coalesced sequence that will publish a result for this machine. */
     private fun requestInventory(
         handle: MachineHandle,
         activeGeneration: Long,
         requireTrailing: Boolean = false,
-    ): Boolean {
-        val runtime = polling[handle] ?: return false
-        val credential = credentials[handle] ?: return false
-        if (!runtime.inventory.tryStart(requireTrailing)) return requireTrailing
-        runtime.inventoryOperation.submitRead { completedMutationFence ->
-            try {
-                do {
-                    pollInventory(credential, activeGeneration, completedMutationFence)
-                } while (runtime.inventory.finish())
-            } catch (defect: RuntimeException) {
-                runtime.inventory.abort()
-                throw defect
+    ): Long? {
+        val runtime = polling[handle] ?: return null
+        val credential = credentials[handle] ?: return null
+        val requested = runtime.inventory.request(requireTrailing) ?: return null
+        if (requested.startsNow) {
+            submitCoalescedInventoryRead(runtime.inventoryOperation, runtime.inventory, requested) { run, completedMutationFence ->
+                pollInventory(
+                    credential,
+                    activeGeneration,
+                    completedMutationFence,
+                    runtime,
+                    run.sequence,
+                )
             }
         }
-        return true
+        return requested.sequence
     }
 
     private fun requestPressure(handle: MachineHandle, activeGeneration: Long) {
         val runtime = polling[handle] ?: return
         val credential = credentials[handle] ?: return
-        if (!runtime.pressure.tryStart()) return
+        val run = runtime.pressure.request() ?: return
         executeNetwork {
-            try { pollPressure(credential, activeGeneration) } finally { runtime.pressure.finish() }
+            try {
+                pollPressure(credential, activeGeneration)
+            } finally {
+                runtime.pressure.finish(run.sequence)
+            }
         }
     }
 
@@ -1108,13 +1162,16 @@ internal class SkidbladnirController(context: Context) {
         credential: MachineCredential,
         activeGeneration: Long,
         completedMutationFence: Long,
+        runtime: PollRuntime,
+        completedReadSequence: Long,
     ) {
         val result = client.listSessions(credential)
         val receivedAt = SystemClock.elapsedRealtime()
         main.post {
             if (!isCredentialActive(activeGeneration, credential)) return@post
             val handle = credential.machine.handle
-            refreshingMachines.remove(handle)
+            if (polling[handle] !== runtime) return@post
+            awaitedInventoryReads.readLanded(handle, completedReadSequence)
             val machine = machineStates[handle]
             if (machine != null && machine.access == MachineAccess.Ready &&
                 mutationFenceSatisfied(machine.inventory, completedMutationFence)
@@ -1209,14 +1266,14 @@ internal class SkidbladnirController(context: Context) {
                 current,
                 machines,
                 handle,
-                refreshing = refreshingMachines.isNotEmpty(),
+                refreshing = awaitedInventoryReads.isActive,
             )
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()
                 state = dashboardAfterTerminalAccessLoss(
                     current,
                     machines,
-                    refreshing = refreshingMachines.isNotEmpty(),
+                    refreshing = awaitedInventoryReads.isActive,
                 )
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
@@ -1294,7 +1351,7 @@ internal class SkidbladnirController(context: Context) {
         val carry = forgeCarry(current)
         state = current.copy(
             machines = sortedMachineStates(),
-            refreshing = refreshingMachines.isNotEmpty(),
+            refreshing = awaitedInventoryReads.isActive,
             forge = carry.forge,
             forgeRecovery = advanceForgeRecovery(carry.recovery, machineStates.values),
         )
@@ -1309,7 +1366,7 @@ internal class SkidbladnirController(context: Context) {
         state = SkidbladnirUiState.Dashboard(
             machines = sortedMachineStates(),
             selectedMachine = (state as? SkidbladnirUiState.Dashboard)?.selectedMachine,
-            refreshing = refreshingMachines.isNotEmpty(),
+            refreshing = awaitedInventoryReads.isActive,
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,

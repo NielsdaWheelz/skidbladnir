@@ -173,8 +173,8 @@ Red (each observed failing first, at the shipped `gap = 0.10`):
    button still announces exactly `Back to Dwarves`, and the mark dims with the
    button rather than staying at full strength (a pixel proof — the reason the
    mark takes `LocalContentColor`).
-7. `DashboardChromeInstrumentedTest`: mark, title and create action still share
-   one 64 dp row in that reading order after the mark took 32 dp out of it.
+7. `DashboardChromeInstrumentedTest`: mark and title still share one 64 dp row
+   in that reading order after the mark took 32 dp out of it.
 
 Both `OrnamentTest` proofs are pure JVM geometry over the checked-in `Valknut`
 constant and `ValknutStrokeRatio`, so they hold the invariant rather than a
@@ -196,10 +196,10 @@ drift gate, build, unit) plus the instrumented suite, both green on the
 physical S22+.
 
 The row-crowding half of the old hands-on note is now automated rather than
-deferred: `theTopBarStaysOneRowWithTheMarkLeadingAndCreateStillTrailing`
-composes `DashboardTopBar` directly and proves mark, title and create action
-share one 64 dp row in that reading order. It does not sit behind the
-`assumeTrue` for provisioned machines that gates the equivalent assertions in
+deferred: `theTopBarKeepsTheMarkLeadingTheTitleOnOneRow` composes
+`DashboardTopBar` directly and proves mark and title share one 64 dp row in
+that reading order. It does not sit behind the `assumeTrue` for provisioned
+machines that gates the equivalent assertions in
 `MultiMachineUiInstrumentedTest`, so it runs on every device.
 
 What stays hands-on and is not claimed here: whether the weave reads as three
