@@ -241,12 +241,15 @@ fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
 Signal age begins at the host's own `observedAt - signalAt` and then advances
 with Android monotonic time; host clocks are never compared to each other.
-The dashboard header is one compact row with Refresh and the trailing primary
-`New dwarf` action. Each pressure strip preserves the full v0 presentation:
-current supported metric values, a categorical severity history covering up to
-15 minutes, explicit missing inputs, explicit platform-unsupported metrics,
-and current pressure reasons. Stale pressure preserves and labels those last
-details; unsupported and missing are never conflated.
+The dashboard header is one compact row carrying the title, the machine
+summary, and Refresh. The primary `New dwarf` action is the Forge seal, a
+bottom-trailing octagonal control over the grid; it is lit when a machine
+can create and cold when none can. Each pressure strip preserves the full v0
+presentation: current supported metric values, a categorical severity
+history covering up to 15 minutes, explicit missing inputs, explicit
+platform-unsupported metrics, and current pressure reasons. Stale pressure
+preserves and labels those last details; unsupported and missing are never
+conflated.
 
 ### Attention
 

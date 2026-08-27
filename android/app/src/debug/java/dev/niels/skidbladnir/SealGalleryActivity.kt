@@ -45,6 +45,22 @@ class SealGalleryActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
+                        // The unstruck seal leads the catalogue so both
+                        // acceptance comparisons are side-by-side rather than
+                        // from memory: struck against unstruck, and lit against
+                        // cold (forge-seal.md, "Acceptance and 80/20 gates").
+                        items(listOf(true, false), key = { "unstruck-$it" }) { lit ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                ForgeSeal(canForge = lit, onClick = {})
+                                Text(
+                                    text = if (lit) "unstruck lit" else "unstruck cold",
+                                    color = Muted,
+                                    fontSize = 11.sp,
+                                    fontFamily = NidavellirType.Data,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                        }
                         items(entries, key = { it.key }) { entry ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 DwarfPortrait(

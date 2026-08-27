@@ -38,6 +38,7 @@ S1 tmux control plane
  -> v0 design delta D3: dwarf seals
  -> v0 design delta D4: ornament
  -> v0 product-language delta: dwarves
+ -> v0 design delta D5: the Forge seal
  -> v0.5 (optional): push
 ```
 
@@ -257,11 +258,12 @@ S22+ platform gate.
 
 ## v0 design deltas — Niðavellir adoption
 
-[`design-language.md`](design-language.md) owns the visual identity these four
+[`design-language.md`](design-language.md) owns the visual identity these five
 deltas adopt; each delta has its own implementation-boundary spec, red proofs,
-and gates, and lands as its own change. Order is D1 → D2 → D3 → D4: D1 is
-independent; D2 creates the token system D3 and D4 consume. No gateway, tmux,
-public API, or input-semantics work appears anywhere in D1–D4.
+and gates, and lands as its own change. Order is D1 → D2 → D3 → D4 → D5: D1 is
+independent; D2 creates the token system D3, D4, and D5 consume; D5 is late
+because it reshapes the dashboard chrome D2–D4 established. No gateway, tmux,
+public API, or input-semantics work appears anywhere in D1–D5.
 
 ### D1 — terminal theme
 
@@ -294,6 +296,18 @@ mark, and the adaptive app icon.
 Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
 verification plus icon/ornament checks folded into the next approved platform
 pass.
+
+### D5 — the Forge seal
+
+Outcome: the create action leaves the dashboard header and becomes a
+bottom-trailing 56dp octagonal control carrying the unstruck seal — the D3
+seal with every trait at zero — lit when a machine can create and cold when
+none can. Scope per [forge-seal.md](forge-seal.md). Sequenced after the
+dashboard pull-to-refresh delta, which owns the header's other button; the two
+split by concern, pull-to-refresh owning the refresh gesture and inventory
+intent and D5 owning the dashboard's action chrome. Gate: routine verification
+plus one separately approved platform pass; the mark's legibility and the
+lit/cold glance are hands-on and stay `NOT_RUN` until approved.
 
 ## v0 product-language delta — dwarves
 
@@ -344,4 +358,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
+| v0 design delta D5 — the Forge seal | Implemented; routine verification and the 35-test instrumented S22+ suite green (up from 33 — the lit and cold seal proofs); the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0.5 push | Not scheduled |

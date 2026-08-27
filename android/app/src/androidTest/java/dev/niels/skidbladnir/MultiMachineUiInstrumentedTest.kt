@@ -11,13 +11,17 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onChildren
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.semantics.getOrNull
@@ -39,7 +43,7 @@ class MultiMachineUiInstrumentedTest {
     val compose = createEmptyComposeRule()
 
     @Test
-    fun compactDashboardTopBarOwnsTheCreateActionWithoutMachineAdministration() {
+    fun theDashboardHeaderKeepsItsTitleWithoutACreateAffordanceOrMachineAdministration() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContent {
@@ -48,9 +52,7 @@ class MultiMachineUiInstrumentedTest {
                             DashboardTopBar(
                                 summary = "4 tmux sessions across 2 machines",
                                 refreshing = false,
-                                canForge = true,
                                 onRefresh = {},
-                                onNewAgent = {},
                             )
                             UnreadableMachineStrip(
                                 UnreadableStoredMachine(),
@@ -60,22 +62,18 @@ class MultiMachineUiInstrumentedTest {
                 }
             }
             compose.onNodeWithTag("dashboard-top-bar").assertIsDisplayed()
-            compose.onNodeWithTag("new-agent").assertIsDisplayed().assertIsEnabled()
-            compose.onNodeWithText("Dwarves").assertIsDisplayed()
-            compose.onNodeWithText("New dwarf").assertIsDisplayed()
+            // Read through the tag, not the word: "dashboard-title" survives this
+            // delta (forge-seal.md, "Hard cut and cleanup") and this is its reader,
+            // so the tag cannot rot into an unreferenced constant.
+            compose.onNodeWithTag("dashboard-title", useUnmergedTree = true)
+                .onChildren()
+                .filterToOne(hasText("Dwarves"))
+                .assertIsDisplayed()
 
-            val topBar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
-            val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
-            val newAgent = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
-            assertTrue(
-                "the dashboard top bar is not one row: New dwarf sits outside the bar",
-                newAgent.top >= topBar.top && newAgent.bottom <= topBar.bottom,
-            )
-            assertTrue(
-                "the dashboard top bar stacks its title above New dwarf instead of sharing one row",
-                newAgent.top < title.bottom && title.top < newAgent.bottom,
-            )
-            assertTrue("New dwarf does not trail the dashboard title", newAgent.left >= title.right)
+            // The create action left the header for the Forge seal (forge-seal.md,
+            // "Hard cut and cleanup"), which is anchored over the grid, not here.
+            compose.onNodeWithTag("new-agent").assertDoesNotExist()
+            compose.onNodeWithText("New dwarf").assertDoesNotExist()
 
             compose.onNodeWithText("Add machine").assertDoesNotExist()
             compose.onNodeWithText("Rename").assertDoesNotExist()
@@ -287,6 +285,49 @@ class MultiMachineUiInstrumentedTest {
                     compose.onNodeWithTag(cardTag(target)).assertIsDisplayed()
                     compose.onNodeWithTag(cardPillTag(target), useUnmergedTree = true)
                         .assertTextEquals(credential.machine.label.text)
+                }
+
+                // The create affordance is the Forge seal now: one node, anchored over
+                // the grid's bottom trailing corner (forge-seal.md, "Placement and
+                // semantics").
+                compose.onAllNodesWithTag("new-agent").assertCountEquals(1)
+                val root = compose.onRoot().getUnclippedBoundsInRoot()
+                val seal = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
+                assertTrue(
+                    "the Forge seal is not in the dashboard's bottom trailing quadrant: seal=$seal root=$root",
+                    seal.left >= (root.left + root.right) / 2f && seal.top >= (root.top + root.bottom) / 2f,
+                )
+                // What follows proves only that the seal is drawn clear of the cards this
+                // journey happens to render: with two healthy pairings the grid holds a
+                // handful of real sessions and never scrolls, so it does not exercise the
+                // 84dp bottom contentPadding. That the last row of a *full* grid clears the
+                // seal is the hands-on glance (forge-seal.md, "Acceptance"). The card
+                // scrolled to is asserted displayed first, so an empty grid fails loudly
+                // instead of passing an empty loop. The count itself is deliberately not
+                // pinned: the grid is lazy, so only composed cards reach the semantics
+                // tree and a full inventory would legitimately render fewer.
+                val lastTarget = targets.getValue(second)
+                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(lastTarget)))
+                compose.onNodeWithTag(cardTag(lastTarget)).assertIsDisplayed()
+                // One atomic fetch of both sides. Indexing a node collection re-runs
+                // the query per subscript, and this journey polls two live gateways —
+                // a poll landing between iterations changes the composed card set and
+                // the whole approved device pass dies on an index, not on a defect.
+                val sealRect = compose.onNodeWithTag("new-agent").fetchSemanticsNode().boundsInRoot
+                val cardRects = compose.onAllNodes(hasTagPrefix("agent-card-"))
+                    .fetchSemanticsNodes()
+                    .map { it.boundsInRoot }
+                assertTrue(
+                    "the grid rendered no session cards, so their bounds can say nothing about " +
+                        "the seal",
+                    cardRects.isNotEmpty(),
+                )
+                cardRects.forEach { card ->
+                    assertTrue(
+                        "the Forge seal is drawn over a session card: card=$card seal=$sealRect",
+                        card.bottom <= sealRect.top || card.top >= sealRect.bottom ||
+                            card.right <= sealRect.left || card.left >= sealRect.right,
+                    )
                 }
 
                 compose.onNodeWithTag("new-agent").performClick()

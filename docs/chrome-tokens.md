@@ -143,15 +143,18 @@ Unknown→Muted`.
   Gold-fill/Gold-content as today. Geometry (48dp/8dp), order, semantics,
   spoken state, and enablement per the key-deck spec — unchanged.
 - **Interaction states**: pressed/focus/hover/dragged use the StateLayer
-  alphas as Bone over the component surface. The session card adopts one
-  shared angular indication — an inset copy of its own cut outline at
-  pressed alpha via a single `IndicationNodeFactory` implementation
-  (`AngularIndication.kt`). This requires a structural change this delta
+  alphas as Bone over the component surface. Pressed components adopt the
+  angular indication — an inset copy of the pressed component's own cut
+  outline at pressed alpha, via one `IndicationNodeFactory` implementation
+  (`AngularIndication.kt`) that takes the shape it is cut to, so the flash
+  and the component can never be two outlines. This delta ships the one
+  Card-shaped consumer; the Forge seal added the Octagon-shaped second
+  ([forge-seal.md](forge-seal.md)). This requires a structural change this delta
   owns: M3's `Card(onClick)` hardcodes its internal `ripple()` and never
   reads `LocalIndication`, so `AgentCard` is rebuilt as a plain `Surface`
   with an explicit `Modifier.clickable(interactionSource, indication =
-  AngularIndication, …)` carrying the card's existing semantics and click
-  behavior unchanged. Every other Material component that owns its ripple
+  AngularIndication(NidavellirShapes.Card), …)` carrying the card's existing
+  semantics and click behavior unchanged. Every other Material component that owns its ripple
   internally (buttons, text fields, the Forge's profile `FilterChip`) keeps
   the platform ripple in this delta; unifying them is a listed non-goal
   until reviewed on-device.

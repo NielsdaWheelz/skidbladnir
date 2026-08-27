@@ -98,98 +98,109 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
     }
     val agents = visibleAgents(state.machines, state.selectedMachine)
     val canForge = machines.any(MachineState::canForge)
-    Column(
-        modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding(),
-    ) {
-        DashboardTopBar(
-            summary = dashboardSummary(agents.size, machines.size),
-            refreshing = state.refreshing,
-            canForge = canForge,
-            onRefresh = controller::refresh,
-            onNewAgent = controller::openForge,
-        )
+    Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            DashboardTopBar(
+                summary = dashboardSummary(agents.size, machines.size),
+                refreshing = state.refreshing,
+                onRefresh = controller::refresh,
+            )
 
-        MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
-        machines.forEach { machine ->
-            key(machine.machine.handle) {
-                MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+            MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
+            machines.forEach { machine ->
+                key(machine.machine.handle) {
+                    MachineStrip(machine, controller, credentialWritesEnabled = state.unreadableMachines.isEmpty())
+                }
             }
-        }
-        state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
+            state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
 
-        state.notice?.let { notice ->
-            Surface(
-                color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = NidavellirShapes.Card,
-            ) {
-                Text(notice, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp))
+            state.notice?.let { notice ->
+                Surface(
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = NidavellirShapes.Card,
+                ) {
+                    Text(notice, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp))
+                }
             }
-        }
 
-        state.forgeRecovery?.let { recovery ->
-            Surface(
-                color = Gold.copy(alpha = 0.16f),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = NidavellirShapes.Card,
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(
-                        when (recovery) {
-                            is ForgeRecovery.RefreshRequired ->
-                                "${labelFor(state.machines, recovery.draft.machineHandle)}: create outcome unknown. Refresh before reviewing this draft."
-                            is ForgeRecovery.ReviewReady ->
-                                "${labelFor(state.machines, recovery.draft.machineHandle)} refreshed. Review its sessions before resuming this draft."
-                        },
-                        color = Gold,
-                    )
-                    if (recovery is ForgeRecovery.ReviewReady) {
-                        Row {
-                            TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
-                            TextButton(onClick = controller::discardForgeRecovery) { Text("Discard") }
+            state.forgeRecovery?.let { recovery ->
+                Surface(
+                    color = Gold.copy(alpha = 0.16f),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = NidavellirShapes.Card,
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(
+                            when (recovery) {
+                                is ForgeRecovery.RefreshRequired ->
+                                    "${labelFor(state.machines, recovery.draft.machineHandle)}: create outcome unknown. Refresh before reviewing this draft."
+                                is ForgeRecovery.ReviewReady ->
+                                    "${labelFor(state.machines, recovery.draft.machineHandle)} refreshed. Review its sessions before resuming this draft."
+                            },
+                            color = Gold,
+                        )
+                        if (recovery is ForgeRecovery.ReviewReady) {
+                            Row {
+                                TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
+                                TextButton(onClick = controller::discardForgeRecovery) { Text("Discard") }
+                            }
                         }
+                    }
+                }
+            }
+
+            when {
+                state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
+                    "Provisioning repair required",
+                    "Saved machine credentials are unreadable. Machine administration is outside this app.",
+                )
+                state.machines.isEmpty() -> EmptyState(
+                    "No provisioned machines",
+                    "Install machine credentials outside the app to begin.",
+                )
+                agents.isEmpty() -> dashboardInventoryWaitCopy(machines)?.let {
+                    EmptyState("Sessions not current", it)
+                } ?: EmptyState(
+                    "No tmux sessions",
+                    "Create a dwarf here, or launch tmux on the visible " +
+                        if (machines.size == 1) "machine." else "machines.",
+                    ornament = true,
+                )
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(170.dp),
+                    modifier = Modifier.fillMaxSize().testTag("agents-grid"),
+                    // Bottom clears the seal: its 16dp margin, its 56dp side,
+                    // and a 12dp gap (forge-seal.md, "Placement and semantics").
+                    contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 84.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(
+                        items = agents,
+                        key = { "${it.target.machineHandle.encoded}:${it.target.session.id}:${it.target.session.identityToken}" },
+                    ) { agent ->
+                        val machineState = state.machines.single { it.machine.handle == agent.target.machineHandle }
+                        AgentCard(
+                            agent,
+                            machineState,
+                            onOpen = { controller.openTerminal(agent.target) },
+                            onKill = { controller.requestKill(agent.target) },
+                        )
                     }
                 }
             }
         }
 
-        when {
-            state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
-                "Provisioning repair required",
-                "Saved machine credentials are unreadable. Machine administration is outside this app.",
-            )
-            state.machines.isEmpty() -> EmptyState(
-                "No provisioned machines",
-                "Install machine credentials outside the app to begin.",
-            )
-            agents.isEmpty() -> dashboardInventoryWaitCopy(machines)?.let {
-                EmptyState("Sessions not current", it)
-            } ?: EmptyState(
-                "No tmux sessions",
-                "Create a dwarf here, or launch tmux on the visible " +
-                    if (machines.size == 1) "machine." else "machines.",
-                ornament = true,
-            )
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(170.dp),
-                modifier = Modifier.fillMaxSize().testTag("agents-grid"),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(
-                    items = agents,
-                    key = { "${it.target.machineHandle.encoded}:${it.target.session.id}:${it.target.session.identityToken}" },
-                ) { agent ->
-                    val machineState = state.machines.single { it.machine.handle == agent.target.machineHandle }
-                    AgentCard(
-                        agent,
-                        machineState,
-                        onOpen = { controller.openTerminal(agent.target) },
-                        onKill = { controller.requestKill(agent.target) },
-                    )
-                }
-            }
+        // The create affordance left the header for here (forge-seal.md,
+        // "Placement and semantics"): anchored over the grid, and rendered in
+        // every dashboard state including zero machines, where it is cold.
+        // Absence is displayed, not hidden.
+        // The 16dp margin is the wrapper's, not the seal's: padding threaded
+        // into ForgeSeal would grow its semantics bounds past its ink, and the
+        // grid's bottom inset is measured against those bounds.
+        Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+            ForgeSeal(canForge = canForge, onClick = controller::openForge)
         }
     }
 
@@ -212,9 +223,7 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
 internal fun DashboardTopBar(
     summary: String,
     refreshing: Boolean,
-    canForge: Boolean,
     onRefresh: () -> Unit,
-    onNewAgent: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -238,9 +247,6 @@ internal fun DashboardTopBar(
         }
         TextButton(onClick = onRefresh, enabled = !refreshing) {
             Text(if (refreshing) "Reading…" else "Refresh")
-        }
-        Button(onClick = onNewAgent, enabled = canForge, modifier = Modifier.testTag("new-agent")) {
-            Text("New dwarf")
         }
     }
 }
@@ -467,6 +473,10 @@ internal fun MachinePressureStrip(
     }
 }
 
+// The card's own press flash, cut to the shape the card is cut to. A file-level
+// instance so recomposition allocates none (forge-seal.md, "API design").
+private val CardIndication = AngularIndication(NidavellirShapes.Card)
+
 // M3's `Card(onClick)` hardcodes its internal ripple and never reads
 // LocalIndication, so the card is a plain Surface carrying the same
 // `clickable` the Card built for it — same click action, same merged
@@ -496,7 +506,7 @@ internal fun AgentCard(
             .minimumInteractiveComponentSize()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = AngularIndication,
+                indication = CardIndication,
                 enabled = machine.canMutate,
                 onClick = onOpen,
             ),
@@ -765,19 +775,10 @@ internal fun DwarfPortrait(character: CharacterSummary, sealSize: Dp = 58.dp) {
             )
 
             // Octagon frame: neutral base hairline on all 8 edges, Gold
-            // overlaid thicker on the edges set in facetMask. Vertices come
-            // from the same 29% cut geometry as the clip shape.
-            val cut = side * 0.29f
-            val vertices = listOf(
-                Offset(cut, 0f),
-                Offset(w - cut, 0f),
-                Offset(w, cut),
-                Offset(w, h - cut),
-                Offset(w - cut, h),
-                Offset(cut, h),
-                Offset(0f, h - cut),
-                Offset(0f, cut),
-            )
+            // overlaid thicker on the edges set in facetMask. The vertices are
+            // the clip shape's own cut, expanded once in Theme.kt, so the two
+            // cannot drift; their order is what facetMask indexes.
+            val vertices = octagonVertices(size)
             for (edge in vertices.indices) {
                 drawLine(
                     color = Color(0xFF3A3E45),
@@ -862,7 +863,7 @@ private fun ForgeSheet(
                     .fillMaxWidth()
                     .height(12.dp),
             ) {
-                drawOrnamentBand(unitAspect = 1f, layers = listOf(FretCell to Gold.copy(alpha = 0.40f)))
+                drawFretBand(Gold.copy(alpha = 0.40f))
             }
             Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
