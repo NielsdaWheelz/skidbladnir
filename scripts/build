@@ -43,6 +43,9 @@ case "$target" in
   android-unit)
     android_gradle :app:testDebugUnitTest
     ;;
+  android-release)
+    android_gradle :app:assembleRelease
+    ;;
   all)
     cd "$repo_dir"
     go build ./...

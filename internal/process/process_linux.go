@@ -25,9 +25,11 @@ func observeOnce(pid PID) (Observation, error) {
 	}
 	parent, e1 := strconv.Atoi(fields[1])
 	group, e2 := strconv.Atoi(fields[2])
-	foreground, e3 := strconv.Atoi(fields[5])
-	start, e4 := strconv.ParseUint(fields[19], 10, 64)
-	if e1 != nil || e2 != nil || e3 != nil || e4 != nil || start == 0 {
+	session, e3 := strconv.Atoi(fields[3])
+	terminal, e4 := strconv.ParseUint(fields[4], 10, 64)
+	foreground, e5 := strconv.Atoi(fields[5])
+	start, e6 := strconv.ParseUint(fields[19], 10, 64)
+	if e1 != nil || e2 != nil || e3 != nil || session <= 0 || e4 != nil || e5 != nil || e6 != nil || start == 0 {
 		return Observation{}, errors.New("process stat has invalid identity")
 	}
 	executable, err := os.Readlink(filepath.Join(root, "exe"))
@@ -42,7 +44,7 @@ func observeOnce(pid PID) (Observation, error) {
 	if len(argv) == 0 {
 		return Observation{}, errors.New("process command line is empty")
 	}
-	return Observation{PID: pid, ParentPID: PID(parent), ProcessGroup: PID(group), ForegroundProcessGroup: PID(foreground), Executable: executable, Argv: argv, StartIdentity: StartIdentity(fields[19])}, nil
+	return Observation{PID: pid, ParentPID: PID(parent), ProcessGroup: PID(group), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: executable, Argv: argv, StartIdentity: StartIdentity(fields[19])}, nil
 }
 
 func classifyProcError(err error, action string) error {

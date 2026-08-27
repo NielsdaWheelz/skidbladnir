@@ -44,3 +44,30 @@ func TestObservingAnAbsentProcessIsATypedOutcome(t *testing.T) {
 		t.Fatalf("observing an exited process = %v, want ErrProcessAbsent", err)
 	}
 }
+
+func TestObservationCoherenceIncludesTerminalSessionIdentity(t *testing.T) {
+	left := Observation{PID: 10, SessionID: 10, TerminalDevice: 42}
+	right := left
+	if !equalObservation(left, right) {
+		t.Fatal("identical terminal-session observations were not coherent")
+	}
+	right.SessionID++
+	if equalObservation(left, right) {
+		t.Fatal("a changed terminal session was treated as the same observation")
+	}
+	right = left
+	right.TerminalDevice++
+	if equalObservation(left, right) {
+		t.Fatal("a changed terminal device was treated as the same observation")
+	}
+}
+
+func TestTerminalDeviceAtRejectsARegularFile(t *testing.T) {
+	path := t.TempDir() + "/regular"
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal("create regular-file fixture")
+	}
+	if _, err := TerminalDeviceAt(path); err == nil {
+		t.Fatal("accepted a regular file as a terminal device")
+	}
+}

@@ -3,8 +3,10 @@ package process
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
+	"syscall"
 )
 
 const coherentObservationAttempts = 8
@@ -19,11 +21,14 @@ var (
 
 type PID int
 type StartIdentity string
+type TerminalDevice uint64
 
 type Observation struct {
 	PID                    PID
 	ParentPID              PID
 	ProcessGroup           PID
+	SessionID              PID
+	TerminalDevice         TerminalDevice
 	ForegroundProcessGroup PID
 	Executable             string
 	Argv                   []string
@@ -71,10 +76,30 @@ func equalObservation(left, right Observation) bool {
 	return left.PID == right.PID &&
 		left.ParentPID == right.ParentPID &&
 		left.ProcessGroup == right.ProcessGroup &&
+		left.SessionID == right.SessionID &&
+		left.TerminalDevice == right.TerminalDevice &&
 		left.ForegroundProcessGroup == right.ForegroundProcessGroup &&
 		left.Executable == right.Executable &&
 		left.StartIdentity == right.StartIdentity &&
 		slices.Equal(left.Argv, right.Argv)
+}
+
+// TerminalDeviceAt resolves the kernel device identity of an exact character
+// device path. Tmux's pane_tty and the hook process observation must name the
+// same value before lifecycle state may be published to a pane.
+func TerminalDeviceAt(path string) (TerminalDevice, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, fmt.Errorf("stat terminal device: %w", err)
+	}
+	if info.Mode()&os.ModeCharDevice == 0 {
+		return 0, errors.New("terminal path is not a character device")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Rdev == 0 {
+		return 0, errors.New("terminal device identity is unavailable")
+	}
+	return TerminalDevice(stat.Rdev), nil
 }
 
 // ObserveAncestry walks from initial toward PID 1 and returns the observable

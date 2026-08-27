@@ -57,6 +57,29 @@ func TestKillEligibilityRequiresTheLastGroupedLink(t *testing.T) {
 	}
 }
 
+func TestCharacterAssignmentUsesOneNarrowConditionalCommand(t *testing.T) {
+	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
+	arguments, err := characterAssignmentArguments("$7", "old#,}value", "norse.durinn", server)
+	if err != nil {
+		t.Fatalf("build character assignment command: %v", err)
+	}
+	want := []string{
+		"if-shell", "-F", "-t", "$7",
+		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{&&:#{==:#{@skid_character},old###,#}value},#{!=:#{@skid_internal},phone-shadow}}}}}}",
+		"set-option -t '$7' -- @skid_character norse.durinn",
+		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
+	}
+	if !slices.Equal(arguments, want) {
+		t.Fatalf("character assignment arguments\nwant: %q\n got: %q", want, arguments)
+	}
+	if strings.Contains(arguments[4], "session_name") {
+		t.Fatalf("character assignment incorrectly depends on mutable tmux name: %q", arguments[4])
+	}
+	if _, err := characterAssignmentArguments("$7", "", "norse.durinn ; kill-server", server); err == nil {
+		t.Fatal("unsafe character command token was accepted")
+	}
+}
+
 func TestAttachmentCreationUsesOneIdentityGateBeforeEveryMutation(t *testing.T) {
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
 	arguments, err := attachmentCommandArguments(AttachmentSpec{
@@ -71,7 +94,7 @@ func TestAttachmentCreationUsesOneIdentityGateBeforeEveryMutation(t *testing.T) 
 	want := []string{
 		"if-shell", "-F", "-t", "$7",
 		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},laptop}}}}}",
-		"new-session -d -E -t '$7' -s 'skid-phone-00112233445566778899aabbccddeeff' ; set-option -t '=skid-phone-00112233445566778899aabbccddeeff:' -- @skid_internal phone-shadow ; set-option -pqu -t '$7' -- @skid_attention ; display-message -p -t '=skid-phone-00112233445566778899aabbccddeeff:' '#{session_id}'",
+		"new-session -d -E -t '$7' -s 'skid-phone-00112233445566778899aabbccddeeff' ; set-option -t '=skid-phone-00112233445566778899aabbccddeeff:' -- @skid_internal phone-shadow ; set-option -pqu -t '$7' -- @skid_attention ; display-message -p -t '=skid-phone-00112233445566778899aabbccddeeff:' '#{session_id}' ; display-message -p -t '$7' '#{window_id}'",
 		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
 	}
 	if !slices.Equal(arguments, want) {
@@ -125,16 +148,49 @@ func TestAttachmentArmIsIdentityGatedAndRequiresAnAttachedClient(t *testing.T) {
 	}
 }
 
-func TestAttachmentControlOutputDistinguishesCreationAndReadinessFailures(t *testing.T) {
-	shadowID, err := parseAttachmentCreationOutput("$11")
-	if err != nil || shadowID != "$11" {
-		t.Fatalf("valid attachment creation output = (%q,%v), want ($11,nil)", shadowID, err)
+// The normal detach path destroys the armed keep-last shadow before release
+// runs, and if-shell's failable -t lookup then prints the mismatch marker with
+// a zero exit, so marker-plus-absent must settle as success, marker-plus-live
+// must retry until the disconnect window closes, and only a live shadow past
+// the settle bound is a real identity conflict.
+func TestShadowReleaseClassifiesDestroyedRetryingAndConflictingOutcomes(t *testing.T) {
+	tests := []struct {
+		output    string
+		exists    bool
+		retryable bool
+		settled   bool
+		err       error
+	}{
+		{"", true, true, true, nil},
+		{identityMismatchMarker, false, true, true, nil},
+		{identityMismatchMarker, false, false, true, nil},
+		{identityMismatchMarker, true, true, false, nil},
+		{identityMismatchMarker, true, false, false, ErrAttachmentIdentityMismatch},
 	}
-	if _, err := parseAttachmentCreationOutput(identityMismatchMarker); !errors.Is(err, ErrAttachmentIdentityMismatch) {
+	for _, test := range tests {
+		settled, err := classifyShadowRelease(test.output, test.exists, test.retryable)
+		if settled != test.settled || !errors.Is(err, test.err) {
+			t.Fatalf("release output %q exists=%t retryable=%t = (%t,%v), want (%t,%v)",
+				test.output, test.exists, test.retryable, settled, err, test.settled, test.err)
+		}
+	}
+	if settled, err := classifyShadowRelease("garbage", true, true); settled || err == nil {
+		t.Fatalf("unexpected release output classified as (%t,%v)", settled, err)
+	}
+}
+
+func TestAttachmentControlOutputDistinguishesCreationAndReadinessFailures(t *testing.T) {
+	shadowID, sourceWindowID, err := parseAttachmentCreationOutput("$11\n@3")
+	if err != nil || shadowID != "$11" || sourceWindowID != "@3" {
+		t.Fatalf("valid attachment creation output = (%q,%q,%v), want ($11,@3,nil)", shadowID, sourceWindowID, err)
+	}
+	if _, _, err := parseAttachmentCreationOutput(identityMismatchMarker); !errors.Is(err, ErrAttachmentIdentityMismatch) {
 		t.Fatalf("identity-mismatch creation output = %v", err)
 	}
-	if _, err := parseAttachmentCreationOutput("not-a-session"); err == nil || errors.Is(err, ErrAttachmentIdentityMismatch) {
-		t.Fatalf("invalid attachment creation output = %v", err)
+	for _, malformed := range []string{"not-a-session", "$11", "$11\nnot-a-window", "$11\n@3\nextra"} {
+		if _, _, err := parseAttachmentCreationOutput(malformed); err == nil || errors.Is(err, ErrAttachmentIdentityMismatch) {
+			t.Fatalf("invalid attachment creation output %q = %v", malformed, err)
+		}
 	}
 
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}

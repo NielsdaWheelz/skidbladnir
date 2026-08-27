@@ -203,6 +203,15 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		}
 		return false
 	})
+	if got := terminalLaptopShape(t, fixture, "shared-terminal"); got != laptopShapeBefore {
+		t.Fatalf("phone detach changed laptop geometry: before=%q after=%q", laptopShapeBefore, got)
+	}
+	if got := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{window_width}x#{window_height}"); got != windowShapeBefore {
+		t.Fatalf("phone detach changed laptop-owned window geometry: before=%q after=%q", windowShapeBefore, got)
+	}
+	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
+		t.Fatalf("phone detach moved the shared active pane: index=%s", active)
+	}
 	if _, err := laptop.Write([]byte("LAPTOP-A\r")); err != nil {
 		t.Fatal("write through surviving laptop client")
 	}
@@ -262,12 +271,12 @@ func TestTerminalPresenceAndLastLinkDetachPreserveThePane(t *testing.T) {
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 2, "Constrained")
 	shadow := requireTerminalPhoneShadow(t, fixture)
-	fixture.tmux(t, "detach-client", "-t", requireTerminalLaptopClient(t, fixture, source.ID, source.Name))
+	fixture.tmux(t, "detach-client", "-t", requireTerminalLaptopClient(t, fixture, source.ID, source.TmuxName))
 	requireTerminalPresence(t, connection, "Presence", 1, "Owner")
 
 	removeExactTerminalSourceLink(t, fixture, source, panePID)
 	waitForTerminalCondition(t, "phone shadow became the last grouped link", func() bool {
-		return !terminalSessionExists(t, fixture, source.ID, source.Name) && terminalSessionExists(t, fixture, shadow.id, shadow.name)
+		return !terminalSessionExists(t, fixture, source.ID, source.TmuxName) && terminalSessionExists(t, fixture, shadow.id, shadow.name)
 	})
 	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("PHONE-SURVIVES\r"))
@@ -309,7 +318,7 @@ func TestTerminalDetachLeavesAnAttachedPhoneShadowUntouched(t *testing.T) {
 		return terminalHasOnlyExactClient(t, fixture, unrelatedClient, shadow.id, shadow.name)
 	})
 
-	if !terminalSessionExists(t, fixture, source.ID, source.Name) {
+	if !terminalSessionExists(t, fixture, source.ID, source.TmuxName) {
 		t.Fatal("terminal detach removed source session")
 	}
 	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
@@ -378,6 +387,172 @@ func terminalFloodScript() string {
     printf '\nFLOOD-DONE\n'
   fi
 done`
+}
+
+// A grouped session initially opens on its lowest-index window. The phone
+// shadow must instead open on the source's current window without retargeting
+// the source session itself.
+func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "current-window.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "windowed-source", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "WINDOW-0")
+	fixture.tmux(t, "new-window", "-t", "windowed-source:", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath+".1", "WINDOW-1")
+	fixture.tmux(t, "select-window", "-t", "windowed-source:1")
+	sourceWindow := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}")
+
+	source := terminalSource(t, fixture, "windowed-source")
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
+	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+
+	shadow := requireTerminalPhoneShadow(t, fixture)
+	if got := fixture.tmux(t, "display-message", "-p", "-t", shadow.id, "#{window_id}"); got != sourceWindow {
+		t.Fatalf("phone shadow current-window mismatch: got=%s want=%s", got, sourceWindow)
+	}
+	if got := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}"); got != sourceWindow {
+		t.Fatalf("attach moved the source current window: got=%s want=%s", got, sourceWindow)
+	}
+}
+
+// Kill settles the live phone attachment and its owned shadow before applying
+// the exact machine-bound kill, while unrelated sessions remain untouched.
+func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "kill-open-terminal.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "kill-me", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "KILL-ME")
+	fixture.tmux(t, "new-session", "-d", "-s", "bystander", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath+".bystander", "BYSTANDER")
+	source := terminalSource(t, fixture, "kill-me")
+	bystander := terminalSource(t, fixture, "bystander")
+	bystanderPID, bystanderStart := terminalPaneIdentity(t, fixture, bystander.ID)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
+	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+
+	body, err := json.Marshal(map[string]string{"tmuxName": source.TmuxName, "identityToken": source.IdentityToken})
+	if err != nil {
+		t.Fatal("encode kill request")
+	}
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodDelete,
+		gatewayFixture.server.URL+"/v1/sessions/"+source.ID,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		t.Fatal("build kill request")
+	}
+	request.Header.Set("Authorization", "Bearer "+gatewayFixture.bearer)
+	request.Header.Set("Skidbladnir-Machine", integrationMachineText)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := gatewayFixture.server.Client().Do(request)
+	if err != nil {
+		t.Fatal("kill with open terminal")
+	}
+	responseBody, readErr := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if readErr != nil || response.StatusCode != http.StatusNoContent {
+		t.Fatalf("kill with open terminal failed: response_read=%t status=%d body_bytes=%d", readErr == nil, response.StatusCode, len(responseBody))
+	}
+	requireTerminalClosed(t, connection)
+	waitForTerminalCondition(t, "killed session and its shadow disappear", func() bool {
+		return !terminalSessionExists(t, fixture, source.ID, source.TmuxName) && len(terminalPhoneShadows(t, fixture)) == 0
+	})
+	if !terminalSessionExists(t, fixture, bystander.ID, bystander.TmuxName) {
+		t.Fatal("kill with open terminal destroyed the bystander session")
+	}
+	requireTerminalPaneIdentity(t, fixture, bystander.ID, bystanderPID, bystanderStart)
+}
+
+// The terminal endpoint is shell-equivalent authority. Bearer, machine, and
+// session identity all travel in headers and reject before any tmux mutation.
+func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T) {
+	fixture := newSessionFixture(t)
+	logPath := filepath.Join(fixture.root, "auth-chokepoint.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "auth-source", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "AUTH")
+	source := terminalSource(t, fixture, "auth-source")
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
+
+	tests := []struct {
+		name    string
+		url     string
+		headers http.Header
+		status  int
+	}{
+		{
+			name: "missing bearer",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Skidbladnir-Machine":          []string{integrationMachineText},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusUnauthorized,
+		},
+		{
+			name: "missing machine",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":                []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusConflict,
+		},
+		{
+			name: "wrong machine",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":                []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine":          []string{"mh-ffffffffffffffffffffffffffffffff"},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusConflict,
+		},
+		{
+			name: "missing session identity",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":       []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine": []string{integrationMachineText},
+			},
+			status: http.StatusBadRequest,
+		},
+		{
+			name: "session identity in query",
+			url:  gatewayFixture.url(source.ID) + "?identity=" + source.IdentityToken,
+			headers: http.Header{
+				"Authorization":       []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine": []string{integrationMachineText},
+			},
+			status: http.StatusBadRequest,
+		},
+	}
+	for _, test := range tests {
+		connection, response, dialErr := websocket.Dial(context.Background(), test.url, &websocket.DialOptions{HTTPHeader: test.headers})
+		if connection != nil {
+			_ = connection.CloseNow()
+		}
+		status := 0
+		if response != nil {
+			status = response.StatusCode
+		}
+		if dialErr == nil || response == nil || status != test.status {
+			t.Fatalf("terminal credential rejection mismatch: case=%s error_present=%t response_present=%t status=%d want=%d", test.name, dialErr != nil, response != nil, status, test.status)
+		}
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+	}
+	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
+		t.Fatal("rejected terminal credentials mutated the tmux session set")
+	}
+	if shadows := terminalPhoneShadows(t, fixture); len(shadows) != 0 {
+		t.Fatalf("rejected terminal credentials created phone shadows: count=%d", len(shadows))
+	}
 }
 
 type terminalGatewayFixture struct {
@@ -681,15 +856,15 @@ func requireTerminalPaneIdentity(t *testing.T, fixture sessionFixture, target st
 func removeExactTerminalSourceLink(t *testing.T, fixture sessionFixture, source sessions.Session, panePID int) {
 	t.Helper()
 	parts := strings.Split(source.IdentityToken, ".")
-	if len(parts) != 4 || "$"+parts[3] != source.ID || !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.Name) {
-		t.Fatalf("test source has invalid lifetime identity: field_count=%d id_match=%t name_valid=%t", len(parts), len(parts) == 4 && "$"+parts[3] == source.ID, regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.Name))
+	if len(parts) != 4 || "$"+parts[3] != source.ID || !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.TmuxName) {
+		t.Fatalf("test source has invalid lifetime identity: field_count=%d id_match=%t name_valid=%t", len(parts), len(parts) == 4 && "$"+parts[3] == source.ID, regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.TmuxName))
 	}
 	conditions := []string{
 		"#{==:#{@skid_server_epoch}," + parts[0] + "}",
 		"#{==:#{pid}," + parts[1] + "}",
 		"#{==:#{start_time}," + parts[2] + "}",
 		"#{==:#{session_id}," + source.ID + "}",
-		"#{==:#{session_name}," + source.Name + "}",
+		"#{==:#{session_name}," + source.TmuxName + "}",
 		"#{==:#{pane_pid}," + strconv.Itoa(panePID) + "}",
 	}
 	condition := conditions[len(conditions)-1]

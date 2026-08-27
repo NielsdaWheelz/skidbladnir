@@ -2,6 +2,8 @@ package dev.niels.skidbladnir
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -28,6 +30,13 @@ private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
 private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024L
 private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
+
+// The gateway's published geometry bounds; the page's glyph scaling guarantees
+// at least 80 columns, so geometry outside these bounds is a page defect.
+private const val MINIMUM_COLUMNS = 20
+private const val MAXIMUM_COLUMNS = 240
+private const val MINIMUM_ROWS = 5
+private const val MAXIMUM_ROWS = 120
 private const val TERMINAL_PAGE_READY_TIMEOUT_MILLIS = 10_000L
 
 private data class PendingPageOutput(
@@ -45,21 +54,32 @@ internal interface TerminalPage {
     fun write(bytes: ByteArray)
     fun focus()
     fun sendAccessory(accessory: TerminalAccessory)
+    fun resetControl()
 }
 
 internal enum class TerminalAccessory {
+    Escape,
+    Control,
+    Tab,
     Left,
     Up,
     Down,
     Right,
     Home,
     End,
+    LineFeed,
+}
+
+internal enum class TerminalControlState {
+    Off,
+    Armed,
 }
 
 internal interface TerminalPageListener {
     fun onReady(page: TerminalPage)
     fun onInput(bytes: ByteArray)
     fun onResize(columns: Int, rows: Int)
+    fun onControlStateChanged(state: TerminalControlState)
     fun onUnavailable()
 }
 
@@ -84,6 +104,7 @@ internal class LockedTerminalWebView(
     private var disposed = false
     private var unavailable = false
     private var pageReady = false
+    private var orientation = resources.configuration.orientation
     private val pageReadinessDeadline = Runnable(::markUnavailable)
     private val outputMonitor = Any()
     private val pendingOutput = ArrayDeque<PendingPageOutput>()
@@ -162,6 +183,7 @@ internal class LockedTerminalWebView(
 
     override fun focus() {
         post {
+            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
             val port = pagePort
             if (port == null) {
                 markUnavailable()
@@ -177,6 +199,7 @@ internal class LockedTerminalWebView(
 
     override fun sendAccessory(accessory: TerminalAccessory) {
         post {
+            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
             val port = pagePort
             if (port == null) {
                 markUnavailable()
@@ -197,6 +220,46 @@ internal class LockedTerminalWebView(
         }
     }
 
+    override fun resetControl() {
+        post {
+            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
+            val port = pagePort
+            if (port == null) {
+                markUnavailable()
+                return@post
+            }
+            try {
+                port.postMessage(WebMessageCompat("{\"kind\":\"ResetControl\"}"))
+            } catch (_: IllegalStateException) {
+                markUnavailable()
+            }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
+            resetControl()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val previousOrientation = orientation
+        val nextOrientation = newConfig.orientation
+        val previousOrientationWasKnown = previousOrientation == Configuration.ORIENTATION_PORTRAIT ||
+            previousOrientation == Configuration.ORIENTATION_LANDSCAPE
+        val nextOrientationIsKnown = nextOrientation == Configuration.ORIENTATION_PORTRAIT ||
+            nextOrientation == Configuration.ORIENTATION_LANDSCAPE
+        val rotated = previousOrientation != nextOrientation &&
+            previousOrientationWasKnown &&
+            nextOrientationIsKnown
+        orientation = nextOrientation
+        if (rotated && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
+            resetControl()
+        }
+    }
+
     fun dispose() {
         main.removeCallbacks(pageReadinessDeadline)
         synchronized(outputMonitor) {
@@ -209,6 +272,7 @@ internal class LockedTerminalWebView(
         pagePort = null
         stopLoading()
         clearHistory()
+        (parent as? android.view.ViewGroup)?.removeView(this)
         removeAllViews()
         destroy()
     }
@@ -232,6 +296,13 @@ internal class LockedTerminalWebView(
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
             if (url == initialUrl) attachPagePort(view)
+        }
+
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            super.onPageStarted(view, url, favicon)
+            if (synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
+                markUnavailable()
+            }
         }
 
         override fun onReceivedError(
@@ -316,7 +387,10 @@ internal class LockedTerminalWebView(
                         "Resize" -> if (objectValue.hasExactKeys("kind", "columns", "rows")) {
                             val columns = objectValue.intField("columns")
                             val rows = objectValue.intField("rows")
-                            if (columns == null || rows == null) {
+                            if (columns == null || rows == null ||
+                                columns !in MINIMUM_COLUMNS..MAXIMUM_COLUMNS ||
+                                rows !in MINIMUM_ROWS..MAXIMUM_ROWS
+                            ) {
                                 markUnavailable()
                             } else {
                                 listener.onResize(columns, rows)
@@ -327,6 +401,17 @@ internal class LockedTerminalWebView(
                         "OutputApplied" -> if (objectValue.hasExactKeys("kind", "sequence")) {
                             val sequence = objectValue.stringField("sequence")
                             if (sequence == null) markUnavailable() else outputApplied(sequence)
+                        } else {
+                            markUnavailable()
+                        }
+                        "ControlState" -> if (objectValue.hasExactKeys("kind", "state")) {
+                            val controlState = objectValue.stringField("state")
+                                ?.let { value -> TerminalControlState.entries.singleOrNull { it.name == value } }
+                            if (controlState == null) {
+                                markUnavailable()
+                            } else {
+                                listener.onControlStateChanged(controlState)
+                            }
                         } else {
                             markUnavailable()
                         }

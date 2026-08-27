@@ -134,11 +134,11 @@ internal data class ProfileChoice(val key: ProfileKey, val label: String)
 @Serializable
 internal data class AgentSession(
     val id: String,
-    val name: String,
+    val tmuxName: String,
     val identityToken: String,
+    val character: CharacterSummary,
     val profile: String? = null,
     val objective: String? = null,
-    val character: CharacterSummary? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -211,7 +211,7 @@ internal data class ForgeDraft(
     val machineHandle: MachineHandle,
     val cwd: String,
     val profile: ProfileKey,
-    val optionalName: String,
+    val optionalTmuxName: String,
     val objective: String,
 )
 
@@ -219,20 +219,20 @@ internal data class ForgeForm(
     val machineHandle: MachineHandle?,
     val cwd: String,
     val profile: ProfileKey?,
-    val optionalName: String,
+    val optionalTmuxName: String,
     val objective: String,
 ) {
     constructor(draft: ForgeDraft) : this(
         draft.machineHandle,
         draft.cwd,
         draft.profile,
-        draft.optionalName,
+        draft.optionalTmuxName,
         draft.objective,
     )
 
     fun submission(): ForgeDraft? {
         if (machineHandle == null || profile == null || cwd.isBlank()) return null
-        return ForgeDraft(machineHandle, cwd, profile, optionalName, objective)
+        return ForgeDraft(machineHandle, cwd, profile, optionalTmuxName, objective)
     }
 }
 
@@ -245,20 +245,20 @@ internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeFor
 
 internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
 internal fun killConfirmationTitle(label: MachineLabel, target: AgentTarget): String =
-    "Kill ${target.session.name} on ${label.text}?"
+    "Kill ${target.session.tmuxName} on ${label.text}?"
 
 @Serializable private data class CreateSessionRequest(
     val cwd: String,
     val profile: String,
-    val optionalName: String? = null,
+    val optionalTmuxName: String? = null,
     val objective: String? = null,
 )
-@Serializable private data class KillSessionRequest(val name: String, val identityToken: String)
+@Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = productJson.parseToJsonElement(encoded).jsonObject
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
-        encodedSession.jsonObject.requireAbsentOrNonNull(setOf("profile", "objective", "character", "cwd", "activeCommand"))
+        encodedSession.jsonObject.requireAbsentOrNonNull(setOf("profile", "objective", "cwd", "activeCommand"))
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
@@ -310,7 +310,7 @@ internal fun decodePressureResponse(encoded: String): PressureResponse = decodeP
 
 internal fun decodeAgentSession(encoded: String): AgentSession = decodeProtocol {
     val element = productJson.parseToJsonElement(encoded).jsonObject
-    element.requireAbsentOrNonNull(setOf("profile", "objective", "character", "cwd", "activeCommand"))
+    element.requireAbsentOrNonNull(setOf("profile", "objective", "cwd", "activeCommand"))
     productJson.decodeFromJsonElement<AgentSession>(element).also { acceptSession(it, null) }
 }
 
@@ -318,12 +318,12 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
     CreateSessionRequest(
         draft.cwd,
         draft.profile.encoded,
-        draft.optionalName.ifEmpty { null },
+        draft.optionalTmuxName.ifEmpty { null },
         draft.objective.ifEmpty { null },
     ),
 )
 internal fun encodeKillSessionRequest(session: AgentSession): String =
-    productJson.encodeToString(KillSessionRequest(session.name, session.identityToken))
+    productJson.encodeToString(KillSessionRequest(session.tmuxName, session.identityToken))
 
 internal data class InventorySnapshot(val inventory: SessionsResponse, val receivedAtElapsedMillis: Long)
 
@@ -404,7 +404,7 @@ internal fun visibleAgents(machines: List<MachineState>, selectedMachine: Machin
         compareByDescending<VisibleAgent> { it.target.session.attention }
             .thenBy { statusRank(it.target.session.status.kind) }
             .thenBy { it.machine.label.text.lowercase(Locale.ROOT) }
-            .thenBy { it.target.session.name.lowercase(Locale.ROOT) }
+            .thenBy { it.target.session.tmuxName.lowercase(Locale.ROOT) }
             .thenBy { it.target.session.id },
     )
     .toList()
@@ -531,11 +531,11 @@ private fun acceptMachinePlatform(platform: WireMachinePlatform): MachinePlatfor
 }
 
 private fun acceptSession(session: AgentSession, observedAt: Instant?) {
-    require(session.id.isNotEmpty() && session.name.isNotEmpty() && session.identityToken.isNotEmpty())
+    require(session.id.isNotEmpty() && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
     require(session.attachedClients >= 0)
     require(session.profile?.isNotEmpty() != false && session.objective?.isNotEmpty() != false)
     require(session.cwd?.isNotEmpty() != false && session.activeCommand?.isNotEmpty() != false)
-    require(session.character?.let { it.key.isNotEmpty() && it.displayName.isNotEmpty() } != false)
+    require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
     val legal = when (session.status.kind) {
         SessionStatusKind.Working, SessionStatusKind.Idle -> session.status.signal == SessionStatusSignal.Lifecycle
         SessionStatusKind.Running, SessionStatusKind.Shell -> session.status.signal == SessionStatusSignal.Process

@@ -130,7 +130,7 @@ machine_lifetime_digest() {
       if (.sessions | type) != "array" then
         error("session inventory array required")
       else
-        {machine, sessions: ([.sessions[] | {id,name,identityToken}] | sort_by(.id,.name,.identityToken))}
+        {machine, sessions: ([.sessions[] | {id,tmuxName,identityToken}] | sort_by(.id,.tmuxName,.identityToken))}
       end
     ' |
     content_digest
@@ -394,20 +394,20 @@ case "$gate" in
     # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run bash-syntax bash -n scripts/build scripts/install-devbox scripts/install-macbook scripts/test
+    run bash-syntax bash -n scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test
     run sh-syntax /bin/sh -n deploy/devbox/skid-notify deploy/macbook/skid-notify
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' \
-      scripts/build scripts/install-devbox scripts/install-macbook scripts/test \
+      scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test \
       deploy/devbox/skid-notify deploy/macbook/skid-notify
     # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
     # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
-      scripts/build scripts/test scripts/install-devbox scripts/install-macbook \
+      scripts/build scripts/check-codex-config scripts/check-go-toolchain scripts/test scripts/install-devbox scripts/install-macbook \
       deploy/devbox/skid-notify deploy/macbook/skid-notify
-    run shellcheck shellcheck scripts/build scripts/install-devbox scripts/install-macbook scripts/test deploy/devbox/skid-notify deploy/macbook/skid-notify
+    run shellcheck shellcheck scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test deploy/devbox/skid-notify deploy/macbook/skid-notify
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"
@@ -417,6 +417,8 @@ case "$gate" in
     run terminal-assets-static ./scripts/check-terminal-assets
     run go-mod-verify go mod verify
     run go-vet go vet ./...
+    run go-vet-integration go vet -tags=integration ./tests/integration ./internal/machine ./internal/process ./internal/pressure
+    run go-vet-live go vet -tags=live ./tests/live
     run integration-compile go test -tags=integration -c -o /dev/null ./tests/integration
     run integration-host-compile go test -tags=integration -c -o /dev/null ./internal/machine ./internal/process ./internal/pressure
     run live-compile go test -tags=live -c -o /dev/null ./tests/live
@@ -425,6 +427,8 @@ case "$gate" in
   unit)
     cd "$repo_dir"
     run go-unit go test ./cmd/... ./internal/...
+    run codex-config-unit /usr/bin/python3 scripts/check-codex-config --self-test
+    run go-toolchain-unit ./scripts/check-go-toolchain --self-test
     run android-unit ./scripts/build android-unit
     ;;
   integration)
@@ -500,9 +504,14 @@ case "$gate" in
       printf 'could not uninstall the test-only Android package\n' >&2
       exit 1
     }
+    # Pin discovery to the checked-in suite so partial instrumentation cannot
+    # false-green as a complete platform gate.
+    platform_expected_tests="$(grep -c '@Test' \
+      "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt | \
+      awk -F: '{ total += $2 } END { print total }')"
     if [[ "$instrumentation_status" -ne 0 ]] ||
-      ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' <<<"$instrumentation_output"; then
-      printf 'Android instrumentation failed\n' >&2
+      ! grep -Eq "^OK \(${platform_expected_tests} tests?\)$" <<<"$instrumentation_output"; then
+      printf 'Android instrumentation failed or ran fewer than %s tests\n' "$platform_expected_tests" >&2
       exit 1
     fi
     if [[ -n "$pairing_digest" ]]; then

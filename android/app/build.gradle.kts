@@ -33,6 +33,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // The product install is the release build: debuggable=false closes
+            // the run-as/JDWP path to the bearer at rest. The debug keystore
+            // only provides update continuity for one sideloaded device.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -66,4 +70,6 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

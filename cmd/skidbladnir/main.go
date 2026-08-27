@@ -35,13 +35,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		_, _ = io.WriteString(stderr, "usage: skidbladnir {gateway|machine init|bearer mint|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "resolve service home: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
-		return exitFailure
-	}
-	switch arguments[0] {
-	case "status-hook":
+	if arguments[0] == "status-hook" {
 		if len(arguments) != 2 {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir status-hook {SessionStart|UserPromptSubmit|Stop}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
@@ -51,6 +45,13 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		return 0
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "resolve service home: %v\n", err) // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		return exitFailure
+	}
+	switch arguments[0] {
 	case "machine":
 		if len(arguments) == 1 || arguments[1] != "init" {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir machine init [--file=PATH]\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
@@ -129,16 +130,11 @@ func serveGateway(listen, bearerPath, machineHandlePath, cataloguePath, home str
 		return fmt.Errorf("load machine handle: %w", err)
 	}
 	descriptor := platform.Current()
-	profiles := []sessions.Profile{
-		codexProfile(home, descriptor.CodexNodeEntrypoint, "personal", "Personal"),
-		codexProfile(home, descriptor.CodexNodeEntrypoint, "work", "Work"),
-		codexProfile(home, descriptor.CodexNodeEntrypoint, "work2", "Work 2"),
-	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      descriptor.TmuxPath,
 		Home:          home,
 		CataloguePath: cataloguePath,
-		Profiles:      profiles,
+		Profiles:      gatewayProfiles(home, descriptor),
 	})
 	if err != nil {
 		return fmt.Errorf("initialize tmux sessions: %w", err)
@@ -161,6 +157,18 @@ func serveGateway(listen, bearerPath, machineHandlePath, cataloguePath, home str
 	return nil
 }
 
+func gatewayProfiles(home string, descriptor platform.Descriptor) []sessions.Profile {
+	profiles := []sessions.Profile{
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "personal", "Codex · Personal"),
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "work", "Codex · Work"),
+		codexProfile(home, descriptor.CodexNodeEntrypoint, "work2", "Codex · Work 2"),
+	}
+	if descriptor.Kind == platform.KindLinux {
+		profiles = append(profiles, claudeProfile(home))
+	}
+	return profiles
+}
+
 func codexProfile(home, codexNodeEntrypoint, key, label string) sessions.Profile {
 	return sessions.Profile{
 		Key:     key,
@@ -174,5 +182,20 @@ func codexProfile(home, codexNodeEntrypoint, key, label string) sessions.Profile
 			{ExecutableBase: "node", Argument1: codexNodeEntrypoint},
 		},
 		Arguments: []string{"--dangerously-bypass-approvals-and-sandbox"},
+	}
+}
+
+func claudeProfile(home string) sessions.Profile {
+	return sessions.Profile{
+		Key:     "claude-work",
+		Label:   "Claude · Work",
+		Command: filepath.Join(home, "bin", "claude-work"),
+		Environment: []sessions.EnvironmentVariable{
+			{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(home, ".claude-work")},
+		},
+		ForegroundSignatures: []sessions.ForegroundSignature{
+			{Argument0: filepath.Join(home, ".local", "bin", "claude")},
+		},
+		Arguments: []string{"--permission-mode", "auto"},
 	}
 }

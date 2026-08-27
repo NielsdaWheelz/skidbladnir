@@ -6,11 +6,13 @@ package process
 #cgo LDFLAGS: -lproc
 #include <errno.h>
 #include <libproc.h>
+#include <stdint.h>
 #include <sys/sysctl.h>
+#include <unistd.h>
 
 // Both helpers return 0 on success and an errno-style cause on failure so Go
 // can classify absent (ESRCH) and protected (EPERM/EACCES) processes.
-static int skid_proc_info(int pid, struct proc_bsdinfo *info, char *path, int path_len, int *foreground) {
+static int skid_proc_info(int pid, struct proc_bsdinfo *info, char *path, int path_len, int *session, uint64_t *terminal, int *foreground) {
   errno = 0;
   if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, info, sizeof(*info)) != sizeof(*info)) return errno != 0 ? errno : EINVAL;
   errno = 0;
@@ -20,6 +22,11 @@ static int skid_proc_info(int pid, struct proc_bsdinfo *info, char *path, int pa
   errno = 0;
   if (sysctl(mib, 4, &kp, &size, NULL, 0) != 0) return errno != 0 ? errno : EINVAL;
   if (size != sizeof(kp)) return ESRCH; // the kernel returns an empty record for an absent pid
+  errno = 0;
+  pid_t sid = getsid(pid);
+  if (sid <= 0) return errno != 0 ? errno : EINVAL;
+  *session = sid;
+  *terminal = kp.kp_eproc.e_tdev == (dev_t)-1 ? 0 : (uint64_t)kp.kp_eproc.e_tdev;
   *foreground = kp.kp_eproc.e_tpgid;
   return 0;
 }
@@ -47,8 +54,10 @@ import (
 func observeOnce(pid PID) (Observation, error) {
 	var info C.struct_proc_bsdinfo
 	path := make([]byte, C.PROC_PIDPATHINFO_MAXSIZE)
+	var session C.int
+	var terminal C.uint64_t
 	var foreground C.int
-	if code := C.skid_proc_info(C.int(pid), &info, (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path)), &foreground); code != 0 {
+	if code := C.skid_proc_info(C.int(pid), &info, (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path)), &session, &terminal, &foreground); code != 0 {
 		return Observation{}, classifyDarwinError(syscall.Errno(code), "observe Darwin process identity")
 	}
 	argv, err := darwinArgv(pid)
@@ -59,7 +68,7 @@ func observeOnce(pid PID) (Observation, error) {
 	if start == 0 {
 		return Observation{}, errors.New("Darwin process start identity is zero")
 	}
-	return Observation{PID: pid, ParentPID: PID(info.pbi_ppid), ProcessGroup: PID(info.pbi_pgid), ForegroundProcessGroup: PID(foreground), Executable: C.GoString((*C.char)(unsafe.Pointer(&path[0]))), Argv: argv, StartIdentity: StartIdentity(strconv.FormatUint(start, 10))}, nil
+	return Observation{PID: pid, ParentPID: PID(info.pbi_ppid), ProcessGroup: PID(info.pbi_pgid), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: C.GoString((*C.char)(unsafe.Pointer(&path[0]))), Argv: argv, StartIdentity: StartIdentity(strconv.FormatUint(start, 10))}, nil
 }
 
 func classifyDarwinError(cause syscall.Errno, action string) error {

@@ -8,17 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-func TestSessionProjectionKeepsAttentionIndependentFromLifecycleStatus(t *testing.T) {
+func TestSessionProjectionUsesTmuxNameAndRequiredCharacterWithoutWideningStatus(t *testing.T) {
 	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	character := catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"}
 	card, err := mapSession(sessions.Session{
 		ID:              "$7",
-		Name:            "ga-durinn",
+		TmuxName:        "laptop-work",
 		IdentityToken:   "v1-lifetime",
+		Character:       character,
 		Attention:       true,
 		AttachedClients: 2,
 		Status: sessions.Status{
@@ -30,8 +33,25 @@ func TestSessionProjectionKeepsAttentionIndependentFromLifecycleStatus(t *testin
 	if err != nil {
 		t.Fatalf("project running session: %v", err)
 	}
+	if card.TmuxName != "laptop-work" || card.Character != (characterDTO{Key: character.Key, DisplayName: character.DisplayName}) {
+		t.Fatalf("session identity projection = %+v, want tmux name and required character", card)
+	}
 	if !card.Attention || card.Status.Kind != "Running" || card.Status.Signal != "Process" {
-		t.Fatalf("attention replaced or widened status: attention=%t kind=%s signal=%s", card.Attention, card.Status.Kind, card.Status.Signal)
+		t.Fatalf("attention replaced or widened status: %+v", card)
+	}
+	payload, err := json.Marshal(card)
+	if err != nil {
+		t.Fatalf("encode projected card: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatalf("decode projected card: %v", err)
+	}
+	if fields["tmuxName"] != "laptop-work" || fields["character"] == nil {
+		t.Fatalf("wire projection omitted required identity fields: %s", payload)
+	}
+	if _, exists := fields["name"]; exists {
+		t.Fatalf("wire projection retained the retired name field: %s", payload)
 	}
 }
 

@@ -21,7 +21,7 @@ def main() -> int:
         if not isinstance(files, dict) or not files:
             raise ValueError("terminal lock has no files")
         expected_paths = {ROOT / relative for relative in files}
-        observed_paths = {path for path in VENDOR_PATH.iterdir() if path.is_file()}
+        observed_paths = {path for path in VENDOR_PATH.rglob("*") if path.is_file()}
         if observed_paths != expected_paths:
             raise ValueError("terminal lock and vendored file set differ")
         for relative, expected_digest in files.items():

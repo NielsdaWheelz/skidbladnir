@@ -165,7 +165,7 @@ private fun availableTerminalStatus(
         response.machine.handle == terminal.target.machineHandle &&
         response.sessions.any {
             it.id == terminal.target.session.id &&
-                it.name == terminal.target.session.name &&
+                it.tmuxName == terminal.target.session.tmuxName &&
                 it.identityToken == terminal.target.session.identityToken
         }
     return if (exact) available else TerminalUiStatus.ReconnectRequired(
@@ -941,7 +941,7 @@ internal class SkidbladnirController(context: Context) {
                         if (!acceptMachineIdentity(credential, result.value)) return@post
                         val exact = result.value.sessions.any {
                             it.id == current.target.session.id &&
-                                it.name == current.target.session.name &&
+                                it.tmuxName == current.target.session.tmuxName &&
                                 it.identityToken == current.target.session.identityToken
                         }
                         val active = state as? SkidbladnirUiState.Terminal ?: return@post
@@ -967,6 +967,7 @@ internal class SkidbladnirController(context: Context) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
                 if (terminalActionAdmissible(machine.canMutate, current.connection)) {
+                    terminalPage?.resetControl()
                     current.copy(kill = kill)
                 } else {
                     return
@@ -1325,8 +1326,10 @@ internal class SkidbladnirController(context: Context) {
         terminalOwner = null
         createdTerminalAdmission = null
         val connection = terminalConnection
+        val page = terminalPage
         terminalConnection = null
         terminalPage = null
+        page?.resetControl()
         connection?.detach()
     }
 

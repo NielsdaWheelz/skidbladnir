@@ -11,7 +11,7 @@ import (
 
 func TestLoggerEmitsOnlyClosedContentFreeFields(t *testing.T) {
 	var output bytes.Buffer
-	event, err := NewSessionCreated("$42", "ga-durinn", "personal", 25*time.Millisecond)
+	event, err := NewSessionCreated("$42", "skidbladnir-personal-1", "personal", 25*time.Millisecond)
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestLoggerEmitsOnlyClosedContentFreeFields(t *testing.T) {
 	for _, want := range []string{
 		`"event.name":"Session.Created"`,
 		`"skidbladnir.session.id":"$42"`,
-		`"skidbladnir.session.name":"ga-durinn"`,
+		`"skidbladnir.session.name":"skidbladnir-personal-1"`,
 		`"skidbladnir.profile":"personal"`,
 		`"skidbladnir.duration.ms":25`,
 	} {

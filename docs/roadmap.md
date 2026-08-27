@@ -28,6 +28,11 @@ S1 tmux control plane
  -> v0 corrective delta: lifecycle truth + terminal viewport/color
  -> v0 multi-machine hard cut: Devbox + MacBook federation
  -> v0 fixed-topology dashboard cut: external provisioning + dense dashboard
+ -> v0 review corrective layer
+ -> v0 profile delta: Devbox Claude Work
+ -> v0 identity delta: automatic dwarf identity
+ -> v0 terminal key-deck delta
+ -> v0 design deltas D1-D4 (specification only)
  -> v0.5 (optional): push
 ```
 
@@ -45,9 +50,9 @@ tmux sessions and reads its pressure.
   card facts incl. user-option metadata, independent attention, status chips
   with age, client count. Exact Codex `WORKING|IDLE` comes only from the narrow
   process-lifetime-bound hook adapter; otherwise a live agent is `RUNNING`.
-- `POST /v1/sessions`: cwd/name/objective validation, profile-table allowlist,
-  unbounded `ga-<dwarf>[-N]` naming with catalogue reuse, user options set at
-  create, YOLO exec.
+- `POST /v1/sessions`: cwd/tmux-name/objective validation, host profile-table
+  allowlist, unbounded `skidbladnir-<profile>-<N>` generated names, independent
+  balanced Dvergatal assignment, user options set at create, YOLO exec.
 - `DELETE /v1/sessions/{id}`: inventory `identityToken` binds a random
   tmux-server epoch + built-in PID/start time + id; all lifetime facts, the
   displayed name, ungrouped-or-last-link predicate, and `kill-session` share
@@ -194,6 +199,67 @@ MacBook install/reinstall publication; the exact 16-test S22+ platform gate;
 and the physical healthy/outage/recovery journey are green. These external
 runs re-prove both acceptance rows above against the corrected tree.
 
+## v0 profile delta — Devbox Claude Work — delivered
+
+Outcome: the Devbox Forge advertises and launches the work-account Claude CLI
+as a fourth closed profile without widening the MacBook profile set or any raw
+launch surface.
+
+- Ordered Devbox choices are `personal`, `work`, `work2`, `claude-work`; the
+  MacBook exposes only its three Codex capsules. Provider-qualified labels are
+  supplied by each gateway.
+- Claude launches only `/home/niels/bin/claude-work` with
+  `CLAUDE_CONFIG_DIR=/home/niels/.claude-work` and
+  `--permission-mode auto`; callers cannot override the capsule.
+- Exact argv[0] `/home/niels/.local/bin/claude` identifies the foreground
+  process as `RUNNING/Process`. Claude has no lifecycle or attention adapter.
+
+Acceptance: pure host/profile composition and exact-selector proofs, the
+isolated real-tmux/API journey on the Devbox, exact Devbox republication, and
+the S22+ declared-label/selection surface.
+
+## v0 identity delta — automatic dwarf identity — delivered
+
+Outcome: every visible ordinary tmux session has one persistent Dvergatal
+character independent of its operator-owned tmux name, with no management UI.
+
+- Inventory normalizes missing/invalid character metadata through one
+  race-safe tmux compare-and-set boundary and never assigns phone shadows.
+- `tmuxName`, `optionalTmuxName`, and required `character` are one hard-cut Go
+  and Android contract. No legacy `name`, optional character, parser, or
+  fallback remains.
+- Generated names use `skidbladnir-<profile>-<N>` and character selection is
+  independently balanced and stable for the session lifetime.
+
+Acceptance: unit ownership proofs plus the same approved isolated real-tmux
+journey on Linux and Darwin.
+
+## v0 terminal key-deck delta — delivered
+
+Outcome: the terminal exposes one ordered, accessible input-only deck without
+mixing navigation or detach actions into terminal bytes.
+
+- Fixed order: `Esc`, one-shot `Ctrl`, `Tab`, `Line break`, arrows, `Home`,
+  `End`; top detach and Android Back remain lifecycle actions.
+- Ctrl state is owned by the page/native terminal boundary, is visible and
+  spoken, and resets on the next input, focus loss, rotation, kill dialog,
+  detach, reconnect, or page disposal.
+- IME composition, dictation, paste, resize, queue bounds, and WSS contracts
+  remain unchanged.
+
+Acceptance: pure/native terminal proofs, routine verification, and the exact
+S22+ platform gate.
+
+## v0 design deltas D1-D4 — specified, not implemented
+
+[`design-language.md`](design-language.md) owns the Niðavellir visual target;
+[`terminal-theme.md`](terminal-theme.md), [`chrome-tokens.md`](chrome-tokens.md),
+[`dwarf-seals.md`](dwarf-seals.md), and
+[`ornament-pipeline.md`](ornament-pipeline.md) are separate draft
+specifications pending review.
+They do not authorize source work in this merge and do not alter gateway,
+tmux, public API, or terminal-input semantics.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -214,4 +280,8 @@ orchestration, via a new architecture decision.
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
 | v0 fixed-topology dashboard cut | Implemented and published; routine, exact 16-test S22+ platform, and physical healthy/outage/recovery product gates green on the corrected tree |
 | v0 review corrective layer | Implemented and published; routine, both-host integration, Linux live, exact 16-test S22+ platform, and physical product gates green |
+| v0 profile delta — Devbox Claude Work | Integrated; routine and exact-tree external acceptance are owned by the merged candidate gates |
+| v0 identity delta — automatic dwarf identity | Integrated hard cut; routine and isolated Linux/Darwin acceptance are owned by the merged candidate gates |
+| v0 terminal key-deck delta | Integrated; routine and exact S22+ platform acceptance are owned by the merged candidate gates |
+| v0 design deltas D1-D4 | Specifications present; source not started |
 | v0.5 push | Not scheduled |

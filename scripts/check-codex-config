@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Fail closed unless Codex config uses only the native opaque hook state."""
+
+import json
+import re
+import sys
+
+
+BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def strip_comment(line: str) -> str:
+    quote = None
+    escaped = False
+    for index, character in enumerate(line):
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+        elif quote == "'":
+            if character == quote:
+                quote = None
+        elif character in "'\"":
+            quote = character
+        elif character == "#":
+            return line[:index]
+    if quote is not None:
+        raise ValueError("unterminated quoted value")
+    return line
+
+
+def key_path(encoded: str) -> tuple:
+    result = []
+    index = 0
+    while index < len(encoded):
+        while index < len(encoded) and encoded[index].isspace():
+            index += 1
+        if index == len(encoded):
+            break
+        if encoded[index] == '"':
+            end = index + 1
+            escaped = False
+            while end < len(encoded):
+                character = encoded[end]
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    break
+                end += 1
+            if end == len(encoded):
+                raise ValueError("unterminated basic key")
+            result.append(json.loads(encoded[index : end + 1]))
+            index = end + 1
+        elif encoded[index] == "'":
+            end = encoded.find("'", index + 1)
+            if end < 0:
+                raise ValueError("unterminated literal key")
+            result.append(encoded[index + 1 : end])
+            index = end + 1
+        else:
+            match = BARE_KEY.match(encoded, index)
+            if match is None:
+                raise ValueError("invalid bare key")
+            result.append(match.group())
+            index = match.end()
+        while index < len(encoded) and encoded[index].isspace():
+            index += 1
+        if index == len(encoded):
+            break
+        if encoded[index] != ".":
+            raise ValueError("invalid dotted key")
+        index += 1
+    if not result or any(not isinstance(part, str) or not part for part in result):
+        raise ValueError("empty key")
+    return tuple(result)
+
+
+def assignment_separator(code: str) -> int:
+    quote = None
+    escaped = False
+    for index, character in enumerate(code):
+        if quote == '"':
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+        elif quote == "'":
+            if character == quote:
+                quote = None
+        elif character in "'\"":
+            quote = character
+        elif character == "=":
+            return index
+    raise ValueError("non-assignment statement")
+
+
+def starts_with(path: tuple, prefix: tuple) -> bool:
+    return path[: len(prefix)] == prefix
+
+
+def accepts(source: str) -> bool:
+    # Multiline strings can contain apparent headers and assignments. Reject
+    # them rather than make a partial policy scan look authoritative.
+    if "'''" in source or '\"\"\"' in source:
+        return False
+    current_table = ()
+    hooks_feature_seen = False
+    try:
+        for original in source.splitlines():
+            code = strip_comment(original).strip()
+            if not code:
+                continue
+            if code.startswith("["):
+                array_table = code.startswith("[[")
+                close = "]]" if array_table else "]"
+                opening = 2 if array_table else 1
+                if not code.endswith(close):
+                    raise ValueError("invalid table header")
+                current_table = key_path(code[opening : -len(close)])
+                if starts_with(current_table, ("hooks",)) and (
+                    array_table or not starts_with(current_table, ("hooks", "state"))
+                ):
+                    return False
+                if current_table in (("features", "hooks"), ("features", "codex_hooks")):
+                    return False
+                continue
+
+            separator = assignment_separator(code)
+            assigned = current_table + key_path(code[:separator])
+            value = code[separator + 1 :].strip()
+            if assigned == ("features",):
+                return False
+            if assigned == ("features", "codex_hooks"):
+                return False
+            if assigned == ("features", "hooks"):
+                if hooks_feature_seen or value != "true":
+                    return False
+                hooks_feature_seen = True
+            if starts_with(assigned, ("hooks",)) and (
+                len(assigned) < 3 or not starts_with(assigned, ("hooks", "state"))
+            ):
+                return False
+    except (UnicodeError, ValueError, json.JSONDecodeError):
+        return False
+    return True
+
+
+def self_test() -> int:
+    cases = (
+        ("no hook configuration", 'model = "gpt-5"\n', True),
+        ("explicit hook enablement", "[features]\nhooks = true\n", True),
+        ("dotted hook enablement", "features.hooks = true\n", True),
+        ("opaque native state", '[hooks.state]\nanything = ["opaque", 1]\n', True),
+        ("nested opaque native state", '[hooks.state."opaque identity"]\nfuture = { shape = 2 }\n', True),
+        ("disabled hooks", "[features]\nhooks = false\n", False),
+        ("invalid hook feature", '[features]\nhooks = "yes"\n', False),
+        ("duplicate hook feature", "features.hooks = true\nfeatures.hooks = true\n", False),
+        ("deprecated enabled hook feature", "[features]\ncodex_hooks = true\n", False),
+        ("deprecated disabled hook feature", "[features]\ncodex_hooks = false\n", False),
+        ("inline features table", "features = { hooks = true }\n", False),
+        ("inline hooks table", "hooks = { state = {} }\n", False),
+        ("root hooks table", "[hooks]\nstate = {}\n", False),
+        ("inline lifecycle hook", "[hooks.SessionStart]\n", False),
+        ("array hook table", "[[hooks.state.identity]]\n", False),
+        ("multiline string", 'instructions = """\n[hooks.SessionStart]\n"""\n', False),
+        ("malformed header", "[hooks.state\n", False),
+    )
+    for name, source, expected in cases:
+        observed = accepts(source)
+        if observed != expected:
+            print(
+                "Codex config policy case {!r} = {}, want {}".format(name, observed, expected),
+                file=sys.stderr,
+            )
+            return 1
+    print("Codex config policy passed: {} cases".format(len(cases)))
+    return 0
+
+
+def main(arguments: list) -> int:
+    if arguments == ["--self-test"]:
+        return self_test()
+    if len(arguments) != 1:
+        print("usage: check-codex-config {--self-test|CONFIG_PATH}", file=sys.stderr)
+        return 64
+    try:
+        with open(arguments[0], encoding="utf-8") as stream:
+            source = stream.read()
+    except (OSError, UnicodeError) as error:
+        print("read Codex config: {}".format(error), file=sys.stderr)
+        return 1
+    if not accepts(source):
+        print(
+            "Codex config must omit features.codex_hooks, leave features.hooks enabled, "
+            "and define no hook tables outside hooks.state",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

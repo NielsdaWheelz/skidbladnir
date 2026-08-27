@@ -6,13 +6,24 @@
     var pagePort = null;
     var pageFailed = false;
     var fitScheduled = false;
+    var controlState = "Off";
+    var pendingProvenKey = null;
+    var compositionActive = false;
     var maximumInputBytes = 1024 * 1024;
     var minimumColumns = 80;
     var minimumFontSize = 6;
     var maximumFontSize = 14;
     var lastPublishedColumns = 0;
     var lastPublishedRows = 0;
-    var terminal = new window.Terminal({
+    var terminal = null;
+
+    window.addEventListener("message", acceptPagePort);
+    if (!terminalHost || !terminalStatus) {
+        failPage();
+        return;
+    }
+
+    terminal = new window.Terminal({
         cursorBlink: true,
         fontFamily: "monospace",
         fontSize: 14,
@@ -50,19 +61,46 @@
         if (pagePort) pagePort.postMessage(JSON.stringify(payload));
     }
 
+    function clearProvenKey() {
+        pendingProvenKey = null;
+    }
+
     function failPage() {
         if (pageFailed) return;
         pageFailed = true;
+        clearProvenKey();
+        if (controlState === "Armed") {
+            controlState = "Off";
+            send({ kind: "ControlState", state: controlState });
+        }
         send({ kind: "PageFailure" });
         pagePort = null;
+    }
+
+    function publishControlState() {
+        send({ kind: "ControlState", state: controlState });
+    }
+
+    function setControlState(nextState) {
+        if (controlState === nextState) return;
+        controlState = nextState;
+        publishControlState();
     }
 
     function utf8ByteCount(value) {
         if (value.length > maximumInputBytes) return null;
         var count = 0;
         for (var index = 0; index < value.length; index += 1) {
-            var code = value.codePointAt(index);
-            if (code > 0xffff) index += 1;
+            var first = value.charCodeAt(index);
+            var code = first;
+            if (first >= 0xd800 && first <= 0xdbff) {
+                var second = value.charCodeAt(index + 1);
+                if (second < 0xdc00 || second > 0xdfff) return null;
+                code = value.codePointAt(index);
+                index += 1;
+            } else if (first >= 0xdc00 && first <= 0xdfff) {
+                return null;
+            }
             count += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
             if (count > maximumInputBytes) return null;
         }
@@ -70,22 +108,39 @@
     }
 
     function sendInput(value) {
-        if (utf8ByteCount(value) === null) {
+        if (typeof value !== "string" || utf8ByteCount(value) === null) {
             failPage();
             return;
         }
         send({ kind: "Input", value: value });
     }
 
+    function controlValue(value) {
+        if (value.length !== 1) return value;
+        var code = value.charCodeAt(0);
+        if (code >= 0x61 && code <= 0x7a) code -= 0x20;
+        if (code >= 0x40 && code <= 0x5f) return String.fromCharCode(code & 0x1f);
+        if (code === 0x3f) return "\u007f";
+        return value;
+    }
+
+    function acceptInput(value, keyProven) {
+        var armed = controlState === "Armed";
+        if (armed) setControlState("Off");
+        sendInput(armed && keyProven ? controlValue(value) : value);
+    }
+
     function pasteInput(value) {
-        sendInput(terminal.modes.bracketedPasteMode ? "\u001b[200~" + value + "\u001b[201~" : value);
+        acceptInput(
+            terminal.modes.bracketedPasteMode ? "\u001b[200~" + value + "\u001b[201~" : value,
+            false
+        );
     }
 
     function sanitizePaste(value) {
         value = String(value);
         if (value.length > maximumInputBytes) return null;
-        var chunks = [];
-        var chunk = "";
+        var sanitized = "";
         var byteCount = 0;
         for (var index = 0; index < value.length; index += 1) {
             var code = value.codePointAt(index);
@@ -96,18 +151,14 @@
                 code = 0x0a;
                 character = "\n";
             }
+            if (code >= 0xd800 && code <= 0xdfff) continue;
             if (code === 0x09 || code === 0x0a || (code > 0x1f && code < 0x7f) || code > 0x9f) {
                 byteCount += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
                 if (byteCount > maximumInputBytes) return null;
-                chunk += character;
-                if (chunk.length >= 4096) {
-                    chunks.push(chunk);
-                    chunk = "";
-                }
+                sanitized += character;
             }
         }
-        chunks.push(chunk);
-        return chunks.join("");
+        return sanitized;
     }
 
     function resizeTerminal() {
@@ -145,15 +196,66 @@
         window.requestAnimationFrame(resizeTerminal);
     }
 
-    function decodeBase64(value) {
-        var decoded = window.atob(value);
-        var bytes = new Uint8Array(decoded.length);
-        for (var index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
-        return bytes;
+    function exactObject(value, expectedKeys) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        var actualKeys = Object.keys(value);
+        if (actualKeys.length !== expectedKeys.length) return false;
+        return expectedKeys.every(function (key) {
+            return Object.prototype.hasOwnProperty.call(value, key);
+        });
     }
 
+    function parseObject(value) {
+        if (typeof value !== "string") return null;
+        try {
+            var parsed = JSON.parse(value);
+            return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function decodeBase64(value) {
+        if (typeof value !== "string" || value.length % 4 !== 0 ||
+            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+            return null;
+        }
+        try {
+            var decoded = window.atob(value);
+            var bytes = new Uint8Array(decoded.length);
+            for (var index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
+            return bytes;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function keyIsProven(event) {
+        var domEvent = event && event.domEvent;
+        if (!domEvent || domEvent.isTrusted !== true || compositionActive || domEvent.isComposing) return false;
+        if (domEvent.type !== "keydown" && domEvent.type !== "keypress") return false;
+        if (domEvent.keyCode === 229 || domEvent.which === 229) return false;
+        if (domEvent.key === "Process" || domEvent.key === "Unidentified") return false;
+        if (typeof domEvent.key !== "string" || typeof event.key !== "string") return false;
+        if (domEvent.key !== event.key || event.key.length !== 1) return false;
+        var code = event.key.charCodeAt(0);
+        return code >= 0x20 && code <= 0x7e;
+    }
+
+    terminal.onKey(function (event) {
+        clearProvenKey();
+        if (!keyIsProven(event)) return;
+        var candidate = { value: event.key };
+        pendingProvenKey = candidate;
+        Promise.resolve().then(function () {
+            if (pendingProvenKey === candidate) clearProvenKey();
+        });
+    });
+
     terminal.onData(function (value) {
-        sendInput(value);
+        var keyProven = pendingProvenKey !== null && pendingProvenKey.value === value;
+        clearProvenKey();
+        acceptInput(value, keyProven);
     });
 
     var input = document.querySelector(".xterm-helper-textarea");
@@ -203,28 +305,40 @@
         scheduleImeContainment();
     }
 
-    if (input) {
-        ["compositionstart", "compositionend", "beforeinput", "input", "keydown", "focus"]
-            .forEach(function (eventName) {
-                input.addEventListener(eventName, scheduleImeContainment);
-            });
-        input.addEventListener("compositionupdate", function (event) {
-            if (composition && typeof event.data === "string") {
-                composition.textContent = "\u200e" + event.data + "\u200e";
-            }
-            scheduleImeContainment();
-        });
-        input.addEventListener("paste", function (event) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            var sanitized = sanitizePaste(event.clipboardData ? event.clipboardData.getData("text/plain") : "");
-            if (sanitized === null) {
-                failPage();
-            } else {
-                pasteInput(sanitized);
-            }
-        }, true);
+    if (!input || !composition || !screen) {
+        failPage();
+        return;
     }
+    ["compositionstart", "compositionend", "beforeinput", "input", "keydown", "focus"]
+        .forEach(function (eventName) {
+            input.addEventListener(eventName, scheduleImeContainment);
+        });
+    input.addEventListener("beforeinput", clearProvenKey, true);
+    input.addEventListener("compositionstart", function () {
+        compositionActive = true;
+        clearProvenKey();
+    }, true);
+    input.addEventListener("compositionend", function () {
+        clearProvenKey();
+        compositionActive = false;
+    }, true);
+    input.addEventListener("compositionupdate", function (event) {
+        if (typeof event.data === "string") {
+            composition.textContent = "\u200e" + event.data + "\u200e";
+        }
+        scheduleImeContainment();
+    });
+    input.addEventListener("paste", function (event) {
+        clearProvenKey();
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        var sanitized = sanitizePaste(event.clipboardData ? event.clipboardData.getData("text/plain") : "");
+        if (sanitized === null) {
+            failPage();
+        } else {
+            pasteInput(sanitized);
+        }
+    }, true);
 
     new ResizeObserver(scheduleFit).observe(terminalHost);
     window.addEventListener("resize", scheduleFit);
@@ -235,42 +349,99 @@
         window.visualViewport.addEventListener("scroll", lockPageViewport);
     }
 
-    window.addEventListener("message", function (event) {
-        if (!event.ports || event.ports.length !== 1) return;
+    function accessoryValue(key) {
+        var literals = {
+            Escape: "\u001b",
+            Tab: "\t",
+            LineFeed: "\n"
+        };
+        if (Object.prototype.hasOwnProperty.call(literals, key)) return literals[key];
+        var suffixes = {
+            Left: "D",
+            Up: "A",
+            Down: "B",
+            Right: "C",
+            Home: "H",
+            End: "F"
+        };
+        if (!Object.prototype.hasOwnProperty.call(suffixes, key)) return null;
+        return "\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffixes[key];
+    }
+
+    function acceptAccessory(key) {
+        if (key === "Control") {
+            setControlState(controlState === "Off" ? "Armed" : "Off");
+            focusTerminal();
+            return;
+        }
+        var value = accessoryValue(key);
+        if (value === null) {
+            failPage();
+            return;
+        }
+        acceptInput(value, false);
+        focusTerminal();
+    }
+
+    function acceptNativeMessage(message) {
+        var payload = parseObject(message.data);
+        if (!payload) {
+            failPage();
+            return;
+        }
+        if (payload.kind === "Output" && exactObject(payload, ["kind", "sequence", "data"]) &&
+            typeof payload.sequence === "string") {
+            var bytes = decodeBase64(payload.data);
+            if (bytes === null) {
+                failPage();
+                return;
+            }
+            terminal.write(bytes, function () {
+                terminalStatus.textContent = "Terminal connected";
+                send({ kind: "OutputApplied", sequence: payload.sequence });
+            });
+            return;
+        }
+        if (payload.kind === "Focus" && exactObject(payload, ["kind"])) {
+            focusTerminal();
+            return;
+        }
+        if (payload.kind === "Accessory" && exactObject(payload, ["kind", "key"]) &&
+            typeof payload.key === "string") {
+            acceptAccessory(payload.key);
+            return;
+        }
+        if (payload.kind === "ResetControl" && exactObject(payload, ["kind"])) {
+            setControlState("Off");
+            return;
+        }
+        failPage();
+    }
+
+    function acceptPagePort(event) {
+        var handshake = parseObject(event.data);
+        var validHandshake = event.ports && event.ports.length === 1 &&
+            handshake && exactObject(handshake, ["kind", "version"]) &&
+            handshake.kind === "PagePort" && handshake.version === 1;
+        if (!validHandshake) {
+            failPage();
+            return;
+        }
+        if (pagePort !== null) {
+            failPage();
+            return;
+        }
         pagePort = event.ports[0];
         if (pageFailed) {
             send({ kind: "PageFailure" });
             pagePort = null;
             return;
         }
-        pagePort.onmessage = function (message) {
-            var payload = JSON.parse(message.data);
-            if (payload.kind === "Output") {
-                terminal.write(decodeBase64(payload.data), function () {
-                    terminalStatus.textContent = "Terminal connected";
-                    send({ kind: "OutputApplied", sequence: payload.sequence });
-                });
-            } else if (payload.kind === "Focus") {
-                focusTerminal();
-            } else if (payload.kind === "Accessory") {
-                var suffix = {
-                    Left: "D",
-                    Up: "A",
-                    Down: "B",
-                    Right: "C",
-                    Home: "H",
-                    End: "F"
-                }[payload.key];
-                if (!suffix) {
-                    failPage();
-                    return;
-                }
-                sendInput("\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffix);
-                focusTerminal();
-            }
-        };
+        pagePort.onmessage = acceptNativeMessage;
+        pagePort.onmessageerror = failPage;
         pagePort.start();
+        publishControlState();
         send({ kind: "Ready" });
         scheduleFit();
-    });
+    }
 }());

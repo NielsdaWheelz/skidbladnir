@@ -227,17 +227,6 @@ def key_path(encoded):
 def starts_with(path, prefix):
     return path[:len(prefix)] == prefix
 
-def nonempty_string(encoded):
-    encoded = encoded.strip()
-    if encoded.startswith('"'):
-        value = json.loads(encoded)
-    elif len(encoded) >= 2 and encoded.startswith("'") and encoded.endswith("'") and "'" not in encoded[1:-1]:
-        value = encoded[1:-1]
-    else:
-        raise ValueError("trusted_hash must be a string")
-    if not isinstance(value, str) or not value:
-        raise ValueError("trusted_hash must be nonempty")
-
 def string_array(encoded):
     encoded = encoded.strip()
     if not (encoded.startswith("[") and encoded.endswith("]")):
@@ -286,9 +275,6 @@ def string_array(encoded):
 
 current_table = ()
 notify = []
-hook_identities = set()
-hook_assignments = set()
-hook_tables = set()
 try:
     for original in lines:
         code = strip_comment(original).strip()
@@ -301,17 +287,8 @@ try:
             if not code.endswith(close):
                 raise ValueError("invalid table header")
             current_table = key_path(code[opening:-len(close)])
-            if starts_with(current_table, ("notify",)) or starts_with(current_table, ("features", "hooks")):
+            if starts_with(current_table, ("notify",)):
                 raise SystemExit(3)
-            if starts_with(current_table, ("hooks",)):
-                if (array_table or current_table[:2] != ("hooks", "state") or
-                        len(current_table) not in (2, 3) or
-                        (len(current_table) == 3 and not current_table[2]) or
-                        current_table in hook_tables):
-                    raise SystemExit(3)
-                hook_tables.add(current_table)
-                if len(current_table) == 3:
-                    hook_identities.add(current_table[2])
             continue
         quote = None
         escaped = False
@@ -335,24 +312,11 @@ try:
         if separator is None:
             raise ValueError("non-assignment statement")
         assigned = current_table + key_path(code[:separator])
-        if starts_with(assigned, ("features", "hooks")) or assigned == ("features",):
-            raise SystemExit(3)
-        if starts_with(assigned, ("hooks",)):
-            if (len(assigned) != 4 or assigned[:2] != ("hooks", "state") or
-                    not assigned[2] or assigned[3] != "trusted_hash" or
-                    assigned in hook_assignments):
-                raise SystemExit(3)
-            nonempty_string(code[separator + 1:])
-            hook_identities.add(assigned[2])
-            hook_assignments.add(assigned)
         if starts_with(assigned, ("notify",)):
             if assigned != ("notify",):
                 raise SystemExit(3)
             notify.append(string_array(code[separator + 1:]))
 except (UnicodeError, ValueError, json.JSONDecodeError):
-    raise SystemExit(3)
-
-if hook_identities != {assigned[2] for assigned in hook_assignments}:
     raise SystemExit(3)
 
 if not notify:
@@ -500,6 +464,8 @@ preflight() {
     esac
     hook_state="$(classify_hooks "$hook_file")"
     [[ "$hook_state" != "conflict" ]] || die "Codex hook configuration conflicts: ${hook_file}"
+    /usr/bin/python3 "$repo_dir/scripts/check-codex-config" "$config_file" ||
+      die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
     printf '%s: %s\n' "$hook_file" "$hook_state"
   done
 
@@ -521,6 +487,7 @@ stage() {
     cd "$repo_dir"
     /usr/bin/git diff --check
     ./scripts/check-catalogue
+    ./scripts/check-go-toolchain
     go test ./cmd/... ./internal/...
     go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
     go build -trimpath -o "$staging_dir/skidbladnir" ./cmd/skidbladnir

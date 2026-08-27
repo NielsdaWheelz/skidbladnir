@@ -15,6 +15,11 @@ import (
 
 func currentPolicy() policy { return linuxPolicy() }
 
+// justify-ignore-error: every read or parse failure below deliberately leaves
+// its metric unknown — §4 models an unavailable /proc input as UNKNOWN and
+// names the missing metric on the wire (older kernels lack PSI files
+// entirely), so the error values carry nothing the sample does not already
+// express.
 func (collector *collector) collect() rawSample {
 	sample := rawSample{}
 	if contents, err := os.ReadFile("/proc/stat"); err == nil {

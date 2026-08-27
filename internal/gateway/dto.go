@@ -56,17 +56,17 @@ type characterDTO struct {
 }
 
 type sessionDTO struct {
-	ID              string        `json:"id"`
-	Name            string        `json:"name"`
-	IdentityToken   string        `json:"identityToken"`
-	Profile         string        `json:"profile,omitempty"`
-	Objective       string        `json:"objective,omitempty"`
-	Character       *characterDTO `json:"character,omitempty"`
-	CWD             string        `json:"cwd,omitempty"`
-	ActiveCommand   string        `json:"activeCommand,omitempty"`
-	AttachedClients int           `json:"attachedClients"`
-	Attention       bool          `json:"attention"`
-	Status          statusDTO     `json:"status"`
+	ID              string       `json:"id"`
+	TmuxName        string       `json:"tmuxName"`
+	IdentityToken   string       `json:"identityToken"`
+	Character       characterDTO `json:"character"`
+	Profile         string       `json:"profile,omitempty"`
+	Objective       string       `json:"objective,omitempty"`
+	CWD             string       `json:"cwd,omitempty"`
+	ActiveCommand   string       `json:"activeCommand,omitempty"`
+	AttachedClients int          `json:"attachedClients"`
+	Attention       bool         `json:"attention"`
+	Status          statusDTO    `json:"status"`
 }
 
 type machineDTO struct {
@@ -82,10 +82,10 @@ type sessionsResponseDTO struct {
 }
 
 type createSessionRequest struct {
-	CWD          stringField `json:"cwd"`
-	Profile      stringField `json:"profile"`
-	OptionalName stringField `json:"optionalName"`
-	Objective    stringField `json:"objective"`
+	CWD              stringField `json:"cwd"`
+	Profile          stringField `json:"profile"`
+	OptionalTmuxName stringField `json:"optionalTmuxName"`
+	Objective        stringField `json:"objective"`
 }
 
 type stringField struct {
@@ -102,7 +102,7 @@ func (field *stringField) UnmarshalJSON(encoded []byte) error {
 }
 
 type killSessionRequest struct {
-	Name          string `json:"name"`
+	TmuxName      string `json:"tmuxName"`
 	IdentityToken string `json:"identityToken"`
 }
 
@@ -175,8 +175,9 @@ func mapSession(session sessions.Session, observedAt time.Time) (sessionDTO, err
 	}
 	card := sessionDTO{
 		ID:              session.ID,
-		Name:            session.Name,
+		TmuxName:        session.TmuxName,
 		IdentityToken:   session.IdentityToken,
+		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
 		Profile:         session.Profile,
 		Objective:       session.Objective,
 		CWD:             session.CWD,
@@ -191,12 +192,6 @@ func mapSession(session sessions.Session, observedAt time.Time) (sessionDTO, err
 	}
 	if card.IdentityToken == "" {
 		return sessionDTO{}, errors.New("missing session identity token")
-	}
-	if (session.CharacterKey == "") != (session.CharacterDisplayName == "") {
-		return sessionDTO{}, errors.New("incomplete character metadata")
-	}
-	if session.CharacterKey != "" {
-		card.Character = &characterDTO{Key: session.CharacterKey, DisplayName: session.CharacterDisplayName}
 	}
 	return card, nil
 }

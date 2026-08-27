@@ -60,10 +60,12 @@ func runningStatus(now time.Time) Status {
 }
 
 func (manager *Manager) matchesAgent(observed processinfo.Observation) bool {
-	base, argument1 := observed.ExecutableBase(), observed.Argument(1)
+	base, argument0, argument1 := observed.ExecutableBase(), observed.Argument(0), observed.Argument(1)
 	for _, profile := range manager.profiles {
 		for _, signature := range profile.ForegroundSignatures {
-			if base == signature.ExecutableBase && (signature.Argument1 == "" || argument1 == signature.Argument1) {
+			if (signature.ExecutableBase == "" || base == signature.ExecutableBase) &&
+				(signature.Argument0 == "" || argument0 == signature.Argument0) &&
+				(signature.Argument1 == "" || argument1 == signature.Argument1) {
 				return true
 			}
 		}

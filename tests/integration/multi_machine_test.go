@@ -34,9 +34,9 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 	create := func(server *httptest.Server, bearer, handle, cwd string) map[string]any {
 		t.Helper()
 		body, err := json.Marshal(map[string]string{
-			"cwd":          cwd,
-			"profile":      "personal",
-			"optionalName": "same-local-agent",
+			"cwd":              cwd,
+			"profile":          "personal",
+			"optionalTmuxName": "same-local-agent",
 		})
 		if err != nil {
 			t.Fatal("encode colliding local create")
@@ -49,7 +49,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 	leftCreated := create(leftServer, leftBearer, integrationMachineText, left.project)
 	rightCreated := create(rightServer, rightBearer, secondIntegrationMachineText, right.project)
 	idsCollide := leftCreated["id"] == rightCreated["id"]
-	namesCollide := leftCreated["name"] == rightCreated["name"]
+	namesCollide := leftCreated["tmuxName"] == rightCreated["tmuxName"]
 	if !idsCollide || !namesCollide {
 		t.Fatalf("fixture did not establish colliding machine-local identities: id_collision=%t name_collision=%t", idsCollide, namesCollide)
 	}
@@ -64,7 +64,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		"",
 		secondIntegrationMachineText,
 		"",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
 	assertError(t, unauthenticatedWrongMachine, http.StatusUnauthorized, "Unauthenticated")
 	leftBearerAtRight := requestForMachine(
@@ -78,7 +78,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 
 	missingMachine := requestForMachine(
 		t, leftServer.Client(), http.MethodPost, leftServer.URL+"/v1/sessions", leftBearer, "", "",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
 	assertError(t, missingMachine, http.StatusConflict, "MachineIdentityMismatch")
 	for _, headers := range [][]string{
@@ -92,7 +92,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 			leftServer.URL+"/v1/sessions",
 			leftBearer,
 			headers,
-			fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalName":"must-not-exist"}`, left.project),
+			fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 		)
 		assertError(t, repeatedMachine, http.StatusBadRequest, "InvalidRequest")
 	}
@@ -109,7 +109,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		leftBearer,
 		secondIntegrationMachineText,
 		"",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
 	assertError(t, wrongMachineCreate, http.StatusConflict, "MachineIdentityMismatch")
 	wrongMachinePressure := requestForMachine(
@@ -135,7 +135,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		leftBearer,
 		secondIntegrationMachineText,
 		"",
-		fmt.Sprintf(`{"name":%q,"identityToken":%q}`, leftCreated["name"], leftCreated["identityToken"]),
+		fmt.Sprintf(`{"tmuxName":%q,"identityToken":%q}`, leftCreated["tmuxName"], leftCreated["identityToken"]),
 	)
 	assertError(t, wrongMachineDelete, http.StatusConflict, "MachineIdentityMismatch")
 	if leftTopologyAfter := left.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{pane_pid}|#{@skid_profile}"); leftTopologyAfter != leftTopologyBefore {
@@ -157,7 +157,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		leftBearer,
 		integrationMachineText,
 		"",
-		fmt.Sprintf(`{"name":%q,"identityToken":%q}`, leftCreated["name"], leftCreated["identityToken"]),
+		fmt.Sprintf(`{"tmuxName":%q,"identityToken":%q}`, leftCreated["tmuxName"], leftCreated["identityToken"]),
 	)
 	assertStatus(t, exactDelete, http.StatusNoContent)
 	exactDelete.Body.Close()
@@ -234,7 +234,7 @@ func readMachineInventory(t *testing.T, server *httptest.Server, bearer, handle 
 
 func hasSessionNamed(inventory map[string]any, name string) bool {
 	for _, value := range inventory["sessions"].([]any) {
-		if value.(map[string]any)["name"] == name {
+		if value.(map[string]any)["tmuxName"] == name {
 			return true
 		}
 	}

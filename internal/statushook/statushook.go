@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
@@ -43,11 +44,29 @@ func Run(ctx context.Context, eventText string, input io.Reader, output io.Write
 		_, err := io.WriteString(output, successOutput(event))
 		return err
 	}
+	paneTerminalCommand := exec.CommandContext(
+		ctx,
+		platform.Current().TmuxPath,
+		"display-message", "-p", "-t", pane, "#{pane_tty}",
+	)
+	paneTerminalCommand.Stderr = io.Discard
+	paneTerminalPath, err := paneTerminalCommand.Output()
+	if err != nil {
+		return errors.New("read tmux pane terminal")
+	}
+	if len(paneTerminalPath) < 2 || paneTerminalPath[len(paneTerminalPath)-1] != '\n' ||
+		strings.ContainsRune(string(paneTerminalPath[:len(paneTerminalPath)-1]), '\n') {
+		return errors.New("read tmux pane terminal")
+	}
+	paneTerminal, err := processinfo.TerminalDeviceAt(string(paneTerminalPath[:len(paneTerminalPath)-1]))
+	if err != nil {
+		return errors.New("read tmux pane terminal")
+	}
 	ancestry, err := processinfo.ObserveAncestry(processinfo.PID(os.Getpid()), maximumProcessAncestry)
 	if err != nil {
 		return err
 	}
-	if origin, valid := foregroundCodexOrigin(ancestry); valid {
+	if origin, valid := foregroundCodexOrigin(ancestry, paneTerminal); valid {
 		command := exec.CommandContext(
 			ctx,
 			platform.Current().TmuxPath,
@@ -87,7 +106,9 @@ func lifecycleTmuxArguments(pane string, event HookEvent, origin processinfo.Obs
 	arguments := []string{
 		"set-option", "-p", "-t", pane, "--", lifecycleOption, lifecycleValue(event, origin, now),
 	}
-	if event != HookStop {
+	// Only a submitted prompt proves the user has seen the pane; SessionStart
+	// resume/clear must not silently drop a pending attention badge.
+	if event == HookUserPromptSubmit {
 		arguments = append(arguments, ";", "set-option", "-pqu", "-t", pane, "--", "@skid_attention")
 	}
 	return arguments
@@ -112,13 +133,14 @@ func validPaneID(value string) bool {
 	return true
 }
 
-func foregroundCodexOrigin(ancestry []processinfo.Observation) (processinfo.Observation, bool) {
-	if len(ancestry) == 0 || ancestry[0].ForegroundProcessGroup <= 0 {
+func foregroundCodexOrigin(ancestry []processinfo.Observation, paneTerminal processinfo.TerminalDevice) (processinfo.Observation, bool) {
+	terminalAncestry, valid := exactTerminalSessionAncestry(ancestry, paneTerminal)
+	if !valid || terminalAncestry[0].ForegroundProcessGroup <= 0 {
 		return processinfo.Observation{}, false
 	}
-	foregroundProcessGroup := ancestry[0].ForegroundProcessGroup
+	foregroundProcessGroup := terminalAncestry[0].ForegroundProcessGroup
 	codexAncestors := make([]processinfo.Observation, 0, 2)
-	for _, process := range ancestry[1:] {
+	for _, process := range terminalAncestry[1:] {
 		if isCodexProcess(process) {
 			codexAncestors = append(codexAncestors, process)
 		}
@@ -143,6 +165,22 @@ func foregroundCodexOrigin(ancestry []processinfo.Observation) (processinfo.Obse
 		return processinfo.Observation{}, false
 	}
 	return origin, true
+}
+
+func exactTerminalSessionAncestry(ancestry []processinfo.Observation, paneTerminal processinfo.TerminalDevice) ([]processinfo.Observation, bool) {
+	if len(ancestry) == 0 || paneTerminal == 0 || ancestry[0].SessionID <= 0 || ancestry[0].TerminalDevice != paneTerminal {
+		return nil, false
+	}
+	session := ancestry[0].SessionID
+	for index, observation := range ancestry {
+		if observation.SessionID != session || observation.TerminalDevice != paneTerminal {
+			return nil, false
+		}
+		if observation.PID == session {
+			return ancestry[:index+1], true
+		}
+	}
+	return nil, false
 }
 
 func isCodexProcess(process processinfo.Observation) bool {

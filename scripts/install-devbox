@@ -32,14 +32,16 @@ readonly -a profile_configs=(
   "${expected_home}/.codex-work2/config.toml"
 )
 readonly -a required_executables=(
-  /usr/bin/caddy /usr/bin/cat /usr/bin/chmod /usr/bin/cmp /usr/bin/curl /usr/bin/dirname
-  /usr/bin/flock /usr/bin/git /usr/bin/head /usr/bin/id /usr/bin/install /usr/bin/jq
+  /usr/bin/awk /usr/bin/caddy /usr/bin/cat /usr/bin/chmod /usr/bin/cmp /usr/bin/cp
+  /usr/bin/curl /usr/bin/dirname /usr/bin/flock /usr/bin/git /usr/bin/head
+  /usr/bin/id /usr/bin/install /usr/bin/jq
   /usr/bin/loginctl /usr/bin/mktemp /usr/bin/mv /usr/bin/python3 /usr/bin/rm /usr/bin/sed
   /usr/bin/sleep /usr/bin/ss /usr/bin/stat /usr/bin/sync /usr/bin/systemctl
   /usr/bin/systemd-analyze /usr/bin/tailscale /usr/bin/tmux
 )
 
 staging_dir=""
+publish_in_progress="0"
 preflight_service_state=""
 preflight_service_pid=""
 tcp_listener_records=""
@@ -50,9 +52,30 @@ die() {
   exit 1
 }
 
+attempt_rollback() {
+  [[ -n "$staging_dir" && -f "$staging_dir/rollback-skidbladnir" ]] || return 1
+  atomic_install "$staging_dir/rollback-skidbladnir" "$binary_target" 0755 || return 1
+  if [[ -f "$staging_dir/rollback-unit" ]]; then
+    atomic_install "$staging_dir/rollback-unit" "$unit_target" 0644 || return 1
+  fi
+  /usr/bin/systemctl --user daemon-reload || return 1
+  /usr/bin/systemctl --user enable --now "$service_name" || return 1
+}
+
 cleanup() {
   local exit_status=$?
   trap - EXIT HUP INT TERM
+  if [[ "$publish_in_progress" == "1" && "$exit_status" -ne 0 ]]; then
+    if [[ -f "${staging_dir}/rollback-skidbladnir" ]]; then
+      if attempt_rollback; then
+        printf 'skidbladnir devbox: installation failed; the previous gateway was restored and restarted\n' >&2
+      else
+        printf 'skidbladnir devbox: installation failed and rollback also failed; the service needs manual repair\n' >&2
+      fi
+    else
+      printf 'skidbladnir devbox: first installation failed before completion; no previous gateway exists to restore\n' >&2
+    fi
+  fi
   if [[ -n "$staging_dir" && -d "$staging_dir" ]]; then
     if ! /usr/bin/rm -rf -- "$staging_dir"; then
       printf 'skidbladnir devbox: could not remove staging directory: %s\n' "$staging_dir" >&2
@@ -109,6 +132,14 @@ require_owned_directory() {
   fi
 }
 
+require_optional_owned_directory() {
+  local target_directory="$1"
+  local expected_mode="${2:-}"
+  if [[ -e "$target_directory" || -L "$target_directory" ]]; then
+    require_owned_directory "$target_directory" "$expected_mode"
+  fi
+}
+
 require_regular_file() {
   local target_file="$1"
   local expected_mode="$2"
@@ -151,26 +182,7 @@ require_status_hook_configuration() {
     if ! classify_status_hooks "$hook_file" >/dev/null; then
       die "Codex hook configuration conflicts: ${hook_file}"
     fi
-    if ! /usr/bin/python3 - "$config_file" <<'PY'
-import sys
-import tomllib
-
-with open(sys.argv[1], "rb") as stream:
-    config = tomllib.load(stream)
-features = config.get("features", {})
-if not isinstance(features, dict) or features.get("hooks") is False:
-    raise SystemExit(1)
-hooks = config.get("hooks")
-if hooks is not None:
-    if not isinstance(hooks, dict) or set(hooks) != {"state"} or not isinstance(hooks["state"], dict):
-        raise SystemExit(1)
-    for identity, review in hooks["state"].items():
-        if (not isinstance(identity, str) or not identity or not isinstance(review, dict) or
-                set(review) != {"trusted_hash"} or
-                not isinstance(review["trusted_hash"], str) or not review["trusted_hash"]):
-            raise SystemExit(1)
-PY
-    then
+    if ! /usr/bin/python3 "$repo_dir/scripts/check-codex-config" "$config_file"; then
       die "inline Codex hook configuration conflicts with the owned hooks.json: ${config_file}"
     fi
   done
@@ -448,12 +460,14 @@ preflight_platform() {
   [[ -f "${expected_home}/.local/bin/codex" && -x "${expected_home}/.local/bin/codex" ]] ||
     die "foreground Codex path is unavailable"
 
-  require_owned_directory "${expected_home}/.local"
-  require_owned_directory "${expected_home}/.local/bin" 700
-  require_owned_directory "${expected_home}/.local/share"
-  require_owned_directory "${expected_home}/.config"
-  require_owned_directory "${expected_home}/.config/systemd"
-  require_owned_directory "${expected_home}/.config/systemd/user" 700
+  # Publication creates these paths. Absence is a supported bootstrap state;
+  # any path already present must still satisfy the exact ownership contract.
+  require_optional_owned_directory "${expected_home}/.local"
+  require_optional_owned_directory "${expected_home}/.local/bin" 700
+  require_optional_owned_directory "${expected_home}/.local/share"
+  require_optional_owned_directory "${expected_home}/.config"
+  require_optional_owned_directory "${expected_home}/.config/systemd"
+  require_optional_owned_directory "${expected_home}/.config/systemd/user" 700
 }
 
 preflight_host() {
@@ -550,6 +564,7 @@ stage_installation() {
     cd "$repo_dir"
     /usr/bin/git diff --check
     ./scripts/check-catalogue
+    ./scripts/check-go-toolchain
     go build ./cmd/... ./internal/...
     go test -tags=integration -c -o "$staging_dir/skidbladnir-integration.test" ./tests/integration
     /usr/bin/systemd-analyze --user verify deploy/systemd/skidbladnir.service
@@ -807,6 +822,15 @@ install_devbox() {
     [[ "$("$staging_dir/skidbladnir" machine init --file="$machine_handle_target")" == "$(/usr/bin/sed -n '1p' "$machine_handle_target")" ]] ||
       die "existing machine handle is invalid"
   fi
+  if [[ -f "$binary_target" && ! -L "$binary_target" ]]; then
+    /usr/bin/cp -p -- "$binary_target" "$staging_dir/rollback-skidbladnir" ||
+      die "could not snapshot the running gateway for rollback"
+  fi
+  if [[ -f "$unit_target" && ! -L "$unit_target" ]]; then
+    /usr/bin/cp -p -- "$unit_target" "$staging_dir/rollback-unit" ||
+      die "could not snapshot the systemd unit for rollback"
+  fi
+  publish_in_progress="1"
   stop_current_service || die "service could not be safely stopped for installation"
 
   ensure_owned_directory "$(/usr/bin/dirname -- "$binary_target")" 700
@@ -855,6 +879,7 @@ install_devbox() {
     *) die "Tailscale Serve configuration conflicts" ;;
   esac
   verify_installation
+  publish_in_progress="0"
 }
 
 verify_devbox() {

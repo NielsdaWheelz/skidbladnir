@@ -54,8 +54,64 @@ func TestLifecycleStatusIsBoundToTheExactForegroundProcessLifetime(t *testing.T)
 
 func TestLiveAgentWithoutLifecycleEvidenceIsRunningNotWorking(t *testing.T) {
 	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	manager := &Manager{profiles: []Profile{{
+		ForegroundSignatures: []ForegroundSignature{{Argument0: "/home/niels/.local/bin/claude"}},
+	}}}
+	process := processinfo.Observation{
+		PID:           4312,
+		StartIdentity: "991827",
+		Executable:    "/home/niels/.local/share/claude/versions/2.1.231",
+		Argv:          []string{"/home/niels/.local/bin/claude"},
+	}
+	if !manager.matchesAgent(process) {
+		t.Fatalf("exact Claude argv[0] was not recognized: %+v", process)
+	}
+	if lifecycle, valid := parseLifecycleStatus("", process, now); valid {
+		t.Fatalf("absent Claude lifecycle was accepted as %+v", lifecycle)
+	}
+	for _, nearMiss := range []processinfo.Observation{
+		{Executable: "/home/niels/.local/share/claude/versions/2.1.231", Argv: []string{"/home/niels/.local/bin/claude-beta"}},
+		{Executable: "/usr/bin/node", Argv: []string{"node"}},
+	} {
+		if manager.matchesAgent(nearMiss) {
+			t.Fatalf("non-Claude foreground process matched exact argv[0] signature: %+v", nearMiss)
+		}
+	}
 	status := runningStatus(now)
 	if status.Kind != StatusRunning || status.Signal != StatusSignalProcess || status.SignalAt != now {
 		t.Fatalf("unobserved live agent status = kind=%s signal=%s signalAt=%s, want kind=%s signal=%s signalAt=%s", status.Kind, status.Signal, status.SignalAt, StatusRunning, StatusSignalProcess, now)
+	}
+}
+
+func TestForegroundSignatureSelectorsMatchExactlyAndConjunctively(t *testing.T) {
+	manager := &Manager{profiles: []Profile{{
+		ForegroundSignatures: []ForegroundSignature{{
+			ExecutableBase: "claude-2.1.231",
+			Argument0:      "/home/niels/.local/bin/claude",
+			Argument1:      "--permission-mode",
+		}},
+	}}}
+	exact := processinfo.Observation{
+		Executable: "/home/niels/.local/share/claude/claude-2.1.231",
+		Argv:       []string{"/home/niels/.local/bin/claude", "--permission-mode"},
+	}
+	if !manager.matchesAgent(exact) {
+		t.Fatalf("exact populated foreground selectors did not match: %+v", exact)
+	}
+
+	for _, test := range []struct {
+		name    string
+		process processinfo.Observation
+	}{
+		{name: "executable near miss", process: processinfo.Observation{Executable: "/home/niels/.local/share/claude/claude-2.1.232", Argv: exact.Argv}},
+		{name: "argument zero prefix", process: processinfo.Observation{Executable: exact.Executable, Argv: []string{exact.Argv[0] + "-beta", exact.Argv[1]}}},
+		{name: "argument zero basename", process: processinfo.Observation{Executable: exact.Executable, Argv: []string{"claude", exact.Argv[1]}}},
+		{name: "argument one near miss", process: processinfo.Observation{Executable: exact.Executable, Argv: []string{exact.Argv[0], "--permission-modes"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if manager.matchesAgent(test.process) {
+				t.Fatalf("foreground near miss matched exact signature: %+v", test.process)
+			}
+		})
 	}
 }

@@ -4,5 +4,9 @@ set -eu
 case "$TMUX_PANE" in
   % | %*[!0-9]* | [!%]*) exit 0 ;;
 esac
-/usr/bin/tmux set-option -p -t "$TMUX_PANE" @skid_attention "$(/usr/bin/date +%s)"
-printf '\a' >"$(/usr/bin/tmux display-message -p -t "$TMUX_PANE" '#{pane_tty}')"
+# A pane or server that vanished between turn end and notification is not a
+# failure, and a notify helper must never fail its calling agent.
+/usr/bin/tmux set-option -p -t "$TMUX_PANE" @skid_attention "$(/usr/bin/date +%s)" 2>/dev/null || exit 0
+pane_tty="$(/usr/bin/tmux display-message -p -t "$TMUX_PANE" '#{pane_tty}' 2>/dev/null)" || exit 0
+[ -c "$pane_tty" ] || exit 0
+printf '\a' >"$pane_tty" 2>/dev/null || exit 0

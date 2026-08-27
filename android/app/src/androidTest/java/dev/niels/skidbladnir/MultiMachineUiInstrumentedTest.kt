@@ -157,8 +157,9 @@ class MultiMachineUiInstrumentedTest {
         )
         val session = AgentSession(
             id = "${'$'}1",
-            name = "ga-durinn",
+            tmuxName = "ga-durinn",
             identityToken = "v1-0123456789abcdef0123456789abcdef.100.200.1",
+            character = CharacterSummary("norse.durinn", "Durinn"),
             attachedClients = 1,
             attention = false,
             status = SessionStatus(
@@ -333,7 +334,7 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(killTarget)))
                 compose.onNodeWithTag(killTag(killTarget)).performClick()
                 compose.onNodeWithText(
-                    "Kill ${killTarget.session.name} on ${killCredential.machine.label.text}?",
+                    "Kill ${killTarget.session.tmuxName} on ${killCredential.machine.label.text}?",
                 ).assertIsDisplayed()
                 compose.onNodeWithText("Cancel").performClick()
             }
@@ -375,7 +376,7 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
                 compose.onNodeWithText(
-                    "Kill ${failedTarget.session.name} on ${failed.machine.label.text}?",
+                    "Kill ${failedTarget.session.tmuxName} on ${failed.machine.label.text}?",
                 ).assertIsDisplayed()
                 compose.onNodeWithTag("kill-confirm").assertIsEnabled()
                 assertTrue("Could not publish outage coordination marker", readiness.createNewFile())

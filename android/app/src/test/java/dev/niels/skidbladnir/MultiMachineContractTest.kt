@@ -144,15 +144,15 @@ class MultiMachineContractTest {
         val beta = macBook.copy(label = requireNotNull(MachineLabel.parse("Beta")))
         val alphaMachine = readyMachine(
             alpha,
-            session(id = tmuxId(1), name = "zeta", status = status(SessionStatusKind.Idle)),
-            session(id = tmuxId(3), name = "beta"),
-            session(id = tmuxId(5), name = "Alpha"),
-            session(id = tmuxId(0), name = "Alpha"),
+            session(id = tmuxId(1), tmuxName = "zeta", status = status(SessionStatusKind.Idle)),
+            session(id = tmuxId(3), tmuxName = "beta"),
+            session(id = tmuxId(5), tmuxName = "Alpha"),
+            session(id = tmuxId(0), tmuxName = "Alpha"),
         )
         val betaMachine = readyMachine(
             beta,
-            session(id = tmuxId(2), name = "aaa", attention = true, status = status(SessionStatusKind.Unknown)),
-            session(id = tmuxId(4), name = "alpha"),
+            session(id = tmuxId(2), tmuxName = "aaa", attention = true, status = status(SessionStatusKind.Unknown)),
+            session(id = tmuxId(4), tmuxName = "alpha"),
         )
 
         assertEquals(
@@ -165,7 +165,7 @@ class MultiMachineContractTest {
                 "Alpha/zeta/${tmuxId(1)}",
             ),
             visibleAgents(listOf(betaMachine, alphaMachine), selectedMachine = null).map {
-                "${it.machine.label.text}/${it.target.session.name}/${it.target.session.id}"
+                "${it.machine.label.text}/${it.target.session.tmuxName}/${it.target.session.id}"
             },
         )
     }
@@ -187,12 +187,12 @@ class MultiMachineContractTest {
 
             val sessions = readyMachine(
                 devbox,
-                session(id = tmuxId(2), name = "Zeta", identityToken = "token-zeta"),
-                session(id = tmuxId(1), name = "Iota", identityToken = "token-iota"),
+                session(id = tmuxId(2), tmuxName = "Zeta", identityToken = "token-zeta"),
+                session(id = tmuxId(1), tmuxName = "Iota", identityToken = "token-iota"),
             )
             assertEquals(
                 listOf("Iota", "Zeta"),
-                visibleAgents(listOf(sessions), selectedMachine = null).map { it.target.session.name },
+                visibleAgents(listOf(sessions), selectedMachine = null).map { it.target.session.tmuxName },
             )
         } finally {
             Locale.setDefault(original)
@@ -269,7 +269,7 @@ class MultiMachineContractTest {
             machineHandle = devboxHandle,
             cwd = "/home/niels/src/skidbladnir",
             profile = personal,
-            optionalName = "forge-review",
+            optionalTmuxName = "forge-review",
             objective = "Review the federation",
         )
 
@@ -277,7 +277,7 @@ class MultiMachineContractTest {
         assertEquals(macBookHandle, changed.machineHandle)
         assertTrue(changed.cwd.isEmpty())
         assertNull(changed.profile)
-        assertEquals("forge-review", changed.optionalName)
+        assertEquals("forge-review", changed.optionalTmuxName)
         assertTrue(changed.objective == "Review the federation")
         assertEquals("Create on MacBook", forgeActionLabel(macBook.label))
 
@@ -292,7 +292,7 @@ class MultiMachineContractTest {
             machineHandle = null,
             cwd = "",
             profile = null,
-            optionalName = "preserved-name",
+            optionalTmuxName = "preserved-name",
             objective = "preserved objective",
         )
         assertNull(empty.submission())
@@ -318,7 +318,7 @@ class MultiMachineContractTest {
             machineHandle = devboxHandle,
             cwd = "/home/niels/src/skidbladnir",
             profile = personal,
-            optionalName = "recovered-agent",
+            optionalTmuxName = "recovered-agent",
             objective = "Preserve the explicit target",
         )
         val dashboard = SkidbladnirUiState.Dashboard(
@@ -661,13 +661,13 @@ class MultiMachineContractTest {
 
     private fun session(
         id: String = tmuxId(1),
-        name: String = "ga-durinn",
+        tmuxName: String = "ga-durinn",
         identityToken: String = "v1-0123456789abcdef0123456789abcdef.100.200.1",
         attention: Boolean = false,
         status: SessionStatus = status(SessionStatusKind.Working),
     ): AgentSession = AgentSession(
         id = id,
-        name = name,
+        tmuxName = tmuxName,
         identityToken = identityToken,
         profile = "personal",
         objective = null,

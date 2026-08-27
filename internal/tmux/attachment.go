@@ -24,10 +24,13 @@ const (
 	attachmentReadyPollInterval = 25 * time.Millisecond
 	attachmentExitLimit         = 2 * time.Second
 	attachmentRecoveryLimit     = 3 * time.Second
+	shadowReleaseSettleLimit    = 2 * time.Second
+	shadowReleaseSettleInterval = 25 * time.Millisecond
 )
 
 var (
 	phoneShadowNamePattern              = regexp.MustCompile(`^skid-phone-[0-9a-f]{32}$`)
+	windowIDPattern                     = regexp.MustCompile(`^@[0-9]+$`)
 	ErrAttachmentIdentityMismatch       = errors.New("tmux attachment identity changed")
 	ErrAttachmentCleanupFailed          = errors.New("tmux attachment startup cleanup failed")
 	errAttachmentCleanupIncomplete      = errors.New("tmux attachment cleanup is incomplete")
@@ -64,7 +67,8 @@ type Attachment struct {
 	processDone chan struct{}
 	processErr  error
 
-	closePTYOnce    sync.Once
+	ptyMutex        sync.Mutex
+	ptyClosed       bool
 	closePTYErr     error
 	closeClientOnce sync.Once
 	closeClientErr  error
@@ -81,11 +85,17 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 	if err != nil {
 		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
 	}
-	shadowID, err := parseAttachmentCreationOutput(output)
+	shadowID, sourceWindowID, err := parseAttachmentCreationOutput(output)
 	if err != nil {
 		if errors.Is(err, ErrAttachmentIdentityMismatch) {
 			return nil, err
 		}
+		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
+	}
+	selectContext, cancelSelect := context.WithTimeout(ctx, attachmentControlLimit)
+	err = client.selectShadowWindow(selectContext, spec, shadowID, sourceWindowID)
+	cancelSelect()
+	if err != nil {
 		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
 	}
 	clientArguments, err := attachmentClientArguments(shadowID)
@@ -135,6 +145,13 @@ func (attachment *Attachment) Resize(columns, rows int) error {
 	if columns <= 0 || columns > 65535 || rows <= 0 || rows > 65535 {
 		return errors.New("terminal geometry is invalid")
 	}
+	// The resize ioctl uses the raw descriptor, so it must never race ClosePTY
+	// into a number the kernel has already reissued to an unrelated file.
+	attachment.ptyMutex.Lock()
+	defer attachment.ptyMutex.Unlock()
+	if attachment.ptyClosed {
+		return errors.New("terminal attachment is closed")
+	}
 	return pty.Setsize(attachment.pty, &pty.Winsize{Cols: uint16(columns), Rows: uint16(rows)})
 }
 
@@ -162,9 +179,12 @@ func (attachment *Attachment) Presence(ctx context.Context) (Presence, error) {
 }
 
 func (attachment *Attachment) ClosePTY() error {
-	attachment.closePTYOnce.Do(func() {
+	attachment.ptyMutex.Lock()
+	defer attachment.ptyMutex.Unlock()
+	if !attachment.ptyClosed {
+		attachment.ptyClosed = true
 		attachment.closePTYErr = attachment.pty.Close()
-	})
+	}
 	return attachment.closePTYErr
 }
 
@@ -197,25 +217,66 @@ func (attachment *Attachment) ReleaseShadow(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	output, err := attachment.client.Output(ctx, "release-phone-shadow", "if-shell", "-F", "-t", attachment.shadowID,
-		condition, release, "display-message -p -l '"+identityMismatchMarker+"'")
-	if err != nil {
-		exists, existsErr := attachment.client.HasSession(ctx, attachment.shadowID)
-		if existsErr != nil {
-			return existsErr
+	// justify-polling: tmux processes the owned client's disconnect and any armed
+	// keep-last destruction asynchronously and offers no completion signal, so a
+	// still-attached readback retries every 25ms for at most 2s before it is a
+	// real identity conflict.
+	deadline := time.Now().Add(shadowReleaseSettleLimit)
+	for {
+		output, err := attachment.client.Output(ctx, "release-phone-shadow", "if-shell", "-F", "-t", attachment.shadowID,
+			condition, release, "display-message -p -l '"+identityMismatchMarker+"'")
+		if err != nil {
+			exists, existsErr := attachment.client.HasSession(ctx, attachment.shadowID)
+			if existsErr != nil {
+				return existsErr
+			}
+			if !exists {
+				return nil
+			}
+			return err
 		}
-		if !exists {
+		exists := true
+		if output == identityMismatchMarker {
+			// if-shell's -t lookup is allowed to fail, so a shadow that tmux
+			// already destroyed through the armed keep-last option also prints
+			// the marker; absence of the exact shadow id is the proven owned
+			// outcome because session ids are never reused within one server
+			// lifetime.
+			exists, err = attachment.client.HasSession(ctx, attachment.shadowID)
+			if err != nil {
+				return err
+			}
+		}
+		settled, classifyErr := classifyShadowRelease(output, exists, time.Now().Before(deadline))
+		if classifyErr != nil {
+			return classifyErr
+		}
+		if settled {
 			return nil
 		}
-		return err
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("tmux shadow release canceled: %w", ctx.Err())
+		case <-time.After(shadowReleaseSettleInterval):
+		}
 	}
-	if output == "" {
-		return nil
+}
+
+func classifyShadowRelease(output string, exists, retryable bool) (bool, error) {
+	switch output {
+	case "":
+		return true, nil
+	case identityMismatchMarker:
+		if !exists {
+			return true, nil
+		}
+		if retryable {
+			return false, nil
+		}
+		return false, ErrAttachmentIdentityMismatch
+	default:
+		return false, errors.New("tmux shadow release returned unexpected output")
 	}
-	if output == identityMismatchMarker {
-		return ErrAttachmentIdentityMismatch
-	}
-	return errors.New("tmux shadow release returned unexpected output")
 }
 
 func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
@@ -231,6 +292,7 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 		"set-option -t '" + shadowPaneTarget + "' -- @skid_internal " + phoneShadowMarker,
 		"set-option -pqu -t '" + spec.SourceID + "' -- @skid_attention",
 		"display-message -p -t '" + shadowPaneTarget + "' '#{session_id}'",
+		"display-message -p -t '" + spec.SourceID + "' '#{window_id}'",
 	}, " ; ")
 	return []string{
 		"if-shell", "-F", "-t", spec.SourceID, condition, success,
@@ -238,14 +300,43 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 	}, nil
 }
 
-func parseAttachmentCreationOutput(output string) (string, error) {
+func parseAttachmentCreationOutput(output string) (string, string, error) {
 	if output == identityMismatchMarker {
-		return "", ErrAttachmentIdentityMismatch
+		return "", "", ErrAttachmentIdentityMismatch
 	}
-	if !sessionIDPattern.MatchString(output) {
-		return "", errors.New("tmux attachment creation returned an invalid shadow id")
+	shadowID, sourceWindowID, separated := strings.Cut(output, "\n")
+	if !separated || !sessionIDPattern.MatchString(shadowID) || !windowIDPattern.MatchString(sourceWindowID) {
+		return "", "", errors.New("tmux attachment creation returned an invalid shadow identity")
 	}
-	return output, nil
+	return shadowID, sourceWindowID, nil
+}
+
+// The grouped session tmux mints opens on the group's lowest-index window, so
+// the shadow's own current window must be moved to the source's captured
+// current window before the phone client attaches. Selecting a window on the
+// shadow session mutates only that session's per-session state, never the
+// laptop's selection or the window's shared active pane.
+func (client Client) selectShadowWindow(ctx context.Context, spec AttachmentSpec, shadowID, sourceWindowID string) error {
+	if !sessionIDPattern.MatchString(shadowID) || !windowIDPattern.MatchString(sourceWindowID) ||
+		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
+		return errors.New("tmux shadow window selection identity is invalid")
+	}
+	condition := "#{&&:" + killIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
+		",#{==:#{@skid_internal}," + phoneShadowMarker + "}}"
+	output, err := client.Output(ctx, "select-shadow-window", "if-shell", "-F", "-t", shadowID, condition,
+		"select-window -t '"+shadowID+":"+sourceWindowID+"'",
+		"display-message -p -l '"+identityMismatchMarker+"'")
+	if err != nil {
+		return err
+	}
+	switch output {
+	case "":
+		return nil
+	case identityMismatchMarker:
+		return ErrAttachmentIdentityMismatch
+	default:
+		return errors.New("tmux shadow window selection returned unexpected output")
+	}
 }
 
 func attachmentClientArguments(shadowID string) ([]string, error) {
@@ -293,7 +384,8 @@ func (attachment *Attachment) awaitAttachedAndArm(parent context.Context) error 
 	ctx, cancel := context.WithTimeout(parent, attachmentReadyLimit)
 	defer cancel()
 	// justify-polling: tmux exposes no notification when a spawned client becomes
-	// attached; bounded control reads keep PTY bytes exclusively in the data plane.
+	// attached, so readiness reads every 25ms for at most 5s; bounded control
+	// reads keep PTY bytes exclusively in the data plane.
 	ticker := time.NewTicker(attachmentReadyPollInterval)
 	defer ticker.Stop()
 	for {

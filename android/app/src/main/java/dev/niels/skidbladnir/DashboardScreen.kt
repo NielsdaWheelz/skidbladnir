@@ -480,8 +480,8 @@ private fun AgentCard(
             }
             Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(session.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(session.character?.displayName ?: "tmux session", color = Muted, style = MaterialTheme.typography.labelMedium)
+                    Text(session.tmuxName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(session.character.displayName, color = Muted, style = MaterialTheme.typography.labelMedium)
                 }
                 if (session.attention) {
                     Text("!", color = Ember, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { contentDescription = "Needs attention" })
@@ -578,10 +578,10 @@ private fun ForgeSheet(
                 singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
             )
             OutlinedTextField(
-                value = state.form.optionalName,
-                onValueChange = { value -> onDraftChange { it.copy(optionalName = value) } },
+                value = state.form.optionalTmuxName,
+                onValueChange = { value -> onDraftChange { it.copy(optionalTmuxName = value) } },
                 modifier = Modifier.fillMaxWidth().testTag("forge-name"), enabled = fieldsEnabled,
-                label = { Text("Name (optional)") }, singleLine = true,
+                label = { Text("tmux name (optional)") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
             )
             OutlinedTextField(
