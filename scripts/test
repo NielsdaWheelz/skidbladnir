@@ -110,6 +110,20 @@ android_apk_version_code() {
   printf '%s\n' "$version_code"
 }
 
+android_apk_version_name() {
+  local apk="$1"
+  local apkanalyzer
+  local version_name
+  [[ -f "$apk" && ! -L "$apk" ]] || return 1
+  apkanalyzer="$({
+    find "$android_sdk" -path '*/bin/apkanalyzer' -type f 2>/dev/null || true
+  } | sort | tail -n 1)"
+  [[ -x "$apkanalyzer" ]] || return 1
+  version_name="$($apkanalyzer manifest version-name "$apk")" || return 1
+  [[ "$version_name" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  printf '%s\n' "$version_name"
+}
+
 android_update_candidate_is_distinct_newer() {
   local installed_digest="$1"
   local installed_version_code="$2"
@@ -121,6 +135,127 @@ android_update_candidate_is_distinct_newer() {
     "$candidate_version_code" =~ ^[1-9][0-9]{0,9}$ ]] || return 1
   [[ "$installed_digest" != "$candidate_digest" ]] || return 1
   ((10#$candidate_version_code > 10#$installed_version_code))
+}
+
+android_platform_release_values() {
+  local declared_dev_checkout="$1"
+  local release_apk="$2"
+  local declared_source_checkout="$3"
+  local dev_checkout source_checkout pin_relative pin release_values
+  local expected_apk_digest _signer_asset_digest release_version source_sha
+  local expected_version_name expected_version_code observed_version_name observed_version_code
+  dev_checkout="$(cd "$declared_dev_checkout" && pwd -P)" || return 1
+  source_checkout="$(cd "$declared_source_checkout" && pwd -P)" || return 1
+  [[ "$(git -C "$dev_checkout" rev-parse --show-toplevel 2>/dev/null)" == "$dev_checkout" &&
+    "$(git -C "$source_checkout" rev-parse --show-toplevel 2>/dev/null)" == "$source_checkout" ]] || return 1
+  pin_relative='assets/skidbladnir/release-pin.json'
+  pin="$dev_checkout/$pin_relative"
+  [[ -f "$pin" && ! -L "$pin" ]] || return 1
+  git -C "$dev_checkout" cat-file -e "HEAD:$pin_relative" 2>/dev/null || return 1
+  git -C "$dev_checkout" diff --quiet HEAD -- "$pin_relative" || return 1
+  cmp -s "$pin" <(git -C "$dev_checkout" show "HEAD:$pin_relative") || return 1
+  release_values="$(pinned_android_release_values "$dev_checkout")" || return 1
+  IFS=$'\t' read -r expected_apk_digest _signer_asset_digest release_version \
+    <<<"$release_values"
+  source_sha="$(jq -er '.sourceSha | select(type == "string" and test("^[0-9a-f]{40}$"))' "$pin")" ||
+    return 1
+  [[ "$(git -C "$source_checkout" rev-parse HEAD)" == "$source_sha" &&
+    -z "$(git -C "$source_checkout" status --porcelain=v1 --untracked-files=all)" ]] || return 1
+  android_release_matches_pin "$dev_checkout" "$release_apk" || return 1
+  read -r expected_version_name expected_version_code \
+    < <("$source_checkout/scripts/check-release" --android-version "$release_version") || return 1
+  observed_version_name="$(android_apk_version_name "$release_apk")" || return 1
+  observed_version_code="$(android_apk_version_code "$release_apk")" || return 1
+  [[ "$observed_version_name" == "$expected_version_name" &&
+    "$observed_version_code" == "$expected_version_code" ]] || return 1
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "$expected_apk_digest" "$release_version" "$expected_version_name" \
+    "$expected_version_code" "$source_sha"
+}
+
+android_platform_companion_matches_release() {
+  local companion_apk="$1"
+  local release_digest="$2"
+  local version_name="$3"
+  local version_code="$4"
+  [[ -f "$companion_apk" && ! -L "$companion_apk" &&
+    "$release_digest" =~ ^[0-9a-f]{64}$ &&
+    "$(content_digest <"$companion_apk")" != "$release_digest" &&
+    "$(android_apk_version_name "$companion_apk")" == "$version_name" &&
+    "$(android_apk_version_code "$companion_apk")" == "$version_code" ]]
+}
+
+android_platform_restore_owned_state() {
+  local failed=0 test_package_path test_package_path_after
+  if [[ "${platform_test_package_installed:-0}" == 1 ]]; then
+    if ! test_package_path="$(
+      "$platform_adb" -s "$platform_serial" shell pm path "$platform_test_package" |
+        tr -d '\r'
+    )"; then
+      printf 'Could not inspect the test-only Android package\n' >&2
+      failed=1
+    elif [[ -z "$test_package_path" ]]; then
+      platform_test_package_installed=0
+    elif ! installed_android_package_path "$test_package_path" >/dev/null ||
+      ! "$platform_adb" -s "$platform_serial" uninstall "$platform_test_package" >/dev/null; then
+      printf 'Could not uninstall the test-only Android package\n' >&2
+      failed=1
+    elif ! test_package_path_after="$(
+        "$platform_adb" -s "$platform_serial" shell pm path "$platform_test_package" |
+          tr -d '\r'
+      )"; then
+      printf 'Could not verify removal of the test-only Android package\n' >&2
+      failed=1
+    elif [[ -z "$test_package_path_after" ]]; then
+      platform_test_package_installed=0
+    else
+      printf 'Could not uninstall the test-only Android package\n' >&2
+      failed=1
+    fi
+  fi
+  if [[ "${platform_app_replaced:-0}" == 1 ]]; then
+    if "$platform_adb" -s "$platform_serial" install -r "$platform_release_apk" >/dev/null &&
+      verify_installed_android_signer \
+        "$platform_adb" "$platform_serial" "$platform_app_package" \
+        "$platform_expected_apk_digest"; then
+      platform_app_replaced=0
+    else
+      printf 'Could not restore and verify the exact Android release APK\n' >&2
+      failed=1
+    fi
+  fi
+  return "$failed"
+}
+
+android_platform_cleanup() {
+  local exit_status=$?
+  trap - EXIT
+  trap '' HUP INT TERM
+  if [[ -n "${platform_instrumentation_output_file:-}" ]]; then
+    if [[ -f "$platform_instrumentation_output_file" &&
+      ! -L "$platform_instrumentation_output_file" ]]; then
+      /bin/unlink "$platform_instrumentation_output_file" || exit_status=1
+    elif [[ -e "$platform_instrumentation_output_file" ||
+      -L "$platform_instrumentation_output_file" ]]; then
+      printf 'Android platform evidence boundary is not a regular file\n' >&2
+      exit_status=1
+    fi
+    platform_instrumentation_output_file=''
+  fi
+  android_platform_restore_owned_state || exit_status=1
+  if [[ -n "${platform_release_snapshot:-}" &&
+    "${platform_app_replaced:-0}" == 0 ]]; then
+    if [[ -f "$platform_release_snapshot" && ! -L "$platform_release_snapshot" ]]; then
+      /bin/unlink "$platform_release_snapshot" || exit_status=1
+    else
+      printf 'Android platform release snapshot boundary is not a regular file\n' >&2
+      exit_status=1
+    fi
+    platform_release_snapshot=''
+  elif [[ -n "${platform_release_snapshot:-}" ]]; then
+    printf 'Exact release recovery APK retained at %s\n' "$platform_release_snapshot" >&2
+  fi
+  exit "$exit_status"
 }
 
 android_release_helper_self_test() {
@@ -165,6 +300,207 @@ android_release_helper_self_test() {
   /bin/unlink "$fixture"
   printf 'Installed Android release policy passed: path, digest, distinct, and newer cases\n'
 }
+
+android_platform_helper_self_test() (
+  set -euo pipefail
+  local fixture source_checkout dev_checkout release_apk companion_apk
+  local source_sha apk_digest signer_digest values
+  local cleanup_status
+  fixture="$(mktemp -d /tmp/skidbladnir-platform-policy.XXXXXX)"
+  case "$fixture" in
+    /tmp/skidbladnir-platform-policy.* | /private/tmp/skidbladnir-platform-policy.*) ;;
+    *) printf 'Unexpected Android platform policy fixture path\n' >&2; return 1 ;;
+  esac
+  trap '/bin/rm -R -- "$fixture"' EXIT HUP INT TERM
+  source_checkout="$fixture/source"
+  dev_checkout="$fixture/dev-server"
+  release_apk="$fixture/skidbladnir-android.apk"
+  mkdir -p "$source_checkout/scripts" "$dev_checkout/assets/skidbladnir"
+  printf 'source fixture\n' >"$source_checkout/fixture"
+  install -m 0755 "$repo_dir/scripts/check-release" "$source_checkout/scripts/check-release"
+  git -C "$source_checkout" init -q
+  git -C "$source_checkout" add fixture scripts/check-release
+  git -C "$source_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm 'source fixture'
+  source_sha="$(git -C "$source_checkout" rev-parse HEAD)"
+  printf 'release apk fixture\n' >"$release_apk"
+  apk_digest="$(content_digest <"$release_apk")"
+  signer_digest="$(content_digest <"$repo_dir/android/app-signing-cert.sha256")"
+  jq -S -n \
+    --arg apk "$apk_digest" \
+    --arg signer "$signer_digest" \
+    --arg source "$source_sha" \
+    '{
+      androidApkSha256:$apk,
+      androidSigningCertAssetSha256:$signer,
+      darwinArm64Sha256:("0" * 64),
+      linuxAmd64Sha256:("1" * 64),
+      sha256SumsAssetSha256:("2" * 64),
+      sourceSha:$source,
+      version:"v0.2.2"
+    }' >"$dev_checkout/assets/skidbladnir/release-pin.json"
+  git -C "$dev_checkout" init -q
+  git -C "$dev_checkout" add assets/skidbladnir/release-pin.json
+  git -C "$dev_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm 'pin fixture'
+
+  values="$(
+    android_apk_version_name() { printf '0.2.2\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_release_values "$dev_checkout" "$release_apk" "$source_checkout"
+  )"
+  [[ "$values" == "$apk_digest"$'\t''v0.2.2'$'\t''0.2.2'$'\t''2002'$'\t'"$source_sha" ]] || {
+    printf 'Android platform release values were not bound to the exact pin and source\n' >&2
+    return 1
+  }
+  if (
+    android_apk_version_name() { printf '0.2.1\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_release_values "$dev_checkout" "$release_apk" "$source_checkout" >/dev/null
+  ); then
+    printf 'Android platform policy accepted mismatched APK metadata\n' >&2
+    return 1
+  fi
+  companion_apk="$fixture/app-deviceDebug.apk"
+  printf 'same-version companion fixture\n' >"$companion_apk"
+  (
+    android_apk_version_name() { printf '0.2.2\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_companion_matches_release \
+      "$companion_apk" "$apk_digest" 0.2.2 2002
+  ) || {
+    printf 'Android platform policy rejected the same-version companion\n' >&2
+    return 1
+  }
+  if (
+    android_apk_version_name() { printf '0.2.1\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_companion_matches_release \
+      "$companion_apk" "$apk_digest" 0.2.2 2002
+  ); then
+    printf 'Android platform policy accepted mismatched companion metadata\n' >&2
+    return 1
+  fi
+  if (
+    android_apk_version_name() { printf '0.2.2\n'; }
+    android_apk_version_code() { printf '2001\n'; }
+    android_platform_companion_matches_release \
+      "$companion_apk" "$apk_digest" 0.2.2 2002
+  ); then
+    printf 'Android platform policy accepted a mismatched companion version code\n' >&2
+    return 1
+  fi
+  if (
+    android_apk_version_name() { printf '0.2.2\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_companion_matches_release \
+      "$release_apk" "$apk_digest" 0.2.2 2002
+  ); then
+    printf 'Android platform policy accepted the release as its own companion\n' >&2
+    return 1
+  fi
+  jq '.sourceSha = ("0" * 40)' "$dev_checkout/assets/skidbladnir/release-pin.json" \
+    >"$fixture/release-pin.next.json"
+  mv "$fixture/release-pin.next.json" "$dev_checkout/assets/skidbladnir/release-pin.json"
+  git -C "$dev_checkout" add assets/skidbladnir/release-pin.json
+  git -C "$dev_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm 'mismatched source fixture'
+  if (
+    android_apk_version_name() { printf '0.2.2\n'; }
+    android_apk_version_code() { printf '2002\n'; }
+    android_platform_release_values "$dev_checkout" "$release_apk" "$source_checkout" >/dev/null
+  ); then
+    printf 'Android platform policy accepted a source mismatch\n' >&2
+    return 1
+  fi
+
+  cat >"$fixture/adb" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+case "$*" in
+  *' shell pm path test')
+    if [ -f "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE" ]; then
+      printf 'package:/data/app/test/base.apk\n'
+    fi
+    ;;
+  *' uninstall test')
+    /bin/unlink "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE" || exit 1
+    ;;
+  *' install -r '*)
+    if [ "${SKIDBLADNIR_TEST_FAIL_PLATFORM_RESTORE:-}" = 1 ]; then exit 1; fi
+    ;;
+esac
+EOF
+  chmod 0755 "$fixture/adb"
+  export SKIDBLADNIR_TEST_PLATFORM_CALLS="$fixture/platform-calls"
+  export SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE="$fixture/test-package-installed"
+  : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+  : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
+  printf 'temporary evidence\n' >"$fixture/platform-output"
+  cp "$release_apk" "$fixture/release-snapshot"
+  cp "$release_apk" "$fixture/retained-release-snapshot"
+  /bin/unlink "$release_apk"
+  set +e
+  (
+    platform_adb="$fixture/adb"
+    platform_serial=serial
+    platform_app_package=app
+    platform_test_package='test'
+    platform_release_apk="$fixture/release-snapshot"
+    platform_expected_apk_digest="$apk_digest"
+    platform_test_package_installed=1
+    platform_app_replaced=1
+    platform_instrumentation_output_file="$fixture/platform-output"
+    platform_release_snapshot="$fixture/release-snapshot"
+    # shellcheck disable=SC2329 # Invoked indirectly by Android platform cleanup.
+    verify_installed_android_signer() {
+      printf 'verify %s %s\n' "$3" "$4" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+    }
+    trap android_platform_cleanup EXIT
+    exit 130
+  )
+  cleanup_status=$?
+  set -e
+  [[ "$cleanup_status" == 130 && ! -e "$fixture/platform-output" &&
+    ! -e "$fixture/release-snapshot" ]] || {
+    printf 'Android platform signal cleanup did not preserve status or remove owned files\n' >&2
+    return 1
+  }
+  [[ "$(cat "$SKIDBLADNIR_TEST_PLATFORM_CALLS")" == \
+    $'-s serial shell pm path test\n-s serial uninstall test\n-s serial shell pm path test\n-s serial install -r '"$fixture/release-snapshot"$'\nverify app '"$apk_digest" ]] || {
+    printf 'Android platform cleanup did not restore its exact owned boundary\n' >&2
+    return 1
+  }
+
+  : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+  export SKIDBLADNIR_TEST_FAIL_PLATFORM_RESTORE=1
+  : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
+  set +e
+  (
+    platform_adb="$fixture/adb"
+    platform_serial=serial
+    platform_app_package=app
+    platform_test_package='test'
+    platform_release_apk="$fixture/retained-release-snapshot"
+    platform_expected_apk_digest="$apk_digest"
+    platform_test_package_installed=1
+    platform_app_replaced=1
+    platform_instrumentation_output_file=''
+    platform_release_snapshot="$fixture/retained-release-snapshot"
+    # shellcheck disable=SC2329 # Invoked indirectly by Android platform cleanup.
+    verify_installed_android_signer() { return 0; }
+    trap android_platform_cleanup EXIT
+    exit 0
+  ) 2>"$fixture/restore-failure"
+  cleanup_status=$?
+  set -e
+  unset SKIDBLADNIR_TEST_FAIL_PLATFORM_RESTORE
+  [[ "$cleanup_status" == 1 && -f "$fixture/retained-release-snapshot" ]] || {
+    printf 'Android platform cleanup masked a failed release restoration\n' >&2
+    return 1
+  }
+  printf 'Android platform release and cleanup policy passed\n'
+)
 
 verify_installed_android_signer() {
   local adb="$1"
@@ -559,6 +895,7 @@ case "$gate" in
     run release-source-unit bash ./scripts/check-release-source --self-test
     run release-worktree-unit bash ./scripts/release --self-test
     run installed-android-release-unit android_release_helper_self_test
+    run android-platform-policy-unit android_platform_helper_self_test
     run android-unit ./scripts/build android-unit
     ;;
   integration)
@@ -584,6 +921,37 @@ case "$gate" in
     if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
       not_run platform 'Pass --allow-device-mutation only after explicit current-turn user approval'
     fi
+    platform_declared_release_apk="${SKIDBLADNIR_RELEASE_APK:-}"
+    platform_dev_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-/Users/nnandal/Documents/code/dev-server}"
+    if [[ ! -f "$platform_declared_release_apk" || -L "$platform_declared_release_apk" ]]; then
+      not_run platform 'Set SKIDBLADNIR_RELEASE_APK to the regular pinned release APK'
+    fi
+    platform_release_snapshot="$(mktemp -t skidbladnir-platform-release.XXXXXX)"
+    platform_release_apk="$platform_release_snapshot"
+    platform_adb=''
+    platform_serial=''
+    platform_app_package=''
+    platform_test_package=''
+    platform_test_package_installed=0
+    platform_app_replaced=0
+    platform_instrumentation_output_file=''
+    trap android_platform_cleanup EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    install -m 0600 "$platform_declared_release_apk" "$platform_release_apk"
+    platform_release_values="$(
+      android_platform_release_values \
+        "$platform_dev_checkout" "$platform_release_apk" "$repo_dir"
+    )" || not_run platform \
+      'Release APK, committed dev-server pin, APK metadata, and clean exact source SHA must agree'
+    IFS=$'\t' read -r platform_expected_apk_digest _platform_release_version \
+      platform_version_name platform_version_code _platform_source_sha \
+      <<<"$platform_release_values"
+    run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" --config-only
+    run android-platform-release-signature \
+      "$repo_dir/scripts/check-android-signing" --public-apk "$platform_release_apk"
     adb="$android_sdk/platform-tools/adb"
     if [[ ! -x "$adb" ]]; then
       not_run platform 'Pinned Android SDK adb is unavailable'
@@ -605,18 +973,43 @@ case "$gate" in
     test_package='dev.niels.skidbladnir.test'
     app_apk="$repo_dir/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
     test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
-    run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
-      "$repo_dir/scripts/check-android-signing" --config-only
-    verify_installed_android_signer "$adb" "$serial" "$app_package" ||
-      not_run platform 'Installed app does not carry the pinned Android signing identity'
-    pairing_preferences='shared_prefs/skidbladnir.machines.xml'
-    pairing_digest=''
-    if "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1; then
-      pairing_digest="$(
-        "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-          content_digest
-      )"
+    platform_adb="$adb"
+    platform_serial="$serial"
+    platform_app_package="$app_package"
+    platform_test_package="$test_package"
+    platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform-installed.XXXXXX)"
+    verify_installed_android_signer \
+      "$adb" "$serial" "$app_package" '' "$platform_instrumentation_output_file" ||
+      not_run platform 'The S22+ must begin with an installation carrying the pinned signing identity'
+    IFS=$'\t' read -r platform_installed_apk_digest platform_installed_version_code \
+      <"$platform_instrumentation_output_file"
+    /bin/unlink "$platform_instrumentation_output_file"
+    platform_instrumentation_output_file=''
+    existing_test_package="$("$adb" -s "$serial" shell pm path "$test_package" | tr -d '\r')"
+    if [[ "$platform_installed_apk_digest" == "$platform_expected_apk_digest" ]]; then
+      if [[ -n "$existing_test_package" ]]; then
+        not_run platform 'The test-only Android package must be absent before this gate owns it'
+      fi
+    elif [[ "$platform_installed_version_code" == "$platform_version_code" ]]; then
+      platform_app_replaced=1
+      if [[ -n "$existing_test_package" ]]; then
+        if ! installed_android_package_path "$existing_test_package" >/dev/null ||
+          ! verify_installed_android_signer "$adb" "$serial" "$test_package"; then
+          run android-platform-interrupted-app-restore android_platform_restore_owned_state
+          not_run platform 'A pre-existing test package does not carry the pinned signing identity'
+        fi
+        platform_test_package_installed=1
+      fi
+      run android-platform-interrupted-restore android_platform_restore_owned_state
+      printf 'Recovered an interrupted same-version platform run to the exact pinned release\n'
+    else
+      not_run platform 'The S22+ must carry the exact pinned release; run product first'
     fi
+    verify_installed_android_signer \
+      "$adb" "$serial" "$app_package" "$platform_expected_apk_digest" || {
+      printf 'The S22+ does not carry the exact pinned release after platform recovery\n' >&2
+      exit 1
+    }
     "$adb" -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null
     "$adb" -s "$serial" shell wm dismiss-keyguard >/dev/null
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
@@ -626,23 +1019,45 @@ case "$gate" in
     run android-platform-build env ANDROID_HOME="$android_sdk" \
       SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
       -Pskidbladnir.android.testBuildType=deviceDebug \
+      -Pskidbladnir.versionName="$platform_version_name" \
+      -Pskidbladnir.versionCode="$platform_version_code" \
       :app:assembleDeviceDebug :app:assembleDeviceDebugAndroidTest --no-daemon
     run android-platform-signatures env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
       "$repo_dir/scripts/check-android-signing" "$app_apk" "$test_apk"
-    run android-platform-app "$adb" -s "$serial" install -r -t "$app_apk"
-    run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
-    instrumentation_status=0
-    instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
-    run_bounded_to_file "$android_instrumentation_timeout_seconds" "$instrumentation_output_file" \
-      "$adb" -s "$serial" shell am instrument -w \
-      "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
-    instrumentation_output="$(<"$instrumentation_output_file")"
-    rm -f "$instrumentation_output_file"
-    printf '%s\n' "$instrumentation_output"
-    "$adb" -s "$serial" uninstall "$test_package" >/dev/null || {
-      printf 'could not uninstall the test-only Android package\n' >&2
+    android_platform_companion_matches_release \
+      "$app_apk" "$platform_expected_apk_digest" \
+      "$platform_version_name" "$platform_version_code" || {
+      printf 'Android platform build is not a byte-distinct same-version release companion\n' >&2
       exit 1
     }
+    platform_app_replaced=1
+    run android-platform-app "$adb" -s "$serial" install -r -t "$app_apk"
+    pairing_preferences='shared_prefs/skidbladnir.machines.xml'
+    # The product gate owns release-to-release installation preservation. Once
+    # deviceDebug is installed, this digest owns the instrumentation boundary.
+    "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1 || {
+      printf 'Android platform instrumentation requires the product-proven encrypted fleet\n' >&2
+      exit 1
+    }
+    pairing_digest="$(
+      "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
+        content_digest
+    )"
+    [[ "$pairing_digest" =~ ^[0-9a-f]{64}$ ]] || {
+      printf 'Android platform pairing digest is invalid\n' >&2
+      exit 1
+    }
+    platform_test_package_installed=1
+    run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
+    instrumentation_status=0
+    platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
+    run_bounded_to_file "$android_instrumentation_timeout_seconds" "$platform_instrumentation_output_file" \
+      "$adb" -s "$serial" shell am instrument -w \
+      "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
+    instrumentation_output="$(<"$platform_instrumentation_output_file")"
+    /bin/unlink "$platform_instrumentation_output_file"
+    platform_instrumentation_output_file=''
+    printf '%s\n' "$instrumentation_output"
     # Pin discovery to the checked-in suite so partial instrumentation cannot
     # false-green as a complete platform gate.
     platform_expected_tests="$(grep -c '@Test' \
@@ -653,16 +1068,22 @@ case "$gate" in
       printf 'Android instrumentation failed or ran fewer than %s tests\n' "$platform_expected_tests" >&2
       exit 1
     fi
-    if [[ -n "$pairing_digest" ]]; then
-      current_pairing_digest="$(
-        "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
-          content_digest
-      )"
-      [[ "$current_pairing_digest" == "$pairing_digest" ]] || {
-        printf 'Android instrumentation changed the encrypted pairing state\n' >&2
-        exit 1
-      }
+    current_pairing_digest="$(
+      "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
+        content_digest
+    )"
+    [[ "$current_pairing_digest" == "$pairing_digest" ]] || {
+      printf 'Android instrumentation changed the encrypted pairing state\n' >&2
+      exit 1
+    }
+    run android-platform-restore android_platform_restore_owned_state
+    if [[ ! -f "$platform_release_snapshot" || -L "$platform_release_snapshot" ]]; then
+      printf 'Android platform release snapshot boundary is not a regular file\n' >&2
+      exit 1
     fi
+    /bin/unlink "$platform_release_snapshot"
+    platform_release_snapshot=''
+    trap - EXIT HUP INT TERM
     run android-platform-launch "$adb" -s "$serial" shell am start -n "${app_package}/.MainActivity"
     ;;
   product)
