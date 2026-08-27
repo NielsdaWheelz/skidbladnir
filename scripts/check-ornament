@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Drift- and determinism-gate the generated ornament geometry (Ornament.kt,
-the adaptive-icon foreground) against scripts/gen-ornament."""
+"""Drift- and determinism-gate the generated ornament geometry (Ornament.kt and
+the adaptive icon's background, foreground, monochrome and descriptor) against
+scripts/gen-ornament."""
 
 from __future__ import annotations
 

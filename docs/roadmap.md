@@ -352,6 +352,37 @@ Acceptance: focused Android unit proof for detach lifetime copy, compiled
 instrumentation assertions for dashboard language, routine verification, and
 the next separately approved platform pass for rendered-device confirmation.
 
+## v0 design delta D7 — the launcher mark
+
+Outcome: the launcher icon is Skíðblaðnir under sail — cut stems, a square
+sail in three gores, a Garnet shield row, a masthead vane — and the whole
+adaptive-icon resource set is generated from authored polygon constants and
+drift-gated as one unit. Scope per [launcher-mark.md](launcher-mark.md).
+
+- `scripts/gen-ornament` emits the background, foreground, monochrome, and
+  `<adaptive-icon>` descriptor; the Bézier interpreter and the traced clip-art
+  prow it digested are deleted.
+- The generator raises rather than emitting a feature below the 2dp-at-48dp
+  legibility floor or a point outside the 34-unit mask envelope.
+- The monochrome layer is its own drawable, separated by geometry. Both
+  layers carry the same sail, whose gores stand apart across a derived slit;
+  the shield row is the one feature they cut differently — colour in the
+  foreground, notches in the sheer in the monochrome — so one flat tint cannot
+  collapse the mark into a blob.
+- `android:roundIcon` is gone: at `minSdk = 36` it duplicated the same
+  adaptive resource, and no legacy density mipmap exists or is added.
+
+Red: seams moved to `t = 0.25, 0.75` narrow the derived gore slit to 2.0
+units and fail the check at 1.33dp; the yard raised to `y = 29.5` fails it at
+`r = 35.468`, outside the envelope; the vane as first frozen fails it at
+0.66dp against the yard.
+
+Acceptance: routine verification including the ornament drift gate over the
+five generated files; one separately approved S22+ platform pass carrying the
+instrumented proof that the installed icon's monochrome layer cuts daylight
+where the foreground carries structure in colour and still keeps most of the
+mark; one hands-on glance that the mark reads as a ship at arm's length.
+
 ## v0 design delta D8 — the Hlíðskjálf mark
 
 Outcome: the valknut marks the Dwarves surface wherever that surface is named,
@@ -367,10 +398,10 @@ them before.
 - The detach control gets no mark: it names what happens to the session, not
   where the button goes.
 
-Numbered D8 behind three deltas that are specified on their own branches and
-not yet on main — D5 the forge seal, D6 destructive chrome, D7 the launcher
-mark. D8 lands first, and D7 sequences behind it because both edit
-`scripts/gen-ornament`.
+Numbered D8 behind three deltas specified on their own branches, none of them
+on main when this was written — D5 the forge seal, D6 destructive chrome, D7
+the launcher mark. D8 landed first, and D7 sequences behind it because both
+edit `scripts/gen-ornament`.
 
 Red: the mark for the dwarves renders only when there are none, and at the one
 size it did render its six crossings closed to about a physical pixel — the
@@ -412,6 +443,7 @@ orchestration, via a new architecture decision.
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0 design delta D6 — destructive and notice chrome | Implemented and verified; adversarial review applied (Role.Button, two contrast floors, an EmptyState severity contradiction); routine verification green (45 JVM tests) and the 35-test instrumented suite green on the physical S22+ (devbox debug-signed run); the cleft proof is mutation-checked; the hands-on cleft/stale glance stays `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
+| v0 design delta D7 — the launcher mark | Implemented; all three generator reds observed, then green; routine verification (static, build, unit) green, the ornament drift gate green over five generated files; the approved S22+ platform gate green at `OK (34 tests)`, the instrumented monochrome proof among them, run on the D7 branch before it merged D6 and D8 and not re-run on the merged tree; the hands-on launcher glance `NOT_RUN` |
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0.5 push | Not scheduled |

@@ -58,6 +58,9 @@ architecture §2.
 | Faceted planar surfaces | Iron Hills armor, planar like a cut gemstone ([Nick Keller](https://www.nickkellerart.com/projects/1N6G82)) | Cut-corner shape grammar (§6) |
 | Interlace with breaks | Insular plaitwork, Book of Durrow onward; Bain grid-and-dot construction ([method restatement](http://www.zuggsoft.com/sca/celtic/celtic.htm)); Mercat scaffold ([jamis/celtic_knot, public domain](https://github.com/jamis/celtic_knot)) | Large-scale art only (§7) |
 | Valknut, tricursal | Tängelgårda / Stora Hammars I stones, beside Odin figures ([Valknut](https://en.wikipedia.org/wiki/Valknut)) | Hlíðskjálf mark: Odin's seat overlooking all sessions |
+| Ship under one square sail | Gotland picture stones, same corpus as the valknut row: the Viking-age slabs carry a ship under one large sail (Tjängvide I, Alskog — [Gotlands Museum catalogue](https://www.gotlandicpicturestones.se/s/index/item/2052)); the sail itself is unbroken vertical lengths of cloth sewn together ([Viking Ship Museum, Roskilde](https://www.vikingeskibsmuseet.dk/en/professions/boatyard/experimental-archaeological-research/maritime-crafts/maritime-technology/wool-sailcloth)) | Launcher mark: hull, mast, yard, and the sail's three gores (§8) |
+| Shield row along the gunwale | Gokstad ship burial, c. 890: 32 round shields to each side, painted alternately yellow and black ([Museum of the Viking Age](https://www.vikingtidsmuseet.no/english/the-collection/the-gokstad-ship/the-gokstad-ship.html)) | Launcher mark: the Garnet row at the sheer (§8). §6 overrides the round shape with its lozenge and §5 the alternating paint with one fill, so the row renders uniform |
+| Ship vane | Söderala vane, gilt bronze, c. 1050: worn from use on a ship before it was reused as a church weathervane ([Söderala vane](https://en.wikipedia.org/wiki/S%C3%B6derala_vane)) | Launcher mark: the vane at the masthead, the mark's one asymmetry (§8) |
 | Bind-runes on a shared stave | Runestone/coin monograms ([Bind rune](https://en.wikipedia.org/wiki/Bind_rune)) | Dwarf-seal maker's mark in portraits (§11) |
 | Younger Futhark | Viking-age script, c. 800–1100, Unicode U+16A0–16FF ([Runic block](https://en.wikipedia.org/wiki/Runic_(Unicode_block))) | The only runes that appear, ornament-only (§8) |
 | Forge-heat sequence | Black-red → red → orange → gold → yellow tempering ramp ([red heat](https://en.wikipedia.org/wiki/Red_heat)) | Ordinal intensity ramp (§5) |
@@ -268,14 +271,22 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
   triangles, Borromean topology — the seat that overlooks every world. It marks
   the Dwarves surface wherever that surface is named — the dashboard title
-  lockup, every affordance that returns to it, and the empty grid — and the app
-  icon's core stays its other permitted use. Pure straight lines. Its stroke is
-  a fraction of the mark's own size, never a fixed dp: a fixed stroke is a
-  larger share of a smaller mark, so it closes the baked crossings as the mark
-  shrinks. Legibility is therefore an invariant and not a size — every strand
-  is at least as long as its own stroke is wide, and every baked break at least
-  twice as wide — and it is proved on the geometry rather than eyeballed.
+  lockup, every affordance that returns to it, and the empty grid — and it is
+  never the launcher, which carries its own mark below. Pure straight lines. Its
+  stroke is a fraction of the mark's own size, never a fixed dp: a fixed stroke
+  is a larger share of a smaller mark, so it closes the baked crossings as the
+  mark shrinks. Legibility is therefore an invariant and not a size — every
+  strand is at least as long as its own stroke is wide, and every baked break at
+  least twice as wide — and it is proved on the geometry rather than eyeballed.
   [hlidskjalf-mark.md](hlidskjalf-mark.md) owns the constants and the proofs.
+- **The launcher mark** is Skíðblaðnir under sail: cut stems, a square sail in
+  three gores, a Garnet shield row at the sheer, a vane at the masthead.
+  Straight segments only, authored as constants and never traced. Its
+  legibility floor is stated in dp at the smallest launcher size — 2dp of
+  daylight at 48dp — rather than as a stroke ratio, because the icon has no
+  stroke and a known size range, while the valknut is drawn at arbitrary sizes
+  against a stroke that scales with it.
+  [`launcher-mark.md`](launcher-mark.md) owns its constants and proofs.
 - **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
   rune *glyphs* — at most one inert divider glyph per screen — render as
   real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
@@ -524,11 +535,13 @@ the bottom-anchored create control, on the octagon geometry it extracts);
 ([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
 `Cleft` kill geometry, one shared notice panel, and `AngularIndication`
 generalized to the component's own shape as §12 already required);
-**(8) the Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's
-stroke rule and legibility invariants, the mark on every Dwarves surface).
-The numbers are delta numbers, not positions: 7 is claimed by the launcher
-mark, specified on its own branch, so the grain has a gap there and the
-roadmap's D-numbers and these agree.
+**(7) the launcher mark** ([launcher-mark.md](launcher-mark.md) — Skíðblaðnir
+under sail, replacing D4's prow icon, with the whole adaptive-icon set
+generated and drift-gated); **(8) the Hlíðskjálf mark**
+([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke rule and legibility
+invariants, the mark on every Dwarves surface).
+The numbers are delta numbers, not positions; with D7 landed the grain has no
+gaps left, and the roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

@@ -4,7 +4,9 @@ Status: implemented 2026-08-26; routine verification (including the
 ornament drift gate) green; the 33-test instrumented suite green on the
 physical S22+ (devbox debug-signed run); the hands-on ornament/icon glance
 stays `NOT_RUN`. The interlace band was removed with the pairing screen in
-the multi-machine cut.
+the multi-machine cut, and the prow icon this delta shipped was replaced by
+the launcher mark ([launcher-mark.md](launcher-mark.md), D7), which owns the
+launcher identity from here on.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for tokens and shapes.
 
 [`design-language.md`](design-language.md) §7 (ornament families and
@@ -42,7 +44,9 @@ phone at runtime beyond drawing pre-built paths.
 ### Pipeline
 
 - `scripts/gen-ornament` (Python 3, stdlib only, no third-party imports)
-  deterministically emits `Ornament.kt` — path-data constants for:
+  deterministically emits every checked-in piece of ornament geometry —
+  `Ornament.kt` path-data constants for the two drawn marks, and the launcher
+  icon's own resources:
   1. **Fret cell**: one chevron/key meander unit for the Forge title band
      (monoline, 45°/90° turns only, band height ≤ 16dp, sized so any target
      width tiles a whole number of units — bands are straight strips in v0,
@@ -53,14 +57,20 @@ phone at runtime beyond drawing pre-built paths.
      crossing is `_VALKNUT_GAP`, which carries its own derivation;
      [hlidskjalf-mark.md](hlidskjalf-mark.md) owns why that value and not
      another.
-  3. **Ship prow**: the launcher mark — the existing gold prow glyph
-     refaceted into the Niðavellir grammar (straight segments only) and
-     emitted solely as the adaptive-icon foreground/monochrome drawable; the
-     geometry stays generator-internal with no Kotlin constant, because
-     nothing at runtime reads it (no dead code ships).
-- The generated file is checked in. `scripts/check-ornament` (Python 3,
-  stdlib only, like its sibling checks) regenerates to a temporary path and
-  byte-compares — drift between generator and checked-in source fails the
+  3. **Launcher mark**: Skíðblaðnir under sail — cut stems, a square sail in
+     three gores, a shield row at the sheer, a masthead vane — authored as
+     straight-edged polygon constants and emitted as the whole adaptive-icon
+     set: three VectorDrawables (background, foreground, monochrome) and the
+     `<adaptive-icon>` descriptor that names them. The generator raises
+     rather than emitting a feature below the legibility floor or a point
+     outside the mask envelope; the geometry stays generator-internal with no
+     Kotlin constant, because nothing at runtime reads it (no dead code
+     ships). [`launcher-mark.md`](launcher-mark.md) owns its constants and
+     proofs.
+- The generated files are checked in. `scripts/check-ornament` (Python 3,
+  stdlib only, like its sibling checks) imports `build_outputs()`, calls it
+  twice to prove determinism, and byte-compares the result against every
+  checked-in path — drift between generator and checked-in source fails the
   static gate. `scripts/test` gains exactly one line in its existing
   `static` case (`run ornament-static ./scripts/check-ornament`, matching the
   existing explicit-name convention); nothing else in `scripts/test`
@@ -82,20 +92,20 @@ phone at runtime beyond drawing pre-built paths.
   generation. It stays decorative and unlabeled wherever it appears — the
   literal text beside it carries the semantics — and it never renders beside a
   degraded or repair state.
-- **App icon**: the launcher identity stays the ship prow — the app is named
+- **App icon**: the launcher identity is the launcher mark — the app is named
   for the vessel; the valknut marks Hlíðskjálf inside the app, never the
-  launcher. The current flat `res/drawable/ic_launcher.xml` (a gold prow on
-  Ink, not adaptive) is replaced by an adaptive icon: foreground the redrawn
-  angular prow, background Ink, monochrome layer the same prow;
-  `android:icon`/`android:roundIcon` repoint to it. Launcher label stays
-  `Skíðblaðnir`.
+  launcher. The adaptive icon is four generated resources: an Ink background
+  cut once on the canvas diagonal by a DeepSurface facet plane, the colored
+  foreground, a monochrome drawable of its own cut for one flat tint, and the
+  `<adaptive-icon>` descriptor the manifest's icon reference resolves to.
+  Launcher label stays `Skíðblaðnir`.
 
 ## Hard cut
 
 - The flat non-adaptive `res/drawable/ic_launcher.xml` is deleted with the
   manifest repoint; no orphaned or dual icon resource remains.
-- The generator owns `Ornament.kt` entirely; hand edits are forbidden and
-  caught by the drift gate. Nothing else is removed.
+- The generator owns `Ornament.kt` and every icon resource entirely; hand
+  edits are forbidden and caught by the drift gate. Nothing else is removed.
 
 ## Work split
 
