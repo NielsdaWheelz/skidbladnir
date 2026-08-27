@@ -122,7 +122,7 @@ darker than Ink; never use `#000000` anywhere (OLED smear).
 | DeepSurface | `#15171A` | ~1dp; cards at rest, dialogs |
 | RaisedSurface | `#202329` | ~4–6dp; raised card elements, chips ground |
 | Overlook | `#2E2F31` | 12dp (14% white); reserved for a future topmost sheet |
-| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; The Forge sheet only — the one firelit room in the app |
+| ForgeGlow | `#28231A` | 12dp blended toward Gold instead of white; The Forge sheet and the lit Forge seal (§13) — the app's only firelit surfaces |
 
 ### Text and accents
 
@@ -142,6 +142,32 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
 `SHELL` Bronze · `UNKNOWN` Muted. Pressure keeps Normal Moss · Warm Gold ·
 Hot Ember · Unknown Muted.
+
+### Severity tones
+
+Severity has exactly one owner (`noticeToneColor`, D6). Ember is not a colour
+a surface may reach for; it is what one tone resolves to.
+
+| Tone | Colour | Means |
+| --- | --- | --- |
+| Failure | Ember | An attempt failed, trust broke, or you are ending something |
+| Degraded | Muted | Knowledge is absent or old; nothing is broken |
+| Armed | Gold | A recovery is waiting on you |
+
+Two rules follow, and both are load-bearing:
+
+- **Staleness is absence, not failure.** Degraded is Muted, matching `UNKNOWN`
+  → Muted above and the honesty law (§1.4): absence is displayed, not alarmed.
+  Ember spent on routine staleness is Ember spent on nothing — in a federation
+  one host is out often enough that the alarm becomes the resting state.
+- **Trust events are the loud ones.** A broken bearer or a changed identity is
+  Failure even when that machine's inventory is perfectly current, because
+  what failed is knowing who we are talking to.
+
+The bare `Ember` token survives in exactly two places in the app: its
+definition beside `noticeToneColor`, and `pressureColor`, where the table
+above assigns Ember to `HOT`. Host load is a genuinely separate axis with its
+own owner; every other Ember arrives through a tone.
 
 ### Gem fills (cloisonné)
 
@@ -176,8 +202,22 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 - **Corners are cut, not rounded.** `CutCornerShape` everywhere a radius
   exists today. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
   the top corners only. All cuts are 45°.
+- **One shape is allowed to disagree with itself.** The kill control's `Cleft`
+  keeps the 4dp chip facet on three corners and cuts 14dp on the fourth
+  (top-start). It is the only asymmetric shape in the product and it is
+  reserved to destructive controls, which is what makes it legible as
+  meaning rather than as a mistake: architecture's guarantee that detach and
+  kill are visibly different actions has to survive greyscale, and §15
+  forbids the icon that would otherwise carry it. A second asymmetric shape
+  would spend the distinction, so adding one reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
-  the side is a regular octagon; circles are elvish in this grammar.
+  the side is an octagon; circles are elvish in this grammar. The exactly
+  regular cut is (2−√2)/2 ≈ 29.29%; 29% is the shipped round number, which puts
+  each vertex 0.16dp from its regular position on a 56dp frame and leaves the
+  axis edges 2.4% longer than the diagonals (23.52dp against 22.97dp). Both are
+  below the perceptual floor for a hairline outline, and not worth re-cutting
+  every seal already struck. Whatever draws the octagon reads the same shipped constant
+  the clip does, so a frame and its clip can never disagree.
 - **Badges are lozenges.** The attention badge is a rotated square (diamond),
   the fret family's atom, in Orpiment.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
@@ -226,9 +266,16 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
 ## 8. Iconography and runes
 
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
-  triangles, Borromean topology — the seat that overlooks every world. Usable
-  as the grid's empty-state mark and the app icon's core. Pure straight lines;
-  render at 24dp+ with 2dp stroke.
+  triangles, Borromean topology — the seat that overlooks every world. It marks
+  the Dwarves surface wherever that surface is named — the dashboard title
+  lockup, every affordance that returns to it, and the empty grid — and the app
+  icon's core stays its other permitted use. Pure straight lines. Its stroke is
+  a fraction of the mark's own size, never a fixed dp: a fixed stroke is a
+  larger share of a smaller mark, so it closes the baked crossings as the mark
+  shrinks. Legibility is therefore an invariant and not a size — every strand
+  is at least as long as its own stroke is wide, and every baked break at least
+  twice as wide — and it is proved on the geometry rather than eyeballed.
+  [hlidskjalf-mark.md](hlidskjalf-mark.md) owns the constants and the proofs.
 - **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
   rune *glyphs* — at most one inert divider glyph per screen — render as
   real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
@@ -239,10 +286,22 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
   placing sequential font glyphs — and [dwarf-seals.md](dwarf-seals.md)
   owns its geometry. Never transliterate labels, never rune-encode meaning
   a user must read.
+- **The unstruck seal** is the create mark: the §11 seal with every trait at
+  zero — an octagon frame around a bare stave crossed by one horizontal bar,
+  and nothing else. No mineral, no beard, no facet mask, no initial. It is the
+  blank a dwarf is struck from, and it is honest: the catalogue identity is
+  assigned after creation, so the client cannot draw the seal it is about to
+  make. Its crossbar is perpendicular to the stave, which no Younger Futhark
+  branch ever is, so the mark cannot be read as a rune — that is enforced as a
+  proof, not asserted. [forge-seal.md](forge-seal.md) owns its geometry.
 - **No horned helmets, drinking horns, axes, or hammer clip-art.** The horned
   helmet is a 19th-century invention with zero archaeological support; the
   rest is tourist-shop register. The app's dwarvenness is structural, not
-  propped.
+  propped. Reconsidered once, for the create action (D5), and re-rejected:
+  provenance was never the objection — Skíðblaðnir and Mjölnir come from one
+  wager (*Skáldskaparmál* 35) — but Skíðblaðnir loses that wager, Mjölnir marks
+  the wielder rather than the smith, and the silhouette dies at 24dp monoline.
+  The register is the objection, and it does not improve.
 
 ## 9. Typography
 
@@ -399,6 +458,18 @@ it as a red test, not an assumption.
   under the title (Gold 40%, even unit count), Display-face title, mono cwd
   field (autocorrect off is architecture-owned). Invalid drafts preserved;
   error text plain Ember body — no ornament near errors (§1.4).
+- **The Hlíðskjálf mark**: 24dp Gold leading the `Dwarves` title, 18dp at the
+  button's own content colour leading each affordance that returns there, 48dp
+  Muted at 40% on the empty grid. One composable, semantics-silent everywhere.
+  The detach control carries no mark: it names what happens to the session, not
+  where the button goes.
+- **The Forge seal**: the create control. A 56dp octagon anchored at the
+  dashboard's bottom trailing corner over the grid, carrying the unstruck
+  seal (§8). Lit = ForgeGlow field, Gold frame and mark; cold = DeepSurface
+  field, mark in Muted at §12's disabled content alpha — field and hue both
+  change, never opacity alone. Icon-only, spoken `New dwarf`, no ornament,
+  and the lit/cold flip does not animate. [forge-seal.md](forge-seal.md) owns
+  its geometry.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
   slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
@@ -421,7 +492,8 @@ prose. Reduced-motion fallbacks per §12. Ornament is always
 Never: rounded corners; circular ripples; drop shadows; smooth decorative
 gradients (Oklab ordinal ramps excepted); `#000000`; zoomorphic chrome;
 Elder Futhark; rune-transliterated UI text; blackletter; Tolkien scripts;
-horned-helmet/axe/horn clip-art; Cinzel-register imperial caps; more than one
+horned-helmet/axe/horn/hammer clip-art (reconsidered for the create
+action and re-rejected, §8); Cinzel-register imperial caps; more than one
 ambient animation; ornament on error or destructive surfaces; unlicensed or
 GPL knot code; fonts outside §9's table without a license entry here.
 
@@ -445,7 +517,18 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon).
+build-time fret pipeline, Forge/empty-state art, app icon);
+**(5) the Forge seal** ([forge-seal.md](forge-seal.md) — §8's unstruck seal and
+the bottom-anchored create control, on the octagon geometry it extracts);
+**(6) destructive and notice chrome**
+([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
+`Cleft` kill geometry, one shared notice panel, and `AngularIndication`
+generalized to the component's own shape as §12 already required);
+**(8) the Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's
+stroke rule and legibility invariants, the mark on every Dwarves surface).
+The numbers are delta numbers, not positions: 7 is claimed by the launcher
+mark, specified on its own branch, so the grain has a gap there and the
+roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

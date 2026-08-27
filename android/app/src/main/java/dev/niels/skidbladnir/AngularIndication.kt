@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.translate
@@ -15,23 +16,25 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 // The dwarven press flash (design-language.md §12): a circular ripple is
-// off-grammar, so this draws an inset copy of the session card's cut-corner
-// outline at Bone, fading in and out at the pressed state-layer alpha.
-// Card-only by design — the drawn outline is the Card cut; a second consumer
-// with another shape reopens docs/chrome-tokens.md, not this file.
-internal object AngularIndication : IndicationNodeFactory {
+// off-grammar, so this draws an inset copy of the component's own cut-corner
+// outline at Bone, fading in and out at the pressed state-layer alpha. §12
+// mandates one implementation used everywhere, so the shape is the caller's —
+// the card presses as a Card, the kill control as a Cleft, the Forge seal as
+// an Octagon.
+// A data class, not an object: structural equals/hashCode let a call site
+// construct `AngularIndication(NidavellirShapes.Cleft)` inline without
+// Modifier.clickable churning across recompositions, which is the guarantee
+// the singleton's identity equals used to provide.
+internal data class AngularIndication(val shape: Shape) : IndicationNodeFactory {
     override fun create(interactionSource: InteractionSource): DelegatableNode =
-        AngularIndicationNode(interactionSource)
-
-    override fun equals(other: Any?): Boolean = other === this
-
-    override fun hashCode(): Int = System.identityHashCode(this)
+        AngularIndicationNode(interactionSource, shape)
 }
 
 private val PressInset = 2.dp
 
 private class AngularIndicationNode(
     private val interactionSource: InteractionSource,
+    private val shape: Shape,
 ) : Modifier.Node(), DrawModifierNode {
     private val alpha = Animatable(0f)
 
@@ -66,7 +69,7 @@ private class AngularIndicationNode(
         if (current > 0f) {
             val insetPx = PressInset.toPx()
             val insetSize = Size(size.width - insetPx * 2f, size.height - insetPx * 2f)
-            val outline = NidavellirShapes.Card.createOutline(insetSize, layoutDirection, this)
+            val outline = shape.createOutline(insetSize, layoutDirection, this)
             translate(left = insetPx, top = insetPx) {
                 drawOutline(outline, color = Bone, alpha = current)
             }

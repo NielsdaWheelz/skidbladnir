@@ -143,18 +143,32 @@ Unknown→Muted`.
   Gold-fill/Gold-content as today. Geometry (48dp/8dp), order, semantics,
   spoken state, and enablement per the key-deck spec — unchanged.
 - **Interaction states**: pressed/focus/hover/dragged use the StateLayer
-  alphas as Bone over the component surface. The session card adopts one
-  shared angular indication — an inset copy of its own cut outline at
-  pressed alpha via a single `IndicationNodeFactory` implementation
-  (`AngularIndication.kt`). This requires a structural change this delta
+  alphas as Bone over the component surface. Pressed components adopt the
+  angular indication — an inset copy of the pressed component's own cut
+  outline at pressed alpha, via one `IndicationNodeFactory` implementation
+  (`AngularIndication.kt`) that takes the shape it is cut to, so the flash
+  and the component can never be two outlines. This delta ships the one
+  Card-shaped consumer; the Forge seal added the Octagon-shaped second
+  ([forge-seal.md](forge-seal.md)). This requires a structural change this delta
   owns: M3's `Card(onClick)` hardcodes its internal `ripple()` and never
   reads `LocalIndication`, so `AgentCard` is rebuilt as a plain `Surface`
   with an explicit `Modifier.clickable(interactionSource, indication =
-  AngularIndication, …)` carrying the card's existing semantics and click
-  behavior unchanged. Every other Material component that owns its ripple
+  AngularIndication(NidavellirShapes.Card), …)` carrying the card's existing
+  semantics and click behavior unchanged. Every other Material component that owns its ripple
   internally (buttons, text fields, the Forge's profile `FilterChip`) keeps
   the platform ripple in this delta; unifying them is a listed non-goal
   until reviewed on-device.
+  **Superseded by D6** ([destructive-chrome.md](destructive-chrome.md)):
+  `AngularIndication` shipped here as a singleton hardcoding the `Card` cut,
+  with a note that a second consumer of another shape reopens this document.
+  D6 reopened it — the kill control's press flash has no legal alternative,
+  since the platform ripple is circular and §15 forbids circular ripples. It
+  is now `AngularIndication(shape)`, a data class whose structural equality
+  keeps `Modifier.clickable` from churning; the card passes `Card` and the
+  kill control passes `Cleft`. This is what design-language §12 asked for in
+  the first place — "an inset copy of the component's own cut-corner outline
+  … one implementation, used everywhere" — so the singleton, not the
+  parameter, was the deviation.
 - **Disabled**: 38% content / 12% container plus one non-opacity cue (chip
   hairline dropped).
 

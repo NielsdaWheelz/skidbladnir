@@ -244,8 +244,15 @@ internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeFor
     if (proposed.machineHandle == current.machineHandle) proposed else proposed.copy(cwd = "", profile = null)
 
 internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
+
+/**
+ * Single owner of destructive copy: the action label is also the screen-reader description of every
+ * kill control, so the spoken description and the dialog title cannot name different sessions.
+ */
+internal fun killActionLabel(label: MachineLabel, target: AgentTarget): String =
+    "Kill ${target.session.tmuxName} on ${label.text}"
 internal fun killConfirmationTitle(label: MachineLabel, target: AgentTarget): String =
-    "Kill ${target.session.tmuxName} on ${label.text}?"
+    killActionLabel(label, target) + "?"
 
 @Serializable private data class CreateSessionRequest(
     val cwd: String,
@@ -388,6 +395,94 @@ internal data class MachineState(
     }
 
     fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
+}
+
+/**
+ * Single classifier for what a machine can currently do. Every machine-state message, tag, colour,
+ * and Forge affordance reads this one derivation, so a new access or inventory variant breaks the
+ * build in exactly one place.
+ */
+internal sealed interface MachineAvailability {
+    data object Ready : MachineAvailability
+    data object Refreshing : MachineAvailability
+    data object AuthRequired : MachineAvailability
+    data object IdentityChanged : MachineAvailability
+    data object Reading : MachineAvailability
+    data class Stale(val cause: GatewayFailure) : MachineAvailability
+    data class Unavailable(val cause: GatewayFailure) : MachineAvailability
+}
+
+internal fun machineAvailability(machine: MachineState): MachineAvailability = when (machine.access) {
+    MachineAccess.AuthRequired -> MachineAvailability.AuthRequired
+    MachineAccess.IdentityChanged -> MachineAvailability.IdentityChanged
+    MachineAccess.Ready -> when (val inventory = machine.inventory) {
+        InventoryState.Reading -> MachineAvailability.Reading
+        is InventoryState.Fresh -> MachineAvailability.Ready
+        is InventoryState.Superseded -> MachineAvailability.Refreshing
+        is InventoryState.Stale -> MachineAvailability.Stale(inventory.cause)
+        is InventoryState.Unreachable -> MachineAvailability.Unavailable(inventory.cause)
+    }
+}
+
+internal data class MachineNotice(val message: String, val tone: NoticeTone)
+
+/**
+ * Single owner of how loud a machine state is. Trust events are the only failures: a broken bearer
+ * or a changed identity means we no longer know who we are talking to. Everything else is absent or
+ * ageing knowledge, and architecture.md treats one host being out as normal federated operation, so
+ * an outage withdraws the alarm colour while its message still names it literally.
+ */
+internal fun availabilityTone(availability: MachineAvailability): NoticeTone = when (availability) {
+    MachineAvailability.AuthRequired, MachineAvailability.IdentityChanged -> NoticeTone.Failure
+    MachineAvailability.Ready,
+    MachineAvailability.Refreshing,
+    MachineAvailability.Reading,
+    is MachineAvailability.Stale,
+    is MachineAvailability.Unavailable,
+    -> NoticeTone.Degraded
+}
+
+/**
+ * Single owner of machine-state prose and its severity: one `when` over [MachineAvailability] yields
+ * both, so a message and a tone read at different granularities stop being representable.
+ */
+internal fun machineNotice(machine: MachineState): MachineNotice? {
+    val label = machine.machine.label.text
+    val availability = machineAvailability(machine)
+    val tone = availabilityTone(availability)
+    return when (availability) {
+        MachineAvailability.AuthRequired ->
+            MachineNotice("$label: authentication required. Actions disabled.", tone)
+        MachineAvailability.IdentityChanged ->
+            MachineNotice("$label: identity changed. Provisioning repair is required.", tone)
+        MachineAvailability.Refreshing ->
+            MachineNotice("$label: confirming the latest tmux inventory. Actions disabled.", tone)
+        MachineAvailability.Reading -> MachineNotice("$label: reading tmux sessions.", tone)
+        is MachineAvailability.Stale -> MachineNotice(
+            "$label: ${gatewayFailureMessage(availability.cause)} Prior sessions are STALE; actions disabled. " +
+                "Pull down to check again.",
+            tone,
+        )
+        is MachineAvailability.Unavailable ->
+            MachineNotice("$label: ${gatewayFailureMessage(availability.cause)} Pull down to check again.", tone)
+        MachineAvailability.Ready -> when (machine.pressure) {
+            is PressureState.Stale ->
+                MachineNotice("$label: pressure is STALE. Sessions remain current.", tone)
+            is PressureState.Unavailable ->
+                MachineNotice("$label: pressure unavailable. Sessions remain current.", tone)
+            PressureState.Reading, is PressureState.Fresh -> null
+        }
+    }
+}
+
+internal fun machineStateTag(machine: MachineState): String = when (machineAvailability(machine)) {
+    MachineAvailability.Ready -> "fresh"
+    MachineAvailability.Refreshing -> "refreshing"
+    MachineAvailability.AuthRequired -> "auth"
+    MachineAvailability.IdentityChanged -> "identity"
+    MachineAvailability.Reading -> "reading"
+    is MachineAvailability.Stale -> "stale"
+    is MachineAvailability.Unavailable -> "unreachable"
 }
 
 internal data class VisibleAgent(val machine: PairedMachine, val target: AgentTarget)

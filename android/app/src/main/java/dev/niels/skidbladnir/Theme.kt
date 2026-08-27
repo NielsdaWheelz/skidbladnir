@@ -4,11 +4,22 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -43,8 +54,23 @@ internal object NidavellirShapes {
     val Sheet = CutCornerShape(topStart = 12.dp, topEnd = 12.dp)
 
     // The dwarf seal frame (design-language.md §11, dwarf-seals.md): equal
-    // 29% corner cuts on a square produce a regular octagon.
-    val Octagon = CutCornerShape(29)
+    // corner cuts on a square produce an octagon — not an exactly regular
+    // one. The regular cut is (2-sqrt2)/2 ~ 29.29%; at the shipped 29% each
+    // vertex sits 0.16dp off its regular position on a 56dp frame and the
+    // axis edges run 0.4200 of the side against the diagonals' 0.4101 (23.52dp
+    // against 22.97dp). Both are under the perceptual floor for a hairline,
+    // and 29% is struck into every existing seal (design-language.md §6). The
+    // percent is the sole owner of the cut: `octagonVertices` expands the same
+    // number the clip reads, so a frame and its clip can never disagree.
+    const val OctagonCutPercent = 29
+    val Octagon = CutCornerShape(OctagonCutPercent)
+
+    // The only asymmetric shape in the product: the chip facet is 4dp and the
+    // cleft corner is 14dp, so the control reads as material cleaved off
+    // rather than softened. Kill controls only. Named "Cleft" and not
+    // "Struck" because the seal vocabulary reserves struck/unstruck for
+    // minted-vs-blank, and one word cannot mean both.
+    val Cleft = CutCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp, bottomStart = 4.dp)
 }
 
 // Two roles only in this delta (design-language.md §9): Display carries the
@@ -106,44 +132,88 @@ internal fun statusColor(kind: SessionStatusKind): Color = when (kind) {
     SessionStatusKind.Unknown -> Muted
 }
 
+// One owner for severity (destructive-chrome.md). Ember carried five
+// unrelated jobs — destructive control, failed attempt, stale data, host load,
+// corrupt record — and because one federated host is routinely stale in normal
+// operation, Ember had become the dashboard's resting state and stopped
+// reading as an alarm. Degraded is Muted because staleness is ABSENCE, not
+// failure: it matches UNKNOWN -> Muted (design-language.md §5) and the honesty
+// law (§1.4), absence is displayed rather than alarmed. No new hue is
+// introduced, so §5's four-accent-family cap still holds.
+internal enum class NoticeTone { Failure, Degraded, Armed }
+
+internal fun noticeToneColor(tone: NoticeTone): Color = when (tone) {
+    NoticeTone.Failure -> Ember // an attempt failed, trust broke, or you are ending something
+    NoticeTone.Degraded -> Muted // knowledge is absent or old; nothing is broken
+    NoticeTone.Armed -> Gold // a recovery is waiting on you
+}
+
 // The attention pulse renders static when the system disables animator scale
 // (design-language.md §12; the WCAG 2.2.2 stop-mechanism note lives with the
 // screens delta that consumes this).
 internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean = animatorDurationScale != 0f
 
-// Ornament rendering (design-language.md §7; ornament-pipeline.md's refactor
-// note). Fret and interlace are both repeating bands, so they share this one
-// tile-drawing path: quantize the drawn width down to a whole unit count,
-// center the result, then repeat every layer's frozen unit-box segments
-// across it. Ornament.kt bakes all topology and over/under gaps at generation
-// time — this is the whole runtime drawing step, no weave logic here.
-internal fun DrawScope.drawOrnamentBand(unitAspect: Float, layers: List<Pair<List<OrnamentSegment>, Color>>) {
-    val unitWidth = size.height * unitAspect
+// The octagon's eight vertices in edge order, starting at the top-left cut
+// (design-language.md §6). Sole owner of the cut's expansion into pixels:
+// `DwarfPortrait` strokes them inside its octagon clip and `ForgeSeal` fills
+// and strokes them unclipped, so the frame a user sees and the shape that
+// cuts it are one geometry (forge-seal.md, "Reuse and consolidation").
+internal fun octagonVertices(size: Size): List<Offset> {
+    val cut = size.minDimension * (NidavellirShapes.OctagonCutPercent / 100f)
+    val w = size.width
+    val h = size.height
+    return listOf(
+        Offset(cut, 0f),
+        Offset(w - cut, 0f),
+        Offset(w, cut),
+        Offset(w, h - cut),
+        Offset(w - cut, h),
+        Offset(cut, h),
+        Offset(0f, h - cut),
+        Offset(0f, cut),
+    )
+}
+
+// The fret band (design-language.md §7; ornament-pipeline.md's refactor
+// note): quantize the drawn width down to a whole unit count, center the
+// result, then repeat `FretCell`'s frozen unit-box segments across it. The
+// interlace band this once shared a path with died with the pairing screen,
+// so the fret is the app's only repeating band. Ornament.kt bakes all
+// topology and over/under gaps at generation time — this is the whole
+// runtime drawing step, no weave logic here.
+internal fun DrawScope.drawFretBand(color: Color) {
+    val unitWidth = size.height
     val units = (size.width / unitWidth).toInt().coerceAtLeast(1)
     val startX = (size.width - units * unitWidth) / 2f
     val strokeWidth = size.height * 0.10f
     for (unit in 0 until units) {
         val offsetX = startX + unit * unitWidth
-        layers.forEach { (segments, color) ->
-            segments.forEach { segment ->
-                drawLine(
-                    color = color,
-                    start = Offset(offsetX + segment.x1 * unitWidth, segment.y1 * size.height),
-                    end = Offset(offsetX + segment.x2 * unitWidth, segment.y2 * size.height),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Butt,
-                )
-            }
+        FretCell.forEach { segment ->
+            drawLine(
+                color = color,
+                start = Offset(offsetX + segment.x1 * unitWidth, segment.y1 * size.height),
+                end = Offset(offsetX + segment.x2 * unitWidth, segment.y2 * size.height),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Butt,
+            )
         }
     }
 }
 
+// The stroke that draws the Hlíðskjálf mark, as a fraction of the mark's own
+// size. A fixed dp stroke is the defect it replaces: 2dp is 4% of a 48dp mark
+// but 11% of an 18dp one, so as the mark shrinks the stroke swallows the
+// crossing gaps `scripts/gen-ornament` baked in and the weave reads as a solid
+// clot. Held against `_VALKNUT_GAP`, this keeps break and strand in the same
+// proportion at every rendered size (design-language.md §8; OrnamentTest).
+internal const val ValknutStrokeRatio = 0.055f
+
 // The Hlíðskjálf mark (design-language.md §8): a single, non-repeating draw
 // of the frozen `Valknut` segments. Not a band — it does not tile — so it
-// does not share `drawOrnamentBand` (ornament-pipeline.md's refactor note
-// scopes the shared helper to the two repeating bands only).
-internal fun DrawScope.drawValknut(color: Color, strokeWidth: Dp = 2.dp) {
-    val stroke = strokeWidth.toPx()
+// keeps its own path rather than joining `drawFretBand`, whose whole job is
+// tiling a unit cell across a width.
+internal fun DrawScope.drawValknut(color: Color) {
+    val stroke = size.minDimension * ValknutStrokeRatio
     Valknut.forEach { segment ->
         drawLine(
             color = color,
@@ -153,4 +223,37 @@ internal fun DrawScope.drawValknut(color: Color, strokeWidth: Dp = 2.dp) {
             cap = StrokeCap.Butt,
         )
     }
+}
+
+// Every rendering of the mark in the app. It is decoration wherever it appears:
+// it clears its own subtree semantics so the literal label beside it carries
+// the whole meaning (ornament-pipeline.md "Ornament is silent and
+// subordinate"), and `tag` exists only so tests can prove that silence.
+@Composable
+internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: Modifier = Modifier) {
+    Canvas(
+        modifier = modifier
+            .size(markSize)
+            .clearAndSetSemantics { testTag = tag },
+    ) {
+        drawValknut(color)
+    }
+}
+
+// The one composition of the affordance that returns to the Dwarves grid, so
+// its label and its mark cannot drift apart between the two screens that offer
+// it (TerminalScreen's reconnect panel and MainActivity's bearer repair). The
+// mark takes `LocalContentColor` rather than a fixed accent so it dims with the
+// button when the button is disabled — a drawn glyph gets no disabled state for
+// free (design-language.md §12). `tag` differs per screen only so each site's
+// silence is provable.
+@Composable
+internal fun BackToDwarvesContent(tag: String) {
+    HlidskjalfMark(
+        color = LocalContentColor.current,
+        markSize = 18.dp,
+        tag = tag,
+        modifier = Modifier.padding(end = ButtonDefaults.IconSpacing),
+    )
+    Text("Back to Dwarves")
 }

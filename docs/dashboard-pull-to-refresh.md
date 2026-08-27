@@ -1,8 +1,9 @@
 # v0 dashboard pull-to-refresh delta
 
-Status: source implemented, 2026-08-27. Red was observed; routine verification
-and the signed 36-test S22+ platform gate are green. The hands-on native-feel
-check remains `NOT_RUN`.
+Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and
+routine verification is green on the merged tree. The feature-tree signed
+36-test S22+ platform gate was green before integration; the merged 45-test
+platform gate and hands-on native-feel check remain `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns this delta's
@@ -88,7 +89,7 @@ are consumed unchanged.
 ## Structure and composition
 
 ```text
-fixed DashboardTopBar (Dwarves + trailing New dwarf)
+fixed DashboardTopBar (Dwarves + machine summary)
 fixed filters / machine strips / notices / recovery
 `- live visible target? PullToRefreshBox : inert collection container
    `- one always-present LazyVerticalGrid
@@ -168,7 +169,7 @@ ordering above; do not export a general operation/ticket framework.
 ## Hard cut and cleanup
 
 - Delete the header `TextButton`, `onRefresh`, and `refreshing` top-bar
-  parameters. `New dwarf` remains trailing in the same 64 dp row.
+  parameters.
 - Delete `refresh()` after all production callers move to
   `verifyVisibleInventory()`; no alias, feature flag, dual UI, or compatibility
   branch remains.
@@ -215,8 +216,7 @@ or production file.
    grid remains away from top cannot verify; after it reaches top, only
    threshold overscroll does. A below-threshold drag does nothing. A no-live
    scope remains inert with no stranded indicator.
-3. Update the existing compact-header proof: `New dwarf` remains trailing in
-   the 64 dp row and no `Refresh` click surface exists.
+3. Update the existing compact-header proof: no `Refresh` click surface exists.
 
 The Compose red requires the real Android runtime. Obtain explicit current-turn
 platform/ADB approval before running it; without approval it is `NOT_RUN`, the

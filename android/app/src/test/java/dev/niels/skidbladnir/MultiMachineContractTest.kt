@@ -750,6 +750,71 @@ class MultiMachineContractTest {
         )
     }
 
+    @Test
+    fun `machine notices tone absence as degraded and only trust events as failure`() {
+        val pressure = decodePressureResponse(pressureJson("[\"memoryPressure\"]", linuxMetrics))
+        val ready = readyMachine(devbox, session())
+        val snapshot = (ready.inventory as InventoryState.Fresh).snapshot
+        val stalePressure = ready.copy(pressure = PressureState.Stale(pressure, GatewayFailure.Transport))
+        val unreachable = "Could not reach this machine over your Tailnet."
+
+        assertEquals(
+            "stale pressure is absent knowledge, not an alarm: a Ready machine whose pressure read " +
+                "aged must not borrow the failure tone, or a routinely stale host makes the alarm " +
+                "colour the dashboard's resting state",
+            NoticeTone.Degraded,
+            machineNotice(stalePressure)?.tone,
+        )
+
+        // The card's degraded marker reads this derivation rather than a fixed Degraded. A machine
+        // whose bearer broke still holds a Fresh inventory, so it reaches that marker as a trust
+        // failure; toning it by staleness would paint a broken machine calm.
+        val brokenTrustOnFreshInventory = ready.copy(access = MachineAccess.AuthRequired)
+        assertTrue(
+            "the fixture must hold a Fresh inventory for this to prove anything",
+            brokenTrustOnFreshInventory.inventory is InventoryState.Fresh &&
+                !brokenTrustOnFreshInventory.canMutate,
+        )
+        assertEquals(
+            "a machine that cannot be trusted is loud even when its sessions are current",
+            NoticeTone.Failure,
+            availabilityTone(machineAvailability(brokenTrustOnFreshInventory)),
+        )
+
+        // The table below is machineNotice's coverage record: a new MachineAvailability
+        // variant must be given a row here.
+        val cases: List<Pair<MachineState, MachineNotice?>> = listOf(
+            ready to null,
+            ready.copy(pressure = PressureState.Fresh(pressure)) to null,
+            stalePressure to
+                MachineNotice("Devbox: pressure is STALE. Sessions remain current.", NoticeTone.Degraded),
+            ready.copy(pressure = PressureState.Unavailable(GatewayFailure.Transport)) to
+                MachineNotice("Devbox: pressure unavailable. Sessions remain current.", NoticeTone.Degraded),
+            ready.copy(inventory = InventoryState.Reading) to
+                MachineNotice("Devbox: reading tmux sessions.", NoticeTone.Degraded),
+            ready.copy(inventory = InventoryState.Superseded(snapshot, requiredMutationFence = 4)) to
+                MachineNotice("Devbox: confirming the latest tmux inventory. Actions disabled.", NoticeTone.Degraded),
+            ready.copy(inventory = InventoryState.Stale(snapshot, GatewayFailure.Transport)) to
+                MachineNotice(
+                    "Devbox: $unreachable Prior sessions are STALE; actions disabled. Pull down to check again.",
+                    NoticeTone.Degraded,
+                ),
+            ready.copy(inventory = InventoryState.Unreachable(GatewayFailure.Transport)) to
+                MachineNotice("Devbox: $unreachable Pull down to check again.", NoticeTone.Degraded),
+            ready.copy(access = MachineAccess.AuthRequired) to
+                MachineNotice("Devbox: authentication required. Actions disabled.", NoticeTone.Failure),
+            ready.copy(access = MachineAccess.IdentityChanged) to
+                MachineNotice("Devbox: identity changed. Provisioning repair is required.", NoticeTone.Failure),
+        )
+        cases.forEach { (machine, expected) ->
+            assertEquals(
+                "${machineAvailability(machine)} with ${machine.pressure::class.simpleName} pressure",
+                expected,
+                machineNotice(machine),
+            )
+        }
+    }
+
     private fun readyMachine(machine: PairedMachine, vararg sessions: AgentSession): MachineState = MachineState(
         machine = machine,
         access = MachineAccess.Ready,

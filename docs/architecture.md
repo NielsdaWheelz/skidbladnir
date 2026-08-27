@@ -241,26 +241,29 @@ fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
 Signal age begins at the host's own `observedAt - signalAt` and then advances
 with Android monotonic time; host clocks are never compared to each other.
-The dashboard header is one compact row with the trailing primary `New dwarf`
-action. Automatic five-second reconciliation remains primary. Standard
-pull-to-refresh over the dwarf collection is the sole manual verification
-shortcut: it snapshots the current machine filter, requests inventory only,
-and remains visibly active until a post-request inventory read has landed for
-every live target. A pre-request read cannot satisfy that intent. Fixed chrome
-does not pull, existing collection content remains in place, and there is no
-tap, overflow, contextual-retry, or custom-accessibility equivalent. The pull
-owner is active only when the visible scope has a live poller; otherwise the
-same collection is inert and its access/provisioning outcome remains visible.
-Forge outcome-unknown recovery copy is target-aware: a visible ready target
-teaches the pull, a ready target hidden by another filter first names the
-filter change, authentication names bearer repair, and a changed or missing
-identity names external provisioning repair. Review-ready copy remains a
-past-tense fact, not another verification command.
-Each pressure strip preserves the full v0 presentation:
-current supported metric values, a categorical severity history covering up to
-15 minutes, explicit missing inputs, explicit platform-unsupported metrics,
-and current pressure reasons. Stale pressure preserves and labels those last
-details; unsupported and missing are never conflated.
+The dashboard header is one compact row carrying the title and machine
+summary. The primary `New dwarf` action is the Forge seal, a
+bottom-trailing octagonal control over the grid; it is lit when a machine
+can create and cold when none can. Automatic five-second reconciliation
+remains primary. Standard pull-to-refresh over the dwarf collection is the
+sole manual verification shortcut: it snapshots the current machine filter,
+requests inventory only, and remains visibly active until a post-request
+inventory read has landed for every live target. A pre-request read cannot
+satisfy that intent. Fixed chrome does not pull, existing collection content
+remains in place, and there is no tap, overflow, contextual-retry, or
+custom-accessibility equivalent. The pull owner is active only when the
+visible scope has a live poller; otherwise the same collection is inert and
+its access/provisioning outcome remains visible. Forge outcome-unknown
+recovery copy is target-aware: a visible ready target teaches the pull, a
+ready target hidden by another filter first names the filter change,
+authentication names bearer repair, and a changed or missing identity names
+external provisioning repair. Review-ready copy remains a past-tense fact,
+not another verification command. Each pressure strip preserves the full v0
+presentation: current supported metric values, a categorical severity
+history covering up to 15 minutes, explicit missing inputs, explicit
+platform-unsupported metrics, and current pressure reasons. Stale pressure
+preserves and labels those last details; unsupported and missing are never
+conflated.
 
 ### Attention
 
