@@ -1,6 +1,9 @@
 package dev.niels.skidbladnir
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsDisplayed
@@ -38,10 +41,11 @@ class FleetConnectInstrumentedTest {
 
     @Test
     fun connectingAndFailureStatesNameProgressAndOneRecoveryAction() {
+        var phase by mutableStateOf(FleetConnectPhase.Connecting)
         compose.setContent {
             MaterialTheme {
                 FleetConnectScreen(
-                    state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Install, FleetConnectPhase.Connecting),
+                    state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Install, phase),
                     tailscaleInstalled = false,
                     onConnect = {},
                     onTailscale = {},
@@ -52,16 +56,7 @@ class FleetConnectInstrumentedTest {
         compose.onNodeWithText("Connect").assertIsNotEnabled()
         compose.onNodeWithText("Install Tailscale").assertIsNotEnabled()
 
-        compose.setContent {
-            MaterialTheme {
-                FleetConnectScreen(
-                    state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Install, FleetConnectPhase.Failed),
-                    tailscaleInstalled = false,
-                    onConnect = {},
-                    onTailscale = {},
-                )
-            }
-        }
+        compose.runOnIdle { phase = FleetConnectPhase.Failed }
         compose.onNodeWithText(
             "Couldn’t connect the whole fleet. Nothing was saved. Create and scan a new fleet invite.",
         ).assertIsDisplayed()

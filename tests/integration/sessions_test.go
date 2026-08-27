@@ -1520,9 +1520,15 @@ func buildSkidbladnirCommand(t *testing.T, repositoryRoot, destination string) s
 func writeStatusHookHostConfig(t *testing.T, destination, codexCommand string) string {
 	t.Helper()
 	path := filepath.Join(destination, "status-hook-host.json")
+	tmuxVersionOutput, err := exec.Command(tmuxPath, "-V").Output()
+	if err != nil || len(tmuxVersionOutput) < 2 || tmuxVersionOutput[len(tmuxVersionOutput)-1] != '\n' ||
+		bytes.ContainsRune(tmuxVersionOutput[:len(tmuxVersionOutput)-1], '\n') {
+		t.Fatal("observe the exact tmux version for the status-hook host fixture")
+	}
+	tmuxVersion := string(tmuxVersionOutput[:len(tmuxVersionOutput)-1])
 	encoded := fmt.Sprintf(`{
   "platform":%q,
-  "tmux":{"path":%q,"version":"tmux integration"},
+  "tmux":{"path":%q,"version":%q},
   "codexNodeEntrypoint":%q,
   "profiles":[
     {"key":"personal","label":"Codex · Personal","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
@@ -1531,7 +1537,7 @@ func writeStatusHookHostConfig(t *testing.T, destination, codexCommand string) s
     {"key":"claude-personal","label":"Claude · Personal","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"claude"}],"arguments":[]},
     {"key":"claude-work","label":"Claude · Work","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"claude"}],"arguments":[]}
   ]
-}`, platform.Current().Kind, tmuxPath, codexCommand)
+}`, platform.Current().Kind, tmuxPath, tmuxVersion, codexCommand)
 	if err := os.WriteFile(path, []byte(encoded), 0o600); err != nil {
 		t.Fatalf("write status-hook host config: %v", err)
 	}
