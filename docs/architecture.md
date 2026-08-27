@@ -199,10 +199,19 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   token, required dwarf icon portrait, profile (`@skid_profile` or unknown),
   objective (optional; URL-safe base64 in `@skid_objective_b64`, decoded by the
   gateway), pane cwd and active command when tmux exposes them,
-  attached-client count, status chip with its named signal and age, attention
+  attached-client count, status with its named signal and age, attention
   badge. Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
+- **Card presentation:** the operator-owned tmux name is the primary work
+  identity. The dwarf display name remains a smaller Big Shoulders signature.
+  A colour-only status facet occupies one fixed top-right position but is
+  redundant decoration: an adjacent named status bay remains the semantic and
+  accessible status source. The machine label is quiet footer context in
+  `All`; a selected-machine filter supplies that visible context once, so its
+  cards omit the repeated visual machine label while retaining machine identity
+  in accessibility and every routed or destructive action. Profile and cwd are
+  quiet context, and cwd abbreviation never changes its complete spoken value.
 - Character normalization runs after phone-shadow reconciliation under the
   gateway's one mutation lock. Valid assignments are retained. Missing or
   invalid assignments use least-live-use selection with a stable
@@ -211,7 +220,7 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   vanished session is never overwritten, and non-convergence fails the
   inventory instead of fabricating a card. Phone shadows are never candidates.
 - **Status and attention are orthogonal.** Attention is a badge, never a status
-  replacement. Every status chip names its signal and age:
+  replacement. Every named status bay names its signal and age:
   - `WORKING` — an allowlisted foreground agent process has a matching
     process-lifetime-bound `@skid_lifecycle` `working` fact;
   - `RUNNING` — an allowlisted agent is alive but no matching lifecycle fact is
@@ -562,10 +571,10 @@ enum values are defects, with no protocol branch or compatibility state.
   collapsing the TUI into a narrow responsive layout. The
   [terminal key deck](terminal-key-deck.md) is one stable scrolling row
   `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End` and
-  contains terminal input only; top `Detach · session keeps running` and Android
-  Back own phone detach. Ctrl is a visible one-shot modifier, clears on the
-  next input or lifecycle boundary, and never rewrites IME, dictation, or
-  paste text. Deck, typed, composed, and pasted input share one page-owned
+  contains terminal input only; top `Detach` and Android Back own phone
+  detach. Ctrl is a visible one-shot modifier, clears on the next input or
+  lifecycle boundary, and never rewrites IME, dictation, or paste text. Deck,
+  typed, composed, and pasted input share one page-owned
   ordered ingress. Targets are at least `48dp` square with at least `8dp`
   separation. `Line break` sends raw `0x0a`; Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,
@@ -685,8 +694,10 @@ private explicit `-L` or `-S` socket, and clean up only identities they created.
 A skipped external boundary is never a pass.
 
 Acceptance additionally requires: Devbox, MacBook, and Arch sessions remain distinct
-and route only by machine target; every card, pressure/error state, Forge,
-terminal, and kill confirmation names its machine; one host outage leaves the
+and route only by machine target; `All` cards, pressure/error state, Forge,
+terminal, and kill confirmation visibly name their machine, while a selected
+machine filter replaces only the card's repeated visual machine label and the
+card remains machine-named to accessibility; one host outage leaves the
 other fresh and actionable while only the failed snapshot becomes stale and
 non-mutating; origin/handle or bearer failure cannot cross machines; each
 Forge uses only local profiles/paths; laptop and phone share one pane/PID/draft

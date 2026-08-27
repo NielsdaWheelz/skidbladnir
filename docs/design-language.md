@@ -322,10 +322,14 @@ covers ǫ, which appears solely in verbatim Old Norse.
 
 | Role | Face | Use | Never |
 | --- | --- | --- | --- |
-| Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf names on cards | Body copy, sentences |
+| Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf signatures on cards | Body copy, sentences |
 | UI body | System Roboto (deliberate: quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
-| Data | JetBrains Mono (~293 KB variable) | Status chips, ages, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
+| Data | JetBrains Mono (~293 KB variable) | Status bays, ages, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
 | Scholarly | Junicode 2 (subset to the quotation repertoire) | Verbatim Old Norse only: Dvergatal stanza epigraphs in a future About/catalogue view | UI chrome, dynamic text |
+
+The Display role's caps direction applies only where the source is caps, such
+as the wordmark and applicable headings. Dwarf signatures preserve exact
+catalogue casing.
 
 - The choice *against* Cinzel/Trajan-likes is deliberate: lapidary Roman caps
   are the fantasy-app default and read imperial Rome, not the forge. Big
@@ -335,9 +339,11 @@ covers ǫ, which appears solely in verbatim Old Norse.
 - **Machine facts speak mono.** The dashboard borrows the terminal's own
   voice for everything tmux/proc reported — a quiet, honest bridge between
   the two surfaces.
-- **Diminuendo hierarchy** on the session card: dwarf display name (Display,
-  largest) → tmux name + profile label (body) → runtime facts (Data, smallest,
-  ≥ 11sp). A stepped decay, not a flat two-level split.
+- **Work-first hierarchy** on the session card: tmux name (Data, largest and
+  highest contrast) → dwarf display-name signature (Display, smaller and
+  quieter) → named status bay → objective → directory and conditional
+  machine/profile context (Data, smallest, ≥ 11sp). A stepped decay around the
+  operator's work label, not a flat metadata stack.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
   apps). Norse by Joël Carrouché is unusable (embedding rights ambiguous).
 
@@ -459,11 +465,17 @@ it as a red test, not an assumption.
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  seal left, diminuendo text stack (§9), chip + attention lozenge right.
+  work-first text stack (§9), fixed 12dp status facet at top right with the
+  conditional attention lozenge immediately left, then 48dp seal beside the
+  named status bay. Machine/profile form one quiet unbadged footer line;
+  machine renders there only in `All`.
   Attention-first grid order is architecture-owned and unchanged.
-- **Status chip**: 4dp cut corners, fill = status color at 18% over surface,
+- **Status bay**: 4dp cut corners, fill = status color at 18% over surface,
   1dp hairline + label in the status color, JetBrains Mono caps ≥ 11sp,
   signal + age line in Muted mono. Colors per §5 mapping.
+- **Status facet**: 12dp `Chip` shape, solid status color, no border, motion,
+  text, or semantics. It is a redundant scanning cue; the status bay owns
+  meaning and accessibility.
 - **Attention badge**: Orpiment lozenge, 10dp across, §12 pulse rules.
 - **The Forge sheet**: ForgeGlow surface, 12dp top cuts, single fret band
   under the title (Gold 40%, even unit count), Display-face title, mono cwd
@@ -539,9 +551,11 @@ generalized to the component's own shape as §12 already required);
 under sail, replacing D4's prow icon, with the whole adaptive-icon set
 generated and drift-gated); **(8) the Hlíðskjálf mark**
 ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke rule and legibility
-invariants, the mark on every Dwarves surface).
-The numbers are delta numbers, not positions; with D7 landed the grain has no
-gaps left, and the roadmap's D-numbers and these agree.
+invariants, the mark on every Dwarves surface); **(9) detach chrome**
+([detach-chrome.md](detach-chrome.md) — the stock long terminal action hard-cut
+to one symmetric, literal `Detach` control using the existing D2/D6 grammar).
+The numbers are delta numbers, not positions; D1–D9 each have one owner, and
+the roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

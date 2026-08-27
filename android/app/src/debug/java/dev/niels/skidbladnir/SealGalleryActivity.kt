@@ -65,7 +65,6 @@ class SealGalleryActivity : ComponentActivity() {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 DwarfPortrait(
                                     character = CharacterSummary(entry.key, entry.displayName),
-                                    sealSize = 48.dp,
                                 )
                                 Text(
                                     text = entry.displayName,

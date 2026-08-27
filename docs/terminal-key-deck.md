@@ -3,7 +3,9 @@
 Status: implemented; council source review, routine verification, the 19-test
 S22+ platform gate, and user-reported hands-on acceptance are green.
 The later dwarf product-language wording is source-complete; rendered-device
-confirmation remains `NOT_RUN`.
+confirmation remains `NOT_RUN`. The implemented
+[detach-chrome delta](detach-chrome.md) supersedes only the top-bar detach
+content and presentation below.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance.
 This document owns the implementation boundary and delivery plan for the v0
@@ -16,10 +18,9 @@ The phone exposes one stable terminal-input deck:
 `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End`
 
 The deck contains no app navigation, attachment lifecycle, destructive action,
-provider semantic, or macro. Top-bar `Detach · session keeps running` and
-Android Back remain the only primary return-to-inventory controls; leaving
-detaches the phone and keeps the tmux session running. Kill remains separate
-and confirmed.
+provider semantic, or macro. Top-bar `Detach` and Android Back remain the only
+primary return-to-inventory controls; leaving detaches the phone and keeps the
+tmux session running. Kill remains separate and confirmed.
 
 ## Goals and rules
 
@@ -81,7 +82,7 @@ on screen, and is complete when spoken.
 
 | Feature | Content owner | Required content |
 | --- | --- | --- |
-| Return to inventory | Product/content designer | Visible `Detach · session keeps running`; spoken content states that the phone detaches and the session continues. |
+| Return to inventory | Product/content designer | Visible and spoken `Detach`; no supporting copy, icon, or custom accessibility prose. |
 | Momentary keys | Terminal interaction designer | `Esc`, `Tab`, arrow glyphs, `Home`, `End`; spoken names use `Escape`, `Tab`, and `<direction> arrow`. |
 | Line feed | Product/content designer | Visible `Line break`; spoken `Line break; sends line feed`. Never label it Enter, Send, or claim how the opaque program responds. |
 | Ctrl | Interaction/accessibility designer | Visible `Ctrl`; accessible name `Control`; selected styling while armed; state description `Off` or `Armed`. Never label it Stop or Interrupt. |
