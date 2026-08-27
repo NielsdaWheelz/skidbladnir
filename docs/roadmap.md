@@ -291,8 +291,8 @@ orchestration, via a new architecture decision.
 | v0 profile delta — Claude Work | Source, routine verification, isolated tmux integration, exact devbox install/reverify, 9-test S22+ platform gate, and user-reported focused S22+ acceptance green; the integration red was not observed before implementation |
 | v0 identity delta — automatic dwarf identity | Source implemented; routine verification and isolated real-tmux acceptance green |
 | v0 terminal key-deck delta | Implemented; council source review, routine verification, the 19-test S22+ platform gate, and user-reported hands-on acceptance green |
-| v0 design delta D1 — terminal theme | Source implemented; routine verification green; platform pass and hands-on OLED checks `NOT_RUN` |
-| v0 design delta D2 — chrome tokens | Source implemented; adversarial review applied; routine verification green; platform pass `NOT_RUN` |
-| v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates green; 48dp on-device distinguishability `NOT_RUN` |
-| v0 design delta D4 — ornament | Source implemented; ornament drift gate and release icon build green; on-device glance `NOT_RUN` |
+| v0 design delta D1 — terminal theme | Source implemented; routine verification and the 25-test S22+ platform gate green; hands-on OLED dim-text/256-color check `NOT_RUN` |
+| v0 design delta D2 — chrome tokens | Source implemented; adversarial review applied; routine verification and the 25-test S22+ platform gate green; hands-on pass (incl. the Forge warm-in, untestable under the instrumented harness) `NOT_RUN` |
+| v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the S22+ platform gate green; hands-on 48dp gallery pass `NOT_RUN` |
+| v0 design delta D4 — ornament | Source implemented; drift gate, release icon build, and the S22+ platform gate green; hands-on ornament/icon glance `NOT_RUN` |
 | v0.5 push | Not scheduled |

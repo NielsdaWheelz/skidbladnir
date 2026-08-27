@@ -1,8 +1,8 @@
 # Design delta D4: ornament
 
 Status: implemented 2026-08-26; routine verification (including the
-ornament drift gate) and the release icon build green; the on-device
-ornament/icon glance stays `NOT_RUN` pending separate approval.
+ornament drift gate) and the release icon build green; the S22+ platform gate
+green; the hands-on ornament/icon glance stays `NOT_RUN`.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for tokens and shapes.
 
 [`design-language.md`](design-language.md) §7 (ornament families and

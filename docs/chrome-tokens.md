@@ -1,8 +1,8 @@
 # Design delta D2: chrome tokens
 
 Status: implemented 2026-08-26 with adversarial-review fixes applied;
-routine verification green; the platform pass stays `NOT_RUN` pending
-separate approval.
+routine verification and the S22+ platform gate green; the hands-on pass
+(incl. the Forge warm-in) stays `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including literal labels, 48dp targets, and the distinct-status-color
@@ -195,7 +195,13 @@ Red (each observed failing first):
    names render in Big Shoulders, not a fallback).
 6. Instrumented: with animations disabled (the existing
    `animationsDisabled = true` test config), the attention badge renders
-   static at full opacity and the Forge opens with no warm-in.
+   static at full opacity (pixel-asserted), and the Forge sheet opens and
+   settles with all animations resolved. The Forge sheet cannot be composed
+   under the instrumented harness at all on the S22+ — `ModalBottomSheet`
+   ANRs the activity in every tested variant (paused clock, running clock,
+   bare `assertIsDisplayed`) — so the warm-in check (opens lit in ForgeGlow,
+   no strand) belongs wholly to the hands-on pass; the sheet is
+   production-proven daily.
 
 Green: implement only enough to satisfy those proofs plus the visual
 contract; routine `scripts/test verify` stays green and device-free.

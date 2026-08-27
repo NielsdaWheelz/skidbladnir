@@ -689,7 +689,7 @@ private fun PressureStrip(response: PressureResponse) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ForgeSheet(
+private fun ForgeSheet(
     state: ForgeState,
     profiles: List<ProfileChoice>,
     onDismiss: () -> Unit,

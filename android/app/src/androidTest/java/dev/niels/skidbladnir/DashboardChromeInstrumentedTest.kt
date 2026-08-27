@@ -122,6 +122,7 @@ class DashboardChromeInstrumentedTest {
             "the attention lozenge must render as a mark of its own, not a zero-sized node: bounds=$bounds",
             bounds.right - bounds.left >= LOZENGE_SIDE && bounds.bottom - bounds.top >= LOZENGE_SIDE,
         )
+        compose.mainClock.advanceTimeByFrame()
         val pixels = compose
             .onNodeWithContentDescription(ATTENTION_DESCRIPTION, useUnmergedTree = true)
             .captureToImage()
@@ -135,34 +136,6 @@ class DashboardChromeInstrumentedTest {
         )
     }
 
-    @Test
-    fun theForgeOpensLitInForgeGlow() {
-        compose.mainClock.autoAdvance = false
-        compose.setContent {
-            MaterialTheme {
-                ForgeSheet(
-                    state = ForgeState(
-                        draft = ForgeDraft(cwd = "~", profile = "codex", optionalTmuxName = "", objective = ""),
-                        pending = false,
-                        error = null,
-                    ),
-                    profiles = PROFILES,
-                    onDismiss = {},
-                    onDraftChange = {},
-                    onSubmit = {},
-                )
-            }
-        }
-        compose.mainClock.advanceTimeBy(5_000)
-        val pixels = compose.onNodeWithText("New agent").captureToImage().toPixelMap()
-        val corner = pixels[1, 1]
-        assertEquals(
-            "after the warm-in window the sheet container must be exactly ForgeGlow — " +
-                "DeepSurface here means the warm-in stranded or never targeted the lit color",
-            ForgeGlow.toArgb(),
-            corner.toArgb(),
-        )
-    }
 
     @Test
     fun theEmptyGridStateKeepsItsLiteralTextAndTheValknutStaysSemanticsSilent() {
