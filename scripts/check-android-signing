@@ -192,7 +192,7 @@ self_test() {
   local expected
   local name
   local contents
-  fixture_dir="$(mktemp -d -t skidbladnir-signing.XXXXXX)"
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-signing.XXXXXX)"
   fixture="$fixture_dir/signing.properties"
   while IFS='|' read -r name expected contents; do
     printf '%b' "$contents" > "$fixture"

@@ -1004,7 +1004,7 @@ case "$gate" in
       printf 'Release source preflight returned invalid evidence.\n' >&2
       exit 1
     }
-    release_staging="$(mktemp -d -t skidbladnir-release-gate.XXXXXX)"
+    release_staging="$(mktemp -d /tmp/skidbladnir-release-gate.XXXXXX)"
     case "$release_staging" in
       /tmp/skidbladnir-release-gate.* | /private/tmp/skidbladnir-release-gate.*) ;;
       *) printf 'Unexpected release-gate staging directory\n' >&2; exit 1 ;;
@@ -1074,7 +1074,7 @@ case "$gate" in
       printf 'Public Git tag does not resolve to the declared exact source SHA.\n' >&2
       exit 1
     }
-    published_staging="$(mktemp -d -t skidbladnir-published-release.XXXXXX)"
+    published_staging="$(mktemp -d /tmp/skidbladnir-published-release.XXXXXX)"
     case "$published_staging" in
       /tmp/skidbladnir-published-release.* | /private/tmp/skidbladnir-published-release.*) ;;
       *) printf 'Unexpected published-release staging directory\n' >&2; exit 1 ;;
