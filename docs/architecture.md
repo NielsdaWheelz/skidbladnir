@@ -129,12 +129,12 @@ ever bring the retired machinery back.
 Automatic discovery, a machine registry or coordinator, gateway proxying,
 cross-machine move/broadcast/scheduling/failover/wake, durable inventory,
 shared credentials, public ingress, fleet-wide pressure, arbitrary host setup,
-and Tailscale policy automation are also out of scope. Machine onboarding,
-fresh-install/data-loss recovery, and all machine administration are also out
-of scope: the existing encrypted two-machine collection on the manually managed
-S22+ is an installation precondition, and this repository exposes no
-provisioning ingress. The app has no add, rename, or remove machine capability.
-Android federation is the whole runtime control plane.
+and Tailscale policy automation are also out of scope. Ongoing machine
+onboarding, fresh-install/data-loss recovery UX, and all machine administration
+remain out of scope. The app has no add, rename, or remove machine capability.
+Deployment owns one create-only, explicitly approved physical-device bootstrap
+for the fixed two-machine collection; it is not reachable from product UI or a
+release APK. Android federation is the whole runtime control plane.
 
 ## 3. Platform evidence carried forward
 
@@ -482,6 +482,16 @@ enum values are defects, with no protocol branch or compatibility state.
 ## 6. Android surface
 
 - Compile/target/min SDK 36; one manually installed package.
+- Device and release artifacts use one dedicated Skidbladnir signing key held
+  outside Git; builds never read either host's ambient Android debug keystore.
+  The repository pins its public certificate digest. Device gates use an
+  explicit debuggable build variant signed by that identity, validate
+  mode-0600 key configuration, validate both candidate APKs and any installed
+  package against the pin, and stop before ADB mutation on any mismatch.
+  Routine debug builds remain an untrusted compile/test lane and are never
+  installed by an acceptance gate. The private identity and password file are
+  an operator backup obligation; losing them requires reinstall and create-only
+  provisioning rather than a trust bypass.
 - `MachineStore` persists the pre-installed collection in app-private
   preferences; handles, case-insensitive labels, origins, and bearer bytes are
   each unique, enforced at the store read boundary — every member of a
@@ -505,6 +515,14 @@ enum values are defects, with no protocol branch or compatibility state.
   handle — the gateway's `409 MachineIdentityMismatch` is the identity
   verdict — and only then rotates the encrypted bearer. Every read and
   mutation binds that handle.
+- The deployment-only provisioning gate accepts exactly `Devbox` and
+  `MacBook`, verifies each requested handle and bearer against its installed
+  gateway before device mutation, and refuses any existing production-store
+  entry rather than overwriting or repairing it. Credential input travels from
+  mode-0600 files over ADB directly into app-private cache, is deleted before
+  parsing completes, and is committed only through `MachineStorage`'s
+  handle/origin-bound AES-GCM path. The signed test package and staging file are
+  removed on every outcome; release builds contain no provisioning entrypoint.
 - Grid, per-machine strips, filters, Forge, and terminal follow §4. The Forge
   preserves invalid drafts; its cwd field disables autocorrect/smart
   punctuation. Inventory snapshots and drafts are process-memory only.
@@ -594,6 +612,8 @@ Verification follows an 80/20 boundary shape:
 - approved live publication owns Devbox systemd and Mac LaunchAgent install,
   restart, exact Serve/tmux/platform pins, local re-list, isolated bearers, and
   identity-preserving reinstall;
+- one separately approved, create-only physical-device provisioning gate owns
+  authenticated installation of the absent fixed two-machine collection;
 - approved S22+ instrumentation owns encrypted collection read/repair,
   rotation/quarantine, lifecycle reconciliation,
   terminal behavior, and visible stale-action admission;
@@ -612,8 +632,9 @@ retired proof-ledger/acceptance matrix does not return. Existing
 
 Routine `scripts/test verify` is static analysis, compile/build, and pure unit
 tests only; it never invokes tmux or ADB. `integration`, `live`, host
-publication, `platform`, and `product` remain `NOT_RUN` without explicit user
-approval in the current turn and their exact command/environment capabilities.
+publication, `provision`, `platform`, and `product` remain `NOT_RUN` without
+explicit user approval in the current turn and their exact
+command/environment capabilities.
 Tmux tests refuse inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`, own one
 private explicit `-L` or `-S` socket, and clean up only identities they created.
 A skipped external boundary is never a pass.

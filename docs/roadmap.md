@@ -3,8 +3,9 @@
 Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
 implemented. The 2026-08-26 multi-machine hard cut is also implemented and
 accepted: routine verification, isolated Linux and Darwin tmux/API, live
-Devbox and MacBook publication, 15-test S22+ platform instrumentation, and the
-physical two-host outage/recovery journey are green. The earlier corrective
+Devbox and MacBook publication, create-only fixed-collection provisioning,
+27-test S22+ platform instrumentation, and the physical two-host
+outage/recovery journey are green. The earlier corrective
 delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 `NOT_RUN`; federation acceptance does not substitute for them.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
@@ -174,7 +175,7 @@ while machine administration leaves the app and the dense v0 dashboard returns.
   missing inputs, platform-unsupported metrics, and pressure reasons.
 
 Acceptance: red pressure component proof, routine static/unit verification, the
-exact 16-test S22+ platform gate, exact live gateway publication, and the
+exact 27-test S22+ platform gate, exact live gateway publication, and the
 physical healthy/outage/recovery journey are green.
 
 ## v0 review corrective layer
@@ -195,7 +196,7 @@ finding fixed at the source.
 
 Acceptance: routine static and unit gates; the isolated integration suite on
 Linux and Darwin; the Linux live grouped-session proof; exact Devbox and
-MacBook install/reinstall publication; the exact 16-test S22+ platform gate;
+MacBook install/reinstall publication; the exact 27-test S22+ platform gate;
 and the physical healthy/outage/recovery journey are green. These external
 runs re-prove both acceptance rows above against the corrected tree.
 
@@ -278,8 +279,8 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
-| v0 fixed-topology dashboard cut | Implemented and published; routine, exact 16-test S22+ platform, and physical healthy/outage/recovery product gates green on the corrected tree |
-| v0 review corrective layer | Implemented and published; routine, both-host integration, Linux live, exact 16-test S22+ platform, and physical product gates green |
+| v0 fixed-topology dashboard cut | Implemented and published; create-only provisioning, routine, exact 27-test S22+ platform, and physical healthy/outage/recovery product gates green on the corrected tree |
+| v0 review corrective layer | Implemented and published; routine, both-host integration, Linux live, exact 27-test S22+ platform, and physical product gates green |
 | v0 profile delta — Devbox Claude Work | Integrated; routine and exact-tree external acceptance are owned by the merged candidate gates |
 | v0 identity delta — automatic dwarf identity | Integrated hard cut; routine and isolated Linux/Darwin acceptance are owned by the merged candidate gates |
 | v0 terminal key-deck delta | Integrated; routine and exact S22+ platform acceptance are owned by the merged candidate gates |

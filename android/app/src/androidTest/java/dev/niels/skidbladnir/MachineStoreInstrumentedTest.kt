@@ -62,6 +62,23 @@ class MachineStoreInstrumentedTest {
     }
 
     @Test
+    fun fixedProvisioningRequiresAnEmptyStoreAndCommitsOneEncryptedCollection() {
+        assertEquals(
+            MachineProvisioning.Provisioned,
+            store.provisionFixedCollection(listOf(devbox, macBook)),
+        )
+        assertEquals(listOf(devbox, macBook), store.read().credentials)
+        assertNoPlaintextBearer(devbox, macBook)
+
+        val replacement = devbox.copy(bearer = requireNotNull(GatewayBearer.parse("C" + "A".repeat(42))))
+        assertEquals(
+            MachineProvisioning.AlreadyProvisioned,
+            store.provisionFixedCollection(listOf(replacement, macBook)),
+        )
+        assertEquals(listOf(devbox, macBook), store.read().credentials)
+    }
+
+    @Test
     fun rotationRefusesAnotherMachineBearerAndAnIncompleteCollection() {
         installFixture(listOf(devbox, macBook))
 

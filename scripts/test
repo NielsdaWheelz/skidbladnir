@@ -10,6 +10,7 @@ case "$(uname -s)" in
     android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
     pinned_tmux='/opt/homebrew/bin/tmux'
     digest_command=(shasum -a 256)
+    android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties'
     if [[ -z "${JAVA_HOME:-}" ]]; then
       export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
     fi
@@ -18,6 +19,7 @@ case "$(uname -s)" in
     android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
     pinned_tmux='/usr/bin/tmux'
     digest_command=(sha256sum)
+    android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties'
     ;;
   *)
     printf '{"gate":"%s","status":"NOT_RUN","reason":"Only Linux and Darwin hosts are supported"}\n' "${gate:-unknown}"
@@ -38,6 +40,58 @@ not_run() {
 
 content_digest() {
   "${digest_command[@]}" | cut -d ' ' -f 1
+}
+
+verify_installed_android_signer() {
+  local adb="$1"
+  local serial="$2"
+  local app_package="$3"
+  local apk_size
+  local apk_size_output
+  local package_path
+  local package_output
+  local installed_apk
+  local transfer_timeout_seconds
+  package_output="$(mktemp -t skidbladnir-package-path.XXXXXX)"
+  if ! run_bounded_to_file "$android_preflight_timeout_seconds" "$package_output" \
+    "$adb" -s "$serial" shell pm path "$app_package"; then
+    rm -f "$package_output"
+    return 1
+  fi
+  package_path="$(tr -d '\r' < "$package_output")"
+  rm -f "$package_output"
+  [[ -n "$package_path" ]] || return 0
+  [[ "$package_path" == package:* && "$package_path" != *$'\n'* ]] || return 1
+  package_path="${package_path#package:}"
+  apk_size_output="$(mktemp -t skidbladnir-package-size.XXXXXX)"
+  if ! run_bounded_to_file "$android_preflight_timeout_seconds" "$apk_size_output" \
+    "$adb" -s "$serial" shell stat -c %s "$package_path"; then
+    rm -f "$apk_size_output"
+    return 1
+  fi
+  apk_size="$(tr -d '\r\n' < "$apk_size_output")"
+  rm -f "$apk_size_output"
+  [[ "$apk_size" =~ ^[0-9]+$ ]] || return 1
+  ((apk_size > 0 && apk_size <= android_apk_max_bytes)) || return 1
+  # Size the wireless transfer budget from a conservative minimum sustained rate plus fixed ADB
+  # setup/reap allowance. This remains bounded without making a real 31 MiB APK race a lab timer.
+  transfer_timeout_seconds=$((
+    android_apk_pull_overhead_seconds +
+      (apk_size + android_apk_pull_minimum_rate_bytes_per_second - 1) /
+        android_apk_pull_minimum_rate_bytes_per_second
+  ))
+  installed_apk="$(mktemp -t skidbladnir-installed.XXXXXX)"
+  if ! run_bounded_to_file "$transfer_timeout_seconds" /dev/null \
+    "$adb" -s "$serial" pull "$package_path" "$installed_apk"; then
+    rm -f "$installed_apk"
+    return 1
+  fi
+  if ! SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+    "$repo_dir/scripts/check-android-signing" "$installed_apk"; then
+    rm -f "$installed_apk"
+    return 1
+  fi
+  rm -f "$installed_apk"
 }
 
 run_publication_gate() {
@@ -137,6 +191,10 @@ machine_lifetime_digest() {
 }
 
 android_instrumentation_timeout_seconds=90
+android_preflight_timeout_seconds=20
+android_apk_pull_overhead_seconds=30
+android_apk_pull_minimum_rate_bytes_per_second=262144
+android_apk_max_bytes=268435456
 android_cleanup_timeout_seconds=5
 android_process_termination_grace_seconds=2
 android_process_reap_timeout_seconds=2
@@ -163,6 +221,20 @@ run_bounded_to_file() {
     "$@"
 }
 
+assert_one_executed_test() {
+  local proof_name="$1"
+  local output_file="$2"
+  local passed_tests
+  local unpassed_tests
+  passed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: 0[[:space:]]*$' "$output_file" || true)"
+  unpassed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: -[0-9]+[[:space:]]*$' "$output_file" || true)"
+  if [[ "$passed_tests" -ne 1 || "$unpassed_tests" -ne 0 ]]; then
+    printf '%s did not execute exactly one passing test (passed %s, not passed %s)\n' \
+      "$proof_name" "$passed_tests" "$unpassed_tests" >&2
+    return 1
+  fi
+}
+
 : <<'SKIDBLADNIR_BOUNDED_RUNNER'
 # BOUNDED_RUNNER_BEGIN
 import os
@@ -181,6 +253,23 @@ pending_signal = None
 stopping = False
 
 
+def signal_owned_processes(signum: int) -> None:
+    if child is None or child.returncode is not None:
+        return
+    try:
+        os.killpg(child.pid, signum)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        # Some platform clients detach from the new process group or cross an OS-owned helper
+        # boundary. Never signal a different group: retain ownership by targeting only the direct
+        # child that Popen created and that this controller can reap.
+        try:
+            child.send_signal(signum)
+        except ProcessLookupError:
+            pass
+
+
 def stop_child() -> bool:
     global stopping
     if child is None or child.returncode is not None:
@@ -189,16 +278,10 @@ def stop_child() -> bool:
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    try:
-        os.killpg(child.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    signal_owned_processes(signal.SIGTERM)
     # Keep the direct child unreaped as a non-reusable process-group anchor while descendants get grace.
     time.sleep(termination_grace_seconds)
-    try:
-        os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    signal_owned_processes(signal.SIGKILL)
     try:
         child.wait(timeout=reap_timeout_seconds)
         return True
@@ -394,20 +477,20 @@ case "$gate" in
     # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run bash-syntax bash -n scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test
+    run bash-syntax bash -n scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test
     run sh-syntax /bin/sh -n deploy/devbox/skid-notify deploy/macbook/skid-notify
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' \
-      scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test \
+      scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test \
       deploy/devbox/skid-notify deploy/macbook/skid-notify
     # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
     # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
-      scripts/build scripts/check-codex-config scripts/check-go-toolchain scripts/test scripts/install-devbox scripts/install-macbook \
+      scripts/build scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/test scripts/install-devbox scripts/install-macbook \
       deploy/devbox/skid-notify deploy/macbook/skid-notify
-    run shellcheck shellcheck scripts/build scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test deploy/devbox/skid-notify deploy/macbook/skid-notify
+    run shellcheck shellcheck scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/install-devbox scripts/install-macbook scripts/test deploy/devbox/skid-notify deploy/macbook/skid-notify
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"
@@ -428,6 +511,7 @@ case "$gate" in
     cd "$repo_dir"
     run go-unit go test ./cmd/... ./internal/...
     run codex-config-unit /usr/bin/python3 scripts/check-codex-config --self-test
+    run android-signing-unit ./scripts/check-android-signing --self-test
     run go-toolchain-unit ./scripts/check-go-toolchain --self-test
     run android-unit ./scripts/build android-unit
     ;;
@@ -448,6 +532,186 @@ case "$gate" in
     run host-kernel-contracts go test -tags=integration ./internal/machine ./internal/process ./internal/pressure -count=1
     run tmux-control-plane go test -tags=integration ./tests/integration -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1
+    ;;
+  provision)
+    if [[ "${1:-}" != '--allow-device-mutation' || "${2:-}" != '--allow-machine-provisioning' || "$#" -ne 2 ]]; then
+      not_run provision 'Pass the device and machine-provisioning capabilities only after explicit current-turn approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_MACHINE_PROVISIONING:-}" != 'fixed-two-machine-v1' ]]; then
+      not_run provision 'Set SKIDBLADNIR_ALLOW_MACHINE_PROVISIONING=fixed-two-machine-v1 after explicit approval'
+    fi
+    if [[ "$(uname -s)" != 'Darwin' ]]; then
+      not_run provision 'Physical Android provisioning must run from the MacBook'
+    fi
+    adb="$android_sdk/platform-tools/adb"
+    [[ -x "$adb" ]] || not_run provision 'Pinned Android SDK adb is unavailable'
+    devices=()
+    while IFS= read -r device; do
+      devices+=("$device")
+    done < <("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+    [[ "${#devices[@]}" -eq 1 ]] || not_run provision 'Exactly one connected Android device is required'
+    serial="${devices[0]}"
+    model="$("$adb" -s "$serial" shell getprop ro.product.model | tr -d '\r')"
+    api="$("$adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')"
+    [[ "$model" == 'SM-S906W' && "$api" == '36' ]] ||
+      not_run provision 'Connected device is not SM-S906W on API 36'
+
+    app_package='dev.niels.skidbladnir'
+    test_package='dev.niels.skidbladnir.test'
+    pairing_preferences='shared_prefs/skidbladnir.machines.xml'
+    staging_relative='cache/skidbladnir-machine-provisioning.json'
+    app_apk="$repo_dir/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
+    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
+    devbox_handle="${SKIDBLADNIR_DEVBOX_MACHINE_HANDLE:-}"
+    macbook_handle="${SKIDBLADNIR_MACBOOK_MACHINE_HANDLE:-}"
+    devbox_origin="${SKIDBLADNIR_DEVBOX_ORIGIN:-}"
+    macbook_origin="${SKIDBLADNIR_MACBOOK_ORIGIN:-}"
+    devbox_bearer_file="${SKIDBLADNIR_DEVBOX_BEARER_FILE:-}"
+    macbook_bearer_file='/Users/nnandal/.config/skidbladnir/bearer'
+    machine_handle_pattern='^mh-[0-9a-f]{32}$'
+    machine_origin_pattern='^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?:8443$'
+    if [[ ! "$devbox_handle" =~ $machine_handle_pattern || ! "$macbook_handle" =~ $machine_handle_pattern ||
+      "$devbox_handle" == "$macbook_handle" ]]; then
+      not_run provision 'Two distinct canonical machine handles are required'
+    fi
+    if [[ ! "$devbox_origin" =~ $machine_origin_pattern || ! "$macbook_origin" =~ $machine_origin_pattern ||
+      "$devbox_origin" == "$macbook_origin" ]]; then
+      not_run provision 'Two distinct canonical Tailnet HTTPS origins are required'
+    fi
+    for bearer_file in "$devbox_bearer_file" "$macbook_bearer_file"; do
+      [[ -f "$bearer_file" && ! -L "$bearer_file" && "$(stat -f '%Lp' "$bearer_file")" == '600' ]] ||
+        not_run provision 'Both gateway bearer files must be regular non-symlink mode-0600 files'
+    done
+    run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" --config-only
+    verify_installed_android_signer "$adb" "$serial" "$app_package" ||
+      not_run provision 'Installed app does not carry the pinned Android signing identity'
+    if "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1; then
+      not_run provision 'The production machine collection already exists; provisioning is create-only'
+    fi
+    machine_lifetime_digest 'http://127.0.0.1:7341' "$macbook_bearer_file" "$macbook_handle" >/dev/null ||
+      not_run provision 'The installed MacBook gateway did not authenticate its requested handle'
+    machine_lifetime_digest "$devbox_origin" "$devbox_bearer_file" "$devbox_handle" >/dev/null ||
+      not_run provision 'The installed Devbox gateway did not authenticate its requested handle'
+
+    cd "$repo_dir/android"
+    run android-provision-build env ANDROID_HOME="$android_sdk" \
+      SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
+      -Pskidbladnir.android.testBuildType=deviceDebug \
+      :app:assembleDeviceDebug :app:assembleDeviceDebugAndroidTest --no-daemon
+    run android-provision-signatures env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" "$app_apk" "$test_apk"
+    run android-provision-app "$adb" -s "$serial" install -r -t "$app_apk"
+    run android-provision-tests "$adb" -s "$serial" install -r -t "$test_apk"
+
+    provision_input="$(mktemp -t skidbladnir-machine-provisioning.XXXXXX)"
+    chmod 600 "$provision_input"
+    provision_staged=''
+    provision_test_installed=1
+    cleanup_provision() {
+      local exit_code=$?
+      trap - EXIT HUP INT TERM
+      if [[ -n "$provision_staged" ]]; then
+        run_bounded_to_file "$android_cleanup_timeout_seconds" /dev/null \
+          "$adb" -s "$serial" shell run-as "$app_package" rm -f "$staging_relative" || exit_code=1
+      fi
+      if [[ -n "$provision_test_installed" ]]; then
+        "$adb" -s "$serial" uninstall "$test_package" >/dev/null || exit_code=1
+      fi
+      if [[ -f "$provision_input" && ! -L "$provision_input" ]]; then
+        rm -f "$provision_input" || exit_code=1
+      fi
+      exit "$exit_code"
+    }
+    trap cleanup_provision EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    python3 - "$provision_input" \
+      "$devbox_handle" "$devbox_origin" "$devbox_bearer_file" \
+      "$macbook_handle" "$macbook_origin" "$macbook_bearer_file" <<'PY'
+import base64
+import json
+import os
+import re
+import sys
+
+output, devbox_handle, devbox_origin, devbox_bearer_path, macbook_handle, macbook_origin, macbook_bearer_path = sys.argv[1:]
+
+
+def bearer(path: str) -> str:
+    with open(path, encoding="ascii") as source:
+        value = source.read().rstrip("\n")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{43}", value):
+        raise SystemExit("gateway bearer is not canonical")
+    decoded = base64.urlsafe_b64decode(value + "=")
+    if len(decoded) != 32 or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=") != value:
+        raise SystemExit("gateway bearer is not canonical")
+    return value
+
+
+devbox_bearer = bearer(devbox_bearer_path)
+macbook_bearer = bearer(macbook_bearer_path)
+if devbox_bearer == macbook_bearer:
+    raise SystemExit("gateway bearers must be distinct")
+payload = {
+    "machines": [
+        {"handle": devbox_handle, "label": "Devbox", "origin": devbox_origin, "bearer": devbox_bearer},
+        {"handle": macbook_handle, "label": "MacBook", "origin": macbook_origin, "bearer": macbook_bearer},
+    ]
+}
+descriptor = os.open(output, os.O_WRONLY | os.O_TRUNC, 0o600)
+with os.fdopen(descriptor, "w", encoding="utf-8") as destination:
+    json.dump(payload, destination, separators=(",", ":"), sort_keys=True)
+PY
+    provision_staged=1
+    python3 - "$adb" "$serial" "$provision_input" <<'PY'
+import subprocess
+import sys
+
+adb, serial, input_path = sys.argv[1:]
+with open(input_path, "rb") as source:
+    subprocess.run(
+        [
+            adb,
+            "-s",
+            serial,
+            "shell",
+            "run-as dev.niels.skidbladnir sh -c 'umask 077; "
+            "cat > cache/skidbladnir-machine-provisioning.json'",
+        ],
+        stdin=source,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+        timeout=20,
+    )
+PY
+    rm -f "$provision_input"
+    provision_input=''
+    provisioning_output="$(mktemp -t skidbladnir-provisioning-proof.XXXXXX)"
+    provisioning_status=0
+    run_bounded_to_file "$android_instrumentation_timeout_seconds" "$provisioning_output" \
+      "$adb" -s "$serial" shell am instrument -r -w \
+      -e class 'dev.niels.skidbladnir.MachineProvisioningInstrumentedTest#provisionAuthenticatedFixedCollectionFromPrivateStaging' \
+      "${test_package}/androidx.test.runner.AndroidJUnitRunner" || provisioning_status=$?
+    cat "$provisioning_output"
+    if [[ "$provisioning_status" -ne 0 ]] || ! assert_one_executed_test android-machine-provisioning "$provisioning_output"; then
+      rm -f "$provisioning_output"
+      printf 'Android machine provisioning failed (instrumentation status %s)\n' "$provisioning_status" >&2
+      exit 1
+    fi
+    rm -f "$provisioning_output"
+    provision_staged=''
+    "$adb" -s "$serial" uninstall "$test_package" >/dev/null
+    provision_test_installed=''
+    "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null || {
+      printf 'Android machine provisioning did not create the encrypted collection\n' >&2
+      exit 1
+    }
+    trap - EXIT HUP INT TERM
+    run android-provision-launch "$adb" -s "$serial" shell am start -n "${app_package}/.MainActivity"
     ;;
   platform)
     if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
@@ -472,8 +736,12 @@ case "$gate" in
     fi
     app_package='dev.niels.skidbladnir'
     test_package='dev.niels.skidbladnir.test'
-    app_apk="$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
-    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+    app_apk="$repo_dir/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
+    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
+    run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" --config-only
+    verify_installed_android_signer "$adb" "$serial" "$app_package" ||
+      not_run platform 'Installed app does not carry the pinned Android signing identity'
     pairing_preferences='shared_prefs/skidbladnir.machines.xml'
     pairing_digest=''
     if "$adb" -s "$serial" shell run-as "$app_package" ls "$pairing_preferences" >/dev/null 2>&1; then
@@ -488,14 +756,19 @@ case "$gate" in
       not_run platform 'Connected Android device must be awake and unlocked'
     fi
     cd "$repo_dir/android"
-    run android-platform-build env ANDROID_HOME="$android_sdk" ./gradlew \
-      :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+    run android-platform-build env ANDROID_HOME="$android_sdk" \
+      SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
+      -Pskidbladnir.android.testBuildType=deviceDebug \
+      :app:assembleDeviceDebug :app:assembleDeviceDebugAndroidTest --no-daemon
+    run android-platform-signatures env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" "$app_apk" "$test_apk"
     run android-platform-app "$adb" -s "$serial" install -r -t "$app_apk"
     run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
     instrumentation_status=0
     instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
     run_bounded_to_file "$android_instrumentation_timeout_seconds" "$instrumentation_output_file" \
       "$adb" -s "$serial" shell am instrument -w \
+      -e notClass dev.niels.skidbladnir.MachineProvisioningInstrumentedTest \
       "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
     instrumentation_output="$(<"$instrumentation_output_file")"
     rm -f "$instrumentation_output_file"
@@ -508,6 +781,7 @@ case "$gate" in
     # false-green as a complete platform gate.
     platform_expected_tests="$(grep -c '@Test' \
       "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt | \
+      grep -v 'MachineProvisioningInstrumentedTest.kt:' | \
       awk -F: '{ total += $2 } END { print total }')"
     if [[ "$instrumentation_status" -ne 0 ]] ||
       ! grep -Eq "^OK \(${platform_expected_tests} tests?\)$" <<<"$instrumentation_output"; then
@@ -582,8 +856,12 @@ case "$gate" in
     fi
     app_package='dev.niels.skidbladnir'
     test_package='dev.niels.skidbladnir.test'
-    app_apk="$repo_dir/android/app/build/outputs/apk/debug/app-debug.apk"
-    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+    app_apk="$repo_dir/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
+    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
+    run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" --config-only
+    verify_installed_android_signer "$adb" "$serial" "$app_package" ||
+      not_run product 'Installed app does not carry the pinned Android signing identity'
     pairing_preferences='shared_prefs/skidbladnir.machines.xml'
     macbook_handle_path='/Users/nnandal/.config/skidbladnir/machine-handle'
     launch_domain='gui/501'
@@ -605,25 +883,6 @@ case "$gate" in
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
       not_run product 'Connected Android device must be awake and unlocked'
     fi
-
-    # Both exact journeys run the instrumentation in raw mode (-r) because only the raw protocol
-    # reports a per-test outcome: INSTRUMENTATION_STATUS_CODE: 0 for a test that actually ran and
-    # passed, and a negative code for error (-1), failure (-2), ignored (-3), and assumption-skipped
-    # (-4). JUnit counts an assumption-skipped test as successful and the pretty summary still reads
-    # "OK (1 test)", so only this per-test evidence keeps a NOT_RUN journey from reading as a pass.
-    assert_one_executed_test() {
-      local proof_name="$1"
-      local output_file="$2"
-      local passed_tests
-      local unpassed_tests
-      passed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: 0[[:space:]]*$' "$output_file" || true)"
-      unpassed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: -[0-9]+[[:space:]]*$' "$output_file" || true)"
-      if [[ "$passed_tests" -ne 1 || "$unpassed_tests" -ne 0 ]]; then
-        printf '%s did not execute exactly one passing test (passed %s, not passed %s)\n' \
-          "$proof_name" "$passed_tests" "$unpassed_tests" >&2
-        return 1
-      fi
-    }
 
     run_exact_product_test() {
       local proof_name="$1"
@@ -825,8 +1084,12 @@ case "$gate" in
 
     run macbook-product-preflight "$repo_dir/scripts/install-macbook" verify
     cd "$repo_dir/android"
-    run android-product-build env ANDROID_HOME="$android_sdk" ./gradlew \
-      :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+    run android-product-build env ANDROID_HOME="$android_sdk" \
+      SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
+      -Pskidbladnir.android.testBuildType=deviceDebug \
+      :app:assembleDeviceDebug :app:assembleDeviceDebugAndroidTest --no-daemon
+    run android-product-signatures env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+      "$repo_dir/scripts/check-android-signing" "$app_apk" "$test_apk"
     run android-product-app "$adb" -s "$serial" install -r -t "$app_apk"
     run android-product-tests "$adb" -s "$serial" install -r -t "$test_apk"
     test_package_installed=1
@@ -900,10 +1163,10 @@ case "$gate" in
     ;;
   full)
     "$0" verify
-    not_run full 'Run integration, live, devbox, macbook, platform, and product separately after explicit approval for each external boundary'
+    not_run full 'Run integration, live, devbox, macbook, provision, platform, and product separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|verify|full|platform --allow-device-mutation|product --allow-device-mutation --allow-two-host-read-only-tmux --allow-macbook-service-restart|{integration|live} --allow-isolated-tmux-mutation|devbox --allow-live-devbox-publication|macbook --allow-live-macbook-publication}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|provision --allow-device-mutation --allow-machine-provisioning|platform --allow-device-mutation|product --allow-device-mutation --allow-two-host-read-only-tmux --allow-macbook-service-restart|{integration|live} --allow-isolated-tmux-mutation|devbox --allow-live-devbox-publication|macbook --allow-live-macbook-publication}\n' "$0" >&2
     exit 64
     ;;
   *)

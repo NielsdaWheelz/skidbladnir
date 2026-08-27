@@ -106,6 +106,13 @@ internal data class MachineStoreRead(
     val unreadable: List<UnreadableStoredMachine>,
 )
 
+internal sealed interface MachineProvisioning {
+    data object Provisioned : MachineProvisioning
+    data object AlreadyProvisioned : MachineProvisioning
+    data object InvalidCollection : MachineProvisioning
+    data object StorageUnavailable : MachineProvisioning
+}
+
 internal sealed interface BearerRotation {
     data object Rotated : BearerRotation
     /** The candidate bearer already authorizes a different installed machine. */
@@ -125,6 +132,42 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
      * Entries that fail validation or collide are quarantined rather than returned.
      */
     fun read(): MachineStoreRead = synchronized(persistenceLock) { readLocked() }
+
+    /**
+     * Installs the fixed two-machine collection exactly once for the external operator boundary.
+     * The app has no caller for this method: only signed instrumentation can reach it. Any existing
+     * production preference, including a partial or quarantined collection, blocks replacement.
+     */
+    fun provisionFixedCollection(credentials: List<MachineCredential>): MachineProvisioning =
+        synchronized(persistenceLock) {
+            if (preferences.all.isNotEmpty()) return@synchronized MachineProvisioning.AlreadyProvisioned
+            val handles = credentials.map { it.machine.handle.encoded }.toSet()
+            if (credentials.size != 2 || handles.size != 2 || uniqueCredentials(credentials).size != 2) {
+                return@synchronized MachineProvisioning.InvalidCollection
+            }
+            val sealedCredentials = try {
+                credentials.map { it to storage.seal(it.machine, it.bearer) }
+            } catch (_: GeneralSecurityException) {
+                // justify-ignore-error: no preference mutation has occurred; the operator receives a
+                // closed storage outcome and must repair the device Keystore boundary.
+                return@synchronized MachineProvisioning.StorageUnavailable
+            }
+            val editor = preferences.edit().putStringSet(storage.handlesField, handles)
+            sealedCredentials.forEach { (credential, sealed) ->
+                putCredential(editor, credential, sealed)
+            }
+            if (!editor.commit()) return@synchronized MachineProvisioning.StorageUnavailable
+
+            val observed = readLocked()
+            val expected = credentials.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }
+            if (observed.credentials != expected || observed.unreadable.isNotEmpty()) {
+                // The store was proven empty on entry, so clearing only this failed transaction is
+                // the safe rollback. A failed rollback remains visibly unavailable to the app.
+                preferences.edit().clear().commit()
+                return@synchronized MachineProvisioning.StorageUnavailable
+            }
+            MachineProvisioning.Provisioned
+        }
 
     fun rotateBearer(credential: MachineCredential): BearerRotation = synchronized(persistenceLock) {
         val stored = readLocked()
@@ -225,14 +268,23 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
     // edit {} helper discards the commit result this branch depends on.
     private fun persist(credential: MachineCredential, handles: Set<String>) {
         val sealed = storage.seal(credential.machine, credential.bearer)
-        val handle = credential.machine.handle.encoded
         val editor = preferences.edit()
             .putStringSet(storage.handlesField, handles)
+        putCredential(editor, credential, sealed)
+        if (!editor.commit()) throw IOException("could not persist machine")
+    }
+
+    private fun putCredential(
+        editor: SharedPreferences.Editor,
+        credential: MachineCredential,
+        sealed: SealedBearer,
+    ) {
+        val handle = credential.machine.handle.encoded
+        editor
             .putString(storage.field(handle, "label"), credential.machine.label.text)
             .putString(storage.field(handle, "origin"), credential.machine.origin.encoded)
             .putString(storage.field(handle, "ciphertext"), sealed.ciphertext)
             .putString(storage.field(handle, "nonce"), sealed.nonce)
-        if (!editor.commit()) throw IOException("could not persist machine")
     }
 
     private fun handles(): Set<String> {

@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+pin_file="$repo_dir/android/app-signing-cert.sha256"
+
+case "$(uname -s)" in
+  Darwin)
+    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    default_config='/Users/nnandal/.config/skidbladnir/android-signing.properties'
+    if [[ -z "${JAVA_HOME:-}" ]]; then
+      export JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
+    fi
+    ;;
+  Linux)
+    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    default_config='/home/niels/.config/skidbladnir/android-signing.properties'
+    ;;
+  *)
+    printf 'Android signing checks support only Linux and Darwin\n' >&2
+    exit 1
+    ;;
+esac
+
+signing_store_file=''
+signing_password_file=''
+signing_key_alias=''
+
+parse_signing_config() {
+  local config_file="$1"
+  local line
+  local key
+  local value
+  signing_store_file=''
+  signing_password_file=''
+  signing_key_alias=''
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" != *$'\r'* ]] || return 1
+    case "$line" in
+      '' | \#*) continue ;;
+    esac
+    [[ "$line" =~ ^([A-Za-z][A-Za-z0-9]*)=([^[:space:]]+)$ ]] || return 1
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    case "$key" in
+      storeFile)
+        [[ -z "$signing_store_file" ]] || return 1
+        signing_store_file="$value"
+        ;;
+      passwordFile)
+        [[ -z "$signing_password_file" ]] || return 1
+        signing_password_file="$value"
+        ;;
+      keyAlias)
+        [[ -z "$signing_key_alias" ]] || return 1
+        signing_key_alias="$value"
+        ;;
+      *) return 1 ;;
+    esac
+  done < "$config_file"
+  [[ "$signing_store_file" == /* && "$signing_password_file" == /* ]] || return 1
+  [[ "$signing_key_alias" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+}
+
+file_owner() {
+  case "$(uname -s)" in
+    Darwin) stat -f '%u' "$1" ;;
+    Linux) stat -c '%u' "$1" ;;
+  esac
+}
+
+file_mode() {
+  case "$(uname -s)" in
+    Darwin) stat -f '%Lp' "$1" ;;
+    Linux) stat -c '%a' "$1" ;;
+  esac
+}
+
+require_private_file() {
+  local path="$1"
+  local label="$2"
+  [[ -f "$path" && ! -L "$path" ]] || {
+    printf '%s must be one regular non-symlink file\n' "$label" >&2
+    return 1
+  }
+  [[ "$(file_owner "$path")" == "$(id -u)" && "$(file_mode "$path")" == '600' ]] || {
+    printf '%s must be owned by the invoking user with mode 0600\n' "$label" >&2
+    return 1
+  }
+}
+
+read_pin() {
+  local pin
+  [[ -f "$pin_file" && ! -L "$pin_file" ]] || {
+    printf 'Android signing certificate pin is unavailable\n' >&2
+    return 1
+  }
+  pin="$(sed -n '1p' "$pin_file")"
+  [[ "$pin" =~ ^[0-9a-f]{64}$ && "$(wc -l < "$pin_file" | tr -d ' ')" == '1' ]] || {
+    printf 'Android signing certificate pin is malformed\n' >&2
+    return 1
+  }
+  printf '%s\n' "$pin"
+}
+
+validate_config() {
+  local config_file="$1"
+  local password
+  local keytool_bin
+  local expected_pin
+  local observed_pin
+  require_private_file "$config_file" 'Android signing configuration'
+  parse_signing_config "$config_file" || {
+    printf 'Android signing configuration must contain only one absolute storeFile, passwordFile, and keyAlias\n' >&2
+    return 1
+  }
+  require_private_file "$signing_store_file" 'Android signing keystore'
+  require_private_file "$signing_password_file" 'Android signing password file'
+  password="$(sed -n '1p' "$signing_password_file")"
+  [[ "$password" =~ ^[A-Za-z0-9]{32,128}$ && "$(wc -l < "$signing_password_file" | tr -d ' ')" == '1' ]] || {
+    printf 'Android signing password file must contain one strong ASCII token\n' >&2
+    return 1
+  }
+  if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/keytool" ]]; then
+    keytool_bin="$JAVA_HOME/bin/keytool"
+  else
+    keytool_bin="$(command -v keytool || true)"
+  fi
+  [[ -x "$keytool_bin" ]] || {
+    printf 'keytool is unavailable\n' >&2
+    return 1
+  }
+  expected_pin="$(read_pin)"
+  if ! observed_pin="$(
+    "$keytool_bin" -exportcert \
+      -keystore "$signing_store_file" \
+      -storepass:file "$signing_password_file" \
+      -alias "$signing_key_alias" 2>/dev/null |
+      openssl dgst -sha256 | awk '{ print $2 }'
+  )"; then
+    printf 'Android signing keystore cannot be opened with the configured alias and password\n' >&2
+    return 1
+  fi
+  [[ "$observed_pin" == "$expected_pin" ]] || {
+    printf 'Android signing keystore does not match the repository certificate pin\n' >&2
+    return 1
+  }
+}
+
+verify_apk() {
+  local apk="$1"
+  local apksigner="$android_sdk/build-tools/36.1.0/apksigner"
+  local expected_pin
+  local observed_pin
+  [[ -f "$apk" && ! -L "$apk" && -x "$apksigner" ]] || {
+    printf 'Pinned apksigner or requested APK is unavailable\n' >&2
+    return 1
+  }
+  expected_pin="$(read_pin)"
+  if ! observed_pin="$(
+    "$apksigner" verify --print-certs "$apk" 2>/dev/null |
+      sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+  )"; then
+    printf 'APK signature verification failed\n' >&2
+    return 1
+  fi
+  [[ "$observed_pin" == "$expected_pin" ]] || {
+    printf 'APK signing certificate does not match the repository pin\n' >&2
+    return 1
+  }
+}
+
+self_test() {
+  local fixture_dir
+  local fixture
+  local observed
+  local expected
+  local name
+  local contents
+  fixture_dir="$(mktemp -d -t skidbladnir-signing.XXXXXX)"
+  fixture="$fixture_dir/signing.properties"
+  while IFS='|' read -r name expected contents; do
+    printf '%b' "$contents" > "$fixture"
+    if parse_signing_config "$fixture"; then
+      observed=pass
+    else
+      observed=fail
+    fi
+    if [[ "$observed" != "$expected" ]]; then
+      unlink "$fixture"
+      rmdir "$fixture_dir"
+      printf 'Android signing policy case %s = %s, want %s\n' "$name" "$observed" "$expected" >&2
+      return 1
+    fi
+  done <<'CASES'
+canonical|pass|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\nkeyAlias=skidbladnir\n
+comments|pass|# private material stays outside Git\n\nstoreFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\nkeyAlias=skidbladnir-1\n
+missing key|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\n
+duplicate key|fail|storeFile=/tmp/one.p12\nstoreFile=/tmp/two.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
+unknown key|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\nlegacyFallback=true\n
+relative store|fail|storeFile=skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
+relative password|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=password\nkeyAlias=skidbladnir\n
+whitespace|fail|storeFile = /tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
+invalid alias|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=not/valid\n
+CASES
+  unlink "$fixture"
+  rmdir "$fixture_dir"
+  printf 'Android signing policy passed: 9 cases\n'
+}
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+
+config_file="${SKIDBLADNIR_ANDROID_SIGNING_CONFIG:-$default_config}"
+if [[ "${1:-}" == '--config-only' && "$#" -eq 1 ]]; then
+  validate_config "$config_file"
+  printf 'Android signing configuration accepted\n'
+  exit
+fi
+if [[ "$#" -lt 1 ]]; then
+  printf 'usage: %s [--self-test|--config-only|APK...]\n' "$0" >&2
+  exit 64
+fi
+
+validate_config "$config_file"
+for apk in "$@"; do
+  verify_apk "$apk"
+done
+printf 'Android signing identity accepted: %s APK(s)\n' "$#"

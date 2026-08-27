@@ -6,6 +6,11 @@ target="${1:-all}"
 android_dir="$repo_dir/android"
 
 case "$(uname -s)" in
+  Darwin) android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties' ;;
+  Linux) android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties' ;;
+esac
+
+case "$(uname -s)" in
   Darwin)
     android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
     if [[ -z "${JAVA_HOME:-}" ]]; then
@@ -34,6 +39,12 @@ android_gradle() {
   ANDROID_HOME="$android_sdk" ./gradlew "$@" --no-daemon
 }
 
+require_android_signing() {
+  SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+    "$repo_dir/scripts/check-android-signing" --config-only
+  export SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config"
+}
+
 case "$target" in
   android-static)
     cd "$repo_dir"
@@ -44,6 +55,7 @@ case "$target" in
     android_gradle :app:testDebugUnitTest
     ;;
   android-release)
+    require_android_signing
     android_gradle :app:assembleRelease
     ;;
   all)
