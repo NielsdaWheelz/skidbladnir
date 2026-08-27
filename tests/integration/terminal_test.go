@@ -176,11 +176,21 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
 	closeContext, cancelClose := context.WithTimeout(context.Background(), terminalIntegrationTimeout)
-	_, _, closeErr := connection.Read(closeContext)
-	cancelClose()
-	if closeErr == nil {
-		t.Fatal("Detach left the terminal WebSocket open")
+	for {
+		// PTY bytes committed before Detach may already be in the transport. Drain those bounded
+		// frames and prove the server closes the WebSocket, rather than assuming the next read is
+		// necessarily the close observation.
+		_, _, closeErr := connection.Read(closeContext)
+		if closeErr == nil {
+			continue
+		}
+		if closeContext.Err() != nil {
+			cancelClose()
+			t.Fatal("Detach left the terminal WebSocket open")
+		}
+		break
 	}
+	cancelClose()
 	waitForTerminalCondition(t, "phone shadow teardown", func() bool {
 		listed, listErr := fixture.manager.List(context.Background())
 		if listErr != nil {
