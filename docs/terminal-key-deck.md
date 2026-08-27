@@ -2,6 +2,8 @@
 
 Status: implemented; council source review, routine verification, the 19-test
 S22+ platform gate, and user-reported hands-on acceptance are green.
+The later dwarf product-language wording is source-complete; rendered-device
+confirmation remains `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance.
 This document owns the implementation boundary and delivery plan for the v0
@@ -14,7 +16,7 @@ The phone exposes one stable terminal-input deck:
 `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End`
 
 The deck contains no app navigation, attachment lifecycle, destructive action,
-provider semantic, or macro. Top-bar `Detach · agent keeps running` and
+provider semantic, or macro. Top-bar `Detach · session keeps running` and
 Android Back remain the only primary return-to-inventory controls; leaving
 detaches the phone and keeps the tmux session running. Kill remains separate
 and confirmed.
@@ -79,7 +81,7 @@ on screen, and is complete when spoken.
 
 | Feature | Content owner | Required content |
 | --- | --- | --- |
-| Return to inventory | Product/content designer | Visible `Detach · agent keeps running`; spoken content states that the phone detaches and the agent continues. |
+| Return to inventory | Product/content designer | Visible `Detach · session keeps running`; spoken content states that the phone detaches and the session continues. |
 | Momentary keys | Terminal interaction designer | `Esc`, `Tab`, arrow glyphs, `Home`, `End`; spoken names use `Escape`, `Tab`, and `<direction> arrow`. |
 | Line feed | Product/content designer | Visible `Line break`; spoken `Line break; sends line feed`. Never label it Enter, Send, or claim how the opaque program responds. |
 | Ctrl | Interaction/accessibility designer | Visible `Ctrl`; accessible name `Control`; selected styling while armed; state description `Off` or `Armed`. Never label it Stop or Interrupt. |
@@ -159,7 +161,8 @@ atomically at page-port version `1`; there is no compatibility path.
 
 Delete in the same change:
 
-- bottom-row `Agents` and `Detach`, their parameters, and duplicate callbacks;
+- bottom-row return-to-inventory and `Detach` controls, their parameters, and
+  duplicate callbacks;
 - fixed `Ctrl-C`, `CtrlC`, `Newline`, and `AccessoryButton`; replace the two
   enum variants with `Control` and `LineFeed`;
 - any direct or Kotlin-transformed deck-byte path; PR #5's removed `onBytes`
@@ -202,9 +205,9 @@ authorize a cross-slice edit.
    cursor encoding, the Enter-CR versus Line-break-LF distinction, and literal
    single-character `commitText`, paste, composition, dictation-shaped,
    Unicode, and multi-character input.
-2. Compose component: the user sees the fixed order and no `Agents`, `Detach`,
-   or `Ctrl-C`; Ctrl announces and renders `Off/Armed`; all keys disable with a
-   frozen terminal; target bounds and traversal are accessible.
+2. Compose component: the user sees the fixed order and no navigation,
+   `Detach`, or `Ctrl-C`; Ctrl announces and renders `Off/Armed`; all keys
+   disable with a frozen terminal; target bounds and traversal are accessible.
 
 ### Green
 

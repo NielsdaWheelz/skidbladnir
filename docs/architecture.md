@@ -93,8 +93,8 @@ treats every `node` process as an agent.
 
 ### Product language
 
-Skíðblaðnir (app), Hlíðskjálf (grid motif; literal label `Agents`), The Forge
-(new-session sheet; literal `New agent`), and Dvergatal (the append-only dwarf
+Skíðblaðnir (app), Hlíðskjálf (grid motif; literal label `Dwarves`), The Forge
+(new-session sheet; literal `New dwarf`), and Dvergatal (the append-only dwarf
 catalogue at `catalog/characters.json`, ≥100 entries, original deterministic
 procedural icon portraits) are retained. Every visible ordinary session owns a
 valid Dvergatal key in `@skid_character`, whether created from the laptop or
@@ -102,9 +102,12 @@ the gateway. Inventory repairs a missing or invalid key before returning a
 card; valid keys survive tmux rename and process replacement for the tmux
 session lifetime. The key independently seeds the card landmark and never
 defines the operator-owned tmux name. Generated names use the smallest free
-`skidbladnir-<profile>-<N>`; Dvergatal does not cap the number of agents. v0
-owns no raster portrait pack or portrait manifest. Domain, error, and
-destructive-action language stays literal.
+`skidbladnir-<profile>-<N>`; Dvergatal does not cap the number of sessions. A
+visible session persona is a dwarf in product and navigation language;
+`agent` is reserved for the opaque foreground terminal program, while
+lifecycle, recovery, error, and destructive-action language stays literal and
+names the tmux session when relevant. v0 owns no raster portrait pack or
+portrait manifest.
 
 ### Guarantees (cheap, disaster-preventing)
 
@@ -239,7 +242,7 @@ machine/resource; mutations and terminal input are never retried or replayed.
 Signal age begins at the host's own `observedAt - signalAt` and then advances
 with Android monotonic time; host clocks are never compared to each other.
 The dashboard header is one compact row with Refresh and the trailing primary
-`New agent` action. Each pressure strip preserves the full v0 presentation:
+`New dwarf` action. Each pressure strip preserves the full v0 presentation:
 current supported metric values, a categorical severity history covering up to
 15 minutes, explicit missing inputs, explicit platform-unsupported metrics,
 and current pressure reasons. Stale pressure preserves and labels those last
@@ -538,7 +541,7 @@ enum values are defects, with no protocol branch or compatibility state.
   collapsing the TUI into a narrow responsive layout. The
   [terminal key deck](terminal-key-deck.md) is one stable scrolling row
   `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End` and
-  contains terminal input only; top `Detach · agent keeps running` and Android
+  contains terminal input only; top `Detach · session keeps running` and Android
   Back own phone detach. Ctrl is a visible one-shot modifier, clears on the
   next input or lifecycle boundary, and never rewrites IME, dictation, or
   paste text. Deck, typed, composed, and pasted input share one page-owned

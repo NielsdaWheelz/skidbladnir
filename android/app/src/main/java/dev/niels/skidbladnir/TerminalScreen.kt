@@ -226,7 +226,7 @@ private fun ReconnectPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
             ) {
-                Text("Back to Agents")
+                Text("Back to Dwarves")
             }
         }
     }
@@ -260,4 +260,4 @@ private fun terminalStatusTag(connection: TerminalUiStatus): String = when (conn
 internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =
     "${machineLabel.text} terminal is frozen. No input will be replayed."
 
-internal fun terminalDetachActionLabel(): String = "Detach · agent keeps running"
+internal fun terminalDetachActionLabel(): String = "Detach · session keeps running"

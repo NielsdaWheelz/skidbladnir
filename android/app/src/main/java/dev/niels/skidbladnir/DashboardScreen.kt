@@ -139,7 +139,7 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
                             is ForgeRecovery.RefreshRequired ->
                                 "${labelFor(state.machines, recovery.draft.machineHandle)}: create outcome unknown. Refresh before reviewing this draft."
                             is ForgeRecovery.ReviewReady ->
-                                "${labelFor(state.machines, recovery.draft.machineHandle)} refreshed. Review its agents before resuming this draft."
+                                "${labelFor(state.machines, recovery.draft.machineHandle)} refreshed. Review its sessions before resuming this draft."
                         },
                         color = Gold,
                     )
@@ -166,7 +166,7 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
                 EmptyState("Sessions not current", it)
             } ?: EmptyState(
                 "No tmux sessions",
-                "Create an agent here, or launch tmux on the visible " +
+                "Create a dwarf here, or launch tmux on the visible " +
                     if (machines.size == 1) "machine." else "machines.",
                 ornament = true,
             )
@@ -226,7 +226,7 @@ internal fun DashboardTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f).testTag("dashboard-title")) {
-            Text("Agents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Dwarves", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
                 summary,
                 color = Muted,
@@ -240,7 +240,7 @@ internal fun DashboardTopBar(
             Text(if (refreshing) "Reading…" else "Refresh")
         }
         Button(onClick = onNewAgent, enabled = canForge, modifier = Modifier.testTag("new-agent")) {
-            Text("New agent")
+            Text("New dwarf")
         }
     }
 }
@@ -850,7 +850,7 @@ private fun ForgeSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "Create agent",
+                "Create dwarf",
                 style = MaterialTheme.typography.headlineSmall,
                 fontFamily = NidavellirType.Display,
                 fontWeight = FontWeight.SemiBold,

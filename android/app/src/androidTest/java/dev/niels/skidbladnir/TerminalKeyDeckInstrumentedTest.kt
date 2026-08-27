@@ -54,7 +54,7 @@ class TerminalKeyDeckInstrumentedTest {
         )
 
         VISIBLE_KEYS.forEach { compose.onNodeWithText(it).assertExists() }
-        compose.onNodeWithText("Agents").assertDoesNotExist()
+        compose.onNodeWithText("Dwarves").assertDoesNotExist()
         compose.onNodeWithText("Detach").assertDoesNotExist()
         compose.onNodeWithText("Ctrl-C").assertDoesNotExist()
 

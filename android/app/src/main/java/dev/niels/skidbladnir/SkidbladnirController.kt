@@ -1027,7 +1027,7 @@ internal class SkidbladnirController(context: Context) {
                         val message = if (killFailureIsDefinitive(result.failure)) {
                             machineError(kill.machine, result.failure)
                         } else {
-                            "${kill.machine.label.text}: kill outcome unknown. Agents are refreshing."
+                            "${kill.machine.label.text}: kill outcome unknown. Sessions are refreshing."
                         }
                         markInventoryFailed(kill.target.machineHandle, result.failure)
                         awaitInventory(kill.target.machineHandle, activeGeneration)
