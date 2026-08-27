@@ -4,15 +4,45 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 target="${1:-all}"
 android_dir="$repo_dir/android"
-android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+
+case "$(uname -s)" in
+  Darwin) android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties' ;;
+  Linux) android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties' ;;
+esac
+
+case "$(uname -s)" in
+  Darwin)
+    android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
+    if [[ -z "${JAVA_HOME:-}" ]]; then
+      export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    fi
+    ;;
+  Linux)
+    android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
+    ;;
+  *)
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"Only Linux and Darwin hosts are supported"}\n' "$target"
+    exit 2
+    ;;
+esac
 
 android_gradle() {
   if [[ ! -d "$android_sdk" ]]; then
     printf '{"gate":"%s","status":"NOT_RUN","reason":"Android SDK is unavailable at %s"}\n' "$target" "$android_sdk"
     exit 2
   fi
+  if [[ -n "${JAVA_HOME:-}" && ! -x "${JAVA_HOME}/bin/java" ]]; then
+    printf '{"gate":"%s","status":"NOT_RUN","reason":"Java is unavailable at %s"}\n' "$target" "$JAVA_HOME"
+    exit 2
+  fi
   cd "$android_dir"
   ANDROID_HOME="$android_sdk" ./gradlew "$@" --no-daemon
+}
+
+require_android_signing() {
+  SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
+    "$repo_dir/scripts/check-android-signing" --config-only
+  export SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config"
 }
 
 case "$target" in
@@ -25,6 +55,7 @@ case "$target" in
     android_gradle :app:testDebugUnitTest
     ;;
   android-release)
+    require_android_signing
     android_gradle :app:assembleRelease
     ;;
   all)

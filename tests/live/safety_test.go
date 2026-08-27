@@ -49,7 +49,7 @@ func TestMain(testingMain *testing.M) {
 		fmt.Fprintln(os.Stderr, "live tmux proofs require the explicit CLI tmux capability")
 		os.Exit(2)
 	}
-	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" {
+	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" || os.Getenv("TMUX_TMPDIR") != "" {
 		fmt.Fprintln(os.Stderr, "live tmux proofs refuse an invoking tmux client")
 		os.Exit(2)
 	}
@@ -103,10 +103,28 @@ func registeredLiveTmuxCommand(ctx context.Context, tmuxPath, socketPath string,
 	if err := validateRegisteredLiveSocket(socketPath); err != nil {
 		return nil, err
 	}
+	if len(arguments) == 0 || arguments[0] == "" || strings.HasPrefix(arguments[0], "-") {
+		return nil, errors.New("live tmux command does not begin with one closed command name")
+	}
 	commandArguments := append([]string{"-S", socketPath, "-f", "/dev/null"}, arguments...)
 	command := exec.CommandContext(ctx, tmuxPath, commandArguments...)
 	command.Env = withoutTmuxEnvironment(os.Environ())
 	return command, nil
+}
+
+func TestRegisteredLiveTmuxCommandRejectsSecondarySocketSelectors(t *testing.T) {
+	socketPath := registerLiveTmuxSocket(t)
+	for _, arguments := range [][]string{
+		{"-S", socketPath, "list-sessions"},
+		{"-Lother", "list-sessions"},
+		{"-S/tmp/other", "list-sessions"},
+		{"-vS/tmp/other", "list-sessions"},
+		{"-qLother", "list-sessions"},
+	} {
+		if _, err := registeredLiveTmuxCommand(context.Background(), liveTmuxPath, socketPath, arguments...); err == nil {
+			t.Fatalf("secondary socket selector was accepted: %q", arguments)
+		}
+	}
 }
 
 func validateRegisteredLiveSocket(socketPath string) error {

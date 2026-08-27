@@ -14,9 +14,10 @@ The phone exposes one stable terminal-input deck:
 `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End`
 
 The deck contains no app navigation, attachment lifecycle, destructive action,
-provider semantic, or macro. Top-bar `Agents` and Android Back remain the only
-primary return-to-inventory controls; leaving detaches the phone and keeps the
-tmux session running. Kill remains separate and confirmed.
+provider semantic, or macro. Top-bar `Detach · agent keeps running` and
+Android Back remain the only primary return-to-inventory controls; leaving
+detaches the phone and keeps the tmux session running. Kill remains separate
+and confirmed.
 
 ## Goals and rules
 
@@ -78,7 +79,7 @@ on screen, and is complete when spoken.
 
 | Feature | Content owner | Required content |
 | --- | --- | --- |
-| Return to inventory | Product/content designer | Visible `Agents`; spoken `Return to Agents; session keeps running`. |
+| Return to inventory | Product/content designer | Visible `Detach · agent keeps running`; spoken content states that the phone detaches and the agent continues. |
 | Momentary keys | Terminal interaction designer | `Esc`, `Tab`, arrow glyphs, `Home`, `End`; spoken names use `Escape`, `Tab`, and `<direction> arrow`. |
 | Line feed | Product/content designer | Visible `Line break`; spoken `Line break; sends line feed`. Never label it Enter, Send, or claim how the opaque program responds. |
 | Ctrl | Interaction/accessibility designer | Visible `Ctrl`; accessible name `Control`; selected styling while armed; state description `Off` or `Armed`. Never label it Stop or Interrupt. |
@@ -169,7 +170,7 @@ Delete in the same change:
 
 Retain and adapt `TerminalAccessory`, `sendAccessory`, the versioned page port,
 the single `Input` message/socket writer, exact JSON-key validation,
-cursor-mode encoder, UTF-8 bounds, terminal connection, top `Agents`, Back,
+cursor-mode encoder, UTF-8 bounds, terminal connection, top detach action, Back,
 confirmed Kill, LF/CR behavior, and IME/paste containment. Do not add a generic
 keyboard framework, registry, settings store, telemetry, or gateway endpoint.
 
@@ -227,7 +228,7 @@ authorize a cross-slice edit.
 One approved pass proves: one-handed portrait reach and scrolling; Ctrl then
 `c`, `b`, and `j`; Gboard Enter sends CR while `Line break` sends LF; second-tap
 cancel; Armed survives actual deck focus but clears on Kill open, background,
-rotation/recreation, reconnect, `Agents`, and Back; Gboard typing, composition,
+rotation/recreation, reconnect, the top detach action, and Back; Gboard typing, composition,
 dictation, and paste remain literal when required; TalkBack state/order; Switch
 Access reachability; subtle haptics; zero horizontal drift; and at least 80
 columns. A one-character `commitText` is never promoted to a key: if stock

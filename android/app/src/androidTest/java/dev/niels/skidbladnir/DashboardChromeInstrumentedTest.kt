@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import android.os.SystemClock
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,12 +38,13 @@ class DashboardChromeInstrumentedTest {
     @Test
     fun everyStatusKindKeepsItsLiteralChipLabelAndEvidence() {
         var kind by mutableStateOf(SessionStatusKind.Working)
+        val receivedAt = SystemClock.elapsedRealtime()
         compose.setContent {
             MaterialTheme {
+                val session = session(kind)
                 AgentCard(
-                    session = session(kind),
-                    profiles = PROFILES,
-                    observedAt = OBSERVED_AT,
+                    agent = visibleAgent(session),
+                    machine = machineState(session, receivedAt),
                     onOpen = {},
                     onKill = { error("rendering a card killed its session") },
                 )
@@ -66,12 +68,13 @@ class DashboardChromeInstrumentedTest {
     fun theSessionCardKeepsItsFullTargetClickActionAndSpokenMarks() {
         compose.mainClock.autoAdvance = false
         val opened = mutableListOf<String>()
+        val session = session(SessionStatusKind.Working, attention = true)
+        val receivedAt = SystemClock.elapsedRealtime()
         compose.setContent {
             MaterialTheme {
                 AgentCard(
-                    session = session(SessionStatusKind.Working, attention = true),
-                    profiles = PROFILES,
-                    observedAt = OBSERVED_AT,
+                    agent = visibleAgent(session),
+                    machine = machineState(session, receivedAt),
                     onOpen = { opened += SESSION_ID },
                     onKill = { error("opening a session killed it") },
                 )
@@ -103,12 +106,13 @@ class DashboardChromeInstrumentedTest {
     @Test
     fun theAttentionLozengeRendersAsAMarkWhileAnimationsAreDisabled() {
         compose.mainClock.autoAdvance = false
+        val session = session(SessionStatusKind.Idle, attention = true)
+        val receivedAt = SystemClock.elapsedRealtime()
         compose.setContent {
             MaterialTheme {
                 AgentCard(
-                    session = session(SessionStatusKind.Idle, attention = true),
-                    profiles = PROFILES,
-                    observedAt = OBSERVED_AT,
+                    agent = visibleAgent(session),
+                    machine = machineState(session, receivedAt),
                     onOpen = {},
                     onKill = { error("rendering a card killed its session") },
                 )
@@ -141,7 +145,11 @@ class DashboardChromeInstrumentedTest {
     fun theEmptyGridStateKeepsItsLiteralTextAndTheValknutStaysSemanticsSilent() {
         compose.setContent {
             MaterialTheme {
-                EmptyGridState()
+                EmptyState(
+                    "No tmux sessions",
+                    "Create an agent here, or launch tmux on the visible machine.",
+                    ornament = true,
+                )
             }
         }
 
@@ -178,12 +186,37 @@ class DashboardChromeInstrumentedTest {
         status = SessionStatus(kind = kind, signal = SessionStatusSignal.Lifecycle, signalAt = SIGNAL_AT),
     )
 
+    private fun visibleAgent(session: AgentSession) =
+        VisibleAgent(MACHINE, AgentTarget(MACHINE.handle, session))
+
+    private fun machineState(session: AgentSession, receivedAtElapsedMillis: Long) = MachineState(
+        machine = MACHINE,
+        access = MachineAccess.Ready,
+        inventory = InventoryState.Fresh(
+            InventorySnapshot(
+                inventory = SessionsResponse(
+                    machine = MachineSummary(MACHINE.handle, MachinePlatform.Linux),
+                    observedAt = OBSERVED_AT,
+                    profiles = PROFILES,
+                    sessions = listOf(session),
+                ),
+                receivedAtElapsedMillis = receivedAtElapsedMillis,
+            ),
+        ),
+        pressure = PressureState.Reading,
+    )
+
     private companion object {
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
-        val PROFILES = listOf(ProfileChoice(key = "codex", label = "Codex"))
+        val MACHINE = PairedMachine(
+            handle = MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")!!,
+            label = MachineLabel.parse("Devbox")!!,
+            origin = MachineOrigin.parse("https://devbox.example:8443/")!!,
+        )
+        val PROFILES = listOf(ProfileChoice(key = ProfileKey.parse("codex")!!, label = "Codex"))
         val MINIMUM_TARGET = 48.dp
         val LOZENGE_SIDE = 8.dp
-        const val SIGNAL_AT = "2026-08-26T11:57:00Z"
+        val SIGNAL_AT: Instant = Instant.parse("2026-08-26T11:57:00Z")
         const val SESSION_ID = "session-durinn"
         const val PORTRAIT_DESCRIPTION = "Portrait of Durinn"
         const val ATTENTION_DESCRIPTION = "Needs attention"

@@ -11,10 +11,10 @@ design; this document owns the build pipeline and implementation boundary.
 
 ## Outcome
 
-The app gains its four pieces of authored ornament — the Forge fret band,
-the pairing-screen interlace band, the valknut empty-state mark, and the
-adaptive app icon — all generated or authored at build time, checked in as
-source, drift-gated, and semantics-invisible. No ornament is computed on the
+The app gains its three pieces of authored ornament — the Forge fret band,
+the valknut empty-state mark, and the adaptive app icon — all generated or
+authored at build time, checked in as source, drift-gated, and
+semantics-invisible. No ornament is computed on the
 phone at runtime beyond drawing pre-built paths.
 
 ## Goals and rules
@@ -23,8 +23,10 @@ phone at runtime beyond drawing pre-built paths.
   (design language §7). The phone draws checked-in path constants; repeating
   bands tile one cached cell.
 - **Two families, split by scale, never blended**: the angular fret family
-  for chrome bands; woven interlace only on the pairing surface where stroke
-  ≥ 3dp. No zoomorphic elements anywhere.
+  for chrome bands; woven interlace only at large scale — in v0 that is the
+  valknut empty-state mark alone (the multi-machine cutover deleted the
+  pairing screen, the interlace band's only chrome surface). No zoomorphic
+  elements anywhere.
 - **Ornament is silent and subordinate**: decoration carries no semantics,
   never intercepts input, sits at ≤ 40% opacity in Muted or Gold, and every
   screen remains complete with ornament deleted (geometry-first rule).
@@ -44,12 +46,9 @@ phone at runtime beyond drawing pre-built paths.
      width tiles a whole number of units — bands are straight strips in v0,
      so no corner mitering path exists yet; a future framed border re-opens
      the corner rule in the design language, not here).
-  2. **Interlace band**: a two-ribbon angular plait for the pairing screen,
-     constructed by the parity method (strict over/under alternation; the
-     drawn gap at each crossing baked into the path data at generation time).
-  3. **Valknut**: the tricursal form — three interlocked triangles,
+  2. **Valknut**: the tricursal form — three interlocked triangles,
      Borromean topology, straight lines only.
-  4. **Ship prow**: the launcher mark — the existing gold prow glyph
+  3. **Ship prow**: the launcher mark — the existing gold prow glyph
      refaceted into the Niðavellir grammar (straight segments only) and
      emitted solely as the adaptive-icon foreground/monochrome drawable; the
      geometry stays generator-internal with no Kotlin constant, because
@@ -73,8 +72,6 @@ phone at runtime beyond drawing pre-built paths.
   from a single cached cell (`drawWithCache` + repeating shader per design
   language §7). Present only on the Forge — chips, cards, and the key deck
   gain no ornament in this delta.
-- **Pairing screen**: one interlace band beneath the wordmark, Gold + Muted
-  ribbons; the only interlace-scale ornament in v0 chrome.
 - **Empty grid state**: when the inventory is genuinely empty, the valknut
   renders centered in Muted with the existing literal empty-state text
   unchanged; the mark is decorative and unlabeled (the text carries the
@@ -99,7 +96,7 @@ phone at runtime beyond drawing pre-built paths.
 | Slice | Owner | Paths | Owned proof |
 | --- | --- | --- | --- |
 | Generator + gate | Root integrator | `scripts/gen-ornament` (new), `scripts/check-ornament` (new), `scripts/test` (static composition only) | Drift red below |
-| Compose surfaces | Compose UI builder | `Ornament.kt` (generated), `DashboardScreen.kt` (empty state), `MainActivity.kt`/pairing, Forge section of `DashboardScreen.kt` | Compose proofs below |
+| Compose surfaces | Compose UI builder | `Ornament.kt` (generated), `DashboardScreen.kt` (empty state and Forge) | Compose proofs below |
 | Icon | Compose UI builder (same slice) | `res/mipmap*/` (new), `res/drawable/ic_launcher.xml` (replaced), `AndroidManifest.xml` (icon refs only) | Build proof |
 | Verification | Read-only verifier | none | Review only |
 
@@ -111,8 +108,8 @@ Red (each observed failing first):
    `scripts/check-ornament` fails; regeneration restores green.
 2. Determinism: two consecutive generator runs produce identical bytes.
 3. Compose test: ornament nodes expose no semantics and are not clickable;
-   the existing accessibility traversal proofs for pairing, Forge, and grid
-   still pass unchanged.
+   the existing accessibility traversal proofs for Forge and grid still pass
+   unchanged.
 4. Compose test: the empty-state text remains the literal copy; the valknut
    adds no content description.
 5. Build: the adaptive icon resolves in all densities (release build
@@ -121,8 +118,8 @@ Red (each observed failing first):
 Green: implement only enough to pass; routine `scripts/test verify`
 (static now including `check-ornament`, build, unit) stays green.
 
-Refactor: ensure the Forge band and pairing band share one tile-drawing
-helper rather than two copies; nothing else.
+Refactor: ensure every Forge width uses one tile-drawing helper rather than
+parallel renderers; nothing else.
 
 ## Acceptance and gates
 

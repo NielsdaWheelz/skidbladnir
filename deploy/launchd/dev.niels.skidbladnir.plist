@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.niels.skidbladnir</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/nnandal/.local/bin/skidbladnir</string>
+    <string>gateway</string>
+    <string>--listen=127.0.0.1:7341</string>
+    <string>--bearer-file=/Users/nnandal/.config/skidbladnir/bearer</string>
+    <string>--catalogue-path=/Users/nnandal/.local/share/skidbladnir/characters.json</string>
+    <string>--machine-handle-file=/Users/nnandal/.config/skidbladnir/machine-handle</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/nnandal</string>
+    <key>PATH</key>
+    <string>/Users/nnandal/bin:/Users/nnandal/.local/bin:/Users/nnandal/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/nnandal</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>AbandonProcessGroup</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>2</integer>
+  <key>ExitTimeOut</key>
+  <integer>10</integer>
+  <key>Umask</key>
+  <integer>18</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/nnandal/.local/state/skidbladnir/gateway.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/nnandal/.local/state/skidbladnir/gateway.error.log</string>
+</dict>
+</plist>

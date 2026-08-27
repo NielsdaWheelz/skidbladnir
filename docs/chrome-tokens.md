@@ -13,7 +13,7 @@ the implementation boundary and delivery plan.
 ## Outcome
 
 One owned token system — color, shape, typography, motion, interaction
-states — and every Compose surface consuming it: pairing, Hlíðskjálf grid,
+states — and every Compose surface consuming it: bearer repair, Hlíðskjálf grid,
 The Forge, terminal chrome, and key-deck styling. `SHELL` renders Bronze and
 becomes visually distinct from `RUNNING` (today both are Frost). No wire,
 input-semantics, or behavior change of any kind.
@@ -110,7 +110,7 @@ Unknown→Muted`.
   `tertiary`-slot-free Bronze/Orpiment as plain token uses, not scheme
   slots); typography wires Display/Data roles onto the styles that carry
   them; default component shapes become the token shapes.
-- **Pairing screen**: wordmark `SKÍÐBLAÐNIR` in Display caps; layout,
+- **Bearer-repair screen**: wordmark `SKÍÐBLAÐNIR` in Display caps; layout,
   copy, and flow unchanged.
 - **Grid cards**: DeepSurface, `Card` shape, a single top-edge Gold hairline
   at 25% alpha, diminuendo stack — dwarf display name in Display, tmux name
@@ -196,12 +196,13 @@ Red (each observed failing first):
 6. Instrumented: with animations disabled (the existing
    `animationsDisabled = true` test config), the attention badge renders
    static at full opacity (pixel-asserted), and the Forge sheet opens and
-   settles with all animations resolved. The Forge sheet cannot be composed
-   under the instrumented harness at all on the S22+ — `ModalBottomSheet`
-   ANRs the activity in every tested variant (paused clock, running clock,
-   bare `assertIsDisplayed`) — so the warm-in check (opens lit in ForgeGlow,
-   no strand) belongs wholly to the hands-on pass; the sheet is
-   production-proven daily.
+   settles with all animations resolved. `ModalBottomSheet` ANRs the S22+
+   under a `createComposeRule`-owned host activity in every tested variant
+   (paused clock, running clock, bare `assertIsDisplayed`); it composes fine
+   when the suite drives a real activity via `ActivityScenario` +
+   `createEmptyComposeRule` (the multi-machine journey opens the Forge that
+   way). The warm-in *look* (opens lit in ForgeGlow, no strand) still
+   belongs to the hands-on pass.
 
 Green: implement only enough to satisfy those proofs plus the visual
 contract; routine `scripts/test verify` stays green and device-free.

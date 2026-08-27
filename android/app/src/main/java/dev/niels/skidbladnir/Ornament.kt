@@ -15,22 +15,6 @@ internal val FretCell: List<OrnamentSegment> = listOf(
     OrnamentSegment(0.5f, 0f, 1f, 1f),
 )
 
-// One period of a two-ribbon angular plait (design-language.md §7, parity
-// method). Unit box aspect 2:1 (period width 2, height 1). The over-ribbon
-// alternates strictly between this period's two crossings, so tiling whole
-// periods keeps the alternation strict at every seam.
-internal val InterlaceRibbonA: List<OrnamentSegment> = listOf(
-    OrnamentSegment(0f, 0.15f, 1f, 0.85f),
-    OrnamentSegment(1f, 0.85f, 1.41f, 0.563f),
-    OrnamentSegment(1.59f, 0.437f, 2f, 0.15f),
-)
-internal val InterlaceRibbonB: List<OrnamentSegment> = listOf(
-    OrnamentSegment(0f, 0.85f, 0.41f, 0.563f),
-    OrnamentSegment(0.59f, 0.437f, 1f, 0.15f),
-    OrnamentSegment(1f, 0.15f, 2f, 0.85f),
-)
-internal const val InterlaceBandPeriodAspect: Float = 2f
-
 // The tricursal valknut (design-language.md §8): three interlocked
 // equilateral triangles, Borromean topology, straight lines only, unit box
 // aspect 1:1. All six over/under crossings are baked as gaps.

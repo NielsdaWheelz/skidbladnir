@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -106,6 +106,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun SkidbladnirApp(controller: SkidbladnirController) {
     val state = controller.state
+    BackHandler(enabled = state is SkidbladnirUiState.Dashboard && state.forge != null) {
+        controller.dismissForge()
+    }
     BackHandler(enabled = state is SkidbladnirUiState.Terminal) {
         controller.detachToAgents()
     }
@@ -118,15 +121,15 @@ private fun SkidbladnirApp(controller: SkidbladnirController) {
         ) {
             CircularProgressIndicator()
         }
-        is SkidbladnirUiState.Pairing -> PairingScreen(state, controller)
+        is SkidbladnirUiState.BearerRepair -> BearerRepairScreen(state, controller)
         is SkidbladnirUiState.Dashboard -> DashboardScreen(state, controller)
         is SkidbladnirUiState.Terminal -> TerminalScreen(state, controller)
     }
 }
 
 @Composable
-private fun PairingScreen(
-    state: SkidbladnirUiState.Pairing,
+private fun BearerRepairScreen(
+    state: SkidbladnirUiState.BearerRepair,
     controller: SkidbladnirController,
 ) {
     Column(
@@ -148,36 +151,20 @@ private fun PairingScreen(
             color = Muted,
             style = MaterialTheme.typography.titleMedium,
         )
-        // The interlace band (design-language.md §7): the only interlace-
-        // scale ornament in v0 chrome, decorative only.
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp)
-                .padding(top = 12.dp),
-        ) {
-            drawOrnamentBand(
-                unitAspect = InterlaceBandPeriodAspect,
-                layers = listOf(
-                    InterlaceRibbonA to Gold.copy(alpha = 0.40f),
-                    InterlaceRibbonB to Muted.copy(alpha = 0.38f),
-                ),
-            )
-        }
         Spacer(Modifier.height(32.dp))
         Text(
-            text = "Pair with the devbox",
+            text = "Update ${state.machine.label.text} bearer",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Medium,
         )
         Text(
-            text = "Enter the bearer minted on the devbox. It stays encrypted on this phone.",
+            text = "Re-authenticate the existing machine at ${state.machine.origin.encoded}. Its identity and destination stay fixed.",
             color = Muted,
             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
         )
         OutlinedTextField(
-            value = state.draft,
-            onValueChange = controller::updatePairingDraft,
+            value = state.bearer.text,
+            onValueChange = controller::updateBearerRepair,
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.pending,
             label = { Text("Bearer") },
@@ -196,8 +183,8 @@ private fun PairingScreen(
             )
         }
         Button(
-            onClick = controller::pair,
-            enabled = state.draft.isNotEmpty() && !state.pending,
+            onClick = controller::repairBearer,
+            enabled = state.bearer.text.isNotEmpty() && !state.pending,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp),
@@ -209,10 +196,13 @@ private fun PairingScreen(
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            Text("Connect")
+            Text("Update bearer")
+        }
+        TextButton(onClick = controller::cancelBearerRepair, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to agents")
         }
         Text(
-            text = "Tailnet only · dev-server-cpx11",
+            text = "Tailnet only · fixed machine identity",
             color = Muted,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(top = 12.dp),

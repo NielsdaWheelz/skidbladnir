@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -78,8 +79,23 @@ func TestGatewayProfilesExposeExactProductionCapsules(t *testing.T) {
 		},
 	}
 
-	got := gatewayProfiles(home)
+	got := gatewayProfiles(home, platform.Descriptor{Kind: platform.KindLinux, CodexNodeEntrypoint: "/home/niels/.local/bin/codex"})
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("production profiles differ:\n got: %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestDarwinGatewayProfilesDoNotAdvertiseTheDevboxOnlyClaudeCapsule(t *testing.T) {
+	profiles := gatewayProfiles("/Users/nnandal", platform.Descriptor{
+		Kind:                platform.KindDarwin,
+		CodexNodeEntrypoint: "/Users/nnandal/.local/bin/codex",
+	})
+	if len(profiles) != 3 {
+		t.Fatalf("Darwin profile count = %d, want 3 Codex profiles", len(profiles))
+	}
+	for _, profile := range profiles {
+		if profile.Key == "claude-work" {
+			t.Fatal("Darwin advertised the Devbox-only Claude capsule")
+		}
 	}
 }

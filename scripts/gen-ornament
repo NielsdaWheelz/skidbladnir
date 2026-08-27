@@ -2,25 +2,21 @@
 """Deterministically generate the frozen Niðavellir ornament geometry.
 
 Owned by docs/ornament-pipeline.md; the family rules are design-language.md
-§7 (fret/interlace construction) and §8 (the valknut, the ship prow). This
+§7 (fret construction) and §8 (the valknut, the ship prow). This
 script is a pure function of the constants defined below: no clock, no
 randomness, no filesystem reads beyond its own source. `scripts/check-ornament`
 imports `build_outputs()` and byte-compares its result against the checked-in
 files, so drift between this generator and the committed output fails the
 static gate.
 
-Two families ship here, plus the launcher glyph:
+Two marks ship here, plus the launcher glyph:
   * Fret cell: one chevron unit for the Forge title band (monoline, 45° turns).
-  * Interlace band: a two-ribbon plait for the pairing screen, built by the
-    parity method — counterphase zigzags that cross once per half-period,
-    with the under-ribbon's segment split into two pieces around each
-    crossing (the "baked gap") so the renderer never resolves the weave.
   * Valknut: three interlocked equilateral triangles (tricursal, Borromean
     topology), same baked-gap technique at all six crossings.
   * Ship prow: the existing launcher glyph's curves refaceted into straight
     segments and re-fitted inside the adaptive-icon safe zone.
 
-Fret, interlace, and valknut geometry is emitted as `OrnamentSegment`
+Fret and valknut geometry is emitted as `OrnamentSegment`
 unit-box constants in Ornament.kt; the prow stays generator-internal and is
 emitted
 as VectorDrawable pathData for the generated adaptive-icon foreground.
@@ -82,7 +78,7 @@ def _fret_cell() -> list[tuple[float, float, float, float]]:
     ]
 
 
-# --- Shared weave helper (interlace band + valknut) ---------------------
+# --- Weave helper (valknut baked gaps) ----------------------------------
 
 
 def _split_with_gaps(
@@ -116,37 +112,6 @@ def _split_with_gaps(
             continue
         pieces.append(point_at(a) + point_at(b))
     return pieces
-
-
-# --- Interlace band -------------------------------------------------------
-
-
-def _interlace_band(
-    gap: float = 0.18,
-) -> tuple[list[tuple[float, float, float, float]], list[tuple[float, float, float, float]]]:
-    """One period of a two-ribbon angular plait, parity method
-    (design-language.md §7). Unit box aspect 2:1 (period width 2, height 1).
-    Ribbon A rises low->high->low across the period; ribbon B is its exact
-    counterphase (high->low->high), so each half-period the two straight legs
-    cross once, at its midpoint. The over-ribbon alternates strictly between
-    the period's two crossings (A over the first half, B over the second) —
-    tiling identical periods keeps that alternation strict at every seam,
-    because the pattern re-enters at the same phase it left."""
-    y_lo, y_hi = 0.15, 0.85
-    a_vertices = [(0.0, y_lo), (1.0, y_hi), (2.0, y_lo)]
-    b_vertices = [(0.0, y_hi), (1.0, y_lo), (2.0, y_hi)]
-
-    def ribbon(vertices, over_first_half: bool):
-        segments = []
-        for i, (p0, p1) in enumerate(zip(vertices, vertices[1:])):
-            is_over = over_first_half if i == 0 else not over_first_half
-            cuts = [] if is_over else [0.5]
-            segments.extend(_split_with_gaps(p0, p1, cuts, gap))
-        return segments
-
-    ribbon_a = ribbon(a_vertices, over_first_half=True)
-    ribbon_b = ribbon(b_vertices, over_first_half=False)
-    return ribbon_a, ribbon_b
 
 
 # --- Valknut --------------------------------------------------------------
@@ -339,7 +304,6 @@ def build_outputs() -> dict[str, bytes]:
     function of this module's constants; called twice by
     `scripts/check-ornament` to prove determinism, and once per checked-in
     path to prove no drift."""
-    ribbon_a, ribbon_b = _interlace_band()
     valknut = _valknut()
     prow = _prow_polygons()
 
@@ -358,14 +322,6 @@ def build_outputs() -> dict[str, bytes]:
             "// One chevron unit (design-language.md §7): 45° turns only, unit box aspect\n",
             "// 1:1. Tiles horizontally with no seam — every copy starts and ends at y=1.\n",
             _kotlin_segments("FretCell", _fret_cell()),
-            "\n",
-            "// One period of a two-ribbon angular plait (design-language.md §7, parity\n",
-            "// method). Unit box aspect 2:1 (period width 2, height 1). The over-ribbon\n",
-            "// alternates strictly between this period's two crossings, so tiling whole\n",
-            "// periods keeps the alternation strict at every seam.\n",
-            _kotlin_segments("InterlaceRibbonA", ribbon_a),
-            _kotlin_segments("InterlaceRibbonB", ribbon_b),
-            "internal const val InterlaceBandPeriodAspect: Float = 2f\n",
             "\n",
             "// The tricursal valknut (design-language.md §8): three interlocked\n",
             "// equilateral triangles, Borromean topology, straight lines only, unit box\n",

@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.serialization.SerializationException
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -25,8 +24,8 @@ private data class PendingResize(
 
 internal class TerminalConnection(
     private val client: GatewayClient,
-    private val bearer: GatewayBearer,
-    private val session: AgentSession,
+    private val credential: MachineCredential,
+    private val target: AgentTarget,
     private val page: TerminalPage,
     private val observer: TerminalConnectionObserver,
 ) : WebSocketListener() {
@@ -46,7 +45,7 @@ internal class TerminalConnection(
             check(!started) // justify-service-invariant-check: each connection object owns exactly one WebSocket lifetime.
             started = true
             if (stopped.get()) return
-            socket = client.http.newWebSocket(client.terminalRequest(bearer, session), this)
+            socket = client.http.newWebSocket(client.terminalRequest(credential, target), this)
         }
     }
 
@@ -61,57 +60,38 @@ internal class TerminalConnection(
         }
     }
 
-    // OkHttp's reader loop catches listener throws and relabels them as an
-    // ordinary transport failure; a same-system contract violation must instead
-    // surface as the defect it is before that relabeling.
-    private inline fun surfaceProtocolDefect(action: () -> Unit) {
-        try {
-            action()
-        } catch (defect: ProtocolDecodeException) {
-            main.post { throw defect }
-            throw defect
-        }
-    }
-
-    override fun onMessage(webSocket: WebSocket, text: String) = surfaceProtocolDefect {
-        if (stopped.get()) return@surfaceProtocolDefect
+    override fun onMessage(webSocket: WebSocket, text: String) {
+        if (stopped.get()) return
         if (text.utf8ByteCountWithin(MAXIMUM_TERMINAL_FRAME_BYTES) == null) {
-            throw ProtocolDecodeException(
-                SerializationException("owned terminal text frame exceeded the protocol bound"),
-            ) // justify-defect: only the gateway writes server text frames, so an oversized frame is a same-system contract violation.
+            // justify-defect: only the gateway writes server text frames, so an oversized frame is
+            // a same-system contract violation.
+            throw ProtocolDecodeException("terminal text frame exceeded the protocol bound")
         }
         val event = decodeTerminalServerEvent(text)
         when (event) {
             is TerminalServerEvent.Hello -> synchronized(monitor) {
                 if (stopped.get()) return
-                if (connected) {
-                    throw ProtocolDecodeException(
-                        SerializationException("terminal sent Hello more than once"),
-                    ) // justify-defect: the gateway owns the closed terminal event sequence.
-                }
+                // justify-defect: the gateway owns the closed terminal event sequence.
+                if (connected) throw ProtocolDecodeException("terminal sent Hello more than once")
                 connected = true
                 observer.onPresence(event.attachedClients, event.geometry)
             }
             is TerminalServerEvent.Presence -> synchronized(monitor) {
                 if (stopped.get()) return
-                if (!connected) {
-                    throw ProtocolDecodeException(
-                        SerializationException("terminal sent Presence before Hello"),
-                    ) // justify-defect: the gateway owns the closed terminal event sequence.
-                }
+                // justify-defect: the gateway owns the closed terminal event sequence.
+                if (!connected) throw ProtocolDecodeException("terminal sent Presence before Hello")
                 observer.onPresence(event.attachedClients, event.geometry)
             }
             is TerminalServerEvent.Error -> fail(event.code)
         }
     }
 
-    override fun onMessage(webSocket: WebSocket, bytes: ByteString) = surfaceProtocolDefect {
+    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
         synchronized(monitor) {
-            if (stopped.get()) return@surfaceProtocolDefect
+            if (stopped.get()) return
+            // justify-defect: the gateway serializes Hello before bounded PTY output.
             if (!connected || bytes.size > MAXIMUM_TERMINAL_FRAME_BYTES) {
-                throw ProtocolDecodeException(
-                    SerializationException("terminal binary frame violated ordering or size"),
-                ) // justify-defect: the gateway serializes Hello before bounded PTY output.
+                throw ProtocolDecodeException("terminal binary frame violated ordering or size")
             }
             page.write(bytes.toByteArray())
         }
@@ -126,14 +106,24 @@ internal class TerminalConnection(
     }
 
     override fun onFailure(webSocket: WebSocket, throwable: Throwable, response: Response?) {
-        if (!stopped.get()) fail(ApiErrorCode.ReconnectRequired)
+        if (stopped.get()) return
+        val code = if (response == null) {
+            terminalUpgradeFailureCode(null, null)
+        } else {
+            response.use {
+                terminalUpgradeFailureCode(it.code, it.body?.string().orEmpty())
+            }
+        }
+        fail(code)
     }
 
     fun resize(columns: Int, rows: Int) {
         val encoded = try {
             encodeTerminalResize(columns, rows)
-        } catch (failure: IllegalArgumentException) {
-            throw ProtocolDecodeException(failure) // justify-defect: the owned page emits only geometry inside the closed protocol bounds.
+        } catch (_: IllegalArgumentException) {
+            // justify-defect: the owned page emits only geometry inside the closed protocol bounds,
+            // and the reason stays a fixed literal so no terminal content can reach a log.
+            throw ProtocolDecodeException("terminal geometry left the closed protocol bounds")
         }
         synchronized(monitor) {
             if (stopped.get()) return
@@ -235,5 +225,17 @@ internal class TerminalConnection(
         resizeDrainScheduled = false
         main.removeCallbacks(resizeDrain)
         if (!activeSocket.send(resize.encoded)) fail(ApiErrorCode.ReconnectRequired)
+    }
+}
+
+internal fun terminalUpgradeFailureCode(status: Int?, encoded: String?): ApiErrorCode {
+    if (status == null) {
+        require(encoded == null)
+        return ApiErrorCode.ReconnectRequired
+    }
+    val failure = decodeGatewayHttpFailure(status, requireNotNull(encoded))
+    return when (failure) {
+        is GatewayFailure.Api -> failure.code
+        GatewayFailure.Transport -> ApiErrorCode.ReconnectRequired
     }
 }
