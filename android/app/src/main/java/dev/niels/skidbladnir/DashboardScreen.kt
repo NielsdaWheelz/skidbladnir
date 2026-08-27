@@ -73,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.time.Instant
 
@@ -465,13 +466,13 @@ internal fun agentCardRuntimeFacts(
 // is frozen in dwarf-seals.md: mineral fill, facet planes, beard silhouette,
 // bind-rune, octagon frame, Bone initial.
 @Composable
-private fun DwarfPortrait(character: CharacterSummary) {
+internal fun DwarfPortrait(character: CharacterSummary, sealSize: Dp = 58.dp) {
     val spec = sealSpec(character.key)
     val metal = if (spec.metal == SealMetal.Gold) Gold else Bronze
     val label = character.displayName.take(1).uppercase()
     Box(
         modifier = Modifier
-            .size(58.dp)
+            .size(sealSize)
             .clip(NidavellirShapes.Octagon)
             .semantics {
                 contentDescription = "Portrait of ${character.displayName}"
