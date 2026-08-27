@@ -37,6 +37,8 @@ self_test_cleanup() {
 
 self_test() (
   set -euo pipefail
+  local attached_binary
+  local detached_binary
   local fixture_dir
   local repository
   local source_worktree
@@ -46,8 +48,15 @@ self_test() (
   source_worktree="$fixture_dir/source"
   trap self_test_cleanup EXIT
   git init --quiet "$repository"
+  mkdir -p "$repository/cmd/skidbladnir"
   printf 'committed source\n' >"$repository/input.txt"
-  git -C "$repository" add input.txt
+  printf 'module example.invalid/release-fixture\n\ngo 1.26.0\n' >"$repository/go.mod"
+  printf '%s\n' \
+    'package main' \
+    'var releaseVersion = "development"' \
+    'var releaseSHA = "unknown"' \
+    'func main() {}' >"$repository/cmd/skidbladnir/main.go"
+  git -C "$repository" add input.txt go.mod cmd/skidbladnir/main.go
   git -C "$repository" -c user.name=Skidbladnir -c user.email=release@example.invalid \
     commit --quiet -m fixture
   sha="$(git -C "$repository" rev-parse HEAD)"
@@ -55,7 +64,17 @@ self_test() (
   add_release_source_worktree "$repository" "$sha" "$source_worktree"
   [[ "$(cat "$source_worktree/input.txt")" == 'committed source' ]]
   [[ -z "$(git -C "$source_worktree" status --porcelain=v1 --untracked-files=all)" ]]
-  printf 'Exact-SHA release worktree policy passed\n'
+  attached_binary="$fixture_dir/attached-skidbladnir"
+  detached_binary="$fixture_dir/detached-skidbladnir"
+  "$repo_dir/scripts/build-host-binary" \
+    "$repository" v0.2.0 "$sha" linux amd64 "$attached_binary"
+  "$repo_dir/scripts/build-host-binary" \
+    "$source_worktree" v0.2.0 "$sha" linux amd64 "$detached_binary"
+  cmp -s "$attached_binary" "$detached_binary" || {
+    printf 'Host binary depends on attached versus detached Git checkout metadata\n' >&2
+    return 1
+  }
+  printf 'Exact-SHA release worktree and reproducible host-build policy passed\n'
 )
 
 if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then

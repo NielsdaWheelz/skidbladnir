@@ -522,17 +522,17 @@ case "$gate" in
     # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run bash-syntax bash -n scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run bash-syntax bash -n scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' \
-      scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
     # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
-      scripts/build scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
-    run shellcheck shellcheck scripts/build scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run shellcheck shellcheck scripts/build scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"
@@ -1083,7 +1083,7 @@ case "$gate" in
       "refs/tags/$published_tag" "refs/tags/$published_tag^{}")"
     remote_tag_sha="$(awk -v base="refs/tags/$published_tag" \
       '$2 == base { direct = $1 } $2 == base "^{}" { peeled = $1 }
-       END { print peeled != "" ? peeled : direct }' <<<"$remote_tags")"
+       END { print (peeled != "" ? peeled : direct) }' <<<"$remote_tags")"
     [[ "$remote_tag_sha" == "$published_sha" ]] || {
       printf 'Public Git tag does not resolve to the declared exact source SHA.\n' >&2
       exit 1
@@ -1097,12 +1097,14 @@ case "$gate" in
     published_source="$published_staging/source"
     published_assets="$published_staging/assets"
     mkdir "$published_assets"
-    run public-release-source git clone --quiet --depth 1 --single-branch \
+    run public-release-source env \
+      GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+      git clone --quiet --depth 1 --single-branch \
       --branch "$published_tag" "https://github.com/$published_repo.git" \
       "$published_source"
     [[ "$(git -C "$published_source" rev-parse HEAD)" == "$published_sha" &&
       -z "$(git -C "$published_source" status --porcelain=v1 --untracked-files=all)" &&
-      "$(git -C "$published_source" remote get-url origin)" == \
+      "$(git -C "$published_source" config --get remote.origin.url)" == \
         "https://github.com/$published_repo.git" ]] || {
       printf 'Public release source checkout is not the clean exact published SHA.\n' >&2
       exit 1
