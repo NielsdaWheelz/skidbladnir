@@ -1,6 +1,8 @@
 # Design delta D4: ornament
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26; routine verification (including the
+ornament drift gate) and the release icon build green; the on-device
+ornament/icon glance stays `NOT_RUN` pending separate approval.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for tokens and shapes.
 
 [`design-language.md`](design-language.md) §7 (ornament families and
@@ -47,9 +49,11 @@ phone at runtime beyond drawing pre-built paths.
      drawn gap at each crossing baked into the path data at generation time).
   3. **Valknut**: the tricursal form — three interlocked triangles,
      Borromean topology, straight lines only.
-  4. **Ship prow**: the launcher mark — the existing gold prow glyph redrawn
-     in the Niðavellir grammar (straight segments and facets only, Gold on
-     Ink) as adaptive-icon foreground and monochrome layers.
+  4. **Ship prow**: the launcher mark — the existing gold prow glyph
+     refaceted into the Niðavellir grammar (straight segments only) and
+     emitted solely as the adaptive-icon foreground/monochrome drawable; the
+     geometry stays generator-internal with no Kotlin constant, because
+     nothing at runtime reads it (no dead code ships).
 - The generated file is checked in. `scripts/check-ornament` (Python 3,
   stdlib only, like its sibling checks) regenerates to a temporary path and
   byte-compares — drift between generator and checked-in source fails the

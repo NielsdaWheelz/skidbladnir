@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -147,6 +148,22 @@ private fun PairingScreen(
             color = Muted,
             style = MaterialTheme.typography.titleMedium,
         )
+        // The interlace band (design-language.md §7): the only interlace-
+        // scale ornament in v0 chrome, decorative only.
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .padding(top = 12.dp),
+        ) {
+            drawOrnamentBand(
+                unitAspect = InterlaceBandPeriodAspect,
+                layers = listOf(
+                    InterlaceRibbonA to Gold.copy(alpha = 0.40f),
+                    InterlaceRibbonB to Muted.copy(alpha = 0.38f),
+                ),
+            )
+        }
         Spacer(Modifier.height(32.dp))
         Text(
             text = "Pair with the devbox",

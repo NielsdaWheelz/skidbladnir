@@ -1,6 +1,8 @@
 # Design delta D1: terminal theme
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26; routine verification green; instrumented
+proofs compiled; the platform pass stays `NOT_RUN` pending separate
+approval.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) §10 owns the palette values and

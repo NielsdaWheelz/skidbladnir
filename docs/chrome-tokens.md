@@ -1,6 +1,8 @@
 # Design delta D2: chrome tokens
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26 with adversarial-review fixes applied;
+routine verification green; the platform pass stays `NOT_RUN` pending
+separate approval.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including literal labels, 48dp targets, and the distinct-status-color

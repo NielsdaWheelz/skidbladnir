@@ -5,13 +5,17 @@ import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 // Stone strata + accents (design-language.md §5). Sole owner: MainActivity's
@@ -106,3 +110,47 @@ internal fun statusColor(kind: SessionStatusKind): Color = when (kind) {
 // (design-language.md §12; the WCAG 2.2.2 stop-mechanism note lives with the
 // screens delta that consumes this).
 internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean = animatorDurationScale != 0f
+
+// Ornament rendering (design-language.md §7; ornament-pipeline.md's refactor
+// note). Fret and interlace are both repeating bands, so they share this one
+// tile-drawing path: quantize the drawn width down to a whole unit count,
+// center the result, then repeat every layer's frozen unit-box segments
+// across it. Ornament.kt bakes all topology and over/under gaps at generation
+// time — this is the whole runtime drawing step, no weave logic here.
+internal fun DrawScope.drawOrnamentBand(unitAspect: Float, layers: List<Pair<List<OrnamentSegment>, Color>>) {
+    val unitWidth = size.height * unitAspect
+    val units = (size.width / unitWidth).toInt().coerceAtLeast(1)
+    val startX = (size.width - units * unitWidth) / 2f
+    val strokeWidth = size.height * 0.10f
+    for (unit in 0 until units) {
+        val offsetX = startX + unit * unitWidth
+        layers.forEach { (segments, color) ->
+            segments.forEach { segment ->
+                drawLine(
+                    color = color,
+                    start = Offset(offsetX + segment.x1 * unitWidth, segment.y1 * size.height),
+                    end = Offset(offsetX + segment.x2 * unitWidth, segment.y2 * size.height),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Butt,
+                )
+            }
+        }
+    }
+}
+
+// The Hlíðskjálf mark (design-language.md §8): a single, non-repeating draw
+// of the frozen `Valknut` segments. Not a band — it does not tile — so it
+// does not share `drawOrnamentBand` (ornament-pipeline.md's refactor note
+// scopes the shared helper to the two repeating bands only).
+internal fun DrawScope.drawValknut(color: Color, strokeWidth: Dp = 2.dp) {
+    val stroke = strokeWidth.toPx()
+    Valknut.forEach { segment ->
+        drawLine(
+            color = color,
+            start = Offset(segment.x1 * size.width, segment.y1 * size.height),
+            end = Offset(segment.x2 * size.width, segment.y2 * size.height),
+            strokeWidth = stroke,
+            cap = StrokeCap.Butt,
+        )
+    }
+}

@@ -28,6 +28,7 @@ case "$gate" in
     run shellcheck shellcheck scripts/build scripts/install-devbox scripts/test deploy/skid-notify
     run catalogue-static ./scripts/check-catalogue
     run terminal-assets-static ./scripts/check-terminal-assets
+    run ornament-static ./scripts/check-ornament
     run go-mod-verify go mod verify
     run go-vet go vet ./...
     run go-vet-integration go vet -tags=integration ./tests/integration

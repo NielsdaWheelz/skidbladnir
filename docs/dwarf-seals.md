@@ -1,6 +1,8 @@
 # Design delta D3: dwarf seals
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26; golden-vector and catalogue-distinctness
+gates green; the 48dp on-device distinguishability pass stays `NOT_RUN`
+pending separate approval.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for color and type
 tokens. Builds on the landed automatic dwarf identity contract
 ([automatic-dwarf-identity.md](automatic-dwarf-identity.md)): `character` is

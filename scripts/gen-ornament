@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""Deterministically generate the frozen Niðavellir ornament geometry.
+
+Owned by docs/ornament-pipeline.md; the family rules are design-language.md
+§7 (fret/interlace construction) and §8 (the valknut, the ship prow). This
+script is a pure function of the constants defined below: no clock, no
+randomness, no filesystem reads beyond its own source. `scripts/check-ornament`
+imports `build_outputs()` and byte-compares its result against the checked-in
+files, so drift between this generator and the committed output fails the
+static gate.
+
+Two families ship here, plus the launcher glyph:
+  * Fret cell: one chevron unit for the Forge title band (monoline, 45° turns).
+  * Interlace band: a two-ribbon plait for the pairing screen, built by the
+    parity method — counterphase zigzags that cross once per half-period,
+    with the under-ribbon's segment split into two pieces around each
+    crossing (the "baked gap") so the renderer never resolves the weave.
+  * Valknut: three interlocked equilateral triangles (tricursal, Borromean
+    topology), same baked-gap technique at all six crossings.
+  * Ship prow: the existing launcher glyph's curves refaceted into straight
+    segments and re-fitted inside the adaptive-icon safe zone.
+
+Fret, interlace, and valknut geometry is emitted as `OrnamentSegment`
+unit-box constants in Ornament.kt; the prow stays generator-internal and is
+emitted
+as VectorDrawable pathData for the generated adaptive-icon foreground.
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ORNAMENT_KT = "android/app/src/main/java/dev/niels/skidbladnir/Ornament.kt"
+PROW_FOREGROUND_XML = "android/app/src/main/res/drawable/ic_launcher_foreground.xml"
+
+# The pre-hard-cut res/drawable/ic_launcher.xml's gold/bone path data, frozen
+# here as the generator's input: that file is deleted by this same change
+# (docs/ornament-pipeline.md "Hard cut"), so the extraction step is captured
+# once, permanently, as source rather than a runtime file read.
+_SOURCE_PROW_PATHS = (
+    ("Gold", "M52,20L52,67L27,67C33,49 41,34 52,20ZM57,28C69,38 77,51 82,67L57,67Z"),
+    ("Bone", "M18,72C32,76 76,76 90,72L83,84C66,91 42,91 25,84ZM51,67H58V75H51Z"),
+    ("Gold", "M28,86C38,90 70,90 80,86L76,92H32Z"),
+)
+
+# Adaptive-icon geometry (Android's documented 108dp canvas / 66dp safe
+# circle): the refaceted prow is re-centered on the canvas and scaled to a
+# target radius a little inside the safe circle for margin.
+_ICON_VIEWPORT = 108.0
+_ICON_SAFE_RADIUS = 30.0
+_BEZIER_FACETS = 3  # straight segments each original curve is resampled into
+
+
+def _fmt_f(value: float) -> str:
+    """A Kotlin Float literal for `value`, minimal and deterministic."""
+    rounded = round(value, 6) + 0.0  # +0.0 folds -0.0 to 0.0
+    text = f"{rounded:.6f}".rstrip("0").rstrip(".")
+    return f"{text or '0'}f"
+
+
+def _fmt_n(value: float) -> str:
+    """A VectorDrawable pathData number for `value`."""
+    rounded = round(value, 3) + 0.0
+    text = f"{rounded:.3f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+# --- Fret cell ---------------------------------------------------------
+
+
+def _fret_cell() -> list[tuple[float, float, float, float]]:
+    """One chevron unit in a 1:1 unit box: a "V" from (0,1) down to the apex
+    at (0.5,0) and back up to (1,1). Both ends sit at y=1, so placing whole
+    copies side by side (x -> x+1) continues the zigzag with no seam."""
+    return [
+        (0.0, 1.0, 0.5, 0.0),
+        (0.5, 0.0, 1.0, 1.0),
+    ]
+
+
+# --- Shared weave helper (interlace band + valknut) ---------------------
+
+
+def _split_with_gaps(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    cut_centers: list[float],
+    gap: float,
+) -> list[tuple[float, float, float, float]]:
+    """Split the segment p0->p1 (parametrized t in [0,1]) around each center
+    in `cut_centers`, removing a `gap`-wide window at every center. Overlapping
+    windows merge. Returns the surviving pieces as absolute-coordinate
+    segments; an empty `cut_centers` returns the segment whole."""
+    windows = sorted((c - gap / 2, c + gap / 2) for c in cut_centers)
+    merged: list[list[float]] = []
+    for lo, hi in windows:
+        if merged and lo <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], hi)
+        else:
+            merged.append([lo, hi])
+    cuts = sorted({0.0, 1.0} | {max(0.0, min(1.0, v)) for w in merged for v in w})
+
+    def point_at(t: float) -> tuple[float, float]:
+        return (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t)
+
+    pieces = []
+    for a, b in zip(cuts, cuts[1:]):
+        mid = (a + b) / 2
+        if any(lo <= mid <= hi for lo, hi in merged):
+            continue
+        if b - a < 1e-9:
+            continue
+        pieces.append(point_at(a) + point_at(b))
+    return pieces
+
+
+# --- Interlace band -------------------------------------------------------
+
+
+def _interlace_band(
+    gap: float = 0.18,
+) -> tuple[list[tuple[float, float, float, float]], list[tuple[float, float, float, float]]]:
+    """One period of a two-ribbon angular plait, parity method
+    (design-language.md §7). Unit box aspect 2:1 (period width 2, height 1).
+    Ribbon A rises low->high->low across the period; ribbon B is its exact
+    counterphase (high->low->high), so each half-period the two straight legs
+    cross once, at its midpoint. The over-ribbon alternates strictly between
+    the period's two crossings (A over the first half, B over the second) —
+    tiling identical periods keeps that alternation strict at every seam,
+    because the pattern re-enters at the same phase it left."""
+    y_lo, y_hi = 0.15, 0.85
+    a_vertices = [(0.0, y_lo), (1.0, y_hi), (2.0, y_lo)]
+    b_vertices = [(0.0, y_hi), (1.0, y_lo), (2.0, y_hi)]
+
+    def ribbon(vertices, over_first_half: bool):
+        segments = []
+        for i, (p0, p1) in enumerate(zip(vertices, vertices[1:])):
+            is_over = over_first_half if i == 0 else not over_first_half
+            cuts = [] if is_over else [0.5]
+            segments.extend(_split_with_gaps(p0, p1, cuts, gap))
+        return segments
+
+    ribbon_a = ribbon(a_vertices, over_first_half=True)
+    ribbon_b = ribbon(b_vertices, over_first_half=False)
+    return ribbon_a, ribbon_b
+
+
+# --- Valknut --------------------------------------------------------------
+
+
+def _rotate(p: tuple[float, float], degrees: float) -> tuple[float, float]:
+    a = math.radians(degrees)
+    x, y = p
+    return (x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a))
+
+
+def _triangle(centroid: tuple[float, float], radius: float, phi0: float) -> list[tuple[float, float]]:
+    cx, cy = centroid
+    return [
+        (cx + radius * math.cos(math.radians(phi0 + 120 * k)), cy + radius * math.sin(math.radians(phi0 + 120 * k)))
+        for k in range(3)
+    ]
+
+
+def _seg_intersect_t(p1, p2, p3, p4) -> tuple[float, float] | None:
+    (x1, y1), (x2, y2), (x3, y3), (x4, y4) = p1, p2, p3, p4
+    d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(d) < 1e-9:
+        return None
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d
+    u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / d
+    if 1e-9 < t < 1 - 1e-9 and 1e-9 < u < 1 - 1e-9:
+        return (t, u)
+    return None
+
+
+def _valknut(gap: float = 0.10) -> list[tuple[float, float, float, float]]:
+    """The tricursal valknut (design-language.md §8): three congruent
+    equilateral triangles, each the previous rotated 120° about the shared
+    center, with each triangle's own centroid itself offset from that center
+    — the offset is what keeps the three from simply coinciding, giving the
+    interlocked Borromean silhouette. Straight lines only. The six crossings
+    are ordered by angle around the center; the over triangle alternates
+    strictly walking that ring, and the losing triangle's edge is split with
+    a gap at that crossing (`_split_with_gaps`), baking the weave into the
+    data with no runtime over/under logic."""
+    offset, radius, phi0, centroid_angle = 0.6, 1.0, 90.0, 135.0
+    base_centroid = (offset * math.cos(math.radians(centroid_angle)), offset * math.sin(math.radians(centroid_angle)))
+    base = _triangle(base_centroid, radius, phi0)
+    triangles = [base, [_rotate(p, 120) for p in base], [_rotate(p, 240) for p in base]]
+    edges = [[(t[i], t[(i + 1) % 3]) for i in range(3)] for t in triangles]
+
+    crossings = []
+    for a, b in ((0, 1), (1, 2), (0, 2)):
+        for ea_idx, (pa0, pa1) in enumerate(edges[a]):
+            for eb_idx, (pb0, pb1) in enumerate(edges[b]):
+                hit = _seg_intersect_t(pa0, pa1, pb0, pb1)
+                if hit is None:
+                    continue
+                t_a, t_b = hit
+                x = pa0[0] + t_a * (pa1[0] - pa0[0])
+                y = pa0[1] + t_a * (pa1[1] - pa0[1])
+                crossings.append(
+                    {"tri_a": a, "edge_a": ea_idx, "t_a": t_a, "tri_b": b, "edge_b": eb_idx, "t_b": t_b, "x": x, "y": y}
+                )
+    crossings.sort(key=lambda c: math.atan2(c["y"], c["x"]))
+    for i, c in enumerate(crossings):
+        c["over"] = c["tri_a"] if i % 2 == 0 else c["tri_b"]
+
+    all_points = [p for t in triangles for p in t]
+    half_span = max(max(abs(p[0]) for p in all_points), max(abs(p[1]) for p in all_points)) * 1.08
+
+    def normalize(p: tuple[float, float]) -> tuple[float, float]:
+        return (0.5 + p[0] / (2 * half_span), 0.5 - p[1] / (2 * half_span))
+
+    segments = []
+    for tri_idx in range(3):
+        for edge_idx, (p0, p1) in enumerate(edges[tri_idx]):
+            cut_centers = []
+            for c in crossings:
+                if c["over"] == tri_idx:
+                    continue
+                if c["tri_a"] == tri_idx and c["edge_a"] == edge_idx:
+                    cut_centers.append(c["t_a"])
+                elif c["tri_b"] == tri_idx and c["edge_b"] == edge_idx:
+                    cut_centers.append(c["t_b"])
+            for seg in _split_with_gaps(p0, p1, cut_centers, gap):
+                segments.append((*normalize(seg[0:2]), *normalize(seg[2:4])))
+    return segments
+
+
+# --- Ship prow --------------------------------------------------------------
+
+
+def _parse_path(d: str, samples: int = _BEZIER_FACETS) -> list[list[tuple[float, float]]]:
+    """A minimal absolute-command interpreter for the M/L/H/V/C/Z subset
+    `_SOURCE_PROW_PATHS` uses, refaceting each cubic Bézier into `samples`
+    straight segments (design-language.md §1.3: no curves in dwarf-owned
+    chrome)."""
+    subpaths: list[list[tuple[float, float]]] = []
+    current: list[tuple[float, float]] = []
+    x = y = 0.0
+    start = (0.0, 0.0)
+    for cmd, argstr in re.findall(r"([MLHVCZ])([^MLHVCZ]*)", d):
+        nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", argstr)]
+        if cmd == "M":
+            if current:
+                subpaths.append(current)
+            x, y = nums
+            start = (x, y)
+            current = [(x, y)]
+        elif cmd == "L":
+            x, y = nums
+            current.append((x, y))
+        elif cmd == "H":
+            x = nums[0]
+            current.append((x, y))
+        elif cmd == "V":
+            y = nums[0]
+            current.append((x, y))
+        elif cmd == "C":
+            x0, y0 = x, y
+            x1, y1, x2, y2, x3, y3 = nums
+            for i in range(1, samples + 1):
+                t, mt = i / samples, 1 - i / samples
+                current.append(
+                    (
+                        mt**3 * x0 + 3 * mt**2 * t * x1 + 3 * mt * t**2 * x2 + t**3 * x3,
+                        mt**3 * y0 + 3 * mt**2 * t * y1 + 3 * mt * t**2 * y2 + t**3 * y3,
+                    )
+                )
+            x, y = x3, y3
+        elif cmd == "Z":
+            if current[-1] != start:
+                current.append(start)
+            subpaths.append(current)
+            current = []
+            x, y = start
+    if current:
+        subpaths.append(current)
+    # Drop consecutive duplicate points (a curve that lands back on its own
+    # start, immediately followed by Z's own close-point, is the only source).
+    deduped = []
+    for sub in subpaths:
+        out = [sub[0]]
+        for p in sub[1:]:
+            if p != out[-1]:
+                out.append(p)
+        deduped.append(out)
+    return deduped
+
+
+def _prow_polygons() -> list[tuple[str, list[tuple[float, float]]]]:
+    """Refacet `_SOURCE_PROW_PATHS`, then fit the whole glyph inside the
+    adaptive-icon safe zone: recenter on the 108dp canvas and scale so the
+    farthest point sits at `_ICON_SAFE_RADIUS` (a few dp inside the 33dp safe
+    circle, for margin)."""
+    polygons = [(color, sub) for color, d in _SOURCE_PROW_PATHS for sub in _parse_path(d)]
+    xs = [p[0] for _, sub in polygons for p in sub]
+    ys = [p[1] for _, sub in polygons for p in sub]
+    center = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+    max_dist = max(math.hypot(p[0] - center[0], p[1] - center[1]) for _, sub in polygons for p in sub)
+    scale = _ICON_SAFE_RADIUS / max_dist
+    viewport_center = (_ICON_VIEWPORT / 2, _ICON_VIEWPORT / 2)
+
+    def fit(p: tuple[float, float]) -> tuple[float, float]:
+        return (
+            viewport_center[0] + (p[0] - center[0]) * scale,
+            viewport_center[1] + (p[1] - center[1]) * scale,
+        )
+
+    return [(color, [fit(p) for p in sub]) for color, sub in polygons]
+
+
+def _prow_path_data(polygon: list[tuple[float, float]]) -> str:
+    parts = [f"M{_fmt_n(polygon[0][0])},{_fmt_n(polygon[0][1])}"]
+    for p in polygon[1:]:
+        parts.append(f"L{_fmt_n(p[0])},{_fmt_n(p[1])}")
+    parts.append("Z")
+    return "".join(parts)
+
+
+# --- Kotlin + XML rendering -------------------------------------------------
+
+
+def _kotlin_segments(name: str, segments: list[tuple[float, float, float, float]]) -> str:
+    lines = ",\n".join(
+        f"    OrnamentSegment({_fmt_f(x1)}, {_fmt_f(y1)}, {_fmt_f(x2)}, {_fmt_f(y2)})" for x1, y1, x2, y2 in segments
+    )
+    return f"internal val {name}: List<OrnamentSegment> = listOf(\n{lines},\n)\n"
+
+
+def build_outputs() -> dict[str, bytes]:
+    """The full generated-output set, keyed by repo-relative path. Pure
+    function of this module's constants; called twice by
+    `scripts/check-ornament` to prove determinism, and once per checked-in
+    path to prove no drift."""
+    ribbon_a, ribbon_b = _interlace_band()
+    valknut = _valknut()
+    prow = _prow_polygons()
+
+    kotlin = "".join(
+        [
+            "package dev.niels.skidbladnir\n",
+            "\n",
+            "// GENERATED BY scripts/gen-ornament — DO NOT EDIT (drift-gated by scripts/check-ornament)\n",
+            "//\n",
+            "// Frozen ornament geometry (design-language.md §7 §8, ornament-pipeline.md).\n",
+            "// Every List<OrnamentSegment> below is monoline stroke data in a unit box;\n",
+            "// topology is computed on-device — the app only draws these constants.\n",
+            "\n",
+            "internal data class OrnamentSegment(val x1: Float, val y1: Float, val x2: Float, val y2: Float)\n",
+            "\n",
+            "// One chevron unit (design-language.md §7): 45° turns only, unit box aspect\n",
+            "// 1:1. Tiles horizontally with no seam — every copy starts and ends at y=1.\n",
+            _kotlin_segments("FretCell", _fret_cell()),
+            "\n",
+            "// One period of a two-ribbon angular plait (design-language.md §7, parity\n",
+            "// method). Unit box aspect 2:1 (period width 2, height 1). The over-ribbon\n",
+            "// alternates strictly between this period's two crossings, so tiling whole\n",
+            "// periods keeps the alternation strict at every seam.\n",
+            _kotlin_segments("InterlaceRibbonA", ribbon_a),
+            _kotlin_segments("InterlaceRibbonB", ribbon_b),
+            "internal const val InterlaceBandPeriodAspect: Float = 2f\n",
+            "\n",
+            "// The tricursal valknut (design-language.md §8): three interlocked\n",
+            "// equilateral triangles, Borromean topology, straight lines only, unit box\n",
+            "// aspect 1:1. All six over/under crossings are baked as gaps.\n",
+            _kotlin_segments("Valknut", valknut),
+        ]
+    )
+
+    foreground_paths = "\n".join(
+        f'    <path\n'
+        f'        android:fillColor="{"#D6A85F" if color == "Gold" else "#F3F0E8"}"\n'
+        f'        android:pathData="{_prow_path_data(points)}" />'
+        for color, points in prow
+    )
+    foreground_xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<!-- GENERATED BY scripts/gen-ornament — DO NOT EDIT (drift-gated by scripts/check-ornament) -->\n"
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        f'    android:width="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
+        f'    android:height="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
+        f'    android:viewportWidth="{_fmt_n(_ICON_VIEWPORT)}"\n'
+        f'    android:viewportHeight="{_fmt_n(_ICON_VIEWPORT)}">\n'
+        f"{foreground_paths}\n"
+        "</vector>\n"
+    )
+
+    return {
+        ORNAMENT_KT: kotlin.encode("utf-8"),
+        PROW_FOREGROUND_XML: foreground_xml.encode("utf-8"),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out-root",
+        type=Path,
+        default=ROOT,
+        help="Write generated files under this root instead of the repo root (default: repo root).",
+    )
+    args = parser.parse_args()
+    for relative, content in build_outputs().items():
+        destination = args.out_root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
+        print(f"wrote {relative} ({len(content)} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

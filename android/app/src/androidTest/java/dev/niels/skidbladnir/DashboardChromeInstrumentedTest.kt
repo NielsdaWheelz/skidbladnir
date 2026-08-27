@@ -9,12 +9,15 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -158,6 +161,27 @@ class DashboardChromeInstrumentedTest {
                 "DeepSurface here means the warm-in stranded or never targeted the lit color",
             ForgeGlow.toArgb(),
             corner.toArgb(),
+        )
+    }
+
+    @Test
+    fun theEmptyGridStateKeepsItsLiteralTextAndTheValknutStaysSemanticsSilent() {
+        compose.setContent {
+            MaterialTheme {
+                EmptyGridState()
+            }
+        }
+
+        compose.onNodeWithText("No tmux sessions").assertIsDisplayed()
+
+        val ornament = compose.onNodeWithTag("EmptyStateOrnament")
+        ornament.assertHasNoClickAction()
+        val spoken = ornament.fetchSemanticsNode()
+            .config.getOrNull(SemanticsProperties.ContentDescription)
+        assertTrue(
+            "the valknut is decorative (design-language.md §7): it must carry no " +
+                "content description, but spoke $spoken",
+            spoken.isNullOrEmpty(),
         )
     }
 

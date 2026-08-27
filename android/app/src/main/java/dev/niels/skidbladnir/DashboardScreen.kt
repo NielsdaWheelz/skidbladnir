@@ -65,8 +65,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -179,21 +181,7 @@ internal fun DashboardScreen(
             ) {
                 CircularProgressIndicator()
             }
-            inventory.sessions.isEmpty() -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No tmux sessions", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        text = "Start an agent here, or launch a tmux session from your laptop.",
-                        color = Muted,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-            }
+            inventory.sessions.isEmpty() -> EmptyGridState()
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(170.dp),
                 modifier = Modifier.fillMaxSize(),
@@ -228,6 +216,38 @@ internal fun DashboardScreen(
         )
     }
     state.kill?.let { kill -> KillConfirmation(kill, controller::dismissKill, controller::confirmKill) }
+}
+
+@Composable
+internal fun EmptyGridState() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // The Hlíðskjálf mark (design-language.md §8): decorative only,
+            // so it clears semantics explicitly rather than relying on
+            // Canvas having none by default — the literal text below it
+            // carries the meaning (ornament-pipeline.md "Ornament is silent
+            // and subordinate").
+            Canvas(
+                modifier = Modifier
+                    .padding(bottom = 12.dp)
+                    .size(48.dp)
+                    .clearAndSetSemantics { testTag = "EmptyStateOrnament" },
+            ) {
+                drawValknut(Muted.copy(alpha = 0.40f))
+            }
+            Text("No tmux sessions", style = MaterialTheme.typography.titleLarge)
+            Text(
+                text = "Start an agent here, or launch a tmux session from your laptop.",
+                color = Muted,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -709,6 +729,16 @@ internal fun ForgeSheet(
                 color = Muted,
                 modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
             )
+            // The fret band (design-language.md §7): decorative only, drawn
+            // under the title block, Gold at the family's 40% ceiling.
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .padding(bottom = 14.dp),
+            ) {
+                drawOrnamentBand(unitAspect = 1f, layers = listOf(FretCell to Gold.copy(alpha = 0.40f)))
+            }
             OutlinedTextField(
                 value = state.draft.cwd,
                 onValueChange = { value -> onDraftChange { it.copy(cwd = value) } },
