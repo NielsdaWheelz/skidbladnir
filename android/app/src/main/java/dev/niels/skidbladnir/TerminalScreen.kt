@@ -226,7 +226,7 @@ private fun ReconnectPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
             ) {
-                Text("Back to Dwarves")
+                BackToDwarvesContent(tag = "terminal-dwarves-mark")
             }
         }
     }

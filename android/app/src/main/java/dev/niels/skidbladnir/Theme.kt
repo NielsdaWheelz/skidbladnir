@@ -4,11 +4,21 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -138,12 +148,20 @@ internal fun DrawScope.drawOrnamentBand(unitAspect: Float, layers: List<Pair<Lis
     }
 }
 
+// The stroke that draws the Hlíðskjálf mark, as a fraction of the mark's own
+// size. A fixed dp stroke is the defect it replaces: 2dp is 4% of a 48dp mark
+// but 11% of an 18dp one, so as the mark shrinks the stroke swallows the
+// crossing gaps `scripts/gen-ornament` baked in and the weave reads as a solid
+// clot. Held against `_VALKNUT_GAP`, this keeps break and strand in the same
+// proportion at every rendered size (design-language.md §8; OrnamentTest).
+internal const val ValknutStrokeRatio = 0.055f
+
 // The Hlíðskjálf mark (design-language.md §8): a single, non-repeating draw
 // of the frozen `Valknut` segments. Not a band — it does not tile — so it
 // does not share `drawOrnamentBand` (ornament-pipeline.md's refactor note
 // scopes the shared helper to the two repeating bands only).
-internal fun DrawScope.drawValknut(color: Color, strokeWidth: Dp = 2.dp) {
-    val stroke = strokeWidth.toPx()
+internal fun DrawScope.drawValknut(color: Color) {
+    val stroke = size.minDimension * ValknutStrokeRatio
     Valknut.forEach { segment ->
         drawLine(
             color = color,
@@ -153,4 +171,37 @@ internal fun DrawScope.drawValknut(color: Color, strokeWidth: Dp = 2.dp) {
             cap = StrokeCap.Butt,
         )
     }
+}
+
+// Every rendering of the mark in the app. It is decoration wherever it appears:
+// it clears its own subtree semantics so the literal label beside it carries
+// the whole meaning (ornament-pipeline.md "Ornament is silent and
+// subordinate"), and `tag` exists only so tests can prove that silence.
+@Composable
+internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: Modifier = Modifier) {
+    Canvas(
+        modifier = modifier
+            .size(markSize)
+            .clearAndSetSemantics { testTag = tag },
+    ) {
+        drawValknut(color)
+    }
+}
+
+// The one composition of the affordance that returns to the Dwarves grid, so
+// its label and its mark cannot drift apart between the two screens that offer
+// it (TerminalScreen's reconnect panel and MainActivity's bearer repair). The
+// mark takes `LocalContentColor` rather than a fixed accent so it dims with the
+// button when the button is disabled — a drawn glyph gets no disabled state for
+// free (design-language.md §12). `tag` differs per screen only so each site's
+// silence is provable.
+@Composable
+internal fun BackToDwarvesContent(tag: String) {
+    HlidskjalfMark(
+        color = LocalContentColor.current,
+        markSize = 18.dp,
+        tag = tag,
+        modifier = Modifier.padding(end = ButtonDefaults.IconSpacing),
+    )
+    Text("Back to Dwarves")
 }

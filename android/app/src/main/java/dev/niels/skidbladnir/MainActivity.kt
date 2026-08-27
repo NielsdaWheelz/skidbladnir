@@ -199,7 +199,7 @@ private fun BearerRepairScreen(
             Text("Update bearer")
         }
         TextButton(onClick = controller::cancelBearerRepair, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
-            Text("Back to Dwarves")
+            BackToDwarvesContent(tag = "bearer-repair-dwarves-mark")
         }
         Text(
             text = "Tailnet only · fixed machine identity",

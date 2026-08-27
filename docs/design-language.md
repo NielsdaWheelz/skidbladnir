@@ -226,9 +226,16 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
 ## 8. Iconography and runes
 
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
-  triangles, Borromean topology — the seat that overlooks every world. Usable
-  as the grid's empty-state mark and the app icon's core. Pure straight lines;
-  render at 24dp+ with 2dp stroke.
+  triangles, Borromean topology — the seat that overlooks every world. It marks
+  the Dwarves surface wherever that surface is named — the dashboard title
+  lockup, every affordance that returns to it, and the empty grid — and the app
+  icon's core stays its other permitted use. Pure straight lines. Its stroke is
+  a fraction of the mark's own size, never a fixed dp: a fixed stroke is a
+  larger share of a smaller mark, so it closes the baked crossings as the mark
+  shrinks. Legibility is therefore an invariant and not a size — every strand
+  is at least as long as its own stroke is wide, and every baked break at least
+  twice as wide — and it is proved on the geometry rather than eyeballed.
+  [hlidskjalf-mark.md](hlidskjalf-mark.md) owns the constants and the proofs.
 - **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
   rune *glyphs* — at most one inert divider glyph per screen — render as
   real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
@@ -399,6 +406,11 @@ it as a red test, not an assumption.
   under the title (Gold 40%, even unit count), Display-face title, mono cwd
   field (autocorrect off is architecture-owned). Invalid drafts preserved;
   error text plain Ember body — no ornament near errors (§1.4).
+- **The Hlíðskjálf mark**: 24dp Gold leading the `Dwarves` title, 18dp at the
+  button's own content colour leading each affordance that returns there, 48dp
+  Muted at 40% on the empty grid. One composable, semantics-silent everywhere.
+  The detach control carries no mark: it names what happens to the session, not
+  where the button goes.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
   slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
@@ -445,7 +457,9 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon).
+build-time fret pipeline, Forge/empty-state art, app icon); **(5) the
+Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke
+rule and legibility invariants, the mark on every Dwarves surface).
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

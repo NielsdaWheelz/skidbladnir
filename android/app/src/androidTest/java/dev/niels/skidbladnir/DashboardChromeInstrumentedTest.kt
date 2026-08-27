@@ -142,6 +142,88 @@ class DashboardChromeInstrumentedTest {
 
 
     @Test
+    fun theDashboardTopBarMarkLeadsTheLiteralTitleAndStaysSemanticsSilent() {
+        compose.setContent {
+            MaterialTheme {
+                DashboardTopBar(
+                    summary = "4 tmux sessions across 2 machines",
+                    refreshing = false,
+                    canForge = true,
+                    onRefresh = {},
+                    onNewAgent = { error("rendering the top bar opened the Forge") },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Dwarves").assertIsDisplayed()
+
+        val mark = compose.onNodeWithTag("dashboard-mark")
+        mark.assertHasNoClickAction()
+        val config = mark.fetchSemanticsNode().config
+        assertTrue(
+            "the Hlíðskjálf mark is decoration (design-language.md §8): the literal title " +
+                "beside it carries the whole meaning, so the mark must add nothing spoken, " +
+                "but it offered ${config.getOrNull(SemanticsProperties.ContentDescription)} " +
+                "and ${config.getOrNull(SemanticsProperties.Text)}",
+            config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty() &&
+                config.getOrNull(SemanticsProperties.Text).isNullOrEmpty(),
+        )
+
+        val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        val markBounds = mark.getUnclippedBoundsInRoot()
+        assertTrue(
+            "the mark must lead the title on the one compact row, not stack above it",
+            markBounds.right <= title.left && markBounds.top < title.bottom && title.top < markBounds.bottom,
+        )
+    }
+
+    @Test
+    fun theTopBarStaysOneRowWithTheMarkLeadingAndCreateStillTrailing() {
+        // The mark took 32dp (24dp glyph + 8dp arrangement spacing) out of a row that is a
+        // fixed 64dp tall and already carried title, Refresh and the create action. The
+        // equivalent assertions in MultiMachineUiInstrumentedTest sit behind an assumeTrue
+        // for provisioned machines, so they do not run on an unprovisioned device — this
+        // composes the bar directly so the crowding is proved on every run.
+        compose.setContent {
+            MaterialTheme {
+                DashboardTopBar(
+                    summary = "4 tmux sessions across 2 machines",
+                    refreshing = false,
+                    canForge = true,
+                    onRefresh = {},
+                    onNewAgent = { error("rendering the top bar opened the Forge") },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Refresh").assertIsDisplayed()
+        compose.onNodeWithTag("new-agent").assertIsDisplayed()
+
+        val bar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
+        val mark = compose.onNodeWithTag("dashboard-mark", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val create = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
+
+        assertTrue(
+            "the create action must stay inside the one 64dp row, not be pushed out of it by " +
+                "the mark: bar=$bar create=$create",
+            create.top >= bar.top && create.bottom <= bar.bottom,
+        )
+        assertTrue(
+            "mark, title and create action must share one row rather than stack: " +
+                "mark=$mark title=$title create=$create",
+            create.top < title.bottom && title.top < create.bottom &&
+                mark.top < title.bottom && title.top < mark.bottom,
+        )
+        assertTrue(
+            "reading order across the row is mark, then title, then create action: " +
+                "mark=$mark title=$title create=$create",
+            mark.right <= title.left && title.right <= create.left,
+        )
+    }
+
+    @Test
     fun theEmptyGridStateKeepsItsLiteralTextAndTheValknutStaysSemanticsSilent() {
         compose.setContent {
             MaterialTheme {

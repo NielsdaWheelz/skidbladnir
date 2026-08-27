@@ -49,7 +49,10 @@ phone at runtime beyond drawing pre-built paths.
      so no corner mitering path exists yet; a future framed border re-opens
      the corner rule in the design language, not here).
   2. **Valknut**: the tricursal form — three interlocked triangles,
-     Borromean topology, straight lines only.
+     Borromean topology, straight lines only. The break width cut at each
+     crossing is `_VALKNUT_GAP`, which carries its own derivation;
+     [hlidskjalf-mark.md](hlidskjalf-mark.md) owns why that value and not
+     another.
   3. **Ship prow**: the launcher mark — the existing gold prow glyph
      refaceted into the Niðavellir grammar (straight segments only) and
      emitted solely as the adaptive-icon foreground/monochrome drawable; the
@@ -74,10 +77,11 @@ phone at runtime beyond drawing pre-built paths.
   from a single cached cell (`drawWithCache` + repeating shader per design
   language §7). Present only on the Forge — chips, cards, and the key deck
   gain no ornament in this delta.
-- **Empty grid state**: when the inventory is genuinely empty, the valknut
-  renders centered in Muted with the existing literal empty-state text
-  unchanged; the mark is decorative and unlabeled (the text carries the
-  semantics).
+- **The valknut**: [hlidskjalf-mark.md](hlidskjalf-mark.md) owns every surface
+  the mark renders on and its legibility contract. This document owns only its
+  generation. It stays decorative and unlabeled wherever it appears — the
+  literal text beside it carries the semantics — and it never renders beside a
+  degraded or repair state.
 - **App icon**: the launcher identity stays the ship prow — the app is named
   for the vessel; the valknut marks Hlíðskjálf inside the app, never the
   launcher. The current flat `res/drawable/ic_launcher.xml` (a gold prow on
