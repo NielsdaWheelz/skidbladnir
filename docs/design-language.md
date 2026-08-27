@@ -143,6 +143,32 @@ Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
 `SHELL` Bronze · `UNKNOWN` Muted. Pressure keeps Normal Moss · Warm Gold ·
 Hot Ember · Unknown Muted.
 
+### Severity tones
+
+Severity has exactly one owner (`noticeToneColor`, D6). Ember is not a colour
+a surface may reach for; it is what one tone resolves to.
+
+| Tone | Colour | Means |
+| --- | --- | --- |
+| Failure | Ember | An attempt failed, trust broke, or you are ending something |
+| Degraded | Muted | Knowledge is absent or old; nothing is broken |
+| Armed | Gold | A recovery is waiting on you |
+
+Two rules follow, and both are load-bearing:
+
+- **Staleness is absence, not failure.** Degraded is Muted, matching `UNKNOWN`
+  → Muted above and the honesty law (§1.4): absence is displayed, not alarmed.
+  Ember spent on routine staleness is Ember spent on nothing — in a federation
+  one host is out often enough that the alarm becomes the resting state.
+- **Trust events are the loud ones.** A broken bearer or a changed identity is
+  Failure even when that machine's inventory is perfectly current, because
+  what failed is knowing who we are talking to.
+
+The bare `Ember` token survives in exactly two places in the app: its
+definition beside `noticeToneColor`, and `pressureColor`, where the table
+above assigns Ember to `HOT`. Host load is a genuinely separate axis with its
+own owner; every other Ember arrives through a tone.
+
 ### Gem fills (cloisonné)
 
 Pigment-accurate gem colors fail as foreground on Ink (garnet `#830E0D`
@@ -176,6 +202,14 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 - **Corners are cut, not rounded.** `CutCornerShape` everywhere a radius
   exists today. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
   the top corners only. All cuts are 45°.
+- **One shape is allowed to disagree with itself.** The kill control's `Cleft`
+  keeps the 4dp chip facet on three corners and cuts 14dp on the fourth
+  (top-start). It is the only asymmetric shape in the product and it is
+  reserved to destructive controls, which is what makes it legible as
+  meaning rather than as a mistake: architecture's guarantee that detach and
+  kill are visibly different actions has to survive greyscale, and §15
+  forbids the icon that would otherwise carry it. A second asymmetric shape
+  would spend the distinction, so adding one reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
   the side is a regular octagon; circles are elvish in this grammar.
 - **Badges are lozenges.** The attention badge is a rotated square (diamond),
@@ -457,9 +491,16 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon); **(5) the
-Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke
-rule and legibility invariants, the mark on every Dwarves surface).
+build-time fret pipeline, Forge/empty-state art, app icon);
+**(6) destructive and notice chrome**
+([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
+`Cleft` kill geometry, one shared notice panel, and `AngularIndication`
+generalized to the component's own shape as §12 already required);
+**(8) the Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's
+stroke rule and legibility invariants, the mark on every Dwarves surface).
+The numbers are delta numbers, not positions: 5 and 7 are claimed by the
+forge seal and the launcher mark, each specified on its own branch, so the
+grain has gaps and the roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

@@ -39,6 +39,7 @@ S1 tmux control plane
  -> v0 design delta D4: ornament
  -> v0 product-language delta: dwarves
  -> v0 design delta D8: the Hlíðskjálf mark
+ -> v0 design delta D6: destructive and notice chrome
  -> v0.5 (optional): push
 ```
 
@@ -296,6 +297,23 @@ Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
 verification plus icon/ornament checks folded into the next approved platform
 pass.
 
+### D6 — destructive and notice chrome
+
+Outcome: Ember stops meaning five things. One severity type
+(`NoticeTone`/`noticeToneColor`) owns every failure, degradation, and armed
+recovery; staleness moves from Ember to Muted while trust events stay loud;
+the kill control gains `Cleft`, the only asymmetric shape in the product, so
+architecture's "detach and kill are visibly different actions" survives
+greyscale without an icon. Three hand-rolled banner constructions collapse to
+one `NoticePanel` and two hand-rolled kill buttons to one `KillButton`, whose
+`contentDescription` finally distinguishes the kill controls in a grid that
+previously all spoke a bare "Kill". Zero strings change.
+Scope per [destructive-chrome.md](destructive-chrome.md). Numbered 6 because
+5 is claimed by a Forge-seal delta specified on its own branch. Gate: routine
+verification, plus the three rendered proofs (cleft asymmetry, disabled cue
+and spoken target, notice-panel consumers) folded into the next approved
+platform pass.
+
 ## v0 product-language delta — dwarves
 
 Outcome: the UI names each persistent session persona a dwarf while preserving
@@ -375,6 +393,7 @@ orchestration, via a new architecture decision.
 | v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
+| v0 design delta D6 — destructive and notice chrome | Implemented and verified; adversarial review applied (Role.Button, two contrast floors, an EmptyState severity contradiction); routine verification green (45 JVM tests) and the 35-test instrumented suite green on the physical S22+ (devbox debug-signed run); the cleft proof is mutation-checked; the hands-on cleft/stale glance stays `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0.5 push | Not scheduled |

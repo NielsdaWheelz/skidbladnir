@@ -319,6 +319,32 @@ class ProductContractTest {
         }
     }
 
+    @Test
+    fun `destructive copy has one owner so the button and the dialog cannot drift`() {
+        val label = requireNotNull(MachineLabel.parse("MacBook"))
+        val target = AgentTarget(
+            machineHandle,
+            decodeAgentSession(inventorySession("${'$'}1", "ga-durinn", "token")),
+        )
+
+        assertEquals(
+            "the kill control must speak its tmux session and its machine, not a bare \"Kill\"",
+            "Kill ga-durinn on MacBook",
+            killActionLabel(label, target),
+        )
+        assertEquals(
+            "the confirmation title is today's shipped string; this delta changes zero copy",
+            "Kill ga-durinn on MacBook?",
+            killConfirmationTitle(label, target),
+        )
+        assertEquals(
+            "the title must be exactly the action label plus a question mark, or the spoken " +
+                "description and the dialog can name different sessions",
+            killActionLabel(label, target) + "?",
+            killConfirmationTitle(label, target),
+        )
+    }
+
     private fun unknownPressureSample(
         sampledAt: String,
         includeMissingMemoryMetric: Boolean = false,

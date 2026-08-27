@@ -55,6 +55,13 @@ internal object NidavellirShapes {
     // The dwarf seal frame (design-language.md §11, dwarf-seals.md): equal
     // 29% corner cuts on a square produce a regular octagon.
     val Octagon = CutCornerShape(29)
+
+    // The only asymmetric shape in the product: the chip facet is 4dp and the
+    // cleft corner is 14dp, so the control reads as material cleaved off
+    // rather than softened. Kill controls only. Named "Cleft" and not
+    // "Struck" because the seal vocabulary reserves struck/unstruck for
+    // minted-vs-blank, and one word cannot mean both.
+    val Cleft = CutCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp, bottomStart = 4.dp)
 }
 
 // Two roles only in this delta (design-language.md §9): Display carries the
@@ -114,6 +121,22 @@ internal fun statusColor(kind: SessionStatusKind): Color = when (kind) {
     SessionStatusKind.Idle -> Gold
     SessionStatusKind.Shell -> Bronze
     SessionStatusKind.Unknown -> Muted
+}
+
+// One owner for severity (destructive-chrome.md). Ember carried five
+// unrelated jobs — destructive control, failed attempt, stale data, host load,
+// corrupt record — and because one federated host is routinely stale in normal
+// operation, Ember had become the dashboard's resting state and stopped
+// reading as an alarm. Degraded is Muted because staleness is ABSENCE, not
+// failure: it matches UNKNOWN -> Muted (design-language.md §5) and the honesty
+// law (§1.4), absence is displayed rather than alarmed. No new hue is
+// introduced, so §5's four-accent-family cap still holds.
+internal enum class NoticeTone { Failure, Degraded, Armed }
+
+internal fun noticeToneColor(tone: NoticeTone): Color = when (tone) {
+    NoticeTone.Failure -> Ember // an attempt failed, trust broke, or you are ending something
+    NoticeTone.Degraded -> Muted // knowledge is absent or old; nothing is broken
+    NoticeTone.Armed -> Gold // a recovery is waiting on you
 }
 
 // The attention pulse renders static when the system disables animator scale

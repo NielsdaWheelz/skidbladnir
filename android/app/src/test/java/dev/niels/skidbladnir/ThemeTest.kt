@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,6 +33,25 @@ class ThemeTest {
         assertTrue(
             "scale 0.5f is reduced but nonzero; the pulse must still be enabled",
             attentionPulseEnabled(0.5f),
+        )
+    }
+
+    @Test
+    fun `noticeToneColor is injective and paints degradation as absence rather than failure`() {
+        val mapping = NoticeTone.entries.associateWith(::noticeToneColor)
+        val distinctColors = mapping.values.toSet()
+
+        assertEquals(
+            "noticeToneColor must be injective so failure, degradation, and armed recovery are " +
+                "visually distinct; colliding mapping was $mapping",
+            mapping.size,
+            distinctColors.size,
+        )
+        assertNotEquals(
+            "staleness is absence, not failure: Degraded must never be Ember, or a routinely stale " +
+                "host makes the alarm color the dashboard's resting state; mapping was $mapping",
+            Ember,
+            noticeToneColor(NoticeTone.Degraded),
         )
     }
 }
