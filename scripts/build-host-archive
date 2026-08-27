@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ne 7 ]]; then
+  printf 'usage: %s SOURCE_DIRECTORY TAG SOURCE_SHA GOOS GOARCH PLATFORM OUTPUT\n' "$0" >&2
+  exit 64
+fi
+
+tool_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source_dir="$(cd "$1" && pwd -P)"
+tag="$2"
+sha="$3"
+goos="$4"
+goarch="$5"
+platform="$6"
+output="$7"
+
+[[ "$output" == /* && ! -e "$output" && -d "$(dirname "$output")" ]] || {
+  printf 'Host archive output must be a new file under an existing absolute directory\n' >&2
+  exit 1
+}
+
+case "$goos/$goarch/$platform" in
+  linux/amd64/linux-amd64) ;;
+  darwin/arm64/darwin-arm64)
+    [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
+      printf 'Darwin arm64 release binaries require a native Darwin arm64 builder\n' >&2
+      exit 1
+    }
+    ;;
+  *)
+    printf 'Unsupported release host target: %s/%s/%s\n' "$goos" "$goarch" "$platform" >&2
+    exit 1
+    ;;
+esac
+
+staging_dir="$(mktemp -d /tmp/skidbladnir-host-release.XXXXXX)"
+case "$staging_dir" in
+  /tmp/skidbladnir-host-release.* | /private/tmp/skidbladnir-host-release.*) ;;
+  *) printf 'Unexpected host-release staging directory\n' >&2; exit 1 ;;
+esac
+trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
+
+"$tool_repo_dir/scripts/build-host-binary" \
+  "$source_dir" "$tag" "$sha" "$goos" "$goarch" "$staging_dir/skidbladnir"
+install -m 0644 "$source_dir/catalog/characters.json" "$staging_dir/characters.json"
+jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
+  '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"
+chmod 0644 "$staging_dir/release.json"
+COPYFILE_DISABLE=1 tar -C "$staging_dir" -czf "$output" skidbladnir characters.json release.json
