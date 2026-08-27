@@ -16,12 +16,15 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 // The dwarven press flash (design-language.md §12): a circular ripple is
-// off-grammar, so this draws an inset copy of the pressed component's own
-// cut-corner outline at Bone, fading in and out at the pressed state-layer
-// alpha. Each consumer passes the shape it is cut to — the Card for session
-// cards, the Octagon for the Forge seal — so the flash and the component can
-// never be two outlines. The data class supplies the structural equals and
-// hashCode `clickable` needs to skip recomposition.
+// off-grammar, so this draws an inset copy of the component's own cut-corner
+// outline at Bone, fading in and out at the pressed state-layer alpha. §12
+// mandates one implementation used everywhere, so the shape is the caller's —
+// the card presses as a Card, the kill control as a Cleft, the Forge seal as
+// an Octagon.
+// A data class, not an object: structural equals/hashCode let a call site
+// construct `AngularIndication(NidavellirShapes.Cleft)` inline without
+// Modifier.clickable churning across recompositions, which is the guarantee
+// the singleton's identity equals used to provide.
 internal data class AngularIndication(val shape: Shape) : IndicationNodeFactory {
     override fun create(interactionSource: InteractionSource): DelegatableNode =
         AngularIndicationNode(interactionSource, shape)

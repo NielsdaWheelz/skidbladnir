@@ -79,6 +79,10 @@ class MultiMachineUiInstrumentedTest {
             compose.onNodeWithText("Rename").assertDoesNotExist()
             compose.onNodeWithText("Remove machine").assertDoesNotExist()
             compose.onNodeWithText("Remove pairing").assertDoesNotExist()
+            // The unreadable strip is NoticePanel's only title+body consumer, so it is the
+            // only place the banner collapse can drop an optional title and leave a body
+            // orphaned under no heading.
+            compose.onNodeWithText("Unreadable pairing").assertIsDisplayed()
             compose.onNodeWithText("Provisioning repair is required outside this app.", substring = true)
                 .assertIsDisplayed()
         }
@@ -127,6 +131,8 @@ class MultiMachineUiInstrumentedTest {
                         MachinePressureStrip(
                             "MacBook",
                             PressureState.Stale(response, GatewayFailure.Transport),
+                            inventoryStale = false,
+                            supporting = null,
                         )
                     }
                 }

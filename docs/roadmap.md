@@ -38,6 +38,8 @@ S1 tmux control plane
  -> v0 design delta D3: dwarf seals
  -> v0 design delta D4: ornament
  -> v0 product-language delta: dwarves
+ -> v0 design delta D8: the Hlíðskjálf mark
+ -> v0 design delta D6: destructive and notice chrome
  -> v0 design delta D5: the Forge seal
  -> v0.5 (optional): push
 ```
@@ -258,12 +260,14 @@ S22+ platform gate.
 
 ## v0 design deltas — Niðavellir adoption
 
-[`design-language.md`](design-language.md) owns the visual identity these five
-deltas adopt; each delta has its own implementation-boundary spec, red proofs,
-and gates, and lands as its own change. Order is D1 → D2 → D3 → D4 → D5: D1 is
-independent; D2 creates the token system D3, D4, and D5 consume; D5 is late
-because it reshapes the dashboard chrome D2–D4 established. No gateway, tmux,
-public API, or input-semantics work appears anywhere in D1–D5.
+[`design-language.md`](design-language.md) owns the visual identity these
+deltas adopt; each has its own implementation-boundary spec, red proofs, and
+gates, and lands as its own change. Landing order is D1 → D2 → D3 → D4 → D8 →
+D6 → D5: D1 is independent; D2 creates the token system every later one
+consumes; D5 lands last because it reshapes the dashboard chrome the others
+established. D7, the launcher mark, is specified on its own branch and has not
+landed — the numbers are delta numbers, not positions. No gateway, tmux, public
+API, or input-semantics work appears in any of them.
 
 ### D1 — terminal theme
 
@@ -297,17 +301,35 @@ Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
 verification plus icon/ornament checks folded into the next approved platform
 pass.
 
+### D6 — destructive and notice chrome
+
+Outcome: Ember stops meaning five things. One severity type
+(`NoticeTone`/`noticeToneColor`) owns every failure, degradation, and armed
+recovery; staleness moves from Ember to Muted while trust events stay loud;
+the kill control gains `Cleft`, the only asymmetric shape in the product, so
+architecture's "detach and kill are visibly different actions" survives
+greyscale without an icon. Three hand-rolled banner constructions collapse to
+one `NoticePanel` and two hand-rolled kill buttons to one `KillButton`, whose
+`contentDescription` finally distinguishes the kill controls in a grid that
+previously all spoke a bare "Kill". Zero strings change.
+Scope per [destructive-chrome.md](destructive-chrome.md). Numbered 6 because
+5 is claimed by a Forge-seal delta specified on its own branch. Gate: routine
+verification, plus the three rendered proofs (cleft asymmetry, disabled cue
+and spoken target, notice-panel consumers) folded into the next approved
+platform pass.
+
 ### D5 — the Forge seal
 
 Outcome: the create action leaves the dashboard header and becomes a
 bottom-trailing 56dp octagonal control carrying the unstruck seal — the D3
 seal with every trait at zero — lit when a machine can create and cold when
-none can. Scope per [forge-seal.md](forge-seal.md). Sequenced after the
-dashboard pull-to-refresh delta, which owns the header's other button; the two
-split by concern, pull-to-refresh owning the refresh gesture and inventory
-intent and D5 owning the dashboard's action chrome. Gate: routine verification
-plus one separately approved platform pass; the mark's legibility and the
-lit/cold glance are hands-on and stay `NOT_RUN` until approved.
+none can. Scope per [forge-seal.md](forge-seal.md). It shares the header with
+the dashboard pull-to-refresh delta, which owns the other button; the two split
+by concern — pull-to-refresh owns the refresh gesture and the inventory intent,
+D5 owns the dashboard's action chrome — and each proves only its own half, so
+the code merges in either order. Gate: routine verification plus one separately
+approved platform pass; the mark's legibility and the lit/cold glance are
+hands-on and stay `NOT_RUN` until approved.
 
 ## v0 product-language delta — dwarves
 
@@ -329,6 +351,37 @@ session keeps running.
 Acceptance: focused Android unit proof for detach lifetime copy, compiled
 instrumentation assertions for dashboard language, routine verification, and
 the next separately approved platform pass for rendered-device confirmation.
+
+## v0 design delta D8 — the Hlíðskjálf mark
+
+Outcome: the valknut marks the Dwarves surface wherever that surface is named,
+and its weave is legible at every size it renders — which it was at none of
+them before.
+
+- The mark leads the `Dwarves` title at 24dp in Gold, leads both `Back to
+  Dwarves` affordances at 18dp in their button's own content colour, and keeps
+  the empty grid at 48dp in Muted at 40%. One composable renders all four.
+- The generator's crossing break becomes `_VALKNUT_GAP = 0.36`, the first width
+  that leaves no surviving strand shorter than the stroke is wide, and
+  `drawValknut` scales its stroke with the mark instead of fixing it at 2dp.
+- The detach control gets no mark: it names what happens to the session, not
+  where the button goes.
+
+Numbered D8 behind three deltas that are specified on their own branches and
+not yet on main — D5 the forge seal, D6 destructive chrome, D7 the launcher
+mark. D8 lands first, and D7 sequences behind it because both edit
+`scripts/gen-ornament`.
+
+Red: the mark for the dwarves renders only when there are none, and at the one
+size it did render its six crossings closed to about a physical pixel — the
+shortest strand was `1.37dp` long under a `2dp` stroke.
+
+Acceptance: two JVM geometry proofs holding the legibility invariant against
+the stroke ratio rather than against a size, an instrumented proof that the
+top-bar mark leads the literal title and stays semantics-silent, the existing
+ornament drift gate, routine verification, and the next separately approved
+platform pass plus one hands-on 18dp glance for rendered-device confirmation.
+Scope per [hlidskjalf-mark.md](hlidskjalf-mark.md).
 
 ## v0.5 — optional, after corrected v0 is in daily use
 
@@ -357,6 +410,8 @@ orchestration, via a new architecture decision.
 | v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
+| v0 design delta D6 — destructive and notice chrome | Implemented and verified; adversarial review applied (Role.Button, two contrast floors, an EmptyState severity contradiction); routine verification green (45 JVM tests) and the 35-test instrumented suite green on the physical S22+ (devbox debug-signed run); the cleft proof is mutation-checked; the hands-on cleft/stale glance stays `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
-| v0 design delta D5 — the Forge seal | Implemented; routine verification and the 35-test instrumented S22+ suite green (up from 33 — the lit and cold seal proofs); the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
+| v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
+| v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0.5 push | Not scheduled |

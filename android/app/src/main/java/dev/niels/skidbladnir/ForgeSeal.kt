@@ -34,10 +34,6 @@ internal val UnstruckMark: List<Pair<Offset, Offset>> = listOf(
     Offset(0.5f - 0.19f, 0.5f) to Offset(0.5f + 0.19f, 0.5f),
 )
 
-// Held here rather than remembered per composition so no instance is allocated
-// per recomposition (forge-seal.md, "API design").
-private val SealIndication = AngularIndication(NidavellirShapes.Octagon)
-
 // The Forge seal (design-language.md §13, forge-seal.md): the dashboard's
 // create control, a 56dp octagon carrying the unstruck mark. Lit in ForgeGlow
 // and Gold when some machine can forge, cold stone when none can — field and
@@ -60,7 +56,7 @@ internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit) {
             .size(56.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = SealIndication,
+                indication = AngularIndication(NidavellirShapes.Octagon),
                 enabled = canForge,
                 role = Role.Button,
                 onClick = onClick,

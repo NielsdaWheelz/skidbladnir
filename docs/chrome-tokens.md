@@ -158,6 +158,17 @@ Unknown→Muted`.
   internally (buttons, text fields, the Forge's profile `FilterChip`) keeps
   the platform ripple in this delta; unifying them is a listed non-goal
   until reviewed on-device.
+  **Superseded by D6** ([destructive-chrome.md](destructive-chrome.md)):
+  `AngularIndication` shipped here as a singleton hardcoding the `Card` cut,
+  with a note that a second consumer of another shape reopens this document.
+  D6 reopened it — the kill control's press flash has no legal alternative,
+  since the platform ripple is circular and §15 forbids circular ripples. It
+  is now `AngularIndication(shape)`, a data class whose structural equality
+  keeps `Modifier.clickable` from churning; the card passes `Card` and the
+  kill control passes `Cleft`. This is what design-language §12 asked for in
+  the first place — "an inset copy of the component's own cut-corner outline
+  … one implementation, used everywhere" — so the singleton, not the
+  parameter, was the deviation.
 - **Disabled**: 38% content / 12% container plus one non-opacity cue (chip
   hairline dropped).
 

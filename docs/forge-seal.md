@@ -196,10 +196,10 @@ internal fun octagonVertices(size: Size): List<Offset>
 // Theme.kt — collapsed; see "Reuse and consolidation".
 internal fun DrawScope.drawFretBand(color: Color)
 
-// AngularIndication.kt — object -> data class; structural equals/hashCode
-// come from the data class and the hand-written overrides are deleted. The
-// `val` is not private: a private one in a data class primary constructor
-// still generates a public `component1()`, and the class is already internal.
+// AngularIndication.kt — already shape-parameterised on main: the destructive
+// chrome delta (D6) needed a Cleft-shaped press for the kill control and made
+// the same object -> data class change D5 had specified. D5 consumes it as-is
+// and adds the third shape.
 internal data class AngularIndication(val shape: Shape) : IndicationNodeFactory
 
 // ForgeSeal.kt (new) — the mark in the control's unit box, exactly two
@@ -224,10 +224,11 @@ there must therefore stay JVM-safe — the one `private val` holding
 or `Stroke` would not be, and would fail `ForgeSealTest` for a reason that has
 nothing to do with the mark.
 
-Each consumer holds its own `private val` indication instance
-(`AngularIndication(NidavellirShapes.Card)` in `DashboardScreen.kt`,
-`AngularIndication(NidavellirShapes.Octagon)` in `ForgeSeal.kt`) so no instance
-is allocated per recomposition and no shared symbol is introduced.
+Each consumer constructs its own indication inline, as
+`AngularIndication(NidavellirShapes.Card)` and
+`AngularIndication(NidavellirShapes.Cleft)` already do: the data class's
+structural equality is what stops `Modifier.clickable` churning across
+recompositions, so hoisting the instance buys nothing.
 
 No HTTP, WSS, tmux, gateway, DTO, persistence, credential, controller-intent, or
 terminal change. No dependency is added.

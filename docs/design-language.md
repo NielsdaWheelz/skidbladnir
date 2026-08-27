@@ -143,6 +143,32 @@ Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
 `SHELL` Bronze · `UNKNOWN` Muted. Pressure keeps Normal Moss · Warm Gold ·
 Hot Ember · Unknown Muted.
 
+### Severity tones
+
+Severity has exactly one owner (`noticeToneColor`, D6). Ember is not a colour
+a surface may reach for; it is what one tone resolves to.
+
+| Tone | Colour | Means |
+| --- | --- | --- |
+| Failure | Ember | An attempt failed, trust broke, or you are ending something |
+| Degraded | Muted | Knowledge is absent or old; nothing is broken |
+| Armed | Gold | A recovery is waiting on you |
+
+Two rules follow, and both are load-bearing:
+
+- **Staleness is absence, not failure.** Degraded is Muted, matching `UNKNOWN`
+  → Muted above and the honesty law (§1.4): absence is displayed, not alarmed.
+  Ember spent on routine staleness is Ember spent on nothing — in a federation
+  one host is out often enough that the alarm becomes the resting state.
+- **Trust events are the loud ones.** A broken bearer or a changed identity is
+  Failure even when that machine's inventory is perfectly current, because
+  what failed is knowing who we are talking to.
+
+The bare `Ember` token survives in exactly two places in the app: its
+definition beside `noticeToneColor`, and `pressureColor`, where the table
+above assigns Ember to `HOT`. Host load is a genuinely separate axis with its
+own owner; every other Ember arrives through a tone.
+
 ### Gem fills (cloisonné)
 
 Pigment-accurate gem colors fail as foreground on Ink (garnet `#830E0D`
@@ -176,6 +202,14 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 - **Corners are cut, not rounded.** `CutCornerShape` everywhere a radius
   exists today. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
   the top corners only. All cuts are 45°.
+- **One shape is allowed to disagree with itself.** The kill control's `Cleft`
+  keeps the 4dp chip facet on three corners and cuts 14dp on the fourth
+  (top-start). It is the only asymmetric shape in the product and it is
+  reserved to destructive controls, which is what makes it legible as
+  meaning rather than as a mistake: architecture's guarantee that detach and
+  kill are visibly different actions has to survive greyscale, and §15
+  forbids the icon that would otherwise carry it. A second asymmetric shape
+  would spend the distinction, so adding one reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
   the side is an octagon; circles are elvish in this grammar. The exactly
   regular cut is (2−√2)/2 ≈ 29.29%; 29% is the shipped round number, which puts
@@ -232,9 +266,16 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
 ## 8. Iconography and runes
 
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
-  triangles, Borromean topology — the seat that overlooks every world. Usable
-  as the grid's empty-state mark and the app icon's core. Pure straight lines;
-  render at 24dp+ with 2dp stroke.
+  triangles, Borromean topology — the seat that overlooks every world. It marks
+  the Dwarves surface wherever that surface is named — the dashboard title
+  lockup, every affordance that returns to it, and the empty grid — and the app
+  icon's core stays its other permitted use. Pure straight lines. Its stroke is
+  a fraction of the mark's own size, never a fixed dp: a fixed stroke is a
+  larger share of a smaller mark, so it closes the baked crossings as the mark
+  shrinks. Legibility is therefore an invariant and not a size — every strand
+  is at least as long as its own stroke is wide, and every baked break at least
+  twice as wide — and it is proved on the geometry rather than eyeballed.
+  [hlidskjalf-mark.md](hlidskjalf-mark.md) owns the constants and the proofs.
 - **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
   rune *glyphs* — at most one inert divider glyph per screen — render as
   real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
@@ -417,6 +458,11 @@ it as a red test, not an assumption.
   under the title (Gold 40%, even unit count), Display-face title, mono cwd
   field (autocorrect off is architecture-owned). Invalid drafts preserved;
   error text plain Ember body — no ornament near errors (§1.4).
+- **The Hlíðskjálf mark**: 24dp Gold leading the `Dwarves` title, 18dp at the
+  button's own content colour leading each affordance that returns there, 48dp
+  Muted at 40% on the empty grid. One composable, semantics-silent everywhere.
+  The detach control carries no mark: it names what happens to the session, not
+  where the button goes.
 - **The Forge seal**: the create control. A 56dp octagon anchored at the
   dashboard's bottom trailing corner over the grid, carrying the unstruck
   seal (§8). Lit = ForgeGlow field, Gold frame and mark; cold = DeepSurface
@@ -471,9 +517,18 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon); **(5) the Forge
-seal** ([forge-seal.md](forge-seal.md) — §8's unstruck seal, the bottom-anchored
-create control, and the octagon and indication primitives it forces open).
+build-time fret pipeline, Forge/empty-state art, app icon);
+**(5) the Forge seal** ([forge-seal.md](forge-seal.md) — §8's unstruck seal and
+the bottom-anchored create control, on the octagon geometry it extracts);
+**(6) destructive and notice chrome**
+([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
+`Cleft` kill geometry, one shared notice panel, and `AngularIndication`
+generalized to the component's own shape as §12 already required);
+**(8) the Hlíðskjálf mark** ([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's
+stroke rule and legibility invariants, the mark on every Dwarves surface).
+The numbers are delta numbers, not positions: 7 is claimed by the launcher
+mark, specified on its own branch, so the grain has a gap there and the
+roadmap's D-numbers and these agree.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 
