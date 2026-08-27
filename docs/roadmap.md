@@ -169,7 +169,7 @@ while machine administration leaves the app and the dense v0 dashboard returns.
   missing inputs, platform-unsupported metrics, and pressure reasons.
 
 Acceptance: red pressure component proof, routine static/unit verification, the
-exact 15-test S22+ platform gate, exact live gateway publication, and the
+exact 16-test S22+ platform gate, exact live gateway publication, and the
 physical healthy/outage/recovery journey are green.
 
 ## v0 review corrective layer
@@ -188,9 +188,11 @@ finding fixed at the source.
   detection of skipped journeys, both-host read-only guards) fixed per
   `docs/rules`.
 
-Acceptance: routine static and unit gates are green. Both isolated host tmux
-gates, live publication, the platform gate, and the physical product journey
-are `NOT_RUN` for this layer; the acceptance rows above predate it.
+Acceptance: routine static and unit gates; the isolated integration suite on
+Linux and Darwin; the Linux live grouped-session proof; exact Devbox and
+MacBook install/reinstall publication; the exact 16-test S22+ platform gate;
+and the physical healthy/outage/recovery journey are green. These external
+runs re-prove both acceptance rows above against the corrected tree.
 
 ## v0.5 — optional, after corrected v0 is in daily use
 
@@ -210,6 +212,6 @@ orchestration, via a new architecture decision.
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
 | v0 multi-machine hard cut | Implemented, published to Devbox and MacBook, paired on S22+, and green across routine, both host, platform, and physical product gates |
-| v0 fixed-topology dashboard cut | Implemented and published; routine, exact 15-test S22+ platform, and physical healthy/outage/recovery product gates green |
-| v0 review corrective layer | Source implemented; routine gates green; every external gate `NOT_RUN` for this layer |
+| v0 fixed-topology dashboard cut | Implemented and published; routine, exact 16-test S22+ platform, and physical healthy/outage/recovery product gates green on the corrected tree |
+| v0 review corrective layer | Implemented and published; routine, both-host integration, Linux live, exact 16-test S22+ platform, and physical product gates green |
 | v0.5 push | Not scheduled |
