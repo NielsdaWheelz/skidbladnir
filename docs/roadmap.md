@@ -33,7 +33,10 @@ S1 tmux control plane
  -> v0 profile delta: Devbox Claude Work
  -> v0 identity delta: automatic dwarf identity
  -> v0 terminal key-deck delta
- -> v0 design deltas D1-D4 (specification only)
+ -> v0 design delta D1: terminal theme
+ -> v0 design delta D2: chrome tokens
+ -> v0 design delta D3: dwarf seals
+ -> v0 design delta D4: ornament
  -> v0.5 (optional): push
 ```
 
@@ -251,15 +254,45 @@ mixing navigation or detach actions into terminal bytes.
 Acceptance: pure/native terminal proofs, routine verification, and the exact
 S22+ platform gate.
 
-## v0 design deltas D1-D4 — specified, not implemented
+## v0 design deltas — Niðavellir adoption
 
-[`design-language.md`](design-language.md) owns the Niðavellir visual target;
-[`terminal-theme.md`](terminal-theme.md), [`chrome-tokens.md`](chrome-tokens.md),
-[`dwarf-seals.md`](dwarf-seals.md), and
-[`ornament-pipeline.md`](ornament-pipeline.md) are separate draft
-specifications pending review.
-They do not authorize source work in this merge and do not alter gateway,
-tmux, public API, or terminal-input semantics.
+[`design-language.md`](design-language.md) owns the visual identity these four
+deltas adopt; each delta has its own implementation-boundary spec, red proofs,
+and gates, and lands as its own change. Order is D1 → D2 → D3 → D4: D1 is
+independent; D2 creates the token system D3 and D4 consume. No gateway, tmux,
+public API, or input-semantics work appears anywhere in D1–D4.
+
+### D1 — terminal theme
+
+Outcome: the terminal renders the derived Niðavellir ANSI/ITheme table in
+vendored JetBrains Mono behind the unchanged bundle-only CSP posture.
+Scope and ownership per [terminal-theme.md](terminal-theme.md). Gate: routine
+verification plus one separately approved platform pass; no integration gate
+for this unchanged transport boundary.
+
+### D2 — chrome tokens
+
+Outcome: one owned token file (color, shape, type, motion, interaction
+states) and every Compose surface — pairing, grid, Forge, terminal chrome,
+key deck styling — consuming it; `SHELL` becomes visually distinct from
+`RUNNING`. Scope and ownership per [chrome-tokens.md](chrome-tokens.md).
+Gate: routine verification plus one separately approved platform pass.
+
+### D3 — dwarf seals
+
+Outcome: the procedural portrait becomes the deterministic Niðavellir seal
+(octagon, mineral field, Younger-Futhark bind-rune, angular figure), a pure
+function of `character.key`. Scope per [dwarf-seals.md](dwarf-seals.md).
+Gate: routine verification; the named 48dp distinguishability check is a
+hands-on device pass and stays `NOT_RUN` until approved.
+
+### D4 — ornament
+
+Outcome: the build-time-generated Forge fret band, the valknut empty-state
+mark, and the adaptive app icon.
+Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
+verification plus icon/ornament checks folded into the next approved platform
+pass.
 
 ## v0.5 — optional, after corrected v0 is in daily use
 
@@ -284,5 +317,8 @@ orchestration, via a new architecture decision.
 | v0 profile delta — Devbox Claude Work | Integrated; routine and exact-tree external acceptance are owned by the merged candidate gates |
 | v0 identity delta — automatic dwarf identity | Integrated hard cut; routine and isolated Linux/Darwin acceptance are owned by the merged candidate gates |
 | v0 terminal key-deck delta | Integrated; routine and exact S22+ platform acceptance are owned by the merged candidate gates |
-| v0 design deltas D1-D4 | Specifications present; source not started |
+| v0 design delta D1 — terminal theme | Source implemented; routine verification and the 33-test instrumented S22+ suite green on the federated tree (devbox debug-signed run; the signed deviceDebug platform gate is MacBook-owned); hands-on OLED dim-text/256-color check `NOT_RUN` |
+| v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
+| v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
+| v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0.5 push | Not scheduled |

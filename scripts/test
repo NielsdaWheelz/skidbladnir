@@ -498,6 +498,7 @@ case "$gate" in
     run hook-json sh -c 'jq -e . "$@" >/dev/null' sh deploy/devbox/status-hooks.json deploy/macbook/status-hooks.json
     run catalogue-static ./scripts/check-catalogue
     run terminal-assets-static ./scripts/check-terminal-assets
+    run ornament-static ./scripts/check-ornament
     run go-mod-verify go mod verify
     run go-vet go vet ./...
     run go-vet-integration go vet -tags=integration ./tests/integration ./internal/machine ./internal/process ./internal/pressure

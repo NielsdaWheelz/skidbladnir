@@ -215,8 +215,9 @@ Two families, split by scale, never blended:
 Both families are generated at build time by a deterministic script emitting
 checked-in path constants ([ornament-pipeline.md](ornament-pipeline.md) owns
 the pipeline; an SVG → [Valkyrie](https://github.com/ComposeGears/Valkyrie)
-route is an acceptable alternative), and drawn as one cached tile via
-`ShaderBrush(ImageShader(tile, Repeated, Repeated))` inside `drawWithCache`.
+route is an acceptable alternative), and drawn by stroking the
+checked-in segments from cached geometry (a `ShaderBrush` image tile is the
+fallback if profiling ever demands it).
 Knot topology is never computed on-device at runtime. License notes for
 reference implementations: jamis/celtic_knot public domain (concept source),
 bezborodow/celtic-knot BSD-3 (usable), rspencer01/celtic MIT (readable);

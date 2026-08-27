@@ -72,6 +72,7 @@ internal fun TerminalScreen(
                     text = "${state.machine.machine.label.text} · ${terminalPresence(state)}",
                     color = terminalPresenceColor(state.connection),
                     style = MaterialTheme.typography.labelSmall,
+                    fontFamily = NidavellirType.Data,
                     maxLines = 1,
                     modifier = Modifier.testTag(terminalStatusTag(state.connection)),
                 )

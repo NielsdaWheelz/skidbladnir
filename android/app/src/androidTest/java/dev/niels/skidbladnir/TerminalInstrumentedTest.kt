@@ -56,7 +56,7 @@ class TerminalInstrumentedTest {
             assertEquals("Skíðblaðnir terminal", evaluate(webView, "document.title"))
             assertEquals("1", evaluate(webView, "document.querySelectorAll('.xterm-helper-textarea').length"))
             assertEquals(
-                "default-src 'none'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "default-src 'none'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; script-src 'self'; img-src 'none'; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
                 evaluate(webView, "document.querySelector('meta[http-equiv=\\\"Content-Security-Policy\\\"]').content"),
             )
             val settings = onUi(scenario) {
@@ -71,9 +71,10 @@ class TerminalInstrumentedTest {
             assertEquals(listOf(false, false, true, false, false), settings)
             assertEquals(100, onUi(scenario) { webView.settings.textZoom })
             assertFalse(onUi(scenario) { webView.isHorizontalScrollBarEnabled })
-            val size = TerminalTestProbe.sizes.poll(5, TimeUnit.SECONDS)
-            assertNotNull("terminal did not publish its initial size", size)
-            assertTrue(requireNotNull(size).let { it.first in 80..240 && it.second in 5..120 })
+            // Geometry reaches native only once the vendored font has settled,
+            // so every sample published across page load must already conform.
+            val size = awaitSettledSizeWithAllSamplesConforming()
+            assertTrue("terminal published an out-of-range size: $size", size.first in 80..240 && size.second in 5..120)
         }
     }
 
@@ -387,7 +388,7 @@ class TerminalInstrumentedTest {
                     var foreground = spans.find(function (node) { return node.textContent === 'TRUECOLOR BLUE'; });
                     var background = spans.find(function (node) { return node.textContent === ' BACKGROUND BLUE '; });
                     return indexed && foreground && background &&
-                        getComputedStyle(indexed).color === 'rgb(224, 108, 117)' &&
+                        getComputedStyle(indexed).color === 'rgb(215, 78, 51)' &&
                         getComputedStyle(foreground).color === 'rgb(97, 175, 239)' &&
                         getComputedStyle(background).backgroundColor === 'rgb(97, 175, 239)';
                 }())
@@ -421,6 +422,42 @@ class TerminalInstrumentedTest {
                         Color.green(pixel) in 145..205 &&
                         Color.blue(pixel) in 210..255
                 },
+            )
+        }
+    }
+
+    @Test
+    fun brightAnsiAndCursorPaintGoldWhileGrayscaleRemapsAndTheCubeStaysDefault() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
+            focusTerminal(scenario, webView)
+            requireNotNull(TerminalTestProbe.page).write(
+                ("\u001b[93mBRIGHT YELLOW\u001b[0m " +
+                    "\u001b[38;5;244mGRAYSCALE 244\u001b[0m " +
+                    "\u001b[38;5;21mCUBE 21\u001b[0m").toByteArray(),
+            )
+            // The focused block cursor blinks, so poll until its lit phase.
+            // Cube 21 keeps the library default #0000ff, which is 2.3:1 on Ink
+            // and therefore lifted to #4646ff by minimumContrastRatio 3; a
+            // contiguous-24 extendedAnsi array would paint it from the
+            // grayscale ramp instead.
+            awaitValue(
+                webView,
+                """
+                (function () {
+                    var spans = Array.from(document.querySelectorAll('.xterm-rows span'));
+                    var bright = spans.find(function (node) { return node.textContent === 'BRIGHT YELLOW'; });
+                    var grayscale = spans.find(function (node) { return node.textContent === 'GRAYSCALE 244'; });
+                    var cube = spans.find(function (node) { return node.textContent === 'CUBE 21'; });
+                    var cursor = document.querySelector('.xterm-rows .xterm-cursor');
+                    return bright && grayscale && cube && cursor &&
+                        getComputedStyle(bright).color === 'rgb(214, 168, 95)' &&
+                        getComputedStyle(grayscale).color === 'rgb(133, 131, 128)' &&
+                        getComputedStyle(cube).color === 'rgb(70, 70, 255)' &&
+                        getComputedStyle(cursor).backgroundColor === 'rgb(214, 168, 95)';
+                }())
+                """.trimIndent(),
+                "true",
             )
         }
     }
@@ -716,11 +753,10 @@ class TerminalInstrumentedTest {
         assertTrue("IME composition was rejected", accepted)
     }
 
-    private fun withTerminalInputConnection(
+    private fun focusTerminal(
         scenario: ActivityScenario<TerminalTestActivity>,
         webView: WebView,
-        block: (InputConnection) -> Boolean,
-    ): Boolean {
+    ) {
         assertTrue(
             "WebView could not take terminal input focus",
             onUi(scenario) {
@@ -734,7 +770,14 @@ class TerminalInstrumentedTest {
             "document.hasFocus() && document.activeElement === document.querySelector('.xterm-helper-textarea')",
             "true",
         )
+    }
 
+    private fun withTerminalInputConnection(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        block: (InputConnection) -> Boolean,
+    ): Boolean {
+        focusTerminal(scenario, webView)
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (System.nanoTime() < deadline) {
             val (available, accepted) = onUi(scenario) {

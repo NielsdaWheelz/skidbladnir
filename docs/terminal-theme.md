@@ -1,6 +1,9 @@
 # Design delta D1: terminal theme
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26; routine verification green on the
+federated tree; the 33-test instrumented suite green on the physical S22+
+(devbox debug-signed run — the signed deviceDebug platform gate is
+MacBook-owned); the hands-on OLED comfort check stays `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) §10 owns the palette values and

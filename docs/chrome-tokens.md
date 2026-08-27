@@ -1,6 +1,11 @@
 # Design delta D2: chrome tokens
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26 with adversarial-review fixes applied;
+re-woven over the multi-machine federation the same day. Routine
+verification green; the 33-test instrumented suite green on the physical
+S22+ (devbox debug-signed run — the signed deviceDebug platform gate is
+MacBook-owned); the hands-on pass (incl. the Forge warm-in) stays
+`NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including literal labels, 48dp targets, and the distinct-status-color
@@ -45,7 +50,11 @@ input-semantics, or behavior change of any kind.
 ### Owned tokens (new file `Theme.kt`)
 
 ```text
-internal object NidavellirColors
+// Colors ship as flat top-level internal vals in Theme.kt (not an object):
+// the nine existing vals moved verbatim, and the three screen files already
+// reference them as bare same-package symbols — wrapping would force edits
+// the hard cut does not require.
+NidavellirColors (flat vals)
   Ink #0C0D0F, DeepSurface #15171A, RaisedSurface #202329, ForgeGlow #28231A,
   Bone #F3F0E8, Muted #AAA69D,
   Gold #D6A85F, Ember #E46C55, Moss #76B082, Frost #78A9C6,
@@ -69,10 +78,12 @@ internal object NidavellirType
 
 internal object NidavellirMotion
   EffectsTween   = tween(100ms, standard easing)         // never a spring
-  SpatialSpring  = spring(dampingRatio 0.85–1.0, stiffness 400–1500)
   ForgeWarmIn    = tween(400ms)                          // the one ambient
-  StateLayer     = hover .08f, focus .10f, pressed .10f, dragged .16f
+  StateLayer     = pressed .10f
   DisabledAlpha  = content .38f, container .12f
+  // SpatialSpring and the hover/focus/dragged state-layer constants
+  // (design language §12) join with their first consumer — nothing in this
+  // delta animates layout or has hover/drag surfaces; no speculative tokens.
 
 internal fun statusColor(kind: SessionStatusKind): Color   // exhaustive, injective
 internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean
@@ -105,8 +116,9 @@ Unknown→Muted`.
 - **Bearer-repair screen**: wordmark `SKÍÐBLAÐNIR` in Display caps; layout,
   copy, and flow unchanged.
 - **Grid cards**: DeepSurface, `Card` shape, a single top-edge Gold hairline
-  at 25% alpha, diminuendo stack — dwarf display name in Display, tmux
-  name/profile in body, runtime facts in Data.
+  at 25% alpha, diminuendo stack — dwarf display name in Display, tmux name
+  in body, and the profile label joining the runtime-facts line in Data (the
+  existing fact grouping is behavior and stays).
 - **Status chips**: the app's hand-rolled status `Surface` (not an M3 chip
   component) takes the `Chip` shape, fill = status color at 18% over
   surface, 1dp hairline and label in the status color, label + named
@@ -186,7 +198,14 @@ Red (each observed failing first):
    names render in Big Shoulders, not a fallback).
 6. Instrumented: with animations disabled (the existing
    `animationsDisabled = true` test config), the attention badge renders
-   static at full opacity and the Forge opens with no warm-in.
+   static at full opacity (pixel-asserted), and the Forge sheet opens and
+   settles with all animations resolved. `ModalBottomSheet` ANRs the S22+
+   under a `createComposeRule`-owned host activity in every tested variant
+   (paused clock, running clock, bare `assertIsDisplayed`); it composes fine
+   when the suite drives a real activity via `ActivityScenario` +
+   `createEmptyComposeRule` (the multi-machine journey opens the Forge that
+   way). The warm-in *look* (opens lit in ForgeGlow, no strand) still
+   belongs to the hands-on pass.
 
 Green: implement only enough to satisfy those proofs plus the visual
 contract; routine `scripts/test verify` stays green and device-free.

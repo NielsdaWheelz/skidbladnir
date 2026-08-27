@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <activity
+            android:name=".SealGalleryActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity
             android:name=".TerminalTestActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false"

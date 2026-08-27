@@ -1,6 +1,10 @@
 # Design delta D4: ornament
 
-Status: spec drafted 2026-08-26; review pending; source not started.
+Status: implemented 2026-08-26; routine verification (including the
+ornament drift gate) green; the 33-test instrumented suite green on the
+physical S22+ (devbox debug-signed run); the hands-on ornament/icon glance
+stays `NOT_RUN`. The interlace band was removed with the pairing screen in
+the multi-machine cut.
 Depends on D2 ([chrome-tokens.md](chrome-tokens.md)) for tokens and shapes.
 
 [`design-language.md`](design-language.md) §7 (ornament families and
@@ -9,10 +13,10 @@ design; this document owns the build pipeline and implementation boundary.
 
 ## Outcome
 
-The app gains its four pieces of authored ornament — the Forge fret band,
-the bearer-repair interlace band, the valknut empty-state mark, and the
-adaptive app icon — all generated or authored at build time, checked in as
-source, drift-gated, and semantics-invisible. No ornament is computed on the
+The app gains its three pieces of authored ornament — the Forge fret band,
+the valknut empty-state mark, and the adaptive app icon — all generated or
+authored at build time, checked in as source, drift-gated, and
+semantics-invisible. No ornament is computed on the
 phone at runtime beyond drawing pre-built paths.
 
 ## Goals and rules
@@ -21,8 +25,10 @@ phone at runtime beyond drawing pre-built paths.
   (design language §7). The phone draws checked-in path constants; repeating
   bands tile one cached cell.
 - **Two families, split by scale, never blended**: the angular fret family
-  for chrome bands; woven interlace only on the bearer-repair surface where stroke
-  ≥ 3dp. No zoomorphic elements anywhere.
+  for chrome bands; woven interlace only at large scale — in v0 that is the
+  valknut empty-state mark alone (the multi-machine cutover deleted the
+  pairing screen, the interlace band's only chrome surface). No zoomorphic
+  elements anywhere.
 - **Ornament is silent and subordinate**: decoration carries no semantics,
   never intercepts input, sits at ≤ 40% opacity in Muted or Gold, and every
   screen remains complete with ornament deleted (geometry-first rule).
@@ -44,9 +50,11 @@ phone at runtime beyond drawing pre-built paths.
      the corner rule in the design language, not here).
   2. **Valknut**: the tricursal form — three interlocked triangles,
      Borromean topology, straight lines only.
-  3. **Ship prow**: the launcher mark — the existing gold prow glyph redrawn
-     in the Niðavellir grammar (straight segments and facets only, Gold on
-     Ink) as adaptive-icon foreground and monochrome layers.
+  3. **Ship prow**: the launcher mark — the existing gold prow glyph
+     refaceted into the Niðavellir grammar (straight segments only) and
+     emitted solely as the adaptive-icon foreground/monochrome drawable; the
+     geometry stays generator-internal with no Kotlin constant, because
+     nothing at runtime reads it (no dead code ships).
 - The generated file is checked in. `scripts/check-ornament` (Python 3,
   stdlib only, like its sibling checks) regenerates to a temporary path and
   byte-compares — drift between generator and checked-in source fails the

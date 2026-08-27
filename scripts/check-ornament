@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Drift- and determinism-gate the generated ornament geometry (Ornament.kt,
+the adaptive-icon foreground) against scripts/gen-ornament."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+GENERATOR_PATH = ROOT / "scripts" / "gen-ornament"
+
+# Importing a sibling script (below) would otherwise leave a stray
+# scripts/__pycache__/ behind on every run.
+sys.dont_write_bytecode = True
+
+
+def fail(message: str) -> None:
+    raise ValueError(message)
+
+
+def load_generator():
+    # scripts/gen-ornament has no .py suffix, so the loader must be named
+    # explicitly rather than guessed from the extension.
+    loader = SourceFileLoader("gen_ornament", str(GENERATOR_PATH))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        fail(f"could not load generator at {GENERATOR_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def check_determinism(build_outputs) -> dict[str, bytes]:
+    first = build_outputs()
+    second = build_outputs()
+    if first != second:
+        fail("two consecutive scripts/gen-ornament runs produced different bytes")
+    return first
+
+
+def check_no_drift(outputs: dict[str, bytes]) -> None:
+    for relative, expected in outputs.items():
+        checked_in_path = ROOT / relative
+        if not checked_in_path.exists():
+            fail(f"generated file is missing from the checked-in tree: {relative}")
+        actual = checked_in_path.read_bytes()
+        if actual != expected:
+            fail(f"checked-in file has drifted from scripts/gen-ornament: {relative}")
+
+
+def main() -> int:
+    try:
+        generator = load_generator()
+        outputs = check_determinism(generator.build_outputs)
+        check_no_drift(outputs)
+    except (OSError, ValueError) as error:
+        print(f"ornament check failed: {error}", file=sys.stderr)
+        return 1
+    print(f"ornament check passed: {len(outputs)} generated files")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -82,12 +83,52 @@ def load_frozen_inventory() -> list[dict[str, str]]:
     return entries
 
 
+def seal_spec(key: str) -> tuple[int, tuple[int, ...], int, int, int, str]:
+    """Transcribed from SealSpec.kt's frozen formulas (dwarf-seals.md). A
+    formula drift between this script and the Kotlin port is caught by the
+    Kotlin side's golden-vector tests, not here."""
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    mineral = digest[0] % 8
+    rune_count = 2 + (digest[4] & 1)
+    runes: list[int] = []
+    for offset in range(8):
+        candidate = digest[5 + offset] % 16
+        if candidate not in runes:
+            runes.append(candidate)
+        if len(runes) == rune_count:
+            break
+    beard_teeth = 3 + (digest[8] % 4)
+    beard_depth_step = digest[9] % 4
+    facet_mask = digest[12]
+    metal = "Gold" if (digest[14] & 1) == 1 else "Bronze"
+    return (mineral, tuple(runes), beard_teeth, beard_depth_step, facet_mask, metal)
+
+
+def check_seal_distinctness(catalogue: list[dict[str, str]]) -> None:
+    seals: dict[tuple, str] = {}
+    projections: dict[tuple[int, tuple[int, ...]], str] = {}
+    for entry in catalogue:
+        key = entry["key"]
+        spec = seal_spec(key)
+        if spec in seals:
+            fail(f"seal collision between {seals[spec]!r} and {key!r}: {spec}")
+        seals[spec] = key
+        projection = (spec[0], spec[1])
+        if projection in projections:
+            fail(
+                f"seal (mineral, runes) projection collision between "
+                f"{projections[projection]!r} and {key!r}: {projection}",
+            )
+        projections[projection] = key
+
+
 def main() -> int:
     try:
         catalogue = load_catalogue()
         inventory = load_frozen_inventory()
         if catalogue != inventory:
             fail("catalogue and frozen provenance inventory differ")
+        check_seal_distinctness(catalogue)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"catalogue check failed: {error}", file=sys.stderr)
         return 1
