@@ -408,7 +408,7 @@ private fun AttentionLozenge() {
             initialValue = 1f,
             targetValue = 0.55f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 800, easing = NidavellirMotion.StandardEasing),
+                animation = NidavellirMotion.AttentionPulse,
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "attention alpha",
@@ -418,6 +418,9 @@ private fun AttentionLozenge() {
     }
     Box(
         modifier = Modifier
+            // The rotated square paints ~1.7dp past its layout box; keep the
+            // left tip clear of a full-width name line.
+            .padding(start = 2.dp)
             .size(8.dp)
             .graphicsLayer(rotationZ = 45f, alpha = alpha)
             .background(Orpiment)
@@ -575,7 +578,7 @@ private fun PressureStrip(response: PressureResponse) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ForgeSheet(
+internal fun ForgeSheet(
     state: ForgeState,
     profiles: List<ProfileChoice>,
     onDismiss: () -> Unit,

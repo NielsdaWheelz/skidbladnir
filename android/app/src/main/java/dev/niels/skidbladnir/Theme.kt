@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.CutCornerShape
@@ -65,10 +66,14 @@ internal object NidavellirType {
 // spatial spring bounds stay documented values with no consumer — no delta
 // animates layout yet — so they are not shipped as tokens.
 internal object NidavellirMotion {
-    val StandardEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+    private val StandardEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
     val EffectsTween: FiniteAnimationSpec<Float> = tween(durationMillis = 100, easing = StandardEasing)
     val ForgeWarmIn: FiniteAnimationSpec<Color> = tween(durationMillis = 400)
+
+    // One half of the attention lozenge's opacity pulse; reversed to loop.
+    val AttentionPulse: DurationBasedAnimationSpec<Float> =
+        tween(durationMillis = 800, easing = StandardEasing)
 
     // Material state-layer constants (design-language.md §12). Only the
     // consumed value ships; hover/focus/dragged join with their first consumer.

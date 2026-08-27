@@ -7,11 +7,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -114,6 +118,46 @@ class DashboardChromeInstrumentedTest {
         assertTrue(
             "the attention lozenge must render as a mark of its own, not a zero-sized node: bounds=$bounds",
             bounds.right - bounds.left >= LOZENGE_SIDE && bounds.bottom - bounds.top >= LOZENGE_SIDE,
+        )
+        val pixels = compose
+            .onNodeWithContentDescription(ATTENTION_DESCRIPTION, useUnmergedTree = true)
+            .captureToImage()
+            .toPixelMap()
+        val center = pixels[pixels.width / 2, pixels.height / 2]
+        assertEquals(
+            "a static attention lozenge is a designed FULL-opacity state: the center " +
+                "pixel must be exact Orpiment, not a faded blend over the card surface",
+            Orpiment.toArgb(),
+            center.toArgb(),
+        )
+    }
+
+    @Test
+    fun theForgeOpensLitInForgeGlow() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            MaterialTheme {
+                ForgeSheet(
+                    state = ForgeState(
+                        draft = ForgeDraft(cwd = "~", profile = "codex", optionalTmuxName = "", objective = ""),
+                        pending = false,
+                        error = null,
+                    ),
+                    profiles = PROFILES,
+                    onDismiss = {},
+                    onDraftChange = {},
+                    onSubmit = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(5_000)
+        val pixels = compose.onNodeWithText("New agent").captureToImage().toPixelMap()
+        val corner = pixels[1, 1]
+        assertEquals(
+            "after the warm-in window the sheet container must be exactly ForgeGlow — " +
+                "DeepSurface here means the warm-in stranded or never targeted the lit color",
+            ForgeGlow.toArgb(),
+            corner.toArgb(),
         )
     }
 

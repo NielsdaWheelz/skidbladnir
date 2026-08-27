@@ -15,10 +15,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 // The dwarven press flash (design-language.md §12): a circular ripple is
-// off-grammar, so this draws an inset copy of the component's own cut-corner
-// outline at Bone, fading in and out at the pressed state-layer alpha. One
-// shared implementation for the whole app; no configuration surface — see
-// docs/chrome-tokens.md "Interaction states".
+// off-grammar, so this draws an inset copy of the session card's cut-corner
+// outline at Bone, fading in and out at the pressed state-layer alpha.
+// Card-only by design — the drawn outline is the Card cut; a second consumer
+// with another shape reopens docs/chrome-tokens.md, not this file.
 internal object AngularIndication : IndicationNodeFactory {
     override fun create(interactionSource: InteractionSource): DelegatableNode =
         AngularIndicationNode(interactionSource)
@@ -37,12 +37,24 @@ private class AngularIndicationNode(
 
     override fun onAttach() {
         coroutineScope.launch {
+            // Keyed by press instance: a synthetic press/release pair (TalkBack,
+            // keyboard activation) must not end a still-held physical press.
+            val presses = mutableSetOf<PressInteraction.Press>()
             interactionSource.interactions.collect { interaction ->
+                val wasPressed = presses.isNotEmpty()
                 when (interaction) {
-                    is PressInteraction.Press ->
-                        alpha.animateTo(NidavellirMotion.StateLayer.Pressed, NidavellirMotion.EffectsTween)
-                    is PressInteraction.Release, is PressInteraction.Cancel ->
-                        alpha.animateTo(0f, NidavellirMotion.EffectsTween)
+                    is PressInteraction.Press -> presses.add(interaction)
+                    is PressInteraction.Release -> presses.remove(interaction.press)
+                    is PressInteraction.Cancel -> presses.remove(interaction.press)
+                }
+                val pressed = presses.isNotEmpty()
+                if (pressed != wasPressed) {
+                    launch {
+                        alpha.animateTo(
+                            if (pressed) NidavellirMotion.StateLayer.Pressed else 0f,
+                            NidavellirMotion.EffectsTween,
+                        )
+                    }
                 }
             }
         }

@@ -45,7 +45,11 @@ input-semantics, or behavior change of any kind.
 ### Owned tokens (new file `Theme.kt`)
 
 ```text
-internal object NidavellirColors
+// Colors ship as flat top-level internal vals in Theme.kt (not an object):
+// the nine existing vals moved verbatim, and the three screen files already
+// reference them as bare same-package symbols — wrapping would force edits
+// the hard cut does not require.
+NidavellirColors (flat vals)
   Ink #0C0D0F, DeepSurface #15171A, RaisedSurface #202329, ForgeGlow #28231A,
   Bone #F3F0E8, Muted #AAA69D,
   Gold #D6A85F, Ember #E46C55, Moss #76B082, Frost #78A9C6,
@@ -107,8 +111,9 @@ Unknown→Muted`.
 - **Pairing screen**: wordmark `SKÍÐBLAÐNIR` in Display caps; layout,
   copy, and flow unchanged.
 - **Grid cards**: DeepSurface, `Card` shape, a single top-edge Gold hairline
-  at 25% alpha, diminuendo stack — dwarf display name in Display, tmux
-  name/profile in body, runtime facts in Data.
+  at 25% alpha, diminuendo stack — dwarf display name in Display, tmux name
+  in body, and the profile label joining the runtime-facts line in Data (the
+  existing fact grouping is behavior and stays).
 - **Status chips**: the app's hand-rolled status `Surface` (not an M3 chip
   component) takes the `Chip` shape, fill = status color at 18% over
   surface, 1dp hairline and label in the status color, label + named

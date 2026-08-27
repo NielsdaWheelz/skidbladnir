@@ -138,7 +138,7 @@ private fun PairingScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "Skíðblaðnir",
+            text = "SKÍÐBLAÐNIR",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.SemiBold,
         )
