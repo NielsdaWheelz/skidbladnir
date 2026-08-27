@@ -58,6 +58,9 @@ architecture §2.
 | Faceted planar surfaces | Iron Hills armor, planar like a cut gemstone ([Nick Keller](https://www.nickkellerart.com/projects/1N6G82)) | Cut-corner shape grammar (§6) |
 | Interlace with breaks | Insular plaitwork, Book of Durrow onward; Bain grid-and-dot construction ([method restatement](http://www.zuggsoft.com/sca/celtic/celtic.htm)); Mercat scaffold ([jamis/celtic_knot, public domain](https://github.com/jamis/celtic_knot)) | Large-scale art only (§7) |
 | Valknut, tricursal | Tängelgårda / Stora Hammars I stones, beside Odin figures ([Valknut](https://en.wikipedia.org/wiki/Valknut)) | Hlíðskjálf mark: Odin's seat overlooking all sessions |
+| Ship under one square sail | Gotland picture stones, same corpus as the valknut row: the Viking-age slabs carry a ship under one large sail (Tjängvide I, Alskog — [Gotlands Museum catalogue](https://www.gotlandicpicturestones.se/s/index/item/2052)); the sail itself is unbroken vertical lengths of cloth sewn together ([Viking Ship Museum, Roskilde](https://www.vikingeskibsmuseet.dk/en/professions/boatyard/experimental-archaeological-research/maritime-crafts/maritime-technology/wool-sailcloth)) | Launcher mark: hull, mast, yard, and the sail's three gores (§8) |
+| Shield row along the gunwale | Gokstad ship burial, c. 890: 32 round shields to each side, painted alternately yellow and black ([Museum of the Viking Age](https://www.vikingtidsmuseet.no/english/the-collection/the-gokstad-ship/the-gokstad-ship.html)) | Launcher mark: the Garnet row at the sheer (§8). §6 overrides the round shape with its lozenge and §5 the alternating paint with one fill, so the row renders uniform |
+| Ship vane | Söderala vane, gilt bronze, c. 1050: worn from use on a ship before it was reused as a church weathervane ([Söderala vane](https://en.wikipedia.org/wiki/S%C3%B6derala_vane)) | Launcher mark: the vane at the masthead, the mark's one asymmetry (§8) |
 | Bind-runes on a shared stave | Runestone/coin monograms ([Bind rune](https://en.wikipedia.org/wiki/Bind_rune)) | Dwarf-seal maker's mark in portraits (§11) |
 | Younger Futhark | Viking-age script, c. 800–1100, Unicode U+16A0–16FF ([Runic block](https://en.wikipedia.org/wiki/Runic_(Unicode_block))) | The only runes that appear, ornament-only (§8) |
 | Forge-heat sequence | Black-red → red → orange → gold → yellow tempering ramp ([red heat](https://en.wikipedia.org/wiki/Red_heat)) | Ordinal intensity ramp (§5) |
@@ -227,8 +230,16 @@ codeplea GPL-3 and all unlicensed repos are off-limits for code reuse.
 
 - **The Hlíðskjálf mark** is the tricursal valknut: three interlocked
   triangles, Borromean topology — the seat that overlooks every world. Usable
-  as the grid's empty-state mark and the app icon's core. Pure straight lines;
+  as the grid's empty-state mark, never as the launcher. Pure straight lines;
   render at 24dp+ with 2dp stroke.
+- **The launcher mark** is Skíðblaðnir under sail: cut stems, a square sail in
+  three gores, a Garnet shield row at the sheer, a vane at the masthead.
+  Straight segments only, authored as constants and never traced. Its
+  legibility floor is stated in dp at the smallest launcher size — 2dp of
+  daylight at 48dp — rather than as a stroke ratio, because the icon has no
+  stroke and a known size range, while the valknut is drawn at arbitrary sizes
+  against a stroke that scales with it.
+  [`launcher-mark.md`](launcher-mark.md) owns its constants and proofs.
 - **Runes are ornament, never text.** Two mechanisms, deliberately distinct:
   rune *glyphs* — at most one inert divider glyph per screen — render as
   real code points (U+16A0–16FF) in Noto Sans Runic (OFL), never a
@@ -445,7 +456,10 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon).
+build-time fret pipeline, Forge/empty-state art, app icon); **(7) the launcher
+mark** ([launcher-mark.md](launcher-mark.md) — Skíðblaðnir under sail,
+replacing D4's prow icon, with the whole adaptive-icon set generated and
+drift-gated).
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

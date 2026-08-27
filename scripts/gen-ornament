@@ -2,53 +2,40 @@
 """Deterministically generate the frozen Niðavellir ornament geometry.
 
 Owned by docs/ornament-pipeline.md; the family rules are design-language.md
-§7 (fret construction) and §8 (the valknut, the ship prow). This
-script is a pure function of the constants defined below: no clock, no
-randomness, no filesystem reads beyond its own source. `scripts/check-ornament`
-imports `build_outputs()` and byte-compares its result against the checked-in
-files, so drift between this generator and the committed output fails the
-static gate.
+§7 (fret construction) and §8 (the valknut, the launcher mark), and the mark's
+own geometry is frozen by docs/launcher-mark.md. This script is a pure function
+of the constants defined below: no clock, no randomness, no filesystem reads
+beyond its own source. `scripts/check-ornament` imports `build_outputs()` and
+byte-compares its result against the checked-in files, so drift between this
+generator and the committed output fails the static gate.
 
-Two marks ship here, plus the launcher glyph:
+Two marks ship here, plus the launcher icon:
   * Fret cell: one chevron unit for the Forge title band (monoline, 45° turns).
   * Valknut: three interlocked equilateral triangles (tricursal, Borromean
     topology), same baked-gap technique at all six crossings.
-  * Ship prow: the existing launcher glyph's curves refaceted into straight
-    segments and re-fitted inside the adaptive-icon safe zone.
+  * Launcher mark: Skíðblaðnir under sail — hull, sail, yard, vane and shield
+    row — authored as straight-edged polygons, never traced.
 
-Fret and valknut geometry is emitted as `OrnamentSegment`
-unit-box constants in Ornament.kt; the prow stays generator-internal and is
-emitted
-as VectorDrawable pathData for the generated adaptive-icon foreground.
+Fret and valknut geometry is emitted as `OrnamentSegment` unit-box constants in
+Ornament.kt; the launcher mark stays generator-internal and is emitted as the
+whole adaptive-icon resource set.
 """
 
 from __future__ import annotations
 
 import argparse
 import math
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ORNAMENT_KT = "android/app/src/main/java/dev/niels/skidbladnir/Ornament.kt"
-PROW_FOREGROUND_XML = "android/app/src/main/res/drawable/ic_launcher_foreground.xml"
+ICON_BACKGROUND_XML = "android/app/src/main/res/drawable/ic_launcher_background.xml"
+ICON_FOREGROUND_XML = "android/app/src/main/res/drawable/ic_launcher_foreground.xml"
+ICON_MONOCHROME_XML = "android/app/src/main/res/drawable/ic_launcher_monochrome.xml"
+ICON_DESCRIPTOR_XML = "android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
 
-# The pre-hard-cut res/drawable/ic_launcher.xml's gold/bone path data, frozen
-# here as the generator's input: that file is deleted by this same change
-# (docs/ornament-pipeline.md "Hard cut"), so the extraction step is captured
-# once, permanently, as source rather than a runtime file read.
-_SOURCE_PROW_PATHS = (
-    ("Gold", "M52,20L52,67L27,67C33,49 41,34 52,20ZM57,28C69,38 77,51 82,67L57,67Z"),
-    ("Bone", "M18,72C32,76 76,76 90,72L83,84C66,91 42,91 25,84ZM51,67H58V75H51Z"),
-    ("Gold", "M28,86C38,90 70,90 80,86L76,92H32Z"),
-)
-
-# Adaptive-icon geometry (Android's documented 108dp canvas / 66dp safe
-# circle): the refaceted prow is re-centered on the canvas and scaled to a
-# target radius a little inside the safe circle for margin.
+# Android's documented adaptive-icon canvas.
 _ICON_VIEWPORT = 108.0
-_ICON_SAFE_RADIUS = 30.0
-_BEZIER_FACETS = 3  # straight segments each original curve is resampled into
 
 
 def _fmt_f(value: float) -> str:
@@ -198,98 +185,179 @@ def _valknut(gap: float = 0.10) -> list[tuple[float, float, float, float]]:
     return segments
 
 
-# --- Ship prow --------------------------------------------------------------
+# --- Launcher mark ----------------------------------------------------------
+#
+# Every value below is frozen by docs/launcher-mark.md's geometry table:
+# straight edges only, authored rather than traced, and sized so the mark
+# clears both invariants build_outputs() checks before it emits anything.
+
+STROKE_FLOOR_DP = 2.0   # one 2dp stroke / one 2dp gap
+LAUNCHER_MIN_DP = 48.0  # smallest launcher size the mark must survive
+ICON_ENVELOPE = 34.0    # units from centre; Android's circular mask clips at 36
+
+# A launcher icon shown at S dp maps the 108-unit canvas onto 1.5*S dp, so at
+# LAUNCHER_MIN_DP one unit is 0.667dp and STROKE_FLOOR_DP is 3.0 units.
+_MIN_FEATURE = STROKE_FLOOR_DP * _ICON_VIEWPORT / (1.5 * LAUNCHER_MIN_DP)
+
+_GOLD, _BRONZE, _GARNET = "#D6A85F", "#CD7F32", "#830E0D"
+_INK, _DEEP_SURFACE = "#0C0D0F", "#15171A"
+
+_MARK_CENTRE = _ICON_VIEWPORT / 2
+
+# Yard, stated as `y = 31.5, x = 33.5...74.5, stroke 5`: a 5-wide stroke with
+# square caps, emitted as the rectangle those caps describe, so it runs half a
+# stroke past each stated end. Its two outer top corners are the mark's
+# farthest points from centre and set the measured envelope.
+_YARD_Y, _YARD_HALF, _YARD_W = 31.5, 20.5, 5.0
+
+# Mast, stated as `x = 54, y = 23...67.5, stroke 5`: square-capped likewise, so
+# the cap above y = 23 is the masthead the vane is rooted on and the cap below
+# lands on the sheer. It runs the mark's whole height on purpose — a mast that
+# stops above the sail leaves the yard, the sail and the hull as three
+# unattached masses, which read as a lidded crate over a jewelled band rather
+# than as a ship.
+_MAST_TOP, _MAST_BOTTOM, _MAST_W = 23.0, 67.5, 5.0
+
+# The vane clears the yard by 3.27 units rather than sitting on it: at 25.75 its
+# trailing edge left a 0.99-unit wedge against the yard's top, which closes
+# under antialiasing and fuses the two into one mass.
+_VANE = [(54.0, 23.0), (68.0, 24.5), (54.0, 26.0)]
+
+_SAIL_X0, _SAIL_Y0, _SAIL_X1, _SAIL_Y1 = 36.0, 37.0, 72.0, 62.0
+_SAIL_FOOT_CUT = 8.0
+# The gore seams, symmetric about the sail's centre.
+_SEAM_T = (0.27, 0.73)
+
+_HULL_TIP, _HULL_ITIP = (21.0, 53.0), (33.0, 65.0)
+_HULL_SHEER, _HULL_KEEL = (37.0, 70.0), (34.0, 79.0)
+
+_SHIELD_CX = (43.5, 54.0, 64.5)
+_SHIELD_CY, _SHIELD_RY = 70.5, 4.5
+_SHIELD_RX, _SHIELD_RX_MONO = 4.4, 3.5
+
+_SEAM_X = tuple(_SAIL_X0 + t * (_SAIL_X1 - _SAIL_X0) for t in _SEAM_T)
+
+# The slit between gores is derived, not chosen: each outer gore ends exactly
+# where the sail's own 45° foot cut begins, which closes it as a clean
+# quadrilateral. Any other width leaves a needle of gore between the seam and
+# the cut — 0.12 units at a slit of 3.2 — or folds the gore into a bowtie.
+_SLIT_W = 2 * (_SEAM_X[0] - _SAIL_X0 - _SAIL_FOOT_CUT)
 
 
-def _parse_path(d: str, samples: int = _BEZIER_FACETS) -> list[list[tuple[float, float]]]:
-    """A minimal absolute-command interpreter for the M/L/H/V/C/Z subset
-    `_SOURCE_PROW_PATHS` uses, refaceting each cubic Bézier into `samples`
-    straight segments (design-language.md §1.3: no curves in dwarf-owned
-    chrome)."""
-    subpaths: list[list[tuple[float, float]]] = []
-    current: list[tuple[float, float]] = []
-    x = y = 0.0
-    start = (0.0, 0.0)
-    for cmd, argstr in re.findall(r"([MLHVCZ])([^MLHVCZ]*)", d):
-        nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", argstr)]
-        if cmd == "M":
-            if current:
-                subpaths.append(current)
-            x, y = nums
-            start = (x, y)
-            current = [(x, y)]
-        elif cmd == "L":
-            x, y = nums
-            current.append((x, y))
-        elif cmd == "H":
-            x = nums[0]
-            current.append((x, y))
-        elif cmd == "V":
-            y = nums[0]
-            current.append((x, y))
-        elif cmd == "C":
-            x0, y0 = x, y
-            x1, y1, x2, y2, x3, y3 = nums
-            for i in range(1, samples + 1):
-                t, mt = i / samples, 1 - i / samples
-                current.append(
-                    (
-                        mt**3 * x0 + 3 * mt**2 * t * x1 + 3 * mt * t**2 * x2 + t**3 * x3,
-                        mt**3 * y0 + 3 * mt**2 * t * y1 + 3 * mt * t**2 * y2 + t**3 * y3,
-                    )
+def _require_legible(features: dict[str, float]) -> None:
+    """Raise ValueError naming the first clearance below the floor."""
+    for name, units in features.items():
+        if units < _MIN_FEATURE:
+            dp = units * 1.5 * LAUNCHER_MIN_DP / _ICON_VIEWPORT
+            raise ValueError(
+                f"{name} is {units:.2f} units = {dp:.2f}dp at {LAUNCHER_MIN_DP:.0f}dp, "
+                f"below the {STROKE_FLOOR_DP:.0f}dp floor"
+            )
+
+
+def _require_within_envelope(polygons: list[list[tuple[float, float]]]) -> None:
+    """Raise ValueError if any point exceeds ICON_ENVELOPE from centre."""
+    for ring in polygons:
+        for x, y in ring:
+            radius = math.hypot(x - _MARK_CENTRE, y - _MARK_CENTRE)
+            if radius > ICON_ENVELOPE:
+                raise ValueError(
+                    f"({_fmt_n(x)},{_fmt_n(y)}) sits at r={radius:.3f}, "
+                    f"outside the {ICON_ENVELOPE:.0f}-unit mask envelope"
                 )
-            x, y = x3, y3
-        elif cmd == "Z":
-            if current[-1] != start:
-                current.append(start)
-            subpaths.append(current)
-            current = []
-            x, y = start
-    if current:
-        subpaths.append(current)
-    # Drop consecutive duplicate points (a curve that lands back on its own
-    # start, immediately followed by Z's own close-point, is the only source).
-    deduped = []
-    for sub in subpaths:
-        out = [sub[0]]
-        for p in sub[1:]:
-            if p != out[-1]:
-                out.append(p)
-        deduped.append(out)
-    return deduped
 
 
-def _prow_polygons() -> list[tuple[str, list[tuple[float, float]]]]:
-    """Refacet `_SOURCE_PROW_PATHS`, then fit the whole glyph inside the
-    adaptive-icon safe zone: recenter on the 108dp canvas and scale so the
-    farthest point sits at `_ICON_SAFE_RADIUS` (a few dp inside the 33dp safe
-    circle, for margin)."""
-    polygons = [(color, sub) for color, d in _SOURCE_PROW_PATHS for sub in _parse_path(d)]
-    xs = [p[0] for _, sub in polygons for p in sub]
-    ys = [p[1] for _, sub in polygons for p in sub]
-    center = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
-    max_dist = max(math.hypot(p[0] - center[0], p[1] - center[1]) for _, sub in polygons for p in sub)
-    scale = _ICON_SAFE_RADIUS / max_dist
-    viewport_center = (_ICON_VIEWPORT / 2, _ICON_VIEWPORT / 2)
-
-    def fit(p: tuple[float, float]) -> tuple[float, float]:
-        return (
-            viewport_center[0] + (p[0] - center[0]) * scale,
-            viewport_center[1] + (p[1] - center[1]) * scale,
-        )
-
-    return [(color, [fit(p) for p in sub]) for color, sub in polygons]
+def _vane_edge_at(x: float) -> float:
+    """y of the vane's trailing edge at `x` — the edge that faces the yard."""
+    (root_x, root_y), (tip_x, tip_y) = _VANE[2], _VANE[1]
+    return root_y + (x - root_x) / (tip_x - root_x) * (tip_y - root_y)
 
 
-def _prow_path_data(polygon: list[tuple[float, float]]) -> str:
-    parts = [f"M{_fmt_n(polygon[0][0])},{_fmt_n(polygon[0][1])}"]
-    for p in polygon[1:]:
-        parts.append(f"L{_fmt_n(p[0])},{_fmt_n(p[1])}")
-    parts.append("Z")
-    return "".join(parts)
+def _rect(x0: float, y0: float, x1: float, y1: float) -> list[tuple[float, float]]:
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+def _sail_gores() -> list[list[tuple[float, float]]]:
+    """The sail's three gores, separated by `_SLIT_W` of daylight. Both layers
+    use the same three solids: colour bands the gores where the launcher has
+    colour, and the slits keep them apart where it does not, so the sail reads
+    as panelled canvas under one flat tint instead of one chamfered block."""
+    x0, y0, x1, y1 = _SAIL_X0, _SAIL_Y0, _SAIL_X1, _SAIL_Y1
+    luff_seam, leech_seam = _SEAM_X[0] - _SLIT_W / 2, _SEAM_X[1] + _SLIT_W / 2
+    return [
+        [(x0, y0), (luff_seam, y0), (luff_seam, y1), (x0, y1 - _SAIL_FOOT_CUT)],
+        _rect(_SEAM_X[0] + _SLIT_W / 2, y0, _SEAM_X[1] - _SLIT_W / 2, y1),
+        [(leech_seam, y0), (x1, y0), (x1, y1 - _SAIL_FOOT_CUT), (leech_seam, y1)],
+    ]
+
+
+def _sheer_notch(cx: float) -> list[tuple[float, float]]:
+    """One monochrome shield, re-cut as a dip in the sheer and walked
+    right-to-left. The shield straddles the sheer, and only the half below it
+    is inside the hull — a cut above the sheer would remove nothing and leave a
+    floating speck. So the notch is the widest-at-the-mouth triangle that fits
+    the shield below the sheer: widening inwards would undercut the deck and
+    leave an overhanging lip at each shoulder."""
+    return [
+        (cx + _SHIELD_RX_MONO, _HULL_SHEER[1]),
+        (cx, _SHIELD_CY + _SHIELD_RY),
+        (cx - _SHIELD_RX_MONO, _HULL_SHEER[1]),
+    ]
+
+
+def _hull(sheer_notches: list[list[tuple[float, float]]]) -> list[tuple[float, float]]:
+    """The hull as one ring: keel, both cut stems mirrored about x = 54, and the
+    sheer, which the ring walks right-to-left. `sheer_notches` is spliced into
+    that walk, so its runs arrive in decreasing x."""
+    tip_x, tip_y = _HULL_TIP
+    itip_x, itip_y = _HULL_ITIP
+    sheer_x, sheer_y = _HULL_SHEER
+    keel_x, keel_y = _HULL_KEEL
+    return [
+        (tip_x, tip_y), (keel_x, keel_y),
+        (_ICON_VIEWPORT - keel_x, keel_y), (_ICON_VIEWPORT - tip_x, tip_y),
+        (_ICON_VIEWPORT - itip_x, itip_y), (_ICON_VIEWPORT - sheer_x, sheer_y),
+        *[point for notch in sheer_notches for point in notch],
+        (sheer_x, sheer_y), (itip_x, itip_y),
+    ]
+
+
+def _mark_layers() -> tuple[list, list, list]:
+    """(background, foreground, monochrome), each a list of (rings, colour).
+    Every ring is a solid and rings sharing a path are disjoint, so nothing here
+    depends on a fill's winding rule."""
+    rig = [
+        ([_rect(_MARK_CENTRE - _MAST_W / 2, _MAST_TOP - _MAST_W / 2,
+                _MARK_CENTRE + _MAST_W / 2, _MAST_BOTTOM + _MAST_W / 2)], _GOLD),
+        ([_VANE], _GOLD),
+        ([_rect(_MARK_CENTRE - _YARD_HALF - _YARD_W / 2, _YARD_Y - _YARD_W / 2,
+                _MARK_CENTRE + _YARD_HALF + _YARD_W / 2, _YARD_Y + _YARD_W / 2)], _GOLD),
+    ]
+    background = [
+        ([_rect(0.0, 0.0, _ICON_VIEWPORT, _ICON_VIEWPORT)], _INK),
+        ([[(0.0, 0.0), (_ICON_VIEWPORT, 0.0), (0.0, _ICON_VIEWPORT)]], _DEEP_SURFACE),
+    ]
+    foreground = rig + [
+        ([gore], colour) for gore, colour in zip(_sail_gores(), (_BRONZE, _GOLD, _BRONZE))
+    ] + [
+        ([_hull([])], _GOLD),
+        ([[(cx, _SHIELD_CY - _SHIELD_RY), (cx + _SHIELD_RX, _SHIELD_CY),
+           (cx, _SHIELD_CY + _SHIELD_RY), (cx - _SHIELD_RX, _SHIELD_CY)]
+          for cx in _SHIELD_CX], _GARNET),
+    ]
+    monochrome = rig + [
+        (_sail_gores(), _GOLD),
+        ([_hull([_sheer_notch(cx) for cx in reversed(_SHIELD_CX)])], _GOLD),
+    ]
+    return background, foreground, monochrome
 
 
 # --- Kotlin + XML rendering -------------------------------------------------
+
+_XML_HEADER = (
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    "<!-- GENERATED BY scripts/gen-ornament — DO NOT EDIT (drift-gated by scripts/check-ornament) -->\n"
+)
 
 
 def _kotlin_segments(name: str, segments: list[tuple[float, float, float, float]]) -> str:
@@ -299,14 +367,42 @@ def _kotlin_segments(name: str, segments: list[tuple[float, float, float, float]
     return f"internal val {name}: List<OrnamentSegment> = listOf(\n{lines},\n)\n"
 
 
+def _path_data(polygons: list[list[tuple[float, float]]]) -> str:
+    """M/L/Z path data, one closed ring per polygon."""
+    return "".join(
+        f"M{_fmt_n(ring[0][0])},{_fmt_n(ring[0][1])}"
+        + "".join(f"L{_fmt_n(x)},{_fmt_n(y)}" for x, y in ring[1:])
+        + "Z"
+        for ring in polygons
+    )
+
+
+def _vector(paths: list[tuple[str, str]], comment: str) -> bytes:
+    """One VectorDrawable on the adaptive-icon canvas, one <path> per
+    (colour, pathData) pair."""
+    body = "\n".join(
+        f"    <path\n"
+        f'        android:fillColor="{colour}"\n'
+        f'        android:pathData="{data}" />'
+        for colour, data in paths
+    )
+    return (
+        _XML_HEADER + f"<!-- {comment} -->\n"
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        f'    android:width="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
+        f'    android:height="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
+        f'    android:viewportWidth="{_fmt_n(_ICON_VIEWPORT)}"\n'
+        f'    android:viewportHeight="{_fmt_n(_ICON_VIEWPORT)}">\n'
+        f"{body}\n"
+        "</vector>\n"
+    ).encode("utf-8")
+
+
 def build_outputs() -> dict[str, bytes]:
     """The full generated-output set, keyed by repo-relative path. Pure
     function of this module's constants; called twice by
     `scripts/check-ornament` to prove determinism, and once per checked-in
     path to prove no drift."""
-    valknut = _valknut()
-    prow = _prow_polygons()
-
     kotlin = "".join(
         [
             "package dev.niels.skidbladnir\n",
@@ -326,31 +422,62 @@ def build_outputs() -> dict[str, bytes]:
             "// The tricursal valknut (design-language.md §8): three interlocked\n",
             "// equilateral triangles, Borromean topology, straight lines only, unit box\n",
             "// aspect 1:1. All six over/under crossings are baked as gaps.\n",
-            _kotlin_segments("Valknut", valknut),
+            _kotlin_segments("Valknut", _valknut()),
         ]
     )
 
-    foreground_paths = "\n".join(
-        f'    <path\n'
-        f'        android:fillColor="{"#D6A85F" if color == "Gold" else "#F3F0E8"}"\n'
-        f'        android:pathData="{_prow_path_data(points)}" />'
-        for color, points in prow
+    background, foreground, monochrome = _mark_layers()
+    # The background is a full-canvas plane the launcher's mask is meant to
+    # clip, so only the mark itself is measured against the envelope.
+    _require_within_envelope([ring for layer in (foreground, monochrome) for rings, _ in layer for ring in rings])
+    _require_legible(
+        {
+            "yard bottom -> sail head": _SAIL_Y0 - (_YARD_Y + _YARD_W / 2),
+            # Measured where the vane leaves the mast's flank, which is the
+            # narrowest point of the wedge between the two.
+            "vane -> yard": (_YARD_Y - _YARD_W / 2) - _vane_edge_at(_MARK_CENTRE + _MAST_W / 2),
+            "gore-slit width": _SLIT_W,
+            "outer gore width": _SEAM_X[0] - _SLIT_W / 2 - _SAIL_X0,
+            "sail foot -> hull sheer": _HULL_SHEER[1] - _SAIL_Y1,
+            # The sail's foot cut and the stem's inner edge are both 45°, so
+            # they are parallel and their separation is constant: the distance
+            # between the two lines x - y = c, not a horizontal reach at one
+            # height. Measuring horizontally at the foot understated it as 6.
+            "sail cut -> stem": abs(
+                (_SAIL_X0 - (_SAIL_Y1 - _SAIL_FOOT_CUT)) - (_HULL_TIP[0] - _HULL_TIP[1])
+            ) / math.sqrt(2),
+            "shield-notch web": _SHIELD_CX[1] - _SHIELD_CX[0] - 2 * _SHIELD_RX_MONO,
+            "notch -> sheer end": _SHIELD_CX[0] - _SHIELD_RX_MONO - _HULL_SHEER[0],
+        }
     )
-    foreground_xml = (
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        "<!-- GENERATED BY scripts/gen-ornament — DO NOT EDIT (drift-gated by scripts/check-ornament) -->\n"
-        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
-        f'    android:width="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
-        f'    android:height="{_fmt_n(_ICON_VIEWPORT)}dp"\n'
-        f'    android:viewportWidth="{_fmt_n(_ICON_VIEWPORT)}"\n'
-        f'    android:viewportHeight="{_fmt_n(_ICON_VIEWPORT)}">\n'
-        f"{foreground_paths}\n"
-        "</vector>\n"
+
+    descriptor = (
+        _XML_HEADER + "<!-- The launcher identity is Skíðblaðnir under sail (docs/launcher-mark.md).\n"
+        "     monochrome is its own drawable: the launcher paints that layer in one\n"
+        "     flat tint, so the foreground's colour-carried structure cannot survive\n"
+        "     there and the geometry is cut differently. -->\n"
+        '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+        '    <background android:drawable="@drawable/ic_launcher_background" />\n'
+        '    <foreground android:drawable="@drawable/ic_launcher_foreground" />\n'
+        '    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n'
+        "</adaptive-icon>\n"
     )
 
     return {
         ORNAMENT_KT: kotlin.encode("utf-8"),
-        PROW_FOREGROUND_XML: foreground_xml.encode("utf-8"),
+        ICON_BACKGROUND_XML: _vector(
+            [(colour, _path_data(rings)) for rings, colour in background],
+            "Ink, cut once on the canvas diagonal by a DeepSurface facet plane.",
+        ),
+        ICON_FOREGROUND_XML: _vector(
+            [(colour, _path_data(rings)) for rings, colour in foreground],
+            "Skíðblaðnir under sail: Gold rig and hull, Bronze/Gold gores, a Garnet shield row.",
+        ),
+        ICON_MONOCHROME_XML: _vector(
+            [(colour, _path_data(rings)) for rings, colour in monochrome],
+            "Cut for one flat tint: the shield row survives as notches in the sheer, because colour cannot carry it here.",
+        ),
+        ICON_DESCRIPTOR_XML: descriptor.encode("utf-8"),
     }
 
 

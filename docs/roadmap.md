@@ -316,6 +316,37 @@ Acceptance: focused Android unit proof for detach lifetime copy, compiled
 instrumentation assertions for dashboard language, routine verification, and
 the next separately approved platform pass for rendered-device confirmation.
 
+## v0 design delta D7 — the launcher mark
+
+Outcome: the launcher icon is Skíðblaðnir under sail — cut stems, a square
+sail in three gores, a Garnet shield row, a masthead vane — and the whole
+adaptive-icon resource set is generated from authored polygon constants and
+drift-gated as one unit. Scope per [launcher-mark.md](launcher-mark.md).
+
+- `scripts/gen-ornament` emits the background, foreground, monochrome, and
+  `<adaptive-icon>` descriptor; the Bézier interpreter and the traced clip-art
+  prow it digested are deleted.
+- The generator raises rather than emitting a feature below the 2dp-at-48dp
+  legibility floor or a point outside the 34-unit mask envelope.
+- The monochrome layer is its own drawable, separated by geometry. Both
+  layers carry the same sail, whose gores stand apart across a derived slit;
+  the shield row is the one feature they cut differently — colour in the
+  foreground, notches in the sheer in the monochrome — so one flat tint cannot
+  collapse the mark into a blob.
+- `android:roundIcon` is gone: at `minSdk = 36` it duplicated the same
+  adaptive resource, and no legacy density mipmap exists or is added.
+
+Red: seams moved to `t = 0.25, 0.75` narrow the derived gore slit to 2.0
+units and fail the check at 1.33dp; the yard raised to `y = 29.5` fails it at
+`r = 35.468`, outside the envelope; the vane as first frozen fails it at
+0.66dp against the yard.
+
+Acceptance: routine verification including the ornament drift gate over the
+five generated files; one separately approved S22+ platform pass carrying the
+instrumented proof that the installed icon's monochrome layer cuts daylight
+where the foreground carries structure in colour and still keeps most of the
+mark; one hands-on glance that the mark reads as a ship at arm's length.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -344,4 +375,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
+| v0 design delta D7 — the launcher mark | Source implemented; all three generator reds observed, then green; routine verification (static, build, unit) green, the ornament drift gate green over five generated files; the instrumented monochrome proof and the hands-on launcher glance `NOT_RUN`, both needing the device and the pinned signing identity this host does not have |
 | v0.5 push | Not scheduled |
