@@ -51,41 +51,6 @@ require_android_signing() {
   export SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config"
 }
 
-build_host_archive() {
-  local tag="$1"
-  local sha="$2"
-  local goos="$3"
-  local goarch="$4"
-  local platform="$5"
-  local output="$6"
-  local staging_dir
-  case "$goos/$goarch" in
-    linux/amd64) ;;
-    darwin/arm64)
-      [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
-        printf 'Darwin arm64 release binaries require a native Darwin arm64 builder\n' >&2
-        return 1
-      }
-      ;;
-    *)
-      printf 'Unsupported release host target: %s/%s\n' "$goos" "$goarch" >&2
-      return 1
-      ;;
-  esac
-  staging_dir="$(mktemp -d /tmp/skidbladnir-host-release.XXXXXX)"
-  case "$staging_dir" in
-    /tmp/skidbladnir-host-release.* | /private/tmp/skidbladnir-host-release.*) ;;
-    *) printf 'Unexpected host-release staging directory\n' >&2; exit 1 ;;
-  esac
-  "$repo_dir/scripts/build-host-binary" \
-    "$repo_dir" "$tag" "$sha" "$goos" "$goarch" "$staging_dir/skidbladnir"
-  install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
-  jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
-    '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"
-  COPYFILE_DISABLE=1 tar -C "$staging_dir" -czf "$output" skidbladnir characters.json release.json
-  rm -R -- "$staging_dir"
-}
-
 case "$target" in
   android-static)
     cd "$repo_dir"
@@ -132,9 +97,11 @@ case "$target" in
       "$repo_dir/android/app-signing-cert.sha256" \
       "$output_dir/android-signing-cert.sha256"
     cd "$repo_dir"
-    build_host_archive "$tag" "$sha" linux amd64 linux-amd64 \
+    "$repo_dir/scripts/build-host-archive" "$repo_dir" \
+      "$tag" "$sha" linux amd64 linux-amd64 \
       "$output_dir/skidbladnir-linux-amd64.tar.gz"
-    build_host_archive "$tag" "$sha" darwin arm64 darwin-arm64 \
+    "$repo_dir/scripts/build-host-archive" "$repo_dir" \
+      "$tag" "$sha" darwin arm64 darwin-arm64 \
       "$output_dir/skidbladnir-darwin-arm64.tar.gz"
     (
       cd "$output_dir"

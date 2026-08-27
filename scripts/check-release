@@ -222,21 +222,19 @@ archive_mode_self_test() (
   set -euo pipefail
   local archive
   local fixture_dir
+  local sha
   fixture_dir="$(mktemp -d /tmp/skidbladnir-release-check-mode.XXXXXX)"
   case "$fixture_dir" in
     /tmp/skidbladnir-release-check-mode.* | /private/tmp/skidbladnir-release-check-mode.*) ;;
     *) printf 'Unexpected archive mode fixture directory\n' >&2; return 1 ;;
   esac
   trap 'rm -R -- "$fixture_dir"' EXIT HUP INT TERM
-  mkdir "$fixture_dir/source" "$fixture_dir/extracted"
-  printf 'binary\n' >"$fixture_dir/source/skidbladnir"
-  printf '{}\n' >"$fixture_dir/source/characters.json"
-  printf '{}\n' >"$fixture_dir/source/release.json"
-  chmod 0755 "$fixture_dir/source/skidbladnir"
-  chmod 0644 "$fixture_dir/source/characters.json" "$fixture_dir/source/release.json"
-  archive="$fixture_dir/release.tar.gz"
-  tar -C "$fixture_dir/source" -czf "$archive" skidbladnir characters.json release.json
+  mkdir "$fixture_dir/extracted"
+  sha="$(git -C "$repo_dir" rev-parse HEAD)"
   umask 077
+  archive="$fixture_dir/release.tar.gz"
+  "$repo_dir/scripts/build-host-archive" \
+    "$repo_dir" v0.2.2 "$sha" linux amd64 linux-amd64 "$archive"
   extract_release_archive "$archive" "$fixture_dir/extracted"
   [[ "$(file_mode "$fixture_dir/extracted/skidbladnir")" == 755 &&
     "$(file_mode "$fixture_dir/extracted/characters.json")" == 644 &&
