@@ -317,8 +317,8 @@ orchestration, via a new architecture decision.
 | v0 profile delta — Devbox Claude Work | Integrated; routine and exact-tree external acceptance are owned by the merged candidate gates |
 | v0 identity delta — automatic dwarf identity | Integrated hard cut; routine and isolated Linux/Darwin acceptance are owned by the merged candidate gates |
 | v0 terminal key-deck delta | Integrated; routine and exact S22+ platform acceptance are owned by the merged candidate gates |
-| v0 design delta D1 — terminal theme | Source implemented; routine verification and the S22+ platform gate green on the federated tree; hands-on OLED dim-text/256-color check `NOT_RUN` |
-| v0 design delta D2 — chrome tokens | Source implemented; adversarial review applied; routine verification and the S22+ platform gate green on the federated tree; hands-on pass (incl. the Forge warm-in, untestable under the instrumented harness) `NOT_RUN` |
-| v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the S22+ platform gate green on the federated tree; hands-on 48dp gallery pass `NOT_RUN` |
-| v0 design delta D4 — ornament | Source implemented; drift gate, release icon build, and the S22+ platform gate green on the federated tree; hands-on ornament/icon glance `NOT_RUN` |
+| v0 design delta D1 — terminal theme | Source implemented; routine verification and the 33-test instrumented S22+ suite green on the federated tree (devbox debug-signed run; the signed deviceDebug platform gate is MacBook-owned); hands-on OLED dim-text/256-color check `NOT_RUN` |
+| v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
+| v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
+| v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
 | v0.5 push | Not scheduled |

@@ -1,8 +1,11 @@
 # Design delta D2: chrome tokens
 
 Status: implemented 2026-08-26 with adversarial-review fixes applied;
-routine verification and the S22+ platform gate green; the hands-on pass
-(incl. the Forge warm-in) stays `NOT_RUN`.
+re-woven over the multi-machine federation the same day. Routine
+verification green; the 33-test instrumented suite green on the physical
+S22+ (devbox debug-signed run — the signed deviceDebug platform gate is
+MacBook-owned); the hands-on pass (incl. the Forge warm-in) stays
+`NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including literal labels, 48dp targets, and the distinct-status-color

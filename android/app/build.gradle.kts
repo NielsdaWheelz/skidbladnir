@@ -91,6 +91,9 @@ android {
         sourceSets.getByName("deviceDebug") {
             java.srcDir("src/debug/java")
             manifest.srcFile("src/debug/AndroidManifest.xml")
+            // The seal gallery ships in every debug-like build; without the
+            // catalogue assets it would install but crash on launch.
+            assets.srcDir(rootProject.file("../catalog"))
         }
     }
 
