@@ -31,7 +31,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -57,9 +56,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -437,55 +440,142 @@ internal fun agentCardRuntimeFacts(
     session.activeCommand,
 )
 
+// The Niðavellir seal (design-language.md §11, dwarf-seals.md): a
+// deterministic, pure function of `character.key` via `sealSpec`. Draw order
+// is frozen in dwarf-seals.md: mineral fill, facet planes, beard silhouette,
+// bind-rune, octagon frame, Bone initial.
 @Composable
 private fun DwarfPortrait(character: CharacterSummary) {
-    val seed = character.key
-    val hash = seed.fold(17) { value, symbol -> value * 31 + symbol.code }
-    val palette = listOf(
-        Color(0xFF8F503B),
-        Color(0xFF4D6A63),
-        Color(0xFF735E91),
-        Color(0xFF6F7041),
-        Color(0xFF865E35),
-        Color(0xFF3F647D),
-    )
-    val field = palette[Math.floorMod(hash, palette.size)]
-    val beard = palette[Math.floorMod(hash.rotateLeft(7), palette.size)]
+    val spec = sealSpec(character.key)
+    val metal = if (spec.metal == SealMetal.Gold) Gold else Bronze
     val label = character.displayName.take(1).uppercase()
     Box(
         modifier = Modifier
             .size(58.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(NidavellirShapes.Octagon)
             .semantics {
                 contentDescription = "Portrait of ${character.displayName}"
             },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            drawRect(field.copy(alpha = 0.38f))
-            drawCircle(Color(0xFFD5AA7B), radius = size.minDimension * 0.25f, center = center.copy(y = size.height * 0.38f))
+            val w = size.width
+            val h = size.height
+            val side = size.minDimension
+
+            drawRect(SealMinerals[spec.mineral])
+
+            // Facet planes: two flat 45° highlight/shadow triangles.
+            drawPath(
+                Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(w, 0f)
+                    lineTo(0f, h)
+                    close()
+                },
+                Color.White.copy(alpha = 0.045f),
+            )
+            drawPath(
+                Path().apply {
+                    moveTo(w, h * 0.55f)
+                    lineTo(w, h)
+                    lineTo(w * 0.35f, h)
+                    close()
+                },
+                Color.Black.copy(alpha = 0.16f),
+            )
+
+            // Beard silhouette: a trapezoid whose bottom edge is cut with
+            // beardTeeth angular notches, tips shorter than valleys by
+            // beardDepthStep. No curve anywhere (design-language.md §11).
+            val beardTopY = h * 0.60f
+            val beardLeftX = w * 0.24f
+            val beardRightX = w * 0.76f
+            val valleyY = h * 0.88f
+            val tipY = valleyY - (0.10f + spec.beardDepthStep * 0.022f) * h
+            val toothSpan = spec.beardTeeth - 1
+            val toothWidth = (beardRightX - beardLeftX) / toothSpan
             val beardPath = Path().apply {
-                moveTo(size.width * 0.25f, size.height * 0.44f)
-                lineTo(size.width * 0.75f, size.height * 0.44f)
-                lineTo(size.width * (0.58f + (hash and 3) * 0.025f), size.height * 0.9f)
-                lineTo(size.width * (0.42f - (hash and 3) * 0.025f), size.height * 0.9f)
+                moveTo(beardLeftX, beardTopY)
+                lineTo(beardRightX, beardTopY)
+                lineTo(beardRightX, tipY)
+                for (tooth in 1..toothSpan) {
+                    lineTo(beardRightX - (tooth - 0.5f) * toothWidth, valleyY)
+                    lineTo(beardRightX - tooth * toothWidth, tipY)
+                }
                 close()
             }
-            drawPath(beardPath, beard)
-            drawArc(
-                color = Color(0xFFB5A37E),
-                startAngle = 180f,
-                sweepAngle = 180f,
-                useCenter = true,
-                topLeft = center.copy(x = size.width * 0.2f, y = size.height * 0.13f),
-                size = size.copy(width = size.width * 0.6f, height = size.height * 0.36f),
+            drawPath(beardPath, Color.Black.copy(alpha = 0.34f))
+            drawPath(
+                beardPath,
+                Color.White.copy(alpha = 0.10f),
+                style = Stroke(width = 1f, cap = StrokeCap.Butt, join = StrokeJoin.Miter),
             )
+
+            // Bind-rune: a shared vertical stave plus every drawn rune's
+            // segments, monoline in the seal's metal (design-language.md
+            // §8 — ornament, never text; carries no contentDescription).
+            val staveX = w * 0.5f
+            val staveTop = h * 0.15f
+            val staveBottom = h * 0.58f
+            val runeWidth = w * 0.30f
+            val bindRune = Path().apply {
+                moveTo(staveX, staveTop)
+                lineTo(staveX, staveBottom)
+                spec.runes.forEach { rune ->
+                    RuneSegments[rune].forEach { seg ->
+                        moveTo(staveX + seg.x0 * runeWidth, staveTop + seg.y0 * (staveBottom - staveTop))
+                        lineTo(staveX + seg.x1 * runeWidth, staveTop + seg.y1 * (staveBottom - staveTop))
+                    }
+                }
+            }
+            drawPath(
+                bindRune,
+                metal,
+                style = Stroke(width = side * 0.045f, cap = StrokeCap.Butt, join = StrokeJoin.Miter),
+            )
+
+            // Octagon frame: neutral base hairline on all 8 edges, Gold
+            // overlaid thicker on the edges set in facetMask. Vertices come
+            // from the same 29% cut geometry as the clip shape.
+            val cut = side * 0.29f
+            val vertices = listOf(
+                Offset(cut, 0f),
+                Offset(w - cut, 0f),
+                Offset(w, cut),
+                Offset(w, h - cut),
+                Offset(w - cut, h),
+                Offset(cut, h),
+                Offset(0f, h - cut),
+                Offset(0f, cut),
+            )
+            for (edge in vertices.indices) {
+                drawLine(
+                    color = Color(0xFF3A3E45),
+                    start = vertices[edge],
+                    end = vertices[(edge + 1) % vertices.size],
+                    strokeWidth = side * 0.012f,
+                    cap = StrokeCap.Butt,
+                )
+            }
+            for (edge in vertices.indices) {
+                if ((spec.facetMask shr edge) and 1 == 1) {
+                    drawLine(
+                        color = Gold,
+                        start = vertices[edge],
+                        end = vertices[(edge + 1) % vertices.size],
+                        strokeWidth = side * 0.025f,
+                        cap = StrokeCap.Butt,
+                    )
+                }
+            }
         }
         Text(
             text = label,
             color = Bone,
+            fontFamily = NidavellirType.Display,
             fontWeight = FontWeight.Black,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             style = MaterialTheme.typography.labelMedium,
         )
     }

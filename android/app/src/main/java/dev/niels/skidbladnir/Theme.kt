@@ -37,6 +37,10 @@ internal object NidavellirShapes {
     val Chip = CutCornerShape(4.dp)
     val Key = CutCornerShape(4.dp)
     val Sheet = CutCornerShape(topStart = 12.dp, topEnd = 12.dp)
+
+    // The dwarf seal frame (design-language.md §11, dwarf-seals.md): equal
+    // 29% corner cuts on a square produce a regular octagon.
+    val Octagon = CutCornerShape(29)
 }
 
 // Two roles only in this delta (design-language.md §9): Display carries the
