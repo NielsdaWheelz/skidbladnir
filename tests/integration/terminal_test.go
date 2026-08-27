@@ -24,6 +24,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
@@ -72,6 +73,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		Sessions: fixture.manager,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Pairing:  pairing.NewSlot(),
 		Logger:   logging.New(io.Discard),
 		Machine:  integrationMachine(t),
 		Platform: platform.Current(),
@@ -621,6 +623,7 @@ func newTerminalGateway(t *testing.T, fixture sessionFixture, writeGate *termina
 		Sessions: fixture.manager,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Pairing:  pairing.NewSlot(),
 		Logger:   logging.New(io.Discard),
 		Machine:  integrationMachine(t),
 		Platform: platform.Current(),

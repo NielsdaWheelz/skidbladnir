@@ -16,10 +16,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -31,7 +28,6 @@ import androidx.compose.ui.test.onChildren
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
@@ -95,7 +91,7 @@ class MultiMachineUiInstrumentedTest {
             // only place the banner collapse can drop an optional title and leave a body
             // orphaned under no heading.
             compose.onNodeWithText("Unreadable pairing").assertIsDisplayed()
-            compose.onNodeWithText("Provisioning repair is required outside this app.", substring = true)
+            compose.onNodeWithText("Reset the app data, then connect again.", substring = true)
                 .assertIsDisplayed()
         }
     }
@@ -512,17 +508,17 @@ class MultiMachineUiInstrumentedTest {
                     "Select Devbox, then pull down to check again before reviewing this draft.",
             ),
             Triple(
-                "bearer repair",
+                "fleet reconnect",
                 dashboard(
                     inventory = InventoryState.Unreachable(
                         GatewayFailure.Api(ApiErrorCode.Unauthenticated),
                     ),
                     access = MachineAccess.AuthRequired,
                 ),
-                "Devbox: create outcome unknown. Update bearer before reviewing this draft.",
+                "Devbox: create outcome unknown. Reconnect fleet before reviewing this draft.",
             ),
             Triple(
-                "identity repair",
+                "identity reset",
                 dashboard(
                     inventory = InventoryState.Unreachable(
                         GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch),
@@ -530,13 +526,13 @@ class MultiMachineUiInstrumentedTest {
                     access = MachineAccess.IdentityChanged,
                 ),
                 "Devbox: create outcome unknown. " +
-                    "Provisioning repair is required before reviewing this draft.",
+                    "Fleet reset is required before reviewing this draft.",
             ),
             Triple(
                 "missing target",
                 ready.copy(machines = emptyList()),
                 "Machine: create outcome unknown. " +
-                    "Provisioning repair is required before reviewing this draft.",
+                    "Fleet reset is required before reviewing this draft.",
             ),
         )
 
@@ -688,180 +684,6 @@ class MultiMachineUiInstrumentedTest {
     }
 
     @Test
-    fun twoHealthyPairingsRenderAndRouteThroughTheProductionUi() {
-        val arguments = InstrumentationRegistry.getArguments()
-        assumeTrue(
-            "NOT_RUN: pass skidbladnir.multiMachineUi=true only for the approved physical UI journey",
-            arguments.getString(UI_OPT_IN) == "true",
-        )
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context, MachineStorage.production).read().credentials
-        assertEquals("UI journey requires exactly two existing production pairings", 2, credentials.size)
-        val expectedHandles = setOf(
-            requireNotNull(MachineHandle.parse(requireNotNull(arguments.getString(DEVBOX_MACHINE)))),
-            requireNotNull(MachineHandle.parse(requireNotNull(arguments.getString(MACBOOK_MACHINE)))),
-        )
-        assertEquals(
-            "UI journey pairings do not match the requested machines",
-            expectedHandles,
-            credentials.map { it.machine.handle }.toSet(),
-        )
-        assertEquals(
-            "UI journey requires independent bearer authorities",
-            2,
-            credentials.map { it.bearer.encoded }.distinct().size,
-        )
-        val client = GatewayClient()
-        try {
-            val inventories = credentials.associateWith { credential ->
-                gatewaySuccess(client.listSessions(credential))
-            }
-            val targets = credentials.associateWith { credential ->
-                val session = inventories.getValue(credential).sessions.firstOrNull()
-                requireNotNull(session) {
-                    "UI journey requires one pre-existing session on machine ${credential.machine.handle.encoded}"
-                }
-                AgentTarget(credential.machine.handle, session)
-            }
-            assertTrue(inventories.values.all { it.profiles.isNotEmpty() })
-
-            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                compose.onNodeWithText("Add machine").assertDoesNotExist()
-                compose.onNodeWithText("Rename").assertDoesNotExist()
-                compose.onNodeWithText("Remove machine").assertDoesNotExist()
-                compose.onNodeWithTag("new-agent").assertIsDisplayed()
-                credentials.forEach { credential ->
-                    waitForTag(machineStripTag(credential), 30_000)
-                    compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
-                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
-                }
-
-                scenario.recreate()
-                credentials.forEach { credential ->
-                    waitForTag(freshMachineTag(credential), 30_000)
-                    compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
-                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
-                }
-
-                val first = credentials[0]
-                val second = credentials[1]
-
-                compose.onNodeWithText(
-                    "${inventories.values.sumOf { it.sessions.size }} tmux",
-                    substring = true,
-                ).assertIsDisplayed()
-
-                credentials.forEach { credential ->
-                    val target = targets.getValue(credential)
-                    compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(target)))
-                    compose.onNodeWithTag(cardTag(target)).assertIsDisplayed()
-                    val profile = inventories.getValue(credential).profiles
-                        .firstOrNull { it.key.encoded == target.session.profile }?.label
-                        ?: target.session.profile
-                        ?: "profile unknown"
-                    compose.onNodeWithTag(contextTag(target), useUnmergedTree = true)
-                        .assertTextEquals("${credential.machine.label.text} · $profile")
-                }
-
-                // The create affordance is the Forge seal now: one node, anchored over
-                // the grid's bottom trailing corner (forge-seal.md, "Placement and
-                // semantics").
-                compose.onAllNodesWithTag("new-agent").assertCountEquals(1)
-                val root = compose.onRoot().getUnclippedBoundsInRoot()
-                val seal = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
-                assertTrue(
-                    "the Forge seal is not in the dashboard's bottom trailing quadrant: seal=$seal root=$root",
-                    seal.left >= (root.left + root.right) / 2f && seal.top >= (root.top + root.bottom) / 2f,
-                )
-                // What follows proves only that the seal is drawn clear of the cards this
-                // journey happens to render: with two healthy pairings the grid holds a
-                // handful of real sessions and never scrolls, so it does not exercise the
-                // 84dp bottom contentPadding. That the last row of a *full* grid clears the
-                // seal is the hands-on glance (forge-seal.md, "Acceptance"). The card
-                // scrolled to is asserted displayed first, so an empty grid fails loudly
-                // instead of passing an empty loop. The count itself is deliberately not
-                // pinned: the grid is lazy, so only composed cards reach the semantics
-                // tree and a full inventory would legitimately render fewer.
-                val lastTarget = targets.getValue(second)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(lastTarget)))
-                compose.onNodeWithTag(cardTag(lastTarget)).assertIsDisplayed()
-                // One atomic fetch of both sides. Indexing a node collection re-runs
-                // the query per subscript, and this journey polls two live gateways —
-                // a poll landing between iterations changes the composed card set and
-                // the whole approved device pass dies on an index, not on a defect.
-                val sealRect = compose.onNodeWithTag("new-agent").fetchSemanticsNode().boundsInRoot
-                val cardRects = compose.onAllNodes(hasTagPrefix("agent-card-"))
-                    .fetchSemanticsNodes()
-                    .map { it.boundsInRoot }
-                assertTrue(
-                    "the grid rendered no session cards, so their bounds can say nothing about " +
-                        "the seal",
-                    cardRects.isNotEmpty(),
-                )
-                cardRects.forEach { card ->
-                    assertTrue(
-                        "the Forge seal is drawn over a session card: card=$card seal=$sealRect",
-                        card.bottom <= sealRect.top || card.top >= sealRect.bottom ||
-                            card.right <= sealRect.left || card.left >= sealRect.right,
-                    )
-                }
-
-                compose.onNodeWithTag("new-agent").performClick()
-                waitForTag("forge-sheet", 10_000)
-                compose.onNodeWithText("Create dwarf").assertIsDisplayed()
-                compose.onNodeWithTag(forgeMachineTag(first)).assertIsNotSelected()
-                compose.onNodeWithTag(forgeMachineTag(second)).assertIsNotSelected()
-                compose.onNodeWithTag(forgeMachineTag(first)).assertIsEnabled()
-                compose.onNodeWithTag(forgeMachineTag(second)).assertIsEnabled()
-                compose.onAllNodesWithTag(forgeProfileTag(first)).assertCountEquals(0)
-                compose.onAllNodesWithTag(forgeProfileTag(second)).assertCountEquals(0)
-                compose.onNodeWithTag(forgeMachineTag(first)).performClick()
-                compose.onNodeWithTag(forgeMachineTag(first)).assertIsSelected()
-                val firstProfiles = inventories.getValue(first).profiles
-                compose.onAllNodesWithTag(forgeProfileTag(first)).assertCountEquals(firstProfiles.size)
-                firstProfiles.indices.forEach {
-                    compose.onAllNodesWithTag(forgeProfileTag(first))[it].assertIsNotSelected()
-                }
-                compose.onNodeWithTag("forge-submit").assertIsNotEnabled()
-                compose.onAllNodesWithTag(forgeProfileTag(first))[0].performClick()
-                compose.onAllNodesWithTag(forgeProfileTag(first))[0].assertIsSelected()
-                compose.onAllNodesWithTag(forgeProfileTag(second)).assertCountEquals(0)
-                scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-                compose.waitUntil(10_000) {
-                    compose.onAllNodesWithTag("forge-sheet").fetchSemanticsNodes().isEmpty()
-                }
-
-                selectMachine(first)
-                val firstTarget = targets.getValue(first)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(firstTarget)))
-                compose.onNodeWithTag(cardTag(firstTarget)).assertIsDisplayed()
-                compose.onNodeWithTag(cardTag(targets.getValue(second))).assertDoesNotExist()
-                compose.onNodeWithText(
-                    "${inventories.getValue(first).sessions.size} tmux",
-                    substring = true,
-                ).assertIsDisplayed()
-                selectMachine(second)
-                val secondTarget = targets.getValue(second)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(secondTarget)))
-                compose.onNodeWithTag(cardTag(secondTarget)).assertIsDisplayed()
-                compose.onNodeWithTag(cardTag(targets.getValue(first))).assertDoesNotExist()
-
-                val killCredential = credentials[0]
-                val killTarget = targets.getValue(killCredential)
-                selectMachine(killCredential)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(killTarget)))
-                compose.onNodeWithTag(killTag(killTarget)).performClick()
-                compose.onNodeWithText(
-                    "Kill ${killTarget.session.tmuxName} on ${killCredential.machine.label.text}?",
-                ).assertIsDisplayed()
-                compose.onNodeWithText("Cancel").performClick()
-            }
-        } finally {
-            client.closeAsync()
-        }
-    }
-
-    @Test
     fun genuinelyUnavailablePairingDisablesMachineMutations() {
         val arguments = InstrumentationRegistry.getArguments()
         val encodedHandle = arguments.getString(FAILED_MACHINE)
@@ -872,10 +694,11 @@ class MultiMachineUiInstrumentedTest {
         val failedHandle = requireNotNull(MachineHandle.parse(requireNotNull(encodedHandle)))
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val credentials = MachineStore(context, MachineStorage.production).read().credentials
-        assertEquals(2, credentials.size)
+        assertEquals(3, credentials.size)
         assertTrue(credentials.any { it.machine.handle == failedHandle })
         val failed = credentials.single { it.machine.handle == failedHandle }
-        val healthy = credentials.single { it.machine.handle != failedHandle }
+        val healthy = credentials.filter { it.machine.handle != failedHandle }
+        val healthyProbe = healthy.first()
         val readiness = context.cacheDir.resolve(OUTAGE_READY_FILE)
         assertTrue("Could not clear stale outage coordination marker", !readiness.exists() || readiness.delete())
         val client = GatewayClient()
@@ -889,7 +712,7 @@ class MultiMachineUiInstrumentedTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
                 waitForTag(freshMachineTag(failed), 30_000)
-                waitForTag(freshMachineTag(healthy), 30_000)
+                healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
 
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
@@ -900,22 +723,24 @@ class MultiMachineUiInstrumentedTest {
                 assertTrue("Could not publish outage coordination marker", readiness.createNewFile())
 
                 waitForTag("machine-state-stale-${failedHandle.encoded}", 30_000)
-                val healthyAtOutage = requireNotNull(inventoryObservation(healthy))
+                val healthyAtOutage = requireNotNull(inventoryObservation(healthyProbe))
                 compose.waitUntil(30_000) {
-                    inventoryObservation(healthy).let { it != null && it != healthyAtOutage }
+                    inventoryObservation(healthyProbe).let { it != null && it != healthyAtOutage }
                 }
-                waitForTag(freshMachineTag(healthy), 30_000)
+                healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
                 compose.onNodeWithTag(stripLabelTag(failed), useUnmergedTree = true)
                     .assertTextContains(failed.machine.label.text.uppercase(Locale.ROOT), substring = true)
-                compose.onNodeWithTag(stripLabelTag(healthy), useUnmergedTree = true)
-                    .assertTextContains(healthy.machine.label.text.uppercase(Locale.ROOT), substring = true)
+                healthy.forEach { credential ->
+                    compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
+                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
+                }
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
 
                 compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).assertIsNotEnabled()
 
-                compose.onNodeWithTag(filterTag(healthy)).performClick()
+                compose.onNodeWithTag(filterTag(healthyProbe)).performClick()
                 compose.onNodeWithTag("new-agent").assertIsEnabled()
                 compose.onNodeWithTag(filterTag(failed)).performClick()
                 compose.onNodeWithTag("new-agent").assertIsNotEnabled()
@@ -924,11 +749,6 @@ class MultiMachineUiInstrumentedTest {
             assertTrue("Could not clear outage coordination marker", !readiness.exists() || readiness.delete())
             client.closeAsync()
         }
-    }
-
-    private fun selectMachine(credential: MachineCredential) {
-        compose.onNodeWithTag(filterTag(credential)).performClick()
-        waitForTag(cardTagForMachine(credential), 10_000, prefix = true)
     }
 
     private fun pull(beyondThreshold: Boolean) {
@@ -1039,9 +859,6 @@ class MultiMachineUiInstrumentedTest {
         return (result as GatewayResult.Success).value
     }
 
-    private fun machineStripTag(credential: MachineCredential) =
-        "machine-strip-${credential.machine.handle.encoded}"
-
     private fun freshMachineTag(credential: MachineCredential) =
         "machine-state-fresh-${credential.machine.handle.encoded}"
 
@@ -1051,30 +868,15 @@ class MultiMachineUiInstrumentedTest {
     private fun filterTag(credential: MachineCredential) =
         "machine-filter-${credential.machine.handle.encoded}"
 
-    private fun cardTagForMachine(credential: MachineCredential) =
-        "agent-card-${credential.machine.handle.encoded}-"
-
     private fun cardTag(target: AgentTarget) =
         "agent-card-${target.machineHandle.encoded}-${target.session.id}"
-
-    private fun contextTag(target: AgentTarget) =
-        "agent-context-${target.machineHandle.encoded}-${target.session.id}"
 
     private fun killTag(target: AgentTarget) =
         "agent-kill-${target.machineHandle.encoded}-${target.session.id}"
 
-    private fun forgeMachineTag(credential: MachineCredential) =
-        "forge-machine-${credential.machine.handle.encoded}"
-
-    private fun forgeProfileTag(credential: MachineCredential) =
-        "forge-profile-${credential.machine.handle.encoded}"
-
     private companion object {
         const val CHECKING_SESSIONS = "Checking tmux sessions"
-        const val UI_OPT_IN = "skidbladnir.multiMachineUi"
         const val FAILED_MACHINE = "skidbladnir.failedMachine"
-        const val DEVBOX_MACHINE = "skidbladnir.devboxMachine"
-        const val MACBOOK_MACHINE = "skidbladnir.macbookMachine"
         const val OUTAGE_READY_FILE = "skidbladnir-multi-machine-outage-ready"
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
         val SIGNAL_AT: Instant = Instant.parse("2026-08-26T11:59:55Z")

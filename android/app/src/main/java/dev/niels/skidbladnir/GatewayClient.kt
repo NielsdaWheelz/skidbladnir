@@ -1,45 +1,31 @@
 package dev.niels.skidbladnir
 
 import java.io.IOException
-import java.util.Base64
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 
 private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+internal const val MAXIMUM_HTTP_BODY_BYTES = 64 * 1024
 
 internal class GatewayBearer private constructor(internal val encoded: String) {
     companion object {
-        fun parse(candidate: String): GatewayBearer? {
-            if (candidate.length != 43 || candidate.any {
-                    it !in 'A'..'Z' && it !in 'a'..'z' && it !in '0'..'9' && it != '-' && it != '_'
-                }
-            ) return null
-            val decoded = try { Base64.getUrlDecoder().decode(candidate) } catch (_: IllegalArgumentException) { return null }
-            if (decoded.size != 32 || Base64.getUrlEncoder().withoutPadding().encodeToString(decoded) != candidate) return null
-            return GatewayBearer(candidate)
-        }
+        fun parse(candidate: String): GatewayBearer? =
+            candidate.takeIf(::isCanonicalBase64Url256)?.let(::GatewayBearer)
     }
 
     override fun equals(other: Any?): Boolean = other is GatewayBearer && encoded == other.encoded
     override fun hashCode(): Int = encoded.hashCode()
     override fun toString(): String = "GatewayBearer(redacted)"
-}
-
-/**
- * Raw bearer-repair input, not yet canonical. It redacts itself so no generated `toString` of the
- * UI state can print credential material.
- */
-internal class BearerDraft(val text: String) {
-    override fun equals(other: Any?): Boolean = other is BearerDraft && text == other.text
-    override fun hashCode(): Int = text.hashCode()
-    override fun toString(): String = "BearerDraft(redacted)"
 }
 
 internal data class MachineCredential(
@@ -92,6 +78,24 @@ internal fun killFailureIsDefinitive(failure: GatewayFailure): Boolean = when (f
 }
 
 @Serializable private data class ErrorResponse(val code: String, val message: String)
+@Serializable private data class WirePairingMachine(val handle: String, val platform: MachinePlatform)
+@Serializable private data class WirePairingResponse(val machine: WirePairingMachine, val bearer: String)
+
+internal data class PairingResponse(
+    val machine: MachineSummary,
+    val bearer: GatewayBearer,
+)
+
+internal fun decodePairingResponse(encoded: String): PairingResponse = decodeProtocol {
+    val wire = productJson.decodeFromJsonElement<WirePairingResponse>(strictJsonObject(encoded))
+    PairingResponse(
+        machine = MachineSummary(
+            requireNotNull(MachineHandle.parse(wire.machine.handle)),
+            wire.machine.platform,
+        ),
+        bearer = requireNotNull(GatewayBearer.parse(wire.bearer)),
+    )
+}
 
 internal class GatewayClient {
     private val closeScheduled = AtomicBoolean(false)
@@ -132,6 +136,27 @@ internal class GatewayClient {
         decode = ::decodePressureResponse,
     )
 
+    fun redeemPairing(machine: FleetInviteMachine): GatewayResult<PairingResponse> = executeJson(
+        request = pairingRequest(machine),
+        expectedStatus = 200,
+        decode = ::decodePairingResponse,
+        decodeFailure = ::decodePairingHttpFailure,
+    )
+
+    internal fun pairingRequest(machine: FleetInviteMachine): Request {
+        val url = machine.machine.origin.encoded.toHttpUrl().newBuilder()
+            .addPathSegment("v1")
+            .addPathSegment("pairings")
+            .build()
+        return Request.Builder()
+            .url(url)
+            .header("Authorization", "Skidbladnir-Invite ${machine.pairingInviteToken.encoded}")
+            .header("Accept", "application/json")
+            .header("Skidbladnir-Machine", machine.machine.handle.encoded)
+            .post(ByteArray(0).toRequestBody())
+            .build()
+    }
+
     fun createSession(credential: MachineCredential, draft: ForgeDraft): GatewayResult<AgentSession> {
         require(draft.machineHandle == credential.machine.handle)
         return executeJson(
@@ -169,9 +194,9 @@ internal class GatewayClient {
     }
 
     /**
-     * Every `/v1` request the app makes is bound to a pinned machine: the app never pairs, so there
-     * is no headerless variant. A gateway that answers this origin with another installation's
-     * identity fails with `409 MachineIdentityMismatch` before it discloses anything.
+     * Every ordinary bearer request is bound to a pinned machine; there is no headerless variant.
+     * A gateway that answers this origin with another installation's identity fails with
+     * `409 MachineIdentityMismatch` before it discloses anything.
      */
     private fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder {
         val url = credential.machine.origin.encoded.toHttpUrl().newBuilder()
@@ -188,14 +213,10 @@ internal class GatewayClient {
         request: Request,
         expectedStatus: Int,
         decode: (String) -> Value,
+        decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
     ): GatewayResult<Value> = try {
         http.newCall(request).execute().use { response ->
-            val encoded = response.body?.string().orEmpty()
-            if (response.code != expectedStatus) {
-                GatewayResult.Failure(decodeGatewayHttpFailure(response.code, encoded))
-            } else {
-                GatewayResult.Success(decodeProtocol { decode(encoded) })
-            }
+            decodeGatewayResponse(response, expectedStatus, decode, decodeFailure)
         }
     } catch (_: IOException) {
         GatewayResult.Failure(GatewayFailure.Transport)
@@ -203,9 +224,41 @@ internal class GatewayClient {
 
 }
 
+internal fun <Value> decodeGatewayResponse(
+    response: Response,
+    expectedStatus: Int,
+    decode: (String) -> Value,
+    decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
+): GatewayResult<Value> {
+    if (response.code in setOf(502, 503, 504)) return GatewayResult.Failure(GatewayFailure.Transport)
+    val bodylessSuccess = response.code == expectedStatus && expectedStatus == 204
+    val body = response.body
+    if (!bodylessSuccess) {
+        val mediaType = body?.contentType()
+        if (mediaType?.type != "application" || mediaType.subtype != "json") {
+            return GatewayResult.Failure(GatewayFailure.Transport)
+        }
+    }
+    // OkHttp presents this ResponseBody after transparent content decompression. Reading one byte
+    // beyond the owned 64 KiB protocol bound distinguishes an exact-limit body without buffering
+    // an attacker-controlled response through ResponseBody.string().
+    val bytes = body?.byteStream()?.readNBytes(MAXIMUM_HTTP_BODY_BYTES + 1) ?: ByteArray(0)
+    if (bytes.size > MAXIMUM_HTTP_BODY_BYTES) return GatewayResult.Failure(GatewayFailure.Transport)
+    val encoded = String(bytes, StandardCharsets.UTF_8)
+    if (bodylessSuccess) {
+        if (encoded.isNotEmpty()) return GatewayResult.Failure(GatewayFailure.Transport)
+        return GatewayResult.Success(decodeProtocol { decode(encoded) })
+    }
+    return if (response.code != expectedStatus) {
+        GatewayResult.Failure(decodeFailure(response.code, encoded))
+    } else {
+        GatewayResult.Success(decodeProtocol { decode(encoded) })
+    }
+}
+
 internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
     if (status == 502 || status == 503 || status == 504) return@decodeProtocol GatewayFailure.Transport
-    val response = productJson.decodeFromString<ErrorResponse>(encoded)
+    val response = productJson.decodeFromJsonElement<ErrorResponse>(strictJsonObject(encoded))
     val code = parseApiErrorCode(response.code)
     if (
         code == ApiErrorCode.ReconnectRequired ||
@@ -217,8 +270,20 @@ internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFail
     GatewayFailure.Api(code)
 }
 
+internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFailure {
+    val failure = decodeGatewayHttpFailure(status, encoded)
+    if (failure is GatewayFailure.Api && failure.code !in setOf(
+            ApiErrorCode.PairingInviteRejected,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.InternalError,
+        )
+    ) throw ProtocolDecodeException("pairing route error set")
+    return failure
+}
+
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.Unauthenticated -> 401
+    ApiErrorCode.PairingInviteRejected -> 401
     ApiErrorCode.InvalidRequest -> 400
     ApiErrorCode.RequestTooLarge -> 413
     ApiErrorCode.WorkingDirectoryInvalid,

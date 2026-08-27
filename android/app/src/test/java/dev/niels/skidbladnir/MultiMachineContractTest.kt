@@ -561,7 +561,7 @@ class MultiMachineContractTest {
         listOf(
             MachineAccess.AuthRequired to "Devbox: authentication required.",
             MachineAccess.IdentityChanged to
-                "Devbox: machine identity changed. Provisioning repair is required.",
+                "Devbox: machine identity changed. Fleet reset is required.",
         ).forEach { (access, expectedNotice) ->
             val lost = readyMachine(devbox, target.session).copy(access = access)
             val terminal = SkidbladnirUiState.Terminal(
@@ -608,7 +608,7 @@ class MultiMachineContractTest {
         listOf(
             MachineAccess.AuthRequired to "Devbox: authentication required.",
             MachineAccess.IdentityChanged to
-                "Devbox: machine identity changed. Provisioning repair is required.",
+                "Devbox: machine identity changed. Fleet reset is required.",
         ).forEach { (access, expectedNotice) ->
             val machines = listOf(
                 readyMachine(devbox, target.session).copy(access = access),
@@ -675,49 +675,7 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `repair rejects another machine bearer before contacting any gateway`() {
-        val devboxBearer = requireNotNull(GatewayBearer.parse("A".repeat(43)))
-        val macBookBearer = requireNotNull(GatewayBearer.parse("B".repeat(42) + "E"))
-        val credentials = listOf(
-            MachineCredential(devbox, devboxBearer),
-            MachineCredential(macBook, macBookBearer),
-        )
-
-        assertTrue(
-            bearerRepairConflict(
-                credentials,
-                storageComplete = true,
-                targetHandle = macBookHandle,
-                bearer = devboxBearer,
-            ),
-        )
-        assertFalse(
-            bearerRepairConflict(
-                credentials,
-                storageComplete = true,
-                targetHandle = macBookHandle,
-                bearer = macBookBearer,
-            ),
-        )
-        assertTrue(
-            bearerRepairConflict(
-                credentials,
-                storageComplete = false,
-                targetHandle = macBookHandle,
-                bearer = macBookBearer,
-            ),
-        )
-    }
-
-    @Test
-    fun `a redacting bearer draft keeps credential material out of generated text`() {
-        val repair = SkidbladnirUiState.BearerRepair(
-            machine = devbox,
-            bearer = BearerDraft("A".repeat(43)),
-            pending = false,
-            error = null,
-        )
-        assertFalse("the UI state printed the bearer draft", repair.toString().contains("A".repeat(43)))
+    fun `a paired credential keeps durable authority out of generated text`() {
         assertFalse(
             "the credential printed itself",
             MachineCredential(devbox, requireNotNull(GatewayBearer.parse("A".repeat(43)))).toString()
@@ -804,7 +762,7 @@ class MultiMachineContractTest {
             ready.copy(access = MachineAccess.AuthRequired) to
                 MachineNotice("Devbox: authentication required. Actions disabled.", NoticeTone.Failure),
             ready.copy(access = MachineAccess.IdentityChanged) to
-                MachineNotice("Devbox: identity changed. Provisioning repair is required.", NoticeTone.Failure),
+                MachineNotice("Devbox: identity changed. Fleet reset is required.", NoticeTone.Failure),
         )
         cases.forEach { (machine, expected) ->
             assertEquals(
@@ -813,6 +771,10 @@ class MultiMachineContractTest {
                 machineNotice(machine),
             )
         }
+        assertEquals(
+            "Devbox · IDENTITY CHANGED",
+            forgeMachineChoiceLabel(ready.copy(access = MachineAccess.IdentityChanged)),
+        )
     }
 
     private fun readyMachine(machine: PairedMachine, vararg sessions: AgentSession): MachineState = MachineState(

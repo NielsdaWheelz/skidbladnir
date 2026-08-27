@@ -241,12 +241,10 @@ internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: M
 }
 
 // The one composition of the affordance that returns to the Dwarves grid, so
-// its label and its mark cannot drift apart between the two screens that offer
-// it (TerminalScreen's reconnect panel and MainActivity's bearer repair). The
+// the terminal reconnect panel's label and mark cannot drift apart. The
 // mark takes `LocalContentColor` rather than a fixed accent so it dims with the
 // button when the button is disabled — a drawn glyph gets no disabled state for
-// free (design-language.md §12). `tag` differs per screen only so each site's
-// silence is provable.
+// free (design-language.md §12). The tag makes the site's silence provable.
 @Composable
 internal fun BackToDwarvesContent(tag: String) {
     HlidskjalfMark(

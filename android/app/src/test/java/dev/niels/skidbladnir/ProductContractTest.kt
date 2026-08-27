@@ -10,6 +10,13 @@ import org.junit.Test
 
 class ProductContractTest {
     @Test
+    fun `stored machine origin must already be canonical`() {
+        val canonical = "https://arch.example.ts.net:8443/"
+        assertEquals(canonical, requireNotNull(parseStoredMachineOrigin(canonical)).encoded)
+        assertNull(parseStoredMachineOrigin("https://ARCH.example.ts.net:8443/"))
+    }
+
+    @Test
     fun `pairing bearer accepts only canonical 256-bit raw base64url`() {
         val canonical = "A".repeat(43)
         assertTrue(GatewayBearer.parse(canonical)?.encoded == canonical)
@@ -251,7 +258,7 @@ class ProductContractTest {
             ApiErrorCode.MachineIdentityMismatch,
             terminalUpgradeFailureCode(
                 409,
-                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Provisioning repair is required."}""",
+                """{"code":"MachineIdentityMismatch","message":"The machine identity changed. Fleet reset is required."}""",
             ),
         )
         assertEquals(MachineAccess.AuthRequired, terminalAccessLoss(ApiErrorCode.Unauthenticated))

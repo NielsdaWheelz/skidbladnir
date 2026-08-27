@@ -1,8 +1,0 @@
-#!/bin/sh
-set -eu
-[ -n "${TMUX_PANE:-}" ] || exit 0
-case "$TMUX_PANE" in
-  % | %*[!0-9]* | [!%]*) exit 0 ;;
-esac
-/opt/homebrew/bin/tmux set-option -p -t "$TMUX_PANE" @skid_attention "$(/bin/date +%s)"
-printf '\a' >"$(/opt/homebrew/bin/tmux display-message -p -t "$TMUX_PANE" '#{pane_tty}')"

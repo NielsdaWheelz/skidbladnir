@@ -8,6 +8,10 @@ Devbox and MacBook publication, create-only fixed-collection provisioning,
 outage/recovery journey are green. The earlier corrective
 delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 `NOT_RUN`; federation acceptance does not substitute for them.
+The 2026-08-27 public-fleet hard-cut source is implemented in Skíðblaðnir and
+`dev-server`, and both routine verification suites are green. Public-repository
+conversion, exact-SHA hosted CI, signed release, immutable publication,
+host/tmux acceptance, and both physical-phone gates remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -42,6 +46,7 @@ S1 tmux control plane
  -> v0 design delta D6: destructive and notice chrome
  -> v0 design delta D5: the Forge seal
  -> v0 dashboard pull-to-refresh delta
+ -> v0 public-fleet distribution and Connect hard cut
  -> v0 design delta D9: detach chrome
  -> v0 dashboard card hierarchy delta
  -> v0.5 (optional): push
@@ -434,7 +439,8 @@ pull-to-refresh over the dwarf collection the sole manual inventory shortcut.
 - No tap, overflow, contextual Retry, fallback, old controller alias, or second
   empty-state body remains.
 - Forge recovery names pull only for a ready target in scope; otherwise it
-  names the required filter, bearer, or external provisioning repair first.
+  names the required filter, whole-fleet reconnect, or fleet reset outside the
+  app first.
 
 Red: pure target-selection and awaited-read ordering proof, then real Compose
 gesture/header behavior on the approved S22+ runtime.
@@ -444,6 +450,38 @@ and one hands-on pull confirming native threshold/resistance, stable viewport,
 and no essential first-row text or control obscured by the indicator. Gateway,
 tmux, and transport boundaries are
 unchanged and require no integration or live gate.
+
+## v0 public-fleet distribution and Connect hard cut — active
+
+Outcome: a trusted API-36 user installs one signed public GitHub APK, signs
+into Tailscale once, taps `Connect`, scans one five-minute QR, and receives the
+exact Devbox/MacBook/Arch fleet atomically. Public `dev-server` pins the same
+release, converges each machine-local gateway as an auto-started service, and
+generates a fresh QR per phone without copying durable bearers off-host.
+
+- One release publishes the APK, Linux-amd64 and Darwin-arm64 host bundles,
+  checksums, and Android signer fingerprint from one tag/SHA.
+- Deployment-owned strict host configs replace platform-derived paths and
+  expose the five existing `dev-server` Codex/Claude shortcuts on every host.
+- Each gateway owns one in-memory, five-minute, one-use pairing invitation;
+  restart, replacement, or bearer rotation invalidates it.
+- Android accepts only the ordered exact-three QR, awaits all three redeems,
+  and performs one encrypted create-only install. `Reconnect fleet` rotates
+  bearers only for the exact installed identities.
+- Delete ADB provisioning, manual bearer entry, two-machine assumptions,
+  repo-owned host installers/services, headerless inventory pairing, and every
+  fallback or legacy reader.
+
+Red: host config cannot represent Arch/all profiles; two concurrent redeems
+both win; malformed or partial fleets reach storage; partial storage becomes
+readable; a release can stage with the wrong signer/version/assets; or
+convergence changes identity/tmux lifetime or needs a manually started daemon.
+
+Gate: routine pure/service/component proofs; separately approved release,
+isolated tmux, live convergence on each host, real-scanner S22+ product, and
+named second-phone gates. Every unavailable or unapproved external boundary is
+`NOT_RUN`, never substituted by a lower proof. The detailed contract and
+non-overlapping ownership are [public-fleet-distribution.md](public-fleet-distribution.md).
 
 ## v0 design delta D9 — detach chrome
 
@@ -512,6 +550,7 @@ orchestration, via a new architecture decision.
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27; merged 45-test platform and hands-on native threshold/resistance/viewport checks `NOT_RUN` |
+| v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0.5 push | Not scheduled |

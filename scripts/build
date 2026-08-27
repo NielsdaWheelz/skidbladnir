@@ -6,8 +6,14 @@ target="${1:-all}"
 android_dir="$repo_dir/android"
 
 case "$(uname -s)" in
-  Darwin) android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties' ;;
-  Linux) android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties' ;;
+  Darwin)
+    android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties'
+    digest_command=(shasum -a 256)
+    ;;
+  Linux)
+    android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties'
+    digest_command=(sha256sum)
+    ;;
 esac
 
 case "$(uname -s)" in
@@ -45,6 +51,44 @@ require_android_signing() {
   export SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config"
 }
 
+build_host_archive() {
+  local tag="$1"
+  local sha="$2"
+  local goos="$3"
+  local goarch="$4"
+  local platform="$5"
+  local output="$6"
+  local cgo_enabled
+  local staging_dir
+  case "$goos/$goarch" in
+    linux/amd64) cgo_enabled=0 ;;
+    darwin/arm64)
+      [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
+        printf 'Darwin arm64 release binaries require a native Darwin arm64 builder\n' >&2
+        return 1
+      }
+      cgo_enabled=1
+      ;;
+    *)
+      printf 'Unsupported release host target: %s/%s\n' "$goos" "$goarch" >&2
+      return 1
+      ;;
+  esac
+  staging_dir="$(mktemp -d -t skidbladnir-host-release.XXXXXX)"
+  case "$staging_dir" in
+    /tmp/skidbladnir-host-release.* | /private/tmp/skidbladnir-host-release.*) ;;
+    *) printf 'Unexpected host-release staging directory\n' >&2; exit 1 ;;
+  esac
+  GOOS="$goos" GOARCH="$goarch" CGO_ENABLED="$cgo_enabled" go build -trimpath \
+    -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
+    -o "$staging_dir/skidbladnir" ./cmd/skidbladnir
+  install -m 0644 "$repo_dir/catalog/characters.json" "$staging_dir/characters.json"
+  jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
+    '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"
+  COPYFILE_DISABLE=1 tar -C "$staging_dir" -czf "$output" skidbladnir characters.json release.json
+  rm -R -- "$staging_dir"
+}
+
 case "$target" in
   android-static)
     cd "$repo_dir"
@@ -54,9 +98,56 @@ case "$target" in
   android-unit)
     android_gradle :app:testDebugUnitTest
     ;;
-  android-release)
+  release-assets)
+    [[ "$#" -eq 4 ]] || {
+      printf 'usage: %s release-assets TAG SOURCE_SHA OUTPUT_DIRECTORY\n' "$0" >&2
+      exit 64
+    }
+    tag="$2"
+    sha="$3"
+    output_dir="$4"
+    [[ "$(uname -s)/$(uname -m)" == 'Darwin/arm64' ]] || {
+      printf 'Release assets require the native Darwin arm64 signing host\n' >&2
+      exit 1
+    }
+    export GOTOOLCHAIN=local
+    "$repo_dir/scripts/check-go-toolchain" >/dev/null
+    read -r version_name version_code < <("$repo_dir/scripts/check-release" --android-version "$tag")
+    [[ "$sha" == "$(git -C "$repo_dir" rev-parse HEAD)" && "$sha" =~ ^[0-9a-f]{40}$ ]] || {
+      printf 'Release source SHA must equal the current exact HEAD\n' >&2
+      exit 1
+    }
+    [[ ! -e "$output_dir" ]] || {
+      printf 'Release output path must not already exist\n' >&2
+      exit 1
+    }
+    mkdir -m 0700 "$output_dir"
     require_android_signing
-    android_gradle :app:assembleRelease
+    SKIDBLADNIR_VERSION_NAME="$version_name" SKIDBLADNIR_VERSION_CODE="$version_code" \
+      android_gradle \
+        -Pskidbladnir.versionName="$version_name" \
+        -Pskidbladnir.versionCode="$version_code" \
+        :app:assembleRelease
+    install -m 0644 \
+      "$repo_dir/android/app/build/outputs/apk/release/app-release.apk" \
+      "$output_dir/skidbladnir-android.apk"
+    install -m 0644 \
+      "$repo_dir/android/app-signing-cert.sha256" \
+      "$output_dir/android-signing-cert.sha256"
+    cd "$repo_dir"
+    build_host_archive "$tag" "$sha" linux amd64 linux-amd64 \
+      "$output_dir/skidbladnir-linux-amd64.tar.gz"
+    build_host_archive "$tag" "$sha" darwin arm64 darwin-arm64 \
+      "$output_dir/skidbladnir-darwin-arm64.tar.gz"
+    (
+      cd "$output_dir"
+      "${digest_command[@]}" \
+        android-signing-cert.sha256 \
+        skidbladnir-android.apk \
+        skidbladnir-darwin-arm64.tar.gz \
+        skidbladnir-linux-amd64.tar.gz > SHA256SUMS
+    )
+    "$repo_dir/scripts/check-release" "$output_dir" "$tag" "$sha"
     ;;
   all)
     cd "$repo_dir"

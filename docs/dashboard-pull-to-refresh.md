@@ -52,12 +52,12 @@ are consumed unchanged.
 - Pull never retries or replays a mutation or terminal byte and never changes
   admission rules.
 - Recoverable stale/unreachable copy says `Pull down to check again`.
-  Authentication keeps `Update bearer`; identity change keeps external
-  provisioning repair. Neither claims pull can repair it.
+  Authentication keeps `Reconnect fleet`; identity change requires fleet
+  reset outside the app. Neither claims pull can repair it.
 - Forge outcome-unknown recovery names only an available path: pull when its
   ready target is visible, select that named target then pull when another
-  machine is filtered, update the bearer for authentication, and use external
-  provisioning repair for an identity-changed or missing target. Review-ready
+  machine is filtered, reconnect the fleet for authentication, and reset the
+  fleet outside the app for an identity-changed or missing target. Review-ready
   remains safe past-tense copy.
 
 ## Capability contract
@@ -84,7 +84,7 @@ are consumed unchanged.
 9. Success is quiet: no toast, snackbar, timestamp, haptic, or card-reorder
    animation is added.
 10. If the visible scope has no live polling target, no indicator starts and
-    the existing machine-access/provisioning notice remains the outcome.
+    the existing machine-access or fleet-reset notice remains the outcome.
 
 ## Structure and composition
 
@@ -250,7 +250,7 @@ abstraction without a second production consumer.
   confirming native resistance/threshold, no scroll jump, and no essential
   first-row text or control obscured by the indicator. Without that device,
   both are `NOT_RUN`, never pass.
-- Integration, live publication, product/two-host, tmux, and host gates are not
+- Integration, live publication, product/three-host, tmux, and host gates are not
   required because their boundaries are byte-identical; do not invoke them.
 
 ## Non-goals

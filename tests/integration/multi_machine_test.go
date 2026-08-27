@@ -18,6 +18,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/coder/websocket"
@@ -210,6 +211,7 @@ func newMachineGateway(t *testing.T, fixture sessionFixture, handleText string) 
 		Sessions: fixture.manager,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Pairing:  pairing.NewSlot(),
 		Logger:   logging.New(io.Discard),
 		Machine:  handle,
 		Platform: platform.Current(),

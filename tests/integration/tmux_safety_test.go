@@ -33,6 +33,14 @@ var isolatedTmuxCLICapability = flag.String(
 	"second explicit capability required for isolated tmux mutation",
 )
 
+var configuredTmuxPath = flag.String(
+	"skidbladnir-tmux-path",
+	"",
+	"absolute deployment-owned tmux binary used only on isolated test sockets",
+)
+
+var tmuxPath string
+
 var testSocketRegistry = struct {
 	sync.Mutex
 	root  string
@@ -56,6 +64,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "integration tests require the explicit CLI tmux capability")
 		os.Exit(2)
 	}
+	if !filepath.IsAbs(*configuredTmuxPath) {
+		fmt.Fprintln(os.Stderr, "integration tests require an absolute configured tmux path")
+		os.Exit(2)
+	}
+	tmuxPath = filepath.Clean(*configuredTmuxPath)
 	if os.Getenv("TMUX") != "" || os.Getenv("TMUX_PANE") != "" || os.Getenv("TMUX_TMPDIR") != "" {
 		fmt.Fprintln(os.Stderr, "integration tests refuse an invoking tmux client")
 		os.Exit(2)

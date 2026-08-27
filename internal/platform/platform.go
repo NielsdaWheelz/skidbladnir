@@ -8,10 +8,7 @@ const (
 )
 
 type Descriptor struct {
-	Kind                Kind
-	TmuxPath            string
-	TmuxVersion         string
-	CodexNodeEntrypoint string
+	Kind Kind
 }
 
 func Current() Descriptor { return current() }

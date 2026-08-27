@@ -84,6 +84,11 @@ func validateProfiles(profiles []Profile) ([]Profile, error) {
 	return validated, nil
 }
 
+// ValidateProfiles is the single configuration boundary for launch profiles.
+func ValidateProfiles(profiles []Profile) ([]Profile, error) {
+	return validateProfiles(profiles)
+}
+
 func safeProfileLabel(label string) bool {
 	if strings.TrimSpace(label) == "" || !utf8.ValidString(label) || utf8.RuneCountInString(label) > 64 || !norm.NFC.IsNormalString(label) {
 		return false

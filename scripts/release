@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo_name='NielsdaWheelz/skidbladnir'
+
+add_release_source_worktree() {
+  local repository="$1"
+  local sha="$2"
+  local target="$3"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ && ! -e "$target" ]] || return 1
+  git -C "$repository" worktree add --quiet --detach "$target" "$sha" || return 1
+  if [[ "$(git -C "$target" rev-parse HEAD)" != "$sha" ||
+    -n "$(git -C "$target" status --porcelain=v1 --untracked-files=all)" ]]; then
+    git -C "$repository" worktree remove --force "$target" >/dev/null 2>&1 || {
+      printf 'Failed to clean up an invalid release source worktree\n' >&2
+      return 1
+    }
+    return 1
+  fi
+}
+
+remove_release_source_worktree() {
+  git -C "$1" worktree remove --force "$2"
+}
+
+# shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
+self_test_cleanup() {
+  local test_exit=$?
+  trap - EXIT
+  if [[ -e "$source_worktree/.git" ]]; then
+    remove_release_source_worktree "$repository" "$source_worktree" >/dev/null 2>&1 || test_exit=1
+  fi
+  rm -R -- "$fixture_dir" || test_exit=1
+  exit "$test_exit"
+}
+
+self_test() (
+  set -euo pipefail
+  local fixture_dir
+  local repository
+  local source_worktree
+  local sha
+  fixture_dir="$(mktemp -d -t skidbladnir-release-source.XXXXXX)"
+  repository="$fixture_dir/repository"
+  source_worktree="$fixture_dir/source"
+  trap self_test_cleanup EXIT
+  git init --quiet "$repository"
+  printf 'committed source\n' >"$repository/input.txt"
+  git -C "$repository" add input.txt
+  git -C "$repository" -c user.name=Skidbladnir -c user.email=release@example.invalid \
+    commit --quiet -m fixture
+  sha="$(git -C "$repository" rev-parse HEAD)"
+  printf 'caller worktree drift\n' >"$repository/input.txt"
+  add_release_source_worktree "$repository" "$sha" "$source_worktree"
+  [[ "$(cat "$source_worktree/input.txt")" == 'committed source' ]]
+  [[ -z "$(git -C "$source_worktree" status --porcelain=v1 --untracked-files=all)" ]]
+  printf 'Exact-SHA release worktree policy passed\n'
+)
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
+  exit 64
+fi
+
+tag="$1"
+preflight="$("$repo_dir/scripts/check-release-source" "$tag")"
+IFS=$'\t' read -r sha run_id <<<"$preflight"
+[[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[0-9]+$ ]] || {
+  printf 'Release source preflight returned invalid evidence\n' >&2
+  exit 1
+}
+
+cd "$repo_dir"
+
+staging_dir="$(mktemp -d -t skidbladnir-release.XXXXXX)"
+case "$staging_dir" in
+  /tmp/skidbladnir-release.* | /private/tmp/skidbladnir-release.*) ;;
+  *) printf 'Unexpected release staging directory\n' >&2; exit 1 ;;
+esac
+source_worktree="$staging_dir/source"
+source_worktree_registered=''
+cleanup_release() {
+  local release_exit=$?
+  trap - EXIT
+  if [[ -n "$source_worktree_registered" ]]; then
+    remove_release_source_worktree "$repo_dir" "$source_worktree" >/dev/null 2>&1 || {
+      printf 'Failed to remove the temporary release source worktree\n' >&2
+      [[ "$release_exit" -ne 0 ]] || release_exit=1
+    }
+  fi
+  rm -R -- "$staging_dir" || {
+    printf 'Failed to remove the temporary release staging directory\n' >&2
+    [[ "$release_exit" -ne 0 ]] || release_exit=1
+  }
+  exit "$release_exit"
+}
+trap cleanup_release EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+add_release_source_worktree "$repo_dir" "$sha" "$source_worktree" || {
+  printf 'Could not create a clean detached worktree for exact release SHA %s\n' "$sha" >&2
+  exit 1
+}
+source_worktree_registered=1
+release_dir="$staging_dir/assets"
+"$source_worktree/scripts/build" release-assets "$tag" "$sha" "$release_dir"
+
+notes_file="$staging_dir/release-notes.md"
+"$source_worktree/scripts/render-release-notes" \
+  "$tag" "$sha" "$run_id" "$release_dir" >"$notes_file"
+
+gh release create "$tag" \
+  "$release_dir/skidbladnir-android.apk" \
+  "$release_dir/skidbladnir-linux-amd64.tar.gz" \
+  "$release_dir/skidbladnir-darwin-arm64.tar.gz" \
+  "$release_dir/SHA256SUMS" \
+  "$release_dir/android-signing-cert.sha256" \
+  --repo "$repo_name" \
+  --draft \
+  --target "$sha" \
+  --title "Skíðblaðnir $tag" \
+  --notes-file "$notes_file"
+
+printf 'Draft release created: %s at %s (verify run %s)\n' "$tag" "$sha" "$run_id"

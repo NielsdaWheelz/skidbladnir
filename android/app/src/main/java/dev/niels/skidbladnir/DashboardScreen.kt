@@ -278,13 +278,9 @@ private fun DashboardDwarfGrid(
                     Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
                         when {
                             state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
-                                "Provisioning repair required",
-                                "Saved machine credentials are unreadable. Machine administration is outside this app.",
+                                "Fleet reset required",
+                                "Saved fleet credentials are unreadable. Reset the app data, then connect again.",
                                 tone = NoticeTone.Failure,
-                            )
-                            state.machines.isEmpty() -> EmptyState(
-                                "No provisioned machines",
-                                "Install machine credentials outside the app to begin.",
                             )
                             else -> dashboardInventoryWaitCopy(machines)?.let {
                                 EmptyState("Sessions not current", it.message, tone = it.tone)
@@ -363,9 +359,9 @@ internal fun UnreadableMachineStrip(
         tone = NoticeTone.Failure,
         title = if (machine.collectionWide) "Unreadable pairing index" else "Unreadable pairing",
         body = if (machine.collectionWide) {
-            "Saved machines cannot be identified safely. Provisioning repair is required outside this app."
+            "Saved machines cannot be identified safely. Reset the app data, then connect again."
         } else {
-            "Its saved identity and destination are untrusted. Provisioning repair is required outside this app."
+            "Its saved identity and destination are untrusted. Reset the app data, then connect again."
         },
     )
 }
@@ -430,10 +426,10 @@ private fun MachineStrip(
         )
         if (machineAvailability(machine) == MachineAvailability.AuthRequired) {
             TextButton(
-                onClick = { controller.repairMachine(machine.machine.handle) },
+                onClick = controller::requestFleetReconnect,
                 enabled = credentialWritesEnabled,
                 modifier = Modifier.padding(horizontal = 16.dp),
-            ) { Text("Update bearer") }
+            ) { Text("Reconnect fleet") }
         }
     }
 }
@@ -821,8 +817,8 @@ internal fun forgeRecoveryMessage(
         is ForgeRecovery.RefreshRequired -> {
             val repair = when (target?.access) {
                 null, MachineAccess.IdentityChanged ->
-                    "Provisioning repair is required before reviewing this draft."
-                MachineAccess.AuthRequired -> "Update bearer before reviewing this draft."
+                    "Fleet reset is required before reviewing this draft."
+                MachineAccess.AuthRequired -> "Reconnect fleet before reviewing this draft."
                 MachineAccess.Ready -> if (
                     dashboard.selectedMachine == null || dashboard.selectedMachine == target.machine.handle
                 ) {
@@ -854,7 +850,7 @@ internal fun dashboardInventoryWaitCopy(machines: List<MachineState>): MachineNo
             MachineAvailability.Ready -> null
             MachineAvailability.Refreshing -> "$label: confirming the latest tmux inventory."
             MachineAvailability.AuthRequired -> "$label: authentication required; its sessions may be out of date."
-            MachineAvailability.IdentityChanged -> "$label: identity changed; provisioning repair is required."
+            MachineAvailability.IdentityChanged -> "$label: identity changed; fleet reset is required."
             MachineAvailability.Reading -> "$label: reading tmux sessions."
             is MachineAvailability.Stale ->
                 "$label: showing its last inventory; it is STALE and actions are disabled."
@@ -872,7 +868,7 @@ internal fun forgeMachineChoiceLabel(machine: MachineState): String = machine.ma
     MachineAvailability.Ready -> ""
     MachineAvailability.Refreshing -> " · REFRESHING"
     MachineAvailability.AuthRequired -> " · AUTH REQUIRED"
-    MachineAvailability.IdentityChanged -> " · RE-PAIR"
+    MachineAvailability.IdentityChanged -> " · IDENTITY CHANGED"
     MachineAvailability.Reading -> " · READING"
     is MachineAvailability.Stale -> " · STALE"
     is MachineAvailability.Unavailable -> " · UNAVAILABLE"
@@ -893,11 +889,11 @@ internal fun forgeUnavailableCopy(machine: MachineState): MachineNotice? {
             tone,
         )
         MachineAvailability.AuthRequired -> MachineNotice(
-            "$label needs an updated bearer. Draft fields and Create are disabled.",
+            "$label needs the fleet reconnected. Draft fields and Create are disabled.",
             tone,
         )
         MachineAvailability.IdentityChanged -> MachineNotice(
-            "$label identity changed. Provisioning repair is required; draft fields and Create are disabled.",
+            "$label identity changed. Fleet reset is required; draft fields and Create are disabled.",
             tone,
         )
         MachineAvailability.Reading -> MachineNotice(

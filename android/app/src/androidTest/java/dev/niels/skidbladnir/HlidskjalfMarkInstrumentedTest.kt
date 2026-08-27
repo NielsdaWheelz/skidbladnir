@@ -53,31 +53,20 @@ class HlidskjalfMarkInstrumentedTest {
     }
 
     @Test
-    fun theBearerRepairMarkLeadsTheLabelWithoutJoiningWhatTheButtonAnnounces() {
-        compose.setContent {
-            MaterialTheme {
-                TextButton(onClick = {}) { BackToDwarvesContent(tag = BEARER_REPAIR_TAG) }
-            }
-        }
-
-        assertMarkIsSilentAndLeads(BEARER_REPAIR_TAG)
-    }
-
-    @Test
     fun theMarkDimsWithTheButtonItLeadsInsteadOfStayingAtFullStrength() {
         var enabled by mutableStateOf(true)
         compose.setContent {
             MaterialTheme {
                 TextButton(onClick = {}, enabled = enabled) {
-                    BackToDwarvesContent(tag = BEARER_REPAIR_TAG)
+                    BackToDwarvesContent(tag = TERMINAL_TAG)
                 }
             }
         }
 
-        val litContrast = compose.onNodeWithTag(BEARER_REPAIR_TAG, useUnmergedTree = true).markContrast()
+        val litContrast = compose.onNodeWithTag(TERMINAL_TAG, useUnmergedTree = true).markContrast()
         enabled = false
         compose.waitForIdle()
-        val dimmedContrast = compose.onNodeWithTag(BEARER_REPAIR_TAG, useUnmergedTree = true).markContrast()
+        val dimmedContrast = compose.onNodeWithTag(TERMINAL_TAG, useUnmergedTree = true).markContrast()
 
         assertTrue(
             "the mark must be drawn at all: its strands never departed from the ground behind " +
@@ -149,4 +138,3 @@ private fun SemanticsNodeInteraction.markContrast(): Float {
 
 private const val LABEL = "Back to Dwarves"
 private const val TERMINAL_TAG = "terminal-dwarves-mark"
-private const val BEARER_REPAIR_TAG = "bearer-repair-dwarves-mark"

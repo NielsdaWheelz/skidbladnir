@@ -12,18 +12,20 @@ compatible_toolchain() {
   local resolved_major
   local resolved_minor
   local resolved_patch
-  if [[ ! "$required" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  if [[ ! "$required" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     return 1
   fi
   required_major="${BASH_REMATCH[1]}"
   required_minor="${BASH_REMATCH[2]}"
   required_patch="${BASH_REMATCH[3]}"
-  if [[ ! "$resolved" =~ ^go([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  if [[ ! "$resolved" =~ ^go(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     return 1
   fi
   resolved_major="${BASH_REMATCH[1]}"
   resolved_minor="${BASH_REMATCH[2]}"
   resolved_patch="${BASH_REMATCH[3]}"
+  ((${#required_major} <= 9 && ${#required_minor} <= 9 && ${#required_patch} <= 9)) || return 1
+  ((${#resolved_major} <= 9 && ${#resolved_minor} <= 9 && ${#resolved_patch} <= 9)) || return 1
   [[ "$resolved_major" == "$required_major" && "$resolved_minor" == "$required_minor" ]] || return 1
   ((10#$resolved_patch >= 10#$required_patch))
 }
@@ -52,8 +54,10 @@ older language family|1.26.0|go1.25.9|fail
 newer language family|1.26.0|go1.27.0|fail
 release candidate|1.26.0|go1.27rc1|fail
 malformed directive|1.26|go1.26.7|fail
+resolved arithmetic overflow|1.26.0|go1.26.18446744073709551618|fail
+required arithmetic overflow|1.26.18446744073709551616|go1.26.0|fail
 CASES
-  printf 'Go toolchain policy passed: 7 cases\n'
+  printf 'Go toolchain policy passed: 9 cases\n'
 }
 
 if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then

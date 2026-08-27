@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$(uname -s)" in
+  Darwin) digest_command=(shasum -a 256) ;;
+  Linux) digest_command=(sha256sum) ;;
+  *) printf 'Release notes support only Linux and Darwin\n' >&2; exit 1 ;;
+esac
+
+valid_tag() {
+  local tag="$1"
+  local major
+  local minor
+  local patch
+  [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  major="${BASH_REMATCH[1]}"
+  minor="${BASH_REMATCH[2]}"
+  patch="${BASH_REMATCH[3]}"
+  ((${#major} <= 4 && ${#minor} <= 3 && ${#patch} <= 3)) || return 1
+  ((10#$major <= 2100 && 10#$minor <= 999 && 10#$patch <= 999))
+}
+
+manifest_digest() {
+  local manifest="$1"
+  local asset="$2"
+  local observed
+  observed="$(awk -v asset="$asset" '$2 == asset && NF == 2 { print $1 }' "$manifest")" || return 1
+  [[ "$observed" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "$observed"
+}
+
+render_notes() {
+  local tag="$1"
+  local sha="$2"
+  local run_id="$3"
+  local release_dir="$4"
+  local manifest="$release_dir/SHA256SUMS"
+  local signer_file="$release_dir/android-signing-cert.sha256"
+  local signer
+  local signer_asset_digest
+  local apk_digest
+  local darwin_digest
+  local linux_digest
+  local checksums_digest
+  valid_tag "$tag" || return 1
+  [[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[1-9][0-9]*$ ]] || return 1
+  [[ -f "$manifest" && ! -L "$manifest" && -f "$signer_file" && ! -L "$signer_file" ]] || return 1
+  [[ "$(wc -l <"$signer_file" | tr -d ' ')" == 1 ]] || return 1
+  signer="$(sed -n '1p' "$signer_file")"
+  [[ "$signer" =~ ^[0-9a-f]{64}$ ]] || return 1
+  signer_asset_digest="$(manifest_digest "$manifest" android-signing-cert.sha256)" || return 1
+  apk_digest="$(manifest_digest "$manifest" skidbladnir-android.apk)" || return 1
+  darwin_digest="$(manifest_digest "$manifest" skidbladnir-darwin-arm64.tar.gz)" || return 1
+  linux_digest="$(manifest_digest "$manifest" skidbladnir-linux-amd64.tar.gz)" || return 1
+  [[ "$(wc -l <"$manifest" | tr -d ' ')" == 4 ]] || return 1
+  checksums_digest="$("${digest_command[@]}" "$manifest" | awk 'NF == 2 { print $1 }')" || return 1
+  [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+
+  # shellcheck disable=SC2016 # Literal Markdown code spans must not invoke shell expansion.
+  printf '%s\n' "# Skíðblaðnir $tag" "" \
+    "- Source: \`$sha\`" \
+    "- Verify run: \`$run_id\`" \
+    "- Android signer SHA-256: \`$signer\`" "" \
+    "## Install" "" \
+    "1. The fleet owner pins this exact tag and all five asset digests in" \
+    '   `dev-server`, converges Devbox, Arch, and MacBook, then runs fleet doctor.' \
+    '2. On the phone, download `skidbladnir-android.apk` from this release and' \
+    '   approve installation from the browser when Android asks.' \
+    '3. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
+    '   Tailscale connected.' \
+    '4. Open Skíðblaðnir and tap **Connect**.' \
+    '5. On the MacBook, run `./skidbladnir invite` in `dev-server`, then scan' \
+    '   the fresh QR within five minutes. The QR works once.' "" \
+    '## Update order' "" \
+    'Converge and verify all three hosts first; update the phone second. Mixed' \
+    'versions and ordinary APK downgrade are not supported.' "" \
+    '## Assets' "" \
+    '| Asset | SHA-256 |' \
+    '|---|---|' \
+    "| \`skidbladnir-android.apk\` | \`$apk_digest\` |" \
+    "| \`skidbladnir-linux-amd64.tar.gz\` | \`$linux_digest\` |" \
+    "| \`skidbladnir-darwin-arm64.tar.gz\` | \`$darwin_digest\` |" \
+    "| \`android-signing-cert.sha256\` | \`$signer_asset_digest\` |" \
+    "| \`SHA256SUMS\` | \`$checksums_digest\` |" "" \
+    '## Known limits' "" \
+    'Android 16/API 36, Linux amd64, and Darwin arm64 only. The topology is fixed' \
+    'to one tailnet, three owner-managed hosts, five configured profiles, and two' \
+    'trusted phones. There is no app store, automatic update, downgrade, mixed-' \
+    'version compatibility, public ingress, fleet discovery, or embedded Tailscale' \
+    'login. GitHub is used for installation and updates, never at runtime.'
+}
+
+# shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
+self_test_cleanup() {
+  local test_exit=$?
+  trap - EXIT
+  rm -R -- "$fixture_dir" || test_exit=1
+  exit "$test_exit"
+}
+
+self_test() (
+  set -euo pipefail
+  local fixture_dir
+  local notes
+  fixture_dir="$(mktemp -d -t skidbladnir-release-notes.XXXXXX)"
+  trap self_test_cleanup EXIT
+  printf '%064d\n' 0 >"$fixture_dir/android-signing-cert.sha256"
+  {
+    printf '%064d  %s\n' 1 android-signing-cert.sha256
+    printf '%064d  %s\n' 2 skidbladnir-android.apk
+    printf '%064d  %s\n' 3 skidbladnir-darwin-arm64.tar.gz
+    printf '%064d  %s\n' 4 skidbladnir-linux-amd64.tar.gz
+  } >"$fixture_dir/SHA256SUMS"
+  notes="$(render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 "$fixture_dir")"
+  # shellcheck disable=SC2016 # The backticks are literal Markdown delimiters.
+  [[ "$notes" == *'## Update order'* && "$notes" == *'hosts first'* &&
+    "$notes" == *'update the phone second'* && "$notes" == *'`42`'* ]] || return 1
+  printf '%064d  %s\n' 5 skidbladnir-linux-amd64.tar.gz >>"$fixture_dir/SHA256SUMS"
+  if render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 \
+    "$fixture_dir" >/dev/null; then
+    printf 'Duplicate release-note asset digest was accepted\n' >&2
+    return 1
+  fi
+  printf 'Deterministic release notes passed\n'
+)
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+
+if [[ "$#" -ne 4 ]]; then
+  printf 'usage: %s TAG SOURCE_SHA VERIFY_RUN_ID RELEASE_DIRECTORY\n' "$0" >&2
+  exit 64
+fi
+
+render_notes "$1" "$2" "$3" "$4" || {
+  printf 'Release-note inputs are invalid\n' >&2
+  exit 1
+}
