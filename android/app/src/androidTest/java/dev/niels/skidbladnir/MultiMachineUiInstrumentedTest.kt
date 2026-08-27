@@ -61,19 +61,21 @@ class MultiMachineUiInstrumentedTest {
             }
             compose.onNodeWithTag("dashboard-top-bar").assertIsDisplayed()
             compose.onNodeWithTag("new-agent").assertIsDisplayed().assertIsEnabled()
+            compose.onNodeWithText("Dwarves").assertIsDisplayed()
+            compose.onNodeWithText("New dwarf").assertIsDisplayed()
 
             val topBar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
             val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
             val newAgent = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
             assertTrue(
-                "the dashboard top bar is not one row: New agent sits outside the bar",
+                "the dashboard top bar is not one row: New dwarf sits outside the bar",
                 newAgent.top >= topBar.top && newAgent.bottom <= topBar.bottom,
             )
             assertTrue(
-                "the dashboard top bar stacks its title above New agent instead of sharing one row",
+                "the dashboard top bar stacks its title above New dwarf instead of sharing one row",
                 newAgent.top < title.bottom && title.top < newAgent.bottom,
             )
-            assertTrue("New agent does not trail the dashboard title", newAgent.left >= title.right)
+            assertTrue("New dwarf does not trail the dashboard title", newAgent.left >= title.right)
 
             compose.onNodeWithText("Add machine").assertDoesNotExist()
             compose.onNodeWithText("Rename").assertDoesNotExist()
@@ -289,6 +291,7 @@ class MultiMachineUiInstrumentedTest {
 
                 compose.onNodeWithTag("new-agent").performClick()
                 waitForTag("forge-sheet", 10_000)
+                compose.onNodeWithText("Create dwarf").assertIsDisplayed()
                 compose.onNodeWithTag(forgeMachineTag(first)).assertIsNotSelected()
                 compose.onNodeWithTag(forgeMachineTag(second)).assertIsNotSelected()
                 compose.onNodeWithTag(forgeMachineTag(first)).assertIsEnabled()

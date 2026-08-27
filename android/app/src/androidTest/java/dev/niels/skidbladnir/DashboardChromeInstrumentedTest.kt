@@ -147,7 +147,7 @@ class DashboardChromeInstrumentedTest {
             MaterialTheme {
                 EmptyState(
                     "No tmux sessions",
-                    "Create an agent here, or launch tmux on the visible machine.",
+                    "Create a dwarf here, or launch tmux on the visible machine.",
                     ornament = true,
                 )
             }

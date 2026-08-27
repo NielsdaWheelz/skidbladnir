@@ -147,7 +147,7 @@ private fun BearerRepairScreen(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "Your agents, aboard.",
+            text = "Your dwarves, aboard.",
             color = Muted,
             style = MaterialTheme.typography.titleMedium,
         )
@@ -199,7 +199,7 @@ private fun BearerRepairScreen(
             Text("Update bearer")
         }
         TextButton(onClick = controller::cancelBearerRepair, enabled = !state.pending, modifier = Modifier.fillMaxWidth()) {
-            Text("Back to agents")
+            Text("Back to Dwarves")
         }
         Text(
             text = "Tailnet only · fixed machine identity",

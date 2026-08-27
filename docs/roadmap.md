@@ -37,6 +37,7 @@ S1 tmux control plane
  -> v0 design delta D2: chrome tokens
  -> v0 design delta D3: dwarf seals
  -> v0 design delta D4: ornament
+ -> v0 product-language delta: dwarves
  -> v0.5 (optional): push
 ```
 
@@ -172,8 +173,8 @@ while machine administration leaves the app and the dense v0 dashboard returns.
 
 - Removed app add, rename, healthy remove, and quarantine-clear capabilities;
   bearer repair remains bound to an existing immutable machine.
-- Collapsed the dashboard chrome to one 64 dp row with `New agent` trailing and
-  removed the duplicate create row.
+- Collapsed the dashboard chrome to one 64 dp row with the primary create
+  action trailing and removed the duplicate create row.
 - Restored each machine's current pressure metrics, 15-minute severity history,
   missing inputs, platform-unsupported metrics, and pressure reasons.
 
@@ -294,6 +295,27 @@ Scope per [ornament-pipeline.md](ornament-pipeline.md). Gate: routine
 verification plus icon/ornament checks folded into the next approved platform
 pass.
 
+## v0 product-language delta — dwarves
+
+Outcome: the UI names each persistent session persona a dwarf while preserving
+literal tmux-session language wherever process lifetime or destructive safety
+matters.
+
+- Dashboard, Forge, navigation, and pairing copy use `Dwarf` / `Dwarves` for
+  the Dvergatal-backed persona.
+- Detach and recovery copy name the `session`; `agent` is reserved for the
+  opaque foreground terminal program.
+- HTTP `/sessions`, tmux identity, internal target types, and test selectors do
+  not change.
+
+Red: a `SHELL` card is still called an agent even though no agent process is
+present, and Detach promises that a transient agent rather than the tmux
+session keeps running.
+
+Acceptance: focused Android unit proof for detach lifetime copy, compiled
+instrumentation assertions for dashboard language, routine verification, and
+the next separately approved platform pass for rendered-device confirmation.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -321,4 +343,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |
 | v0 design delta D4 — ornament | Source implemented (interlace removed with the pairing screen); drift gate and the 33-test instrumented S22+ suite green; hands-on ornament/icon glance `NOT_RUN` |
+| v0 product-language delta — dwarves | Source implemented; routine verification green; rendered-device confirmation `NOT_RUN` |
 | v0.5 push | Not scheduled |
