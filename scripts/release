@@ -41,7 +41,7 @@ self_test() (
   local repository
   local source_worktree
   local sha
-  fixture_dir="$(mktemp -d -t skidbladnir-release-source.XXXXXX)"
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-source.XXXXXX)"
   repository="$fixture_dir/repository"
   source_worktree="$fixture_dir/source"
   trap self_test_cleanup EXIT
@@ -78,7 +78,7 @@ IFS=$'\t' read -r sha run_id <<<"$preflight"
 
 cd "$repo_dir"
 
-staging_dir="$(mktemp -d -t skidbladnir-release.XXXXXX)"
+staging_dir="$(mktemp -d /tmp/skidbladnir-release.XXXXXX)"
 case "$staging_dir" in
   /tmp/skidbladnir-release.* | /private/tmp/skidbladnir-release.*) ;;
   *) printf 'Unexpected release staging directory\n' >&2; exit 1 ;;

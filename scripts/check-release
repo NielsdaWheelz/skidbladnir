@@ -100,7 +100,7 @@ verify_archive() (
     printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
   }
-  staging_dir="$(mktemp -d -t skidbladnir-archive-check.XXXXXX)"
+  staging_dir="$(mktemp -d /tmp/skidbladnir-archive-check.XXXXXX)"
   case "$staging_dir" in
     /tmp/skidbladnir-archive-check.* | /private/tmp/skidbladnir-archive-check.*) ;;
     *) printf 'Unexpected archive-check staging directory\n' >&2; return 1 ;;
@@ -338,7 +338,7 @@ if "$apkanalyzer" manifest permissions "$release_dir/skidbladnir-android.apk" |
   exit 1
 fi
 
-staging_dir="$(mktemp -d -t skidbladnir-release-check.XXXXXX)"
+staging_dir="$(mktemp -d /tmp/skidbladnir-release-check.XXXXXX)"
 case "$staging_dir" in
   /tmp/skidbladnir-release-check.* | /private/tmp/skidbladnir-release-check.*) ;;
   *) printf 'Unexpected release-check staging directory\n' >&2; exit 1 ;;

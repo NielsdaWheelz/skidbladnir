@@ -102,7 +102,7 @@ self_test() (
   set -euo pipefail
   local fixture_dir
   local notes
-  fixture_dir="$(mktemp -d -t skidbladnir-release-notes.XXXXXX)"
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-notes.XXXXXX)"
   trap self_test_cleanup EXIT
   printf '%064d\n' 0 >"$fixture_dir/android-signing-cert.sha256"
   {
