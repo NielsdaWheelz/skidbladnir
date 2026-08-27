@@ -402,7 +402,11 @@ history item is `current`.
 - Devbox runs a systemd user service with `KillMode=process`, fixed
   `HOME=/home/niels`, stable interactive `PATH`, `/usr/bin/tmux` exactly
   `tmux 3.4`, and separate Devbox hook/notify assets. Port `443` remains owned
-  by Caddy with no effective proxy to gateway port `7341`.
+  by Caddy with no effective proxy to gateway port `7341`. The Devbox installer
+  accepts `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` only when absent or
+  already equal to `/run/user/1000` and its `bus`; it then exports those exact
+  values for every user-systemd operation after ownership-checking the runtime
+  directory. SSH transport therefore cannot retarget or orphan verification.
 - MacBook runs per-user LaunchAgent `dev.niels.skidbladnir` with `RunAtLoad`,
   restart-on-failure, fixed `HOME=/Users/nnandal`, stable `PATH`, and
   `/opt/homebrew/bin/tmux` exactly `tmux 3.7b`. Publication is pinned to macOS

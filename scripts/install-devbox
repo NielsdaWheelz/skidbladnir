@@ -21,7 +21,9 @@ readonly catalogue_target="${expected_home}/.local/share/skidbladnir/characters.
 readonly bearer_target="${expected_home}/.config/skidbladnir/bearer"
 readonly machine_handle_target="${expected_home}/.config/skidbladnir/machine-handle"
 readonly unit_target="${expected_home}/.config/systemd/user/${service_name}"
-readonly operation_lock="/run/user/${expected_uid}/skidbladnir-install.lock"
+readonly user_runtime_directory="/run/user/${expected_uid}"
+readonly user_bus_address="unix:path=${user_runtime_directory}/bus"
+readonly operation_lock="${user_runtime_directory}/skidbladnir-install.lock"
 readonly service_path="${expected_home}/bin:${expected_home}/.local/bin:${expected_home}/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 readonly desired_notify="notify = [\"${notify_target}\"]"
 readonly health_probe_attempts=50
@@ -104,7 +106,7 @@ read_tcp_listeners() {
 }
 
 acquire_operation_lock() {
-  require_owned_directory "/run/user/${expected_uid}"
+  require_owned_directory "$user_runtime_directory"
   if [[ -e "$operation_lock" || -L "$operation_lock" ]]; then
     require_regular_file "$operation_lock" 600
   fi
@@ -436,6 +438,15 @@ preflight_operation() {
   [[ "${HOME:-}" == "$expected_home" ]] || die "unexpected home directory"
   [[ -z "${TMUX:-}" && -z "${TMUX_PANE:-}" && -z "${TMUX_TMPDIR:-}" ]] ||
     die "refusing inherited tmux socket state"
+  [[ -z "${XDG_RUNTIME_DIR:-}" || "$XDG_RUNTIME_DIR" == "$user_runtime_directory" ]] ||
+    die "XDG_RUNTIME_DIR targets another user runtime"
+  [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" || "$DBUS_SESSION_BUS_ADDRESS" == "$user_bus_address" ]] ||
+    die "DBUS_SESSION_BUS_ADDRESS targets another user manager"
+  # SSH and automation do not consistently export XDG_RUNTIME_DIR even when
+  # the persistent user manager is healthy. Every systemd command in this
+  # installer is scoped to this exact, ownership-checked user runtime.
+  export XDG_RUNTIME_DIR="$user_runtime_directory"
+  export DBUS_SESSION_BUS_ADDRESS="$user_bus_address"
 }
 
 preflight_platform() {
