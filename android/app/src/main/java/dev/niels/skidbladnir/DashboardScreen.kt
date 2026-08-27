@@ -70,10 +70,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -225,8 +223,20 @@ internal fun DashboardTopBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // The Hlíðskjálf mark on the surface it names (design-language.md §8):
+        // Gold, decorative, and silent — "Dwarves" beside it carries the label.
+        HlidskjalfMark(color = Gold, markSize = 24.dp, tag = "dashboard-mark")
         Column(modifier = Modifier.weight(1f).testTag("dashboard-title")) {
-            Text("Dwarves", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Dwarves",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                // The row is a fixed 64dp and now leads with the 24dp mark, so at a large
+                // font scale an unbounded title would wrap and clip against it. The summary
+                // line below has always bounded itself; this matches it.
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 summary,
                 color = Muted,
@@ -971,21 +981,15 @@ internal fun EmptyState(title: String, body: String, ornament: Boolean = false) 
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             if (ornament) {
-                // The Hlíðskjálf mark (design-language.md §8): decorative
-                // only, so it clears semantics explicitly rather than relying
-                // on Canvas having none by default — the literal text below
-                // it carries the meaning (ornament-pipeline.md "Ornament is
-                // silent and subordinate"). It renders only when the
-                // inventory is genuinely empty, never beside degraded or
-                // repair states.
-                Canvas(
-                    modifier = Modifier
-                        .padding(bottom = 12.dp)
-                        .size(48.dp)
-                        .clearAndSetSemantics { testTag = "EmptyStateOrnament" },
-                ) {
-                    drawValknut(Muted.copy(alpha = 0.40f))
-                }
+                // The same mark the top bar carries, at the one size the
+                // empty hall deserves. It renders only when the inventory is
+                // genuinely empty, never beside degraded or repair states.
+                HlidskjalfMark(
+                    color = Muted.copy(alpha = 0.40f),
+                    markSize = 48.dp,
+                    tag = "EmptyStateOrnament",
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
             }
             Text(title, style = MaterialTheme.typography.titleLarge)
             Text(body, color = Muted, modifier = Modifier.padding(top = 8.dp))

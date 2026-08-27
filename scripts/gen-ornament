@@ -50,6 +50,16 @@ _ICON_VIEWPORT = 108.0
 _ICON_SAFE_RADIUS = 30.0
 _BEZIER_FACETS = 3  # straight segments each original curve is resampled into
 
+# The width of the break cut at every valknut crossing, in units of the crossed
+# edge's own length. Not a taste value: below 0.36 a crossing whose two cuts
+# nearly meet leaves a stub of surviving edge between them, and that stub is
+# shorter than the mark's own stroke is wide, so it renders as a speck rather
+# than a strand. 0.36 is the first width that consumes every such stub — the
+# segment count drops from 15 to 12 and the shortest surviving segment rises
+# from 0.005 to 0.084 of the unit box. Widening further only eats the
+# triangles. OrnamentTest pins both invariants (design-language.md §8).
+_VALKNUT_GAP = 0.36
+
 
 def _fmt_f(value: float) -> str:
     """A Kotlin Float literal for `value`, minimal and deterministic."""
@@ -143,7 +153,7 @@ def _seg_intersect_t(p1, p2, p3, p4) -> tuple[float, float] | None:
     return None
 
 
-def _valknut(gap: float = 0.10) -> list[tuple[float, float, float, float]]:
+def _valknut(gap: float = _VALKNUT_GAP) -> list[tuple[float, float, float, float]]:
     """The tricursal valknut (design-language.md §8): three congruent
     equilateral triangles, each the previous rotated 120° about the shared
     center, with each triangle's own centroid itself offset from that center
@@ -152,7 +162,9 @@ def _valknut(gap: float = 0.10) -> list[tuple[float, float, float, float]]:
     are ordered by angle around the center; the over triangle alternates
     strictly walking that ring, and the losing triangle's edge is split with
     a gap at that crossing (`_split_with_gaps`), baking the weave into the
-    data with no runtime over/under logic."""
+    data with no runtime over/under logic. `gap` defaults to `_VALKNUT_GAP`;
+    the stroke that draws these segments is a fraction of the mark's own size,
+    so a break stays the same share of the mark at every rendered size."""
     offset, radius, phi0, centroid_angle = 0.6, 1.0, 90.0, 135.0
     base_centroid = (offset * math.cos(math.radians(centroid_angle)), offset * math.sin(math.radians(centroid_angle)))
     base = _triangle(base_centroid, radius, phi0)
@@ -325,7 +337,8 @@ def build_outputs() -> dict[str, bytes]:
             "\n",
             "// The tricursal valknut (design-language.md §8): three interlocked\n",
             "// equilateral triangles, Borromean topology, straight lines only, unit box\n",
-            "// aspect 1:1. All six over/under crossings are baked as gaps.\n",
+            "// aspect 1:1. All six over/under crossings are baked as gaps, sized so\n",
+            "// the weave survives every rendered size against a proportional stroke.\n",
             _kotlin_segments("Valknut", valknut),
         ]
     )

@@ -17,21 +17,19 @@ internal val FretCell: List<OrnamentSegment> = listOf(
 
 // The tricursal valknut (design-language.md §8): three interlocked
 // equilateral triangles, Borromean topology, straight lines only, unit box
-// aspect 1:1. All six over/under crossings are baked as gaps.
+// aspect 1:1. All six over/under crossings are baked as gaps, sized so
+// the weave survives every rendered size against a proportional stroke.
 internal val Valknut: List<OrnamentSegment> = listOf(
     OrnamentSegment(0.364125f, 0.043864f, 0.086771f, 0.524255f),
-    OrnamentSegment(0.086771f, 0.524255f, 0.430253f, 0.524255f),
-    OrnamentSegment(0.485724f, 0.524255f, 0.514276f, 0.524255f),
-    OrnamentSegment(0.569747f, 0.524255f, 0.641479f, 0.524255f),
+    OrnamentSegment(0.086771f, 0.524255f, 0.358141f, 0.524255f),
     OrnamentSegment(0.641479f, 0.524255f, 0.364125f, 0.043864f),
     OrnamentSegment(0.172912f, 0.845739f, 0.72762f, 0.845739f),
-    OrnamentSegment(0.72762f, 0.845739f, 0.513868f, 0.475509f),
-    OrnamentSegment(0.486132f, 0.42747f, 0.450266f, 0.365348f),
-    OrnamentSegment(0.450266f, 0.365348f, 0.372389f, 0.500236f),
-    OrnamentSegment(0.344653f, 0.548275f, 0.172912f, 0.845739f),
+    OrnamentSegment(0.72762f, 0.845739f, 0.549924f, 0.53796f),
+    OrnamentSegment(0.450266f, 0.365348f, 0.408445f, 0.437785f),
+    OrnamentSegment(0.308597f, 0.610726f, 0.172912f, 0.845739f),
     OrnamentSegment(0.962963f, 0.610397f, 0.685609f, 0.130005f),
-    OrnamentSegment(0.685609f, 0.130005f, 0.563601f, 0.341329f),
-    OrnamentSegment(0.535866f, 0.389368f, 0.408255f, 0.610397f),
-    OrnamentSegment(0.408255f, 0.610397f, 0.56401f, 0.610397f),
-    OrnamentSegment(0.61948f, 0.610397f, 0.962963f, 0.610397f),
+    OrnamentSegment(0.685609f, 0.130005f, 0.599657f, 0.278878f),
+    OrnamentSegment(0.49981f, 0.451819f, 0.408255f, 0.610397f),
+    OrnamentSegment(0.408255f, 0.610397f, 0.491898f, 0.610397f),
+    OrnamentSegment(0.691593f, 0.610397f, 0.962963f, 0.610397f),
 )
