@@ -40,6 +40,16 @@ validate_sha() {
   [[ "$1" =~ ^[0-9a-f]{40}$ ]]
 }
 
+validate_release_source() {
+  local requested_dir
+  local source_root
+  requested_dir="$(cd "$1" && pwd -P)" || return 1
+  source_root="$(git -C "$requested_dir" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  [[ "$source_root" == "$requested_dir" &&
+    "$(git -C "$source_root" rev-parse HEAD 2>/dev/null)" == "$2" &&
+    -z "$(git -C "$source_root" status --porcelain=v1 --untracked-files=all)" ]]
+}
+
 validate_manifest() {
   local manifest="$1"
   local tag="$2"
@@ -155,6 +165,48 @@ verify_archive() (
   fi
 )
 
+release_source_self_test() (
+  set -euo pipefail
+  local fixture_dir
+  local repository
+  local sha
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-check-source.XXXXXX)"
+  case "$fixture_dir" in
+    /tmp/skidbladnir-release-check-source.* | /private/tmp/skidbladnir-release-check-source.*) ;;
+    *) printf 'Unexpected release source fixture directory\n' >&2; return 1 ;;
+  esac
+  trap 'rm -R -- "$fixture_dir"' EXIT HUP INT TERM
+  repository="$fixture_dir/repository"
+  git init --quiet "$repository"
+  printf 'one\n' >"$repository/source.txt"
+  git -C "$repository" add source.txt
+  git -C "$repository" -c user.name=Skidbladnir -c user.email=release@example.invalid \
+    commit --quiet -m one
+  sha="$(git -C "$repository" rev-parse HEAD)"
+  validate_release_source "$repository" "$sha"
+  printf 'dirty\n' >"$repository/source.txt"
+  if validate_release_source "$repository" "$sha"; then
+    printf 'Dirty release source checkout was accepted\n' >&2
+    return 1
+  fi
+  git -C "$repository" checkout --quiet -- source.txt
+  mkdir "$repository/nested"
+  if validate_release_source "$repository/nested" "$sha"; then
+    printf 'Nested release source directory was accepted as the repository root\n' >&2
+    return 1
+  fi
+  rmdir "$repository/nested"
+  printf 'two\n' >"$repository/source.txt"
+  git -C "$repository" add source.txt
+  git -C "$repository" -c user.name=Skidbladnir -c user.email=release@example.invalid \
+    commit --quiet -m two
+  if validate_release_source "$repository" "$sha"; then
+    printf 'Wrong-HEAD release source checkout was accepted\n' >&2
+    return 1
+  fi
+  printf 'Exact release source checkout policy passed\n'
+)
+
 self_test() {
   local observed
   local expected
@@ -209,6 +261,7 @@ CASES
     printf 'Concatenated release manifests were accepted\n' >&2
     return 1
   fi
+  release_source_self_test
   printf 'Release policy passed: 10 tag cases and strict SHA/manifest cases\n'
 }
 
@@ -246,6 +299,10 @@ parse_tag "$tag" || {
 GOTOOLCHAIN=local "$repo_dir/scripts/check-go-toolchain" >/dev/null
 validate_sha "$sha" || {
   printf 'Release source SHA must be one full lowercase Git SHA-1\n' >&2
+  exit 1
+}
+validate_release_source "$repo_dir" "$sha" || {
+  printf 'Release checker must run from a clean repository root at the exact source SHA\n' >&2
   exit 1
 }
 [[ -d "$release_dir" ]] || {
