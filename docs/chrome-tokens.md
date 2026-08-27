@@ -103,7 +103,7 @@ Unknown→Muted`.
   `android/app/src/main/assets/licenses/BigShoulders-OFL.txt` and
   `JetBrainsMono-OFL.txt` (the OFL requires the license accompany the fonts).
 - Roles per design language §9: Display carries the wordmark, screen titles,
-  and dwarf display names; Data carries every machine fact (status chips,
+  and dwarf display names; Data carries every machine fact (status bays,
   ages, cwd, tmux names, ids, pressure numerals, key-deck labels) at ≥ 11sp;
   body text stays the system face. Junicode does not ship in this delta.
 
@@ -116,14 +116,15 @@ Unknown→Muted`.
 - **Bearer-repair screen**: wordmark `SKÍÐBLAÐNIR` in Display caps; layout,
   copy, and flow unchanged.
 - **Grid cards**: DeepSurface, `Card` shape, a single top-edge Gold hairline
-  at 25% alpha, diminuendo stack — dwarf display name in Display, tmux name
-  in body, and the profile label joining the runtime-facts line in Data (the
-  existing fact grouping is behavior and stays).
-- **Status chips**: the app's hand-rolled status `Surface` (not an M3 chip
-  component) takes the `Chip` shape, fill = status color at 18% over
-  surface, 1dp hairline and label in the status color, label + named
-  signal/age in Data ≥ 11sp. Literal strings and the existing
-  accessibility label are unchanged.
+  at 25% alpha, work-first stack — tmux name is primary in Data, the dwarf
+  display name remains a smaller quiet Display-face signature, and directory
+  plus conditional machine/profile form the runtime-facts lines in Data.
+- **Status bay and facet**: the hand-rolled status `Surface` (not an M3 chip
+  component) takes the `Chip` shape, fill = status color at 18% over surface,
+  1dp hairline and label in the status color, label + named signal/age in Data
+  ≥ 11sp. A separate 12dp solid `Chip`-shaped facet repeats only the status
+  color in the fixed top-right slot and is semantics-silent. Literal strings
+  and the bay's existing accessibility label are unchanged.
 - **Attention badge**: net-new construction — today attention is a bare
   Ember `!` text glyph. It becomes an Orpiment lozenge (rotated square)
   carrying the same semantics (`contentDescription = "Needs attention"`,
@@ -176,7 +177,7 @@ Unknown→Muted`.
 
 - Color vals leave `MainActivity.kt`; no duplicate definitions remain.
 - Every `RoundedCornerShape` use in app chrome is deleted, not aliased —
-  the banners, card, status chip, and dialog call sites — with one declared
+  the banners, card, status bay, and dialog call sites — with one declared
   exception: `DwarfPortrait`'s internals (its rounded clip and its eight raw
   color literals) are D3's wholesale replacement and are deliberately left
   untouched here rather than half-migrated twice.
@@ -201,7 +202,7 @@ Red (each observed failing first):
    because `Shell` and `Running` both return Frost.
 2. Pure JVM: `attentionPulseEnabled(0f)` is false; positive scales are true.
 3. Compose test (new `DashboardChromeInstrumentedTest.kt` — there is no
-   dashboard Compose suite today; these proofs create it): the status chip
+   dashboard Compose suite today; these proofs create it): the status bay
    for each kind still renders its literal label with named signal and age
    (guards the restyle against copy drift).
 4. Compose test (same new suite): card, chip, and key targets remain ≥ 48dp
