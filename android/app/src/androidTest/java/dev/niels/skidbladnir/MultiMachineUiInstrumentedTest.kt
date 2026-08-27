@@ -755,8 +755,12 @@ class MultiMachineUiInstrumentedTest {
                     val target = targets.getValue(credential)
                     compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(target)))
                     compose.onNodeWithTag(cardTag(target)).assertIsDisplayed()
-                    compose.onNodeWithTag(cardPillTag(target), useUnmergedTree = true)
-                        .assertTextEquals(credential.machine.label.text)
+                    val profile = inventories.getValue(credential).profiles
+                        .firstOrNull { it.key.encoded == target.session.profile }?.label
+                        ?: target.session.profile
+                        ?: "profile unknown"
+                    compose.onNodeWithTag(contextTag(target), useUnmergedTree = true)
+                        .assertTextEquals("${credential.machine.label.text} · $profile")
                 }
 
                 // The create affordance is the Forge seal now: one node, anchored over
@@ -828,20 +832,18 @@ class MultiMachineUiInstrumentedTest {
                 }
 
                 selectMachine(first)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(targets.getValue(first))))
-                compose.onNodeWithTag(cardTag(targets.getValue(first))).assertIsDisplayed()
-                compose.onNodeWithTag(cardPillTag(targets.getValue(first)), useUnmergedTree = true)
-                    .assertTextEquals(first.machine.label.text)
+                val firstTarget = targets.getValue(first)
+                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(firstTarget)))
+                compose.onNodeWithTag(cardTag(firstTarget)).assertIsDisplayed()
                 compose.onNodeWithTag(cardTag(targets.getValue(second))).assertDoesNotExist()
                 compose.onNodeWithText(
                     "${inventories.getValue(first).sessions.size} tmux",
                     substring = true,
                 ).assertIsDisplayed()
                 selectMachine(second)
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(targets.getValue(second))))
-                compose.onNodeWithTag(cardTag(targets.getValue(second))).assertIsDisplayed()
-                compose.onNodeWithTag(cardPillTag(targets.getValue(second)), useUnmergedTree = true)
-                    .assertTextEquals(second.machine.label.text)
+                val secondTarget = targets.getValue(second)
+                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(secondTarget)))
+                compose.onNodeWithTag(cardTag(secondTarget)).assertIsDisplayed()
                 compose.onNodeWithTag(cardTag(targets.getValue(first))).assertDoesNotExist()
 
                 val killCredential = credentials[0]
@@ -1055,8 +1057,8 @@ class MultiMachineUiInstrumentedTest {
     private fun cardTag(target: AgentTarget) =
         "agent-card-${target.machineHandle.encoded}-${target.session.id}"
 
-    private fun cardPillTag(target: AgentTarget) =
-        "agent-machine-pill-${target.machineHandle.encoded}-${target.session.id}"
+    private fun contextTag(target: AgentTarget) =
+        "agent-context-${target.machineHandle.encoded}-${target.session.id}"
 
     private fun killTag(target: AgentTarget) =
         "agent-kill-${target.machineHandle.encoded}-${target.session.id}"

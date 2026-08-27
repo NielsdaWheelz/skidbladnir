@@ -43,6 +43,7 @@ S1 tmux control plane
  -> v0 design delta D5: the Forge seal
  -> v0 dashboard pull-to-refresh delta
  -> v0 design delta D9: detach chrome
+ -> v0 dashboard card hierarchy delta
  -> v0.5 (optional): push
 ```
 
@@ -57,9 +58,10 @@ tmux sessions and reads its pressure.
 - Go gateway: loopback bind, Tailscale Serve mapping, host-minted bearer
   (constant-time check; re-mint revokes).
 - `GET /v1/sessions`: poller over `list-sessions`/`list-panes` + `/proc`;
-  card facts incl. user-option metadata, independent attention, status chips
-  with age, client count. Exact Codex `WORKING|IDLE` comes only from the narrow
-  process-lifetime-bound hook adapter; otherwise a live agent is `RUNNING`.
+  card facts incl. user-option metadata, independent attention, named status
+  bays with age, client count. Exact Codex `WORKING|IDLE` comes only from the
+  narrow process-lifetime-bound hook adapter; otherwise a live agent is
+  `RUNNING`.
 - `POST /v1/sessions`: cwd/tmux-name/objective validation, host profile-table
   allowlist, unbounded `skidbladnir-<profile>-<N>` generated names, independent
   balanced Dvergatal assignment, user options set at create, YOLO exec.
@@ -457,6 +459,26 @@ Scope, component contract, cleanup, work split, and red proof per
 separately approved S22+ platform pass and hands-on header glance. No
 integration or live gate for the unchanged lifecycle boundary.
 
+## v0 dashboard card hierarchy delta
+
+Outcome: the dense session card becomes work-first without changing its
+Niðavellir shell or any runtime contract. The tmux name leads; the dwarf name
+remains a quieter Big Shoulders signature; a fixed colour-only status facet is
+redundant to the named status bay; machine becomes quiet footer context in
+`All` and disappears visually under an explicit machine filter. Objective,
+availability, cwd, profile, and Kill occupy one stable compact grammar.
+
+Red: pure directory abbreviation behavior, then a focused Compose card proof
+for ordering, status/attention independence, conditional machine visibility,
+spoken full context, target size, and the common-card height bound. The
+existing multi-machine journey keeps only its product-boundary assertions.
+
+Acceptance: routine verification plus one separately approved S22+ component
+pass and hands-on typical/long-label/attention/unavailable/filtered/large-font
+glance. No gateway, tmux, controller, sorting, polling, terminal, or public API
+boundary changes. Scope per
+[`dashboard-card-refactor.md`](dashboard-card-refactor.md).
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -491,4 +513,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27; merged 45-test platform and hands-on native threshold/resistance/viewport checks `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
+| v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0.5 push | Not scheduled |
