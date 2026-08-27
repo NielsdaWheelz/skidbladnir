@@ -78,6 +78,17 @@ file_mode() {
   esac
 }
 
+extract_release_archive() (
+  set -euo pipefail
+  local archive="$1"
+  local destination="$2"
+  shift 2
+  # The private staging directory is the confidentiality boundary. Preserve the
+  # release's owned member modes instead of inheriting an operator's umask.
+  umask 022
+  tar -xzf "$archive" -C "$destination" "$@"
+)
+
 find_apkanalyzer() {
   local candidate
   while IFS= read -r candidate; do
@@ -115,7 +126,7 @@ verify_archive() (
     *) printf 'Unexpected archive-check staging directory\n' >&2; return 1 ;;
   esac
   trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
-  tar -xzf "$archive" -C "$staging_dir"
+  extract_release_archive "$archive" "$staging_dir"
   [[ -f "$staging_dir/skidbladnir" && ! -L "$staging_dir/skidbladnir" &&
     "$(file_mode "$staging_dir/skidbladnir")" == 755 ]] || {
     printf '%s does not contain one mode-0755 regular binary\n' "$(basename "$archive")" >&2
@@ -207,6 +218,35 @@ release_source_self_test() (
   printf 'Exact release source checkout policy passed\n'
 )
 
+archive_mode_self_test() (
+  set -euo pipefail
+  local archive
+  local fixture_dir
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-check-mode.XXXXXX)"
+  case "$fixture_dir" in
+    /tmp/skidbladnir-release-check-mode.* | /private/tmp/skidbladnir-release-check-mode.*) ;;
+    *) printf 'Unexpected archive mode fixture directory\n' >&2; return 1 ;;
+  esac
+  trap 'rm -R -- "$fixture_dir"' EXIT HUP INT TERM
+  mkdir "$fixture_dir/source" "$fixture_dir/extracted"
+  printf 'binary\n' >"$fixture_dir/source/skidbladnir"
+  printf '{}\n' >"$fixture_dir/source/characters.json"
+  printf '{}\n' >"$fixture_dir/source/release.json"
+  chmod 0755 "$fixture_dir/source/skidbladnir"
+  chmod 0644 "$fixture_dir/source/characters.json" "$fixture_dir/source/release.json"
+  archive="$fixture_dir/release.tar.gz"
+  tar -C "$fixture_dir/source" -czf "$archive" skidbladnir characters.json release.json
+  umask 077
+  extract_release_archive "$archive" "$fixture_dir/extracted"
+  [[ "$(file_mode "$fixture_dir/extracted/skidbladnir")" == 755 &&
+    "$(file_mode "$fixture_dir/extracted/characters.json")" == 644 &&
+    "$(file_mode "$fixture_dir/extracted/release.json")" == 644 ]] || {
+    printf 'Release archive extraction inherited the caller umask\n' >&2
+    return 1
+  }
+  printf 'Release archive member mode policy passed\n'
+)
+
 self_test() {
   local observed
   local expected
@@ -262,6 +302,7 @@ CASES
     return 1
   fi
   release_source_self_test
+  archive_mode_self_test
   printf 'Release policy passed: 10 tag cases and strict SHA/manifest cases\n'
 }
 
@@ -394,7 +435,7 @@ case "$staging_dir" in
   *) printf 'Unexpected release-check staging directory\n' >&2; exit 1 ;;
 esac
 trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
-tar -xzf "$release_dir/$native_archive" -C "$staging_dir" skidbladnir
+extract_release_archive "$release_dir/$native_archive" "$staging_dir" skidbladnir
 native_version="$("$staging_dir/skidbladnir" version)"
 [[ "$native_version" == "$tag $sha" ]] || {
   printf 'Native host binary reports %q, want %s %s\n' "$native_version" "$tag" "$sha" >&2
