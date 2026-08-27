@@ -17,17 +17,17 @@ every value here; [`roadmap.md`](roadmap.md) owns delivery order;
 this delta extends. This document owns the launcher identity. Testing standard
 is [`rules/testing.md`](rules/testing.md).
 
-Numbered D7 because the forge-seal delta claims D5 and
-[`destructive-chrome.md`](destructive-chrome.md) claims D6. D5 is not in the
-tree, so it is not linked here.
+Numbered D7 because [`forge-seal.md`](forge-seal.md) claims D5 and
+[`destructive-chrome.md`](destructive-chrome.md) claims D6. Both landed
+first.
 
 **Sequencing.** D7 was written against a tree where the Hlíðskjálf-mark work
 was still in flight, and D8 landed first; D7 merges onto D8's generator rather
 than the reverse. The two share `scripts/gen-ornament` and nothing else in it:
 D8 owns `_VALKNUT_GAP`, `_valknut` and `Ornament.kt`, D7 owns the icon
 resources, and the merge keeps both untouched — the valknut constant here is
-D8's `0.36`. D5 owns `Theme.kt`, `AngularIndication.kt` and the
-`drawOrnamentBand` collapse. No path overlaps.
+D8's `0.36`. D5 owns `Theme.kt`, `AngularIndication.kt` and the Forge
+seal. No path overlaps.
 
 ## Outcome and final state
 

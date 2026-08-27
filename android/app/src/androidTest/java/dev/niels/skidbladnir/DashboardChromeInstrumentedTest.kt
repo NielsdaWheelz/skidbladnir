@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.Instant
+import kotlin.math.absoluteValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -153,6 +155,88 @@ class DashboardChromeInstrumentedTest {
         )
     }
 
+    @Test
+    fun theLitForgeSealSpeaksNewDwarfAndRequestsTheForgeExactlyOncePerTap() {
+        compose.mainClock.autoAdvance = false
+        var forgeRequests = 0
+        compose.setContent {
+            MaterialTheme {
+                ForgeSeal(canForge = true, onClick = { forgeRequests += 1 })
+            }
+        }
+
+        val seal = compose.onNodeWithTag("new-agent")
+        seal.assertIsEnabled()
+        seal.assertContentDescriptionEquals("New dwarf")
+        // TalkBack must announce it as a button, not as an unlabelled image
+        // (forge-seal.md, "Placement and semantics"). Nothing else gates the Role;
+        // a click action would be gated twice over by the real tap below.
+        assertEquals(
+            "the Forge seal must carry Role.Button so it is announced as a button",
+            Role.Button,
+            seal.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Role),
+        )
+        val bounds = seal.getUnclippedBoundsInRoot()
+        assertTrue(
+            "the Forge seal must be exactly $SEAL_SIDE square (forge-seal.md \"Placement and " +
+                "semantics\"): that is what clears the 48dp target floor without " +
+                "minimumInteractiveComponentSize (design-language.md §14), and it is what makes " +
+                "forgeSealField()'s quarter-point sample land inside the octagon — a node padded " +
+                "out around a smaller visual would sample outside the frame and fail with a " +
+                "colour message that explains nothing. bounds=$bounds",
+            (bounds.right - bounds.left - SEAL_SIDE).value.absoluteValue <= SIDE_TOLERANCE &&
+                (bounds.bottom - bounds.top - SEAL_SIDE).value.absoluteValue <= SIDE_TOLERANCE,
+        )
+        // One frame, then read: the lit/cold flip carries no warm-in, so the field is
+        // already its final colour (forge-seal.md, closed decision 4).
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(
+            "the lit seal is the only ForgeGlow outside the Forge sheet (design-language.md " +
+                "§13): its field must be exact ForgeGlow, so cold has something to differ from",
+            ForgeGlow.toArgb(),
+            forgeSealField().toArgb(),
+        )
+
+        // The pause bought a deterministic frame to capture; the seal has no
+        // animation to outrun, and holding the clock past the tap would freeze
+        // the press flash mid-tween and hollow out runOnIdle.
+        compose.mainClock.autoAdvance = true
+        seal.performClick()
+        compose.runOnIdle {
+            assertEquals("one tap on the lit Forge seal must request the Forge exactly once", 1, forgeRequests)
+        }
+    }
+
+    @Test
+    fun theColdForgeSealIsSpokenDisabledAndSwapsItsFieldRatherThanItsOpacity() {
+        compose.mainClock.autoAdvance = false
+        var forgeRequests = 0
+        compose.setContent {
+            MaterialTheme {
+                ForgeSeal(canForge = false, onClick = { forgeRequests += 1 })
+            }
+        }
+
+        // A disabled `clickable` keeps its `OnClick` semantics action and adds
+        // `disabled()`, so an absent action is not the contract and asserting it
+        // would be unreachable. What a user meets is a control spoken disabled that
+        // reaches nothing when tapped, and that is what is asserted.
+        val seal = compose.onNodeWithTag("new-agent")
+        seal.assertIsNotEnabled()
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(
+            "cold changes field and hue, never opacity alone (design-language.md §12): the " +
+                "cold seal's field must be exact DeepSurface, not the lit ForgeGlow faded",
+            DeepSurface.toArgb(),
+            forgeSealField().toArgb(),
+        )
+
+        compose.mainClock.autoAdvance = true
+        seal.performClick()
+        compose.runOnIdle {
+            assertEquals("tapping the cold Forge seal must request nothing", 0, forgeRequests)
+        }
+    }
 
     @Test
     fun theDashboardTopBarMarkLeadsTheLiteralTitleAndStaysSemanticsSilent() {
@@ -161,9 +245,7 @@ class DashboardChromeInstrumentedTest {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
                     refreshing = false,
-                    canForge = true,
                     onRefresh = {},
-                    onNewAgent = { error("rendering the top bar opened the Forge") },
                 )
             }
         }
@@ -192,47 +274,46 @@ class DashboardChromeInstrumentedTest {
     }
 
     @Test
-    fun theTopBarStaysOneRowWithTheMarkLeadingAndCreateStillTrailing() {
+    fun theTopBarStaysOneRowWithTheMarkLeadingAndRefreshTrailing() {
         // The mark took 32dp (24dp glyph + 8dp arrangement spacing) out of a row that is a
-        // fixed 64dp tall and already carried title, Refresh and the create action. The
-        // equivalent assertions in MultiMachineUiInstrumentedTest sit behind an assumeTrue
-        // for provisioned machines, so they do not run on an unprovisioned device — this
-        // composes the bar directly so the crowding is proved on every run.
+        // fixed 64dp tall. The equivalent assertions in MultiMachineUiInstrumentedTest sit
+        // behind an assumeTrue for provisioned machines, so they do not run on an
+        // unprovisioned device — this composes the bar directly so the crowding is proved
+        // on every run. The trailing control is Refresh: the create action left this row
+        // for the Forge seal (forge-seal.md), and Refresh is the pull-to-refresh delta's
+        // to remove, not this one's.
         compose.setContent {
             MaterialTheme {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
                     refreshing = false,
-                    canForge = true,
                     onRefresh = {},
-                    onNewAgent = { error("rendering the top bar opened the Forge") },
                 )
             }
         }
 
         compose.onNodeWithText("Refresh").assertIsDisplayed()
-        compose.onNodeWithTag("new-agent").assertIsDisplayed()
 
         val bar = compose.onNodeWithTag("dashboard-top-bar").getUnclippedBoundsInRoot()
         val mark = compose.onNodeWithTag("dashboard-mark", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val title = compose.onNodeWithTag("dashboard-title", useUnmergedTree = true).getUnclippedBoundsInRoot()
-        val create = compose.onNodeWithTag("new-agent").getUnclippedBoundsInRoot()
+        val refresh = compose.onNodeWithText("Refresh").getUnclippedBoundsInRoot()
 
         assertTrue(
-            "the create action must stay inside the one 64dp row, not be pushed out of it by " +
-                "the mark: bar=$bar create=$create",
-            create.top >= bar.top && create.bottom <= bar.bottom,
+            "the trailing control must stay inside the one 64dp row, not be pushed out of " +
+                "it by the mark: bar=$bar refresh=$refresh",
+            refresh.top >= bar.top && refresh.bottom <= bar.bottom,
         )
         assertTrue(
-            "mark, title and create action must share one row rather than stack: " +
-                "mark=$mark title=$title create=$create",
-            create.top < title.bottom && title.top < create.bottom &&
+            "mark, title and the trailing control must share one row rather than stack: " +
+                "mark=$mark title=$title refresh=$refresh",
+            refresh.top < title.bottom && title.top < refresh.bottom &&
                 mark.top < title.bottom && title.top < mark.bottom,
         )
         assertTrue(
-            "reading order across the row is mark, then title, then create action: " +
-                "mark=$mark title=$title create=$create",
-            mark.right <= title.left && title.right <= create.left,
+            "reading order across the row is mark, then title, then the trailing control: " +
+                "mark=$mark title=$title refresh=$refresh",
+            mark.right <= title.left && title.right <= refresh.left,
         )
     }
 
@@ -408,6 +489,19 @@ class DashboardChromeInstrumentedTest {
     private fun card(): SemanticsNodeInteraction =
         compose.onNode(hasClickAction() and hasContentDescription(PORTRAIT_DESCRIPTION))
 
+    // The unstruck seal's field, sampled a quarter of the side in on both axes
+    // of the node's own image — which is the octagon's square only because the
+    // lit proof pins the node to exactly 56dp. That point is inside the 29%
+    // octagon (x + y = 0.50 against the corner cut's 0.29) and clear of every
+    // stroke: 0.1485 of the side from the nearest frame edge, 0.25 from the
+    // stave at x = 0.50, and 0.257 from the crossbar's near end at (0.31, 0.50)
+    // — against half-strokes of 0.0134 (frame 1.5dp) and 0.0268 (mark 3dp) at
+    // 56dp (forge-seal.md, "Geometry").
+    private fun forgeSealField(): Color {
+        val pixels = compose.onNodeWithTag("new-agent").captureToImage().toPixelMap()
+        return pixels[pixels.width / 4, pixels.height / 4]
+    }
+
     private fun session(kind: SessionStatusKind, attention: Boolean = false) = AgentSession(
         id = SESSION_ID,
         tmuxName = "ga-durinn",
@@ -497,6 +591,10 @@ class DashboardChromeInstrumentedTest {
         )
         val PROFILES = listOf(ProfileChoice(key = ProfileKey.parse("codex")!!, label = "Codex"))
         val MINIMUM_TARGET = 48.dp
+        val SEAL_SIDE = 56.dp
+        // Half a dp: the seal is laid out in whole pixels, so its measured bounds
+        // round by under one pixel at any shipped density.
+        const val SIDE_TOLERANCE = 0.5f
         val GROUND_MARGIN = 8.dp
         val CORNER_SAMPLE = 3.dp
         val LOZENGE_SIDE = 8.dp
