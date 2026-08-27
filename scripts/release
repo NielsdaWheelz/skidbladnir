@@ -24,6 +24,17 @@ remove_release_source_worktree() {
   git -C "$1" worktree remove --force "$2"
 }
 
+# shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
+self_test_cleanup() {
+  local test_exit=$?
+  trap - EXIT
+  if [[ -e "$source_worktree/.git" ]]; then
+    remove_release_source_worktree "$repository" "$source_worktree" >/dev/null 2>&1 || test_exit=1
+  fi
+  rm -R -- "$fixture_dir" || test_exit=1
+  exit "$test_exit"
+}
+
 self_test() (
   set -euo pipefail
   local fixture_dir
@@ -33,17 +44,7 @@ self_test() (
   fixture_dir="$(mktemp -d -t skidbladnir-release-source.XXXXXX)"
   repository="$fixture_dir/repository"
   source_worktree="$fixture_dir/source"
-  # shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
-  cleanup() {
-    local test_exit=$?
-    trap - EXIT
-    if [[ -e "$source_worktree/.git" ]]; then
-      remove_release_source_worktree "$repository" "$source_worktree" >/dev/null 2>&1 || test_exit=1
-    fi
-    rm -R -- "$fixture_dir" || test_exit=1
-    exit "$test_exit"
-  }
-  trap cleanup EXIT
+  trap self_test_cleanup EXIT
   git init --quiet "$repository"
   printf 'committed source\n' >"$repository/input.txt"
   git -C "$repository" add input.txt

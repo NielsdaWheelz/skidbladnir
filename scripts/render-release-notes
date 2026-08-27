@@ -90,19 +90,20 @@ render_notes() {
     'login. GitHub is used for installation and updates, never at runtime.'
 }
 
+# shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
+self_test_cleanup() {
+  local test_exit=$?
+  trap - EXIT
+  rm -R -- "$fixture_dir" || test_exit=1
+  exit "$test_exit"
+}
+
 self_test() (
   set -euo pipefail
   local fixture_dir
   local notes
   fixture_dir="$(mktemp -d -t skidbladnir-release-notes.XXXXXX)"
-  # shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
-  cleanup() {
-    local test_exit=$?
-    trap - EXIT
-    rm -R -- "$fixture_dir" || test_exit=1
-    exit "$test_exit"
-  }
-  trap cleanup EXIT
+  trap self_test_cleanup EXIT
   printf '%064d\n' 0 >"$fixture_dir/android-signing-cert.sha256"
   {
     printf '%064d  %s\n' 1 android-signing-cert.sha256
