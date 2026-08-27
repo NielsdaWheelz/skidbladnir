@@ -1,25 +1,42 @@
 package dev.niels.skidbladnir
 
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -29,16 +46,20 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.time.Instant
-import java.util.Locale
+import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -547,67 +568,334 @@ class MultiMachineUiInstrumentedTest {
     }
 
     @Test
-    fun machinePressureRestoresMetricsHistoryAndCapabilityDetails() {
-        val current = PressureSample(
-            sampledAt = Instant.parse("2026-08-26T12:00:00Z"),
-            level = PressureLevel.Warm,
-            reasons = listOf(PressureReason.Load),
-            metrics = PressureMetrics(
-                cpuPercent = 34.0,
-                normalizedLoad = 1.25,
-                diskAvailablePercent = 61.0,
-                memoryPressure = SystemMemoryPressure.Warning,
-            ),
-            missing = listOf(PressureMetric.SwapUsedPercent),
+    fun machinePressureRailIsCompactAccessibleAndDisclosesOnlyItsMachine() {
+        val pressureMachine = PairedMachine(
+            OTHER_MACHINE.handle,
+            requireNotNull(MachineLabel.parse("MacBook")),
+            OTHER_MACHINE.origin,
         )
-        val response = PressureResponse(
+        val macCurrent = PressureSample(
+            sampledAt = Instant.parse("2026-08-26T12:00:00Z"),
+            level = PressureLevel.Hot,
+            phase = PressurePhase.Recovering,
+            reasons = listOf(PressureReason.Load),
+            signals = listOf(
+                PressureSignal.Measured(
+                    PressureValue.CpuPercent(34.0),
+                    PressureSignalState.Informational,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.NormalizedLoad(1.25),
+                    PressureSignalState.Warm,
+                ),
+                PressureSignal.Missing(PressureMetric.SwapUsedPercent),
+                PressureSignal.Measured(
+                    PressureValue.DiskAvailablePercent(61.0),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.MemoryPressure(SystemMemoryPressure.Warning),
+                    PressureSignalState.Warm,
+                ),
+            ),
+        )
+        val macResponse = PressureResponse(
             unsupported = listOf(
                 PressureMetric.CpuPsiSomeAvg60Percent,
                 PressureMetric.IoPsiFullAvg60Percent,
                 PressureMetric.MemoryAvailablePercent,
                 PressureMetric.MemoryPsiFullAvg60Percent,
             ),
-            current = current,
+            current = macCurrent,
             history = listOf(
-                current.copy(
-                    sampledAt = Instant.parse("2026-08-26T11:59:55Z"),
-                    level = PressureLevel.Normal,
-                    reasons = emptyList(),
-                    metrics = current.metrics.copy(
-                        normalizedLoad = 0.4,
-                        memoryPressure = SystemMemoryPressure.Normal,
-                    ),
-                ),
-                current,
+                PressureHistorySample(Instant.parse("2026-08-26T11:59:40Z"), PressureLevel.Normal),
+                PressureHistorySample(Instant.parse("2026-08-26T11:59:45Z"), PressureLevel.Warm),
+                PressureHistorySample(Instant.parse("2026-08-26T11:59:50Z"), PressureLevel.Hot),
+                PressureHistorySample(Instant.parse("2026-08-26T11:59:55Z"), PressureLevel.Unknown),
+                PressureHistorySample(macCurrent.sampledAt, macCurrent.level),
             ),
         )
+        val devCurrent = macCurrent.copy(
+            level = PressureLevel.Normal,
+            phase = PressurePhase.Steady,
+            reasons = emptyList(),
+            signals = listOf(
+                PressureSignal.Measured(
+                    PressureValue.CpuPercent(12.0),
+                    PressureSignalState.Informational,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.NormalizedLoad(0.3),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.MemoryAvailablePercent(72.0),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.SwapUsedPercent(0.0),
+                    PressureSignalState.Informational,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.DiskAvailablePercent(80.0),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.CpuPsiSomeAvg60Percent(0.0),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.MemoryPsiFullAvg60Percent(0.0),
+                    PressureSignalState.Normal,
+                ),
+                PressureSignal.Measured(
+                    PressureValue.IoPsiFullAvg60Percent(0.0),
+                    PressureSignalState.Normal,
+                ),
+            ),
+        )
+        val devResponse = PressureResponse(
+            unsupported = listOf(PressureMetric.MemoryPressure),
+            current = devCurrent,
+            history = listOf(PressureHistorySample(devCurrent.sampledAt, devCurrent.level)),
+        )
+        val macMachine = MachineState(
+            machine = pressureMachine,
+            access = MachineAccess.Ready,
+            inventory = InventoryState.Stale(
+                InventorySnapshot(
+                    SessionsResponse(
+                        MachineSummary(pressureMachine.handle, MachinePlatform.Darwin),
+                        macCurrent.sampledAt,
+                        emptyList(),
+                        emptyList(),
+                    ),
+                    1_000,
+                ),
+                GatewayFailure.Transport,
+            ),
+            pressure = PressureState.Fresh(macResponse),
+        )
+        var dashboard by mutableStateOf(
+            SkidbladnirUiState.Dashboard(
+                machines = listOf(
+                    MachineState(
+                        machine = TEST_MACHINE,
+                        access = MachineAccess.Ready,
+                        inventory = InventoryState.Fresh(snapshot(emptyList())),
+                        pressure = PressureState.Fresh(devResponse),
+                    ),
+                    macMachine,
+                ),
+                selectedMachine = null,
+                refreshing = false,
+                forge = null,
+                forgeRecovery = null,
+                kill = null,
+            ),
+        )
+        val macHandle = pressureMachine.handle.encoded
+        val railTag = "machine-strip-$macHandle"
+        var largeText by mutableStateOf(false)
+        var density = 0f
+        var controller: SkidbladnirController? = null
 
-        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.setContent {
-                    MaterialTheme {
-                        MachinePressureStrip(
-                            "MacBook",
-                            PressureState.Stale(response, GatewayFailure.Transport),
-                            inventoryStale = false,
-                            supporting = null,
+        try {
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    density = activity.resources.displayMetrics.density
+                    val dashboardController = SkidbladnirController(activity.applicationContext)
+                    controller = dashboardController
+                    activity.setContent {
+                        CompositionLocalProvider(
+                            LocalDensity provides Density(density, if (largeText) 2f else 1f),
+                        ) {
+                            MaterialTheme {
+                                Box(
+                                    Modifier
+                                        .width(if (largeText) 320.dp else 360.dp)
+                                        .fillMaxHeight(),
+                                ) {
+                                    DashboardMain(dashboard, dashboardController, onVerify = {})
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val rail = compose.onNodeWithTag(railTag)
+                rail.assertIsDisplayed().assertHasClickAction().assertContentDescriptionEquals(
+                    "MacBook. Fresh pressure. Recovering from hot. Cause: load. " +
+                        "CPU 34% i, informational; MEM WARNING W, warm; SWAP NO DATA ?, no data; " +
+                        "LOAD 1.25 W, warm; DISK 61% N, normal. " +
+                        "Trend: 2 earlier runs over 10 seconds; hot 5 seconds, " +
+                        "then unknown 5 seconds, then hot 5 seconds.",
+                )
+                assertEquals(
+                    "the pressure rail must expose one button role",
+                    Role.Button,
+                    rail.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Role),
+                )
+                compose.onAllNodes(
+                    hasAnyAncestor(hasTestTag(railTag)) and hasClickAction(),
+                    useUnmergedTree = true,
+                ).assertCountEquals(0)
+                val railBounds = rail.getUnclippedBoundsInRoot()
+                val height = railBounds.bottom - railBounds.top
+                assertTrue(
+                    "default 360dp rail must be 84–92dp, was $height",
+                    height >= 84.dp - 0.001.dp && height <= 92.dp + 0.001.dp,
+                )
+                compose.onNodeWithText(
+                    "MacBook RECOVERING FROM HOT · LOAD",
+                    useUnmergedTree = true,
+                ).assertIsDisplayed()
+                compose.onNodeWithText("SWAP NO DATA ?", substring = true, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                compose.onNodeWithText("Recent pressure history", substring = true, useUnmergedTree = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithText("up to 15 min", substring = true, useUnmergedTree = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithText("Unsupported:", substring = true, useUnmergedTree = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithText("Missing:", substring = true, useUnmergedTree = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithText("Pressure:", substring = true, useUnmergedTree = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithContentDescription("Recent pressure history", substring = true)
+                    .assertDoesNotExist()
+                compose.onNodeWithContentDescription("Unsupported", substring = true).assertDoesNotExist()
+
+                val history = compose.onNodeWithTag(
+                    "pressure-history-band-$macHandle",
+                    useUnmergedTree = true,
+                )
+                val historyBoundsAtDefault = history.getUnclippedBoundsInRoot()
+                assertEquals(
+                    "history height changed",
+                    16.dp,
+                    historyBoundsAtDefault.bottom - historyBoundsAtDefault.top,
+                )
+                val pixels = history.captureToImage().toPixelMap()
+                val topPadding = (5f * density).roundToInt()
+                val drawHeight = pixels.height - topPadding
+                val levels = listOf(
+                    PressureLevel.Normal to Moss,
+                    PressureLevel.Warm to Gold,
+                    PressureLevel.Hot to Ember,
+                    PressureLevel.Unknown to Muted,
+                    PressureLevel.Hot to Ember,
+                )
+                val proportions = listOf(0.25f, 0.58f, 1f, 0.42f, 1f)
+                val barWidth = pixels.width.toFloat() / levels.size
+                levels.forEachIndexed { index, (_, color) ->
+                    val x = ((index + 0.5f) * barWidth).toInt()
+                    val firstColorRow = (0 until pixels.height).first {
+                        pixels[x, it].toArgb() == color.toArgb()
+                    }
+                    val expectedTop = topPadding + drawHeight * (1f - proportions[index])
+                    assertTrue(
+                        "history level ${levels[index].first} changed height: " +
+                            "expected top $expectedTop, actual $firstColorRow",
+                        (firstColorRow - expectedTop).absoluteValue <= 1f,
+                    )
+                    if (index < levels.lastIndex) {
+                        val gapX = (((index + 1) * barWidth) - 0.25f).toInt()
+                        val gap = pixels[gapX, pixels.height - 1]
+                        val nextColor = levels[index + 1].second
+                        assertTrue(
+                            "history sample gap lost its background at index $index: " +
+                                "gap=$gap left=$color right=$nextColor",
+                            gap.toArgb() != color.toArgb() &&
+                                gap.toArgb() != nextColor.toArgb() &&
+                                (
+                                    gap.red < minOf(color.red, nextColor.red) ||
+                                        gap.green < minOf(color.green, nextColor.green) ||
+                                        gap.blue < minOf(color.blue, nextColor.blue)
+                                ),
                         )
                     }
                 }
+
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                compose.waitForIdle()
+                rail.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+                rail.assertIsFocused().performClick()
+                compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
+                compose.onNodeWithText("Devbox pressure").assertDoesNotExist()
+                compose.onNodeWithText("system memory pressure").assertIsDisplayed()
+                compose.onNodeWithText("WARNING").assertIsDisplayed()
+                compose.onNodeWithText("NO DATA").assertIsDisplayed()
+                compose.onNodeWithText("Unsupported", substring = true).assertDoesNotExist()
+                compose.onAllNodesWithTag(
+                    "pressure-history-band-$macHandle",
+                    useUnmergedTree = true,
+                ).assertCountEquals(1)
+                repeat(2) {
+                    compose.onNodeWithTag("pressure-details-sheet-$macHandle").performTouchInput {
+                        swipe(
+                            start = percentOffset(0.5f, 0.85f),
+                            end = percentOffset(0.5f, 0.15f),
+                            durationMillis = 500,
+                        )
+                    }
+                }
+                compose.onNodeWithContentDescription("Dismiss MacBook pressure details")
+                    .assertIsDisplayed()
+                    .performClick()
+                compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
+                rail.assertIsDisplayed().assertIsFocused()
+
+                scenario.onActivity { largeText = true }
+                val largeRail = compose.onNodeWithTag(railTag)
+                val largeBounds = largeRail.getUnclippedBoundsInRoot()
+                val headerBounds = compose.onNodeWithTag(
+                    "machine-strip-label-$macHandle",
+                    useUnmergedTree = true,
+                ).getUnclippedBoundsInRoot()
+                val historyBounds = compose.onNodeWithTag(
+                    "pressure-history-band-$macHandle",
+                    useUnmergedTree = true,
+                ).getUnclippedBoundsInRoot()
+                assertTrue(
+                    "320dp large-text header clipped outside rail: rail=$largeBounds header=$headerBounds",
+                    headerBounds.top >= largeBounds.top && headerBounds.bottom <= largeBounds.bottom,
+                )
+                assertTrue(
+                    "320dp large-text history clipped outside rail: rail=$largeBounds history=$historyBounds",
+                    historyBounds.top >= largeBounds.top && historyBounds.bottom <= largeBounds.bottom,
+                )
+                compose.onNodeWithTag(
+                    "pressure-gem-$macHandle-DiskAvailablePercent",
+                    useUnmergedTree = true,
+                ).performScrollTo().assertIsDisplayed().assertHasNoClickAction()
+
+                largeRail.performClick()
+                compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                compose.waitForIdle()
+                compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
+                largeRail.assertIsDisplayed().assertIsFocused()
+
+                largeRail.performClick()
+                compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
+                val machines = dashboard.machines
+                scenario.onActivity {
+                    dashboard = dashboard.copy(
+                        machines = dashboard.machines.filterNot { machine ->
+                            machine.machine.handle == pressureMachine.handle
+                        },
+                    )
+                }
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(hasText("MacBook pressure")).fetchSemanticsNodes().isEmpty()
+                }
+                scenario.onActivity { dashboard = dashboard.copy(machines = machines) }
+                compose.onNodeWithTag(railTag).assertIsDisplayed()
+                compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
             }
-            compose.onNodeWithText("MACBOOK WARM").assertIsDisplayed()
-            compose.onNodeWithText("STALE").assertIsDisplayed()
-            compose.onNodeWithText("CPU 34%", substring = true).assertIsDisplayed()
-            compose.onNodeWithText("load 1.25", substring = true).assertIsDisplayed()
-            compose.onNodeWithText("disk 61% free", substring = true).assertIsDisplayed()
-            compose.onNodeWithText("memory pressure WARNING", substring = true).assertIsDisplayed()
-            compose.onNodeWithText("Recent pressure history · up to 15 min").assertIsDisplayed()
-            compose.onNodeWithContentDescription("MacBook pressure history: normal, warm").assertIsDisplayed()
-            compose.onNodeWithText("Missing: swap used").assertIsDisplayed()
-            compose.onNodeWithText(
-                "Unsupported: CPU PSI, I/O PSI, memory available, memory PSI",
-            ).assertIsDisplayed()
-            compose.onNodeWithText("Pressure: load").assertIsDisplayed()
+        } finally {
+            controller?.close()
         }
     }
 
@@ -729,10 +1017,10 @@ class MultiMachineUiInstrumentedTest {
                 }
                 healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
                 compose.onNodeWithTag(stripLabelTag(failed), useUnmergedTree = true)
-                    .assertTextContains(failed.machine.label.text.uppercase(Locale.ROOT), substring = true)
+                    .assertTextContains(failed.machine.label.text, substring = true)
                 healthy.forEach { credential ->
                     compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
-                        .assertTextContains(credential.machine.label.text.uppercase(Locale.ROOT), substring = true)
+                        .assertTextContains(credential.machine.label.text, substring = true)
                 }
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()

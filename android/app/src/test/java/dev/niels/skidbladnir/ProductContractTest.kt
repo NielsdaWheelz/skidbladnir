@@ -127,46 +127,129 @@ class ProductContractTest {
     }
 
     @Test
-    fun `pressure decoder keeps missing inputs closed and current`() {
-        val sample = unknownPressureSample("2026-08-25T12:00:00Z")
-        val pressure = decodePressureResponse(
-            """{"unsupported":["memoryPressure"],"current":$sample,"history":[$sample]}""",
+    fun `pressure decoder exposes typed measured and missing signals with compact history`() {
+        val pressure = decodePressureResponse(linuxPressureResponse())
+
+        assertEquals(PressureLevel.Unknown, pressure.current.level)
+        assertEquals(PressurePhase.Steady, pressure.current.phase)
+        assertEquals(listOf(PressureReason.Disk, PressureReason.Load), pressure.current.reasons)
+        assertEquals(
+            listOf(
+                PressureMetric.CpuPercent,
+                PressureMetric.NormalizedLoad,
+                PressureMetric.MemoryAvailablePercent,
+                PressureMetric.SwapUsedPercent,
+                PressureMetric.DiskAvailablePercent,
+                PressureMetric.CpuPsiSomeAvg60Percent,
+                PressureMetric.MemoryPsiFullAvg60Percent,
+                PressureMetric.IoPsiFullAvg60Percent,
+            ),
+            pressure.current.signals.map(PressureSignal::metric),
+        )
+        assertEquals(
+            PressureSignal.Measured(PressureValue.CpuPercent(12.5), PressureSignalState.Informational),
+            pressure.current.signals[0],
+        )
+        assertEquals(
+            PressureSignal.Measured(PressureValue.NormalizedLoad(1.25), PressureSignalState.Warm),
+            pressure.current.signals[1],
+        )
+        assertEquals(
+            PressureSignal.Missing(PressureMetric.MemoryAvailablePercent),
+            pressure.current.signals[2],
+        )
+        assertEquals(
+            PressureSignal.Measured(PressureValue.DiskAvailablePercent(4.0), PressureSignalState.Hot),
+            pressure.current.signals[4],
+        )
+        assertEquals(
+            listOf(
+                PressureHistorySample(
+                    sampledAt = Instant.parse("2026-08-25T12:00:00Z"),
+                    level = PressureLevel.Unknown,
+                ),
+            ),
+            pressure.history,
         )
 
-        assertEquals(listOf(PressureMetric.MemoryAvailablePercent), pressure.current.missing)
-        assertEquals(pressure.current, pressure.history.last())
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodePressureResponse(
-                """{"unsupported":["memoryPressure"],"current":$sample,"history":[${sample.replace("memoryAvailablePercent", "temperature")}] }""",
-            )
+        val recovering = decodePressureResponse(
+            darwinPressureResponse()
+                .replace("\"phase\":\"Steady\"", "\"phase\":\"Recovering\"")
+                .replace(
+                    "\"value\":\"Warning\",\"state\":\"Warm\"",
+                    "\"value\":\"Normal\",\"state\":\"Normal\"",
+                ),
+        )
+        assertEquals(PressureLevel.Warm, recovering.current.level)
+        assertEquals(PressurePhase.Recovering, recovering.current.phase)
+    }
+
+    @Test
+    fun `pressure decoder rejects inconsistent signal membership state or causes`() {
+        val valid = linuxPressureResponse()
+        val invalid = listOf(
+            valid.replace(
+                "\"cpuPercent\":{\"value\":12.5,\"state\":\"Informational\"}",
+                "\"cpuPercent\":null",
+            ),
+            valid.replace("\"state\":\"Informational\"", "\"state\":\"Normal\""),
+            valid.replace(
+                "\"normalizedLoad\":{\"value\":1.25,\"state\":\"Warm\"}",
+                "\"normalizedLoad\":{\"value\":1.25,\"state\":\"Informational\"}",
+            ),
+            valid.replace(
+                "\"missing\":[\"memoryAvailablePercent\"]",
+                "\"missing\":[\"cpuPercent\",\"memoryAvailablePercent\"]",
+            ),
+            valid.replace("\"phase\":\"Steady\"", "\"phase\":\"Recovering\""),
+            valid.replace("\"ioPsiFullAvg60Percent\"", "\"temperature\""),
+            darwinPressureResponse().replace(
+                "\"value\":\"Warning\",\"state\":\"Warm\"",
+                "\"value\":\"Warning\",\"state\":\"Normal\"",
+            ),
+            darwinPressureResponse().replace("\"reasons\":[\"Memory\"]", "\"reasons\":[\"CpuPsi\"]"),
+            darwinPressureResponse().replace(
+                "\"unsupported\":[\"cpuPsiSomeAvg60Percent\",\"ioPsiFullAvg60Percent\",\"memoryAvailablePercent\",\"memoryPsiFullAvg60Percent\"]",
+                "\"unsupported\":[\"memoryAvailablePercent\",\"cpuPsiSomeAvg60Percent\",\"ioPsiFullAvg60Percent\",\"memoryPsiFullAvg60Percent\"]",
+            ),
+            valid.replace("\"reasons\":[\"Disk\",\"Load\"]", "\"reasons\":[\"Disk\"]"),
+            valid.replace(
+                "\"reasons\":[\"Disk\",\"Load\"]",
+                "\"reasons\":[\"Memory\",\"Disk\",\"Load\"]",
+            ),
+            valid.replace("\"reasons\":[\"Disk\",\"Load\"]", "\"reasons\":[\"Load\",\"Disk\"]"),
+        )
+
+        invalid.forEachIndexed { index, payload ->
+            assertThrows("accepted invalid pressure payload case $index", ProtocolDecodeException::class.java) {
+                decodePressureResponse(payload)
+            }
         }
     }
 
     @Test
-    fun `pressure decoder rejects malformed time chronology and missing metric disagreement`() {
-        val current = unknownPressureSample("2026-08-25T12:00:00Z")
-        val earlier = unknownPressureSample("2026-08-25T11:59:55Z")
-        val oldest = unknownPressureSample("2026-08-25T11:59:50Z")
+    fun `pressure decoder rejects malformed or inconsistent compact history`() {
+        val valid = linuxPressureResponse()
+        val invalid = listOf(
+            linuxPressureResponse(
+                history =
+                    """[{"sampledAt":"2026-08-25T11:59:55Z","level":"Unknown"},{"sampledAt":"2026-08-25T11:59:50Z","level":"Unknown"},{"sampledAt":"2026-08-25T12:00:00Z","level":"Unknown"}]""",
+            ),
+            valid.replace("2026-08-25T12:00:00Z", "not-an-instant"),
+            valid.replace(
+                "\"history\":[{\"sampledAt\":\"2026-08-25T12:00:00Z\",\"level\":\"Unknown\"}]",
+                "\"history\":[{\"sampledAt\":\"2026-08-25T11:59:55Z\",\"level\":\"Unknown\"}]",
+            ),
+            valid.replace(
+                "\"history\":[{\"sampledAt\":\"2026-08-25T12:00:00Z\",\"level\":\"Unknown\"}]",
+                "\"history\":[{\"sampledAt\":\"2026-08-25T12:00:00Z\",\"level\":\"Unknown\",\"phase\":\"Steady\"}]",
+            ),
+        )
 
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodePressureResponse(
-                """{"unsupported":["memoryPressure"],"current":$current,"history":[$earlier,$oldest,$current]}""",
-            )
-        }
-        assertThrows(ProtocolDecodeException::class.java) {
-            val malformedTime = unknownPressureSample("not-an-instant")
-            decodePressureResponse(
-                """{"unsupported":["memoryPressure"],"current":$malformedTime,"history":[$malformedTime]}""",
-            )
-        }
-        assertThrows(ProtocolDecodeException::class.java) {
-            val disagreement = unknownPressureSample(
-                sampledAt = "2026-08-25T12:00:00Z",
-                includeMissingMemoryMetric = true,
-            )
-            decodePressureResponse(
-                """{"unsupported":["memoryPressure"],"current":$disagreement,"history":[$disagreement]}""",
-            )
+        invalid.forEachIndexed { index, payload ->
+            assertThrows("accepted invalid pressure history case $index", ProtocolDecodeException::class.java) {
+                decodePressureResponse(payload)
+            }
         }
     }
 
@@ -347,30 +430,35 @@ class ProductContractTest {
         )
     }
 
-    private fun unknownPressureSample(
-        sampledAt: String,
-        includeMissingMemoryMetric: Boolean = false,
-    ): String {
-        val memory = if (includeMissingMemoryMetric) "\"memoryAvailablePercent\":42.0," else ""
-        return """
-            {
-              "sampledAt":"$sampledAt",
-              "level":"Unknown",
-              "reasons":[],
-              "metrics":{
-                "cpuPercent":12.5,
-                "normalizedLoad":0.4,
-                $memory
-                "swapUsedPercent":0.0,
-                "diskAvailablePercent":60.0,
-                "cpuPsiSomeAvg60Percent":0.0,
-                "memoryPsiFullAvg60Percent":0.0,
-                "ioPsiFullAvg60Percent":0.0
-              },
-              "missing":["memoryAvailablePercent"]
-            }
+    private fun linuxPressureResponse(
+        history: String =
+            """[{"sampledAt":"2026-08-25T12:00:00Z","level":"Unknown"}]""",
+    ): String =
+        """
+        {
+          "unsupported":["memoryPressure"],
+          "current":{
+            "sampledAt":"2026-08-25T12:00:00Z",
+            "level":"Unknown",
+            "phase":"Steady",
+            "reasons":["Disk","Load"],
+            "signals":{
+              "cpuPercent":{"value":12.5,"state":"Informational"},
+              "normalizedLoad":{"value":1.25,"state":"Warm"},
+              "swapUsedPercent":{"value":3.0,"state":"Informational"},
+              "diskAvailablePercent":{"value":4.0,"state":"Hot"},
+              "cpuPsiSomeAvg60Percent":{"value":0.2,"state":"Normal"},
+              "memoryPsiFullAvg60Percent":{"value":0.1,"state":"Normal"},
+              "ioPsiFullAvg60Percent":{"value":0.1,"state":"Normal"}
+            },
+            "missing":["memoryAvailablePercent"]
+          },
+          "history":$history
+        }
         """.trimIndent()
-    }
+
+    private fun darwinPressureResponse(): String =
+        """{"unsupported":["cpuPsiSomeAvg60Percent","ioPsiFullAvg60Percent","memoryAvailablePercent","memoryPsiFullAvg60Percent"],"current":{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm","phase":"Steady","reasons":["Memory"],"signals":{"cpuPercent":{"value":12.5,"state":"Informational"},"normalizedLoad":{"value":0.4,"state":"Normal"},"swapUsedPercent":{"value":0.0,"state":"Informational"},"diskAvailablePercent":{"value":60.0,"state":"Normal"},"memoryPressure":{"value":"Warning","state":"Warm"}},"missing":[]},"history":[{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm"}]}"""
 
     private fun inventorySession(id: String, tmuxName: String, identityToken: String): String =
         """{"id":"$id","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""

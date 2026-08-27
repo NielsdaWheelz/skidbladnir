@@ -32,6 +32,22 @@ const (
 	StatusUnknown Status = "Unknown"
 )
 
+type SignalStatus string
+
+const (
+	SignalStatusInformational SignalStatus = "Informational"
+	SignalStatusNormal        SignalStatus = "Normal"
+	SignalStatusWarm          SignalStatus = "Warm"
+	SignalStatusHot           SignalStatus = "Hot"
+)
+
+type Phase string
+
+const (
+	PhaseSteady     Phase = "Steady"
+	PhaseRecovering Phase = "Recovering"
+)
+
 type Reason string
 
 const (
@@ -44,7 +60,7 @@ const (
 )
 
 type Signal struct {
-	Status Status
+	Status SignalStatus
 	value  float64
 	known  bool
 }
@@ -56,6 +72,7 @@ func (signal Signal) Value() (float64, bool) {
 type Sample struct {
 	ObservedAt                   time.Time
 	Status                       Status
+	Phase                        Phase
 	Reasons                      []Reason
 	CPUPercent                   Signal
 	LoadNormalized               Signal
@@ -69,7 +86,7 @@ type Sample struct {
 }
 
 type MemoryPressureSignal struct {
-	Status Status
+	Status SignalStatus
 	value  MemoryPressure
 	known  bool
 }
@@ -129,11 +146,12 @@ func (monitor *Monitor) sample(observedAt time.Time) {
 	sample := Sample{
 		ObservedAt:                   observedAt.UTC(),
 		Status:                       evaluation.status,
+		Phase:                        evaluation.phase,
 		Reasons:                      evaluation.reasons,
-		CPUPercent:                   signal(raw.cpuPercent, classifyInformational),
+		CPUPercent:                   informationalSignal(raw.cpuPercent),
 		LoadNormalized:               signal(raw.loadNormalized, classifyLoad),
 		MemoryAvailablePercent:       signal(raw.memoryAvailablePercent, classifyMemory),
-		SwapUsedPercent:              signal(raw.swapUsedPercent, classifyInformational),
+		SwapUsedPercent:              informationalSignal(raw.swapUsedPercent),
 		DiskAvailablePercent:         signal(raw.diskAvailablePercent, classifyDisk),
 		CPUPressureSomeAvg60:         signal(raw.cpuPSISomeAvg60, classifyCPUPSI),
 		MemoryPressureFullAvg60:      signal(raw.memoryPSIFullAvg60, classifyFullPSI),
@@ -171,6 +189,7 @@ func newEvaluator() evaluator { return evaluator{} }
 
 type evaluation struct {
 	status  Status
+	phase   Phase
 	reasons []Reason
 }
 
@@ -199,9 +218,7 @@ func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time, poli
 	}
 	if evaluator.deescalatingAt.IsZero() {
 		evaluator.deescalatingAt = observedAt
-		return evaluation{status: evaluator.stable, reasons: cloneReasons(evaluator.stableReasons)}
-	}
-	if observedAt.Sub(evaluator.deescalatingAt) >= DeescalationDelay {
+	} else if observedAt.Sub(evaluator.deescalatingAt) >= DeescalationDelay {
 		evaluator.stable = statusForSeverity(severity(evaluator.stable) - 1)
 		if evaluator.stable == StatusNormal {
 			evaluator.stableReasons = nil
@@ -210,7 +227,11 @@ func (evaluator *evaluator) observe(sample rawSample, observedAt time.Time, poli
 		}
 		evaluator.deescalatingAt = time.Time{}
 	}
-	return evaluation{status: evaluator.stable, reasons: cloneReasons(evaluator.stableReasons)}
+	phase := PhaseSteady
+	if severity(evaluator.stable) > severity(raw.status) {
+		phase = PhaseRecovering
+	}
+	return evaluation{status: evaluator.stable, phase: phase, reasons: cloneReasons(evaluator.stableReasons)}
 }
 
 // requiredClassifiers is the closed table of metrics a policy may declare as
@@ -230,7 +251,7 @@ var requiredClassifiers = map[Metric]struct {
 }
 
 func classifyOverall(sample rawSample, policy policy) evaluation {
-	result := evaluation{status: StatusNormal}
+	result := evaluation{status: StatusNormal, phase: PhaseSteady}
 	missing := false
 	for _, metric := range policy.required {
 		classifier := requiredClassifiers[metric]
@@ -256,9 +277,9 @@ func classifyOverall(sample rawSample, policy policy) evaluation {
 
 func memoryPressureSignal(value memoryPressureMetric) MemoryPressureSignal {
 	if !value.known {
-		return MemoryPressureSignal{Status: StatusUnknown}
+		return MemoryPressureSignal{}
 	}
-	return MemoryPressureSignal{Status: classifyMemoryPressure(value), value: value.value, known: true}
+	return MemoryPressureSignal{Status: SignalStatus(classifyMemoryPressure(value)), value: value.value, known: true}
 }
 
 func classifyMemoryPressure(value memoryPressureMetric) Status {
@@ -279,16 +300,16 @@ func classifyMemoryPressure(value memoryPressureMetric) Status {
 
 func signal(value metric, classify func(metric) Status) Signal {
 	if !value.known {
-		return Signal{Status: StatusUnknown}
+		return Signal{}
 	}
-	return Signal{Status: classify(value), value: value.value, known: true}
+	return Signal{Status: SignalStatus(classify(value)), value: value.value, known: true}
 }
 
-func classifyInformational(value metric) Status {
+func informationalSignal(value metric) Signal {
 	if !value.known {
-		return StatusUnknown
+		return Signal{}
 	}
-	return StatusNormal
+	return Signal{Status: SignalStatusInformational, value: value.value, known: true}
 }
 
 func classifyMemory(value metric) Status {

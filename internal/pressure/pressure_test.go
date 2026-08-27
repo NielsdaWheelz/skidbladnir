@@ -12,8 +12,8 @@ func TestPressureThresholdsAndHysteresis(t *testing.T) {
 	policy := linuxPolicy()
 
 	normal := completeRawSample(50, 50, 0.5, 10, 0.5, 0.5)
-	if got := evaluator.observe(normal, now, policy); got.status != StatusNormal {
-		t.Fatalf("normal status = %q, want %q", got.status, StatusNormal)
+	if got := evaluator.observe(normal, now, policy); got.status != StatusNormal || got.phase != PhaseSteady {
+		t.Fatalf("normal evaluation = %+v, want Normal/Steady", got)
 	}
 
 	warmBoundary := completeRawSample(15, 15, 1, 20, 1, 1)
@@ -31,24 +31,24 @@ func TestPressureThresholdsAndHysteresis(t *testing.T) {
 		t.Fatalf("hot-boundary reasons = %v, want %v", hot.reasons, wantHotReasons)
 	}
 
-	if got := evaluator.observe(normal, now.Add(61*time.Second), policy); got.status != StatusHot || !slices.Equal(got.reasons, wantHotReasons) {
-		t.Fatalf("status before continuous de-escalation delay = %q, want %q", got.status, StatusHot)
+	if got := evaluator.observe(normal, now.Add(61*time.Second), policy); got.status != StatusHot || got.phase != PhaseRecovering || !slices.Equal(got.reasons, wantHotReasons) {
+		t.Fatalf("evaluation before continuous de-escalation delay = %+v, want held Hot/Recovering", got)
 	}
-	if got := evaluator.observe(normal, now.Add(121*time.Second), policy); got.status != StatusWarm || !slices.Equal(got.reasons, wantHotReasons) {
-		t.Fatalf("status after first de-escalation delay = %q, want %q", got.status, StatusWarm)
+	if got := evaluator.observe(normal, now.Add(121*time.Second), policy); got.status != StatusWarm || got.phase != PhaseRecovering || !slices.Equal(got.reasons, wantHotReasons) {
+		t.Fatalf("evaluation after first de-escalation delay = %+v, want held Warm/Recovering", got)
 	}
 	if got := evaluator.observe(normal, now.Add(122*time.Second), policy); got.status != StatusWarm {
 		t.Fatalf("second de-escalation started at %q, want %q", got.status, StatusWarm)
 	}
-	if got := evaluator.observe(normal, now.Add(182*time.Second), policy); got.status != StatusNormal {
-		t.Fatalf("status after second de-escalation delay = %q, want %q", got.status, StatusNormal)
+	if got := evaluator.observe(normal, now.Add(182*time.Second), policy); got.status != StatusNormal || got.phase != PhaseSteady {
+		t.Fatalf("evaluation after second de-escalation delay = %+v, want Normal/Steady", got)
 	}
 
 	if got := evaluator.observe(hotBoundary, now.Add(183*time.Second), policy); got.status != StatusHot {
 		t.Fatalf("immediate escalation status = %q, want %q", got.status, StatusHot)
 	}
-	if got := evaluator.observe(unknownRawSample(), now.Add(184*time.Second), policy); got.status != StatusUnknown {
-		t.Fatalf("missing-metric status = %q, want %q", got.status, StatusUnknown)
+	if got := evaluator.observe(unknownRawSample(), now.Add(184*time.Second), policy); got.status != StatusUnknown || got.phase != PhaseSteady {
+		t.Fatalf("missing-metric evaluation = %+v, want Unknown/Steady", got)
 	}
 	if got := evaluator.observe(normal, now.Add(185*time.Second), policy); got.status != StatusHot {
 		t.Fatalf("recovered measurement bypassed de-escalation delay: got %q, want %q", got.status, StatusHot)
@@ -59,6 +59,30 @@ func TestPressureThresholdsAndHysteresis(t *testing.T) {
 	missingEvaluator := newEvaluator()
 	if got := missingEvaluator.observe(hotWithLaterMissing, now, policy); got.status != StatusUnknown {
 		t.Fatalf("known hot metric hid a later missing threshold input: got %q, want %q", got.status, StatusUnknown)
+	}
+}
+
+func TestPressureSignalStatusesRemainIndependentOfTheAggregateVerdict(t *testing.T) {
+	sample := completeRawSample(50, 5, 1, 10, 0.5, 0.5)
+	sample.cpuPercent = knownMetric(91)
+	sample.swapUsedPercent = knownMetric(72)
+
+	if got := informationalSignal(sample.cpuPercent).Status; got != SignalStatusInformational {
+		t.Fatalf("CPU signal status = %q, want Informational", got)
+	}
+	if got := informationalSignal(sample.swapUsedPercent).Status; got != SignalStatusInformational {
+		t.Fatalf("swap signal status = %q, want Informational", got)
+	}
+	if got := signal(sample.loadNormalized, classifyLoad).Status; got != SignalStatusWarm {
+		t.Fatalf("load signal status = %q, want Warm", got)
+	}
+	if got := signal(sample.diskAvailablePercent, classifyDisk).Status; got != SignalStatusHot {
+		t.Fatalf("disk signal status = %q, want Hot", got)
+	}
+
+	aggregate := classifyOverall(sample, linuxPolicy())
+	if aggregate.status != StatusHot || !slices.Equal(aggregate.reasons, []Reason{ReasonDisk, ReasonLoad}) {
+		t.Fatalf("aggregate verdict = %+v, want Hot from disk and load only", aggregate)
 	}
 }
 

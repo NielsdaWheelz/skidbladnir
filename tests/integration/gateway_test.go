@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -70,14 +71,21 @@ func TestPressureMonitorSamplesTheHost(t *testing.T) {
 	if len(snapshot.Window) != 1 || snapshot.Current.ObservedAt.IsZero() {
 		t.Fatalf("monitor initial sample mismatch: window_count=%d observed_at_present=%t", len(snapshot.Window), !snapshot.Current.ObservedAt.IsZero())
 	}
-	if platform.Current().Kind == platform.KindLinux && snapshot.Current.MemoryAvailablePercent.Status == pressure.StatusUnknown {
-		t.Fatalf("Linux host memory availability status=%s", snapshot.Current.MemoryAvailablePercent.Status)
+	if _, known := snapshot.Current.CPUPercent.Value(); known && snapshot.Current.CPUPercent.Status != pressure.SignalStatusInformational {
+		t.Fatalf("host CPU signal status=%s, want Informational", snapshot.Current.CPUPercent.Status)
 	}
-	if platform.Current().Kind == platform.KindDarwin && snapshot.Current.MemoryPressure.Status == pressure.StatusUnknown {
-		t.Fatalf("Darwin host memory pressure status=%s", snapshot.Current.MemoryPressure.Status)
+	if platform.Current().Kind == platform.KindLinux {
+		if _, known := snapshot.Current.MemoryAvailablePercent.Value(); !known || !isThresholdSignalStatus(snapshot.Current.MemoryAvailablePercent.Status) {
+			t.Fatalf("Linux host memory availability signal invalid: value_known=%t status=%s", known, snapshot.Current.MemoryAvailablePercent.Status)
+		}
 	}
-	if snapshot.Current.DiskAvailablePercent.Status == pressure.StatusUnknown {
-		t.Fatalf("host statfs status=%s", snapshot.Current.DiskAvailablePercent.Status)
+	if platform.Current().Kind == platform.KindDarwin {
+		if _, known := snapshot.Current.MemoryPressure.Value(); !known || !isThresholdSignalStatus(snapshot.Current.MemoryPressure.Status) {
+			t.Fatalf("Darwin host memory pressure signal invalid: value_known=%t status=%s", known, snapshot.Current.MemoryPressure.Status)
+		}
+	}
+	if _, known := snapshot.Current.DiskAvailablePercent.Value(); !known || !isThresholdSignalStatus(snapshot.Current.DiskAvailablePercent.Status) {
+		t.Fatalf("host statfs signal invalid: value_known=%t status=%s", known, snapshot.Current.DiskAvailablePercent.Status)
 	}
 }
 
@@ -201,7 +209,7 @@ exec "$tmux_real" "$@"
 		t.Fatal("unauthenticated response omitted the Bearer challenge")
 	}
 	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
-	response = requestForMachine(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "", "")
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
 	assertStatus(t, response, http.StatusOK)
 	pairingInventory := decodeObject(t, response)
 	machineEnvelope := pairingInventory["machine"].(map[string]any)
@@ -222,7 +230,7 @@ exec "$tmux_real" "$@"
 	if err != nil {
 		t.Fatalf("perform duplicate-authorization request: %v", err)
 	}
-	assertError(t, response, http.StatusUnauthorized, "Unauthenticated")
+	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
 
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
@@ -502,34 +510,60 @@ exec "$tmux_real" "$@"
 
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/pressure", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
-	pressureBody := decodeObject(t, response)
-	history := pressureBody["history"].([]any)
-	if len(history) == 0 || len(history) > pressure.HistorySampleLimit || !reflect.DeepEqual(history[len(history)-1], pressureBody["current"]) {
-		t.Fatalf("pressure history/current mismatch: history_count=%d current_matches_last=%t", len(history), len(history) > 0 && reflect.DeepEqual(history[len(history)-1], pressureBody["current"]))
+	pressureBody := decodePressureResponse(t, response)
+	if pressureBody.Current.SampledAt.IsZero() || !isAggregatePressureStatus(pressureBody.Current.Level) {
+		t.Fatalf("pressure current verdict invalid: sampled_at_present=%t level=%s", !pressureBody.Current.SampledAt.IsZero(), pressureBody.Current.Level)
 	}
-	metrics := pressureBody["current"].(map[string]any)["metrics"].(map[string]any)
-	unsupported := pressureBody["unsupported"].([]any)
+	if pressureBody.Current.Phase != pressure.PhaseSteady && pressureBody.Current.Phase != pressure.PhaseRecovering {
+		t.Fatalf("pressure current phase=%s, want Steady or Recovering", pressureBody.Current.Phase)
+	}
+	if len(pressureBody.History) == 0 || len(pressureBody.History) > pressure.HistorySampleLimit {
+		t.Fatalf("pressure history count=%d, want 1..%d", len(pressureBody.History), pressure.HistorySampleLimit)
+	}
+	latestHistory := pressureBody.History[len(pressureBody.History)-1]
+	if latestHistory.SampledAt != pressureBody.Current.SampledAt || latestHistory.Level != pressureBody.Current.Level {
+		t.Fatalf(
+			"pressure compact history/current mismatch: sampled_at_match=%t level_match=%t",
+			latestHistory.SampledAt == pressureBody.Current.SampledAt,
+			latestHistory.Level == pressureBody.Current.Level,
+		)
+	}
+	for index, item := range pressureBody.History {
+		if item.SampledAt.IsZero() || !isAggregatePressureStatus(item.Level) {
+			t.Fatalf("pressure history item %d invalid: sampled_at_present=%t level=%s", index, !item.SampledAt.IsZero(), item.Level)
+		}
+		if index > 0 && !pressureBody.History[index-1].SampledAt.Before(item.SampledAt) {
+			t.Fatalf("pressure history is not strictly chronological at item %d", index)
+		}
+	}
+	if pressureBody.Current.Reasons == nil {
+		t.Fatal("pressure current omitted its reasons array")
+	}
+
+	wantUnsupported := []pressure.Metric{pressure.MetricMemoryPressure}
 	if platform.Current().Kind == platform.KindLinux {
-		_, memoryAvailableExists := metrics["memoryAvailablePercent"]
-		memoryPressureUnsupported := containsString(unsupported, "memoryPressure")
-		if !memoryAvailableExists || !memoryPressureUnsupported {
-			t.Fatalf("Linux pressure capability contract is incomplete: memory_available_present=%t memory_pressure_unsupported=%t", memoryAvailableExists, memoryPressureUnsupported)
-		}
+		assertMeasuredPressureSignal(t, pressureBody.Current.Signals, pressure.MetricMemoryAvailablePercent)
 	} else {
-		_, memoryPressureExists := metrics["memoryPressure"]
-		unsupportedComplete := containsString(unsupported, "memoryAvailablePercent") &&
-			containsString(unsupported, "cpuPsiSomeAvg60Percent") && containsString(unsupported, "memoryPsiFullAvg60Percent") &&
-			containsString(unsupported, "ioPsiFullAvg60Percent")
-		if !memoryPressureExists || !unsupportedComplete {
-			t.Fatalf("Darwin pressure capability contract is incomplete: memory_pressure_present=%t unsupported_complete=%t", memoryPressureExists, unsupportedComplete)
+		wantUnsupported = []pressure.Metric{
+			pressure.MetricCPUPressureSomeAvg60,
+			pressure.MetricInputOutputPressureFullAvg60,
+			pressure.MetricMemoryAvailablePercent,
+			pressure.MetricMemoryPressureFullAvg60,
 		}
+		assertMeasuredPressureSignal(t, pressureBody.Current.Signals, pressure.MetricMemoryPressure)
 	}
-	if _, exists := metrics["cpuPercent"]; exists {
+	if !reflect.DeepEqual(pressureBody.Unsupported, wantUnsupported) {
+		t.Fatalf("%s pressure unsupported=%v, want exact capability set %v", platform.Current().Kind, pressureBody.Unsupported, wantUnsupported)
+	}
+	if _, exists := pressureBody.Current.Signals[pressure.MetricCPUPercent]; exists {
 		t.Fatal("first pressure sample encoded an unavailable CPU delta")
 	}
-	missing := pressureBody["current"].(map[string]any)["missing"].([]any)
-	if !containsString(missing, "cpuPercent") {
-		t.Fatalf("first pressure sample did not name omitted cpuPercent: missing_count=%d", len(missing))
+	if !slices.Contains(pressureBody.Current.Missing, pressure.MetricCPUPercent) {
+		t.Fatalf("first pressure sample did not name omitted cpuPercent: missing_count=%d", len(pressureBody.Current.Missing))
+	}
+	assertPressureCapabilityPartition(t, pressureBody)
+	for metric, signal := range pressureBody.Current.Signals {
+		assertPressureSignalValueAndState(t, metric, signal)
 	}
 	logOutput := logs.String()
 	for _, forbidden := range []struct {
@@ -675,6 +709,135 @@ func integrationMachine(t *testing.T) machine.Handle {
 	return handle
 }
 
+type pressureResponse struct {
+	Unsupported []pressure.Metric       `json:"unsupported"`
+	Current     pressureCurrentResponse `json:"current"`
+	History     []pressureHistoryItem   `json:"history"`
+}
+
+type pressureCurrentResponse struct {
+	SampledAt time.Time                                  `json:"sampledAt"`
+	Level     pressure.Status                            `json:"level"`
+	Phase     pressure.Phase                             `json:"phase"`
+	Reasons   []pressure.Reason                          `json:"reasons"`
+	Signals   map[pressure.Metric]pressureSignalResponse `json:"signals"`
+	Missing   []pressure.Metric                          `json:"missing"`
+}
+
+type pressureSignalResponse struct {
+	Value json.RawMessage       `json:"value"`
+	State pressure.SignalStatus `json:"state"`
+}
+
+type pressureHistoryItem struct {
+	SampledAt time.Time       `json:"sampledAt"`
+	Level     pressure.Status `json:"level"`
+}
+
+func decodePressureResponse(t *testing.T, response *http.Response) pressureResponse {
+	t.Helper()
+	defer response.Body.Close()
+	decoder := json.NewDecoder(response.Body)
+	decoder.DisallowUnknownFields()
+	var body pressureResponse
+	if err := decoder.Decode(&body); err != nil {
+		t.Fatalf("decode strict pressure HTTP response: status=%d error=%v", response.StatusCode, err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		t.Fatalf("pressure HTTP response contained trailing JSON: error=%v", err)
+	}
+	return body
+}
+
+func assertPressureCapabilityPartition(t *testing.T, body pressureResponse) {
+	t.Helper()
+	universe := []pressure.Metric{
+		pressure.MetricCPUPercent,
+		pressure.MetricLoadNormalized,
+		pressure.MetricMemoryAvailablePercent,
+		pressure.MetricSwapUsedPercent,
+		pressure.MetricDiskAvailablePercent,
+		pressure.MetricCPUPressureSomeAvg60,
+		pressure.MetricMemoryPressureFullAvg60,
+		pressure.MetricInputOutputPressureFullAvg60,
+		pressure.MetricMemoryPressure,
+	}
+	known := make(map[pressure.Metric]struct{}, len(universe))
+	for _, metric := range universe {
+		known[metric] = struct{}{}
+	}
+	for _, part := range []struct {
+		name    string
+		metrics []pressure.Metric
+	}{
+		{name: "missing", metrics: body.Current.Missing},
+		{name: "unsupported", metrics: body.Unsupported},
+	} {
+		unique := slices.Compact(append([]pressure.Metric(nil), part.metrics...))
+		if !slices.IsSorted(part.metrics) || len(unique) != len(part.metrics) {
+			t.Fatalf("pressure %s is not sorted and unique: %v", part.name, part.metrics)
+		}
+	}
+	membership := make(map[pressure.Metric]string, len(universe))
+	for metric := range body.Current.Signals {
+		if _, exists := known[metric]; !exists {
+			t.Fatalf("pressure signals published unknown metric %q", metric)
+		}
+		membership[metric] = "signals"
+	}
+	for _, part := range []struct {
+		name    string
+		metrics []pressure.Metric
+	}{
+		{name: "missing", metrics: body.Current.Missing},
+		{name: "unsupported", metrics: body.Unsupported},
+	} {
+		for _, metric := range part.metrics {
+			if _, exists := known[metric]; !exists {
+				t.Fatalf("pressure %s published unknown metric %q", part.name, metric)
+			}
+			if previous, duplicate := membership[metric]; duplicate {
+				t.Fatalf("pressure metric %q appears in both %s and %s", metric, previous, part.name)
+			}
+			membership[metric] = part.name
+		}
+	}
+	for _, metric := range universe {
+		if _, exists := membership[metric]; !exists {
+			t.Fatalf("pressure metric %q is absent from signals, missing, and unsupported", metric)
+		}
+	}
+}
+
+func assertMeasuredPressureSignal(t *testing.T, signals map[pressure.Metric]pressureSignalResponse, metric pressure.Metric) {
+	t.Helper()
+	if _, exists := signals[metric]; !exists {
+		t.Fatalf("%s pressure capability omitted required measured signal %q", platform.Current().Kind, metric)
+	}
+}
+
+func assertPressureSignalValueAndState(t *testing.T, metric pressure.Metric, signal pressureSignalResponse) {
+	t.Helper()
+	if len(signal.Value) == 0 || bytes.Equal(signal.Value, []byte("null")) {
+		t.Fatalf("pressure signal %q has no measured value", metric)
+	}
+	if metric == pressure.MetricCPUPercent || metric == pressure.MetricSwapUsedPercent {
+		if signal.State != pressure.SignalStatusInformational {
+			t.Fatalf("pressure signal %q state=%s, want Informational", metric, signal.State)
+		}
+	} else if !isThresholdSignalStatus(signal.State) {
+		t.Fatalf("pressure signal %q state=%s, want Normal, Warm, or Hot", metric, signal.State)
+	}
+}
+
+func isThresholdSignalStatus(status pressure.SignalStatus) bool {
+	return status == pressure.SignalStatusNormal || status == pressure.SignalStatusWarm || status == pressure.SignalStatusHot
+}
+
+func isAggregatePressureStatus(status pressure.Status) bool {
+	return status == pressure.StatusNormal || status == pressure.StatusWarm || status == pressure.StatusHot || status == pressure.StatusUnknown
+}
+
 func decodeObject(t *testing.T, response *http.Response) map[string]any {
 	t.Helper()
 	defer response.Body.Close()
@@ -696,13 +859,4 @@ func findSession(t *testing.T, inventory map[string]any, name string) map[string
 	}
 	t.Fatalf("expected session not found in inventory: session_count=%d", len(sessions))
 	return nil
-}
-
-func containsString(values []any, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }

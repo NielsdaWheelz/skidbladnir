@@ -98,28 +98,6 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `pressure capability is strict for Linux and Darwin`() {
-        val linux = decodePressureResponse(pressureJson("[\"memoryPressure\"]", linuxMetrics))
-        assertEquals(listOf(PressureMetric.MemoryPressure), linux.unsupported)
-        assertEquals(null, linux.current.metrics.memoryPressure)
-
-        val darwinUnsupported =
-            "[\"cpuPsiSomeAvg60Percent\",\"ioPsiFullAvg60Percent\",\"memoryAvailablePercent\",\"memoryPsiFullAvg60Percent\"]"
-        val darwin = decodePressureResponse(pressureJson(darwinUnsupported, darwinMetrics))
-        assertEquals(SystemMemoryPressure.Normal, darwin.current.metrics.memoryPressure)
-        assertEquals(4, darwin.unsupported.size)
-
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodePressureResponse(
-                pressureJson(
-                    "[\"memoryAvailablePercent\",\"cpuPsiSomeAvg60Percent\",\"ioPsiFullAvg60Percent\",\"memoryPsiFullAvg60Percent\"]",
-                    darwinMetrics,
-                ),
-            )
-        }
-    }
-
-    @Test
     fun `equal local sessions remain distinct and one failure cannot stale the other`() {
         val duplicate = session()
         val initial = listOf(readyMachine(macBook, duplicate), readyMachine(devbox, duplicate))
@@ -829,8 +807,9 @@ class MultiMachineContractTest {
 
     private fun pressureJson(unsupported: String, metrics: String): String {
         val sample =
-            """{"sampledAt":"2026-08-26T12:00:00Z","level":"Normal","reasons":[],"metrics":$metrics,"missing":[]}"""
-        return """{"unsupported":$unsupported,"current":$sample,"history":[$sample]}"""
+            """{"sampledAt":"2026-08-26T12:00:00Z","level":"Normal","phase":"Steady","reasons":[],"signals":$metrics,"missing":[]}"""
+        val history = """{"sampledAt":"2026-08-26T12:00:00Z","level":"Normal"}"""
+        return """{"unsupported":$unsupported,"current":$sample,"history":[$history]}"""
     }
 
     private companion object {
@@ -840,8 +819,6 @@ class MultiMachineContractTest {
         fun tmuxId(index: Int): String = "${'$'}$index"
 
         const val linuxMetrics =
-            """{"cpuPercent":12.5,"normalizedLoad":0.4,"memoryAvailablePercent":42.0,"swapUsedPercent":0.0,"diskAvailablePercent":60.0,"cpuPsiSomeAvg60Percent":0.0,"memoryPsiFullAvg60Percent":0.0,"ioPsiFullAvg60Percent":0.0}"""
-        const val darwinMetrics =
-            """{"cpuPercent":12.5,"normalizedLoad":0.4,"swapUsedPercent":0.0,"diskAvailablePercent":60.0,"memoryPressure":"Normal"}"""
+            """{"cpuPercent":{"value":12.5,"state":"Informational"},"normalizedLoad":{"value":0.4,"state":"Normal"},"memoryAvailablePercent":{"value":42.0,"state":"Normal"},"swapUsedPercent":{"value":0.0,"state":"Informational"},"diskAvailablePercent":{"value":60.0,"state":"Normal"},"cpuPsiSomeAvg60Percent":{"value":0.0,"state":"Normal"},"memoryPsiFullAvg60Percent":{"value":0.0,"state":"Normal"},"ioPsiFullAvg60Percent":{"value":0.0,"state":"Normal"}}"""
     }
 }

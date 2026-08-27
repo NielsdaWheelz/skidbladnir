@@ -242,8 +242,9 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   `UNKNOWN`, machine label, tmux name, local tmux id. Android owns this full
   cross-host order; each gateway publishes only local facts.
 
-Each machine has its own pressure strip, freshness, access state, inline error,
-and independent five-second poll work. A failed inventory poll preserves only
+Each machine has its own pressure rail per
+[`machine-pressure-rail.md`](machine-pressure-rail.md), freshness, access state,
+inline error, and independent five-second poll work. A failed inventory poll preserves only
 that machine's last in-memory snapshot as literal `STALE`; stale, unreachable,
 unauthenticated, or identity-changed machines cannot create, attach, send
 terminal input, or kill. Pressure failure never disables action against a
@@ -268,12 +269,16 @@ recovery copy is target-aware: a visible ready target teaches the pull, a
 ready target hidden by another filter first names the filter change,
 authentication names whole-fleet reconnect, and a changed or missing identity
 names app-data reset and a fresh connect. Review-ready copy remains a past-tense fact,
-not another verification command. Each pressure strip preserves the full v0
-presentation: current supported metric values, a categorical severity
-history covering up to 15 minutes, explicit missing inputs, explicit
-platform-unsupported metrics, and current pressure reasons. Stale pressure
-preserves and labels those last details; unsupported and missing are never
-conflated.
+not another verification command. Each pressure rail is one compact disclosure
+control: machine/aggregate/cause/freshness header, one stable non-wrapping row
+of status-coloured metric gems, then the unchanged 16dp categorical history
+band with no title. CPU and swap are visibly informational, missing supported
+evidence remains as `?`, and unsupported inventory is never product copy. A tap
+opens one machine-bound details sheet containing every supported current metric,
+full states, reasons, freshness, and `NO DATA`; it reads the accepted pressure
+snapshot and performs no request or mutation. Pressure freshness is independent
+of inventory freshness. Stale pressure preserves and labels its last snapshot;
+missing and unsupported remain distinct in the protocol.
 
 ### Attention
 
@@ -556,7 +561,7 @@ enum values are defects, with no protocol branch or compatibility state.
   repaired in-app. Ordinary upgrades preserve the collection; app-data loss
   returns to Connect. There is no old store reader, ADB provisioning path, or
   smaller-fleet branch.
-- Grid, per-machine strips, filters, Forge, and terminal follow §4. The Forge
+- Grid, per-machine pressure rails/details sheets, filters, Forge, and terminal follow §4. The Forge
   preserves invalid drafts; its cwd field disables autocorrect/smart
   punctuation. Inventory snapshots and drafts are process-memory only.
 - Terminal: the proven harness. Vendored pinned xterm.js in a locked WebView
@@ -645,7 +650,8 @@ enum values are defects, with no protocol branch or compatibility state.
 Verification follows an 80/20 boundary shape:
 
 - pure table tests own handle/origin/strict DTO and host-config validation,
-  pressure capability partitions, fleet-QR parsing, federation
+  pressure signal and recovery classification, pressure capability partitions,
+  Android pressure presentation, fleet-QR parsing, federation
   reduction/routing/sort, and admission decisions;
 - a gateway service test owns invitation replacement/expiry/bearer-rotation
   invalidation and proves exactly one winner under concurrent redemption,
@@ -663,10 +669,11 @@ Verification follows an 80/20 boundary shape:
   final non-draft immutable tag target, exact five assets, their contents, and
   the byte-exact `dev-server` pin of the tag, source, and all five digests;
 - approved S22+ instrumentation owns exact-three encrypted collection
-  install/reconnect, atomic failure/quarantine, lifecycle reconciliation,
-  terminal behavior, and visible stale-action admission;
-- one approved physical S22+ product journey owns the real scanner and
-  three-host federation/routing,
+  install/reconnect, atomic failure/quarantine, lifecycle reconciliation, the
+  compact pressure rail and local details disclosure, terminal behavior, and
+  visible stale-action admission;
+- one approved physical S22+ product journey owns the real scanner,
+  three-host federation/routing, per-machine pressure disclosure,
   process recreation, machine-local outage/recovery, and preserved pairings
   and production tmux lifetimes. Its explicit capability permits only the
   gateway's bounded inventory reconciliation of gateway-owned character
@@ -710,8 +717,10 @@ session, preserves concurrent valid assignment, and never assigns a phone
 shadow; the terminal key deck exposes only its reviewed terminal inputs,
 one-shot Ctrl never alters literal IME/dictation/paste input or survives a
 lifecycle boundary, and leaving through the top detach action or Back detaches
-only the phone; Linux pressure is unchanged and Darwin capabilities are honest;
-app, gateway, and LaunchAgent restart converge to each local
+only the phone; both pressure capability sets are honest, host statuses drive
+every gem, missing evidence stays visible, recovery is explicit, and pressure
+disclosure adds no network or mutation; app, gateway, and LaunchAgent restart
+converge to each local
 `tmux list-sessions` truth.
 
 Distribution acceptance additionally requires: the public release has the

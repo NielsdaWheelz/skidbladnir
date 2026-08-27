@@ -49,6 +49,7 @@ S1 tmux control plane
  -> v0 public-fleet distribution and Connect hard cut
  -> v0 design delta D9: detach chrome
  -> v0 dashboard card hierarchy delta
+ -> v0 machine-pressure rail delta
  -> v0.5 (optional): push
 ```
 
@@ -517,6 +518,33 @@ glance. No gateway, tmux, controller, sorting, polling, terminal, or public API
 boundary changes. Scope per
 [`dashboard-card-refactor.md`](dashboard-card-refactor.md).
 
+## v0 machine-pressure rail delta
+
+Outcome: each machine's pressure evidence occupies one compact disclosure rail
+instead of a tall fixed report, without changing sampling, thresholds, history
+rendering, or action admission.
+
+- Hard-cut `GET /v1/pressure` to host-owned per-signal states, explicit
+  aggregate recovery phase, and compact level-only history. CPU/swap are
+  informational; Android owns no thresholds or fallback decoder.
+- Render one header, one stable non-wrapping status-gem row, and the unchanged
+  16dp history band. Remove the history descriptor, unsupported inventory, and
+  duplicate reason footer from visible and spoken UI.
+- One rail tap opens a machine-bound local details sheet with all supported
+  current signals, canonical reasons/freshness, and explicit `NO DATA`.
+  Disclosure performs no request or mutation.
+
+Red: host recovery/signal classification, exact gateway capability partition,
+strict Android typed decode, deterministic content grammar, and real Compose
+rail/disclosure behavior at compact and large-text sizes.
+
+Acceptance: routine verification; the separately approved existing integration
+gate on Linux and Darwin for the real collector/API cut; one separately
+approved S22+ platform pass for geometry, semantics, history pixels, and sheet
+interaction; then the public-fleet release, all-three-host convergence, and
+real-scanner product gates with machine-bound pressure disclosure. Scope per
+[machine-pressure-rail.md](machine-pressure-rail.md).
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -553,4 +581,5 @@ orchestration, via a new architecture decision.
 | v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
+| v0 machine-pressure rail delta | Source implemented over the public-fleet hard cut; ownership reds and focused greens recorded; exact release, all-three-host convergence, real-scanner product, named second-phone, and hands-on visual gates `NOT_RUN` |
 | v0.5 push | Not scheduled |

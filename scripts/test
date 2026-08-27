@@ -668,12 +668,14 @@ case "$gate" in
   product)
     if [[ "${1:-}" != '--allow-device-mutation' ||
       "${2:-}" != '--allow-three-host-inventory-reconciliation' ||
-      "${3:-}" != '--allow-one-host-service-restart' || "$#" -ne 3 ]]; then
-      not_run product 'Pass the device, bounded three-host inventory-reconciliation, and one-host restart capabilities only after explicit current-turn approval'
+      "${3:-}" != '--allow-one-host-service-restart' ||
+      "${4:-}" != '--allow-terminal-open-detach' || "$#" -ne 4 ]]; then
+      not_run product 'Pass the device, bounded three-host inventory-reconciliation, one-host restart, and terminal open/detach capabilities only after explicit current-turn approval'
     fi
     if [[ "${SKIDBLADNIR_ALLOW_THREE_HOST_PRODUCT_JOURNEY:-}" != 'three-host-product-v1' ||
-      "${SKIDBLADNIR_ALLOW_ONE_HOST_OUTAGE:-}" != 'one-host-outage-v1' ]]; then
-      not_run product 'Set both exact product and one-host-outage capabilities after explicit current-turn approval'
+      "${SKIDBLADNIR_ALLOW_ONE_HOST_OUTAGE:-}" != 'one-host-outage-v1' ||
+      "${SKIDBLADNIR_ALLOW_TERMINAL_PRODUCT_JOURNEY:-}" != 'terminal-open-detach-v1' ]]; then
+      not_run product 'Set the exact product, one-host-outage, and terminal open/detach capabilities after explicit current-turn approval'
     fi
     if [[ "$(uname -s)" != 'Darwin' ]]; then
       not_run product 'The physical three-host outage journey must run on the MacBook'
@@ -726,6 +728,7 @@ case "$gate" in
     baseline_lifetime=''
     after_lifetime=''
     service_restore_required=''
+    terminal_cleanup_required=''
     preupdate_evidence=''
     physical_confirmation() {
       local expected="$1"
@@ -754,6 +757,12 @@ case "$gate" in
         service_restore_required=''
       fi
     }
+    close_product_terminal() {
+      if [[ -n "$terminal_cleanup_required" ]]; then
+        "$adb" -s "$serial" shell am force-stop "$app_package" >/dev/null || return
+        terminal_cleanup_required=''
+      fi
+    }
     cleanup_product() {
       local exit_status=$?
       trap - EXIT HUP INT TERM
@@ -761,6 +770,7 @@ case "$gate" in
         ! -L "$preupdate_evidence" ]]; then
         /bin/unlink "$preupdate_evidence" || exit_status=1
       fi
+      close_product_terminal || exit_status=1
       restore_product_gateway || exit_status=1
       exit "$exit_status"
     }
@@ -823,22 +833,26 @@ case "$gate" in
     printf '%s\n' 'On the S22+, tap Reconnect fleet, then scan the fresh QR below.'
     run fleet-invite "$fleet_operator" invite
     physical_confirmation RECONNECTED \
-      'Confirm that Arch, Devbox, and MacBook all render and each can be selected without retargeting.'
+      'Confirm that Arch, Devbox, and MacBook all render with compact pressure rails; each rail opens only its own details with CPU, status words, and evaluated or NO DATA evidence; no details sheet shows Unsupported or a second history band; dismiss each sheet and select each machine without retargeting.'
+    terminal_cleanup_required=1
+    physical_confirmation TERMINAL_UNOBSTRUCTED \
+      'Open an existing tmux session on one machine, confirm its terminal viewport and key deck remain usable, detach and return to the dashboard, then confirm that machine remains selected and its pressure rail and details remain tappable.'
     run android-product-force-stop "$adb" -s "$serial" shell am force-stop "$app_package"
+    terminal_cleanup_required=''
     run android-product-recreate "$adb" -s "$serial" shell am start -n \
       "${app_package}/.MainActivity"
     physical_confirmation PROCESS_RESTORED \
-      'Confirm that process recreation restores the same three fleet identities and machine-bound routing.'
+      'Confirm that process recreation restores the same three fleet identities, pressure rails, and machine-bound routing.'
 
     service_restore_required=1
     run one-host-outage "$fleet_operator" outage Local
     physical_confirmation OUTAGE_ISOLATED \
-      'Confirm that MacBook is unavailable while Arch and Devbox still render and remain selectable.'
+      'Confirm that MacBook pressure becomes stale with retained evidence or unavailable with a header-only rail, while Arch and Devbox remain fresh, render their own pressure, and stay selectable.'
     run one-host-recovery "$fleet_operator" recover Local
     service_restore_required=''
     run recovered-fleet-doctor "$fleet_operator" doctor
     physical_confirmation RECOVERED \
-      'Confirm that Arch, Devbox, and MacBook all render and remain bound to their original labels.'
+      'Confirm that Arch, Devbox, and MacBook all return to fresh pressure and remain bound to their original labels.'
 
     after_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     printf '%s\n' "$after_lifetime" | fleet_lifetime_valid || {
@@ -1199,7 +1213,7 @@ case "$gate" in
     not_run full 'Run release, published-release, integration, live, platform, product, and second-phone separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation}\n' "$0" >&2
     exit 64
     ;;
   *)
