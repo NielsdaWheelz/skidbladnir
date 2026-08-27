@@ -106,7 +106,7 @@ One-Dark defaults with no relation to the brand (`terminal.js`).
 Labels, domain, error, and destructive copy stay literal (architecture §2).
 The dwarven voice lives entirely in geometry, material, and type — never in
 wording. No "ye olde" register, no rune-transliterated labels, no themed
-error messages. "Kill session ga-durinn?" stays exactly that.
+error messages. "Kill skidbladnir-work-1 on Devbox?" stays exactly that.
 
 ## 5. Color
 
@@ -204,8 +204,8 @@ Two families, split by scale, never blended:
   reversal-at-midpoint method, which requires an even count of pattern units
   per side — sizing to that count is part of the component spec, not optional.
 - **Interlace (woven ribbon): large art only.** Permitted where stroke ≥ 3dp
-  and loop radius ≥ 8dp: empty states, the pairing screen, a future About/
-  Dvergatal catalogue view. Constructed, never drawn freehand: Bain
+  and loop radius ≥ 8dp: empty states or a future About/Dvergatal catalogue
+  view. Constructed, never drawn freehand: Bain
   grid-and-dot — dot grid at ribbon-width spacing, breaks as uncrossable
   barriers, diagonal strands, strict alternating over/under (parity rule).
   Breaks are first-class: model real layout edges (safe areas, text bounds)
@@ -406,9 +406,6 @@ it as a red test, not an assumption.
 - **Pressure strip**: level colors per §5; any future continuous meter uses
   the forge-heat ramp (§5) with the arc path cached in `drawWithCache`'s
   build phase and only the sweep/color read per-frame.
-- **Pairing screen**: the one interlace-scale canvas in v0 chrome — a single
-  woven band (§7 rules) under the wordmark; everything else quiet.
-
 ## 14. Accessibility floor
 
 48dp targets and 8dp spacing where architecture/key-deck specs demand;
@@ -447,7 +444,7 @@ The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 Bronze, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret/interlace pipeline, Forge/pairing art, app icon).
+build-time fret pipeline, Forge/empty-state art, app icon).
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

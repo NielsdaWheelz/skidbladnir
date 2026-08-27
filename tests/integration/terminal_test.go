@@ -16,13 +16,17 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
+	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
@@ -45,7 +49,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 
 	listed, err := fixture.manager.List(context.Background())
 	if err != nil {
-		t.Fatalf("list terminal source: %v", err)
+		t.Fatal("list terminal source")
 	}
 	source := requireSessionNamed(t, listed, "shared-terminal")
 	laptop := startTerminalLaptop(t, fixture, source.ID, 120, 40)
@@ -62,13 +66,15 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	bearerPath := filepath.Join(fixture.root, "terminal-bearer")
 	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatalf("mint terminal bearer: %v", err)
+		t.Fatal("mint terminal bearer")
 	}
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Logger:   logging.New(io.Discard),
+		Machine:  integrationMachine(t),
+		Platform: platform.Current(),
 	}))
 	t.Cleanup(server.Close)
 
@@ -77,21 +83,27 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
 	staleHeaders := http.Header{
 		"Authorization":                []string{"Bearer " + bearer},
+		"Skidbladnir-Machine":          []string{integrationMachineText},
 		"Skidbladnir-Session-Identity": []string{staleToken},
 	}
 	_, response, err := websocket.Dial(context.Background(), terminalURL, &websocket.DialOptions{HTTPHeader: staleHeaders})
 	if err == nil || response == nil || response.StatusCode != http.StatusConflict {
-		t.Fatalf("stale terminal identity result: response=%v error=%v", response, err)
+		status := 0
+		if response != nil {
+			status = response.StatusCode
+		}
+		t.Fatalf("stale terminal identity result mismatch: error_present=%t response_present=%t status=%d", err != nil, response != nil, status)
 	}
 	if response.Body != nil {
 		_ = response.Body.Close()
 	}
 	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
-		t.Fatalf("stale terminal identity mutated sessions:\nbefore=%q\nafter=%q", sessionsBefore, sessionsAfter)
+		t.Fatal("stale terminal identity mutated sessions")
 	}
 
 	headers := http.Header{
 		"Authorization":                []string{"Bearer " + bearer},
+		"Skidbladnir-Machine":          []string{integrationMachineText},
 		"Skidbladnir-Session-Identity": []string{source.IdentityToken},
 	}
 	connection, response, err := websocket.Dial(context.Background(), terminalURL, &websocket.DialOptions{HTTPHeader: headers})
@@ -100,7 +112,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		if response != nil {
 			status = response.StatusCode
 		}
-		t.Fatalf("open terminal WebSocket: status=%d error=%v", status, err)
+		t.Fatalf("open terminal WebSocket: status=%d", status)
 	}
 	if response != nil && response.Body != nil {
 		_ = response.Body.Close()
@@ -111,7 +123,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	messageType, helloPayload, err := connection.Read(readContext)
 	cancelRead()
 	if err != nil || messageType != websocket.MessageText {
-		t.Fatalf("read terminal Hello: type=%v payload=%q error=%v", messageType, helloPayload, err)
+		t.Fatalf("read terminal Hello: type=%v error_present=%t payload_bytes=%d", messageType, err != nil, len(helloPayload))
 	}
 	var hello struct {
 		Kind            string `json:"kind"`
@@ -119,14 +131,19 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		Geometry        string `json:"geometry"`
 	}
 	if err := json.Unmarshal(helloPayload, &hello); err != nil {
-		t.Fatalf("decode terminal Hello: %v: %s", err, helloPayload)
+		t.Fatalf("decode terminal Hello: payload_bytes=%d", len(helloPayload))
 	}
 	if hello.Kind != "Hello" || hello.AttachedClients != 2 || hello.Geometry != "Constrained" {
-		t.Fatalf("terminal Hello = %+v, want two-client Constrained", hello)
+		t.Fatalf(
+			"terminal Hello mismatch: kind_match=%t attached_clients=%d geometry_match=%t",
+			hello.Kind == "Hello",
+			hello.AttachedClients,
+			hello.Geometry == "Constrained",
+		)
 	}
 	readTerminalBinaryUntil(t, connection, []string{"FRAME=A BUFFER=seed-A"}, nil)
 	if attention := fixture.tmux(t, "show-options", "-pqv", "-t", "shared-terminal:0.0", "@skid_attention"); attention != "" {
-		t.Fatalf("opening terminal did not clear active-pane attention: %q", attention)
+		t.Fatal("opening terminal did not clear active-pane attention")
 	}
 
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Resize","columns":100,"rows":30}`))
@@ -151,7 +168,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	waitForTerminalFile(t, logB, "PHONE-B")
 	readTerminalBinaryUntil(t, connection, []string{"TOKEN=PHONE-B"}, nil)
 	if contents, readErr := os.ReadFile(logA); readErr == nil && bytes.Contains(contents, []byte("PHONE-B")) {
-		t.Fatalf("phone input reached laptop-selected pane: %q", contents)
+		t.Fatalf("phone input reached laptop-selected pane: content_bytes=%d", len(contents))
 	}
 	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
 		t.Fatalf("phone active-pane key sequence stole laptop selection: %q", active)
@@ -159,11 +176,21 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
 	closeContext, cancelClose := context.WithTimeout(context.Background(), terminalIntegrationTimeout)
-	_, _, closeErr := connection.Read(closeContext)
-	cancelClose()
-	if closeErr == nil {
-		t.Fatal("Detach left the terminal WebSocket open")
+	for {
+		// PTY bytes committed before Detach may already be in the transport. Drain those bounded
+		// frames and prove the server closes the WebSocket, rather than assuming the next read is
+		// necessarily the close observation.
+		_, _, closeErr := connection.Read(closeContext)
+		if closeErr == nil {
+			continue
+		}
+		if closeContext.Err() != nil {
+			cancelClose()
+			t.Fatal("Detach left the terminal WebSocket open")
+		}
+		break
 	}
+	cancelClose()
 	waitForTerminalCondition(t, "phone shadow teardown", func() bool {
 		listed, listErr := fixture.manager.List(context.Background())
 		if listErr != nil {
@@ -183,10 +210,10 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		t.Fatalf("phone detach changed laptop-owned window geometry: before=%q after=%q", windowShapeBefore, got)
 	}
 	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
-		t.Fatalf("phone detach moved the shared active pane: %q", active)
+		t.Fatalf("phone detach moved the shared active pane: index=%s", active)
 	}
 	if _, err := laptop.Write([]byte("LAPTOP-A\r")); err != nil {
-		t.Fatalf("write through surviving laptop client: %v", err)
+		t.Fatal("write through surviving laptop client")
 	}
 	waitForTerminalFile(t, logA, "LAPTOP-A")
 }
@@ -197,7 +224,7 @@ func TestTerminalBearerRotationRevokesLiveStreamAndReconnectsWithoutReplay(t *te
 	fixture.tmux(t, "new-session", "-d", "-s", "rotation-terminal", "-x", "80", "-y", "24", "-c", fixture.project,
 		"--", "/bin/sh", "-c", terminalRotationScript(), "fixture", logPath)
 	source := terminalSource(t, fixture, "rotation-terminal")
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 
 	oldConnection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, oldConnection, "Hello", 1, "Owner")
@@ -211,7 +238,7 @@ func TestTerminalBearerRotationRevokesLiveStreamAndReconnectsWithoutReplay(t *te
 
 	freshBearer, err := auth.Mint(auth.MintOptions{Path: gatewayFixture.bearerPath})
 	if err != nil {
-		t.Fatalf("remint terminal bearer: %v", err)
+		t.Fatal("remint terminal bearer")
 	}
 	requireTerminalError(t, oldConnection, "ReconnectRequired", "Reconnect required.")
 	requireTerminalClosed(t, oldConnection)
@@ -239,7 +266,7 @@ func TestTerminalPresenceAndLastLinkDetachPreserveThePane(t *testing.T) {
 	startTerminalLaptop(t, fixture, source.ID, 80, 24)
 	waitForTerminalAttachmentCount(t, fixture, source.ID, 1, terminalIntegrationTimeout)
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.ID)
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 2, "Constrained")
@@ -262,7 +289,7 @@ func TestTerminalPresenceAndLastLinkDetachPreserveThePane(t *testing.T) {
 	})
 	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
 	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
-		t.Fatalf("promoted last phone link disappeared: id=%s name=%s", shadow.id, shadow.name)
+		t.Fatal("promoted last phone link disappeared")
 	}
 }
 
@@ -273,7 +300,7 @@ func TestTerminalDetachLeavesAnAttachedPhoneShadowUntouched(t *testing.T) {
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "ATTACHED-SHADOW")
 	source := terminalSource(t, fixture, "attached-shadow-source")
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.ID)
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
@@ -292,18 +319,18 @@ func TestTerminalDetachLeavesAnAttachedPhoneShadowUntouched(t *testing.T) {
 	})
 
 	if !terminalSessionExists(t, fixture, source.ID, source.TmuxName) {
-		t.Fatalf("terminal detach removed source session: id=%s name=%s", source.ID, source.TmuxName)
+		t.Fatal("terminal detach removed source session")
 	}
 	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
-		t.Fatalf("terminal detach removed attached phone shadow: id=%s name=%s", shadow.id, shadow.name)
+		t.Fatal("terminal detach removed attached phone shadow")
 	}
 	if marker := fixture.tmux(t, "show-options", "-qv", "-t", shadow.id, "@skid_internal"); marker != "phone-shadow" {
-		t.Fatalf("terminal detach changed attached phone-shadow marker: %q", marker)
+		t.Fatal("terminal detach changed attached phone-shadow marker")
 	}
 	requireTerminalPaneIdentity(t, fixture, source.ID, panePID, paneStartTime)
 	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
 	if _, err := unrelated.Write([]byte("UNRELATED-SURVIVES\r")); err != nil {
-		t.Fatalf("write through unrelated shadow client after phone detach: %v", err)
+		t.Fatal("write through unrelated shadow client after phone detach")
 	}
 	waitForTerminalFile(t, logPath, "UNRELATED-SURVIVES")
 }
@@ -314,11 +341,12 @@ func TestTerminalSlowReaderIsTornDownWithoutKillingTheSource(t *testing.T) {
 		"--", "/bin/sh", "-c", terminalFloodScript())
 	source := terminalSource(t, fixture, "slow-terminal")
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.ID)
-	gatewayFixture := newTerminalGateway(t, fixture, 1024)
-	slowClient := terminalSlowHTTPClient(t)
+	writeGate := newTerminalWriteGate()
+	gatewayFixture := newTerminalGateway(t, fixture, writeGate)
 
-	connection := dialTerminal(t, slowClient, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+	writeGate.arm()
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("FLOOD\r"))
 	waitForTerminalAttachmentCount(t, fixture, source.ID, 0, 20*time.Second)
 	waitForTerminalConditionWithin(t, "slow-reader shadow teardown", 20*time.Second, func() bool {
@@ -344,7 +372,7 @@ while IFS= read -r token; do
   printf '%s\n' "$token" >> "$log"
   if [ "$token" = ROTATE ]; then
     printf 'REPLAY-CANDIDATE-V1\n'
-    /usr/bin/sleep 0.05
+    /bin/sleep 0.05
     printf '\033[3J\033[2J\033[HSCREEN=AFTER-ROTATION\n'
   else
     printf 'TOKEN=%s\n' "$token"
@@ -353,8 +381,7 @@ done`
 }
 
 func terminalFloodScript() string {
-	return `printf 'FLOOD-READY\n'
-while IFS= read -r token; do
+	return `while IFS= read -r token; do
   if [ "$token" = FLOOD ]; then
     /usr/bin/yes 'SKIDBLADNIR-SLOW-READER-0123456789abcdefghijklmnopqrstuvwxyz' | /usr/bin/head -c 33554432
     printf '\nFLOOD-DONE\n'
@@ -362,9 +389,9 @@ while IFS= read -r token; do
 done`
 }
 
-// The grouped session tmux mints opens on the lowest-index window, so the
-// attach path must move the shadow's own current window to the source's
-// current window without touching the source's selection.
+// A grouped session initially opens on its lowest-index window. The phone
+// shadow must instead open on the source's current window without retargeting
+// the source session itself.
 func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logPath := filepath.Join(fixture.root, "current-window.log")
@@ -376,22 +403,21 @@ func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
 	sourceWindow := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}")
 
 	source := terminalSource(t, fixture, "windowed-source")
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
 
 	shadow := requireTerminalPhoneShadow(t, fixture)
 	if got := fixture.tmux(t, "display-message", "-p", "-t", shadow.id, "#{window_id}"); got != sourceWindow {
-		t.Fatalf("phone shadow opened on window %q, want the source's current window %q", got, sourceWindow)
+		t.Fatalf("phone shadow current-window mismatch: got=%s want=%s", got, sourceWindow)
 	}
 	if got := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}"); got != sourceWindow {
-		t.Fatalf("attach moved the source's current window: got %q, want %q", got, sourceWindow)
+		t.Fatalf("attach moved the source current window: got=%s want=%s", got, sourceWindow)
 	}
 }
 
-// Kill with an open terminal must first settle the live attachment — including
-// the shadow tmux already destroyed through the armed keep-last option — and
-// then kill exactly the confirmed session.
+// Kill settles the live phone attachment and its owned shadow before applying
+// the exact machine-bound kill, while unrelated sessions remain untouched.
 func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logPath := filepath.Join(fixture.root, "kill-open-terminal.log")
@@ -400,44 +426,56 @@ func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 	fixture.tmux(t, "new-session", "-d", "-s", "bystander", "-x", "80", "-y", "24", "-c", fixture.project,
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath+".bystander", "BYSTANDER")
 	source := terminalSource(t, fixture, "kill-me")
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	bystander := terminalSource(t, fixture, "bystander")
+	bystanderPID, bystanderStart := terminalPaneIdentity(t, fixture, bystander.ID)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.ID), gatewayFixture.bearer, source.IdentityToken)
 	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
 
-	body := strings.NewReader(`{"tmuxName":"kill-me","identityToken":"` + source.IdentityToken + `"}`)
-	request, err := http.NewRequest(http.MethodDelete, gatewayFixture.server.URL+"/v1/sessions/"+source.ID, body)
+	body, err := json.Marshal(map[string]string{"tmuxName": source.TmuxName, "identityToken": source.IdentityToken})
 	if err != nil {
-		t.Fatalf("build kill request: %v", err)
+		t.Fatal("encode kill request")
+	}
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodDelete,
+		gatewayFixture.server.URL+"/v1/sessions/"+source.ID,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		t.Fatal("build kill request")
 	}
 	request.Header.Set("Authorization", "Bearer "+gatewayFixture.bearer)
+	request.Header.Set("Skidbladnir-Machine", integrationMachineText)
 	request.Header.Set("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(request)
+	response, err := gatewayFixture.server.Client().Do(request)
 	if err != nil {
-		t.Fatalf("kill with open terminal: %v", err)
+		t.Fatal("kill with open terminal")
 	}
-	payload, _ := io.ReadAll(response.Body)
+	responseBody, readErr := io.ReadAll(response.Body)
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("kill with open terminal answered %d: %s", response.StatusCode, payload)
+	if readErr != nil || response.StatusCode != http.StatusNoContent {
+		t.Fatalf("kill with open terminal failed: response_read=%t status=%d body_bytes=%d", readErr == nil, response.StatusCode, len(responseBody))
 	}
 	requireTerminalClosed(t, connection)
 	waitForTerminalCondition(t, "killed session and its shadow disappear", func() bool {
 		return !terminalSessionExists(t, fixture, source.ID, source.TmuxName) && len(terminalPhoneShadows(t, fixture)) == 0
 	})
-	if !terminalSessionExists(t, fixture, terminalSource(t, fixture, "bystander").ID, "bystander") {
-		t.Fatal("kill with open terminal destroyed a bystander session")
+	if !terminalSessionExists(t, fixture, bystander.ID, bystander.TmuxName) {
+		t.Fatal("kill with open terminal destroyed the bystander session")
 	}
+	requireTerminalPaneIdentity(t, fixture, bystander.ID, bystanderPID, bystanderStart)
 }
 
-// The terminal endpoint is shell-equivalent authority: every credential must
-// travel in headers and be verified before any tmux mutation.
+// The terminal endpoint is shell-equivalent authority. Bearer, machine, and
+// session identity all travel in headers and reject before any tmux mutation.
 func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logPath := filepath.Join(fixture.root, "auth-chokepoint.log")
 	fixture.tmux(t, "new-session", "-d", "-s", "auth-source", "-x", "80", "-y", "24", "-c", fixture.project,
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "AUTH")
 	source := terminalSource(t, fixture, "auth-source")
-	gatewayFixture := newTerminalGateway(t, fixture, 0)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
 	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
 
 	tests := []struct {
@@ -447,39 +485,73 @@ func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T
 		status  int
 	}{
 		{
-			name:    "no bearer",
-			url:     gatewayFixture.url(source.ID),
-			headers: http.Header{"Skidbladnir-Session-Identity": []string{source.IdentityToken}},
-			status:  http.StatusUnauthorized,
+			name: "missing bearer",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Skidbladnir-Machine":          []string{integrationMachineText},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusUnauthorized,
 		},
 		{
-			name:    "no identity header",
-			url:     gatewayFixture.url(source.ID),
-			headers: http.Header{"Authorization": []string{"Bearer " + gatewayFixture.bearer}},
-			status:  http.StatusBadRequest,
+			name: "missing machine",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":                []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusConflict,
 		},
 		{
-			name:    "identity in query",
-			url:     gatewayFixture.url(source.ID) + "?identity=" + source.IdentityToken,
-			headers: http.Header{"Authorization": []string{"Bearer " + gatewayFixture.bearer}},
-			status:  http.StatusBadRequest,
+			name: "wrong machine",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":                []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine":          []string{"mh-ffffffffffffffffffffffffffffffff"},
+				"Skidbladnir-Session-Identity": []string{source.IdentityToken},
+			},
+			status: http.StatusConflict,
+		},
+		{
+			name: "missing session identity",
+			url:  gatewayFixture.url(source.ID),
+			headers: http.Header{
+				"Authorization":       []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine": []string{integrationMachineText},
+			},
+			status: http.StatusBadRequest,
+		},
+		{
+			name: "session identity in query",
+			url:  gatewayFixture.url(source.ID) + "?identity=" + source.IdentityToken,
+			headers: http.Header{
+				"Authorization":       []string{"Bearer " + gatewayFixture.bearer},
+				"Skidbladnir-Machine": []string{integrationMachineText},
+			},
+			status: http.StatusBadRequest,
 		},
 	}
 	for _, test := range tests {
-		_, response, err := websocket.Dial(context.Background(), test.url, &websocket.DialOptions{HTTPHeader: test.headers})
-		if err == nil || response == nil || response.StatusCode != test.status {
-			status := 0
-			if response != nil {
-				status = response.StatusCode
-			}
-			t.Fatalf("%s: status=%d error=%v, want status=%d with no upgrade", test.name, status, err, test.status)
+		connection, response, dialErr := websocket.Dial(context.Background(), test.url, &websocket.DialOptions{HTTPHeader: test.headers})
+		if connection != nil {
+			_ = connection.CloseNow()
+		}
+		status := 0
+		if response != nil {
+			status = response.StatusCode
+		}
+		if dialErr == nil || response == nil || status != test.status {
+			t.Fatalf("terminal credential rejection mismatch: case=%s error_present=%t response_present=%t status=%d want=%d", test.name, dialErr != nil, response != nil, status, test.status)
 		}
 		if response.Body != nil {
 			_ = response.Body.Close()
 		}
 	}
 	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
-		t.Fatalf("credential-less terminal dial mutated sessions:\nbefore=%q\nafter=%q", sessionsBefore, sessionsAfter)
+		t.Fatal("rejected terminal credentials mutated the tmux session set")
+	}
+	if shadows := terminalPhoneShadows(t, fixture); len(shadows) != 0 {
+		t.Fatalf("rejected terminal credentials created phone shadows: count=%d", len(shadows))
 	}
 }
 
@@ -489,28 +561,72 @@ type terminalGatewayFixture struct {
 	bearer     string
 }
 
-func newTerminalGateway(t *testing.T, fixture sessionFixture, writeBuffer int) terminalGatewayFixture {
+type terminalWriteGate struct {
+	armed     atomic.Bool
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+func newTerminalWriteGate() *terminalWriteGate {
+	return &terminalWriteGate{closed: make(chan struct{})}
+}
+
+func (gate *terminalWriteGate) arm() {
+	gate.armed.Store(true)
+}
+
+func (gate *terminalWriteGate) close() {
+	gate.closeOnce.Do(func() { close(gate.closed) })
+}
+
+type terminalWriteGateListener struct {
+	net.Listener
+	gate *terminalWriteGate
+}
+
+func (listener terminalWriteGateListener) Accept() (net.Conn, error) {
+	connection, err := listener.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &terminalWriteGateConnection{Conn: connection, gate: listener.gate}, nil
+}
+
+type terminalWriteGateConnection struct {
+	net.Conn
+	gate *terminalWriteGate
+}
+
+func (connection *terminalWriteGateConnection) Write(contents []byte) (int, error) {
+	if !connection.gate.armed.Load() {
+		return connection.Conn.Write(contents)
+	}
+	<-connection.gate.closed
+	return 0, net.ErrClosed
+}
+
+func (connection *terminalWriteGateConnection) Close() error {
+	connection.gate.close()
+	return connection.Conn.Close()
+}
+
+func newTerminalGateway(t *testing.T, fixture sessionFixture, writeGate *terminalWriteGate) terminalGatewayFixture {
 	t.Helper()
 	bearerPath := filepath.Join(fixture.root, "terminal-bearer")
 	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
 	if err != nil {
-		t.Fatalf("mint terminal bearer: %v", err)
+		t.Fatal("mint terminal bearer")
 	}
 	server := httptest.NewUnstartedServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Logger:   logging.New(io.Discard),
+		Machine:  integrationMachine(t),
+		Platform: platform.Current(),
 	}))
-	if writeBuffer > 0 {
-		server.Config.ConnContext = func(ctx context.Context, connection net.Conn) context.Context {
-			if tcp, ok := connection.(*net.TCPConn); ok {
-				if err := tcp.SetWriteBuffer(writeBuffer); err != nil {
-					t.Errorf("set terminal server write buffer: %v", err)
-				}
-			}
-			return ctx
-		}
+	if writeGate != nil {
+		server.Listener = terminalWriteGateListener{Listener: server.Listener, gate: writeGate}
 	}
 	server.Start()
 	t.Cleanup(server.Close)
@@ -525,6 +641,7 @@ func dialTerminal(t *testing.T, client *http.Client, url, bearer, identityToken 
 	t.Helper()
 	options := &websocket.DialOptions{HTTPHeader: http.Header{
 		"Authorization":                []string{"Bearer " + bearer},
+		"Skidbladnir-Machine":          []string{integrationMachineText},
 		"Skidbladnir-Session-Identity": []string{identityToken},
 	}}
 	if client != nil {
@@ -536,34 +653,13 @@ func dialTerminal(t *testing.T, client *http.Client, url, bearer, identityToken 
 		if response != nil {
 			status = response.StatusCode
 		}
-		t.Fatalf("open terminal WebSocket: status=%d error=%v", status, err)
+		t.Fatalf("open terminal WebSocket: status=%d", status)
 	}
 	if response != nil && response.Body != nil {
 		_ = response.Body.Close()
 	}
 	t.Cleanup(func() { connection.CloseNow() })
 	return connection
-}
-
-func terminalSlowHTTPClient(t *testing.T) *http.Client {
-	t.Helper()
-	dialer := &net.Dialer{}
-	transport := &http.Transport{DisableKeepAlives: true}
-	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-		connection, err := dialer.DialContext(ctx, network, address)
-		if err != nil {
-			return nil, err
-		}
-		if tcp, ok := connection.(*net.TCPConn); ok {
-			if err := tcp.SetReadBuffer(1024); err != nil {
-				_ = connection.Close()
-				return nil, err
-			}
-		}
-		return connection, nil
-	}
-	t.Cleanup(transport.CloseIdleConnections)
-	return &http.Client{Transport: transport}
 }
 
 type terminalControlFrame struct {
@@ -583,20 +679,20 @@ func readTerminalControl(t *testing.T, connection *websocket.Conn, wantedKind st
 	for {
 		messageType, payload, err := connection.Read(ctx)
 		if err != nil {
-			t.Fatalf("read terminal %s: %v", wantedKind, err)
+			t.Fatalf("read terminal control frame: wanted_kind=%s", wantedKind)
 		}
 		if messageType == websocket.MessageBinary {
 			continue
 		}
 		var frame terminalControlFrame
 		if err := json.Unmarshal(payload, &frame); err != nil {
-			t.Fatalf("decode terminal control frame: %v: %s", err, payload)
+			t.Fatalf("decode terminal control frame: payload_bytes=%d", len(payload))
 		}
 		if frame.Kind == wantedKind {
 			return frame
 		}
 		if frame.Kind == "Error" {
-			t.Fatalf("terminal returned Error while waiting for %s: %+v", wantedKind, frame.Error)
+			t.Fatalf("terminal returned Error while waiting for control frame: wanted_kind=%s", wantedKind)
 		}
 	}
 }
@@ -605,7 +701,7 @@ func requireTerminalPresence(t *testing.T, connection *websocket.Conn, kind stri
 	t.Helper()
 	frame := readTerminalControl(t, connection, kind)
 	if frame.AttachedClients != attached || frame.Geometry != geometry {
-		t.Fatalf("terminal %s = %+v, want attachedClients=%d geometry=%s", kind, frame, attached, geometry)
+		t.Fatalf("terminal presence mismatch: kind=%s attached_clients=%d geometry_match=%t", kind, frame.AttachedClients, frame.Geometry == geometry)
 	}
 }
 
@@ -613,7 +709,7 @@ func requireTerminalError(t *testing.T, connection *websocket.Conn, code, messag
 	t.Helper()
 	frame := readTerminalControl(t, connection, "Error")
 	if frame.Error.Code != code || frame.Error.Message != message {
-		t.Fatalf("terminal Error = %+v, want code=%s message=%q", frame.Error, code, message)
+		t.Fatalf("terminal Error mismatch: code_match=%t message_match=%t", frame.Error.Code == code, frame.Error.Message == message)
 	}
 }
 
@@ -624,7 +720,7 @@ func requireTerminalClosed(t *testing.T, connection *websocket.Conn) {
 	for {
 		if _, _, err := connection.Read(ctx); err != nil {
 			if ctx.Err() != nil {
-				t.Fatalf("terminal WebSocket did not close before deadline: %v", ctx.Err())
+				t.Fatal("terminal WebSocket did not close before deadline")
 			}
 			return
 		}
@@ -639,22 +735,22 @@ func readTerminalBinaryUntil(t *testing.T, connection *websocket.Conn, required,
 	for {
 		messageType, payload, err := connection.Read(ctx)
 		if err != nil {
-			t.Fatalf("read terminal binary output: required=%q observed=%q error=%v", required, observed, err)
+			t.Fatalf("read terminal binary output: observed_bytes=%d required_marker_count=%d forbidden_marker_count=%d", len(observed), len(required), len(forbidden))
 		}
 		if messageType == websocket.MessageText {
 			var frame terminalControlFrame
 			if json.Unmarshal(payload, &frame) == nil && frame.Kind == "Error" {
-				t.Fatalf("terminal returned Error while waiting for binary output: %+v", frame.Error)
+				t.Fatal("terminal returned Error while waiting for binary output")
 			}
 			continue
 		}
 		observed = append(observed, payload...)
 		if len(observed) > 4*1024*1024 {
-			t.Fatalf("terminal binary proof exceeded bound while waiting for %q", required)
+			t.Fatalf("terminal binary proof exceeded bound: observed_bytes=%d required_marker_count=%d", len(observed), len(required))
 		}
 		for _, marker := range forbidden {
 			if bytes.Contains(observed, []byte(marker)) {
-				t.Fatalf("terminal replayed forbidden marker %q", marker)
+				t.Fatal("terminal replayed a forbidden marker")
 			}
 		}
 		complete := true
@@ -671,7 +767,7 @@ func terminalSource(t *testing.T, fixture sessionFixture, name string) sessions.
 	t.Helper()
 	listed, err := fixture.manager.List(context.Background())
 	if err != nil {
-		t.Fatalf("list terminal source: %v", err)
+		t.Fatal("list terminal source")
 	}
 	return requireSessionNamed(t, listed, name)
 }
@@ -698,7 +794,7 @@ func requireTerminalPhoneShadow(t *testing.T, fixture sessionFixture) terminalSh
 	t.Helper()
 	shadows := terminalPhoneShadows(t, fixture)
 	if len(shadows) != 1 {
-		t.Fatalf("terminal phone shadows = %+v, want exactly one", shadows)
+		t.Fatalf("terminal phone shadow count=%d, want exactly one", len(shadows))
 	}
 	return shadows[0]
 }
@@ -714,7 +810,7 @@ func requireTerminalLaptopClient(t *testing.T, fixture sessionFixture, sourceID,
 		}
 	}
 	if len(matches) != 1 {
-		t.Fatalf("test-owned laptop client matches = %q, want exactly one: clients=%q", matches, output)
+		t.Fatalf("test-owned laptop client match count=%d, want exactly one", len(matches))
 	}
 	return matches[0]
 }
@@ -735,25 +831,25 @@ func terminalHasOnlyExactClient(t *testing.T, fixture sessionFixture, clientName
 	return matches == 1 && exact
 }
 
-func terminalPaneIdentity(t *testing.T, fixture sessionFixture, target string) (int, uint64) {
+func terminalPaneIdentity(t *testing.T, fixture sessionFixture, target string) (int, processinfo.StartIdentity) {
 	t.Helper()
 	pidText := fixture.tmux(t, "display-message", "-p", "-t", target, "#{pane_pid}")
 	pid, err := strconv.Atoi(pidText)
 	if err != nil || pid <= 1 {
-		t.Fatalf("terminal pane has invalid PID: target=%s pid=%q error=%v", target, pidText, err)
+		t.Fatalf("terminal pane has invalid PID: parse_ok=%t positive=%t", err == nil, pid > 1)
 	}
-	startTime := linuxProcessStartTime(pid)
-	if startTime == 0 {
-		t.Fatalf("terminal pane has no kernel start time: target=%s pid=%d", target, pid)
+	startTime := processStartIdentity(pid)
+	if startTime == "" {
+		t.Fatal("terminal pane has no kernel start time")
 	}
 	return pid, startTime
 }
 
-func requireTerminalPaneIdentity(t *testing.T, fixture sessionFixture, target string, pid int, startTime uint64) {
+func requireTerminalPaneIdentity(t *testing.T, fixture sessionFixture, target string, pid int, startTime processinfo.StartIdentity) {
 	t.Helper()
 	observedPID, observedStartTime := terminalPaneIdentity(t, fixture, target)
 	if observedPID != pid || observedStartTime != startTime {
-		t.Fatalf("terminal pane identity changed: target=%s want=%d/%d got=%d/%d", target, pid, startTime, observedPID, observedStartTime)
+		t.Fatalf("terminal pane identity changed: pid_match=%t start_match=%t", observedPID == pid, observedStartTime == startTime)
 	}
 }
 
@@ -761,7 +857,7 @@ func removeExactTerminalSourceLink(t *testing.T, fixture sessionFixture, source 
 	t.Helper()
 	parts := strings.Split(source.IdentityToken, ".")
 	if len(parts) != 4 || "$"+parts[3] != source.ID || !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.TmuxName) {
-		t.Fatalf("test source has invalid lifetime identity: id=%q name=%q token=%q", source.ID, source.TmuxName, source.IdentityToken)
+		t.Fatalf("test source has invalid lifetime identity: field_count=%d id_match=%t name_valid=%t", len(parts), len(parts) == 4 && "$"+parts[3] == source.ID, regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(source.TmuxName))
 	}
 	conditions := []string{
 		"#{==:#{@skid_server_epoch}," + parts[0] + "}",
@@ -779,7 +875,7 @@ func removeExactTerminalSourceLink(t *testing.T, fixture sessionFixture, source 
 	output := fixture.tmux(t, "if-shell", "-F", "-t", source.ID, condition,
 		"kill-session -t '"+source.ID+"'", "display-message -p -l '"+mismatch+"'")
 	if output != "" {
-		t.Fatalf("refused exact test source-link removal: id=%s name=%s output=%q", source.ID, source.TmuxName, output)
+		t.Fatalf("refused exact test source-link removal: output_bytes=%d", len(output))
 	}
 }
 
@@ -817,7 +913,7 @@ func startTerminalLaptop(t *testing.T, fixture sessionFixture, target string, co
 	command.Env = append(withoutEnvironment(command.Env, "TERM"), "TERM=xterm-256color")
 	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: columns, Rows: rows})
 	if err != nil {
-		t.Fatalf("start test-owned laptop tmux client: %v", err)
+		t.Fatal("start test-owned laptop tmux client")
 	}
 	laptop := &terminalLaptop{pty: terminalPTY, command: command, done: make(chan error, 1)}
 	go func() {
@@ -854,7 +950,7 @@ func terminalLaptopShape(t *testing.T, fixture sessionFixture, sessionName strin
 			return fields[1] + "|" + fields[2]
 		}
 	}
-	t.Fatalf("no laptop client attached to %q", sessionName)
+	t.Fatal("no laptop client attached")
 	return ""
 }
 
@@ -863,7 +959,7 @@ func writeTerminalFrame(t *testing.T, connection *websocket.Conn, messageType we
 	ctx, cancel := context.WithTimeout(context.Background(), terminalIntegrationTimeout)
 	defer cancel()
 	if err := connection.Write(ctx, messageType, payload); err != nil {
-		t.Fatalf("write terminal frame: %v", err)
+		t.Fatal("write terminal frame")
 	}
 }
 
@@ -885,7 +981,7 @@ func waitForTerminalConditionWithin(t *testing.T, description string, timeout ti
 
 func waitForTerminalFile(t *testing.T, path, marker string) {
 	t.Helper()
-	waitForTerminalCondition(t, "file marker "+marker, func() bool {
+	waitForTerminalCondition(t, "terminal file marker", func() bool {
 		contents, err := os.ReadFile(path)
 		return err == nil && bytes.Contains(contents, []byte(marker))
 	})

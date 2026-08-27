@@ -1,8 +1,49 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+private data class SigningMaterial(
+    val storeFile: File,
+    val password: String,
+    val keyAlias: String,
+)
+
+private fun loadSigningMaterial(path: String): SigningMaterial {
+    val configFile = File(path)
+    val properties = Properties().apply { configFile.inputStream().use(::load) }
+    val expectedKeys = setOf("storeFile", "passwordFile", "keyAlias")
+    require(properties.stringPropertyNames() == expectedKeys) {
+        "Android signing configuration must contain exactly storeFile, passwordFile, and keyAlias"
+    }
+    fun requiredAbsoluteFile(key: String): File {
+        val value = requireNotNull(properties.getProperty(key)) { "Missing Android signing property: $key" }
+        return File(value).also { require(it.isAbsolute) { "$key must be absolute" } }
+    }
+    val passwordLines = requiredAbsoluteFile("passwordFile").readLines()
+    require(passwordLines.size == 1 && passwordLines.single().matches(Regex("[A-Za-z0-9]{32,128}"))) {
+        "Android signing password file must contain one strong ASCII token"
+    }
+    return SigningMaterial(
+        storeFile = requiredAbsoluteFile("storeFile"),
+        password = passwordLines.single(),
+        keyAlias = requireNotNull(properties.getProperty("keyAlias")),
+    )
+}
+
+private val signingMaterial = providers.environmentVariable("SKIDBLADNIR_ANDROID_SIGNING_CONFIG")
+    .orNull
+    ?.let(::loadSigningMaterial)
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
 
 android {
@@ -22,15 +63,39 @@ android {
         compose = true
     }
 
+    val skidbladnirSigning = signingMaterial?.let { material ->
+        signingConfigs.create("skidbladnir") {
+            storeFile = material.storeFile
+            storePassword = material.password
+            keyAlias = material.keyAlias
+            keyPassword = material.password
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // The product install is the release build: debuggable=false closes
-            // the run-as/JDWP path to the bearer at rest. The debug keystore
-            // only provides update continuity for one sideloaded device.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = skidbladnirSigning
+        }
+        if (skidbladnirSigning != null) {
+            create("deviceDebug") {
+                initWith(getByName("debug"))
+                signingConfig = skidbladnirSigning
+                matchingFallbacks += listOf("debug")
+            }
         }
     }
+
+    if (skidbladnirSigning != null) {
+        sourceSets.getByName("deviceDebug") {
+            java.srcDir("src/debug/java")
+            manifest.srcFile("src/debug/AndroidManifest.xml")
+        }
+    }
+
+    testBuildType = providers.gradleProperty("skidbladnir.android.testBuildType")
+        .getOrElse("debug")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -41,6 +106,21 @@ android {
         animationsDisabled = true
     }
 
+}
+
+gradle.taskGraph.whenReady {
+    val requestsProtectedArtifact = allTasks.any { task ->
+        task.project == project && (task.name.contains("Release") || task.name.contains("DeviceDebug"))
+    }
+    if (requestsProtectedArtifact && signingMaterial == null) {
+        throw GradleException("Protected Android artifacts require SKIDBLADNIR_ANDROID_SIGNING_CONFIG")
+    }
+}
+
+if (signingMaterial != null) {
+    configurations.named("deviceDebugImplementation") {
+        extendsFrom(configurations.getByName("debugImplementation"))
+    }
 }
 
 dependencies {
@@ -57,6 +137,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")

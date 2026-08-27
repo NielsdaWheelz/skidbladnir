@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+compatible_toolchain() {
+  local required="$1"
+  local resolved="$2"
+  local required_major
+  local required_minor
+  local required_patch
+  local resolved_major
+  local resolved_minor
+  local resolved_patch
+  if [[ ! "$required" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    return 1
+  fi
+  required_major="${BASH_REMATCH[1]}"
+  required_minor="${BASH_REMATCH[2]}"
+  required_patch="${BASH_REMATCH[3]}"
+  if [[ ! "$resolved" =~ ^go([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    return 1
+  fi
+  resolved_major="${BASH_REMATCH[1]}"
+  resolved_minor="${BASH_REMATCH[2]}"
+  resolved_patch="${BASH_REMATCH[3]}"
+  [[ "$resolved_major" == "$required_major" && "$resolved_minor" == "$required_minor" ]] || return 1
+  ((10#$resolved_patch >= 10#$required_patch))
+}
+
+self_test() {
+  local name
+  local required
+  local resolved
+  local expected
+  local observed
+  while IFS='|' read -r name required resolved expected; do
+    if compatible_toolchain "$required" "$resolved"; then
+      observed=pass
+    else
+      observed=fail
+    fi
+    if [[ "$observed" != "$expected" ]]; then
+      printf 'Go toolchain policy case %s = %s, want %s\n' "$name" "$observed" "$expected" >&2
+      return 1
+    fi
+  done <<'CASES'
+minimum patch|1.26.0|go1.26.0|pass
+newer security patch|1.26.0|go1.26.7|pass
+older patch|1.26.7|go1.26.6|fail
+older language family|1.26.0|go1.25.9|fail
+newer language family|1.26.0|go1.27.0|fail
+release candidate|1.26.0|go1.27rc1|fail
+malformed directive|1.26|go1.26.7|fail
+CASES
+  printf 'Go toolchain policy passed: 7 cases\n'
+}
+
+if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
+  self_test
+  exit
+fi
+if [[ "$#" -ne 0 ]]; then
+  printf 'usage: %s [--self-test]\n' "$0" >&2
+  exit 64
+fi
+
+required_version="$(
+  /usr/bin/awk '$1 == "go" && NF == 2 { version = $2; count++ }
+    END { if (count != 1) exit 1; print version }' "$repo_dir/go.mod"
+)" || {
+  printf 'go.mod must contain exactly one canonical go directive\n' >&2
+  exit 1
+}
+resolved_version="$(go env GOVERSION)"
+if ! compatible_toolchain "$required_version" "$resolved_version"; then
+  printf 'resolved Go toolchain %s is outside supported family %s at or above its patch floor\n' \
+    "$resolved_version" "$required_version" >&2
+  exit 1
+fi
+printf 'Go toolchain accepted: required=%s resolved=%s\n' "$required_version" "$resolved_version"

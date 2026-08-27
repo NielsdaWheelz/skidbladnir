@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,8 @@ internal fun TerminalScreen(
             .fillMaxSize()
             .background(Ink)
             .systemBarsPadding()
-            .imePadding(),
+            .imePadding()
+            .testTag("terminal-screen-${state.machine.machine.handle.encoded}"),
     ) {
         Row(
             modifier = Modifier
@@ -57,29 +59,28 @@ internal fun TerminalScreen(
         ) {
             TextButton(
                 onClick = controller::detachToAgents,
-                modifier = Modifier.semantics {
-                    contentDescription = RETURN_TO_AGENTS_DESCRIPTION
-                },
-            ) {
-                Text("Agents")
-            }
+                modifier = Modifier.testTag("terminal-detach"),
+            ) { Text(terminalDetachActionLabel()) }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = state.session.tmuxName,
+                    text = "${state.machine.machine.label.text} · ${state.target.session.tmuxName}",
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = terminalPresence(state),
+                    text = "${state.machine.machine.label.text} · ${terminalPresence(state)}",
                     color = terminalPresenceColor(state.connection),
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
+                    modifier = Modifier.testTag(terminalStatusTag(state.connection)),
                 )
             }
             TextButton(
-                onClick = { controller.requestKill(state.session) },
+                onClick = { controller.requestKill(state.target) },
+                enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
                 colors = ButtonDefaults.textButtonColors(contentColor = Ember),
+                modifier = Modifier.testTag("terminal-kill"),
             ) {
                 Text("Kill")
             }
@@ -90,7 +91,7 @@ internal fun TerminalScreen(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            key(state.attempt) {
+            if (state.connection != TerminalUiStatus.Verifying) key(state.attempt) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { context ->
@@ -128,11 +129,14 @@ internal fun TerminalScreen(
             }
 
             when (val connection = state.connection) {
+                TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.machine.label.text} and session lifetime…")
                 TerminalUiStatus.Preparing -> TerminalWaiting("Preparing terminal…")
                 TerminalUiStatus.Connecting -> TerminalWaiting("Connecting…")
                 is TerminalUiStatus.Connected -> Unit
                 is TerminalUiStatus.ReconnectRequired -> ReconnectPanel(
+                    machineLabel = state.machine.machine.label,
                     message = connection.message,
+                    actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
                     onReattach = controller::reattachTerminal,
                     onAgents = controller::detachToAgents,
                 )
@@ -146,7 +150,14 @@ internal fun TerminalScreen(
         )
     }
 
-    state.kill?.let { kill -> KillConfirmation(kill, controller::dismissKill, controller::confirmKill) }
+    state.kill?.let { kill ->
+        KillConfirmation(
+            state = kill,
+            actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
+            onDismiss = controller::dismissKill,
+            onConfirm = controller::confirmKill,
+        )
+    }
 }
 
 @Composable
@@ -172,7 +183,9 @@ private fun TerminalWaiting(message: String) {
 
 @Composable
 private fun ReconnectPanel(
+    machineLabel: MachineLabel,
     message: String,
+    actionAdmissible: Boolean,
     onReattach: () -> Unit,
     onAgents: () -> Unit,
 ) {
@@ -188,30 +201,38 @@ private fun ReconnectPanel(
                 .widthIn(max = 320.dp)
                 .padding(24.dp),
         ) {
-            Text("Reconnect required", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Reconnect to ${machineLabel.text}",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(message, color = Ember, modifier = Modifier.padding(top = 8.dp))
             Text(
-                "The terminal is frozen. No input will be replayed.",
+                terminalReconnectSafetyCopy(machineLabel),
                 color = Muted,
                 modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
             )
-            Button(onClick = onReattach, modifier = Modifier.fillMaxWidth()) { Text("Reattach fresh") }
+            Button(
+                onClick = onReattach,
+                enabled = actionAdmissible,
+                modifier = Modifier.fillMaxWidth().testTag("terminal-reattach"),
+            ) {
+                Text("Reattach to ${machineLabel.text}")
+            }
             OutlinedButton(
                 onClick = onAgents,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .semantics {
-                        contentDescription = RETURN_TO_AGENTS_DESCRIPTION
-                    },
+                    .padding(top = 8.dp),
             ) {
-                Text("Agents")
+                Text("Back to Agents")
             }
         }
     }
 }
 
 private fun terminalPresence(state: SkidbladnirUiState.Terminal): String = when (val connection = state.connection) {
+    TerminalUiStatus.Verifying -> "Verifying machine and session"
     TerminalUiStatus.Preparing -> "Preparing a fresh attachment"
     TerminalUiStatus.Connecting -> "Connecting"
     is TerminalUiStatus.ReconnectRequired -> "Input frozen"
@@ -224,7 +245,18 @@ private fun terminalPresence(state: SkidbladnirUiState.Terminal): String = when 
 private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (connection) {
     is TerminalUiStatus.Connected -> Moss
     is TerminalUiStatus.ReconnectRequired -> Ember
-    TerminalUiStatus.Preparing, TerminalUiStatus.Connecting -> Gold
+    TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> Gold
 }
 
-private const val RETURN_TO_AGENTS_DESCRIPTION = "Return to Agents; session keeps running"
+private fun terminalStatusTag(connection: TerminalUiStatus): String = when (connection) {
+    is TerminalUiStatus.Connected -> "terminal-status-connected"
+    is TerminalUiStatus.ReconnectRequired -> "terminal-status-reconnect"
+    TerminalUiStatus.Preparing -> "terminal-status-preparing"
+    TerminalUiStatus.Verifying -> "terminal-status-verifying"
+    TerminalUiStatus.Connecting -> "terminal-status-connecting"
+}
+
+internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =
+    "${machineLabel.text} terminal is frozen. No input will be replayed."
+
+internal fun terminalDetachActionLabel(): String = "Detach · agent keeps running"

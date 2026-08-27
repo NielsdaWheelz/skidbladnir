@@ -1,0 +1,42 @@
+{
+  "description": "Skíðblaðnir pane lifecycle projection",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/nnandal/.local/bin/skidbladnir status-hook SessionStart",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/nnandal/.local/bin/skidbladnir status-hook UserPromptSubmit",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/nnandal/.local/bin/skidbladnir status-hook Stop",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

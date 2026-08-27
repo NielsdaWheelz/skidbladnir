@@ -1,3 +1,5 @@
+//go:build linux
+
 package pressure
 
 import (
@@ -11,35 +13,7 @@ import (
 	"syscall"
 )
 
-type metric struct {
-	value float64
-	known bool
-}
-
-func knownMetric(value float64) metric { return metric{value: value, known: true} }
-
-type rawSample struct {
-	cpuPercent             metric
-	loadNormalized         metric
-	memoryAvailablePercent metric
-	swapUsedPercent        metric
-	diskAvailablePercent   metric
-	cpuPSISomeAvg60        metric
-	memoryPSIFullAvg60     metric
-	ioPSIFullAvg60         metric
-}
-
-type cpuCounters struct {
-	total uint64
-	idle  uint64
-}
-
-type collector struct {
-	previousCPU    cpuCounters
-	hasPreviousCPU bool
-}
-
-func newCollector() collector { return collector{} }
+func currentPolicy() policy { return linuxPolicy() }
 
 // justify-ignore-error: every read or parse failure below deliberately leaves
 // its metric unknown — §4 models an unavailable /proc input as UNKNOWN and
@@ -50,11 +24,7 @@ func (collector *collector) collect() rawSample {
 	sample := rawSample{}
 	if contents, err := os.ReadFile("/proc/stat"); err == nil {
 		if counters, ok := parseCPUCounters(contents); ok {
-			if collector.hasPreviousCPU {
-				sample.cpuPercent = cpuUsage(collector.previousCPU, counters)
-			}
-			collector.previousCPU = counters
-			collector.hasPreviousCPU = true
+			sample.cpuPercent = collector.cpuPercent(counters)
 		}
 	}
 	if contents, err := os.ReadFile("/proc/loadavg"); err == nil {
@@ -92,18 +62,6 @@ func (collector *collector) collect() rawSample {
 		sample.ioPSIFullAvg60 = parsePSI(contents, "full")
 	}
 	return sample
-}
-
-func cpuUsage(previous, current cpuCounters) metric {
-	if current.total <= previous.total || current.idle < previous.idle {
-		return metric{}
-	}
-	total := current.total - previous.total
-	idle := current.idle - previous.idle
-	if idle > total {
-		return metric{}
-	}
-	return knownMetric(float64(total-idle) * 100 / float64(total))
 }
 
 func parseCPUCounters(contents []byte) (cpuCounters, bool) {
