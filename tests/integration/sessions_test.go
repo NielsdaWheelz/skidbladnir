@@ -522,7 +522,12 @@ exec %s "$@"
 			t.Fatalf("uninstrumented allowlisted laptop process should report only process liveness: %+v", laptop.Status)
 		}
 		shell := requireSessionNamed(t, listed, "shell")
-		if shell.Status.Kind != sessions.StatusShell || shell.Status.Signal != sessions.StatusSignalProcess {
+		if (shell.Status.Kind != sessions.StatusShell || shell.Status.Signal != sessions.StatusSignalProcess) &&
+			!isUnknownPollFailure(shell.Status) {
+			t.Fatalf("ordinary laptop shell began with an invalid status: %+v", shell.Status)
+		}
+		shell = fixture.waitForSession(t, ctx, "shell", sessions.StatusShell, isUnknownPollFailure)
+		if shell.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("ordinary laptop shell should be reported literally: %+v", shell.Status)
 		}
 
@@ -983,7 +988,7 @@ exec %s "$@"
 
 		const sessionName = "hook-lifetime"
 		fixture.tmux(t, "new-session", "-d", "-s", sessionName, "-c", fixture.project, "--", codexCommand, hookCommand, hostConfig, hookEvents)
-		target := fixture.waitForSession(t, ctx, sessionName, sessions.StatusRunning)
+		target := fixture.waitForSession(t, ctx, sessionName, sessions.StatusRunning, nil)
 		if target.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("foreground Codex lifetime without hook evidence signal mismatch: kind=%s signal=%s", target.Status.Kind, target.Status.Signal)
 		}
@@ -1637,23 +1642,46 @@ func requireLifecycleFact(t *testing.T, value, wantState string, panePID int, li
 
 // waitForSession waits for one named session to reach a status kind. That is
 // the pane's own convergence, not a retry of a failing assertion.
-func (fixture sessionFixture) waitForSession(t *testing.T, ctx context.Context, name string, want sessions.StatusKind) sessions.Session {
+func (fixture sessionFixture) waitForSession(
+	t *testing.T,
+	ctx context.Context,
+	name string,
+	want sessions.StatusKind,
+	allowPending func(sessions.Status) bool,
+) sessions.Session {
 	t.Helper()
 	deadline := time.Now().Add(tmuxConvergenceTimeout)
 	for {
-		listed, err := fixture.manager.List(ctx)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("session %s convergence observation exceeded %s", name, tmuxConvergenceTimeout)
+		}
+		pollContext, cancel := context.WithTimeout(ctx, remaining)
+		listed, err := fixture.manager.List(pollContext)
+		pollContextError := pollContext.Err()
+		cancel()
 		if err != nil {
+			if errors.Is(pollContextError, context.DeadlineExceeded) {
+				t.Fatalf("session %s convergence observation exceeded %s", name, tmuxConvergenceTimeout)
+			}
 			t.Fatalf("list while waiting for session %s", name)
 		}
 		observed := requireSessionNamed(t, listed, name)
 		if observed.Status.Kind == want {
 			return observed
 		}
+		if allowPending != nil && !allowPending(observed.Status) {
+			t.Fatalf("session %s had invalid pending status: kind=%s signal=%s", name, observed.Status.Kind, observed.Status.Signal)
+		}
 		if time.Now().After(deadline) {
 			t.Fatalf("session %s did not converge: kind=%s want_kind=%s signal=%s", name, observed.Status.Kind, want, observed.Status.Signal)
 		}
 		time.Sleep(tmuxConvergencePollInterval)
 	}
+}
+
+func isUnknownPollFailure(status sessions.Status) bool {
+	return status.Kind == sessions.StatusUnknown && status.Signal == sessions.StatusSignalPollFailure
 }
 
 func (fixture sessionFixture) tmux(t *testing.T, args ...string) string {
