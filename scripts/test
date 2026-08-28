@@ -8,7 +8,7 @@ shift || true
 case "$(uname -s)" in
   Darwin)
     android_sdk="${ANDROID_HOME:-/Users/nnandal/Library/Android/sdk}"
-    pinned_tmux='/opt/homebrew/bin/tmux'
+    tmux_path='/opt/homebrew/bin/tmux'
     digest_command=(shasum -a 256)
     android_signing_config='/Users/nnandal/.config/skidbladnir/android-signing.properties'
     if [[ -z "${JAVA_HOME:-}" ]]; then
@@ -17,7 +17,7 @@ case "$(uname -s)" in
     ;;
   Linux)
     android_sdk="${ANDROID_HOME:-/home/niels/Android/Sdk}"
-    pinned_tmux='/usr/bin/tmux'
+    tmux_path='/usr/bin/tmux'
     digest_command=(sha256sum)
     android_signing_config='/home/niels/.config/skidbladnir/android-signing.properties'
     ;;
@@ -991,14 +991,14 @@ case "$gate" in
     if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
       not_run integration 'Integration tests refuse an invoking tmux client'
     fi
-    if [[ ! -x "$pinned_tmux" ]]; then
-      not_run integration "Pinned ${pinned_tmux} is unavailable on the target host"
+    if [[ ! -x "$tmux_path" ]]; then
+      not_run integration "Configured ${tmux_path} is unavailable on the target host"
     fi
     cd "$repo_dir"
     run host-kernel-contracts go test -tags=integration ./internal/machine ./internal/process ./internal/pressure -count=1
     run tmux-control-plane go test -tags=integration ./tests/integration -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \
-      -skidbladnir-tmux-path="$pinned_tmux"
+      -skidbladnir-tmux-path="$tmux_path"
     ;;
   platform)
     if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
@@ -1498,8 +1498,8 @@ case "$gate" in
     if [[ "$(uname -s)" != 'Linux' ]]; then
       not_run live 'The grouped-session proof is Linux-only; use integration for cross-host tmux acceptance'
     fi
-    if [[ ! -x "$pinned_tmux" ]]; then
-      not_run live "Pinned ${pinned_tmux} is unavailable on the target host"
+    if [[ ! -x "$tmux_path" ]]; then
+      not_run live "Configured ${tmux_path} is unavailable on the target host"
     fi
     cd "$repo_dir"
     run grouped-tmux go test -tags=live ./tests/live \

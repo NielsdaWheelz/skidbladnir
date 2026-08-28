@@ -123,7 +123,8 @@ not supported.
 
 `dev-server` pins one release tag and every asset digest. Convergence:
 
-1. installs tmux, Tailscale, the pinned bundle, and `qrencode` where needed;
+1. installs the latest stable tmux, Tailscale, the pinned Skíðblaðnir release
+   bundle, and `qrencode` where needed;
 2. creates a machine handle and bearer only when absent, preserving both on
    every reinstall;
 3. renders one strict host config and the existing content-free Codex lifecycle
@@ -149,7 +150,7 @@ defaults. JSON is decoded strictly with unknown and null members rejected:
 ```json
 {
   "platform": "Linux",
-  "tmux": {"path": "/usr/bin/tmux", "version": "tmux 3.4"},
+  "tmux": {"path": "/usr/bin/tmux", "testedVersion": "tmux 3.4"},
   "codexNodeEntrypoint": "/home/niels/.local/bin/codex",
   "profiles": [
     {
@@ -165,12 +166,15 @@ defaults. JSON is decoded strictly with unknown and null members rejected:
 ```
 
 All paths are rendered absolute by `dev-server`; no interpolation occurs in the
-gateway. Platform is exactly `Linux|Darwin`; runtime mismatch or tmux version
-mismatch prevents startup. Profiles reuse `sessions.Profile` validation. Every
+gateway. Platform is exactly `Linux|Darwin`; runtime mismatch or a
+missing/broken/noncanonical configured tmux prevents startup. `testedVersion`
+records the last acceptance target for an advisory doctor warning; a different
+canonical installed version does not block convergence, gateway startup, or the
+lifecycle adapter. Profiles reuse `sessions.Profile` validation. Every
 host config declares exactly `personal`, `work`, `work2`, `claude-personal`, and
 `claude-work`, matching the existing `dev-server` shortcuts. Platform adapters
 retain only native observation/process/pressure behavior; they no longer choose
-paths, versions, commands, or profiles.
+paths, runtime versions, commands, or profiles.
 
 ### 4.3 Machine pairing API
 

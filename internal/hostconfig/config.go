@@ -19,8 +19,7 @@ var (
 )
 
 type Tmux struct {
-	Path    string
-	Version string
+	Path string
 }
 
 type Config struct {
@@ -62,9 +61,18 @@ func parse(encoded []byte, runtime platform.Kind) (Config, error) {
 	return wire.validate(runtime)
 }
 
-func (config Config) ValidateTmuxVersion(observed string) error {
-	if observed != config.Tmux.Version {
-		return fmt.Errorf("tmux version is %q, want %q", observed, config.Tmux.Version)
+func ValidateTmuxVersion(version string) error {
+	if len(version) > 64 || !strings.HasPrefix(version, "tmux ") {
+		return errors.New("tmux version is invalid")
+	}
+	for _, character := range []byte(version) {
+		if character < 0x20 || character > 0x7e {
+			return errors.New("tmux version is invalid")
+		}
+	}
+	release := strings.TrimPrefix(version, "tmux ")
+	if release == "" || strings.TrimSpace(release) != release {
+		return errors.New("tmux version is invalid")
 	}
 	return nil
 }
@@ -77,8 +85,8 @@ type configDTO struct {
 }
 
 type tmuxDTO struct {
-	Path    stringField `json:"path"`
-	Version stringField `json:"version"`
+	Path          stringField `json:"path"`
+	TestedVersion stringField `json:"testedVersion"`
 }
 
 type profileDTO struct {
@@ -112,7 +120,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	if kind != runtime {
 		return Config{}, fmt.Errorf("host config platform %q does not match runtime %q", kind, runtime)
 	}
-	if !wire.Tmux.Path.present || !wire.Tmux.Version.present || !validAbsolutePath(wire.Tmux.Path.value) || !safeText(wire.Tmux.Version.value, 64) || !strings.HasPrefix(wire.Tmux.Version.value, "tmux ") {
+	if !wire.Tmux.Path.present || !wire.Tmux.TestedVersion.present || !validAbsolutePath(wire.Tmux.Path.value) || ValidateTmuxVersion(wire.Tmux.TestedVersion.value) != nil {
 		return Config{}, errors.New("host config tmux entry is invalid")
 	}
 	if !validAbsolutePath(wire.CodexNodeEntrypoint.value) {
@@ -124,7 +132,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	}
 	return Config{
 		Platform:            kind,
-		Tmux:                Tmux{Path: filepath.Clean(wire.Tmux.Path.value), Version: wire.Tmux.Version.value},
+		Tmux:                Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
 		CodexNodeEntrypoint: filepath.Clean(wire.CodexNodeEntrypoint.value),
 		Profiles:            profiles,
 	}, nil

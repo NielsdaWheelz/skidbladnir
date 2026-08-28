@@ -243,7 +243,7 @@ func loadRuntimeHostConfig(path string, runtime platform.Kind) (hostconfig.Confi
 	if err != nil {
 		return hostconfig.Config{}, err
 	}
-	if err := config.ValidateTmuxVersion(tmuxVersion); err != nil {
+	if err := hostconfig.ValidateTmuxVersion(tmuxVersion); err != nil {
 		return hostconfig.Config{}, err
 	}
 	return config, nil

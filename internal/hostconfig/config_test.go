@@ -15,8 +15,8 @@ func TestParseAcceptsTheClosedDeploymentHostConfig(t *testing.T) {
 	if config.Platform != platform.KindLinux {
 		t.Fatalf("platform = %q, want %q", config.Platform, platform.KindLinux)
 	}
-	if config.Tmux.Path != "/usr/bin/tmux" || config.Tmux.Version != "tmux 3.4" {
-		t.Fatalf("tmux config = %+v, want exact deployment values", config.Tmux)
+	if config.Tmux.Path != "/usr/bin/tmux" {
+		t.Fatalf("tmux path = %q, want deployment path", config.Tmux.Path)
 	}
 	wantKeys := []string{"personal", "work", "work2", "claude-personal", "claude-work"}
 	if len(config.Profiles) != len(wantKeys) {
@@ -68,6 +68,7 @@ func TestParseRejectsEveryNoncanonicalHostConfigShape(t *testing.T) {
 		{name: "null member", encoded: strings.Replace(validLinuxConfig, `"codexNodeEntrypoint":"/home/niels/.local/bin/codex"`, `"codexNodeEntrypoint":null`, 1), runtime: platform.KindLinux},
 		{name: "runtime mismatch", encoded: validLinuxConfig, runtime: platform.KindDarwin},
 		{name: "relative tmux path", encoded: strings.Replace(validLinuxConfig, `"path":"/usr/bin/tmux"`, `"path":"bin/tmux"`, 1), runtime: platform.KindLinux},
+		{name: "legacy tmux version member", encoded: strings.Replace(validLinuxConfig, `"testedVersion":"tmux 3.4"`, `"version":"tmux 3.4"`, 1), runtime: platform.KindLinux},
 		{name: "relative Codex entrypoint", encoded: strings.Replace(validLinuxConfig, `"codexNodeEntrypoint":"/home/niels/.local/bin/codex"`, `"codexNodeEntrypoint":"bin/codex"`, 1), runtime: platform.KindLinux},
 		{name: "profile order changed", encoded: strings.Replace(validLinuxConfig, `"key":"personal"`, `"key":"work"`, 1), runtime: platform.KindLinux},
 		{name: "unknown profile member", encoded: strings.Replace(validLinuxConfig, `"key":"personal"`, `"key":"personal","fallback":true`, 1), runtime: platform.KindLinux},
@@ -85,25 +86,22 @@ func TestParseRejectsEveryNoncanonicalHostConfigShape(t *testing.T) {
 	}
 }
 
-func TestConfigRequiresTheExactObservedTmuxVersion(t *testing.T) {
-	config, err := parse([]byte(validLinuxConfig), platform.KindLinux)
-	if err != nil {
-		t.Fatalf("parse valid config: %v", err)
+func TestValidateTmuxVersionAcceptsCanonicalUnpinnedVersions(t *testing.T) {
+	for _, version := range []string{"tmux 3.4", "tmux 3.7c", "tmux next-3.8"} {
+		if err := ValidateTmuxVersion(version); err != nil {
+			t.Fatalf("canonical tmux version %q rejected: %v", version, err)
+		}
 	}
-	if err := config.ValidateTmuxVersion("tmux 3.4"); err != nil {
-		t.Fatalf("exact tmux version rejected: %v", err)
-	}
-	if err := config.ValidateTmuxVersion("tmux 3.4\n"); err == nil {
-		t.Fatal("noncanonical observed tmux version accepted")
-	}
-	if err := config.ValidateTmuxVersion("tmux 3.5"); err == nil {
-		t.Fatal("wrong observed tmux version accepted")
+	for _, version := range []string{"", "3.8", "tmux ", "tmux  3.8", "tmux 3.8 ", "tmux 3.8\n", "tmux \x7f", "tmux α"} {
+		if err := ValidateTmuxVersion(version); err == nil {
+			t.Fatalf("noncanonical tmux version %q accepted", version)
+		}
 	}
 }
 
 const validLinuxConfig = `{
   "platform":"Linux",
-  "tmux":{"path":"/usr/bin/tmux","version":"tmux 3.4"},
+  "tmux":{"path":"/usr/bin/tmux","testedVersion":"tmux 3.4"},
   "codexNodeEntrypoint":"/home/niels/.local/bin/codex",
   "profiles":[
     {"key":"personal","label":"Codex · Personal","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},

@@ -299,7 +299,7 @@ func (gateway *Gateway) monitorTerminal(
 	queue *terminal.OutboundQueue,
 	initial sessions.TerminalPresence,
 ) terminalEnd {
-	// justify-polling: tmux 3.4 and the bearer file expose neither client-topology
+	// justify-polling: tmux and the bearer file expose neither client-topology
 	// nor rotation notifications; two seconds bounds handoff and revocation lag
 	// without coupling terminal bytes to inventory polling.
 	ticker := time.NewTicker(terminalPresenceInterval)
