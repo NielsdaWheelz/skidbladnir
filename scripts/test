@@ -247,6 +247,36 @@ android_platform_restore_owned_state() {
   return "$failed"
 }
 
+android_platform_create_release_snapshot() {
+  local snapshot_dir
+  snapshot_dir="$(mktemp -d -t skidbladnir-platform-release.XXXXXX)" || return 1
+  [[ -d "$snapshot_dir" && ! -L "$snapshot_dir" ]] || return 1
+  printf '%s/release.apk\n' "$snapshot_dir"
+}
+
+android_platform_remove_release_snapshot() {
+  local snapshot_dir="${platform_release_snapshot_dir:-}"
+  if [[ ! -f "$platform_release_snapshot" || -L "$platform_release_snapshot" ]]; then
+    printf 'Android platform release snapshot boundary is not a regular file\n' >&2
+    return 1
+  fi
+  if [[ -n "$snapshot_dir" &&
+    ( ! -d "$snapshot_dir" || -L "$snapshot_dir" ||
+      "$platform_release_snapshot" != "$snapshot_dir/release.apk" ) ]]; then
+    printf 'Android platform release snapshot directory boundary is invalid\n' >&2
+    return 1
+  fi
+  /bin/unlink "$platform_release_snapshot" || return 1
+  platform_release_snapshot=''
+  if [[ -n "$snapshot_dir" ]]; then
+    rmdir "$snapshot_dir" || {
+      printf 'Could not remove the Android platform release snapshot directory\n' >&2
+      return 1
+    }
+    platform_release_snapshot_dir=''
+  fi
+}
+
 android_platform_cleanup() {
   local exit_status=$?
   trap - EXIT
@@ -265,13 +295,7 @@ android_platform_cleanup() {
   android_platform_restore_owned_state || exit_status=1
   if [[ -n "${platform_release_snapshot:-}" &&
     "${platform_app_replaced:-0}" == 0 ]]; then
-    if [[ -f "$platform_release_snapshot" && ! -L "$platform_release_snapshot" ]]; then
-      /bin/unlink "$platform_release_snapshot" || exit_status=1
-    else
-      printf 'Android platform release snapshot boundary is not a regular file\n' >&2
-      exit_status=1
-    fi
-    platform_release_snapshot=''
+    android_platform_remove_release_snapshot || exit_status=1
   elif [[ -n "${platform_release_snapshot:-}" ]]; then
     printf 'Exact release recovery APK retained at %s\n' "$platform_release_snapshot" >&2
   fi
@@ -325,13 +349,28 @@ android_platform_helper_self_test() (
   set -euo pipefail
   local fixture source_checkout dev_checkout release_apk companion_apk
   local source_sha apk_digest signer_digest values
-  local cleanup_status
+  local cleanup_status snapshot_probe snapshot_probe_dir
   fixture="$(mktemp -d /tmp/skidbladnir-platform-policy.XXXXXX)"
   case "$fixture" in
     /tmp/skidbladnir-platform-policy.* | /private/tmp/skidbladnir-platform-policy.*) ;;
     *) printf 'Unexpected Android platform policy fixture path\n' >&2; return 1 ;;
   esac
   trap '/bin/rm -R -- "$fixture"' EXIT HUP INT TERM
+  snapshot_probe="$(android_platform_create_release_snapshot)"
+  snapshot_probe_dir="${snapshot_probe%/*}"
+  [[ "$snapshot_probe" == "$snapshot_probe_dir/release.apk" &&
+    -d "$snapshot_probe_dir" && ! -L "$snapshot_probe_dir" ]] || {
+    printf 'Android platform recovery snapshot is not a private APK path\n' >&2
+    return 1
+  }
+  printf 'snapshot probe\n' >"$snapshot_probe"
+  platform_release_snapshot="$snapshot_probe"
+  platform_release_snapshot_dir="$snapshot_probe_dir"
+  android_platform_remove_release_snapshot
+  [[ ! -e "$snapshot_probe" && ! -d "$snapshot_probe_dir" ]] || {
+    printf 'Android platform recovery snapshot was not removed exactly\n' >&2
+    return 1
+  }
   source_checkout="$fixture/source"
   dev_checkout="$fixture/dev-server"
   release_apk="$fixture/skidbladnir-android.apk"
@@ -449,6 +488,14 @@ case "$*" in
     /bin/unlink "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE" || exit 1
     ;;
   *' install -r '*)
+    last_argument=''
+    for argument in "$@"; do
+      last_argument="$argument"
+    done
+    case "$last_argument" in
+      *.apk) ;;
+      *) exit 64 ;;
+    esac
     if [ "${SKIDBLADNIR_TEST_FAIL_PLATFORM_RESTORE:-}" = 1 ]; then exit 1; fi
     ;;
 esac
@@ -471,8 +518,8 @@ EOF
   : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
   : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
   printf 'temporary evidence\n' >"$fixture/platform-output"
-  cp "$release_apk" "$fixture/release-snapshot"
-  cp "$release_apk" "$fixture/retained-release-snapshot"
+  cp "$release_apk" "$fixture/release-snapshot.apk"
+  cp "$release_apk" "$fixture/retained-release-snapshot.apk"
   /bin/unlink "$release_apk"
   set +e
   (
@@ -480,12 +527,13 @@ EOF
     platform_serial=serial
     platform_app_package=app
     platform_test_package='test'
-    platform_release_apk="$fixture/release-snapshot"
+    platform_release_apk="$fixture/release-snapshot.apk"
     platform_expected_apk_digest="$apk_digest"
     platform_test_package_installed=1
     platform_app_replaced=1
     platform_instrumentation_output_file="$fixture/platform-output"
-    platform_release_snapshot="$fixture/release-snapshot"
+    platform_release_snapshot="$fixture/release-snapshot.apk"
+    platform_release_snapshot_dir=''
     # shellcheck disable=SC2317,SC2329 # Invoked indirectly by Android platform cleanup.
     verify_installed_android_signer() {
       printf 'verify %s %s\n' "$3" "$4" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
@@ -496,12 +544,12 @@ EOF
   cleanup_status=$?
   set -e
   [[ "$cleanup_status" == 130 && ! -e "$fixture/platform-output" &&
-    ! -e "$fixture/release-snapshot" ]] || {
+    ! -e "$fixture/release-snapshot.apk" ]] || {
     printf 'Android platform signal cleanup did not preserve status or remove owned files\n' >&2
     return 1
   }
   [[ "$(cat "$SKIDBLADNIR_TEST_PLATFORM_CALLS")" == \
-    $'-s serial shell pm path test\n-s serial uninstall test\n-s serial shell pm path test\n-s serial install -r '"$fixture/release-snapshot"$'\nverify app '"$apk_digest" ]] || {
+    $'-s serial shell pm path test\n-s serial uninstall test\n-s serial shell pm path test\n-s serial install -r '"$fixture/release-snapshot.apk"$'\nverify app '"$apk_digest" ]] || {
     printf 'Android platform cleanup did not restore its exact owned boundary\n' >&2
     return 1
   }
@@ -515,12 +563,13 @@ EOF
     platform_serial=serial
     platform_app_package=app
     platform_test_package='test'
-    platform_release_apk="$fixture/retained-release-snapshot"
+    platform_release_apk="$fixture/retained-release-snapshot.apk"
     platform_expected_apk_digest="$apk_digest"
     platform_test_package_installed=1
     platform_app_replaced=1
     platform_instrumentation_output_file=''
-    platform_release_snapshot="$fixture/retained-release-snapshot"
+    platform_release_snapshot="$fixture/retained-release-snapshot.apk"
+    platform_release_snapshot_dir=''
     # shellcheck disable=SC2317,SC2329 # Invoked indirectly by Android platform cleanup.
     verify_installed_android_signer() { return 0; }
     trap android_platform_cleanup EXIT
@@ -529,7 +578,7 @@ EOF
   cleanup_status=$?
   set -e
   unset SKIDBLADNIR_TEST_FAIL_PLATFORM_RESTORE
-  [[ "$cleanup_status" == 1 && -f "$fixture/retained-release-snapshot" ]] || {
+  [[ "$cleanup_status" == 1 && -f "$fixture/retained-release-snapshot.apk" ]] || {
     printf 'Android platform cleanup masked a failed release restoration\n' >&2
     return 1
   }
@@ -960,7 +1009,9 @@ case "$gate" in
     if [[ ! -f "$platform_declared_release_apk" || -L "$platform_declared_release_apk" ]]; then
       not_run platform 'Set SKIDBLADNIR_RELEASE_APK to the regular pinned release APK'
     fi
-    platform_release_snapshot="$(mktemp -t skidbladnir-platform-release.XXXXXX)"
+    platform_release_snapshot="$(android_platform_create_release_snapshot)" ||
+      not_run platform 'Could not create the private Android release recovery boundary'
+    platform_release_snapshot_dir="${platform_release_snapshot%/*}"
     platform_release_apk="$platform_release_snapshot"
     platform_adb=''
     platform_serial=''
@@ -1113,12 +1164,7 @@ case "$gate" in
       exit 1
     }
     run android-platform-restore android_platform_restore_owned_state
-    if [[ ! -f "$platform_release_snapshot" || -L "$platform_release_snapshot" ]]; then
-      printf 'Android platform release snapshot boundary is not a regular file\n' >&2
-      exit 1
-    fi
-    /bin/unlink "$platform_release_snapshot"
-    platform_release_snapshot=''
+    android_platform_remove_release_snapshot
     trap - EXIT HUP INT TERM
     run android-platform-launch "$adb" -s "$serial" shell am start -n "${app_package}/.MainActivity"
     ;;
