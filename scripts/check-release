@@ -96,6 +96,15 @@ find_apkanalyzer() {
   done < <(find "$android_sdk" -path '*/bin/apkanalyzer' -type f 2>/dev/null | sort)
 }
 
+verify_archive_metadata() {
+  local archive="$1"
+  if gzip -cd "$archive" | LC_ALL=C \
+    grep -aE '[0-9]+ (LIBARCHIVE|SCHILY)[.]xattr[.][^=[:space:]]+=' >/dev/null; then
+    printf '%s contains forbidden extended-attribute metadata\n' "$(basename "$archive")" >&2
+    return 1
+  fi
+}
+
 verify_archive() (
   set -euo pipefail
   local archive="$1"
@@ -110,6 +119,7 @@ verify_archive() (
   local build_info
   local expected_go_version
   local expected_binary
+  verify_archive_metadata "$archive"
   entries="$(tar -tzf "$archive")"
   [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
     printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
@@ -235,6 +245,7 @@ archive_mode_self_test() (
   archive="$fixture_dir/release.tar.gz"
   "$repo_dir/scripts/build-host-archive" \
     "$repo_dir" v0.2.2 "$sha" linux amd64 linux-amd64 "$archive"
+  verify_archive_metadata "$archive"
   extract_release_archive "$archive" "$fixture_dir/extracted"
   [[ "$(file_mode "$fixture_dir/extracted/skidbladnir")" == 755 &&
     "$(file_mode "$fixture_dir/extracted/characters.json")" == 644 &&
@@ -242,7 +253,7 @@ archive_mode_self_test() (
     printf 'Release archive extraction inherited the caller umask\n' >&2
     return 1
   }
-  printf 'Release archive member mode policy passed\n'
+  printf 'Release archive member mode and metadata policy passed\n'
 )
 
 self_test() {
