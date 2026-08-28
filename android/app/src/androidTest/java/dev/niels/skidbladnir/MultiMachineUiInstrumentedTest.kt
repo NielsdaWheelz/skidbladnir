@@ -73,7 +73,7 @@ class MultiMachineUiInstrumentedTest {
     val compose = createEmptyComposeRule()
 
     @Test
-    fun theDashboardHeaderKeepsItsTitleWithoutACreateAffordanceOrMachineAdministration() {
+    fun dashboardHeaderKeepsTitleAndExposesWholeFleetReconnectWithoutCreateOrMachineAdministration() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.setContent {
@@ -81,6 +81,7 @@ class MultiMachineUiInstrumentedTest {
                         Column {
                             DashboardTopBar(
                                 summary = "4 tmux sessions across 2 machines",
+                                onReconnect = {},
                             )
                             UnreadableMachineStrip(
                                 UnreadableStoredMachine(),
@@ -97,6 +98,7 @@ class MultiMachineUiInstrumentedTest {
                 .onChildren()
                 .filterToOne(hasText("Dwarves"))
                 .assertIsDisplayed()
+            compose.onNodeWithText("Reconnect fleet").assertIsDisplayed().assertIsEnabled()
             compose.onNodeWithText("Refresh").assertDoesNotExist()
 
             // The create action left the header for the Forge seal (forge-seal.md,
