@@ -88,6 +88,30 @@ installed_android_package_path() {
   printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
+optional_installed_android_package_path() {
+  local adb="$1"
+  local serial="$2"
+  local app_package="$3"
+  local output_file
+  local output
+  local status=0
+  output_file="$(mktemp -t skidbladnir-optional-package.XXXXXX)"
+  if run_bounded_to_file "$android_preflight_timeout_seconds" "$output_file" \
+    "$adb" -s "$serial" shell pm path "$app_package"; then
+    status=0
+  else
+    status=$?
+  fi
+  output="$(tr -d '\r' <"$output_file")"
+  /bin/unlink "$output_file" || return 1
+  if [[ "$status" == 1 && -z "$output" ]]; then
+    return 0
+  fi
+  [[ "$status" == 0 ]] || return 1
+  installed_android_package_path "$output" >/dev/null || return 1
+  printf '%s\n' "$output"
+}
+
 android_apk_matches_digest() {
   local apk="$1"
   local expected="$2"
@@ -188,10 +212,8 @@ android_platform_companion_matches_release() {
 android_platform_restore_owned_state() {
   local failed=0 test_package_path test_package_path_after
   if [[ "${platform_test_package_installed:-0}" == 1 ]]; then
-    if ! test_package_path="$(
-      "$platform_adb" -s "$platform_serial" shell pm path "$platform_test_package" |
-        tr -d '\r'
-    )"; then
+    if ! test_package_path="$(optional_installed_android_package_path \
+      "$platform_adb" "$platform_serial" "$platform_test_package")"; then
       printf 'Could not inspect the test-only Android package\n' >&2
       failed=1
     elif [[ -z "$test_package_path" ]]; then
@@ -200,10 +222,8 @@ android_platform_restore_owned_state() {
       ! "$platform_adb" -s "$platform_serial" uninstall "$platform_test_package" >/dev/null; then
       printf 'Could not uninstall the test-only Android package\n' >&2
       failed=1
-    elif ! test_package_path_after="$(
-        "$platform_adb" -s "$platform_serial" shell pm path "$platform_test_package" |
-          tr -d '\r'
-      )"; then
+    elif ! test_package_path_after="$(optional_installed_android_package_path \
+        "$platform_adb" "$platform_serial" "$platform_test_package")"; then
       printf 'Could not verify removal of the test-only Android package\n' >&2
       failed=1
     elif [[ -z "$test_package_path_after" ]]; then
@@ -421,6 +441,8 @@ case "$*" in
   *' shell pm path test')
     if [ -f "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE" ]; then
       printf 'package:/data/app/test/base.apk\n'
+    else
+      exit 1
     fi
     ;;
   *' uninstall test')
@@ -434,6 +456,18 @@ EOF
   chmod 0755 "$fixture/adb"
   export SKIDBLADNIR_TEST_PLATFORM_CALLS="$fixture/platform-calls"
   export SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE="$fixture/test-package-installed"
+  : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+  : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
+  [[ "$(optional_installed_android_package_path "$fixture/adb" serial test)" == \
+    'package:/data/app/test/base.apk' ]] || {
+    printf 'Android platform policy rejected an installed optional package\n' >&2
+    return 1
+  }
+  /bin/unlink "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
+  [[ -z "$(optional_installed_android_package_path "$fixture/adb" serial test)" ]] || {
+    printf 'Android platform policy rejected an absent optional package\n' >&2
+    return 1
+  }
   : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
   : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
   printf 'temporary evidence\n' >"$fixture/platform-output"
@@ -985,7 +1019,9 @@ case "$gate" in
       <"$platform_instrumentation_output_file"
     /bin/unlink "$platform_instrumentation_output_file"
     platform_instrumentation_output_file=''
-    existing_test_package="$("$adb" -s "$serial" shell pm path "$test_package" | tr -d '\r')"
+    existing_test_package="$(optional_installed_android_package_path \
+      "$adb" "$serial" "$test_package")" ||
+      not_run platform 'Could not inspect the optional test-only Android package'
     if [[ "$platform_installed_apk_digest" == "$platform_expected_apk_digest" ]]; then
       if [[ -n "$existing_test_package" ]]; then
         not_run platform 'The test-only Android package must be absent before this gate owns it'
