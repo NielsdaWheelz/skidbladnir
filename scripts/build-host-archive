@@ -47,4 +47,5 @@ install -m 0644 "$source_dir/catalog/characters.json" "$staging_dir/characters.j
 jq -n --arg platform "$platform" --arg sha "$sha" --arg version "$tag" \
   '{platform:$platform,sourceSha:$sha,version:$version}' > "$staging_dir/release.json"
 chmod 0644 "$staging_dir/release.json"
-COPYFILE_DISABLE=1 tar -C "$staging_dir" -czf "$output" skidbladnir characters.json release.json
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$staging_dir" -czf "$output" \
+  skidbladnir characters.json release.json
