@@ -117,6 +117,7 @@ internal fun DashboardMain(
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
                 summary = dashboardSummary(agents.size, machines.size),
+                onReconnect = controller::requestFleetReconnect,
             )
 
             MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
@@ -124,8 +125,6 @@ internal fun DashboardMain(
                 key(machine.machine.handle) {
                     MachineStrip(
                         machine = machine,
-                        controller = controller,
-                        credentialWritesEnabled = state.unreadableMachines.isEmpty(),
                         onShowPressure = { selectedPressureHandle = machine.machine.handle.encoded },
                     )
                 }
@@ -331,6 +330,7 @@ private fun DashboardDwarfGrid(
 @Composable
 internal fun DashboardTopBar(
     summary: String,
+    onReconnect: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -363,6 +363,9 @@ internal fun DashboardTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        TextButton(onClick = onReconnect) {
+            Text("Reconnect fleet", maxLines = 1)
         }
     }
 }
@@ -418,8 +421,6 @@ private fun MachineFilters(
 @Composable
 private fun MachineStrip(
     machine: MachineState,
-    controller: SkidbladnirController,
-    credentialWritesEnabled: Boolean,
     onShowPressure: () -> Unit,
 ) {
     val handle = machine.machine.handle.encoded
@@ -446,13 +447,6 @@ private fun MachineStrip(
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
             )
-        }
-        if (machineAvailability(machine) == MachineAvailability.AuthRequired) {
-            TextButton(
-                onClick = controller::requestFleetReconnect,
-                enabled = credentialWritesEnabled,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            ) { Text("Reconnect fleet") }
         }
     }
 }

@@ -131,6 +131,7 @@ class DashboardChromeInstrumentedTest {
             MaterialTheme {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
+                    onReconnect = {},
                 )
             }
         }
@@ -169,6 +170,7 @@ class DashboardChromeInstrumentedTest {
             MaterialTheme {
                 DashboardTopBar(
                     summary = "4 tmux sessions across 2 machines",
+                    onReconnect = {},
                 )
             }
         }
