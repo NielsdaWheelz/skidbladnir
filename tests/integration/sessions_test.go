@@ -521,8 +521,8 @@ exec %s "$@"
 		if laptop.Status.Kind != sessions.StatusRunning || laptop.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("uninstrumented allowlisted laptop process should report only process liveness: %+v", laptop.Status)
 		}
-		shell := requireSessionNamed(t, listed, "shell")
-		if shell.Status.Kind != sessions.StatusShell || shell.Status.Signal != sessions.StatusSignalProcess {
+		shell := fixture.waitForSession(t, ctx, "shell", sessions.StatusShell)
+		if shell.Status.Signal != sessions.StatusSignalProcess {
 			t.Fatalf("ordinary laptop shell should be reported literally: %+v", shell.Status)
 		}
 
