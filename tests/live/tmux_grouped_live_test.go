@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
 )
 
 const (
@@ -63,9 +65,14 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 	versionCommand := exec.Command(liveTmuxPath, "-V")
 	versionCommand.Env = withoutTmuxEnvironment(os.Environ())
 	version, err := versionCommand.Output()
-	if err != nil || strings.TrimSpace(string(version)) != "tmux 3.4" {
-		t.Fatalf("P0 proof requires exact tmux 3.4, found %q (error=%v)", strings.TrimSpace(string(version)), err)
+	if err != nil || len(version) < 2 || version[len(version)-1] != '\n' {
+		t.Fatalf("P0 proof requires a readable tmux stable release, found %q (error=%v)", version, err)
 	}
+	observedVersion := string(version[:len(version)-1])
+	if err := hostconfig.ValidateTmuxVersion(observedVersion); err != nil {
+		t.Fatalf("P0 proof requires a canonical tmux stable release, found %q", observedVersion)
+	}
+	t.Logf("running grouped-client proof against %s", observedVersion)
 	const scriptPath = "/usr/bin/script"
 	info, err := os.Stat(scriptPath)
 	if err != nil {
@@ -163,7 +170,7 @@ func newTmuxBehaviorServer(t *testing.T) *tmuxBehaviorServer {
 		if !server.cleanup(t) {
 			return
 		}
-		// tmux 3.4 can leave a stale alternate socket after the server exits;
+		// tmux can leave a stale alternate socket after the server exits;
 		// all owned process identities are proven gone before removing it.
 		if err := removeRegisteredLiveStaleSocket(liveTmuxPath, server.socketPath()); err != nil {
 			t.Errorf("remove stopped registered live tmux socket %s: %v", server.socketPath(), err)

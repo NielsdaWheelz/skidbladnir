@@ -1533,7 +1533,7 @@ func writeStatusHookHostConfig(t *testing.T, destination, codexCommand string) s
 	tmuxVersion := string(tmuxVersionOutput[:len(tmuxVersionOutput)-1])
 	encoded := fmt.Sprintf(`{
   "platform":%q,
-  "tmux":{"path":%q,"version":%q},
+  "tmux":{"path":%q,"testedVersion":%q},
   "codexNodeEntrypoint":%q,
   "profiles":[
     {"key":"personal","label":"Codex · Personal","command":"/bin/false","environment":[],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},

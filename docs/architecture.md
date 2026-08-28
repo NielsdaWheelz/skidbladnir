@@ -142,8 +142,10 @@ app. Android federation is the whole runtime control plane.
 
 ## 3. Platform evidence carried forward
 
-Recorded on exact versions (Linux tmux 3.4, Darwin tmux 3.7b, Codex CLI
-0.149.1, physical SM-S906W) and still binding on v0:
+Recorded on Linux tmux 3.4, Darwin tmux 3.7b, Codex CLI 0.149.1, and a
+physical SM-S906W. Those versions identify the evidence run; the behavioral
+findings below remain binding, but the tool versions do not. Hosts install the
+latest stable release exposed by their managed package channel:
 
 - A stock TUI uses the normal terminal buffer and is shareable by tmux
   clients. Grouped sessions share panes/processes while clients keep
@@ -293,14 +295,14 @@ three synchronous command hooks: `SessionStart(startup|resume|clear)` writes
 `IDLE`, `UserPromptSubmit` writes `WORKING` and clears stale attention, and
 `Stop` writes `IDLE`. The helper drains but never parses hook input. It uses
 the shared platform process observer to walk its ancestry and accepts exactly
-one logical Codex runtime: either
-a single Codex process, or the pin's direct native-`codex` child plus exact
-Node launcher. The hook ancestry must remain inside the target pane tty's exact
+one logical Codex runtime: either a single Codex process, or the managed
+launcher's direct native-`codex` child plus exact Node launcher. The hook
+ancestry must remain inside the target pane tty's exact
 kernel device and terminal session through its leader. That runtime's outer
 process must be the pane tty's foreground process-group leader; a second/nested
 runtime is ignored even when it takes foreground control. The option is bound
 to the outer process's PID and kernel
-start time. Codex retains its native exact-digest hook review: install
+start time. Codex retains its native hook-file digest review: install
 verifies the file bytes and rejects conflicting user-level hook sources, then
 the user approves a new digest once with `/hooks`; Skíðblaðnir does not edit an
 opaque trust store or bypass Codex review. Missing, untrusted, or unloaded hooks
@@ -427,9 +429,12 @@ history item is `current`.
   gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
-  exact tmux path/version, Codex entrypoint, and the five closed profile rows.
-  Unknown/null members, relative paths, duplicate keys, runtime platform
-  mismatch, or tmux version mismatch fail startup. `internal/process` is the
+  an exact tmux path, an advisory `testedVersion`, Codex entrypoint, and the five
+  closed profile rows. Unknown/null members, relative paths, duplicate keys,
+  runtime platform mismatch, or a missing/broken/noncanonical tmux executable
+  fail startup. A canonical installed version that differs from `testedVersion`
+  remains runnable and is reported as a nonblocking `dev-server doctor` warning.
+  `internal/process` is the
   single observer consumed by
   session status and the content-free lifecycle adapter. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
@@ -444,6 +449,8 @@ history item is `current`.
   handler and never resets unrelated Serve state. Reinstall preserves credentials and tmux
   lifetimes. Sleep, logout, Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
+  Codex, Claude, and tmux are intentionally outside the immutable Skíðblaðnir
+  release pin; convergence follows each platform's latest stable channel.
 - Convergence atomically initializes and then preserves
   `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The
   handle is 128 random bits encoded as `mh-` plus 32 lowercase hexadecimal
@@ -660,7 +667,8 @@ Verification follows an 80/20 boundary shape:
   owns real gateway + tmux list/create/status/attention/attach/detach/exact
   kill plus authentication and machine-binding rejection before mutation;
 - approved live publication owns Devbox and Arch systemd plus Mac LaunchAgent
-  install, restart, exact Serve/tmux/host-config pins, local re-list, isolated
+  install, restart, exact Serve and host-config state, a functional configured
+  tmux runtime, local re-list, isolated
   bearers, and identity-preserving reinstall;
 - a pre-publication release gate owns public-repository state, exact clean-main
   SHA, exact-SHA hosted verification, unused monotonic tag, signer, APK, two

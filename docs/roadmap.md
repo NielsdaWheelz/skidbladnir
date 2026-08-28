@@ -545,6 +545,26 @@ interaction; then the public-fleet release, all-three-host convergence, and
 real-scanner product gates with machine-bound pressure disclosure. Scope per
 [machine-pressure-rail.md](machine-pressure-rail.md).
 
+## v0 runtime-release policy hard cut — active
+
+Outcome: Codex, Claude, and tmux follow the latest stable release available
+through each platform's managed channel. Skíðblaðnir release artifacts remain
+immutable and digest-pinned; tool versions do not.
+
+- Red: a changed tmux version blocks gateway or lifecycle startup; macOS pins
+  the Homebrew formula; Arch excludes tmux from upgrades; Devbox rejects the
+  repository's current stable package; Codex convergence installs one exact npm
+  version and doctor rejects any other binary or payload digest.
+- Green: the strict host config hard-cuts `tmux.version` to advisory
+  `tmux.testedVersion`; runtime boundaries require a canonical executable but
+  do not compare versions; doctor emits a nonblocking warning on drift; native
+  package channels converge tmux and Claude to stable; npm selects
+  `@openai/codex@latest`; all Codex version and payload-digest machinery is
+  removed.
+- Acceptance: routine verification in both repositories. Integration, live
+  host, release publication, and device gates remain explicit `NOT_RUN` until
+  separately approved.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -582,4 +602,5 @@ orchestration, via a new architecture decision.
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Source implemented over the public-fleet hard cut; ownership reds and focused greens recorded; exact release, all-three-host convergence, real-scanner product, named second-phone, and hands-on visual gates `NOT_RUN` |
+| v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0.5 push | Not scheduled |

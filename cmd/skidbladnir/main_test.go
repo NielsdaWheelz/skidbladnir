@@ -55,18 +55,18 @@ func TestStatusHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	}
 }
 
-func TestStatusHookRejectsConfiguredTmuxVersionDriftBeforeReadingTheEvent(t *testing.T) {
+func TestStatusHookAllowsTmuxVersionDrift(t *testing.T) {
 	t.Setenv("TMUX_PANE", "")
 	tmuxPath := writeTmuxVersion(t, "tmux changed")
 	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux expected")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"status-hook", "--host-config=" + hostConfigPath, "SessionStart"}, &stdout, &stderr); exitCode != exitFailure {
-		t.Fatalf("status-hook exit code = %d, want %d", exitCode, exitFailure)
+	if exitCode := run([]string{"status-hook", "--host-config=" + hostConfigPath, "SessionStart"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("status-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
-	if stdout.Len() != 0 || stderr.String() != "status-hook host configuration failed\n" {
-		t.Fatalf("status-hook output = (%q, %q), want quiet config failure", stdout.String(), stderr.String())
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("status-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
 	}
 }
 
@@ -171,12 +171,12 @@ func writeTmuxVersion(t *testing.T, version string) string {
 	return path
 }
 
-func writeHostConfig(t *testing.T, tmuxPath, tmuxVersion string) string {
+func writeHostConfig(t *testing.T, tmuxPath, tmuxTestedVersion string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "host.json")
 	encoded := fmt.Sprintf(`{
   "platform": %q,
-	  "tmux": {"path": %q, "version": %q},
+	  "tmux": {"path": %q, "testedVersion": %q},
   "codexNodeEntrypoint": "/home/niels/.local/bin/codex",
   "profiles": [
     {"key":"personal","label":"Codex · Personal","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
@@ -185,7 +185,7 @@ func writeHostConfig(t *testing.T, tmuxPath, tmuxVersion string) string {
     {"key":"claude-personal","label":"Claude · Personal","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]},
     {"key":"claude-work","label":"Claude · Work","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]}
   ]
-}`, platform.Current().Kind, tmuxPath, tmuxVersion)
+}`, platform.Current().Kind, tmuxPath, tmuxTestedVersion)
 	if err := os.WriteFile(path, []byte(encoded), 0o600); err != nil {
 		t.Fatal(err)
 	}
