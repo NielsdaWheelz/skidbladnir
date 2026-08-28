@@ -11,20 +11,46 @@ package process
 #include <unistd.h>
 
 // Both helpers return 0 on success and an errno-style cause on failure so Go
-// can classify absent (ESRCH) and protected (EPERM/EACCES) processes.
-static int skid_proc_info(int pid, struct proc_bsdinfo *info, char *path, int path_len, int *session, uint64_t *terminal, int *foreground) {
+// can classify absent (ESRCH) and protected (EPERM/EACCES) processes. The full
+// observer also reports the failing stage because proc_pidpath uses ENOENT for
+// a live process whose executable was unlinked.
+enum skid_proc_info_stage {
+  SKID_PROC_INFO_STAGE_NONE = 0,
+  SKID_PROC_INFO_STAGE_BSDINFO,
+  SKID_PROC_INFO_STAGE_PIDPATH,
+  SKID_PROC_INFO_STAGE_KERN_PROC,
+  SKID_PROC_INFO_STAGE_SESSION
+};
+
+static int skid_proc_info(int pid, struct proc_bsdinfo *info, char *path, int path_len, int *session, uint64_t *terminal, int *foreground, int *failed_stage) {
+  *failed_stage = SKID_PROC_INFO_STAGE_NONE;
   errno = 0;
-  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, info, sizeof(*info)) != sizeof(*info)) return errno != 0 ? errno : EINVAL;
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, info, sizeof(*info)) != sizeof(*info)) {
+    *failed_stage = SKID_PROC_INFO_STAGE_BSDINFO;
+    return errno != 0 ? errno : EINVAL;
+  }
   errno = 0;
-  if (proc_pidpath(pid, path, path_len) <= 0) return errno != 0 ? errno : EINVAL;
+  if (proc_pidpath(pid, path, path_len) <= 0) {
+    *failed_stage = SKID_PROC_INFO_STAGE_PIDPATH;
+    return errno != 0 ? errno : EINVAL;
+  }
   int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
   struct kinfo_proc kp; size_t size = sizeof(kp);
   errno = 0;
-  if (sysctl(mib, 4, &kp, &size, NULL, 0) != 0) return errno != 0 ? errno : EINVAL;
-  if (size != sizeof(kp)) return ESRCH; // the kernel returns an empty record for an absent pid
+  if (sysctl(mib, 4, &kp, &size, NULL, 0) != 0) {
+    *failed_stage = SKID_PROC_INFO_STAGE_KERN_PROC;
+    return errno != 0 ? errno : EINVAL;
+  }
+  if (size != sizeof(kp)) {
+    *failed_stage = SKID_PROC_INFO_STAGE_KERN_PROC;
+    return ESRCH; // the kernel returns an empty record for an absent pid
+  }
   errno = 0;
   pid_t sid = getsid(pid);
-  if (sid <= 0) return errno != 0 ? errno : EINVAL;
+  if (sid <= 0) {
+    *failed_stage = SKID_PROC_INFO_STAGE_SESSION;
+    return errno != 0 ? errno : EINVAL;
+  }
   *session = sid;
   *terminal = kp.kp_eproc.e_tdev == (dev_t)-1 ? 0 : (uint64_t)kp.kp_eproc.e_tdev;
   *foreground = kp.kp_eproc.e_tpgid;
@@ -57,8 +83,9 @@ func observeOnce(pid PID) (Observation, error) {
 	var session C.int
 	var terminal C.uint64_t
 	var foreground C.int
-	if code := C.skid_proc_info(C.int(pid), &info, (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path)), &session, &terminal, &foreground); code != 0 {
-		return Observation{}, classifyDarwinError(syscall.Errno(code), "observe Darwin process identity")
+	var failedStage C.int
+	if code := C.skid_proc_info(C.int(pid), &info, (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path)), &session, &terminal, &foreground, &failedStage); code != 0 {
+		return Observation{}, classifyDarwinProcessInfoError(syscall.Errno(code), failedStage)
 	}
 	argv, err := darwinArgv(pid)
 	if err != nil {
@@ -69,6 +96,17 @@ func observeOnce(pid PID) (Observation, error) {
 		return Observation{}, errors.New("Darwin process start identity is zero")
 	}
 	return Observation{PID: pid, ParentPID: PID(info.pbi_ppid), ProcessGroup: PID(info.pbi_pgid), SessionID: PID(session), TerminalDevice: TerminalDevice(terminal), ForegroundProcessGroup: PID(foreground), Executable: C.GoString((*C.char)(unsafe.Pointer(&path[0]))), Argv: argv, StartIdentity: StartIdentity(strconv.FormatUint(start, 10))}, nil
+}
+
+func classifyDarwinProcessInfoError(cause syscall.Errno, failedStage C.int) error {
+	// A running process can outlive an unlinked executable during a package
+	// upgrade. Darwin reports ENOENT only at proc_pidpath in that state, so the
+	// process still exists but its complete identity is outside our observation
+	// boundary.
+	if cause == syscall.ENOENT && failedStage == C.SKID_PROC_INFO_STAGE_PIDPATH {
+		return ErrProcessNotPermitted
+	}
+	return classifyDarwinError(cause, "observe Darwin process identity")
 }
 
 func classifyDarwinError(cause syscall.Errno, action string) error {
