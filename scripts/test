@@ -1030,6 +1030,10 @@ case "$gate" in
         'Set SKIDBLADNIR_PROVIDER_LIVE_RELEASE_TAG and SKIDBLADNIR_PROVIDER_LIVE_SOURCE_SHA to the exact installed candidate'
     fi
     cd "$repo_dir"
+    run provider-live-harness go test -tags='integration providerlive' ./tests/integration \
+      -run '^(TestProviderLiveLaunchersEnforceOfflineInputBoundary|TestProviderLiveFailClosedScriptsTerminateOwnedProcessGroup)$' -count=1 -args \
+      -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \
+      -skidbladnir-tmux-path="$tmux_path"
     run installed-provider-identity go test -tags='integration providerlive' ./tests/integration \
       -run '^TestInstalledProviderHooksProjectTheApprovedPlatformSample$' -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \

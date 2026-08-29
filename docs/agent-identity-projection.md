@@ -334,7 +334,16 @@ before production edits. A rename-caused compile failure is not the red proof.
    launching a provider.
 7. **Provider live:** one separately approved integration proof uses the
    production session manager plus the fixed installed commands and hooks for
-   one managed and one laptop launch across the Linux/Darwin sample matrix.
+   one managed and one laptop launch across the Linux/Darwin sample matrix. It
+   keeps both providers before their agent loops: Codex consumes generated
+   opaque stdin through ephemeral exec under a silent synchronous project hook,
+   and Claude consumes `/dev/null` in non-persistent print mode under a silent
+   synchronous test plugin. The exact private tmux server dies before either
+   hold can release; installed hooks remain the only identity publishers.
+   Codex model traffic is independently routed to a content-free loopback
+   sentinel that never reads bytes, and the gate requires zero accepted
+   connections; CLI overrides disable retries, WebSockets, telemetry, and
+   ambient proxies. Claude has no input and no persistent session.
 
 ### Green
 
@@ -383,7 +392,9 @@ contract. No two builders edit one path.
    Linux managed Codex + laptop Claude; Darwin managed Claude + laptop Codex.
    Deployment inspection covers every profile and host. This samples both
    providers, launch origins, and OS observers without an eight-case Cartesian
-   gate.
+   gate. The harness records no input or provider output, dispatches no agent
+   turn, and sends input to neither an external provider API nor a provider
+   session store.
 6. Any unapproved integration, platform, deployment, or live boundary is
    `NOT_RUN`, never pass. Add no proof ledger or compatibility matrix.
 
@@ -403,6 +414,7 @@ contract. No two builders edit one path.
 | Load Claude's hook as a local router plugin | User settings remain untouched; direct raw-binary launches cannot register runtime profile or session id |
 | Four-case live sample | The full provider x launch-origin x OS Cartesian product is not executed |
 | Reuse the integration safety harness for provider-live | Deployment owns installed bytes; Skidbladnir owns exact tmux/process lifetime and inventory behavior, avoiding a second shell safety implementation |
+| Hold providers synchronously; count zero Codex connections at a no-read loopback sentinel; give Claude null input with no persistence | The proof exercises installed identity hooks and process projection, but intentionally proves neither model connectivity nor an interactive provider turn |
 
 ## Non-goals
 
