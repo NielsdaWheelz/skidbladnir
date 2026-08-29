@@ -263,16 +263,22 @@ journey on Linux and Darwin.
 Outcome: the terminal exposes one ordered, accessible input-only deck without
 mixing navigation or detach actions into terminal bytes.
 
-- Fixed order: `Esc`, one-shot `Ctrl`, `Tab`, `Line break`, arrows, `Home`,
-  `End`; top detach and Android Back remain lifecycle actions.
-- Ctrl state is owned by the page/native terminal boundary, is visible and
-  spoken, and resets on the next input, focus loss, rotation, kill dialog,
-  detach, reconnect, or page disposal.
-- IME composition, dictation, paste, resize, queue bounds, and WSS contracts
-  remain unchanged.
+- Fixed aligned rows: `Esc / - Home ↑ End PgUp` and
+  `Tab Ctrl Alt ← ↓ → PgDn`; top detach and Android Back remain lifecycle
+  actions.
+- Page-owned one-shot Ctrl/Alt state is atomic, visible, spoken, independently
+  toggleable, jointly consumable, and reset on input or any lifecycle boundary.
+- Proven keys use exact xterm-compatible Ctrl/Alt encoding. IME composition,
+  dictation-shaped, Unicode, multi-character, and paste input remain literal
+  while consuming modifiers.
+- Equal `48dp` cells use `2dp` gaps in one `356dp x 106dp` normal-font grid;
+  both rows share overflow below that width or when large text needs it.
+- IME containment, resize, viewport fitting, queue bounds, WSS, and tmux
+  contracts remain unchanged.
 
-Acceptance: pure/native terminal proofs, routine verification, and the exact
-S22+ platform gate.
+Acceptance: focused real-Compose and locked-WebView proofs, routine
+verification, the exact signed S22+ platform gate, and separately reported
+hands-on Gboard/accessibility/viewport checks.
 
 ## v0 design deltas — Niðavellir adoption
 
@@ -629,7 +635,7 @@ orchestration, via a new architecture decision.
 | v0 review corrective layer | Implemented and published; routine, both-host integration, Linux live, exact 27-test S22+ platform, and physical product gates green |
 | v0 profile delta — Devbox Claude Work | Integrated; routine and exact-tree external acceptance are owned by the merged candidate gates |
 | v0 identity delta — automatic dwarf identity | Integrated hard cut; routine and isolated Linux/Darwin acceptance are owned by the merged candidate gates |
-| v0 terminal key-deck delta | Integrated; routine and exact S22+ platform acceptance are owned by the merged candidate gates |
+| v0 terminal key-deck delta | Two-row Ctrl/Alt hard cut implemented; both owner reds recorded, routine verification green, and the signed same-version 54-test S22+ candidate suite green on 2026-08-28 with pairing preserved and the exact installed app restored; release-bound standard platform plus hands-on Gboard, TalkBack, Switch Access, reach, haptic, and `80 x 5` viewport checks `NOT_RUN` |
 | v0 design delta D1 — terminal theme | Source implemented; routine verification and the 33-test instrumented S22+ suite green on the federated tree (devbox debug-signed run; the signed deviceDebug platform gate is MacBook-owned); hands-on OLED dim-text/256-color check `NOT_RUN` |
 | v0 design delta D2 — chrome tokens | Source implemented and re-woven over the federation; adversarial review applied; routine verification and the 33-test instrumented S22+ suite green; hands-on pass (incl. the Forge warm-in glance) `NOT_RUN` |
 | v0 design delta D3 — dwarf seals | Source implemented; golden/distinctness gates and the 33-test instrumented S22+ suite green; hands-on 48dp gallery pass `NOT_RUN` |

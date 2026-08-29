@@ -142,9 +142,10 @@ Gold/Ember only on host-evaluated Warm/Hot exceptions.
 - **Kill dialog**: DeepSurface, `Card` shape, copy untouched, zero
   decoration.
 - **Terminal chrome and key deck**: top bar and deck bezel on tokens; keys
-  take the `Key` shape and Data labels; the armed-Ctrl visual stays
-  Gold-fill/Gold-content as today. Geometry (48dp/8dp), order, semantics,
-  spoken state, and enablement per the key-deck spec — unchanged.
+  take the `Key` shape and Data labels; each armed modifier uses the existing
+  Gold-fill/Gold-content treatment. Equal cells remain at least 48dp with the
+  key-deck spec's 2dp grid gaps; order, semantics, spoken state, and enablement
+  remain owned there.
 - **Interaction states**: pressed/focus/hover/dragged use the StateLayer
   alphas as Bone over the component surface. Pressed components adopt the
   angular indication — an inset copy of the pressed component's own cut
@@ -207,9 +208,10 @@ Red (each observed failing first):
    dashboard Compose suite today; these proofs create it): the status bay
    for each kind still renders its literal label with named signal and age
    (guards the restyle against copy drift).
-4. Compose test (same new suite): card, chip, and key targets remain ≥ 48dp
-   with ≥ 8dp spacing, and the rebuilt clickable card keeps its click action
-   and semantics (guards the `Card`→`Surface`+`clickable` restructure and
+4. Compose test (same new suite): card, chip, and key targets remain ≥ 48dp;
+   cards and chips retain ≥ 8dp spacing while the key deck retains its reviewed
+   2dp grid gaps. The rebuilt clickable card keeps its click action and
+   semantics (guards the `Card`→`Surface`+`clickable` restructure and
    `CutCornerShape` padding changes).
 5. Instrumented: the Display face resolves `Ð` and `Í` (wordmark and dwarf
    names render in Big Shoulders, not a fallback).

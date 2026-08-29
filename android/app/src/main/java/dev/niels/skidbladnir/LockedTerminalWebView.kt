@@ -54,32 +54,41 @@ internal interface TerminalPage {
     fun write(bytes: ByteArray)
     fun focus()
     fun sendAccessory(accessory: TerminalAccessory)
-    fun resetControl()
+    fun resetModifiers()
 }
 
 internal enum class TerminalAccessory {
     Escape,
-    Control,
-    Tab,
-    Left,
+    Slash,
+    Hyphen,
+    Home,
     Up,
+    End,
+    PageUp,
+    Tab,
+    Control,
+    Alt,
+    Left,
     Down,
     Right,
-    Home,
-    End,
-    LineFeed,
+    PageDown,
 }
 
-internal enum class TerminalControlState {
+internal enum class TerminalModifierPhase {
     Off,
     Armed,
 }
+
+internal data class TerminalModifiers(
+    val control: TerminalModifierPhase,
+    val alt: TerminalModifierPhase,
+)
 
 internal interface TerminalPageListener {
     fun onReady(page: TerminalPage)
     fun onInput(bytes: ByteArray)
     fun onResize(columns: Int, rows: Int)
-    fun onControlStateChanged(state: TerminalControlState)
+    fun onModifiersChanged(modifiers: TerminalModifiers)
     fun onUnavailable()
 }
 
@@ -220,7 +229,7 @@ internal class LockedTerminalWebView(
         }
     }
 
-    override fun resetControl() {
+    override fun resetModifiers() {
         post {
             if (synchronized(outputMonitor) { disposed || unavailable }) return@post
             val port = pagePort
@@ -229,7 +238,7 @@ internal class LockedTerminalWebView(
                 return@post
             }
             try {
-                port.postMessage(WebMessageCompat("{\"kind\":\"ResetControl\"}"))
+                port.postMessage(WebMessageCompat("{\"kind\":\"ResetModifiers\"}"))
             } catch (_: IllegalStateException) {
                 markUnavailable()
             }
@@ -239,7 +248,7 @@ internal class LockedTerminalWebView(
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
         if (!hasWindowFocus && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetControl()
+            resetModifiers()
         }
     }
 
@@ -256,7 +265,7 @@ internal class LockedTerminalWebView(
             nextOrientationIsKnown
         orientation = nextOrientation
         if (rotated && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetControl()
+            resetModifiers()
         }
     }
 
@@ -404,13 +413,13 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
-                        "ControlState" -> if (objectValue.hasExactKeys("kind", "state")) {
-                            val controlState = objectValue.stringField("state")
-                                ?.let { value -> TerminalControlState.entries.singleOrNull { it.name == value } }
-                            if (controlState == null) {
+                        "ModifierState" -> if (objectValue.hasExactKeys("kind", "control", "alt")) {
+                            val control = objectValue.modifierPhase("control")
+                            val alt = objectValue.modifierPhase("alt")
+                            if (control == null || alt == null) {
                                 markUnavailable()
                             } else {
-                                listener.onControlStateChanged(controlState)
+                                listener.onModifiersChanged(TerminalModifiers(control = control, alt = alt))
                             }
                         } else {
                             markUnavailable()
@@ -545,6 +554,9 @@ internal class LockedTerminalWebView(
     }
 
     private fun JSONObject.stringField(name: String): String? = opt(name) as? String
+
+    private fun JSONObject.modifierPhase(name: String): TerminalModifierPhase? =
+        stringField(name)?.let { value -> TerminalModifierPhase.entries.singleOrNull { it.name == value } }
 
     private fun JSONObject.intField(name: String): Int? = opt(name) as? Int
 

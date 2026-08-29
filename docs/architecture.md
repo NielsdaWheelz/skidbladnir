@@ -629,14 +629,18 @@ enum values are defects, with no protocol branch or compatibility state.
   deterministic ANSI palette. The renderer preserves at least 80 columns in
   portrait by adapting glyph scale before publishing PTY geometry, rather than
   collapsing the TUI into a narrow responsive layout. The
-  [terminal key deck](terminal-key-deck.md) is one stable scrolling row
-  `Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End` and
-  contains terminal input only; top `Detach` and Android Back own phone
-  detach. Ctrl is a visible one-shot modifier, clears on the next input or
-  lifecycle boundary, and never rewrites IME, dictation, or paste text. Deck,
-  typed, composed, and pasted input share one page-owned
-  ordered ingress. Targets are at least `48dp` square with at least `8dp`
-  separation. `Line break` sends raw `0x0a`; Enter sends `0x0d`. Paste strips ESC
+  [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
+  input surface: `Esc / - Home ↑ End PgUp` over
+  `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` and Android Back own phone detach.
+  Ctrl and Alt are independent visible one-shot modifiers; the page publishes
+  their state atomically, consumes both on the next input, and resets both at
+  lifecycle boundaries. Proven keys use xterm-compatible Ctrl/Alt encoding;
+  IME, dictation-shaped, Unicode, multi-character, and pasted text remain
+  literal while consuming modifiers. Deck, typed, composed, and pasted input
+  share one page-owned ordered ingress. Equal cells are at least `48dp` square,
+  with `4dp` outer padding and `2dp` row/column gaps; both rows share one
+  horizontal overflow state below the `356dp` normal-font fit or when large
+  text requires it. Gboard Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,
   clipboard, and dictation; dictation stays editable and never auto-sends. IME
   composition and non-composition Gboard input stay inside the terminal edge;
@@ -652,8 +656,8 @@ enum values are defects, with no protocol branch or compatibility state.
   and semantic labels on all controls. [`design-language.md`](design-language.md)
   is the reviewed future visual target for palette, typography, shape,
   ornament, motion, and terminal theme; roadmap D1–D4 remain unimplemented and
-  do not describe the current source. The key deck has stable traversal and
-  spoken Ctrl state; accessibility beyond the reviewed surface remains
+  do not describe the current source. The key deck has stable row-major
+  traversal and spoken Ctrl/Alt state; accessibility beyond the reviewed surface remains
   best-effort.
 
 ## 7. Security
@@ -746,7 +750,7 @@ The terminal/status proofs additionally cover unchanged laptop geometry and
 focus, last-link detach, bounded backpressure, exact foreground process
 lifetime, inherited nested-Codex rejection, Gboard/IME/dictation, stable
 80-column rotation geometry, true color, the reviewed key-deck inputs and
-one-shot Ctrl lifecycle, and reconnect without replay. The
+atomic one-shot Ctrl/Alt lifecycle, and reconnect without replay. The
 retired proof-ledger/acceptance matrix does not return. Existing
 `evidence/live/` records remain historical platform evidence.
 
@@ -791,9 +795,9 @@ Claude exposes provider/PID, valid hooks add only bounded runtime profile and
 provider session id, explicit Claude name flags map exactly, and launch profile
 never substitutes for an unknown runtime profile; first inventory persists one valid dwarf for every visible ordinary
 session, preserves concurrent valid assignment, and never assigns a phone
-shadow; the terminal key deck exposes only its reviewed terminal inputs,
-one-shot Ctrl never alters literal IME/dictation/paste input or survives a
-lifecycle boundary, and leaving through the top detach action or Back detaches
+shadow; the terminal key deck exposes only its reviewed terminal inputs;
+Ctrl/Alt never alter literal IME, dictation-shaped, Unicode, multi-character,
+or paste input or survive a lifecycle boundary; and leaving through the top detach action or Back detaches
 only the phone; both pressure capability sets are honest, host statuses drive
 every metric mark and exception accent, missing evidence stays visible,
 recovery is explicit, and pressure

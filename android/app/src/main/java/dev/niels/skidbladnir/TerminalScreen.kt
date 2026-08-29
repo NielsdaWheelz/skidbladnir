@@ -38,7 +38,14 @@ internal fun TerminalScreen(
     state: SkidbladnirUiState.Terminal,
     controller: SkidbladnirController,
 ) {
-    var controlState by remember(state.attempt) { mutableStateOf(TerminalControlState.Off) }
+    var modifiers by remember(state.attempt) {
+        mutableStateOf(
+            TerminalModifiers(
+                control = TerminalModifierPhase.Off,
+                alt = TerminalModifierPhase.Off,
+            ),
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -107,8 +114,8 @@ internal fun TerminalScreen(
                                     controller.resizeTerminal(state.attempt, columns, rows)
                                 }
 
-                                override fun onControlStateChanged(newState: TerminalControlState) {
-                                    controlState = newState
+                                override fun onModifiersChanged(newModifiers: TerminalModifiers) {
+                                    modifiers = newModifiers
                                 }
 
                                 override fun onUnavailable() {
@@ -141,7 +148,7 @@ internal fun TerminalScreen(
         }
 
         TerminalKeyDeck(
-            controlState = controlState,
+            modifiers = modifiers,
             enabled = state.connection is TerminalUiStatus.Connected,
             onAccessory = { controller.sendTerminalAccessory(state.attempt, it) },
         )

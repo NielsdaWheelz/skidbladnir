@@ -1102,7 +1102,7 @@ internal class SkidbladnirController(context: Context) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
                 if (terminalActionAdmissible(machine.canMutate, current.connection)) {
-                    terminalPage?.resetControl()
+                    terminalPage?.resetModifiers()
                     current.copy(kill = kill)
                 } else {
                     return
@@ -1477,7 +1477,7 @@ internal class SkidbladnirController(context: Context) {
         val page = terminalPage
         terminalConnection = null
         terminalPage = null
-        page?.resetControl()
+        page?.resetModifiers()
         connection?.detach()
     }
 

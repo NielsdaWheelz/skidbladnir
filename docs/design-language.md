@@ -498,9 +498,10 @@ it as a red test, not an assumption.
   its geometry.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
-  slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
-  semantics owned by [terminal-key-deck.md](terminal-key-deck.md). Ctrl
-  armed = Gold 18% fill + Gold label + selected semantics.
+  slice), keys 4dp cut, mono labels, equal 48dp-minimum cells with 2dp grid
+  gaps, and spoken Ctrl/Alt semantics owned by
+  [terminal-key-deck.md](terminal-key-deck.md). Each armed modifier uses Gold
+  18% fill + Gold label + selected semantics.
 - **Pressure rail**: RaisedSurface card, 10dp cuts, one split-colour header, one
   horizontally scrolling non-wrapping flat Data-face metric row, then the
   unchanged 16dp categorical history band with no title. The machine name is
@@ -513,7 +514,8 @@ it as a red test, not an assumption.
 
 ## 14. Accessibility floor
 
-48dp targets and 8dp spacing where architecture/key-deck specs demand;
+48dp targets and 8dp spacing where architecture specs demand; the terminal key
+deck's dense aligned grid uses its reviewed 2dp gaps without shrinking targets;
 `minimumInteractiveComponentSize()` where a drawn control is smaller. Text ≥
 11sp. Every text/surface pair in this document ≥ 4.5:1 except the two
 declared fill/de-emphasis slots (ANSI black, brightBlack), which never carry
