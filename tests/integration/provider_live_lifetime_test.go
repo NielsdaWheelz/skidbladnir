@@ -15,95 +15,144 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-type providerLiveLifetime struct {
-	pid   processinfo.PID
-	start processinfo.StartIdentity
+const (
+	providerLiveProcessGroupCleanupTimeout = 10 * time.Second
+	providerLiveProcessGroupPollInterval   = 250 * time.Millisecond
+)
+
+type providerLiveProcessGroup struct {
+	id          processinfo.PID
+	leaderStart processinfo.StartIdentity
 }
 
-type providerLiveLifetimeTracker struct {
-	retained []providerLiveLifetime
+type providerLiveProcessGroupTracker struct {
+	retained []providerLiveProcessGroup
 }
 
-func (tracker *providerLiveLifetimeTracker) record(listed []sessions.Session) error {
+func (tracker *providerLiveProcessGroupTracker) record(listed []sessions.Session) error {
 	failed := false
 	for _, session := range listed {
 		if session.Agent == nil {
 			continue
 		}
 		observation, err := processinfo.Observe(session.Agent.PID)
-		if err != nil || observation.PID <= 0 || observation.StartIdentity == "" {
+		if err != nil {
 			failed = true
 			continue
 		}
-		tracker.retain(providerLiveLifetime{pid: observation.PID, start: observation.StartIdentity})
+		if err := tracker.retainObservation(observation); err != nil {
+			failed = true
+		}
 	}
 	if failed {
-		return errors.New("provider runtime lifetime capture failed")
+		return errors.New("provider runtime process-group capture failed")
 	}
 	return nil
 }
 
-func (tracker *providerLiveLifetimeTracker) retain(lifetime providerLiveLifetime) {
+func (tracker *providerLiveProcessGroupTracker) retainObservation(observation processinfo.Observation) error {
+	group, err := providerLiveProcessGroupFromObservation(observation)
+	if err != nil {
+		return err
+	}
+	tracker.retain(group)
+	return nil
+}
+
+func providerLiveProcessGroupFromObservation(observation processinfo.Observation) (providerLiveProcessGroup, error) {
+	if observation.PID <= 0 || observation.ProcessGroup <= 1 || observation.SessionID <= 0 {
+		return providerLiveProcessGroup{}, errors.New("provider runtime process group is invalid")
+	}
+	leader, err := processinfo.Observe(observation.ProcessGroup)
+	if err != nil || leader.PID != observation.ProcessGroup ||
+		leader.ProcessGroup != observation.ProcessGroup || leader.SessionID != observation.SessionID ||
+		leader.StartIdentity == "" {
+		return providerLiveProcessGroup{}, errors.New("provider runtime process-group leader is invalid")
+	}
+	return providerLiveProcessGroup{id: leader.PID, leaderStart: leader.StartIdentity}, nil
+}
+
+func (tracker *providerLiveProcessGroupTracker) retain(group providerLiveProcessGroup) {
 	for _, retained := range tracker.retained {
-		if retained == lifetime {
+		if retained == group {
 			return
 		}
 	}
-	tracker.retained = append(tracker.retained, lifetime)
+	tracker.retained = append(tracker.retained, group)
 }
 
-func (tracker *providerLiveLifetimeTracker) forCleanup() []providerLiveLifetime {
-	return append([]providerLiveLifetime(nil), tracker.retained...)
+func (tracker *providerLiveProcessGroupTracker) forCleanup() []providerLiveProcessGroup {
+	return append([]providerLiveProcessGroup(nil), tracker.retained...)
 }
 
-func terminateProviderLiveLifetimes(lifetimes []providerLiveLifetime) error {
-	for _, lifetime := range lifetimes {
-		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
+func terminateProviderLiveProcessGroups(groups []providerLiveProcessGroup) error {
+	for _, group := range groups {
+		if err := validateProviderLiveProcessGroupForSignal(group); err != nil {
 			return err
 		}
 	}
 
-	stopped := make([]providerLiveLifetime, 0, len(lifetimes))
-	for _, lifetime := range lifetimes {
-		if err := syscall.Kill(int(lifetime.pid), syscall.SIGSTOP); err != nil {
+	stopped := make([]providerLiveProcessGroup, 0, len(groups))
+	for _, group := range groups {
+		if err := syscall.Kill(-int(group.id), syscall.SIGSTOP); err != nil {
 			return errors.Join(
-				errors.New("stop exact provider-live runtime"),
-				killStoppedProviderLiveLifetimes(stopped),
+				errors.New("stop exact provider-live process group"),
+				killStoppedProviderLiveProcessGroups(stopped),
 			)
 		}
-		stopped = append(stopped, lifetime)
+		stopped = append(stopped, group)
 	}
-	for _, lifetime := range stopped {
-		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
-			return errors.Join(err, killStoppedProviderLiveLifetimes(stopped))
+	for _, group := range stopped {
+		if err := validateProviderLiveProcessGroupForSignal(group); err != nil {
+			return errors.Join(err, killStoppedProviderLiveProcessGroups(stopped))
 		}
 	}
-	return killStoppedProviderLiveLifetimes(stopped)
+	return killStoppedProviderLiveProcessGroups(stopped)
 }
 
-func validateProviderLiveLifetimeForSignal(lifetime providerLiveLifetime) error {
-	if lifetime.pid <= 1 || lifetime.pid == processinfo.PID(os.Getpid()) || lifetime.start == "" {
-		return errors.New("refuse invalid provider-live runtime identity")
+func validateProviderLiveProcessGroupForSignal(group providerLiveProcessGroup) error {
+	if group.id <= 1 || group.id == processinfo.PID(syscall.Getpgrp()) || group.leaderStart == "" {
+		return errors.New("refuse invalid provider-live process-group identity")
 	}
-	observation, err := processinfo.Observe(lifetime.pid)
-	if err != nil || observation.PID != lifetime.pid || observation.StartIdentity != lifetime.start {
-		return errors.New("provider-live runtime identity changed before signal")
+	leader, err := processinfo.Observe(group.id)
+	if err != nil || leader.PID != group.id || leader.ProcessGroup != group.id ||
+		leader.StartIdentity != group.leaderStart {
+		return errors.New("provider-live process-group identity changed before signal")
 	}
 	return nil
 }
 
-func killStoppedProviderLiveLifetimes(lifetimes []providerLiveLifetime) error {
+func killStoppedProviderLiveProcessGroups(groups []providerLiveProcessGroup) error {
 	var result error
-	for _, lifetime := range lifetimes {
-		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
+	for _, group := range groups {
+		if err := validateProviderLiveProcessGroupForSignal(group); err != nil {
 			result = errors.Join(result, err)
 			continue
 		}
-		if err := syscall.Kill(int(lifetime.pid), syscall.SIGKILL); err != nil {
-			result = errors.Join(result, errors.New("kill stopped provider-live runtime"))
+		if err := syscall.Kill(-int(group.id), syscall.SIGKILL); err != nil {
+			result = errors.Join(result, errors.New("kill stopped provider-live process group"))
 		}
 	}
 	return result
+}
+
+func waitForProviderLiveProcessGroupsToEnd(groups []providerLiveProcessGroup) error {
+	deadline := time.Now().Add(providerLiveProcessGroupCleanupTimeout)
+	for {
+		remaining := 0
+		for _, group := range groups {
+			if err := syscall.Kill(-int(group.id), 0); err == nil || !errors.Is(err, syscall.ESRCH) {
+				remaining++
+			}
+		}
+		if remaining == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("provider runtime process group survived exact tmux server cleanup")
+		}
+		time.Sleep(providerLiveProcessGroupPollInterval)
+	}
 }
 
 func scanProviderLivePanePIDs(output []byte, providerTmuxNames []string) ([]processinfo.PID, error) {
@@ -149,87 +198,93 @@ func scanProviderLivePanePIDs(output []byte, providerTmuxNames []string) ([]proc
 	return panePIDs, nil
 }
 
-func TestProviderLiveLifetimeTrackerRetainsEveryValidObservationForCleanup(t *testing.T) {
+func TestProviderLiveProcessGroupTrackerRetainsEveryValidObservationForCleanup(t *testing.T) {
 	pid := processinfo.PID(os.Getpid())
 	observation, err := processinfo.Observe(pid)
 	if err != nil || observation.PID != pid || observation.StartIdentity == "" {
 		t.Fatal("observe the test process lifetime")
 	}
-	tracker := providerLiveLifetimeTracker{}
+	wantObserved, err := providerLiveProcessGroupFromObservation(observation)
+	if err != nil {
+		t.Fatal("resolve the test process group")
+	}
+	tracker := providerLiveProcessGroupTracker{}
 	invalid := sessions.Session{Agent: &agentruntime.AgentRuntime{PID: -1}}
 	observed := sessions.Session{Agent: &agentruntime.AgentRuntime{PID: pid}}
 	if err := tracker.record([]sessions.Session{invalid, observed}); err == nil {
 		t.Fatal("partial provider observation did not fail closed")
 	}
 	partial := tracker.forCleanup()
-	wantObserved := providerLiveLifetime{pid: pid, start: observation.StartIdentity}
 	if len(partial) != 1 || partial[0] != wantObserved {
-		t.Fatal("an invalid earlier observation suppressed a later valid cleanup lifetime")
+		t.Fatal("an invalid earlier observation suppressed a later valid cleanup process group")
 	}
 	if err := tracker.record([]sessions.Session{observed}); err != nil {
 		t.Fatal("record overlapping provider observation")
 	}
 	if deduplicated := tracker.forCleanup(); len(deduplicated) != 1 || deduplicated[0] != wantObserved {
-		t.Fatal("an overlapping observation duplicated its cleanup lifetime")
+		t.Fatal("an overlapping observation duplicated its cleanup process group")
 	}
 
 	replacementStart := processinfo.StartIdentity("1")
-	if replacementStart == observation.StartIdentity {
+	if replacementStart == wantObserved.leaderStart {
 		replacementStart = "2"
 	}
-	tracker.retain(providerLiveLifetime{pid: pid, start: replacementStart})
-	want := []providerLiveLifetime{
+	tracker.retain(providerLiveProcessGroup{id: wantObserved.id, leaderStart: replacementStart})
+	want := []providerLiveProcessGroup{
 		wantObserved,
-		{pid: pid, start: replacementStart},
+		{id: wantObserved.id, leaderStart: replacementStart},
 	}
 	got := tracker.forCleanup()
 	if len(got) != len(want) {
-		t.Fatalf("cleanup lifetime count = %d, want %d", len(got), len(want))
+		t.Fatalf("cleanup process-group count = %d, want %d", len(got), len(want))
 	}
 	for index := range want {
 		if got[index] != want[index] {
-			t.Fatalf("cleanup lifetime %d did not preserve its exact observed identity", index)
+			t.Fatalf("cleanup process group %d did not preserve its exact observed identity", index)
 		}
 	}
 }
 
-func TestTerminateProviderLiveLifetimesHardStopsExactOwnedRuntime(t *testing.T) {
-	sleep, err := exec.LookPath("sleep")
+func TestTerminateProviderLiveProcessGroupsHardStopsExactOwnedGroup(t *testing.T) {
+	shell, err := exec.LookPath("sh")
 	if err != nil {
-		t.Fatal("resolve provider-live lifetime test command")
+		t.Fatal("resolve provider-live process-group test command")
 	}
-	command := exec.Command(sleep, "30")
+	command := exec.Command(shell, "-c", "sleep 30 & wait")
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := command.Start(); err != nil {
-		t.Fatal("start provider-live lifetime test command")
+		t.Fatal("start provider-live process-group test command")
 	}
 	waited := false
 	t.Cleanup(func() {
 		if waited {
 			return
 		}
-		_ = command.Process.Kill()
+		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
 		_ = command.Wait()
 	})
 	pid := processinfo.PID(command.Process.Pid)
 	var observation processinfo.Observation
 	deadline := time.Now().Add(time.Second)
 	// justify-polling: Start returns before the child necessarily completes
-	// exec, while process identity is available only after that boundary.
+	// exec and process-group creation, while identity is available only after
+	// those boundaries.
 	for time.Now().Before(deadline) {
 		observation, err = processinfo.Observe(pid)
-		if err == nil && observation.StartIdentity != "" {
+		if err == nil && observation.StartIdentity != "" && observation.ProcessGroup == pid {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err != nil || observation.StartIdentity == "" {
-		t.Fatal("observe provider-live lifetime test command")
+	if err != nil || observation.StartIdentity == "" || observation.ProcessGroup != pid {
+		t.Fatal("observe provider-live process-group test command")
 	}
-	if err := terminateProviderLiveLifetimes([]providerLiveLifetime{{
-		pid:   pid,
-		start: observation.StartIdentity,
-	}}); err != nil {
-		t.Fatal("terminate exact provider-live lifetime")
+	group, err := providerLiveProcessGroupFromObservation(observation)
+	if err != nil {
+		t.Fatal("resolve exact provider-live process group")
+	}
+	if err := terminateProviderLiveProcessGroups([]providerLiveProcessGroup{group}); err != nil {
+		t.Fatal("terminate exact provider-live process group")
 	}
 	waitErr := command.Wait()
 	waited = true
@@ -239,28 +294,32 @@ func TestTerminateProviderLiveLifetimesHardStopsExactOwnedRuntime(t *testing.T) 
 	}
 	status, ok := exitErr.Sys().(syscall.WaitStatus)
 	if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-		t.Fatal("provider-live lifetime did not end by SIGKILL")
+		t.Fatal("provider-live process-group leader did not end by SIGKILL")
+	}
+	if err := waitForProviderLiveProcessGroupsToEnd([]providerLiveProcessGroup{group}); err != nil {
+		t.Fatal("provider-live process-group descendant survived exact hard stop")
 	}
 	if _, err := processinfo.Observe(pid); err == nil {
-		t.Fatal("provider-live lifetime survived exact hard stop")
+		t.Fatal("provider-live process-group leader survived exact hard stop")
 	}
 }
 
-func TestTerminateProviderLiveLifetimesRefusesTheCaller(t *testing.T) {
+func TestTerminateProviderLiveProcessGroupsRefusesTheCallerGroup(t *testing.T) {
 	pid := processinfo.PID(os.Getpid())
 	observation, err := processinfo.Observe(pid)
 	if err != nil || observation.StartIdentity == "" {
 		t.Fatal("observe provider-live lifetime test caller")
 	}
-	if err := terminateProviderLiveLifetimes([]providerLiveLifetime{{
-		pid:   pid,
-		start: observation.StartIdentity,
-	}}); err == nil {
-		t.Fatal("provider-live lifetime termination accepted its caller")
+	group, err := providerLiveProcessGroupFromObservation(observation)
+	if err != nil {
+		t.Fatal("resolve provider-live caller process group")
+	}
+	if err := terminateProviderLiveProcessGroups([]providerLiveProcessGroup{group}); err == nil {
+		t.Fatal("provider-live process-group termination accepted its caller group")
 	}
 	after, err := processinfo.Observe(pid)
 	if err != nil || after.StartIdentity != observation.StartIdentity {
-		t.Fatal("provider-live lifetime refusal changed its caller")
+		t.Fatal("provider-live process-group refusal changed its caller")
 	}
 }
 
