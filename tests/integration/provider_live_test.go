@@ -1091,16 +1091,19 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 			); cleanupErr != nil {
 				t.Error(cleanupErr)
 			}
+			if cleanupErr := terminateProviderLiveLifetimes(lifetimes.forCleanup()); cleanupErr != nil {
+				t.Error(cleanupErr)
+			}
+			if cleanupErr := waitForProviderLiveLifetimesToEnd(lifetimes.forCleanup()); cleanupErr != nil {
+				t.Error(cleanupErr)
+			}
+			harness.dispatchSentinel.assertNoDispatch(t)
 			if cleanupErr := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); cleanupErr != nil {
 				t.Errorf("stop exact provider-live tmux server: %v", cleanupErr)
 				return
 			}
 			serverStopped = true
 		}
-		if cleanupErr := waitForProviderLiveLifetimesToEnd(lifetimes.forCleanup()); cleanupErr != nil {
-			t.Error(cleanupErr)
-		}
-		harness.dispatchSentinel.assertNoDispatch(t)
 	})
 
 	operationContext, cancel := context.WithTimeout(context.Background(), providerLiveOperationTimeout)
@@ -1145,16 +1148,20 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 		t.Error(captureErr)
 	}
 
-	if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); err != nil {
-		t.Fatal("stop exact provider-live tmux server")
+	providerLifetimes := lifetimes.forCleanup()
+	if err := terminateProviderLiveLifetimes(providerLifetimes); err != nil {
+		t.Fatal("hard-stop exact provider-live runtimes")
 	}
-	serverStopped = true
-	cleanupErr := waitForProviderLiveLifetimesToEnd(lifetimes.forCleanup())
-	cleanupComplete = true
+	cleanupErr := waitForProviderLiveLifetimesToEnd(providerLifetimes)
 	if cleanupErr != nil {
 		t.Fatal(cleanupErr)
 	}
 	harness.dispatchSentinel.assertNoDispatch(t)
+	if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); err != nil {
+		t.Fatal("stop exact provider-live tmux server")
+	}
+	serverStopped = true
+	cleanupComplete = true
 }
 
 func requireProviderLivePreflight(t *testing.T) providerLivePreflight {
