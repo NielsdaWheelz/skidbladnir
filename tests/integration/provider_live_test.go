@@ -170,6 +170,7 @@ func TestProviderLiveLaunchersEnforceOfflineInputBoundary(t *testing.T) {
 	wantCodexArguments := []string{
 		"exec", "--ephemeral", "--dangerously-bypass-hook-trust",
 		"--dangerously-bypass-approvals-and-sandbox",
+		"--config", `projects={` + strconv.Quote(harness.workspace) + `={trust_level="trusted"}}`,
 		"--config", "features.hooks=true",
 		"--model", "skidbladnir-provider-live-offline",
 		"--config", `model_provider="skidbladnir_provider_live"`,
@@ -638,6 +639,11 @@ func providerLiveExecutionProfile(profile agentruntime.Profile, harness provider
 			"--dangerously-bypass-hook-trust",
 		}
 		arguments = append(arguments, profile.Arguments...)
+		arguments = append(
+			arguments,
+			"--config",
+			`projects={`+strconv.Quote(harness.workspace)+`={trust_level="trusted"}}`,
+		)
 		arguments = append(arguments, providerLiveCodexOfflineArguments(harness.codexBaseURL)...)
 		profile.Arguments = append(arguments, "-")
 	case agentruntime.ProviderClaude:
