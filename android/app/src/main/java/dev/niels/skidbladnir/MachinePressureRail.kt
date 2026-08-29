@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -37,8 +36,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -74,15 +76,23 @@ internal fun MachinePressureRail(
             },
     ) {
         Column(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val headerAccent = pressureRailAccentColor(content.header.accent)
             Text(
-                text = content.header,
-                color = pressureHeaderColor(state),
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = Bone, fontWeight = FontWeight.Bold)) {
+                        append(content.header.machineLabel)
+                    }
+                    append(' ')
+                    withStyle(SpanStyle(color = headerAccent, fontWeight = FontWeight.Medium)) {
+                        append(content.header.statusText)
+                    }
+                },
+                color = Bone,
                 style = MaterialTheme.typography.labelLarge,
                 fontFamily = NidavellirType.Data,
-                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("machine-strip-label-$handle"),
@@ -91,29 +101,41 @@ internal fun MachinePressureRail(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 24.dp)
                         .horizontalScroll(rememberScrollState())
-                        .testTag("pressure-gems-$handle"),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .testTag("pressure-metrics-$handle"),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    content.gems.forEach { gem ->
-                        val color = pressureColor(gem.colorRole)
-                        Surface(
-                            color = color.copy(alpha = 0.18f),
-                            contentColor = color,
-                            shape = NidavellirShapes.Chip,
-                            border = BorderStroke(1.dp, color),
-                            modifier = Modifier.testTag("pressure-gem-$handle-${gem.metric.name}"),
-                        ) {
-                            Text(
-                                text = "${gem.shortLabel} ${gem.value} ${gem.stateMark}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = NidavellirType.Data,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                            )
-                        }
+                    content.metrics.forEach { metric ->
+                        val accent = pressureRailAccentColor(metric.accent)
+                        Text(
+                            text = buildAnnotatedString {
+                                withStyle(SpanStyle(color = Muted)) {
+                                    append(metric.shortLabel)
+                                }
+                                append(' ')
+                                withStyle(
+                                    SpanStyle(
+                                        color = if (metric.accent == PressureRailAccent.None) Bone else accent,
+                                    ),
+                                ) {
+                                    append(metric.value)
+                                }
+                                append(' ')
+                                withStyle(
+                                    SpanStyle(
+                                        color = if (metric.accent == PressureRailAccent.None) Muted else accent,
+                                    ),
+                                ) {
+                                    append(metric.stateMark)
+                                }
+                            },
+                            color = Bone,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = NidavellirType.Data,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                        )
                     }
                 }
                 Box(Modifier.testTag("pressure-history-band-$handle")) {
@@ -231,10 +253,11 @@ internal fun MachinePressureDetailsSheet(
     }
 }
 
-private fun pressureHeaderColor(state: PressureState): Color = when (state) {
-    PressureState.Reading -> Gold
-    is PressureState.Fresh -> pressureColor(state.response.current.level)
-    is PressureState.Stale, is PressureState.Unavailable -> Muted
+private fun pressureRailAccentColor(accent: PressureRailAccent): Color = when (accent) {
+    PressureRailAccent.None -> Bone
+    PressureRailAccent.Gold -> Gold
+    PressureRailAccent.Ember -> Ember
+    PressureRailAccent.Muted -> Muted
 }
 
 private fun pressureColor(role: PressureColorRole): Color = when (role) {

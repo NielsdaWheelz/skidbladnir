@@ -143,8 +143,11 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Orpiment | `#E8B923` | 10.55 | Attention badge only. The loudest color owned; spending it on exactly one mark keeps attention pre-attentive |
 
 Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
-`SHELL` Bronze · `UNKNOWN` Muted. Pressure keeps Normal Moss · Warm Gold ·
-Hot Ember · Unknown/missing Muted; display-only Informational is Frost.
+`SHELL` Bronze · `UNKNOWN` Muted. Pressure history and detail rows keep Normal
+Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
+collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
+Muted, informational/normal values are Bone, and only Warm/Hot values and marks
+spend Gold/Ember.
 
 ### Severity tones
 
@@ -498,12 +501,14 @@ it as a red test, not an assumption.
   slice), keys 4dp cut, mono labels, 48dp/8dp geometry and spoken Ctrl
   semantics owned by [terminal-key-deck.md](terminal-key-deck.md). Ctrl
   armed = Gold 18% fill + Gold label + selected semantics.
-- **Pressure rail**: RaisedSurface card, 10dp cuts, one header, one horizontally
-  scrolling non-wrapping gem row, then the unchanged 16dp categorical history
-  band with no title. The whole rail is one disclosure control. Static gems use
-  the 4dp chip cut, Data face, state color at 18% fill plus same-color hairline,
-  and redundant `i | N | W | H | ?` marks; they are not nested controls or
-  cloisonné pigment fills. The machine-bound details sheet uses the existing
+- **Pressure rail**: RaisedSurface card, 10dp cuts, one split-colour header, one
+  horizontally scrolling non-wrapping flat Data-face metric row, then the
+  unchanged 16dp categorical history band with no title. The machine name is
+  Bone; normal/absent header status is Muted; reading/warm is Gold; hot is
+  Ember. Metric labels and `i/N` marks are Muted, informational/normal values
+  are Bone, Warm values/marks are Gold, and Hot values/marks are Ember. Metrics
+  have no fill, border, shape, separator, or nested action. The whole rail is
+  one disclosure control. The machine-bound details sheet keeps the existing
   12dp top-cut sheet and panel language, with no second history band.
 
 ## 14. Accessibility floor

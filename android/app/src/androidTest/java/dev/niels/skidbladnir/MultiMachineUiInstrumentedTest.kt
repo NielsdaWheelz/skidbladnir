@@ -729,7 +729,7 @@ class MultiMachineUiInstrumentedTest {
                 rail.assertIsDisplayed().assertHasClickAction().assertContentDescriptionEquals(
                     "MacBook. Fresh pressure. Recovering from hot. Cause: load. " +
                         "CPU 34% i, informational; MEM WARNING W, warm; SWAP NO DATA ?, no data; " +
-                        "LOAD 1.25 W, warm; DISK 61% N, normal. " +
+                        "LOAD 1.3 W, warm; DISK 61% N, normal. " +
                         "Trend: 2 earlier runs over 10 seconds; hot 5 seconds, " +
                         "then unknown 5 seconds, then hot 5 seconds.",
                 )
@@ -745,15 +745,80 @@ class MultiMachineUiInstrumentedTest {
                 val railBounds = rail.getUnclippedBoundsInRoot()
                 val height = railBounds.bottom - railBounds.top
                 assertTrue(
-                    "default 360dp rail must be 84–92dp, was $height",
-                    height >= 84.dp - 0.001.dp && height <= 92.dp + 0.001.dp,
+                    "default 360dp rail must be 68–76dp, was $height",
+                    height >= 68.dp - 0.001.dp && height <= 76.dp + 0.001.dp,
                 )
-                compose.onNodeWithText(
+                val header = compose.onNodeWithText(
                     "MacBook RECOVERING FROM HOT · LOAD",
                     useUnmergedTree = true,
                 ).assertIsDisplayed()
-                compose.onNodeWithText("SWAP NO DATA ?", substring = true, useUnmergedTree = true)
-                    .assertIsDisplayed()
+                val metricGroups = listOf(
+                    "CPU 34% i",
+                    "MEM WARNING W",
+                    "SWAP NO DATA ?",
+                    "LOAD 1.3 W",
+                    "DISK 61% N",
+                )
+                metricGroups.forEach { group ->
+                    compose.onNodeWithText(group, useUnmergedTree = true).assertHasNoClickAction()
+                }
+
+                val headerPixels = header.captureToImage().toPixelMap()
+                var lastBoneColumn: Int? = null
+                var firstEmberColumn: Int? = null
+                for (x in 0 until headerPixels.width) {
+                    for (y in 0 until headerPixels.height) {
+                        when (headerPixels[x, y].toArgb()) {
+                            Bone.toArgb() -> lastBoneColumn = x
+                            Ember.toArgb() -> if (firstEmberColumn == null) firstEmberColumn = x
+                        }
+                    }
+                }
+                assertTrue(
+                    "header must render neutral machine text before the hot status accent; " +
+                        "lastBone=$lastBoneColumn firstEmber=$firstEmberColumn",
+                    lastBoneColumn != null && firstEmberColumn != null &&
+                        lastBoneColumn < firstEmberColumn,
+                )
+
+                // Visible text owns metric identity. This one row tag exists only for the
+                // rendered no-container proof, which has no semantic query.
+                val metricPixels = compose.onNodeWithTag(
+                    "pressure-metrics-$macHandle",
+                    useUnmergedTree = true,
+                ).captureToImage().toPixelMap()
+                val quietAccentColors = setOf(Frost.toArgb(), Moss.toArgb())
+                var backgroundPixels = 0
+                var bonePixels = 0
+                var mutedPixels = 0
+                var goldPixels = 0
+                var quietAccentPixels = 0
+                for (x in 0 until metricPixels.width) {
+                    for (y in 0 until metricPixels.height) {
+                        val color = metricPixels[x, y].toArgb()
+                        if (color == RaisedSurface.toArgb()) backgroundPixels += 1
+                        if (color == Bone.toArgb()) bonePixels += 1
+                        if (color == Muted.toArgb()) mutedPixels += 1
+                        if (color == Gold.toArgb()) goldPixels += 1
+                        if (color in quietAccentColors) quietAccentPixels += 1
+                    }
+                }
+                val metricArea = metricPixels.width * metricPixels.height
+                assertTrue(
+                    "metric row capture must contain pixels, was ${metricPixels.width}x${metricPixels.height}",
+                    metricArea > 0,
+                )
+                assertTrue(
+                    "flat metric text must leave at least two thirds RaisedSurface around glyphs; " +
+                        "background=$backgroundPixels/$metricArea",
+                    backgroundPixels * 3 >= metricArea * 2,
+                )
+                assertTrue(
+                    "metric row must render Bone/Muted/Gold ink without Frost/Moss; " +
+                        "bone=$bonePixels muted=$mutedPixels gold=$goldPixels " +
+                        "frostOrMoss=$quietAccentPixels",
+                    bonePixels > 0 && mutedPixels > 0 && goldPixels > 0 && quietAccentPixels == 0,
+                )
                 compose.onNodeWithText("Recent pressure history", substring = true, useUnmergedTree = true)
                     .assertDoesNotExist()
                 compose.onNodeWithText("up to 15 min", substring = true, useUnmergedTree = true)
@@ -867,10 +932,10 @@ class MultiMachineUiInstrumentedTest {
                     "320dp large-text history clipped outside rail: rail=$largeBounds history=$historyBounds",
                     historyBounds.top >= largeBounds.top && historyBounds.bottom <= largeBounds.bottom,
                 )
-                compose.onNodeWithTag(
-                    "pressure-gem-$macHandle-DiskAvailablePercent",
-                    useUnmergedTree = true,
-                ).performScrollTo().assertIsDisplayed().assertHasNoClickAction()
+                compose.onNodeWithText("DISK 61% N", useUnmergedTree = true)
+                    .performScrollTo()
+                    .assertIsDisplayed()
+                    .assertHasNoClickAction()
 
                 largeRail.performClick()
                 compose.onNodeWithText("MacBook pressure").assertIsDisplayed()

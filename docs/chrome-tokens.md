@@ -91,8 +91,10 @@ internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean
 
 `statusColor` maps `Working→Moss, Running→Frost, Idle→Gold, Shell→Bronze,
 Unknown→Muted` and moves from `private` to `internal` so its injectivity is a
-pure JVM proof. Pressure keeps `Normal→Moss, Warm→Gold, Hot→Ember,
-Unknown→Muted`.
+pure JVM proof. Pressure history and details keep `Normal→Moss, Warm→Gold,
+Hot→Ember, Unknown→Muted`; the collapsed rail independently quiets
+informational/normal values to Bone with Muted labels/marks and spends
+Gold/Ember only on host-evaluated Warm/Hot exceptions.
 
 ### Fonts
 

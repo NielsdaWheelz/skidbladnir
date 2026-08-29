@@ -272,11 +272,14 @@ ready target hidden by another filter first names the filter change,
 authentication names whole-fleet reconnect, and a changed or missing identity
 names app-data reset and a fresh connect. Review-ready copy remains a past-tense fact,
 not another verification command. Each pressure rail is one compact disclosure
-control: machine/aggregate/cause/freshness header, one stable non-wrapping row
-of status-coloured metric gems, then the unchanged 16dp categorical history
-band with no title. CPU and swap are visibly informational, missing supported
-evidence remains as `?`, and unsupported inventory is never product copy. A tap
-opens one machine-bound details sheet containing every supported current metric,
+control: a machine/aggregate/cause/freshness header, one stable non-wrapping
+flat typographic metric row, then the unchanged 16dp categorical history band
+with no title. Metric labels are neutral; informational and normal values are
+quiet, while only host-evaluated warm/hot values and marks spend Gold/Ember.
+CPU and swap are visibly informational, missing supported evidence remains
+muted as `NO DATA ?`, and unsupported inventory is never product copy. Android
+never derives a pressure state or colour from a raw value. A tap opens one
+machine-bound details sheet containing every supported current metric,
 full states, reasons, freshness, and `NO DATA`; it reads the accepted pressure
 snapshot and performs no request or mutation. Pressure freshness is independent
 of inventory freshness. Stale pressure preserves and labels its last snapshot;
@@ -726,7 +729,8 @@ shadow; the terminal key deck exposes only its reviewed terminal inputs,
 one-shot Ctrl never alters literal IME/dictation/paste input or survives a
 lifecycle boundary, and leaving through the top detach action or Back detaches
 only the phone; both pressure capability sets are honest, host statuses drive
-every gem, missing evidence stays visible, recovery is explicit, and pressure
+every metric mark and exception accent, missing evidence stays visible,
+recovery is explicit, and pressure
 disclosure adds no network or mutation; app, gateway, and LaunchAgent restart
 converge to each local
 `tmux list-sessions` truth.

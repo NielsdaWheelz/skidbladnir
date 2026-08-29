@@ -19,14 +19,36 @@ class PressurePresentationTest {
             level = PressureLevel.Unknown,
             signals = linuxSignals(memory = PressureSignal.Missing(PressureMetric.MemoryAvailablePercent)),
         )
+        val warmRecovery = response(
+            level = PressureLevel.Warm,
+            phase = PressurePhase.Recovering,
+            reasons = listOf(PressureReason.Load),
+            signals = linuxSignals(
+                load = measured(PressureMetric.NormalizedLoad, 1.2, PressureSignalState.Warm),
+            ),
+        )
 
         val cases = listOf(
-            PressureState.Reading to "Devbox READING",
-            PressureState.Unavailable(GatewayFailure.Transport) to "Devbox PRESSURE UNAVAILABLE",
-            PressureState.Stale(hotRecovery, GatewayFailure.Transport) to "Devbox PRESSURE STALE · LAST HOT",
-            PressureState.Fresh(unknown) to "Devbox UNKNOWN · MEM NO DATA",
-            PressureState.Fresh(hotRecovery) to "Devbox RECOVERING FROM HOT · DISK +1",
-            PressureState.Fresh(response(PressureLevel.Normal, signals = linuxSignals())) to "Devbox NORMAL",
+            PressureState.Reading to
+                PressureRailHeaderContent("Devbox", "READING", PressureRailAccent.Gold),
+            PressureState.Unavailable(GatewayFailure.Transport) to
+                PressureRailHeaderContent("Devbox", "PRESSURE UNAVAILABLE", PressureRailAccent.Muted),
+            PressureState.Stale(hotRecovery, GatewayFailure.Transport) to
+                PressureRailHeaderContent("Devbox", "PRESSURE STALE · LAST HOT", PressureRailAccent.Muted),
+            PressureState.Fresh(unknown) to
+                PressureRailHeaderContent("Devbox", "UNKNOWN · MEM NO DATA", PressureRailAccent.Muted),
+            PressureState.Fresh(warmRecovery) to PressureRailHeaderContent(
+                "Devbox",
+                "RECOVERING FROM WARM · LOAD",
+                PressureRailAccent.Gold,
+            ),
+            PressureState.Fresh(hotRecovery) to PressureRailHeaderContent(
+                "Devbox",
+                "RECOVERING FROM HOT · DISK +1",
+                PressureRailAccent.Ember,
+            ),
+            PressureState.Fresh(response(PressureLevel.Normal, signals = linuxSignals())) to
+                PressureRailHeaderContent("Devbox", "NORMAL", PressureRailAccent.Muted),
             PressureState.Fresh(
                 response(
                     PressureLevel.Warm,
@@ -39,7 +61,7 @@ class PressurePresentationTest {
                         ),
                     ),
                 ),
-            ) to "Devbox WARM · MEMORY",
+            ) to PressureRailHeaderContent("Devbox", "WARM · MEMORY", PressureRailAccent.Gold),
             PressureState.Fresh(
                 response(
                     PressureLevel.Hot,
@@ -52,7 +74,7 @@ class PressurePresentationTest {
                         ),
                     ),
                 ),
-            ) to "Devbox HOT · I/O PRESSURE",
+            ) to PressureRailHeaderContent("Devbox", "HOT · I/O PRESSURE", PressureRailAccent.Ember),
         )
 
         cases.forEach { (state, expected) ->
@@ -63,17 +85,29 @@ class PressurePresentationTest {
             )
         }
 
-        val missingMemory = pressureRailContent("Devbox", PressureState.Fresh(unknown)).gems[1]
-        assertEquals(PressureMetric.MemoryAvailablePercent, missingMemory.metric)
-        assertEquals("NO DATA", missingMemory.value)
-        assertEquals("?", missingMemory.stateMark)
-        assertEquals("No data", missingMemory.stateWord)
-        assertEquals(PressureColorRole.Muted, missingMemory.colorRole)
+        val missingMemory = pressureRailContent("Devbox", PressureState.Fresh(unknown)).metrics[1]
+        assertEquals(
+            PressureRailMetricContent(
+                PressureMetric.MemoryAvailablePercent,
+                "MEM",
+                "NO DATA",
+                "?",
+                "No data",
+                PressureRailAccent.Muted,
+            ),
+            missingMemory,
+        )
         val missingMemoryDetail = pressureDetailsContent("Devbox", PressureState.Fresh(unknown)).rows[1]
-        assertEquals(PressureMetric.MemoryAvailablePercent, missingMemoryDetail.metric)
-        assertEquals("NO DATA", missingMemoryDetail.value)
-        assertEquals("No data", missingMemoryDetail.stateWord)
-        assertEquals(PressureColorRole.Muted, missingMemoryDetail.colorRole)
+        assertEquals(
+            PressureDetailRow(
+                PressureMetric.MemoryAvailablePercent,
+                "RAM available",
+                "NO DATA",
+                "No data",
+                PressureColorRole.Muted,
+            ),
+            missingMemoryDetail,
+        )
         assertEquals(
             "Stale pressure. Last recovering from hot. Causes: disk, load.",
             pressureDetailsContent(
@@ -84,7 +118,7 @@ class PressurePresentationTest {
     }
 
     @Test
-    fun `Linux gems and details keep stable order honest states and directional units`() {
+    fun `Linux rail and details keep stable order honest states and directional units`() {
         val state = PressureState.Fresh(
             response(
                 level = PressureLevel.Hot,
@@ -95,11 +129,11 @@ class PressurePresentationTest {
                     PressureReason.IoPsi,
                 ),
                 signals = linuxSignals(
-                    cpu = measured(PressureMetric.CpuPercent, 34.0, PressureSignalState.Informational),
-                    memory = measured(PressureMetric.MemoryAvailablePercent, 42.25, PressureSignalState.Normal),
+                    cpu = measured(PressureMetric.CpuPercent, 34.49, PressureSignalState.Informational),
+                    memory = measured(PressureMetric.MemoryAvailablePercent, 42.6, PressureSignalState.Normal),
                     swap = measured(PressureMetric.SwapUsedPercent, 0.0, PressureSignalState.Informational),
-                    load = measured(PressureMetric.NormalizedLoad, 1.2, PressureSignalState.Warm),
-                    disk = measured(PressureMetric.DiskAvailablePercent, 4.5, PressureSignalState.Hot),
+                    load = measured(PressureMetric.NormalizedLoad, 1.26, PressureSignalState.Warm),
+                    disk = measured(PressureMetric.DiskAvailablePercent, 4.6, PressureSignalState.Hot),
                     cpuPsi = measured(PressureMetric.CpuPsiSomeAvg60Percent, 21.0, PressureSignalState.Warm),
                     ioPsi = measured(PressureMetric.IoPsiFullAvg60Percent, 5.25, PressureSignalState.Hot),
                 ),
@@ -108,31 +142,50 @@ class PressurePresentationTest {
 
         val rail = pressureRailContent("Devbox", state)
         assertEquals(
-            "primary gems must scan by fixed conceptual role, not transport order or severity",
-            listOf("CPU", "MEM", "SWAP", "LOAD", "DISK"),
-            rail.gems.map(PressureGemContent::shortLabel),
-        )
-        assertEquals(
-            listOf("34%", "42.25%", "0%", "1.2", "4.5%"),
-            rail.gems.map(PressureGemContent::value),
-        )
-        assertEquals(
-            listOf("i", "N", "i", "W", "H"),
-            rail.gems.map(PressureGemContent::stateMark),
-        )
-        assertEquals(
-            listOf("Informational", "Normal", "Informational", "Warm", "Hot"),
-            rail.gems.map(PressureGemContent::stateWord),
-        )
-        assertEquals(
+            "rail metrics must keep conceptual order, collapsed precision, marks, and host accents",
             listOf(
-                PressureColorRole.Frost,
-                PressureColorRole.Moss,
-                PressureColorRole.Frost,
-                PressureColorRole.Gold,
-                PressureColorRole.Ember,
+                PressureRailMetricContent(
+                    PressureMetric.CpuPercent,
+                    "CPU",
+                    "34%",
+                    "i",
+                    "Informational",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.MemoryAvailablePercent,
+                    "MEM",
+                    "43%",
+                    "N",
+                    "Normal",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.SwapUsedPercent,
+                    "SWAP",
+                    "0%",
+                    "i",
+                    "Informational",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.NormalizedLoad,
+                    "LOAD",
+                    "1.3",
+                    "W",
+                    "Warm",
+                    PressureRailAccent.Gold,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.DiskAvailablePercent,
+                    "DISK",
+                    "5%",
+                    "H",
+                    "Hot",
+                    PressureRailAccent.Ember,
+                ),
             ),
-            rail.gems.map(PressureGemContent::colorRole),
+            rail.metrics,
         )
 
         val details = pressureDetailsContent("Devbox", state)
@@ -153,9 +206,23 @@ class PressurePresentationTest {
             ),
             details.rows.map(PressureDetailRow::fullLabel),
         )
-        assertEquals("0%", details.rows[6].value)
-        assertEquals("Normal", details.rows[6].stateWord)
-        assertEquals(PressureColorRole.Moss, details.rows[6].colorRole)
+        assertEquals(
+            listOf("34.49%", "42.6%", "0%", "1.26", "4.6%", "21%", "0%", "5.25%"),
+            details.rows.map(PressureDetailRow::value),
+        )
+        assertEquals(
+            listOf(
+                PressureColorRole.Frost,
+                PressureColorRole.Moss,
+                PressureColorRole.Frost,
+                PressureColorRole.Gold,
+                PressureColorRole.Ember,
+                PressureColorRole.Gold,
+                PressureColorRole.Moss,
+                PressureColorRole.Ember,
+            ),
+            details.rows.map(PressureDetailRow::colorRole),
+        )
     }
 
     @Test
@@ -180,15 +247,59 @@ class PressurePresentationTest {
 
         val rail = pressureRailContent("MacBook", state)
         assertEquals(
-            listOf("CPU", "MEM", "SWAP", "LOAD", "DISK"),
-            rail.gems.map(PressureGemContent::shortLabel),
-        )
-        assertEquals("WARNING", rail.gems[1].value)
-        assertEquals(
-            listOf("CPU used", "system memory pressure", "swap used", "normalized load", "disk available"),
-            pressureDetailsContent("MacBook", state).rows.map(PressureDetailRow::fullLabel),
+            listOf(
+                PressureRailMetricContent(
+                    PressureMetric.CpuPercent,
+                    "CPU",
+                    "10%",
+                    "i",
+                    "Informational",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.MemoryPressure,
+                    "MEM",
+                    "WARNING",
+                    "W",
+                    "Warm",
+                    PressureRailAccent.Gold,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.SwapUsedPercent,
+                    "SWAP",
+                    "2%",
+                    "i",
+                    "Informational",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.NormalizedLoad,
+                    "LOAD",
+                    "0.8",
+                    "N",
+                    "Normal",
+                    PressureRailAccent.None,
+                ),
+                PressureRailMetricContent(
+                    PressureMetric.DiskAvailablePercent,
+                    "DISK",
+                    "55%",
+                    "N",
+                    "Normal",
+                    PressureRailAccent.None,
+                ),
+            ),
+            rail.metrics,
         )
         val details = pressureDetailsContent("MacBook", state)
+        assertEquals(
+            listOf("CPU used", "system memory pressure", "swap used", "normalized load", "disk available"),
+            details.rows.map(PressureDetailRow::fullLabel),
+        )
+        assertEquals(
+            listOf("9.5%", "WARNING", "2%", "0.75", "55%"),
+            details.rows.map(PressureDetailRow::value),
+        )
         assertFalse(
             "unsupported capability inventory is protocol validation, never product content",
             "$rail$details"
@@ -197,7 +308,7 @@ class PressurePresentationTest {
     }
 
     @Test
-    fun `rail accessibility names missing detail-only evidence and every gem state mark`() {
+    fun `rail accessibility names header facts missing detail-only evidence and every metric state`() {
         val state = PressureState.Fresh(
             response(
                 level = PressureLevel.Unknown,
@@ -252,14 +363,16 @@ class PressurePresentationTest {
             rail.historySummary,
         )
         assertEquals("Show Devbox pressure details", rail.actionLabel)
-        assertEquals("Devbox HOT · DISK +1", rail.header)
+        assertEquals(
+            PressureRailHeaderContent("Devbox", "HOT · DISK +1", PressureRailAccent.Ember),
+            rail.header,
+        )
         assertEquals(
             "Devbox. Fresh pressure. Steady at hot. Causes: disk, load. " +
                 "CPU 18% i, informational; MEM 72% N, normal; SWAP NO DATA ?, no data; " +
                 "LOAD 1.2 W, warm; DISK 4% H, hot. ${rail.historySummary}",
             rail.accessibilitySummary,
         )
-        assertFalse(rail.accessibilitySummary.contains("DISK +1"))
         assertFalse(rail.accessibilitySummary.contains("Recent pressure history"))
         assertFalse(rail.accessibilitySummary.contains("up to 15 min"))
     }
@@ -274,8 +387,25 @@ class PressurePresentationTest {
         cases.forEach { (state, expectedSummary) ->
             val rail = pressureRailContent("Devbox", state)
             val details = pressureDetailsContent("Devbox", state)
-            assertTrue("no accepted snapshot means no fabricated gem values", rail.gems.isEmpty())
+            val expectedHeader = when (state) {
+                PressureState.Reading ->
+                    PressureRailHeaderContent("Devbox", "READING", PressureRailAccent.Gold)
+                is PressureState.Unavailable -> PressureRailHeaderContent(
+                    "Devbox",
+                    "PRESSURE UNAVAILABLE",
+                    PressureRailAccent.Muted,
+                )
+                else -> error("header-only cases contain only reading and unavailable")
+            }
+            assertEquals(expectedHeader, rail.header)
+            assertTrue("no accepted snapshot means no fabricated metric values", rail.metrics.isEmpty())
             assertEquals("No pressure samples yet.", rail.historySummary)
+            assertEquals(
+                "Devbox. ${expectedSummary.removeSuffix(".")}. " +
+                    "No pressure samples yet.",
+                rail.accessibilitySummary,
+            )
+            assertEquals("Show Devbox pressure details", rail.actionLabel)
             assertEquals(expectedSummary, details.summary)
             assertTrue("no accepted snapshot means no fabricated detail rows", details.rows.isEmpty())
             assertEquals("Devbox pressure", details.title)

@@ -5,20 +5,26 @@ import java.time.Instant
 import java.util.Locale
 
 internal data class PressureRailContent(
-    val header: String,
-    val gems: List<PressureGemContent>,
+    val header: PressureRailHeaderContent,
+    val metrics: List<PressureRailMetricContent>,
     val historySummary: String,
     val accessibilitySummary: String,
     val actionLabel: String,
 )
 
-internal data class PressureGemContent(
+internal data class PressureRailHeaderContent(
+    val machineLabel: String,
+    val statusText: String,
+    val accent: PressureRailAccent,
+)
+
+internal data class PressureRailMetricContent(
     val metric: PressureMetric,
     val shortLabel: String,
     val value: String,
     val stateMark: String,
     val stateWord: String,
-    val colorRole: PressureColorRole,
+    val accent: PressureRailAccent,
 )
 
 internal data class PressureDetailsContent(
@@ -36,27 +42,29 @@ internal data class PressureDetailRow(
     val colorRole: PressureColorRole,
 )
 
+internal enum class PressureRailAccent { None, Gold, Ember, Muted }
+
 internal enum class PressureColorRole { Frost, Moss, Gold, Ember, Muted }
 
 internal fun pressureRailContent(machineLabel: String, state: PressureState): PressureRailContent {
     val response = state.response()
-    val gems = response?.current?.signals?.let(::primaryGems).orEmpty()
+    val metrics = response?.current?.signals?.let(::railMetrics).orEmpty()
     val historySummary = response?.history?.let(::historySummary) ?: "No pressure samples yet."
     val header = pressureHeader(machineLabel, state)
-    val metricSummary = gems.joinToString("; ") {
+    val metricSummary = metrics.joinToString("; ") {
         "${it.shortLabel} ${it.value} ${it.stateMark}, ${it.stateWord.lowercase(Locale.ROOT)}"
     }
-    val primaryMetrics = gems.map(PressureGemContent::metric).toSet()
+    val visibleMetrics = metrics.map(PressureRailMetricContent::metric).toSet()
     val missingDetailSummary = response?.current?.signals
         ?.filterIsInstance<PressureSignal.Missing>()
-        ?.filterNot { it.metric in primaryMetrics }
+        ?.filterNot { it.metric in visibleMetrics }
         ?.joinToString("; ") {
             "${metricCopy(it.metric).shortLabel} NO DATA ?, no data"
         }
         .orEmpty()
     return PressureRailContent(
         header = header,
-        gems = gems,
+        metrics = metrics,
         historySummary = historySummary,
         accessibilitySummary = listOf(
             machineLabel,
@@ -87,28 +95,52 @@ internal fun PressureState.response(): PressureResponse? = when (this) {
     is PressureState.Stale -> response
 }
 
-private fun pressureHeader(machineLabel: String, state: PressureState): String = when (state) {
-    PressureState.Reading -> "$machineLabel READING"
-    is PressureState.Unavailable -> "$machineLabel PRESSURE UNAVAILABLE"
-    is PressureState.Stale ->
-        "$machineLabel PRESSURE STALE · LAST ${state.response.current.level.name.uppercase(Locale.ROOT)}"
+private fun pressureHeader(machineLabel: String, state: PressureState): PressureRailHeaderContent = when (state) {
+    PressureState.Reading -> PressureRailHeaderContent(machineLabel, "READING", PressureRailAccent.Gold)
+    is PressureState.Unavailable ->
+        PressureRailHeaderContent(machineLabel, "PRESSURE UNAVAILABLE", PressureRailAccent.Muted)
+    is PressureState.Stale -> PressureRailHeaderContent(
+        machineLabel,
+        "PRESSURE STALE · LAST ${state.response.current.level.name.uppercase(Locale.ROOT)}",
+        PressureRailAccent.Muted,
+    )
     is PressureState.Fresh -> freshPressureHeader(machineLabel, state.response.current)
 }
 
-private fun freshPressureHeader(machineLabel: String, current: PressureSample): String = when {
+private fun freshPressureHeader(
+    machineLabel: String,
+    current: PressureSample,
+): PressureRailHeaderContent = when {
     current.level == PressureLevel.Unknown -> {
         val missing = current.signals.filterIsInstance<PressureSignal.Missing>().filter {
             it.metric != PressureMetric.CpuPercent && it.metric != PressureMetric.SwapUsedPercent
         }
-        "$machineLabel UNKNOWN · ${metricCopy(missing.first().metric).shortLabel} " +
-            "NO DATA${countSuffix(missing.size)}"
+        PressureRailHeaderContent(
+            machineLabel,
+            "UNKNOWN · ${metricCopy(missing.first().metric).shortLabel} " +
+                "NO DATA${countSuffix(missing.size)}",
+            PressureRailAccent.Muted,
+        )
     }
     current.phase == PressurePhase.Recovering -> when (current.level) {
-        PressureLevel.Warm, PressureLevel.Hot ->
-            "$machineLabel RECOVERING FROM ${current.level.name.uppercase(Locale.ROOT)}${causeSuffix(current.reasons)}"
+        PressureLevel.Warm, PressureLevel.Hot -> PressureRailHeaderContent(
+            machineLabel,
+            "RECOVERING FROM ${current.level.name.uppercase(Locale.ROOT)}${causeSuffix(current.reasons)}",
+            pressureRailAccent(current.level),
+        )
         PressureLevel.Normal, PressureLevel.Unknown -> error("recovering pressure must retain Warm or Hot")
     }
-    else -> "$machineLabel ${current.level.name.uppercase(Locale.ROOT)}${causeSuffix(current.reasons)}"
+    else -> PressureRailHeaderContent(
+        machineLabel,
+        "${current.level.name.uppercase(Locale.ROOT)}${causeSuffix(current.reasons)}",
+        pressureRailAccent(current.level),
+    )
+}
+
+private fun pressureRailAccent(level: PressureLevel): PressureRailAccent = when (level) {
+    PressureLevel.Normal, PressureLevel.Unknown -> PressureRailAccent.Muted
+    PressureLevel.Warm -> PressureRailAccent.Gold
+    PressureLevel.Hot -> PressureRailAccent.Ember
 }
 
 private fun causeSuffix(reasons: List<PressureReason>): String = if (reasons.isEmpty()) {
@@ -146,7 +178,7 @@ private fun reasonsSentence(reasons: List<PressureReason>): String = when (reaso
     else -> " Causes: ${reasons.joinToString { reasonLabel(it) }}."
 }
 
-private fun primaryGems(signals: List<PressureSignal>): List<PressureGemContent> {
+private fun railMetrics(signals: List<PressureSignal>): List<PressureRailMetricContent> {
     val byMetric = signals.associateBy(PressureSignal::metric)
     return listOf(
         byMetric.getValue(PressureMetric.CpuPercent),
@@ -155,7 +187,7 @@ private fun primaryGems(signals: List<PressureSignal>): List<PressureGemContent>
         byMetric.getValue(PressureMetric.SwapUsedPercent),
         byMetric.getValue(PressureMetric.NormalizedLoad),
         byMetric.getValue(PressureMetric.DiskAvailablePercent),
-    ).map(::gemContent)
+    ).map(::railMetricContent)
 }
 
 private fun detailRows(signals: List<PressureSignal>): List<PressureDetailRow> {
@@ -174,28 +206,34 @@ private fun detailRank(metric: PressureMetric): Int = when (metric) {
     PressureMetric.IoPsiFullAvg60Percent -> 8
 }
 
-private fun gemContent(signal: PressureSignal): PressureGemContent {
+private fun railMetricContent(signal: PressureSignal): PressureRailMetricContent {
     val metric = metricCopy(signal.metric)
-    val value = signalCopy(signal)
-    return PressureGemContent(
+    val presentation = signalPresentation(signal)
+    return PressureRailMetricContent(
         metric = signal.metric,
         shortLabel = metric.shortLabel,
-        value = value.value,
-        stateMark = value.stateMark,
-        stateWord = value.stateWord,
-        colorRole = value.colorRole,
+        value = when (signal) {
+            is PressureSignal.Missing -> "NO DATA"
+            is PressureSignal.Measured -> collapsedPressureValue(signal.value)
+        },
+        stateMark = presentation.stateMark,
+        stateWord = presentation.stateWord,
+        accent = presentation.railAccent,
     )
 }
 
 private fun detailRow(signal: PressureSignal): PressureDetailRow {
     val metric = metricCopy(signal.metric)
-    val value = signalCopy(signal)
+    val presentation = signalPresentation(signal)
     return PressureDetailRow(
         metric = signal.metric,
         fullLabel = metric.fullLabel,
-        value = value.value,
-        stateWord = value.stateWord,
-        colorRole = value.colorRole,
+        value = when (signal) {
+            is PressureSignal.Missing -> "NO DATA"
+            is PressureSignal.Measured -> detailPressureValue(signal.value)
+        },
+        stateWord = presentation.stateWord,
+        colorRole = presentation.detailColorRole,
     )
 }
 
@@ -213,28 +251,64 @@ private fun metricCopy(metric: PressureMetric): MetricCopy = when (metric) {
     PressureMetric.IoPsiFullAvg60Percent -> MetricCopy("I/O PSI", "I/O PSI full, 60-second average")
 }
 
-private data class SignalCopy(
-    val value: String,
+private data class SignalPresentation(
     val stateMark: String,
     val stateWord: String,
-    val colorRole: PressureColorRole,
+    val railAccent: PressureRailAccent,
+    val detailColorRole: PressureColorRole,
 )
 
-private fun signalCopy(signal: PressureSignal): SignalCopy = when (signal) {
-    is PressureSignal.Missing -> SignalCopy("NO DATA", "?", "No data", PressureColorRole.Muted)
+private fun signalPresentation(signal: PressureSignal): SignalPresentation = when (signal) {
+    is PressureSignal.Missing -> SignalPresentation(
+        "?",
+        "No data",
+        PressureRailAccent.Muted,
+        PressureColorRole.Muted,
+    )
     is PressureSignal.Measured -> when (signal.state) {
-        PressureSignalState.Informational ->
-            SignalCopy(pressureValue(signal.value), "i", "Informational", PressureColorRole.Frost)
-        PressureSignalState.Normal ->
-            SignalCopy(pressureValue(signal.value), "N", "Normal", PressureColorRole.Moss)
-        PressureSignalState.Warm ->
-            SignalCopy(pressureValue(signal.value), "W", "Warm", PressureColorRole.Gold)
-        PressureSignalState.Hot ->
-            SignalCopy(pressureValue(signal.value), "H", "Hot", PressureColorRole.Ember)
+        PressureSignalState.Informational -> SignalPresentation(
+            "i",
+            "Informational",
+            PressureRailAccent.None,
+            PressureColorRole.Frost,
+        )
+        PressureSignalState.Normal -> SignalPresentation(
+            "N",
+            "Normal",
+            PressureRailAccent.None,
+            PressureColorRole.Moss,
+        )
+        PressureSignalState.Warm -> SignalPresentation(
+            "W",
+            "Warm",
+            PressureRailAccent.Gold,
+            PressureColorRole.Gold,
+        )
+        PressureSignalState.Hot -> SignalPresentation(
+            "H",
+            "Hot",
+            PressureRailAccent.Ember,
+            PressureColorRole.Ember,
+        )
     }
 }
 
-private fun pressureValue(value: PressureValue): String = when (value) {
+private fun collapsedPressureValue(value: PressureValue): String = when (value) {
+    is PressureValue.CpuPercent -> wholePercent(value.value)
+    is PressureValue.NormalizedLoad ->
+        String.format(Locale.ROOT, "%.1f", value.value).trimEnd('0').trimEnd('.')
+    is PressureValue.MemoryAvailablePercent -> wholePercent(value.value)
+    is PressureValue.SwapUsedPercent -> wholePercent(value.value)
+    is PressureValue.DiskAvailablePercent -> wholePercent(value.value)
+    is PressureValue.CpuPsiSomeAvg60Percent -> wholePercent(value.value)
+    is PressureValue.MemoryPsiFullAvg60Percent -> wholePercent(value.value)
+    is PressureValue.IoPsiFullAvg60Percent -> wholePercent(value.value)
+    is PressureValue.MemoryPressure -> value.value.name.uppercase(Locale.ROOT)
+}
+
+private fun wholePercent(value: Double): String = "${String.format(Locale.ROOT, "%.0f", value)}%"
+
+private fun detailPressureValue(value: PressureValue): String = when (value) {
     is PressureValue.CpuPercent -> "${formatNumber(value.value)}%"
     is PressureValue.NormalizedLoad -> formatNumber(value.value)
     is PressureValue.MemoryAvailablePercent -> "${formatNumber(value.value)}%"
