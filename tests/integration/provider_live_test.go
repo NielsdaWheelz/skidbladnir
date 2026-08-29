@@ -218,6 +218,7 @@ func TestProviderLiveLaunchersEnforceOfflineInputBoundary(t *testing.T) {
 		Environment: []agentruntime.EnvironmentVariable{
 			{Name: "CLAUDE_CONFIG_DIR", Value: "/profile/claude"},
 			{Name: "SKIDBLADNIR_PROVIDER_LIVE_PRESERVED", Value: "claude-preserved"},
+			{Name: "TMPDIR", Value: "/profile/tmp"},
 		},
 		Arguments: []string{"--permission-mode", "auto"},
 	}, harness)
@@ -233,6 +234,7 @@ func TestProviderLiveLaunchersEnforceOfflineInputBoundary(t *testing.T) {
 	}
 	if claude.environment["CLAUDE_CONFIG_DIR"] != "/profile/claude" ||
 		claude.environment["SKIDBLADNIR_PROVIDER_LIVE_PRESERVED"] != "claude-preserved" ||
+		claude.environment["TMPDIR"] != harness.workspace ||
 		claude.environment["ANTHROPIC_BASE_URL"] != providerLiveClaudeBaseURL {
 		t.Fatal("Claude launcher lost profile environment or its defense-in-depth base URL")
 	}
@@ -506,6 +508,7 @@ printf '%%s\n' "$@" >"$argv_path"
   printf 'CODEX_HOME=%%s\n' "${CODEX_HOME-}"
   printf 'CLAUDE_CONFIG_DIR=%%s\n' "${CLAUDE_CONFIG_DIR-}"
   printf 'SKIDBLADNIR_PROVIDER_LIVE_PRESERVED=%%s\n' "${SKIDBLADNIR_PROVIDER_LIVE_PRESERVED-}"
+  printf 'TMPDIR=%%s\n' "${TMPDIR-}"
   printf 'ANTHROPIC_BASE_URL=%%s\n' "${ANTHROPIC_BASE_URL-}"
   printf 'HTTP_PROXY_SET=%%s\n' "${HTTP_PROXY+x}"
   printf 'HTTPS_PROXY_SET=%%s\n' "${HTTPS_PROXY+x}"
@@ -656,6 +659,10 @@ func providerLiveExecutionProfile(profile agentruntime.Profile, harness provider
 		profile.Arguments = append(arguments, "-")
 	case agentruntime.ProviderClaude:
 		profile.Command = harness.claudeLauncher
+		profile.Environment = providerLiveEnvironmentOverride(
+			profile.Environment,
+			agentruntime.EnvironmentVariable{Name: "TMPDIR", Value: harness.workspace},
+		)
 		arguments := append([]string{installedCommand}, profile.Arguments...)
 		profile.Arguments = append(
 			arguments,
@@ -668,6 +675,19 @@ func providerLiveExecutionProfile(profile agentruntime.Profile, harness provider
 		panic("invalid validated provider-live profile")
 	}
 	return profile
+}
+
+func providerLiveEnvironmentOverride(
+	environment []agentruntime.EnvironmentVariable,
+	override agentruntime.EnvironmentVariable,
+) []agentruntime.EnvironmentVariable {
+	result := make([]agentruntime.EnvironmentVariable, 0, len(environment)+1)
+	for _, variable := range environment {
+		if variable.Name != override.Name {
+			result = append(result, variable)
+		}
+	}
+	return append(result, override)
 }
 
 func providerLiveCodexOfflineArguments(baseURL, modelCatalogPath string) []string {
@@ -1119,27 +1139,30 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 		if cleanupComplete {
 			return
 		}
-		if !serverStopped {
-			if cleanupErr := captureProviderLiveProcessGroups(
-				tmuxPath,
-				socketPath,
-				providerTmuxNames,
-				&processGroups,
-			); cleanupErr != nil {
-				t.Error(cleanupErr)
-			}
-			if cleanupErr := terminateProviderLiveProcessGroups(processGroups.forCleanup()); cleanupErr != nil {
-				t.Error(cleanupErr)
-			}
+		if serverStopped {
 			if cleanupErr := waitForProviderLiveProcessGroupsToEnd(processGroups.forCleanup()); cleanupErr != nil {
 				t.Error(cleanupErr)
 			}
-			harness.dispatchSentinel.assertNoDispatch(t)
-			if cleanupErr := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); cleanupErr != nil {
-				t.Errorf("stop exact provider-live tmux server: %v", cleanupErr)
-				return
-			}
-			serverStopped = true
+			return
+		}
+		if cleanupErr := captureProviderLiveProcessGroups(
+			tmuxPath,
+			socketPath,
+			providerTmuxNames,
+			&processGroups,
+		); cleanupErr != nil {
+			t.Error(cleanupErr)
+		}
+		var cleanupErr error
+		serverStopped, cleanupErr = stopProviderLiveRuntimeAndServer(
+			tmuxPath,
+			socketPath,
+			serverIdentity,
+			processGroups.forCleanup(),
+		)
+		harness.dispatchSentinel.assertNoDispatch(t)
+		if cleanupErr != nil {
+			t.Error(cleanupErr)
 		}
 	})
 
@@ -1186,19 +1209,40 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 	}
 
 	providerProcessGroups := processGroups.forCleanup()
-	if err := terminateProviderLiveProcessGroups(providerProcessGroups); err != nil {
-		t.Fatal("hard-stop exact provider-live process groups")
-	}
-	cleanupErr := waitForProviderLiveProcessGroupsToEnd(providerProcessGroups)
+	var cleanupErr error
+	serverStopped, cleanupErr = stopProviderLiveRuntimeAndServer(
+		tmuxPath,
+		socketPath,
+		serverIdentity,
+		providerProcessGroups,
+	)
+	harness.dispatchSentinel.assertNoDispatch(t)
 	if cleanupErr != nil {
 		t.Fatal(cleanupErr)
 	}
-	harness.dispatchSentinel.assertNoDispatch(t)
-	if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); err != nil {
-		t.Fatal("stop exact provider-live tmux server")
-	}
-	serverStopped = true
 	cleanupComplete = true
+}
+
+// Provider processes are signaled first, but tmux owns their parent/reaping
+// boundary. Stop the identity-verified private server before requiring the
+// killed process groups to disappear from the kernel process table.
+func stopProviderLiveRuntimeAndServer(
+	tmuxPath string,
+	socketPath string,
+	serverIdentity testTmuxServerIdentity,
+	processGroups []providerLiveProcessGroup,
+) (bool, error) {
+	var result error
+	if err := terminateProviderLiveProcessGroups(processGroups); err != nil {
+		result = errors.Join(result, err)
+	}
+	if err := killVerifiedTestTmuxServer(tmuxPath, socketPath, serverIdentity); err != nil {
+		return false, errors.Join(result, err)
+	}
+	if err := waitForProviderLiveProcessGroupsToEnd(processGroups); err != nil {
+		result = errors.Join(result, err)
+	}
+	return true, result
 }
 
 func requireProviderLivePreflight(t *testing.T) providerLivePreflight {
