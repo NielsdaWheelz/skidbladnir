@@ -548,17 +548,26 @@ rendering, or action admission.
 - One rail tap opens a machine-bound local details sheet with all supported
   current signals, canonical reasons/freshness, and explicit `NO DATA`.
   Disclosure performs no request or mutation.
+- The 2026-08-28 density follow-up omits pressure rails from `All` and renders
+  exactly one rail under an explicit machine filter. Compact exceptional
+  machine notices remain visible in `All`; polling, snapshots, disclosure, and
+  admission do not change.
 
 Red: deterministic Android presentation grammar/precision/accent roles, then
-real Compose rail behavior at compact and large-text sizes. Existing host,
+real Compose rail behavior at compact and large-text sizes. The density
+follow-up adds one pure filter-visibility red and extends that existing Compose
+journey with `All` absence and exact selected-machine presence. Existing host,
 gateway, decoder, polling, history, and disclosure proofs remain their owners
-and are not duplicated for this presentation-only hard cut.
+and are not duplicated for these presentation-only cuts.
 
 Acceptance: routine verification, one separately approved signed S22+ focused
-component pass for geometry/semantics/history pixels/sheet interaction, and one
-approved hands-on normal/mixed/missing/Darwin/large-text/greyscale glance.
-Integration, live, product, and second-phone gates do not re-prove unchanged
-boundaries. Scope per [machine-pressure-rail.md](machine-pressure-rail.md).
+component pass for `All`/selected placement,
+geometry/semantics/history pixels/sheet interaction, and one approved hands-on
+normal/mixed/missing/Darwin/large-text/greyscale glance.
+Integration, live, and second-phone gates do not re-prove unchanged boundaries.
+The product journey consumes the new placement but does not substitute for the
+focused component proof. Scope per
+[machine-pressure-rail.md](machine-pressure-rail.md).
 
 ## v0 runtime-release policy hard cut — active
 
@@ -649,7 +658,7 @@ orchestration, via a new architecture decision.
 | v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
-| v0 machine-pressure rail delta | Flat typographic-row hard cut implemented; pure and real-Compose reds recorded; focused unit, signed same-version one-test S22+ component, routine verification, and approved hands-on normal/mixed/missing/Darwin/large-text/greyscale acceptance green on 2026-08-28; release-bound full platform gate `NOT_RUN` |
+| v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green and routine verification green. Focused rendered-device placement, product, and release-bound platform gates are `NOT_RUN`; prior rail evidence does not prove the changed placement. |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
 | v0.5 push | Not scheduled |

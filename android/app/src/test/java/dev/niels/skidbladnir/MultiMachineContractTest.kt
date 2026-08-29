@@ -117,6 +117,18 @@ class MultiMachineContractTest {
     }
 
     @Test
+    fun `pressure rails require an explicit machine filter`() {
+        assertFalse(
+            "All must omit machine pressure rails",
+            pressureRailsVisible(selectedMachine = null),
+        )
+        assertTrue(
+            "an explicit machine filter must show its pressure rail",
+            pressureRailsVisible(selectedMachine = macBookHandle),
+        )
+    }
+
+    @Test
     fun `sessions sort by attention, then status, machine label, session name, and local tmux ID`() {
         val alpha = devbox.copy(label = requireNotNull(MachineLabel.parse("Alpha")))
         val beta = macBook.copy(label = requireNotNull(MachineLabel.parse("Beta")))

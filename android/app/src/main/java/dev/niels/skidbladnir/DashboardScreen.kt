@@ -69,9 +69,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * The monotonic receipt of a machine's freshest inventory, published on that machine's real strip
- * header. It lets the acceptance journey observe that reads keep landing for one machine while
- * another is out, without adding an invisible node to the layout.
+ * The monotonic receipt of a machine's freshest inventory, published on that machine's real filter
+ * control. It lets the acceptance journey observe that reads keep landing for one machine while
+ * another is out without retaining an invisible pressure-strip node in `All`.
  */
 internal val MachineInventoryObservationKey =
     SemanticsPropertyKey<Long>("SkidbladnirMachineInventoryObservation")
@@ -103,7 +103,9 @@ internal fun DashboardMain(
 ) {
     var selectedPressureHandle by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedPressureMachine = selectedPressureHandle?.let { handle ->
-        state.machines.singleOrNull { it.machine.handle.encoded == handle }
+        state.machines.singleOrNull {
+            it.machine.handle.encoded == handle && it.machine.handle == state.selectedMachine
+        }
     }
     if (selectedPressureHandle != null && selectedPressureMachine == null) {
         LaunchedEffect(selectedPressureHandle) { selectedPressureHandle = null }
@@ -113,6 +115,7 @@ internal fun DashboardMain(
     }
     val sessions = visibleSessions(state.machines, state.selectedMachine)
     val canForge = machines.any(MachineState::canForge)
+    val showPressureRails = pressureRailsVisible(state.selectedMachine)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
@@ -125,6 +128,7 @@ internal fun DashboardMain(
                 key(machine.machine.handle) {
                     MachineStrip(
                         machine = machine,
+                        showPressureRail = showPressureRails,
                         onShowPressure = { selectedPressureHandle = machine.machine.handle.encoded },
                     )
                 }
@@ -409,12 +413,19 @@ private fun MachineFilters(
             modifier = Modifier.testTag("machine-filter-all"),
         )
         machines.forEach { machine ->
+            val fresh = machine.inventory as? InventoryState.Fresh
             FilterChip(
                 selected = selected == machine.machine.handle,
                 onClick = { onSelect(machine.machine.handle) },
                 label = { Text(machine.machine.label.text, fontFamily = NidavellirType.Data) },
                 shape = NidavellirShapes.Chip,
-                modifier = Modifier.testTag("machine-filter-${machine.machine.handle.encoded}"),
+                modifier = Modifier
+                    .testTag("machine-filter-${machine.machine.handle.encoded}")
+                    .semantics {
+                        if (fresh != null) {
+                            machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
+                        }
+                    },
             )
         }
     }
@@ -423,26 +434,23 @@ private fun MachineFilters(
 @Composable
 private fun MachineStrip(
     machine: MachineState,
+    showPressureRail: Boolean,
     onShowPressure: () -> Unit,
 ) {
-    val handle = machine.machine.handle.encoded
-    val fresh = machine.inventory as? InventoryState.Fresh
-    Column(
-        modifier = Modifier
-            .testTag("machine-state-${machineStateTag(machine)}-$handle")
-            .semantics {
-                if (fresh != null) machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
-            },
-    ) {
-        MachinePressureRail(
-            machine = machine.machine,
-            state = machine.pressure,
-            onOpenDetails = onShowPressure,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        machineNotice(machine)?.let {
+    val notice = machineNotice(machine)
+    if (!showPressureRail && notice == null) return
+    Column {
+        if (showPressureRail) {
+            MachinePressureRail(
+                machine = machine.machine,
+                state = machine.pressure,
+                onOpenDetails = onShowPressure,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        notice?.let {
             Text(
                 it.message,
                 color = noticeToneColor(it.tone),

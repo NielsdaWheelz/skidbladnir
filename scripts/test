@@ -1374,7 +1374,7 @@ case "$gate" in
     printf '%s\n' 'On the S22+, tap Reconnect fleet, then scan the fresh QR below.'
     run fleet-invite "$fleet_operator" invite
     physical_confirmation RECONNECTED \
-      'Confirm that Arch, Devbox, and MacBook all render with compact pressure rails; each rail opens only its own details with CPU, status words, and evaluated or NO DATA evidence; no details sheet shows Unsupported or a second history band; dismiss each sheet and select each machine without retargeting.'
+      'Confirm that All renders no pressure rails. Select Arch, Devbox, and MacBook one at a time; exactly the selected machine renders its compact rail, and that rail opens only its own details with CPU, status words, and evaluated or NO DATA evidence. No details sheet shows Unsupported or a second history band.'
     terminal_cleanup_required=1
     physical_confirmation TERMINAL_UNOBSTRUCTED \
       'Open an existing tmux session on one machine, confirm its terminal viewport and key deck remain usable, detach and return to the dashboard, then confirm that machine remains selected and its pressure rail and details remain tappable.'
@@ -1383,17 +1383,17 @@ case "$gate" in
     run android-product-recreate "$adb" -s "$serial" shell am start -n \
       "${app_package}/.MainActivity"
     physical_confirmation PROCESS_RESTORED \
-      'Confirm that process recreation restores the same three fleet identities, pressure rails, and machine-bound routing.'
+      'Confirm that process recreation restores the same three fleet identities and machine-bound routing; All has no pressure rails, and each machine filter reveals only its own rail.'
 
     service_restore_required=1
     run one-host-outage "$fleet_operator" outage Local
     physical_confirmation OUTAGE_ISOLATED \
-      'Confirm that MacBook pressure becomes stale with retained evidence or unavailable with a header-only rail, while Arch and Devbox remain fresh, render their own pressure, and stay selectable.'
+      'Confirm that All still has no pressure rails and keeps the MacBook exception notice visible. Select MacBook to confirm pressure becomes stale with retained evidence or unavailable with a header-only rail; select Arch and Devbox to confirm each remains fresh and renders only its own pressure.'
     run one-host-recovery "$fleet_operator" recover Local
     service_restore_required=''
     run recovered-fleet-doctor "$fleet_operator" doctor
     physical_confirmation RECOVERED \
-      'Confirm that Arch, Devbox, and MacBook all return to fresh pressure and remain bound to their original labels.'
+      'Confirm that Arch, Devbox, and MacBook all return to fresh pressure under their own filters, remain bound to their original labels, and leave All free of pressure rails.'
 
     after_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     printf '%s\n' "$after_lifetime" | fleet_lifetime_valid || {
