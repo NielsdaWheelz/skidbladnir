@@ -103,7 +103,7 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 		t.Fatalf("write test Codex command: %v", err)
 	}
 	claudeAgentCommand := filepath.Join(testRoot, "claude-agent-command")
-	if err := os.WriteFile(claudeAgentCommand, []byte("#!/bin/sh\n/bin/sleep 300\n"), 0o700); err != nil {
+	if err := os.WriteFile(claudeAgentCommand, []byte("#!/bin/sh\nwhile IFS= read -r line; do\n  :\ndone\n"), 0o700); err != nil {
 		t.Fatalf("write test Claude command: %v", err)
 	}
 	for _, home := range []string{"personal", "work", "work2", "claude-work"} {
@@ -172,7 +172,7 @@ exec "$tmux_real" "$@"
 				Environment: []agentruntime.EnvironmentVariable{
 					{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(testRoot, "claude-work")},
 				},
-				ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "sh", Argument1: claudeAgentCommand}},
+				ForegroundSignatures: []agentruntime.ForegroundSignature{{Argument0: "/bin/sh", Argument1: claudeAgentCommand}},
 				Arguments:            []string{"--permission-mode", "auto"},
 			},
 		},
