@@ -1,249 +1,215 @@
 # Terminal key deck
 
-Status: implemented; council source review, routine verification, the 19-test
-S22+ platform gate, and user-reported hands-on acceptance are green.
-The later dwarf product-language wording is source-complete; rendered-device
-confirmation remains `NOT_RUN`. The implemented
-[detach-chrome delta](detach-chrome.md) supersedes only the top-bar detach
-content and presentation below.
-
-[`architecture.md`](architecture.md) owns product behavior and acceptance.
-This document owns the implementation boundary and delivery plan for the v0
-terminal-key-deck delta. [`roadmap.md`](roadmap.md) owns ordering.
+Status: implemented 2026-08-28. Both owner proofs were observed red; routine
+verification and the signed same-version 54-test S22+ candidate suite are green
+on the joined source tree. Pairing remained unchanged and the runner restored
+the exact previously installed app. The release-bound standard platform gate
+and hands-on Gboard, TalkBack, Switch Access, reach, haptic, and `80 x 5`
+viewport checks remain `NOT_RUN`. [`architecture.md`](architecture.md) owns
+product behavior and acceptance; this document owns the implementation
+boundary. [`roadmap.md`](roadmap.md) owns delivery status.
 
 ## Outcome
 
-The phone exposes one stable terminal-input deck:
+The terminal screen exposes one fixed, aligned input deck:
 
-`Esc | Ctrl | Tab | Line break | Left | Up | Down | Right | Home | End`
+```text
+Esc   /     -     Home   ↑     End    PgUp
+Tab   Ctrl  Alt   ←      ↓     →      PgDn
+```
 
-The deck contains no app navigation, attachment lifecycle, destructive action,
-provider semantic, or macro. Top-bar `Detach` and Android Back remain the only
-primary return-to-inventory controls; leaving detaches the phone and keeps the
-tmux session running. Kill remains separate and confirmed.
+The deck is always present on the terminal screen and is disabled whenever the
+terminal cannot accept input. It contains no navigation, attachment lifecycle,
+destructive action, provider semantic, local history action, or macro. `Detach`,
+Android Back, and confirmed Kill remain separate lifecycle controls.
 
-## Goals and rules
+## Rules
 
-- Compose terminal primitives; never guess what an opaque terminal program
-  means by a byte.
-- Give each concern one owner: Compose renders; `terminal.js` owns Ctrl,
-  accessory encoding, and the ordered input ingress from xterm's authoritative
-  terminal-mode state; the locked WebView validates transport; the controller
-  attempt-gates dispatch.
-- Preserve Gboard composition, dictation, paste, Unicode, LF/CR distinction,
-  viewport containment, and 80-column portrait geometry.
-- Use one-shot Ctrl with visible and spoken state. Never persist, time out, or
-  replay an incomplete chord.
-- Keep positions fixed. The one row may scroll; it never wraps, shrinks touch
-  targets, or reorders itself.
-- Preserve the single ordered `Accessory -> terminal.js -> Input` route and
-  validated page-port version. Add no raw-byte bypass, second input protocol,
-  compatibility decoder, alias, fallback, or version negotiation.
-- Log no key, byte, input source, terminal content, or modifier transition.
+- Compose owns presentation and dispatches typed accessories.
+- `terminal.js` alone owns modifiers, key encoding, cursor-mode interpretation,
+  and the ordered terminal-input reducer.
+- The locked WebView validates the exact page protocol. The controller only
+  attempt-gates typed dispatch and reset commands.
+- Keyboard, IME, composition, dictation-shaped, paste, and deck input retain one
+  ordered page ingress and one `Input` egress.
+- The terminal remains opaque. No layer parses terminal content or guesses what
+  the foreground program wants.
+- No key, byte, input source, modifier transition, or terminal content enters a
+  log or evidence artifact.
+
+## UI contract
+
+| Row | Visible labels | Spoken labels |
+| --- | --- | --- |
+| 1 | `Esc / - Home ↑ End PgUp` | `Escape`, `Slash`, `Hyphen`, `Home`, `Up arrow`, `End`, `Page up` |
+| 2 | `Tab Ctrl Alt ← ↓ → PgDn` | `Tab`, `Control`, `Alt`, `Left arrow`, `Down arrow`, `Right arrow`, `Page down` |
+
+- `/` and `-` are ASCII. Direction labels are true arrows.
+- TalkBack traversal is row-major `0..13` and matches the table.
+- Ctrl and Alt expose toggle semantics and state description `Off` or `Armed`.
+  Both may be armed. A disabled deck presents both as `Off`.
+- Each enabled activation uses system `KEYBOARD_TAP` haptics. A disabled key
+  dispatches nothing and produces no haptic.
+- Reuse `RaisedSurface`, `NidavellirShapes.Key`, `NidavellirType.Data`, `Bone`,
+  `Muted`, `Gold`, and the existing disabled colors and button primitive.
+- Outer padding is `4dp`; row and column gaps are `2dp`; every equal-width cell
+  is at least `48dp x 48dp`.
+- At font scale `1.0`, the minimum complete grid is `356dp x 106dp`. At
+  `>=356dp`, all seven columns fill the rail without scrolling.
+- Below `356dp`, or when text needs more width at font scale up to `2.0`, both
+  rows widen and move together through one shared horizontal scroll state.
+  Targets never shrink, rows never wrap or scroll independently, and labels do
+  not clip.
+- `TerminalScreen`'s existing `imePadding` remains the sole inset owner.
 
 ## Capability contract
 
-### Keys
+### Base values
 
-| Key | Observable result |
+| Accessory | Emitted value |
 | --- | --- |
-| `Escape` | Emit `0x1b`. |
-| `Control` | Toggle `Off <-> Armed`; emit nothing. |
-| `Tab` | Emit `0x09`. |
-| `LineFeed` | Emit `0x0a`; Gboard Enter remains `0x0d`. |
-| `Left/Up/Down/Right` | Emit xterm's normal or application-cursor sequence for the current mode. |
-| `Home/End` | Emit xterm's normal or application-cursor sequence for the current mode. |
+| `Escape` | `ESC` (`0x1b`) |
+| `Slash` | `/` (`0x2f`) |
+| `Hyphen` | `-` (`0x2d`) |
+| `Tab` | `HT` (`0x09`) |
+| `Left/Up/Down/Right` | xterm normal or application-cursor sequence |
+| `Home/End` | xterm normal or application-cursor sequence |
+| `PageUp/PageDown` | `CSI 5~` / `CSI 6~` |
+| `Control/Alt` | Toggle only; no input |
 
-`Control` is one-shot. It binds to the next unit accepted by the page's single
-ordered input ingress. Any subsequent typed, pasted, or terminal-emitting deck
-unit returns it to `Off`. A key-proven single ASCII unit maps as follows:
+Page accessories are raw terminal input. They never scroll local history or
+invoke a tmux macro. Gboard Enter continues to emit CR.
 
-- lowercase ASCII letters first normalize to uppercase;
-- `@` through `_` emit `codepoint & 0x1f`;
-- `?` emits `0x7f`;
-- every other input passes through unchanged.
+### Modifiers and encoding
 
-Composition, dictation, paste, multi-character text, Unicode, and input whose
-origin is uncertain are literal units: they pass unchanged and clear `Armed`.
-In particular, a one-character Android `commitText`/`beforeinput` is uncertain;
-only a real discrete xterm `onKey`/keyboard event may make it key-proven.
+- Ctrl and Alt are independent one-shot modifiers. A modifier tap toggles only
+  itself and never consumes the other modifier.
+- The next terminal-emitting unit clears both modifiers before publishing its
+  single `Input` message.
+- For a proven printable key or literal deck key, apply Ctrl first, then prefix
+  `ESC` when Alt is armed.
+- Ctrl first uppercases lowercase ASCII; `@` through `_` emit
+  `codepoint & 0x1f`; `?` emits `0x7f`; other values remain unchanged.
+- With any modifier, arrows, Home, End, PgUp, and PgDn use
+  `m = 1 + (Alt ? 2 : 0) + (Ctrl ? 4 : 0)`: Alt `m=3`, Ctrl `m=5`, and both
+  `m=7`. Emit `ESC [ 1 ; m A/B/C/D/H/F` or
+  `ESC [ 5 ; m ~` / `ESC [ 6 ; m ~` without spaces.
+- Ctrl leaves Escape and Tab unchanged. Alt prefixes their base value, so
+  Alt+Escape emits `ESC ESC` and Alt+Tab emits `ESC HT`.
+- A typed unit is modifier-eligible only when xterm's trusted `onKey`
+  provenance proves one discrete printable ASCII key. A deck accessory is
+  intrinsically proven.
+- IME commit/composition, dictation-shaped input, paste, Unicode,
+  multi-character text, and uncertain xterm input remain literal and consume
+  both modifiers.
 
-The WebView and key deck are one logical terminal-input surface, so moving
-focus from the WebView to an accessible deck button does not clear `Armed`.
-Page loss, disconnect, reconnect, background/window-focus loss, navigation,
-opening Kill confirmation, rotation/recreation, and disposal clear `Armed`
-without emitting input.
+### State and lifecycle
 
-### Content and interaction
+Modifier state belongs to the page and is always published as one atomic Ctrl
+and Alt snapshot. On page-port bind, the page publishes `Off/Off` before
+`Ready`. On consumption, it publishes `Off/Off` before `Input`.
 
-Each content owner approves its row before implementation. Good content names
-the literal control or byte-level outcome, avoids provider semantics, is terse
-on screen, and is complete when spoken.
-
-| Feature | Content owner | Required content |
-| --- | --- | --- |
-| Return to inventory | Product/content designer | Visible and spoken `Detach`; no supporting copy, icon, or custom accessibility prose. |
-| Momentary keys | Terminal interaction designer | `Esc`, `Tab`, arrow glyphs, `Home`, `End`; spoken names use `Escape`, `Tab`, and `<direction> arrow`. |
-| Line feed | Product/content designer | Visible `Line break`; spoken `Line break; sends line feed`. Never label it Enter, Send, or claim how the opaque program responds. |
-| Ctrl | Interaction/accessibility designer | Visible `Ctrl`; accessible name `Control`; selected styling while armed; state description `Off` or `Armed`. Never label it Stop or Interrupt. |
-
-All targets are at least `48dp x 48dp`, separated by at least `8dp`. Order and
-TalkBack traversal match the capability order. Ctrl has toggle semantics and a
-state description. Each enabled deck-key activation uses one subtle system
-keyboard-tap haptic; disabled keys and app-navigation controls do not. Haptics
-never claim the remote program acted.
+Reset without input on page failure, disconnect or reconnect, window-focus
+loss, backgrounding, rotation or recreation, Kill opening, detach, Back,
+navigation, and disposal. Moving focus between the WebView and the deck does
+not reset. There is no timeout, persistence, replay, lock, repeat, or recovery
+branch.
 
 ## Architecture and internal API
 
 ```text
-TerminalKeyDeck -- TerminalAccessory --> controller --> LockedTerminalWebView
-                                                          | Accessory / reset
-                                                          v
-                                                 terminal.js queue ingress
-                                                    |              |
-                                               ControlState       Input
-                                                    v              v
-                                             locked WebView --> existing WSS
+TerminalKeyDeck -- TerminalAccessory --> controller attempt gate
+                                             |
+                                             v
+                                    LockedTerminalWebView
+                                      | Accessory / reset
+                                      v
+                              terminal.js ordered reducer
+                               | ModifierState | Input
+                               v               v
+                         locked WebView --> existing WSS
 ```
 
-- `TerminalKeyDeck` owns order, labels, touch geometry, semantics, selected
-  rendering, and enabled state. It owns no byte encoding or modifier truth.
-- `terminal.js` owns `TerminalControlState`, control mapping, lifecycle reset,
-  xterm mode-sensitive sequences, and the only ordered input ingress. It
-  classifies input at the IME boundary; uncertain input is literal.
-- `LockedTerminalWebView` owns exact same-system message validation and
-  transport. It reports page-owned control state but never derives or mutates a
-  Kotlin copy of modifier truth.
-- `SkidbladnirController` attempt-gates and dispatches `TerminalAccessory`; it
-  owns no key rules, bytes, queue, or mirrored modifier state.
-- Gateway, WSS, PTY, tmux, session lifecycle, and public API are unchanged.
-
-Every deck key, including the Ctrl-modified next key, travels the same single
-ordered page input queue as typed and pasted input; the one-shot Ctrl binds to
-the next unit of that queue and is applied inside the page, never as a
-Kotlin-side byte transform.
-
-Owned Kotlin types:
+Owned Kotlin types and calls:
 
 ```text
-TerminalAccessory = Escape | Control | Tab | Left | Up | Down | Right | Home | End | LineFeed
-TerminalControlState = Off | Armed
+TerminalAccessory =
+  Escape | Slash | Hyphen | Home | Up | End | PageUp |
+  Tab | Control | Alt | Left | Down | Right | PageDown
+
+TerminalModifierPhase = Off | Armed
+TerminalModifiers = { control: TerminalModifierPhase, alt: TerminalModifierPhase }
 
 TerminalPage.sendAccessory(TerminalAccessory)
-TerminalPage.resetControl()
-TerminalPageListener.onControlStateChanged(TerminalControlState)
+TerminalPage.resetModifiers()
+TerminalPageListener.onModifiersChanged(TerminalModifiers)
 ```
 
-Native-to-page messages retain `Output`, `Focus`, and the validated exact
-`{"kind":"PagePort","version":1}` handshake. Deck input extends the existing
-exact `Accessory` shape; lifecycle owners use one exact reset command:
+Native to page:
 
 ```json
-{"kind":"Accessory","key":"Escape|Control|Tab|Left|Up|Down|Right|Home|End|LineFeed"}
-{"kind":"ResetControl"}
+{"kind":"Accessory","key":"Escape|Slash|Hyphen|Home|Up|End|PageUp|Tab|Control|Alt|Left|Down|Right|PageDown"}
+{"kind":"ResetModifiers"}
 ```
 
-`Control` crosses the same native-to-page port as every deck key, toggles state
-at the ordered page ingress, and emits no input. Page-to-native retains the one
-existing socket-bound input message and adds state notification:
+Page to native:
 
 ```json
+{"kind":"ModifierState","control":"Off|Armed","alt":"Off|Armed"}
 {"kind":"Input","value":"..."}
-{"kind":"ControlState","state":"Off|Armed"}
 ```
 
-The page internally classifies each ingress unit as key-proven or literal,
-applies and clears Ctrl, then emits exactly one final `Input` message. Existing
-UTF-8 and size checks remain. Unknown kinds, unknown keys, extra fields, and
-malformed values fail the page boundary. Native and packaged page assets ship
-atomically at page-port version `1`; there is no compatibility path.
+The page-port version remains `1`: native and packaged page assets ship
+atomically and the port is internal. Unknown kinds, keys, states, missing or
+extra fields, and malformed values fail closed. There is one protocol shape,
+one input path, and no alias, fallback, negotiation, or compatibility decoder.
 
-## Hard cut and cleanup
+`TerminalKeyDeck` owns one local two-row item matrix, measured grid width, one
+scroll state, semantics, selected rendering, and enabled state. `TerminalScreen`
+remembers the latest page-owned snapshot per attempt; it owns no reducer.
+`LockedTerminalWebView` parses the exact snapshot without deriving or persisting
+modifier truth. `SkidbladnirController` adds no key logic or test seam.
 
-Delete in the same change:
+Gateway, WSS, PTY, tmux, session lifecycle, persistence, public API, xterm
+version, IME containment, paste sanitization, viewport fitting, and the
+terminal queue are unchanged.
 
-- bottom-row return-to-inventory and `Detach` controls, their parameters, and
-  duplicate callbacks;
-- fixed `Ctrl-C`, `CtrlC`, `Newline`, and `AccessoryButton`; replace the two
-  enum variants with `Control` and `LineFeed`;
-- any direct or Kotlin-transformed deck-byte path; PR #5's removed `onBytes`
-  bypass stays absent;
-- the superseded Kotlin Ctrl reducer and proposed `Key`/`KeyInput`/`TextInput`
-  parallel protocol;
-- tests and comments that assert the retired shapes.
+## Verification ownership
 
-Retain and adapt `TerminalAccessory`, `sendAccessory`, the versioned page port,
-the single `Input` message/socket writer, exact JSON-key validation,
-cursor-mode encoder, UTF-8 bounds, terminal connection, top detach action, Back,
-confirmed Kill, LF/CR behavior, and IME/paste containment. Do not add a generic
-keyboard framework, registry, settings store, telemetry, or gateway endpoint.
+The change has one proof per ownership boundary:
 
-## Work split
+- real Compose: exact matrix, row-major dispatch/traversal, state, disabled
+  behavior, geometry, alignment, shared overflow, and text non-clipping;
+- real locked WebView: exact protocol, base/cursor/modifier byte tables, atomic
+  ordering, literal uncertain ingress, and reset boundaries;
+- physical S22+: the joined deck, WebView, Gboard, accessibility, reach, haptic,
+  rotation, and viewport behavior.
 
-The API above freezes before builders start. Input and UI builders use disjoint
-paths and may work concurrently; neither slice lands alone. The root integrator
-joins them and owns cross-slice compilation. A builder writes and observes its
-own red proof before production implementation.
+Routine verification never substitutes for the signed physical boundary. Any
+device or hands-on boundary not run is `NOT_RUN`, never a pass.
 
-| Slice | Owner | Paths | Owned proof |
-| --- | --- | --- | --- |
-| Contract | Root integrator with product/content/interaction review | `docs/terminal-key-deck.md`, `docs/architecture.md`, `docs/roadmap.md` | Document consistency and residue review. |
-| Terminal input | Android terminal-boundary builder | `LockedTerminalWebView.kt`, `terminal.js`, `SkidbladnirController.kt`, `TerminalInstrumentedTest.kt`, `TerminalTestActivity.kt`; delete the superseded untracked `TerminalControlTest.kt` | Real WebView ordered input, protocol, Ctrl, and reset behavior. |
-| Key deck | Compose UI builder with interaction/accessibility review | `TerminalKeyDeck.kt` (new), `TerminalScreen.kt`, `TerminalKeyDeckInstrumentedTest.kt` (new), `android/app/build.gradle.kts` | Rendered order, content, state, touch bounds, traversal, and absence of lifecycle controls. |
-| Verification | Read-only verifier | No files | Review target behavior and report routine/platform status; write no test or production file. |
+## Acceptance
 
-No builder edits `catalog/`, gateway/tmux code, `scripts/test`, architecture, or
-roadmap. A newly discovered need outside these paths reopens scope; it does not
-authorize a cross-slice edit.
+Acceptance requires:
 
-## Red/green/refactor and acceptance
-
-### Red
-
-1. WebView component: the retained versioned handshake and exact
-   `Accessory`/`Input` route; full Ctrl mapping, one-shot consumption,
-   second-tap cancel, queue order, logical-lifecycle reset, normal/application
-   cursor encoding, the Enter-CR versus Line-break-LF distinction, and literal
-   single-character `commitText`, paste, composition, dictation-shaped,
-   Unicode, and multi-character input.
-2. Compose component: the user sees the fixed order and no navigation,
-   `Detach`, or `Ctrl-C`; Ctrl announces and renders `Off/Armed`; all keys
-   disable with a frozen terminal; target bounds and traversal are accessible.
-
-### Green
-
-- Implement only enough production behavior to satisfy those proofs.
-- Run routine `scripts/test verify`; it invokes no tmux or device.
-- Run the separately approved `platform` gate once for the joined Android
-  boundary. Without explicit approval in that implementation turn it is
-  `NOT_RUN`, never pass.
-- Do not run `integration` or `live`: public transport, tmux, and gateway
-  behavior do not change.
-
-### Refactor
-
-- Collapse all deck input through `TerminalAccessory` and all Ctrl transitions
-  through the page's one ordered ingress.
-- Delete every retired symbol/path before re-running routine verification.
-- Add no abstraction that has only a speculative second consumer.
-
-### Physical S22+ acceptance
-
-One approved pass proves: one-handed portrait reach and scrolling; Ctrl then
-`c`, `b`, and `j`; Gboard Enter sends CR while `Line break` sends LF; second-tap
-cancel; Armed survives actual deck focus but clears on Kill open, background,
-rotation/recreation, reconnect, the top detach action, and Back; Gboard typing, composition,
-dictation, and paste remain literal when required; TalkBack state/order; Switch
-Access reachability; subtle haptics; zero horizontal drift; and at least 80
-columns. A one-character `commitText` is never promoted to a key: if stock
-Gboard cannot supply discrete key provenance for the Ctrl chord, this
-acceptance fails and the product contract reopens. Retain no entered content or
-terminal bytes.
+1. The exact fixed matrix, labels, spoken names, traversal, alignment, targets,
+   shared overflow, normal-font height, large-text non-clipping, haptics, and
+   disabled behavior.
+2. Every base and modified key emits its specified value exactly once through
+   the existing ordered `Input` route.
+3. Page-owned Ctrl/Alt truth is atomic, visible, spoken, independently
+   toggleable, jointly consumable, and cleared at every owned boundary.
+4. IME, composition, dictation, paste, Unicode, CR behavior, queue bounds,
+   focus, viewport containment, CSP, WSS, and tmux behavior remain unchanged.
+5. Portrait retains zero horizontal drift and at least `80` columns by `5`
+   rows with the deck and Gboard present.
+6. Only the final two-row, atomic-modifier API and protocol remain.
 
 ## Non-goals
 
-Alt/Meta/Shift, Page Up/Down, function keys, a dedicated `^C`, macros, overflow
-menus, customization, persistence, usage counters, automatic reordering,
-modifier lock, arrow repeat, gestures/trackpads, hardware-keyboard adaptation,
-native composer, Kitty/CSI-u, xterm/tmux upgrades, terminal-content parsing,
-and any gateway/tmux/public-API change.
+Settings, customization, persistence, profiles, Shift, a separate Meta key,
+modifier lock, repeat, popups, long press, macros, snippets, gestures,
+trackpads, hardware-keyboard adaptation, dynamic ordering, content parsing,
+local-history controls, a native composer, Kitty/CSI-u, xterm upgrades,
+telemetry, new logging, gateway/tmux/public-API changes, and compatibility
+surfaces.

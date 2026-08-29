@@ -7,7 +7,7 @@
     var pageFailed = false;
     var fitScheduled = false;
     var fontsSettled = false;
-    var controlState = "Off";
+    var modifiers = { control: "Off", alt: "Off" };
     var pendingProvenKey = null;
     var compositionActive = false;
     var maximumInputBytes = 1024 * 1024;
@@ -88,22 +88,27 @@
         if (pageFailed) return;
         pageFailed = true;
         clearProvenKey();
-        if (controlState === "Armed") {
-            controlState = "Off";
-            send({ kind: "ControlState", state: controlState });
-        }
+        resetModifiers();
         send({ kind: "PageFailure" });
         pagePort = null;
     }
 
-    function publishControlState() {
-        send({ kind: "ControlState", state: controlState });
+    function publishModifiers() {
+        send({
+            kind: "ModifierState",
+            control: modifiers.control,
+            alt: modifiers.alt
+        });
     }
 
-    function setControlState(nextState) {
-        if (controlState === nextState) return;
-        controlState = nextState;
-        publishControlState();
+    function setModifiers(control, alt) {
+        if (modifiers.control === control && modifiers.alt === alt) return;
+        modifiers = { control: control, alt: alt };
+        publishModifiers();
+    }
+
+    function resetModifiers() {
+        setModifiers("Off", "Off");
     }
 
     function utf8ByteCount(value) {
@@ -144,9 +149,11 @@
     }
 
     function acceptInput(value, keyProven) {
-        var armed = controlState === "Armed";
-        if (armed) setControlState("Off");
-        sendInput(armed && keyProven ? controlValue(value) : value);
+        var armed = modifiers;
+        resetModifiers();
+        if (keyProven && armed.control === "Armed") value = controlValue(value);
+        if (keyProven && armed.alt === "Armed") value = "\u001b" + value;
+        sendInput(value);
     }
 
     function pasteInput(value) {
@@ -384,13 +391,16 @@
         document.fonts.load('bold 14px "JetBrains Mono"')
     ]).then(settleFonts, settleFonts);
 
-    function accessoryValue(key) {
+    function accessoryInput(key) {
         var literals = {
             Escape: "\u001b",
-            Tab: "\t",
-            LineFeed: "\n"
+            Slash: "/",
+            Hyphen: "-",
+            Tab: "\t"
         };
-        if (Object.prototype.hasOwnProperty.call(literals, key)) return literals[key];
+        if (Object.prototype.hasOwnProperty.call(literals, key)) {
+            return { value: literals[key], modifiersEligible: true };
+        }
         var suffixes = {
             Left: "D",
             Up: "A",
@@ -399,22 +409,48 @@
             Home: "H",
             End: "F"
         };
-        if (!Object.prototype.hasOwnProperty.call(suffixes, key)) return null;
-        return "\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffixes[key];
+        var pageParameters = { PageUp: "5", PageDown: "6" };
+        var controlArmed = modifiers.control === "Armed";
+        var altArmed = modifiers.alt === "Armed";
+        var modified = controlArmed || altArmed;
+        var parameter = 1 + (altArmed ? 2 : 0) + (controlArmed ? 4 : 0);
+        if (Object.prototype.hasOwnProperty.call(suffixes, key)) {
+            if (modified) {
+                return { value: "\u001b[1;" + parameter + suffixes[key], modifiersEligible: false };
+            }
+            return {
+                value: "\u001b" + (terminal.modes.applicationCursorKeysMode ? "O" : "[") + suffixes[key],
+                modifiersEligible: false
+            };
+        }
+        if (Object.prototype.hasOwnProperty.call(pageParameters, key)) {
+            var page = pageParameters[key];
+            return {
+                value: "\u001b[" + page + (modified ? ";" + parameter : "") + "~",
+                modifiersEligible: false
+            };
+        }
+        return null;
     }
 
     function acceptAccessory(key) {
+        clearProvenKey();
         if (key === "Control") {
-            setControlState(controlState === "Off" ? "Armed" : "Off");
+            setModifiers(modifiers.control === "Off" ? "Armed" : "Off", modifiers.alt);
             focusTerminal();
             return;
         }
-        var value = accessoryValue(key);
-        if (value === null) {
+        if (key === "Alt") {
+            setModifiers(modifiers.control, modifiers.alt === "Off" ? "Armed" : "Off");
+            focusTerminal();
+            return;
+        }
+        var input = accessoryInput(key);
+        if (input === null) {
             failPage();
             return;
         }
-        acceptInput(value, false);
+        acceptInput(input.value, input.modifiersEligible);
         focusTerminal();
     }
 
@@ -446,8 +482,9 @@
             acceptAccessory(payload.key);
             return;
         }
-        if (payload.kind === "ResetControl" && exactObject(payload, ["kind"])) {
-            setControlState("Off");
+        if (payload.kind === "ResetModifiers" && exactObject(payload, ["kind"])) {
+            clearProvenKey();
+            resetModifiers();
             return;
         }
         failPage();
@@ -475,7 +512,7 @@
         pagePort.onmessage = acceptNativeMessage;
         pagePort.onmessageerror = failPage;
         pagePort.start();
-        publishControlState();
+        publishModifiers();
         send({ kind: "Ready" });
         scheduleFit();
     }

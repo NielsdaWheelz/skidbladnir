@@ -16,6 +16,7 @@ import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -36,6 +37,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+
+private data class AccessoryExpectation(
+    val key: String,
+    val unmodified: String,
+    val control: String,
+    val alt: String,
+    val controlAlt: String,
+)
+
+private val OFF_OFF = TerminalModifiers(TerminalModifierPhase.Off, TerminalModifierPhase.Off)
+private val CONTROL_ARMED = TerminalModifiers(TerminalModifierPhase.Armed, TerminalModifierPhase.Off)
+private val ALT_ARMED = TerminalModifiers(TerminalModifierPhase.Off, TerminalModifierPhase.Armed)
+private val BOTH_ARMED = TerminalModifiers(TerminalModifierPhase.Armed, TerminalModifierPhase.Armed)
+
+private val ACCESSORIES = listOf(
+    AccessoryExpectation("Escape", "\u001b", "\u001b", "\u001b\u001b", "\u001b\u001b"),
+    AccessoryExpectation("Slash", "/", "/", "\u001b/", "\u001b/"),
+    AccessoryExpectation("Hyphen", "-", "-", "\u001b-", "\u001b-"),
+    AccessoryExpectation("Home", "\u001b[H", "\u001b[1;5H", "\u001b[1;3H", "\u001b[1;7H"),
+    AccessoryExpectation("Up", "\u001b[A", "\u001b[1;5A", "\u001b[1;3A", "\u001b[1;7A"),
+    AccessoryExpectation("End", "\u001b[F", "\u001b[1;5F", "\u001b[1;3F", "\u001b[1;7F"),
+    AccessoryExpectation("PageUp", "\u001b[5~", "\u001b[5;5~", "\u001b[5;3~", "\u001b[5;7~"),
+    AccessoryExpectation("Tab", "\t", "\t", "\u001b\t", "\u001b\t"),
+    AccessoryExpectation("Left", "\u001b[D", "\u001b[1;5D", "\u001b[1;3D", "\u001b[1;7D"),
+    AccessoryExpectation("Down", "\u001b[B", "\u001b[1;5B", "\u001b[1;3B", "\u001b[1;7B"),
+    AccessoryExpectation("Right", "\u001b[C", "\u001b[1;5C", "\u001b[1;3C", "\u001b[1;7C"),
+    AccessoryExpectation("PageDown", "\u001b[6~", "\u001b[6;5~", "\u001b[6;3~", "\u001b[6;7~"),
+)
 
 @RunWith(AndroidJUnit4::class)
 class TerminalInstrumentedTest {
@@ -96,30 +125,29 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun deckLineFeedAndTrustedEnterStayLfCrDistinctWhileCursorKeysHonorMode() {
+    fun modifierSnapshotBindsOffOffBeforeReady() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            awaitTerminal(scenario, discardBindEvents = false)
+
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+            assertEvent(TerminalTestEvent.Ready)
+            assertNull("page-port bind emitted an extra protocol event", pollEvent())
+        }
+    }
+
+    @Test
+    fun exactBaseValuesHonorNormalAndApplicationCursorModes() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
             val page = requireNotNull(TerminalTestProbe.page)
 
-            for ((accessory, value) in listOf(
-                TerminalAccessory.Escape to "\u001b",
-                TerminalAccessory.Tab to "\u0009",
-                TerminalAccessory.LineFeed to "\u000a",
-                TerminalAccessory.Left to "\u001b[D",
-                TerminalAccessory.Up to "\u001b[A",
-                TerminalAccessory.Down to "\u001b[B",
-                TerminalAccessory.Right to "\u001b[C",
-                TerminalAccessory.Home to "\u001b[H",
-                TerminalAccessory.End to "\u001b[F",
-            )) {
-                page.sendAccessory(accessory)
-                assertInput(value)
+            for (value in ACCESSORIES) {
+                postAccessory(scenario, webView, value.key)
+                assertEvent(TerminalTestEvent.Input(value.unmodified.toByteArray()))
             }
+
             dispatchHardwareKey(scenario, webView, KeyEvent.KEYCODE_ENTER)
-            assertInput(
-                "\r",
-                "trusted Enter must emit CR (0x0d), distinct from deck LineFeed LF (0x0a)",
-            )
+            assertEvent(TerminalTestEvent.Input("\r".toByteArray()))
 
             page.write("\u001b[?1hAPPLICATION MODE".toByteArray())
             awaitValue(
@@ -127,16 +155,16 @@ class TerminalInstrumentedTest {
                 "document.querySelector('.xterm-rows').textContent.includes('APPLICATION MODE')",
                 "true",
             )
-            for ((accessory, value) in listOf(
-                TerminalAccessory.Left to "\u001bOD",
-                TerminalAccessory.Up to "\u001bOA",
-                TerminalAccessory.Down to "\u001bOB",
-                TerminalAccessory.Right to "\u001bOC",
-                TerminalAccessory.Home to "\u001bOH",
-                TerminalAccessory.End to "\u001bOF",
+            for ((key, value) in listOf(
+                "Home" to "\u001bOH",
+                "Up" to "\u001bOA",
+                "End" to "\u001bOF",
+                "Left" to "\u001bOD",
+                "Down" to "\u001bOB",
+                "Right" to "\u001bOC",
             )) {
-                page.sendAccessory(accessory)
-                assertInput(value)
+                postAccessory(scenario, webView, key)
+                assertEvent(TerminalTestEvent.Input(value.toByteArray()))
             }
             awaitValue(
                 webView,
@@ -144,34 +172,66 @@ class TerminalInstrumentedTest {
                 "true",
             )
 
-            TerminalTestProbe.events.clear()
-            page.sendAccessory(TerminalAccessory.Control)
-            page.sendAccessory(TerminalAccessory.LineFeed)
-            page.sendAccessory(TerminalAccessory.Control)
-            page.sendAccessory(TerminalAccessory.Escape)
-            page.sendAccessory(TerminalAccessory.Control)
-            page.sendAccessory(TerminalAccessory.Control)
-            for (expected in listOf(
-                TerminalTestEvent.ControlState(TerminalControlState.Armed),
-                TerminalTestEvent.ControlState(TerminalControlState.Off),
-                TerminalTestEvent.Input("\n".toByteArray()),
-                TerminalTestEvent.ControlState(TerminalControlState.Armed),
-                TerminalTestEvent.ControlState(TerminalControlState.Off),
-                TerminalTestEvent.Input("\u001b".toByteArray()),
-                TerminalTestEvent.ControlState(TerminalControlState.Armed),
-                TerminalTestEvent.ControlState(TerminalControlState.Off),
-            )) {
-                assertEvent(expected)
-            }
-            assertNull("burst emitted an extra callback", TerminalTestProbe.events.poll(250, TimeUnit.MILLISECONDS))
+            assertNull("base-value matrix emitted an extra protocol event", pollEvent())
         }
     }
 
     @Test
-    fun controlMapsProvenAsciiOnceAndSecondTapCancels() {
+    fun ctrlAltAndCombinedModifierTablesAreExactAndAtomic() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val page = requireNotNull(TerminalTestProbe.page)
+
+            postAccessory(scenario, webView, "Control")
+            assertEvent(TerminalTestEvent.Modifiers(CONTROL_ARMED))
+            postAccessory(scenario, webView, "Alt")
+            assertEvent(TerminalTestEvent.Modifiers(BOTH_ARMED))
+            postAccessory(scenario, webView, "Control")
+            assertEvent(TerminalTestEvent.Modifiers(ALT_ARMED))
+            postAccessory(scenario, webView, "Control")
+            assertEvent(TerminalTestEvent.Modifiers(BOTH_ARMED))
+            postAccessory(scenario, webView, "Alt")
+            assertEvent(TerminalTestEvent.Modifiers(CONTROL_ARMED))
+            postAccessory(scenario, webView, "Alt")
+            assertEvent(TerminalTestEvent.Modifiers(BOTH_ARMED))
+            postAccessory(scenario, webView, "Slash")
+            assertConsumedInput("\u001b/")
+
+            for (accessory in ACCESSORIES) {
+                for ((modifiers, expected) in listOf(
+                    CONTROL_ARMED to accessory.control,
+                    ALT_ARMED to accessory.alt,
+                    BOTH_ARMED to accessory.controlAlt,
+                )) {
+                    armModifiers(scenario, webView, modifiers)
+                    postAccessory(scenario, webView, accessory.key)
+                    assertConsumedInput(expected)
+                }
+            }
+
+            requireNotNull(TerminalTestProbe.page).write("\u001b[?1hMODIFIED APPLICATION MODE".toByteArray())
+            awaitValue(
+                webView,
+                "document.querySelector('.xterm-rows').textContent.includes('MODIFIED APPLICATION MODE')",
+                "true",
+            )
+            for ((modifiers, expected) in listOf(
+                CONTROL_ARMED to "\u001b[1;5A",
+                ALT_ARMED to "\u001b[1;3A",
+                BOTH_ARMED to "\u001b[1;7A",
+            )) {
+                armModifiers(scenario, webView, modifiers)
+                postAccessory(scenario, webView, "Up")
+                assertConsumedInput(expected)
+            }
+
+            assertNull("modifier matrix emitted an extra protocol event", pollEvent())
+        }
+    }
+
+    @Test
+    fun trustedPrintableAsciiUsesCtrlThenAltExactlyOnce() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
             val mappings = listOf(
                 Triple(KeyEvent.KEYCODE_C, 0, "\u0003"),
                 Triple(KeyEvent.KEYCODE_A, KeyEvent.META_SHIFT_ON, "\u0001"),
@@ -183,100 +243,123 @@ class TerminalInstrumentedTest {
             )
 
             for ((keyCode, metaState, expected) in mappings) {
-                page.sendAccessory(TerminalAccessory.Control)
-                assertControlState(TerminalControlState.Armed)
+                armModifiers(scenario, webView, CONTROL_ARMED)
                 dispatchHardwareKey(scenario, webView, keyCode, metaState)
-                assertInput(expected)
-                assertControlState(TerminalControlState.Off)
+                assertConsumedInput(expected)
             }
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Off)
-            assertNull("second Control emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
+            armModifiers(scenario, webView, ALT_ARMED)
+            dispatchHardwareKey(scenario, webView, KeyEvent.KEYCODE_C)
+            assertConsumedInput("\u001bc")
+
+            armModifiers(scenario, webView, BOTH_ARMED)
+            dispatchHardwareKey(scenario, webView, KeyEvent.KEYCODE_C)
+            assertConsumedInput("\u001b\u0003")
         }
     }
 
     @Test
-    fun uncertainImeAndCompositionStayLiteralAndConsumeControl() {
+    fun uncertainImeAndCompositionStayLiteralAndConsumeBothModifiers() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val page = requireNotNull(TerminalTestProbe.page)
 
             for (value in listOf("c", "北", "dictated words")) {
-                page.sendAccessory(TerminalAccessory.Control)
-                assertControlState(TerminalControlState.Armed)
+                armModifiers(scenario, webView, BOTH_ARMED)
                 commitText(scenario, webView, value)
-                assertInput(value)
-                assertControlState(TerminalControlState.Off)
+                assertConsumedInput(value)
             }
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             composeText(scenario, webView, "c")
-            assertInput("c")
-            assertControlState(TerminalControlState.Off)
+            assertConsumedInput("c")
         }
     }
 
     @Test
-    fun deckFocusTransferPreservesControlWhileExplicitBoundariesReset() {
+    fun deckFocusTransferPreservesModifiersWhileExplicitAndWindowBoundariesReset() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val page = requireNotNull(TerminalTestProbe.page)
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             onUi(scenario) { webView.clearFocus() }
             assertNull(
-                "intra-surface focus transfer changed Control",
-                TerminalTestProbe.controlStates.poll(250, TimeUnit.MILLISECONDS),
+                "intra-surface focus transfer changed modifiers",
+                pollEvent(),
             )
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Off)
+            postAccessory(scenario, webView, "Control")
+            assertEvent(TerminalTestEvent.Modifiers(ALT_ARMED))
+            postAccessory(scenario, webView, "Alt")
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
-            onUi(scenario) { webView.clearFocus() }
-            page.focus()
-            awaitValue(
-                webView,
-                "document.activeElement === document.querySelector('.xterm-helper-textarea')",
-                "true",
-            )
-            dispatchHardwareKey(scenario, webView, KeyEvent.KEYCODE_C)
-            assertInput("\u0003")
-            assertControlState(TerminalControlState.Off)
+            armModifiers(scenario, webView, BOTH_ARMED)
+            onUi(scenario) { requireNotNull(TerminalTestProbe.page).resetModifiers() }
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
-            page.resetControl()
-            assertControlState(TerminalControlState.Off)
-            assertNull("Control reset emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
-
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             onUi(scenario) { webView.onWindowFocusChanged(false) }
-            assertControlState(TerminalControlState.Off)
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             onUi(scenario) { webView.reload() }
             assertTrue(
                 "same-page reload kept the stale page port connected",
                 TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
             )
-            assertNull("reload emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
+            assertNull("a reset boundary emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
         }
     }
 
     @Test
-    fun exactControlProtocolRejectsRetiredExtraAndMalformedMessages() {
+    fun pageFailureClearsBothModifiersBeforeBecomingUnavailable() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
+
+            armModifiers(scenario, webView, BOTH_ARMED)
+            postRawNativeMessage(scenario, webView, "not-json")
+
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+            assertTrue(
+                "page failure did not make the terminal unavailable",
+                TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+            )
+            assertNull("page failure emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
+        }
+    }
+
+    @Test
+    fun backgroundingAndRecreationDoNotRetainModifiers() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
+
+            armModifiers(scenario, webView, BOTH_ARMED)
+            scenario.moveToState(Lifecycle.State.CREATED)
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+            assertNull("background reset emitted terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
+            scenario.moveToState(Lifecycle.State.RESUMED)
+
+            val resumedWebView = onUi(scenario) {
+                requireNotNull(findWebView(it.window.decorView)) { "resumed terminal activity has no WebView" }
+            }
+            armModifiers(scenario, resumedWebView, BOTH_ARMED)
+            TerminalTestProbe.reset()
+            scenario.recreate()
+            awaitTerminal(scenario, discardBindEvents = false)
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+            assertEvent(TerminalTestEvent.Ready)
+            assertNull("recreated page inherited terminal input", TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS))
+        }
+    }
+
+    @Test
+    fun exactNativeProtocolRejectsUnsupportedExtraMalformedAndUnknownMessages() {
         for (payload in listOf(
             "not-json",
-            """{"kind":"Accessory","key":"CtrlC"}""",
+            """{"kind":"Accessory","key":"LineFeed"}""",
+            """{"kind":"ResetControl"}""",
             """{"kind":"Accessory","key":"Control","extra":true}""",
+            """{"kind":"Accessory","key":1}""",
+            """{"kind":"Accessory","key":"Meta"}""",
+            """{"kind":"Unknown"}""",
         )) {
             TerminalTestProbe.reset()
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
@@ -288,16 +371,28 @@ class TerminalInstrumentedTest {
                 )
             }
         }
+    }
 
-        TerminalTestProbe.reset()
-        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
-            val webView = awaitTerminal(scenario)
-            mutateNextControlState(webView, "payload.state = 1;")
-            requireNotNull(TerminalTestProbe.page).sendAccessory(TerminalAccessory.Control)
-            assertTrue(
-                "native accepted a non-string ControlState",
-                TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
-            )
+    @Test
+    fun exactPageProtocolRejectsUnsupportedExtraMalformedAndUnknownModifierStates() {
+        for (payload in listOf(
+            """{"kind":"ControlState","state":"Armed"}""",
+            """{"kind":"ModifierState","control":"Armed","alt":"Off","extra":true}""",
+            """{"kind":"ModifierState","control":1,"alt":"Off"}""",
+            """{"kind":"ModifierState","control":"Locked","alt":"Off"}""",
+            """{"kind":"ModifierState","control":"Armed"}""",
+            """{"kind":"Unknown"}""",
+        )) {
+            TerminalTestProbe.reset()
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                val webView = awaitTerminal(scenario)
+                replaceNextModifierState(webView, payload)
+                postAccessory(scenario, webView, "Control")
+                assertTrue(
+                    "native accepted invalid page message $payload",
+                    TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                )
+            }
         }
     }
 
@@ -532,10 +627,9 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun portraitScaleReturnsAndControlResetsAfterAFullRotation() {
+    fun portraitScaleReturnsAndModifiersResetAfterAFullRotation() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val page = requireNotNull(TerminalTestProbe.page)
             val initialSize = requireNotNull(TerminalTestProbe.sizes.poll(5, TimeUnit.SECONDS))
             val initialScreenWidth = evaluate(
                 webView,
@@ -543,11 +637,10 @@ class TerminalInstrumentedTest {
             ).toDouble()
             TerminalTestProbe.sizes.clear()
 
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
             awaitValue(webView, "window.innerWidth > window.innerHeight", "true")
-            assertControlState(TerminalControlState.Off)
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
             assertNull(
                 "orientation reset emitted terminal input",
                 TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS),
@@ -578,15 +671,7 @@ class TerminalInstrumentedTest {
     fun clipboardPasteRemovesTerminalControlsBeforeInputLeavesThePage() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val page = requireNotNull(TerminalTestProbe.page)
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
-            pasteText(webView, "c")
-            assertInput("c")
-            assertControlState(TerminalControlState.Off)
-
-            page.sendAccessory(TerminalAccessory.Control)
-            assertControlState(TerminalControlState.Armed)
+            armModifiers(scenario, webView, BOTH_ARMED)
             evaluate(
                 webView,
                 """
@@ -602,15 +687,7 @@ class TerminalInstrumentedTest {
                 """.trimIndent(),
             )
 
-            val bytes = TerminalTestProbe.input.poll(5, TimeUnit.SECONDS)
-            assertNotNull("sanitized paste did not reach the native message port", bytes)
-            val value = requireNotNull(bytes).toString(Charsets.UTF_8)
-            assertEquals("onetwo\nthree[201~\t", value)
-            assertFalse(value.contains('\u001b'))
-            assertFalse(value.contains('\u0000'))
-            assertFalse(value.contains('\u0001'))
-            assertFalse(value.contains('\u0085'))
-            assertControlState(TerminalControlState.Off)
+            assertConsumedInput("onetwo\nthree[201~\t")
         }
     }
 
@@ -638,76 +715,94 @@ class TerminalInstrumentedTest {
 
     @Test
     fun packagedPageThatNeverSignalsReadyHitsTheReadinessDeadline() {
-        val ready = CountDownLatch(1)
-        val unavailable = CountDownLatch(1)
+        val probe = TerminalProbe()
         var deadlineStartedAt = 0L
-        val listener = object : TerminalPageListener {
-            override fun onReady(page: TerminalPage) {
-                ready.countDown()
-            }
-
-            override fun onInput(bytes: ByteArray) = Unit
-
-            override fun onResize(columns: Int, rows: Int) = Unit
-
-            override fun onControlStateChanged(state: TerminalControlState) = Unit
-
-            override fun onUnavailable() {
-                unavailable.countDown()
-            }
-        }
 
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 deadlineStartedAt = System.nanoTime()
                 activity.setContentView(
-                    LockedTerminalWebView(
+                    createTestTerminal(
                         context = activity,
-                        listener = listener,
+                        probe = probe,
                         initialUrl = "https://appassets.androidplatform.net/assets/terminal/terminal.css",
                         readinessTimeoutMillis = 250,
                     ),
                 )
             }
 
-            assertTrue("never-ready packaged page did not time out", unavailable.await(5, TimeUnit.SECONDS))
+            assertTrue("never-ready packaged page did not time out", probe.unavailable.await(5, TimeUnit.SECONDS))
             assertTrue(
                 "never-ready packaged page failed before its deadline",
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - deadlineStartedAt) >= 200,
             )
-            assertEquals("never-ready packaged page signaled Ready", 1L, ready.count)
+            assertEquals("never-ready packaged page signaled Ready", 1L, probe.ready.count)
         }
     }
 
-    private fun awaitTerminal(scenario: ActivityScenario<TerminalTestActivity>): WebView {
+    private fun awaitTerminal(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        discardBindEvents: Boolean = true,
+    ): WebView {
         assertTrue("native page port did not become ready", TerminalTestProbe.ready.await(5, TimeUnit.SECONDS))
         val webView = onUi(scenario) {
             requireNotNull(findWebView(it.window.decorView)) { "terminal activity has no WebView" }
         }
-        assertControlState(TerminalControlState.Off)
+        if (discardBindEvents) {
+            TerminalTestProbe.events.clear()
+        }
         return webView
-    }
-
-    private fun assertInput(
-        expected: String,
-        failureMessage: String = "terminal input did not reach the native message port",
-    ) {
-        val actual = TerminalTestProbe.input.poll(5, TimeUnit.SECONDS)
-        assertNotNull(failureMessage, actual)
-        assertArrayEquals(failureMessage, expected.toByteArray(), requireNotNull(actual))
-    }
-
-    private fun assertControlState(expected: TerminalControlState) {
-        assertEquals(expected, TerminalTestProbe.controlStates.poll(5, TimeUnit.SECONDS))
     }
 
     private fun assertEvent(expected: TerminalTestEvent) {
         when (val actual = TerminalTestProbe.events.poll(5, TimeUnit.SECONDS)) {
             is TerminalTestEvent.Input -> {
                 assertTrue("expected Input event, got $expected", expected is TerminalTestEvent.Input)
-                assertArrayEquals((expected as TerminalTestEvent.Input).bytes, actual.bytes)
+                assertArrayEquals(
+                    "terminal input bytes differed; expected event=$expected",
+                    (expected as TerminalTestEvent.Input).bytes,
+                    actual.bytes,
+                )
             }
-            else -> assertEquals(expected, actual)
+            else -> assertEquals("terminal protocol event differed", expected, actual)
+        }
+    }
+
+    private fun pollEvent(): TerminalTestEvent? =
+        TerminalTestProbe.events.poll(250, TimeUnit.MILLISECONDS)
+
+    private fun assertConsumedInput(expected: String) {
+        assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+        assertEvent(TerminalTestEvent.Input(expected.toByteArray()))
+    }
+
+    private fun armModifiers(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        target: TerminalModifiers,
+    ) {
+        require(target != OFF_OFF)
+        if (target.control == TerminalModifierPhase.Armed) {
+            postAccessory(scenario, webView, "Control")
+            assertEvent(TerminalTestEvent.Modifiers(CONTROL_ARMED))
+        }
+        if (target.alt == TerminalModifierPhase.Armed) {
+            postAccessory(scenario, webView, "Alt")
+            assertEvent(TerminalTestEvent.Modifiers(target))
+        }
+    }
+
+    private fun postAccessory(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        key: String,
+    ) {
+        val accessory = TerminalAccessory.entries.singleOrNull { it.name == key }
+        assertNotNull("the typed TerminalAccessory boundary is missing $key", accessory)
+        onUi(scenario) {
+            val page = requireNotNull(TerminalTestProbe.page)
+            assertTrue("the test probe exposed a different terminal page", page === webView)
+            page.sendAccessory(requireNotNull(accessory))
         }
     }
 
@@ -790,25 +885,6 @@ class TerminalInstrumentedTest {
         throw AssertionError("focused WebView did not expose a terminal InputConnection")
     }
 
-    private fun pasteText(webView: WebView, value: String) {
-        evaluate(
-            webView,
-            """
-            (function () {
-                var clipboard = new DataTransfer();
-                clipboard.setData('text/plain', ${JSONObject.quote(value)});
-                return document.querySelector('.xterm-helper-textarea').dispatchEvent(
-                    new ClipboardEvent('paste', {
-                        clipboardData: clipboard,
-                        bubbles: true,
-                        cancelable: true
-                    })
-                );
-            }())
-            """.trimIndent(),
-        )
-    }
-
     private fun postRawNativeMessage(
         scenario: ActivityScenario<TerminalTestActivity>,
         webView: WebView,
@@ -837,7 +913,7 @@ class TerminalInstrumentedTest {
         )
     }
 
-    private fun mutateNextControlState(webView: WebView, mutation: String) {
+    private fun replaceNextModifierState(webView: WebView, replacement: String) {
         evaluate(
             webView,
             """
@@ -845,10 +921,9 @@ class TerminalInstrumentedTest {
                 var original = MessagePort.prototype.postMessage;
                 MessagePort.prototype.postMessage = function (value) {
                     var payload = JSON.parse(value);
-                    if (payload.kind === 'ControlState') {
+                    if (payload.kind === 'ModifierState') {
                         MessagePort.prototype.postMessage = original;
-                        $mutation
-                        return original.call(this, JSON.stringify(payload));
+                        return original.call(this, ${JSONObject.quote(replacement)});
                     }
                     return original.apply(this, arguments);
                 };
