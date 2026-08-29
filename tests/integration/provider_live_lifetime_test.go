@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"strconv"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
@@ -51,6 +54,56 @@ func (tracker *providerLiveLifetimeTracker) retain(lifetime providerLiveLifetime
 
 func (tracker *providerLiveLifetimeTracker) forCleanup() []providerLiveLifetime {
 	return append([]providerLiveLifetime(nil), tracker.retained...)
+}
+
+func terminateProviderLiveLifetimes(lifetimes []providerLiveLifetime) error {
+	for _, lifetime := range lifetimes {
+		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
+			return err
+		}
+	}
+
+	stopped := make([]providerLiveLifetime, 0, len(lifetimes))
+	for _, lifetime := range lifetimes {
+		if err := syscall.Kill(int(lifetime.pid), syscall.SIGSTOP); err != nil {
+			return errors.Join(
+				errors.New("stop exact provider-live runtime"),
+				killStoppedProviderLiveLifetimes(stopped),
+			)
+		}
+		stopped = append(stopped, lifetime)
+	}
+	for _, lifetime := range stopped {
+		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
+			return errors.Join(err, killStoppedProviderLiveLifetimes(stopped))
+		}
+	}
+	return killStoppedProviderLiveLifetimes(stopped)
+}
+
+func validateProviderLiveLifetimeForSignal(lifetime providerLiveLifetime) error {
+	if lifetime.pid <= 1 || lifetime.pid == processinfo.PID(os.Getpid()) || lifetime.start == "" {
+		return errors.New("refuse invalid provider-live runtime identity")
+	}
+	observation, err := processinfo.Observe(lifetime.pid)
+	if err != nil || observation.PID != lifetime.pid || observation.StartIdentity != lifetime.start {
+		return errors.New("provider-live runtime identity changed before signal")
+	}
+	return nil
+}
+
+func killStoppedProviderLiveLifetimes(lifetimes []providerLiveLifetime) error {
+	var result error
+	for _, lifetime := range lifetimes {
+		if err := validateProviderLiveLifetimeForSignal(lifetime); err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		if err := syscall.Kill(int(lifetime.pid), syscall.SIGKILL); err != nil {
+			result = errors.Join(result, errors.New("kill stopped provider-live runtime"))
+		}
+	}
+	return result
 }
 
 func scanProviderLivePanePIDs(output []byte, providerTmuxNames []string) ([]processinfo.PID, error) {
@@ -137,6 +190,77 @@ func TestProviderLiveLifetimeTrackerRetainsEveryValidObservationForCleanup(t *te
 		if got[index] != want[index] {
 			t.Fatalf("cleanup lifetime %d did not preserve its exact observed identity", index)
 		}
+	}
+}
+
+func TestTerminateProviderLiveLifetimesHardStopsExactOwnedRuntime(t *testing.T) {
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal("resolve provider-live lifetime test command")
+	}
+	command := exec.Command(sleep, "30")
+	if err := command.Start(); err != nil {
+		t.Fatal("start provider-live lifetime test command")
+	}
+	waited := false
+	t.Cleanup(func() {
+		if waited {
+			return
+		}
+		_ = command.Process.Kill()
+		_ = command.Wait()
+	})
+	pid := processinfo.PID(command.Process.Pid)
+	var observation processinfo.Observation
+	deadline := time.Now().Add(time.Second)
+	// justify-polling: Start returns before the child necessarily completes
+	// exec, while process identity is available only after that boundary.
+	for time.Now().Before(deadline) {
+		observation, err = processinfo.Observe(pid)
+		if err == nil && observation.StartIdentity != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil || observation.StartIdentity == "" {
+		t.Fatal("observe provider-live lifetime test command")
+	}
+	if err := terminateProviderLiveLifetimes([]providerLiveLifetime{{
+		pid:   pid,
+		start: observation.StartIdentity,
+	}}); err != nil {
+		t.Fatal("terminate exact provider-live lifetime")
+	}
+	waitErr := command.Wait()
+	waited = true
+	var exitErr *exec.ExitError
+	if !errors.As(waitErr, &exitErr) {
+		t.Fatal("provider-live lifetime did not end by signal")
+	}
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+		t.Fatal("provider-live lifetime did not end by SIGKILL")
+	}
+	if _, err := processinfo.Observe(pid); err == nil {
+		t.Fatal("provider-live lifetime survived exact hard stop")
+	}
+}
+
+func TestTerminateProviderLiveLifetimesRefusesTheCaller(t *testing.T) {
+	pid := processinfo.PID(os.Getpid())
+	observation, err := processinfo.Observe(pid)
+	if err != nil || observation.StartIdentity == "" {
+		t.Fatal("observe provider-live lifetime test caller")
+	}
+	if err := terminateProviderLiveLifetimes([]providerLiveLifetime{{
+		pid:   pid,
+		start: observation.StartIdentity,
+	}}); err == nil {
+		t.Fatal("provider-live lifetime termination accepted its caller")
+	}
+	after, err := processinfo.Observe(pid)
+	if err != nil || after.StartIdentity != observation.StartIdentity {
+		t.Fatal("provider-live lifetime refusal changed its caller")
 	}
 }
 
