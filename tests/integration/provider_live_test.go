@@ -36,7 +36,6 @@ const (
 	providerLiveCLICapabilityV1       = "provider-live-cli-v1"
 	providerLiveOperationTimeout      = 10 * time.Second
 	providerLiveConvergenceTimeout    = 45 * time.Second
-	providerLiveCleanupTimeout        = 10 * time.Second
 	providerLivePollInterval          = 250 * time.Millisecond
 	providerLiveHoldTimeoutSeconds    = 120
 	providerLiveHoldDeadlineSeconds   = 100
@@ -757,7 +756,7 @@ func newProviderLiveHarness(t *testing.T, home string) providerLiveHarness {
 	maximumHarnessDuration := 2*providerLiveOperationTimeout +
 		providerLiveConvergenceTimeout +
 		2*testTmuxCleanupTimeout +
-		providerLiveCleanupTimeout
+		providerLiveProcessGroupCleanupTimeout
 	if maximumHarnessDuration >= time.Duration(providerLiveLifetimeCapSeconds)*time.Second ||
 		maximumHarnessDuration >= time.Duration(providerLiveHoldDeadlineSeconds)*time.Second ||
 		providerLiveHoldDeadlineSeconds >= providerLiveLifetimeCapSeconds ||
@@ -1076,25 +1075,25 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
 	serverStopped := false
 	cleanupComplete := false
-	lifetimes := providerLiveLifetimeTracker{}
+	processGroups := providerLiveProcessGroupTracker{}
 	providerTmuxNames := []string{preflight.plan.managedTmuxName, preflight.plan.laptopTmuxName}
 	t.Cleanup(func() {
 		if cleanupComplete {
 			return
 		}
 		if !serverStopped {
-			if cleanupErr := captureProviderLiveForegroundLifetimes(
+			if cleanupErr := captureProviderLiveProcessGroups(
 				tmuxPath,
 				socketPath,
 				providerTmuxNames,
-				&lifetimes,
+				&processGroups,
 			); cleanupErr != nil {
 				t.Error(cleanupErr)
 			}
-			if cleanupErr := terminateProviderLiveLifetimes(lifetimes.forCleanup()); cleanupErr != nil {
+			if cleanupErr := terminateProviderLiveProcessGroups(processGroups.forCleanup()); cleanupErr != nil {
 				t.Error(cleanupErr)
 			}
-			if cleanupErr := waitForProviderLiveLifetimesToEnd(lifetimes.forCleanup()); cleanupErr != nil {
+			if cleanupErr := waitForProviderLiveProcessGroupsToEnd(processGroups.forCleanup()); cleanupErr != nil {
 				t.Error(cleanupErr)
 			}
 			harness.dispatchSentinel.assertNoDispatch(t)
@@ -1137,22 +1136,22 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 			providerSessionName: preflight.plan.laptopSessionName,
 		},
 	}
-	waitForProviderLiveProjections(t, manager, expectations, &lifetimes)
-	captureErr := captureProviderLiveForegroundLifetimes(
+	waitForProviderLiveProjections(t, manager, expectations, &processGroups)
+	captureErr := captureProviderLiveProcessGroups(
 		tmuxPath,
 		socketPath,
 		providerTmuxNames,
-		&lifetimes,
+		&processGroups,
 	)
 	if captureErr != nil {
 		t.Error(captureErr)
 	}
 
-	providerLifetimes := lifetimes.forCleanup()
-	if err := terminateProviderLiveLifetimes(providerLifetimes); err != nil {
-		t.Fatal("hard-stop exact provider-live runtimes")
+	providerProcessGroups := processGroups.forCleanup()
+	if err := terminateProviderLiveProcessGroups(providerProcessGroups); err != nil {
+		t.Fatal("hard-stop exact provider-live process groups")
 	}
-	cleanupErr := waitForProviderLiveLifetimesToEnd(providerLifetimes)
+	cleanupErr := waitForProviderLiveProcessGroupsToEnd(providerProcessGroups)
 	if cleanupErr != nil {
 		t.Fatal(cleanupErr)
 	}
@@ -1380,7 +1379,7 @@ func waitForProviderLiveProjections(
 	t *testing.T,
 	manager *sessions.Manager,
 	expectations []providerLiveExpectation,
-	lifetimes *providerLiveLifetimeTracker,
+	processGroups *providerLiveProcessGroupTracker,
 ) {
 	t.Helper()
 	if len(expectations) != 2 {
@@ -1412,7 +1411,7 @@ func waitForProviderLiveProjections(
 		cancel()
 		if err == nil {
 			listOK = true
-			if err := lifetimes.record(listed); err != nil {
+			if err := processGroups.record(listed); err != nil {
 				t.Fatal(err)
 			}
 			complete := true
@@ -1466,11 +1465,11 @@ func providerLiveProjectionComplete(summary providerLiveProjectionSummary) bool 
 		summary.providerSessionName && summary.launchProfileMatches
 }
 
-func captureProviderLiveForegroundLifetimes(
+func captureProviderLiveProcessGroups(
 	tmuxPath string,
 	socketPath string,
 	providerTmuxNames []string,
-	lifetimes *providerLiveLifetimeTracker,
+	processGroups *providerLiveProcessGroupTracker,
 ) error {
 	if len(providerTmuxNames) != 2 || providerTmuxNames[0] == providerTmuxNames[1] {
 		return errors.New("final provider runtime foreground capture failed")
@@ -1486,40 +1485,21 @@ func captureProviderLiveForegroundLifetimes(
 	panePIDs, scanErr := scanProviderLivePanePIDs(output, providerTmuxNames)
 	failed := commandErr != nil || scanErr != nil
 	for _, panePID := range panePIDs {
-		paneStart := processStartIdentity(int(panePID))
-		if paneStart == "" {
+		pane, observeErr := processinfo.Observe(panePID)
+		if observeErr != nil || processGroups.retainObservation(pane) != nil {
 			failed = true
-		} else {
-			lifetimes.retain(providerLiveLifetime{pid: panePID, start: paneStart})
 		}
 		foreground, observeErr := processinfo.ObserveForeground(panePID)
 		if observeErr != nil || foreground.PID <= 0 || foreground.StartIdentity == "" {
 			failed = true
 			continue
 		}
-		lifetimes.retain(providerLiveLifetime{pid: foreground.PID, start: foreground.StartIdentity})
+		if err := processGroups.retainObservation(foreground); err != nil {
+			failed = true
+		}
 	}
 	if failed {
 		return errors.New("final provider runtime foreground capture failed")
 	}
 	return nil
-}
-
-func waitForProviderLiveLifetimesToEnd(lifetimes []providerLiveLifetime) error {
-	deadline := time.Now().Add(providerLiveCleanupTimeout)
-	for {
-		remaining := 0
-		for _, lifetime := range lifetimes {
-			if processStartIdentity(int(lifetime.pid)) == lifetime.start {
-				remaining++
-			}
-		}
-		if remaining == 0 {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return errors.New("provider runtime lifetime survived exact tmux server cleanup")
-		}
-		time.Sleep(providerLivePollInterval)
-	}
 }
