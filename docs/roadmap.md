@@ -524,26 +524,29 @@ Outcome: each machine's pressure evidence occupies one compact disclosure rail
 instead of a tall fixed report, without changing sampling, thresholds, history
 rendering, or action admission.
 
-- Hard-cut `GET /v1/pressure` to host-owned per-signal states, explicit
-  aggregate recovery phase, and compact level-only history. CPU/swap are
-  informational; Android owns no thresholds or fallback decoder.
-- Render one header, one stable non-wrapping status-gem row, and the unchanged
-  16dp history band. Remove the history descriptor, unsupported inventory, and
-  duplicate reason footer from visible and spoken UI.
+- Consume the strict host-owned `GET /v1/pressure` per-signal states, aggregate
+  recovery phase, and compact level-only history unchanged. CPU/swap remain
+  informational; Android owns no thresholds, raw-value colour inference, or
+  fallback decoder.
+- Render one split-colour header, one stable non-wrapping flat typographic
+  metric row, and the unchanged 16dp history band. Neutral labels and quiet
+  informational/normal values yield only to Gold/Ember host-evaluated
+  warm/hot exceptions. Remove the gem model and its fills, borders, shapes,
+  selectors, and names.
 - One rail tap opens a machine-bound local details sheet with all supported
   current signals, canonical reasons/freshness, and explicit `NO DATA`.
   Disclosure performs no request or mutation.
 
-Red: host recovery/signal classification, exact gateway capability partition,
-strict Android typed decode, deterministic content grammar, and real Compose
-rail/disclosure behavior at compact and large-text sizes.
+Red: deterministic Android presentation grammar/precision/accent roles, then
+real Compose rail behavior at compact and large-text sizes. Existing host,
+gateway, decoder, polling, history, and disclosure proofs remain their owners
+and are not duplicated for this presentation-only hard cut.
 
-Acceptance: routine verification; the separately approved existing integration
-gate on Linux and Darwin for the real collector/API cut; one separately
-approved S22+ platform pass for geometry, semantics, history pixels, and sheet
-interaction; then the public-fleet release, all-three-host convergence, and
-real-scanner product gates with machine-bound pressure disclosure. Scope per
-[machine-pressure-rail.md](machine-pressure-rail.md).
+Acceptance: routine verification, one separately approved signed S22+ focused
+component pass for geometry/semantics/history pixels/sheet interaction, and one
+approved hands-on normal/mixed/missing/Darwin/large-text/greyscale glance.
+Integration, live, product, and second-phone gates do not re-prove unchanged
+boundaries. Scope per [machine-pressure-rail.md](machine-pressure-rail.md).
 
 ## v0 runtime-release policy hard cut — active
 
@@ -601,6 +604,6 @@ orchestration, via a new architecture decision.
 | v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
-| v0 machine-pressure rail delta | Source implemented over the public-fleet hard cut; ownership reds and focused greens recorded; exact release, all-three-host convergence, real-scanner product, named second-phone, and hands-on visual gates `NOT_RUN` |
+| v0 machine-pressure rail delta | Flat typographic-row hard cut implemented; pure and real-Compose reds recorded; focused unit, signed same-version one-test S22+ component, routine verification, and approved hands-on normal/mixed/missing/Darwin/large-text/greyscale acceptance green on 2026-08-28; release-bound full platform gate `NOT_RUN` |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0.5 push | Not scheduled |
