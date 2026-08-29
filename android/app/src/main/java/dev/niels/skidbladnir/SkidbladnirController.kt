@@ -45,7 +45,7 @@ internal sealed interface SkidbladnirUiState {
 
     data class Terminal(
         val machine: MachineState,
-        val target: AgentTarget,
+        val target: SessionTarget,
         val attempt: Int,
         val connection: TerminalUiStatus,
         val kill: KillState?,
@@ -70,7 +70,7 @@ internal sealed interface ForgeRecovery {
 }
 internal data class KillState(
     val machine: PairedMachine,
-    val target: AgentTarget,
+    val target: SessionTarget,
     val pending: Boolean,
 )
 internal sealed interface TerminalUiStatus {
@@ -170,7 +170,7 @@ private fun availableTerminalStatus(
     val exact = terminal.machine.machine.handle == terminal.target.machineHandle &&
         response.machine.handle == terminal.target.machineHandle &&
         response.sessions.any {
-            it.id == terminal.target.session.id &&
+            it.tmuxId == terminal.target.session.tmuxId &&
                 it.tmuxName == terminal.target.session.tmuxName &&
                 it.identityToken == terminal.target.session.identityToken
         }
@@ -896,7 +896,7 @@ internal class SkidbladnirController(context: Context) {
                     if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready ||
                         polling[credential.machine.handle] !== runtime) return@post
                     enterCreatedTerminal(
-                        AgentTarget(credential.machine.handle, result.value),
+                        SessionTarget(credential.machine.handle, result.value),
                         mutationFence,
                     )
                     awaitInventory(credential.machine.handle, activeGeneration)
@@ -930,13 +930,13 @@ internal class SkidbladnirController(context: Context) {
         }
     }
 
-    fun openTerminal(target: AgentTarget) {
+    fun openTerminal(target: SessionTarget) {
         val machine = machineStates[target.machineHandle] ?: return
         if (!machine.canMutate) return
         enterTerminal(machine, target)
     }
 
-    private fun enterTerminal(machine: MachineState, target: AgentTarget) {
+    private fun enterTerminal(machine: MachineState, target: SessionTarget) {
         leaveTerminal()
         state = SkidbladnirUiState.Terminal(
             machine = machine,
@@ -947,7 +947,7 @@ internal class SkidbladnirController(context: Context) {
         )
     }
 
-    private fun enterCreatedTerminal(target: AgentTarget, requiredMutationFence: Long) {
+    private fun enterCreatedTerminal(target: SessionTarget, requiredMutationFence: Long) {
         val machine = machineStates[target.machineHandle] ?: return
         leaveTerminal()
         val attempt = nextTerminalAttempt++
@@ -1075,7 +1075,7 @@ internal class SkidbladnirController(context: Context) {
                     is GatewayResult.Success -> {
                         if (!acceptMachineIdentity(credential, result.value)) return@post
                         val exact = result.value.sessions.any {
-                            it.id == current.target.session.id &&
+                            it.tmuxId == current.target.session.tmuxId &&
                                 it.tmuxName == current.target.session.tmuxName &&
                                 it.identityToken == current.target.session.identityToken
                         }
@@ -1089,13 +1089,13 @@ internal class SkidbladnirController(context: Context) {
         }
     }
 
-    fun detachToAgents() {
+    fun detachToSessions() {
         leaveTerminal()
         publishDashboard()
         verifyVisibleInventory()
     }
 
-    fun requestKill(target: AgentTarget) {
+    fun requestKill(target: SessionTarget) {
         val machine = machineStates[target.machineHandle] ?: return
         val kill = KillState(machine.machine, target, false)
         state = when (val current = state) {
@@ -1408,13 +1408,14 @@ internal class SkidbladnirController(context: Context) {
         }
     }
 
-    private fun removeTargetFromSnapshot(target: AgentTarget) {
+    private fun removeTargetFromSnapshot(target: SessionTarget) {
         updateMachine(target.machineHandle) { machine ->
             val trimmed = machine.inventory.lastSnapshot()?.let { snapshot ->
                 snapshot.copy(
                     inventory = snapshot.inventory.copy(
                         sessions = snapshot.inventory.sessions.filterNot {
-                            it.id == target.session.id && it.identityToken == target.session.identityToken
+                            it.tmuxId == target.session.tmuxId &&
+                                it.identityToken == target.session.identityToken
                         },
                     ),
                 )

@@ -12,6 +12,11 @@ The 2026-08-27 public-fleet hard-cut source is implemented in Skíðblaðnir and
 `dev-server`, and both routine verification suites are green. Public-repository
 conversion, exact-SHA hosted CI, signed release, immutable publication,
 host/tmux acceptance, and both physical-phone gates remain `NOT_RUN`.
+The 2026-08-28 agent-identity projection hard-cut source is implemented in
+Skíðblaðnir and `dev-server`, both routine verification suites are green, and
+the approved exact-head isolated Darwin tmux integration is green. Android
+platform, exact release/pin/deployment, and the provider-live matrix remain
+`NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -50,6 +55,7 @@ S1 tmux control plane
  -> v0 design delta D9: detach chrome
  -> v0 dashboard card hierarchy delta
  -> v0 machine-pressure rail delta
+ -> v0 agent-identity projection hard cut
  -> v0.5 (optional): push
 ```
 
@@ -71,7 +77,7 @@ tmux sessions and reads its pressure.
 - `POST /v1/sessions`: cwd/tmux-name/objective validation, host profile-table
   allowlist, unbounded `skidbladnir-<profile>-<N>` generated names, independent
   balanced Dvergatal assignment, user options set at create, YOLO exec.
-- `DELETE /v1/sessions/{id}`: inventory `identityToken` binds a random
+- `DELETE /v1/sessions/{tmuxId}`: inventory `identityToken` binds a random
   tmux-server epoch + built-in PID/start time + id; all lifetime facts, the
   displayed name, ungrouped-or-last-link predicate, and `kill-session` share
   one tmux client queue; owned stale phone shadows reconcile first, while any
@@ -568,6 +574,39 @@ immutable and digest-pinned; tool versions do not.
   host, release publication, and device gates remain explicit `NOT_RUN` until
   separately approved.
 
+## v0 agent-identity projection hard cut — active
+
+Outcome: every visible tmux session exposes its exact tmux address and an
+optional exact current Codex/Claude runtime projection without making the agent
+less opaque or adding communication.
+
+- Hard-cut session `id/profile` to `tmuxId/launchProfile`; profile choices gain
+  required provider; Android hard-cuts agent-named session types and selectors
+  to session terminology.
+- One `internal/agentruntime` owner validates provider/profile configuration,
+  classifies the already-observed foreground process, accepts one bounded
+  process-lifetime registration, and applies Claude name/launch argv rules.
+- Replace `status-hook` with the closed Codex/Claude `agent-hook`. SessionStart
+  registers provider session id and runtime profile; only Codex retains the
+  existing three-event lifecycle semantics.
+- Deployment hard-cuts the Codex hook files and loads one owned Claude
+  SessionStart plugin through the existing router; it does not overwrite
+  Claude user settings, and raw-binary launches remain unregistered.
+- Inventory observes foreground once for status and identity. Missing or stale
+  hooks omit registered facts; `@skid_profile` remains only the launch fact and
+  never fills an unknown runtime profile.
+- No provider API, transcript/config-store parsing, second registry, background
+  worker, message endpoint, tool, scheduler, wake, or non-current-pane scan.
+
+Red: pure runtime/config/registration/argv behavior, then one owner proof at
+the hook, session, authenticated HTTP, and Android card boundaries. A rename
+compile failure is not the red.
+
+Acceptance: routine verification plus the separately approved isolated tmux,
+focused S22+ component, deployment, and four-case live sample defined in
+[agent-identity-projection.md](agent-identity-projection.md). Unapproved
+external boundaries are `NOT_RUN`.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -606,4 +645,5 @@ orchestration, via a new architecture decision.
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented; pure and real-Compose reds recorded; focused unit, signed same-version one-test S22+ component, routine verification, and approved hands-on normal/mixed/missing/Darwin/large-text/greyscale acceptance green on 2026-08-28; release-bound full platform gate `NOT_RUN` |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
+| v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
 | v0.5 push | Not scheduled |

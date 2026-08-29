@@ -52,7 +52,7 @@ class DashboardChromeInstrumentedTest {
             }
         }
 
-        val seal = compose.onNodeWithTag("new-agent")
+        val seal = compose.onNodeWithTag("new-session")
         seal.assertIsEnabled()
         seal.assertContentDescriptionEquals("New dwarf")
         // TalkBack must announce it as a button, not as an unlabelled image
@@ -108,7 +108,7 @@ class DashboardChromeInstrumentedTest {
         // `disabled()`, so an absent action is not the contract and asserting it
         // would be unreachable. What a user meets is a control spoken disabled that
         // reaches nothing when tapped, and that is what is asserted.
-        val seal = compose.onNodeWithTag("new-agent")
+        val seal = compose.onNodeWithTag("new-session")
         seal.assertIsNotEnabled()
         compose.mainClock.advanceTimeByFrame()
         assertEquals(
@@ -369,12 +369,12 @@ class DashboardChromeInstrumentedTest {
     // — against half-strokes of 0.0134 (frame 1.5dp) and 0.0268 (mark 3dp) at
     // 56dp (forge-seal.md, "Geometry").
     private fun forgeSealField(): Color {
-        val pixels = compose.onNodeWithTag("new-agent").captureToImage().toPixelMap()
+        val pixels = compose.onNodeWithTag("new-session").captureToImage().toPixelMap()
         return pixels[pixels.width / 4, pixels.height / 4]
     }
 
-    private fun killSession() = AgentSession(
-        id = SESSION_ID,
+    private fun killSession() = TmuxSession(
+        tmuxId = SESSION_ID,
         tmuxName = "ga-durinn",
         identityToken = "identity-1",
         character = CharacterSummary(key = "durinn", displayName = "Durinn"),
@@ -387,7 +387,7 @@ class DashboardChromeInstrumentedTest {
         ),
     )
 
-    private fun killTarget() = AgentTarget(MACHINE.handle, killSession())
+    private fun killTarget() = SessionTarget(MACHINE.handle, killSession())
 
     // KillButton's minimumInteractiveComponentSize() pads its layout node out
     // to the 48dp touch target, so the captured image is wider and taller than

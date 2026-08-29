@@ -56,7 +56,7 @@ internal fun TerminalScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             DetachButton(
-                onClick = controller::detachToAgents,
+                onClick = controller::detachToSessions,
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -135,7 +135,7 @@ internal fun TerminalScreen(
                     message = connection.message,
                     actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
                     onReattach = controller::reattachTerminal,
-                    onAgents = controller::detachToAgents,
+                    onSessions = controller::detachToSessions,
                 )
             }
         }
@@ -184,7 +184,7 @@ private fun ReconnectPanel(
     message: String,
     actionAdmissible: Boolean,
     onReattach: () -> Unit,
-    onAgents: () -> Unit,
+    onSessions: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -217,7 +217,7 @@ private fun ReconnectPanel(
                 Text("Reattach to ${machineLabel.text}")
             }
             OutlinedButton(
-                onClick = onAgents,
+                onClick = onSessions,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp),

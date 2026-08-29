@@ -99,7 +99,7 @@ internal fun DetachButton(
 @Composable
 internal fun KillButton(
     machineLabel: MachineLabel,
-    target: AgentTarget,
+    target: SessionTarget,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,

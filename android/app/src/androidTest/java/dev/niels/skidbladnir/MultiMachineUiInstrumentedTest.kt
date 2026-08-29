@@ -103,7 +103,7 @@ class MultiMachineUiInstrumentedTest {
 
             // The create action left the header for the Forge seal (forge-seal.md,
             // "Hard cut and cleanup"), which is anchored over the grid, not here.
-            compose.onNodeWithTag("new-agent").assertDoesNotExist()
+            compose.onNodeWithTag("new-session").assertDoesNotExist()
             compose.onNodeWithText("New dwarf").assertDoesNotExist()
 
             compose.onNodeWithText("Add machine").assertDoesNotExist()
@@ -303,10 +303,10 @@ class MultiMachineUiInstrumentedTest {
                     compose.onNodeWithContentDescription(CHECKING_SESSIONS).assertDoesNotExist()
                     assertNoProgressSemantics()
                     val firstCardTag = cardTag(sessions.first())
-                    compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(sessions.last())))
+                    compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(sessions.last())))
                     compose.onNodeWithTag(firstCardTag).assertDoesNotExist()
                     val dispatchesBeforeAwayPull = dispatchCount
-                    compose.onNodeWithTag("agents-grid").performTouchInput {
+                    compose.onNodeWithTag("sessions-grid").performTouchInput {
                         swipe(
                             start = percentOffset(0.5f, 0.35f),
                             end = percentOffset(0.5f, 0.55f),
@@ -322,7 +322,7 @@ class MultiMachineUiInstrumentedTest {
                         dispatchCount,
                     )
 
-                    val grid = compose.onNodeWithTag("agents-grid")
+                    val grid = compose.onNodeWithTag("sessions-grid")
                     grid.performScrollToNode(hasTestTag(firstCardTag))
                     val firstAtTop = compose.onNodeWithTag(firstCardTag)
                         .assertIsDisplayed()
@@ -444,8 +444,8 @@ class MultiMachineUiInstrumentedTest {
                 val filters = compose.onNodeWithTag("machine-filters")
                 val firstFilter = compose.onNodeWithTag("machine-filter-all")
                 val lastFilter = compose.onNodeWithTag("machine-filter-${OTHER_MACHINE.handle.encoded}")
-                compose.onAllNodesWithTag("new-agent").assertCountEquals(1)
-                val forgeSeal = compose.onNodeWithTag("new-agent")
+                compose.onAllNodesWithTag("new-session").assertCountEquals(1)
+                val forgeSeal = compose.onNodeWithTag("new-session")
                 val topBarBounds = topBar.getUnclippedBoundsInRoot()
                 val filterBounds = filters.getUnclippedBoundsInRoot()
                 val forgeSealBounds = forgeSeal.getUnclippedBoundsInRoot()
@@ -974,8 +974,8 @@ class MultiMachineUiInstrumentedTest {
             requireNotNull(MachineLabel.parse("Devbox")),
             requireNotNull(MachineOrigin.parse("https://devbox.example.ts.net:8443")),
         )
-        val session = AgentSession(
-            id = "${'$'}1",
+        val session = TmuxSession(
+            tmuxId = "${'$'}1",
             tmuxName = "ga-durinn",
             identityToken = "v1-0123456789abcdef0123456789abcdef.100.200.1",
             character = CharacterSummary("norse.durinn", "Durinn"),
@@ -987,7 +987,7 @@ class MultiMachineUiInstrumentedTest {
                 Instant.parse("2026-08-26T11:59:55Z"),
             ),
         )
-        val target = AgentTarget(handle, session)
+        val target = SessionTarget(handle, session)
         val stale = MachineState(
             machine = machine,
             access = MachineAccess.Ready,
@@ -1057,7 +1057,7 @@ class MultiMachineUiInstrumentedTest {
         val readiness = context.cacheDir.resolve(OUTAGE_READY_FILE)
         assertTrue("Could not clear stale outage coordination marker", !readiness.exists() || readiness.delete())
         val client = GatewayClient()
-        val failedTarget = AgentTarget(
+        val failedTarget = SessionTarget(
             failedHandle,
             requireNotNull(gatewaySuccess(client.listSessions(failed)).sessions.firstOrNull()) {
                 "Outage journey requires one pre-existing session on ${failed.machine.handle.encoded}"
@@ -1069,7 +1069,7 @@ class MultiMachineUiInstrumentedTest {
                 waitForTag(freshMachineTag(failed), 30_000)
                 healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
 
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
+                compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
                 compose.onNodeWithText(
                     "Kill ${failedTarget.session.tmuxName} on ${failed.machine.label.text}?",
@@ -1092,13 +1092,13 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
 
-                compose.onNodeWithTag("agents-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
+                compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).assertIsNotEnabled()
 
                 compose.onNodeWithTag(filterTag(healthyProbe)).performClick()
-                compose.onNodeWithTag("new-agent").assertIsEnabled()
+                compose.onNodeWithTag("new-session").assertIsEnabled()
                 compose.onNodeWithTag(filterTag(failed)).performClick()
-                compose.onNodeWithTag("new-agent").assertIsNotEnabled()
+                compose.onNodeWithTag("new-session").assertIsNotEnabled()
             }
         } finally {
             assertTrue("Could not clear outage coordination marker", !readiness.exists() || readiness.delete())
@@ -1107,7 +1107,7 @@ class MultiMachineUiInstrumentedTest {
     }
 
     private fun pull(beyondThreshold: Boolean) {
-        compose.onNodeWithTag("agents-grid").performTouchInput {
+        compose.onNodeWithTag("sessions-grid").performTouchInput {
             swipe(
                 start = percentOffset(0.5f, 0.2f),
                 end = percentOffset(0.5f, if (beyondThreshold) 0.9f else 0.3f),
@@ -1136,7 +1136,7 @@ class MultiMachineUiInstrumentedTest {
             kill = null,
         )
 
-    private fun snapshot(sessions: List<AgentSession>) = InventorySnapshot(
+    private fun snapshot(sessions: List<TmuxSession>) = InventorySnapshot(
         SessionsResponse(
             MachineSummary(TEST_MACHINE.handle, MachinePlatform.Linux),
             OBSERVED_AT,
@@ -1146,12 +1146,12 @@ class MultiMachineUiInstrumentedTest {
         SystemClock.elapsedRealtime(),
     )
 
-    private fun session(index: Int): AgentSession = AgentSession(
-        id = "session-$index",
+    private fun session(index: Int): TmuxSession = TmuxSession(
+        tmuxId = "session-$index",
         tmuxName = "skidbladnir-work-$index",
         identityToken = "identity-$index",
         character = CharacterSummary("dwarf-$index", "Dwarf $index"),
-        profile = TEST_PROFILE.key.encoded,
+        launchProfile = TEST_PROFILE.key,
         attachedClients = 0,
         attention = false,
         status = SessionStatus(
@@ -1161,11 +1161,11 @@ class MultiMachineUiInstrumentedTest {
         ),
     )
 
-    private fun cardTag(session: AgentSession) =
-        "agent-card-${TEST_MACHINE.handle.encoded}-${session.id}"
+    private fun cardTag(session: TmuxSession) =
+        "session-card-${TEST_MACHINE.handle.encoded}-${session.tmuxId}"
 
-    private fun killTag(session: AgentSession) =
-        "agent-kill-${TEST_MACHINE.handle.encoded}-${session.id}"
+    private fun killTag(session: TmuxSession) =
+        "session-kill-${TEST_MACHINE.handle.encoded}-${session.tmuxId}"
 
     private fun assertNoOverlap(label: String, indicator: DpRect, content: DpRect) {
         assertTrue(
@@ -1223,11 +1223,11 @@ class MultiMachineUiInstrumentedTest {
     private fun filterTag(credential: MachineCredential) =
         "machine-filter-${credential.machine.handle.encoded}"
 
-    private fun cardTag(target: AgentTarget) =
-        "agent-card-${target.machineHandle.encoded}-${target.session.id}"
+    private fun cardTag(target: SessionTarget) =
+        "session-card-${target.machineHandle.encoded}-${target.session.tmuxId}"
 
-    private fun killTag(target: AgentTarget) =
-        "agent-kill-${target.machineHandle.encoded}-${target.session.id}"
+    private fun killTag(target: SessionTarget) =
+        "session-kill-${target.machineHandle.encoded}-${target.session.tmuxId}"
 
     private companion object {
         const val CHECKING_SESSIONS = "Checking tmux sessions"
@@ -1245,6 +1245,10 @@ class MultiMachineUiInstrumentedTest {
             requireNotNull(MachineLabel.parse("MacBook Pro Across The Far Tailnet Realm")),
             requireNotNull(MachineOrigin.parse("https://macbook.example.ts.net:8443")),
         )
-        val TEST_PROFILE = ProfileChoice(requireNotNull(ProfileKey.parse("work")), "Codex · Work")
+        val TEST_PROFILE = ProfileChoice(
+            requireNotNull(ProfileKey.parse("work")),
+            "Codex · Work",
+            AgentProvider.Codex,
+        )
     }
 }

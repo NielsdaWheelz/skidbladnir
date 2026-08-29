@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agenthook"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/hostconfig"
@@ -26,7 +27,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/statushook"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -48,7 +48,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
 	if arguments[0] == "version" {
@@ -62,24 +62,24 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	if arguments[0] == "status-hook" {
-		flags := flag.NewFlagSet("status-hook", flag.ContinueOnError)
+	if arguments[0] == "agent-hook" {
+		flags := flag.NewFlagSet("agent-hook", flag.ContinueOnError)
 		flags.SetOutput(stderr)
 		hostConfigPath := flags.String("host-config", "", "required host config")
-		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 1 || *hostConfigPath == "" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir status-hook --host-config=PATH {SessionStart|UserPromptSubmit|Stop}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || *hostConfigPath == "" {
+			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH {Codex {SessionStart|UserPromptSubmit|Stop}|Claude SessionStart}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
 		config, err := loadRuntimeHostConfig(*hostConfigPath, platform.Current().Kind)
 		if err != nil {
-			_, _ = io.WriteString(stderr, "status-hook host configuration failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			_, _ = io.WriteString(stderr, "agent-hook host configuration failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitFailure
 		}
-		if err := statushook.Run(context.Background(), statushook.Config{
-			TmuxPath:            config.Tmux.Path,
-			CodexNodeEntrypoint: config.CodexNodeEntrypoint,
-		}, flags.Arg(0), os.Stdin, stdout); err != nil {
-			_, _ = io.WriteString(stderr, "status-hook failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		if err := agenthook.Run(context.Background(), agenthook.Config{
+			TmuxPath: config.Tmux.Path,
+			Profiles: config.Profiles,
+		}, flags.Arg(0), flags.Arg(1), os.Stdin, stdout); err != nil {
+			_, _ = io.WriteString(stderr, "agent-hook failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitFailure
 		}
 		return 0
@@ -186,7 +186,7 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	default:
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|status-hook EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -29,7 +30,7 @@ const (
 )
 
 type sessionManager interface {
-	Profiles() []sessions.Profile
+	Profiles() []agentruntime.Profile
 	List(context.Context) ([]sessions.Session, error)
 	Create(context.Context, sessions.CreateInput) (sessions.Session, error)
 	ValidateKill(context.Context, sessions.KillInput) error
@@ -317,14 +318,15 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		return
 	}
 	observedAt := time.Now().UTC()
-	profiles, err := mapProfiles(gateway.sessions.Profiles())
+	configuredProfiles := gateway.sessions.Profiles()
+	profiles, err := mapProfiles(configuredProfiles)
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
 	cards := make([]sessionDTO, len(listed))
 	for index, session := range listed {
-		card, mapErr := mapSession(session, observedAt)
+		card, mapErr := mapSession(session, configuredProfiles, observedAt)
 		if mapErr != nil {
 			writeError(writer, errorInternal)
 			return
@@ -343,7 +345,7 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		if cards[left].TmuxName != cards[right].TmuxName {
 			return cards[left].TmuxName < cards[right].TmuxName
 		}
-		return cards[left].ID < cards[right].ID
+		return cards[left].TmuxID < cards[right].TmuxID
 	})
 	event, eventErr := logging.NewSessionsListed(uint64(len(cards)), time.Since(startedAt))
 	if eventErr != nil {
@@ -395,12 +397,12 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeSessionError(writer, err)
 		return
 	}
-	card, err := mapSession(created, time.Now().UTC())
+	card, err := mapSession(created, gateway.sessions.Profiles(), time.Now().UTC())
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.ID, created.TmuxName, input.Profile.value, time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.TmuxID, created.TmuxName, agentruntime.ProfileKey(input.Profile.value), time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-created log event") // justify-defect: Create validated the profile key and tmux minted the id and name.
 	}
@@ -410,8 +412,8 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 
 func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
 	startedAt := time.Now()
-	id := strings.TrimPrefix(request.URL.Path, "/v1/sessions/")
-	if id == "" || strings.ContainsRune(id, '/') {
+	tmuxID := strings.TrimPrefix(request.URL.Path, "/v1/sessions/")
+	if tmuxID == "" || strings.ContainsRune(tmuxID, '/') {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -424,14 +426,14 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	kill := sessions.KillInput{ID: id, TmuxName: input.TmuxName, IdentityToken: input.IdentityToken}
+	kill := sessions.KillInput{TmuxID: tmuxID, TmuxName: input.TmuxName, IdentityToken: input.IdentityToken}
 	gateway.terminalLifecycle.Lock()
 	defer gateway.terminalLifecycle.Unlock()
 	if err := gateway.sessions.ValidateKill(request.Context(), kill); err != nil {
 		writeSessionError(writer, err)
 		return
 	}
-	if err := gateway.closeLiveTerminals(request.Context(), id); err != nil {
+	if err := gateway.closeLiveTerminals(request.Context(), tmuxID); err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
@@ -439,7 +441,7 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeSessionError(writer, err)
 		return
 	}
-	event, eventErr := logging.NewSessionKilled(id, input.TmuxName, time.Since(startedAt))
+	event, eventErr := logging.NewSessionKilled(tmuxID, input.TmuxName, time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-killed log event") // justify-defect: sessions accepted the exact owned identity pair.
 	}

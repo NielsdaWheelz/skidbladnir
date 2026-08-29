@@ -120,9 +120,35 @@ class SessionCardInstrumentedTest {
         compose.runOnIdle { showMachineLabel = false }
         context.assertContext(FILTERED_CONTEXT, CONTEXT_DESCRIPTION)
         card.assertMergedContext(CONTEXT_DESCRIPTION)
-        compose.runOnIdle { fixture = fixture.copy(profileKey = RAW_PROFILE) }
-        context.assertContext(RAW_PROFILE, RAW_CONTEXT_DESCRIPTION)
-        compose.runOnIdle { fixture = fixture.copy(profileKey = null) }
+        compose.runOnIdle {
+            fixture = fixture.copy(
+                agent = AgentRuntime(
+                    provider = AgentProvider.Claude,
+                    pid = 2345,
+                    providerSession = ProviderSessionFacts.withId("provider-id", name = "provider-name"),
+                ),
+                statusKind = SessionStatusKind.Running,
+            )
+        }
+        context.assertContext(UNKNOWN_RUNTIME_PROFILE, UNKNOWN_RUNTIME_CONTEXT_DESCRIPTION)
+        assertTrue(
+            "the compact card exposed raw provider identity or PID",
+            card.textValues().none { it.contains("provider-id") || it.contains("provider-name") || it.contains("2345") } &&
+                card.contentDescriptions().none {
+                    it.contains("provider-id") || it.contains("provider-name") || it.contains("2345")
+                },
+        )
+        compose.runOnIdle {
+            fixture = fixture.copy(
+                agent = null,
+                launchProfile = WORK_PROFILE,
+                statusKind = SessionStatusKind.Shell,
+            )
+        }
+        context.assertContext(FILTERED_CONTEXT, CONTEXT_DESCRIPTION)
+        compose.runOnIdle {
+            fixture = fixture.copy(launchProfile = null, statusKind = SessionStatusKind.Unknown)
+        }
         context.assertContext(PROFILE_UNKNOWN, UNKNOWN_CONTEXT_DESCRIPTION)
 
         card.performClick()
@@ -141,7 +167,16 @@ class SessionCardInstrumentedTest {
         assertFacetPosition(quietFacet, cardBounds)
 
         STATUS_FIXTURES.forEach { (kind, expected) ->
-            compose.runOnIdle { fixture = fixture.copy(statusKind = kind) }
+            compose.runOnIdle {
+                fixture = fixture.copy(
+                    statusKind = kind,
+                    agent = when (kind) {
+                        SessionStatusKind.Working, SessionStatusKind.Running, SessionStatusKind.Idle ->
+                            COMMON_FIXTURE.agent
+                        SessionStatusKind.Shell, SessionStatusKind.Unknown -> null
+                    },
+                )
+            }
             val rendered = card().textValues()
             assertTrue(
                 "the $kind bay lost its literal kind, named signal, or age: $rendered",
@@ -168,7 +203,13 @@ class SessionCardInstrumentedTest {
         }
 
         compose.mainClock.autoAdvance = false
-        compose.runOnIdle { fixture = fixture.copy(statusKind = SessionStatusKind.Working, attention = true) }
+        compose.runOnIdle {
+            fixture = fixture.copy(
+                statusKind = SessionStatusKind.Working,
+                agent = COMMON_FIXTURE.agent,
+                attention = true,
+            )
+        }
         compose.mainClock.advanceTimeByFrame()
         val markedFacet = facet().getUnclippedBoundsInRoot()
         assertEquals("attention must not move the fixed status facet", quietFacet, markedFacet)
@@ -301,8 +342,9 @@ class SessionCardInstrumentedTest {
                     Box(Modifier.width(CARD_WIDTH).background(Ink)) {
                         val current = fixture()
                         val session = current.session()
-                        AgentCard(
-                            agent = VisibleAgent(current.machine(), AgentTarget(MACHINE_HANDLE, session)),
+                        SessionCard(
+                            visibleSession =
+                                VisibleSession(current.machine(), SessionTarget(MACHINE_HANDLE, session)),
                             machine = current.machineState(session),
                             showMachineLabel = showMachineLabel(),
                             onOpen = onOpen,
@@ -320,12 +362,13 @@ class SessionCardInstrumentedTest {
         origin = MACHINE_ORIGIN,
     )
 
-    private fun CardFixture.session() = AgentSession(
-        id = SESSION_ID,
+    private fun CardFixture.session() = TmuxSession(
+        tmuxId = SESSION_ID,
         tmuxName = tmuxName,
         identityToken = "identity-1",
         character = CharacterSummary(key = "durinn", displayName = dwarfName),
-        profile = profileKey,
+        launchProfile = launchProfile,
+        agent = agent,
         objective = objective,
         cwd = cwd,
         activeCommand = "codex",
@@ -334,12 +377,15 @@ class SessionCardInstrumentedTest {
         status = SessionStatus(statusKind, signalFor(statusKind), SIGNAL_AT),
     )
 
-    private fun CardFixture.machineState(session: AgentSession): MachineState {
+    private fun CardFixture.machineState(session: TmuxSession): MachineState {
         val snapshot = InventorySnapshot(
             SessionsResponse(
                 machine = MachineSummary(MACHINE_HANDLE, MachinePlatform.Linux),
                 observedAt = OBSERVED_AT,
-                profiles = listOf(ProfileChoice(ProfileKey.parse("work")!!, profileLabel)),
+                profiles = listOf(
+                    ProfileChoice(WORK_PROFILE, profileLabel, AgentProvider.Codex),
+                    ProfileChoice(PERSONAL_PROFILE, "Codex · Personal", AgentProvider.Codex),
+                ),
                 sessions = listOf(session),
             ),
             receivedAtElapsedMillis = SystemClock.elapsedRealtime(),
@@ -413,7 +459,8 @@ class SessionCardInstrumentedTest {
         val machineLabel: String,
         val tmuxName: String,
         val dwarfName: String,
-        val profileKey: String?,
+        val launchProfile: ProfileKey?,
+        val agent: AgentRuntime?,
         val profileLabel: String,
         val objective: String?,
         val cwd: String,
@@ -447,10 +494,11 @@ class SessionCardInstrumentedTest {
         const val DWARF_NAME = "Durinn"
         const val ALL_CONTEXT = "Devbox · Codex · Work"
         const val FILTERED_CONTEXT = "Codex · Work"
-        const val RAW_PROFILE = "custom-profile"
         const val PROFILE_UNKNOWN = "profile unknown"
         const val CONTEXT_DESCRIPTION = "Machine Devbox. Profile Codex · Work."
-        const val RAW_CONTEXT_DESCRIPTION = "Machine Devbox. Profile custom-profile."
+        const val UNKNOWN_RUNTIME_PROFILE = "Claude · profile unknown"
+        const val UNKNOWN_RUNTIME_CONTEXT_DESCRIPTION =
+            "Machine Devbox. Profile Claude · profile unknown."
         const val UNKNOWN_CONTEXT_DESCRIPTION = "Machine Devbox. Profile profile unknown."
         const val PORTRAIT_DESCRIPTION = "Portrait of Durinn"
         const val DIRECTORY_DESCRIPTION = "Directory /src/skidbladnir"
@@ -469,18 +517,21 @@ class SessionCardInstrumentedTest {
         const val LONG_CONTEXT = "MacBook Pro Across The Far Tailnet Realm · Codex · Work"
         const val LONG_CONTEXT_DESCRIPTION =
             "Machine MacBook Pro Across The Far Tailnet Realm. Profile Codex · Work."
-        const val CARD_TAG = "agent-card-mh-0123456789abcdef0123456789abcdef-session-durinn"
-        const val FACET_TAG = "agent-status-facet-mh-0123456789abcdef0123456789abcdef-session-durinn"
-        const val DIRECTORY_TAG = "agent-directory-mh-0123456789abcdef0123456789abcdef-session-durinn"
-        const val OBJECTIVE_TAG = "agent-objective-mh-0123456789abcdef0123456789abcdef-session-durinn"
-        const val CONTEXT_TAG = "agent-context-mh-0123456789abcdef0123456789abcdef-session-durinn"
-        const val KILL_TAG = "agent-kill-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val CARD_TAG = "session-card-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val FACET_TAG = "session-status-facet-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val DIRECTORY_TAG = "session-directory-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val OBJECTIVE_TAG = "session-objective-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val CONTEXT_TAG = "session-context-mh-0123456789abcdef0123456789abcdef-session-durinn"
+        const val KILL_TAG = "session-kill-mh-0123456789abcdef0123456789abcdef-session-durinn"
 
+        val WORK_PROFILE = requireNotNull(ProfileKey.parse("work"))
+        val PERSONAL_PROFILE = requireNotNull(ProfileKey.parse("personal"))
         val COMMON_FIXTURE = CardFixture(
             machineLabel = "Devbox",
             tmuxName = TMUX_NAME,
             dwarfName = DWARF_NAME,
-            profileKey = "work",
+            launchProfile = PERSONAL_PROFILE,
+            agent = AgentRuntime(AgentProvider.Codex, 1234, profile = WORK_PROFILE),
             profileLabel = "Codex · Work",
             objective = null,
             cwd = "/src/skidbladnir",
@@ -489,7 +540,8 @@ class SessionCardInstrumentedTest {
             machineLabel = LONG_MACHINE,
             tmuxName = LONG_TMUX,
             dwarfName = LONG_DWARF,
-            profileKey = "work",
+            launchProfile = WORK_PROFILE,
+            agent = null,
             profileLabel = "Codex · Work",
             objective = LONG_OBJECTIVE,
             cwd = LONG_DIRECTORY,

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
@@ -28,6 +29,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
@@ -96,9 +98,13 @@ func TestAuthenticatedGatewayControlsRealTmuxAndExposesHostPressure(t *testing.T
 	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
 		t.Fatalf("isolated tmux socket unexpectedly exists before test: absent=%t", os.IsNotExist(err))
 	}
-	agentCommand := filepath.Join(testRoot, "agent-command")
-	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nexec /bin/sleep 300\n"), 0o700); err != nil {
-		t.Fatalf("write test agent command: %v", err)
+	codexAgentCommand := filepath.Join(testRoot, "codex-agent-command")
+	if err := os.WriteFile(codexAgentCommand, []byte("#!/bin/sh\nexec /bin/sleep 300\n"), 0o700); err != nil {
+		t.Fatalf("write test Codex command: %v", err)
+	}
+	claudeAgentCommand := filepath.Join(testRoot, "claude-agent-command")
+	if err := os.WriteFile(claudeAgentCommand, []byte("#!/bin/sh\nwhile IFS= read -r line; do\n  :\ndone\n"), 0o700); err != nil {
+		t.Fatalf("write test Claude command: %v", err)
 	}
 	for _, home := range []string{"personal", "work", "work2", "claude-work"} {
 		if err := os.Mkdir(filepath.Join(testRoot, home), 0o700); err != nil {
@@ -154,18 +160,19 @@ exec "$tmux_real" "$@"
 		SocketName:    socketName,
 		Home:          testRoot,
 		CataloguePath: filepath.Join(repositoryRoot(t), "catalog", "characters.json"),
-		Profiles: []sessions.Profile{
-			gatewayTestProfile("personal", "Codex · Personal", agentCommand, filepath.Join(testRoot, "personal")),
-			gatewayTestProfile("work", "Codex · Work", agentCommand, filepath.Join(testRoot, "work")),
-			gatewayTestProfile("work2", "Codex · Work 2", agentCommand, filepath.Join(testRoot, "work2")),
+		Profiles: []agentruntime.Profile{
+			gatewayTestProfile("personal", "Codex · Personal", codexAgentCommand, filepath.Join(testRoot, "personal")),
+			gatewayTestProfile("work", "Codex · Work", codexAgentCommand, filepath.Join(testRoot, "work")),
+			gatewayTestProfile("work2", "Codex · Work 2", codexAgentCommand, filepath.Join(testRoot, "work2")),
 			{
-				Key:     "claude-work",
-				Label:   "Claude · Work",
-				Command: agentCommand,
-				Environment: []sessions.EnvironmentVariable{
+				Key:      "claude-work",
+				Label:    "Claude · Work",
+				Provider: agentruntime.ProviderClaude,
+				Command:  claudeAgentCommand,
+				Environment: []agentruntime.EnvironmentVariable{
 					{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(testRoot, "claude-work")},
 				},
-				ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+				ForegroundSignatures: []agentruntime.ForegroundSignature{{Argument0: "/bin/sh", Argument1: claudeAgentCommand}},
 				Arguments:            []string{"--permission-mode", "auto"},
 			},
 		},
@@ -239,23 +246,81 @@ exec "$tmux_real" "$@"
 	gotProfiles := make([]string, 0, len(profiles))
 	for _, profile := range profiles {
 		fields := profile.(map[string]any)
-		gotProfiles = append(gotProfiles, fields["key"].(string)+"="+fields["label"].(string))
+		gotProfiles = append(gotProfiles, fields["key"].(string)+"="+fields["label"].(string)+":"+fields["provider"].(string))
 	}
-	wantProfiles := []string{"personal=Codex · Personal", "work=Codex · Work", "work2=Codex · Work 2", "claude-work=Claude · Work"}
+	wantProfiles := []string{"personal=Codex · Personal:Codex", "work=Codex · Work:Codex", "work2=Codex · Work 2:Codex", "claude-work=Claude · Work:Claude"}
 	if !reflect.DeepEqual(gotProfiles, wantProfiles) {
 		t.Fatalf("advertised profile contract mismatch: got=%v want=%v", gotProfiles, wantProfiles)
 	}
 	laptop := findSession(t, inventory, "laptop")
-	laptopID := laptop["id"].(string)
+	laptopID := laptop["tmuxId"].(string)
 	laptopToken := laptop["identityToken"].(string)
-	for _, absent := range []string{"profile", "objective"} {
+	for _, absent := range []string{"launchProfile", "objective"} {
 		if _, exists := laptop[absent]; exists {
 			t.Fatalf("laptop-created session guessed %s metadata", absent)
+		}
+	}
+	laptopAgent := laptop["agent"].(map[string]any)
+	if laptopAgent["provider"] != "Codex" || laptopAgent["pid"].(float64) <= 0 || len(laptopAgent) != 2 {
+		t.Fatalf("unhooked laptop runtime facts are not exact and minimal: %#v", laptopAgent)
+	}
+	for _, retired := range []string{"id", "name", "profile"} {
+		if _, exists := laptop[retired]; exists {
+			t.Fatalf("laptop session retained retired field %q", retired)
 		}
 	}
 	laptopCharacter := laptop["character"].(map[string]any)
 	if laptopCharacter["key"] == "" || laptopCharacter["displayName"] == "" {
 		t.Fatal("laptop-created session omitted its required normalized character")
+	}
+	laptopPID := int(laptopAgent["pid"].(float64))
+	registration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
+		Provider:      agentruntime.ProviderCodex,
+		PID:           processinfo.PID(laptopPID),
+		StartIdentity: processStartIdentity(laptopPID),
+	}, "work", "gateway-http-session")
+	if err != nil {
+		t.Fatalf("encode exact laptop registration: %v", err)
+	}
+	laptopPaneOutput, err := isolatedTmuxCommand(
+		tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", laptopID, "#{pane_id}",
+	).Output()
+	if err != nil {
+		t.Fatal("resolve exact test-owned laptop pane")
+	}
+	laptopPane := strings.TrimSpace(string(laptopPaneOutput))
+	if laptopPane == "" {
+		t.Fatal("exact test-owned laptop pane id is empty")
+	}
+	if output, commandErr := isolatedTmuxCommand(
+		tmuxPath, "-L", socketName, "-f", "/dev/null", "set-option", "-p", "-t", laptopPane, "--", agentruntime.PaneOption, registration,
+	).CombinedOutput(); commandErr != nil {
+		t.Fatalf("install exact test-owned laptop registration: output_bytes=%d", len(output))
+	}
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
+	assertStatus(t, response, http.StatusOK)
+	inventory = decodeObject(t, response)
+	registeredLaptop := findSession(t, inventory, "laptop")
+	registeredAgent := registeredLaptop["agent"].(map[string]any)
+	registeredProviderSession := registeredAgent["providerSession"].(map[string]any)
+	if registeredAgent["provider"] != "Codex" || registeredAgent["pid"] != float64(laptopPID) ||
+		registeredAgent["profile"] != "work" || registeredProviderSession["id"] != "gateway-http-session" {
+		t.Fatalf("registered laptop runtime projection is incomplete: %#v", registeredAgent)
+	}
+	for _, absent := range []string{"id", "name", "profile", "launchProfile", "objective"} {
+		if _, exists := registeredLaptop[absent]; exists {
+			t.Fatalf("registered laptop session emitted absent or retired field %q", absent)
+		}
+	}
+	if _, exists := registeredProviderSession["name"]; exists {
+		t.Fatal("registered Codex laptop session emitted a provider name")
+	}
+	for _, fields := range []map[string]any{registeredLaptop, registeredAgent, registeredProviderSession} {
+		for key, value := range fields {
+			if value == nil {
+				t.Fatalf("registered laptop projection emitted null field %q", key)
+			}
+		}
 	}
 	server.Close()
 	reconstructedManager, err := sessions.New(managerConfig)
@@ -276,11 +341,11 @@ exec "$tmux_real" "$@"
 	assertStatus(t, response, http.StatusOK)
 	inventory = decodeObject(t, response)
 	reconstructedLaptop := findSession(t, inventory, "laptop")
-	if reconstructedLaptop["id"] != laptopID || reconstructedLaptop["identityToken"] != laptopToken ||
+	if reconstructedLaptop["tmuxId"] != laptopID || reconstructedLaptop["identityToken"] != laptopToken ||
 		!reflect.DeepEqual(reconstructedLaptop["character"], laptopCharacter) {
 		t.Fatalf(
 			"gateway reconstruction changed persisted laptop identity: id_match=%t token_match=%t character_match=%t",
-			reconstructedLaptop["id"] == laptopID,
+			reconstructedLaptop["tmuxId"] == laptopID,
 			reconstructedLaptop["identityToken"] == laptopToken,
 			reflect.DeepEqual(reconstructedLaptop["character"], laptopCharacter),
 		)
@@ -319,14 +384,26 @@ exec "$tmux_real" "$@"
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", string(createBody))
 	assertStatus(t, response, http.StatusCreated)
 	created := decodeObject(t, response)
-	if created["tmuxName"] != "gateway-test" || created["profile"] != "claude-work" || created["objective"] != "Prove the control plane" {
+	if created["tmuxName"] != "gateway-test" || created["launchProfile"] != "claude-work" || created["objective"] != "Prove the control plane" {
 		t.Fatal("created card did not preserve the requested name, profile, and objective")
+	}
+	createdAgent := created["agent"].(map[string]any)
+	createdProviderSession := createdAgent["providerSession"].(map[string]any)
+	if createdAgent["provider"] != "Claude" || createdAgent["pid"].(float64) <= 0 ||
+		createdProviderSession["name"] != "gateway-test" {
+		t.Fatalf("managed Claude runtime projection is incomplete: %#v", createdAgent)
+	}
+	if _, exists := createdAgent["profile"]; exists {
+		t.Fatal("unhooked managed Claude launch invented a runtime profile")
+	}
+	if _, exists := createdProviderSession["id"]; exists {
+		t.Fatal("unhooked managed Claude launch invented a provider session id")
 	}
 	character := created["character"].(map[string]any)
 	if character["key"] == "" || character["displayName"] == "" {
 		t.Fatal("created card omitted character metadata")
 	}
-	createdID := created["id"].(string)
+	createdID := created["tmuxId"].(string)
 	createdToken := created["identityToken"].(string)
 	if len(createdToken) < 4 {
 		t.Fatal("created card omitted its lifetime identity token")
@@ -353,10 +430,10 @@ exec "$tmux_real" "$@"
 			degradedCharacter["key"] != "" && degradedCharacter["displayName"] != "",
 		)
 	}
-	if _, exists := degraded["profile"]; exists {
+	if _, exists := degraded["launchProfile"]; exists {
 		t.Fatal("degraded create guessed unavailable profile metadata")
 	}
-	degradedID := degraded["id"].(string)
+	degradedID := degraded["tmuxId"].(string)
 	degradedToken := degraded["identityToken"].(string)
 	recordedID, err := os.ReadFile(degradedReadRecord)
 	if err != nil || strings.TrimSpace(string(recordedID)) != degradedID {
@@ -461,7 +538,7 @@ exec "$tmux_real" "$@"
 		t.Fatal("disarm reversed manager inventory fixture")
 	}
 	for _, card := range []map[string]any{attentiveShell, runningOmega, shellAlpha} {
-		id := card["id"].(string)
+		id := card["tmuxId"].(string)
 		if output, commandErr := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "kill-session", "-t", id).CombinedOutput(); commandErr != nil {
 			t.Fatalf("remove exact wire-order fixture: output_bytes=%d", len(output))
 		}
@@ -498,7 +575,7 @@ exec "$tmux_real" "$@"
 	inventory = decodeObject(t, response)
 	unchangedLaptop := findSession(t, inventory, "laptop")
 	findSession(t, inventory, groupedPeerName)
-	idUnchanged := unchangedLaptop["id"] == laptopID
+	idUnchanged := unchangedLaptop["tmuxId"] == laptopID
 	identityUnchanged := unchangedLaptop["identityToken"] == laptopToken
 	if !idUnchanged || !identityUnchanged {
 		t.Fatalf("refused grouped HTTP kill changed target identity: id_unchanged=%t identity_unchanged=%t", idUnchanged, identityUnchanged)
@@ -588,15 +665,16 @@ exec "$tmux_real" "$@"
 	}
 }
 
-func gatewayTestProfile(key, label, command, codexHome string) sessions.Profile {
-	return sessions.Profile{
-		Key:     key,
-		Label:   label,
-		Command: command,
-		Environment: []sessions.EnvironmentVariable{
+func gatewayTestProfile(key, label, command, codexHome string) agentruntime.Profile {
+	return agentruntime.Profile{
+		Key:      agentruntime.ProfileKey(key),
+		Label:    label,
+		Provider: agentruntime.ProviderCodex,
+		Command:  command,
+		Environment: []agentruntime.EnvironmentVariable{
 			{Name: "CODEX_HOME", Value: codexHome},
 		},
-		ForegroundSignatures: []sessions.ForegroundSignature{{ExecutableBase: "sleep"}},
+		ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "sleep"}},
 		Arguments:            []string{"--dangerously-bypass-approvals-and-sandbox"},
 	}
 }

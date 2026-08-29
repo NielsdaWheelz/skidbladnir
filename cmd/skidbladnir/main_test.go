@@ -39,7 +39,7 @@ func TestVersionReportsExactReleaseIdentity(t *testing.T) {
 	}
 }
 
-func TestStatusHookDoesNotRequireAHomeDirectory(t *testing.T) {
+func TestAgentHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("TMUX_PANE", "")
 	tmuxPath := writeTmuxVersion(t, "tmux test")
@@ -47,26 +47,26 @@ func TestStatusHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"status-hook", "--host-config=" + hostConfigPath, "SessionStart"}, &stdout, &stderr); exitCode != 0 {
-		t.Fatalf("status-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
+	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "UserPromptSubmit"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Fatalf("status-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
+		t.Fatalf("agent-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
 	}
 }
 
-func TestStatusHookAllowsTmuxVersionDrift(t *testing.T) {
+func TestAgentHookAllowsTmuxVersionDrift(t *testing.T) {
 	t.Setenv("TMUX_PANE", "")
 	tmuxPath := writeTmuxVersion(t, "tmux changed")
 	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux expected")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"status-hook", "--host-config=" + hostConfigPath, "SessionStart"}, &stdout, &stderr); exitCode != 0 {
-		t.Fatalf("status-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
+	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "UserPromptSubmit"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("agent-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Fatalf("status-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
+		t.Fatalf("agent-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
 	}
 }
 
@@ -177,13 +177,12 @@ func writeHostConfig(t *testing.T, tmuxPath, tmuxTestedVersion string) string {
 	encoded := fmt.Sprintf(`{
   "platform": %q,
 	  "tmux": {"path": %q, "testedVersion": %q},
-  "codexNodeEntrypoint": "/home/niels/.local/bin/codex",
   "profiles": [
-    {"key":"personal","label":"Codex · Personal","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"work","label":"Codex · Work","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"work2","label":"Codex · Work 2","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"claude-personal","label":"Claude · Personal","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]},
-    {"key":"claude-work","label":"Claude · Work","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]}
+    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]},
+    {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]}
   ]
 }`, platform.Current().Kind, tmuxPath, tmuxTestedVersion)
 	if err := os.WriteFile(path, []byte(encoded), 0o600); err != nil {

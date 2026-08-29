@@ -5,23 +5,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func (manager *Manager) deriveStatus(panePID int, lifecycleValue string, now time.Time) Status {
+func deriveStatus(
+	observed processinfo.Observation,
+	agent *agentruntime.AgentRuntime,
+	lifecycleValue string,
+	now time.Time,
+) Status {
 	now = now.UTC()
-	observed, err := processinfo.ObserveForeground(processinfo.PID(panePID))
-	if err != nil {
-		// justify-ignore-error: every foreground observation failure (absent,
-		// protected, or unstable process) is this card's modeled
-		// Unknown/PollFailure state; the scheduled poll is the only retry.
-		return Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: now}
-	}
-	if !manager.matchesAgent(observed) {
+	if agent == nil {
 		return Status{Kind: StatusShell, Signal: StatusSignalProcess, SignalAt: now}
 	}
-	if lifecycle, valid := parseLifecycleStatus(lifecycleValue, observed, now); valid {
-		return lifecycle
+	if agent.Provider == agentruntime.ProviderCodex {
+		if lifecycle, valid := parseLifecycleStatus(lifecycleValue, observed, now); valid {
+			return lifecycle
+		}
 	}
 	return runningStatus(now)
 }
@@ -57,20 +58,6 @@ func parseLifecycleStatus(value string, observed processinfo.Observation, now ti
 
 func runningStatus(now time.Time) Status {
 	return Status{Kind: StatusRunning, Signal: StatusSignalProcess, SignalAt: now.UTC()}
-}
-
-func (manager *Manager) matchesAgent(observed processinfo.Observation) bool {
-	base, argument0, argument1 := observed.ExecutableBase(), observed.Argument(0), observed.Argument(1)
-	for _, profile := range manager.profiles {
-		for _, signature := range profile.ForegroundSignatures {
-			if (signature.ExecutableBase == "" || base == signature.ExecutableBase) &&
-				(signature.Argument0 == "" || argument0 == signature.Argument0) &&
-				(signature.Argument1 == "" || argument1 == signature.Argument1) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func parseAttentionTime(value string, now time.Time) (time.Time, bool) {

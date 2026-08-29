@@ -102,10 +102,10 @@ class MultiMachineContractTest {
         val duplicate = session()
         val initial = listOf(readyMachine(macBook, duplicate), readyMachine(devbox, duplicate))
 
-        val agents = visibleAgents(initial, selectedMachine = null)
-        assertEquals(listOf("Devbox", "MacBook"), agents.map { it.machine.label.text })
-        assertTrue(agents[0].target != agents[1].target)
-        assertEquals(2, agents.map(VisibleAgent::target).distinct().size)
+        val sessions = visibleSessions(initial, selectedMachine = null)
+        assertEquals(listOf("Devbox", "MacBook"), sessions.map { it.machine.label.text })
+        assertTrue(sessions[0].target != sessions[1].target)
+        assertEquals(2, sessions.map(VisibleSession::target).distinct().size)
 
         val failed = initial.map {
             if (it.machine.handle == devboxHandle) it.inventoryFailed(GatewayFailure.Transport) else it
@@ -117,20 +117,25 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `agents sort by attention, then status, machine label, session name, and local tmux ID`() {
+    fun `sessions sort by attention, then status, machine label, session name, and local tmux ID`() {
         val alpha = devbox.copy(label = requireNotNull(MachineLabel.parse("Alpha")))
         val beta = macBook.copy(label = requireNotNull(MachineLabel.parse("Beta")))
         val alphaMachine = readyMachine(
             alpha,
-            session(id = tmuxId(1), tmuxName = "zeta", status = status(SessionStatusKind.Idle)),
-            session(id = tmuxId(3), tmuxName = "beta"),
-            session(id = tmuxId(5), tmuxName = "Alpha"),
-            session(id = tmuxId(0), tmuxName = "Alpha"),
+            session(tmuxId = tmuxId(1), tmuxName = "zeta", status = status(SessionStatusKind.Idle)),
+            session(tmuxId = tmuxId(3), tmuxName = "beta"),
+            session(tmuxId = tmuxId(5), tmuxName = "Alpha"),
+            session(tmuxId = tmuxId(0), tmuxName = "Alpha"),
         )
         val betaMachine = readyMachine(
             beta,
-            session(id = tmuxId(2), tmuxName = "aaa", attention = true, status = status(SessionStatusKind.Unknown)),
-            session(id = tmuxId(4), tmuxName = "alpha"),
+            session(
+                tmuxId = tmuxId(2),
+                tmuxName = "aaa",
+                attention = true,
+                status = status(SessionStatusKind.Unknown),
+            ),
+            session(tmuxId = tmuxId(4), tmuxName = "alpha"),
         )
 
         assertEquals(
@@ -142,8 +147,8 @@ class MultiMachineContractTest {
                 "Beta/alpha/${tmuxId(4)}",
                 "Alpha/zeta/${tmuxId(1)}",
             ),
-            visibleAgents(listOf(betaMachine, alphaMachine), selectedMachine = null).map {
-                "${it.machine.label.text}/${it.target.session.tmuxName}/${it.target.session.id}"
+            visibleSessions(listOf(betaMachine, alphaMachine), selectedMachine = null).map {
+                "${it.machine.label.text}/${it.target.session.tmuxName}/${it.target.session.tmuxId}"
             },
         )
     }
@@ -157,7 +162,7 @@ class MultiMachineContractTest {
             val zeta = macBook.copy(label = requireNotNull(MachineLabel.parse("Zeta")))
             assertEquals(
                 listOf("Iota", "Zeta"),
-                visibleAgents(
+                visibleSessions(
                     listOf(readyMachine(zeta, session()), readyMachine(iota, session())),
                     selectedMachine = null,
                 ).map { it.machine.label.text },
@@ -165,12 +170,12 @@ class MultiMachineContractTest {
 
             val sessions = readyMachine(
                 devbox,
-                session(id = tmuxId(2), tmuxName = "Zeta", identityToken = "token-zeta"),
-                session(id = tmuxId(1), tmuxName = "Iota", identityToken = "token-iota"),
+                session(tmuxId = tmuxId(2), tmuxName = "Zeta", identityToken = "token-zeta"),
+                session(tmuxId = tmuxId(1), tmuxName = "Iota", identityToken = "token-iota"),
             )
             assertEquals(
                 listOf("Iota", "Zeta"),
-                visibleAgents(listOf(sessions), selectedMachine = null).map { it.target.session.tmuxName },
+                visibleSessions(listOf(sessions), selectedMachine = null).map { it.target.session.tmuxName },
             )
         } finally {
             Locale.setDefault(original)
@@ -453,8 +458,8 @@ class MultiMachineContractTest {
         assertFalse(superseded.canForge)
         assertEquals(
             "a superseded machine still shows its last sessions",
-            snapshot.inventory.sessions.map(AgentSession::id),
-            visibleAgents(listOf(superseded), selectedMachine = null).map { it.target.session.id },
+            snapshot.inventory.sessions.map(TmuxSession::tmuxId),
+            visibleSessions(listOf(superseded), selectedMachine = null).map { it.target.session.tmuxId },
         )
         assertEquals(
             "a failed read downgrades a superseded snapshot to stale rather than losing it",
@@ -469,7 +474,7 @@ class MultiMachineContractTest {
 
     @Test
     fun `terminal admission waits for the exact post-Forge lifetime and rejects lost readiness explicitly`() {
-        val target = AgentTarget(devboxHandle, session())
+        val target = SessionTarget(devboxHandle, session())
         val exact = readyMachine(devbox, target.session)
         val verifying = SkidbladnirUiState.Terminal(
             machine = exact,
@@ -499,6 +504,17 @@ class MultiMachineContractTest {
             ) is TerminalUiStatus.ReconnectRequired,
         )
 
+        val renamedSession = verifying.copy(
+            machine = readyMachine(devbox, target.session.copy(tmuxName = "renamed")),
+        )
+        assertTrue(
+            createdTerminalAdmissionStatus(
+                renamedSession,
+                completedMutationFence = 1,
+                requiredMutationFence = 1,
+            ) is TerminalUiStatus.ReconnectRequired,
+        )
+
         val stalePage = verifying.copy(
             machine = exact.inventoryFailed(GatewayFailure.Transport),
             connection = TerminalUiStatus.Preparing,
@@ -515,7 +531,7 @@ class MultiMachineContractTest {
 
     @Test
     fun `failed terminal admission read stales only its machine and fences terminal actions`() {
-        val target = AgentTarget(devboxHandle, session())
+        val target = SessionTarget(devboxHandle, session())
         val healthy = readyMachine(macBook, session())
         val failed = readyMachine(devbox, target.session).inventoryFailed(GatewayFailure.Transport)
         val terminal = SkidbladnirUiState.Terminal(
@@ -535,7 +551,7 @@ class MultiMachineContractTest {
 
     @Test
     fun `terminal access loss returns to the affected machine dashboard with an actionable notice`() {
-        val target = AgentTarget(devboxHandle, session())
+        val target = SessionTarget(devboxHandle, session())
         listOf(
             MachineAccess.AuthRequired to "Devbox: authentication required.",
             MachineAccess.IdentityChanged to
@@ -566,7 +582,7 @@ class MultiMachineContractTest {
 
     @Test
     fun `Dashboard mutation access loss clears pending controls and focuses recovery`() {
-        val target = AgentTarget(devboxHandle, session())
+        val target = SessionTarget(devboxHandle, session())
         val draft = ForgeDraft(devboxHandle, "/src", personal, "name", "objective")
         val base = SkidbladnirUiState.Dashboard(
             machines = listOf(readyMachine(devbox, target.session), readyMachine(macBook, session())),
@@ -665,7 +681,7 @@ class MultiMachineContractTest {
     fun `every request binds the exact machine origin, handle, and target`() {
         val bearer = requireNotNull(GatewayBearer.parse("A".repeat(43)))
         val credential = MachineCredential(macBook, bearer)
-        val target = AgentTarget(macBookHandle, session())
+        val target = SessionTarget(macBookHandle, session())
         val client = GatewayClient()
 
         val terminal = client.terminalRequest(credential, target)
@@ -755,7 +771,7 @@ class MultiMachineContractTest {
         )
     }
 
-    private fun readyMachine(machine: PairedMachine, vararg sessions: AgentSession): MachineState = MachineState(
+    private fun readyMachine(machine: PairedMachine, vararg sessions: TmuxSession): MachineState = MachineState(
         machine = machine,
         access = MachineAccess.Ready,
         inventory = InventoryState.Fresh(
@@ -763,7 +779,9 @@ class MultiMachineContractTest {
                 SessionsResponse(
                     machine = MachineSummary(machine.handle, MachinePlatform.Linux),
                     observedAt = OBSERVED_AT,
-                    profiles = listOf(ProfileChoice(personal, "Personal")),
+                    profiles = listOf(
+                        ProfileChoice(personal, "Codex · Personal", AgentProvider.Codex),
+                    ),
                     sessions = sessions.toList(),
                 ),
                 receivedAtElapsedMillis = 1_000,
@@ -773,7 +791,7 @@ class MultiMachineContractTest {
     )
 
     private fun inventoryJson(handle: MachineHandle, platform: String): String =
-        """{"machine":{"handle":"${handle.encoded}","platform":"$platform"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Personal"}],"sessions":[]}"""
+        """{"machine":{"handle":"${handle.encoded}","platform":"$platform"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[]}"""
 
     private fun status(kind: SessionStatusKind): SessionStatus = SessionStatus(
         kind,
@@ -786,16 +804,21 @@ class MultiMachineContractTest {
     )
 
     private fun session(
-        id: String = tmuxId(1),
+        tmuxId: String = tmuxId(1),
         tmuxName: String = "ga-durinn",
         identityToken: String = "v1-0123456789abcdef0123456789abcdef.100.200.1",
         attention: Boolean = false,
         status: SessionStatus = status(SessionStatusKind.Working),
-    ): AgentSession = AgentSession(
-        id = id,
+    ): TmuxSession = TmuxSession(
+        tmuxId = tmuxId,
         tmuxName = tmuxName,
         identityToken = identityToken,
-        profile = "personal",
+        launchProfile = personal,
+        agent = when (status.kind) {
+            SessionStatusKind.Working, SessionStatusKind.Running, SessionStatusKind.Idle ->
+                AgentRuntime(AgentProvider.Codex, pid = 1234, profile = personal)
+            SessionStatusKind.Shell, SessionStatusKind.Unknown -> null
+        },
         objective = null,
         character = CharacterSummary("norse.durinn", "Durinn"),
         cwd = "/src/skidbladnir",

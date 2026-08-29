@@ -157,18 +157,18 @@ internal class GatewayClient {
             .build()
     }
 
-    fun createSession(credential: MachineCredential, draft: ForgeDraft): GatewayResult<AgentSession> {
+    fun createSession(credential: MachineCredential, draft: ForgeDraft): GatewayResult<TmuxSession> {
         require(draft.machineHandle == credential.machine.handle)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions"))
                 .post(encodeCreateSessionRequest(draft).toRequestBody(jsonMediaType))
                 .build(),
             expectedStatus = 201,
-            decode = ::decodeAgentSession,
+            decode = ::decodeTmuxSession,
         )
     }
 
-    fun killSession(credential: MachineCredential, target: AgentTarget): GatewayResult<Unit> {
+    fun killSession(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> {
         require(target.machineHandle == credential.machine.handle)
         return executeJson(
             request = killRequest(credential, target),
@@ -179,16 +179,16 @@ internal class GatewayClient {
         )
     }
 
-    internal fun killRequest(credential: MachineCredential, target: AgentTarget): Request {
+    internal fun killRequest(credential: MachineCredential, target: SessionTarget): Request {
         require(target.machineHandle == credential.machine.handle)
-        return authorizedRequest(credential, listOf("v1", "sessions", target.session.id))
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId))
             .delete(encodeKillSessionRequest(target.session).toRequestBody(jsonMediaType))
             .build()
     }
 
-    internal fun terminalRequest(credential: MachineCredential, target: AgentTarget): Request {
+    internal fun terminalRequest(credential: MachineCredential, target: SessionTarget): Request {
         require(target.machineHandle == credential.machine.handle)
-        return authorizedRequest(credential, listOf("v1", "sessions", target.session.id, "terminal"))
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal"))
             .header("Skidbladnir-Session-Identity", target.session.identityToken)
             .build()
     }

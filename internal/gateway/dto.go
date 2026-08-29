@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
@@ -41,8 +42,9 @@ var (
 )
 
 type profileDTO struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Provider string `json:"provider"`
 }
 
 type statusDTO struct {
@@ -56,12 +58,25 @@ type characterDTO struct {
 	DisplayName string `json:"displayName"`
 }
 
+type providerSessionDTO struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+type agentDTO struct {
+	Provider        string              `json:"provider"`
+	PID             int                 `json:"pid"`
+	Profile         string              `json:"profile,omitempty"`
+	ProviderSession *providerSessionDTO `json:"providerSession,omitempty"`
+}
+
 type sessionDTO struct {
-	ID              string       `json:"id"`
+	TmuxID          string       `json:"tmuxId"`
 	TmuxName        string       `json:"tmuxName"`
 	IdentityToken   string       `json:"identityToken"`
 	Character       characterDTO `json:"character"`
-	Profile         string       `json:"profile,omitempty"`
+	LaunchProfile   string       `json:"launchProfile,omitempty"`
+	Agent           *agentDTO    `json:"agent,omitempty"`
 	Objective       string       `json:"objective,omitempty"`
 	CWD             string       `json:"cwd,omitempty"`
 	ActiveCommand   string       `json:"activeCommand,omitempty"`
@@ -160,18 +175,39 @@ type pressureHistoryDTO struct {
 	Level     string `json:"level"`
 }
 
-func mapProfiles(profiles []sessions.Profile) ([]profileDTO, error) {
-	mapped := make([]profileDTO, len(profiles))
-	for index, profile := range profiles {
-		if profile.Key == "" || profile.Label == "" {
-			return nil, errors.New("invalid configured profile")
-		}
-		mapped[index] = profileDTO{Key: profile.Key, Label: profile.Label}
+func mapProfiles(profiles []agentruntime.Profile) ([]profileDTO, error) {
+	validated, err := agentruntime.ValidateProfiles(profiles)
+	if err != nil {
+		return nil, err
+	}
+	mapped := make([]profileDTO, len(validated))
+	for index, profile := range validated {
+		mapped[index] = profileDTO{Key: string(profile.Key), Label: profile.Label, Provider: profile.Provider.String()}
 	}
 	return mapped, nil
 }
 
-func mapSession(session sessions.Session, observedAt time.Time) (sessionDTO, error) {
+func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile) (*agentDTO, error) {
+	if agent == nil {
+		return nil, nil
+	}
+	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil {
+		return nil, err
+	}
+	mapped := &agentDTO{
+		Provider: agent.Provider.String(),
+		PID:      int(agent.PID),
+		Profile:  string(agent.Profile),
+	}
+	if agent.ProviderSession != nil {
+		id := agent.ProviderSession.ID()
+		name := agent.ProviderSession.Name()
+		mapped.ProviderSession = &providerSessionDTO{ID: id, Name: name}
+	}
+	return mapped, nil
+}
+
+func mapSession(session sessions.Session, profiles []agentruntime.Profile, observedAt time.Time) (sessionDTO, error) {
 	kind := ""
 	switch session.Status.Kind {
 	case sessions.StatusWorking:
@@ -198,15 +234,41 @@ func mapSession(session sessions.Session, observedAt time.Time) (sessionDTO, err
 	default:
 		return sessionDTO{}, errors.New("invalid session status signal")
 	}
+	agent, err := mapAgent(session.Agent, profiles)
+	if err != nil {
+		return sessionDTO{}, err
+	}
+	switch {
+	case agent == nil && kind == "Shell" && signal == "Process":
+	case agent == nil && kind == "Unknown" && signal == "PollFailure":
+	case agent != nil && agent.Provider == "Codex" && kind == "Working" && signal == "Lifecycle":
+	case agent != nil && agent.Provider == "Codex" && kind == "Running" && signal == "Process":
+	case agent != nil && agent.Provider == "Codex" && kind == "Idle" && signal == "Lifecycle":
+	case agent != nil && agent.Provider == "Claude" && kind == "Running" && signal == "Process":
+	default:
+		return sessionDTO{}, errors.New("invalid agent status relation")
+	}
 	if session.Status.SignalAt.IsZero() || session.Status.SignalAt.After(observedAt) {
 		return sessionDTO{}, errors.New("invalid session signal time")
 	}
+	if session.LaunchProfile != "" {
+		matches := 0
+		for _, profile := range profiles {
+			if profile.Key == session.LaunchProfile {
+				matches++
+			}
+		}
+		if matches != 1 {
+			return sessionDTO{}, errors.New("invalid session launch profile")
+		}
+	}
 	card := sessionDTO{
-		ID:              session.ID,
+		TmuxID:          session.TmuxID,
 		TmuxName:        session.TmuxName,
 		IdentityToken:   session.IdentityToken,
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
-		Profile:         session.Profile,
+		LaunchProfile:   string(session.LaunchProfile),
+		Agent:           agent,
 		Objective:       session.Objective,
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
@@ -218,8 +280,8 @@ func mapSession(session sessions.Session, observedAt time.Time) (sessionDTO, err
 			SignalAt: session.Status.SignalAt.UTC().Format(time.RFC3339Nano),
 		},
 	}
-	if card.IdentityToken == "" {
-		return sessionDTO{}, errors.New("missing session identity token")
+	if card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" {
+		return sessionDTO{}, errors.New("missing required session identity")
 	}
 	return card, nil
 }

@@ -127,8 +127,8 @@ not supported.
    bundle, and `qrencode` where needed;
 2. creates a machine handle and bearer only when absent, preserving both on
    every reinstall;
-3. renders one strict host config and the existing content-free Codex lifecycle
-   assets;
+3. renders one strict host config, the content-free Codex lifecycle hooks, and
+   the Claude identity-registration hook;
 4. installs a user systemd service with lingering on Linux or a LaunchAgent on
    macOS;
 5. owns only its dedicated Tailscale Serve `:8443/v1` mapping to
@@ -144,18 +144,18 @@ Tailscale authentication is a one-time human boundary per host and phone.
 Convergence may install and diagnose Tailscale; it must not manufacture login
 state or claim that an installed client is connected.
 
-The gateway and `status-hook` require `--host-config=PATH`. There are no host
+The gateway and `agent-hook` require `--host-config=PATH`. There are no host
 defaults. JSON is decoded strictly with unknown and null members rejected:
 
 ```json
 {
   "platform": "Linux",
   "tmux": {"path": "/usr/bin/tmux", "testedVersion": "tmux 3.4"},
-  "codexNodeEntrypoint": "/home/niels/.local/bin/codex",
   "profiles": [
     {
       "key": "personal",
       "label": "Codex · Personal",
+      "provider": "Codex",
       "command": "/home/niels/bin/codex-personal",
       "environment": [{"name": "CODEX_HOME", "value": "/home/niels/.codex-personal"}],
       "foregroundSignatures": [{"executableBase": "codex"}],
@@ -170,7 +170,7 @@ gateway. Platform is exactly `Linux|Darwin`; runtime mismatch or a
 missing/broken/noncanonical configured tmux prevents startup. `testedVersion`
 records the last acceptance target for an advisory doctor warning; a different
 canonical installed version does not block convergence, gateway startup, or the
-lifecycle adapter. Profiles reuse `sessions.Profile` validation. Every
+agent-hook adapter. Profiles reuse `agentruntime.Profile` validation. Every
 host config declares exactly `personal`, `work`, `work2`, `claude-personal`, and
 `claude-work`, matching the existing `dev-server` shortcuts. Platform adapters
 retain only native observation/process/pressure behavior; they no longer choose
@@ -336,16 +336,17 @@ Delete, do not deprecate:
 - `scripts/test devbox|macbook` publication ownership after equivalent
   `dev-server` gates exist;
 - Devbox/MacBook-size constants and the headerless inventory exception; and
-- `gatewayProfiles` plus host-specific tmux/Codex fields in `internal/platform`.
+- `gatewayProfiles` plus host-specific tmux and agent-runtime fields in
+  `internal/platform`.
 
 Reuse and centralize:
 
-- `sessions.Profile` and its validation for deployment-supplied profiles;
+- `agentruntime.Profile` and its validation for deployment-supplied profiles;
 - `machine.Handle`, canonical origins, `GatewayBearer`, strict JSON helpers,
   API error mapping, and controller machine-isolation primitives;
 - `MachineStore` sealing/quarantine and bearer-rotation rules;
-- the current content-free, process-lifetime Codex status adapter without
-  parsing payloads or adding Claude/thread hooks; and
+- the content-free, process-lifetime Codex lifecycle and Claude identity
+  registration adapters without retaining payloads or adding thread tracking;
 - one auth credential-file reader for verify, canonical read, and
   domain-separated digest instead of re-reading bearer files in pairing code.
 

@@ -7,12 +7,11 @@ import (
 	"io"
 	"regexp"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 )
 
-var (
-	sessionIDPattern = regexp.MustCompile(`^\$[0-9]+$`)
-	profilePattern   = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
-)
+var tmuxIDPattern = regexp.MustCompile(`^\$[0-9]+$`)
 
 type Method string
 
@@ -37,8 +36,8 @@ type Route string
 const (
 	RouteHealth         Route = "/healthz"
 	RouteSessions       Route = "/v1/sessions"
-	RouteSession        Route = "/v1/sessions/{id}"
-	RouteTerminal       Route = "/v1/sessions/{id}/terminal"
+	RouteSession        Route = "/v1/sessions/{tmuxId}"
+	RouteTerminal       Route = "/v1/sessions/{tmuxId}/terminal"
 	RoutePressure       Route = "/v1/pressure"
 	RoutePairingInvites Route = "/v1/pairing-invites"
 	RoutePairings       Route = "/v1/pairings"
@@ -149,18 +148,18 @@ const (
 )
 
 type Event struct {
-	kind        eventKind
-	method      Method
-	route       Route
-	status      int
-	duration    time.Duration
-	errorCode   ErrorCode
-	count       uint64
-	sessionID   string
-	sessionName string
-	profile     string
-	level       PressureLevel
-	reasons     []PressureReason
+	kind          eventKind
+	method        Method
+	route         Route
+	status        int
+	duration      time.Duration
+	errorCode     ErrorCode
+	count         uint64
+	tmuxID        string
+	tmuxName      string
+	launchProfile agentruntime.ProfileKey
+	level         PressureLevel
+	reasons       []PressureReason
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
@@ -181,16 +180,16 @@ func NewSessionsListed(count uint64, duration time.Duration) (Event, error) {
 	return event, nil
 }
 
-func NewSessionCreated(id, name, profile string, duration time.Duration) (Event, error) {
-	event := Event{kind: eventSessionCreated, sessionID: id, sessionName: name, profile: profile, duration: duration}
+func NewSessionCreated(tmuxID, tmuxName string, launchProfile agentruntime.ProfileKey, duration time.Duration) (Event, error) {
+	event := Event{kind: eventSessionCreated, tmuxID: tmuxID, tmuxName: tmuxName, launchProfile: launchProfile, duration: duration}
 	if !event.valid() {
 		return Event{}, errors.New("invalid session-created log event")
 	}
 	return event, nil
 }
 
-func NewSessionKilled(id, name string, duration time.Duration) (Event, error) {
-	event := Event{kind: eventSessionKilled, sessionID: id, sessionName: name, duration: duration}
+func NewSessionKilled(tmuxID, tmuxName string, duration time.Duration) (Event, error) {
+	event := Event{kind: eventSessionKilled, tmuxID: tmuxID, tmuxName: tmuxName, duration: duration}
 	if !event.valid() {
 		return Event{}, errors.New("invalid session-killed log event")
 	}
@@ -225,9 +224,10 @@ func (event Event) valid() bool {
 	case eventSessionsListed:
 		return event.duration >= 0
 	case eventSessionCreated:
-		return validSessionID(event.sessionID) && validSessionName(event.sessionName) && profilePattern.MatchString(event.profile) && event.duration >= 0
+		_, profileErr := agentruntime.ParseProfileKey(string(event.launchProfile))
+		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && profileErr == nil && event.duration >= 0
 	case eventSessionKilled:
-		return validSessionID(event.sessionID) && validSessionName(event.sessionName) && event.duration >= 0
+		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && event.duration >= 0
 	case eventPressureSampled:
 		if !event.level.valid() || event.duration < 0 {
 			return false
@@ -250,9 +250,9 @@ func (event Event) valid() bool {
 	}
 }
 
-func validSessionID(value string) bool { return sessionIDPattern.MatchString(value) }
+func validTmuxID(value string) bool { return tmuxIDPattern.MatchString(value) }
 
-func validSessionName(value string) bool {
+func validTmuxName(value string) bool {
 	return value != ""
 }
 
@@ -285,13 +285,13 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.count"] = event.count
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionCreated:
-		fields["skidbladnir.session.id"] = event.sessionID
-		fields["skidbladnir.session.name"] = event.sessionName
-		fields["skidbladnir.profile"] = event.profile
+		fields["skidbladnir.session.tmux_id"] = event.tmuxID
+		fields["skidbladnir.session.tmux_name"] = event.tmuxName
+		fields["skidbladnir.session.launch_profile"] = event.launchProfile
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionKilled:
-		fields["skidbladnir.session.id"] = event.sessionID
-		fields["skidbladnir.session.name"] = event.sessionName
+		fields["skidbladnir.session.tmux_id"] = event.tmuxID
+		fields["skidbladnir.session.tmux_name"] = event.tmuxName
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventPressureSampled:
 		fields["skidbladnir.pressure.level"] = event.level

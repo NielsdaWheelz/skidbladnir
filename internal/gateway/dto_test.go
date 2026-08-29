@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -22,11 +23,19 @@ import (
 func TestSessionProjectionUsesTmuxNameAndRequiredCharacterWithoutWideningStatus(t *testing.T) {
 	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
 	character := catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"}
+	providerSession, err := agentruntime.NewProviderSessionFacts("019-runtime", "")
+	if err != nil {
+		t.Fatalf("construct provider session facts: %v", err)
+	}
 	card, err := mapSession(sessions.Session{
-		ID:              "$7",
-		TmuxName:        "laptop-work",
-		IdentityToken:   "v1-lifetime",
-		Character:       character,
+		TmuxID:        "$7",
+		TmuxName:      "laptop-work",
+		IdentityToken: "v1-lifetime",
+		Character:     character,
+		LaunchProfile: "work",
+		Agent: &agentruntime.AgentRuntime{
+			Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "work", ProviderSession: providerSession,
+		},
 		Attention:       true,
 		AttachedClients: 2,
 		Status: sessions.Status{
@@ -34,7 +43,7 @@ func TestSessionProjectionUsesTmuxNameAndRequiredCharacterWithoutWideningStatus(
 			Signal:   sessions.StatusSignalProcess,
 			SignalAt: observedAt,
 		},
-	}, observedAt)
+	}, testProfileCatalog(), observedAt)
 	if err != nil {
 		t.Fatalf("project running session: %v", err)
 	}
@@ -52,12 +61,248 @@ func TestSessionProjectionUsesTmuxNameAndRequiredCharacterWithoutWideningStatus(
 	if err := json.Unmarshal(payload, &fields); err != nil {
 		t.Fatalf("decode projected card: %v", err)
 	}
-	if fields["tmuxName"] != "laptop-work" || fields["character"] == nil {
+	if fields["tmuxId"] != "$7" || fields["tmuxName"] != "laptop-work" || fields["character"] == nil {
 		t.Fatalf("wire projection omitted required identity fields: %s", payload)
 	}
-	if _, exists := fields["name"]; exists {
-		t.Fatalf("wire projection retained the retired name field: %s", payload)
+	if fields["launchProfile"] != "work" {
+		t.Fatalf("wire projection launch profile = %v, want work: %s", fields["launchProfile"], payload)
 	}
+	agent, ok := fields["agent"].(map[string]any)
+	if !ok || agent["provider"] != "Codex" || agent["pid"] != float64(4312) || agent["profile"] != "work" {
+		t.Fatalf("wire projection agent = %#v, want exact Codex runtime: %s", fields["agent"], payload)
+	}
+	providerFacts, ok := agent["providerSession"].(map[string]any)
+	if !ok || providerFacts["id"] != "019-runtime" {
+		t.Fatalf("wire projection provider session = %#v, want id only: %s", agent["providerSession"], payload)
+	}
+	if _, present := providerFacts["name"]; present {
+		t.Fatalf("wire projection emitted absent provider name: %s", payload)
+	}
+	for _, retired := range []string{"id", "name", "profile"} {
+		if _, exists := fields[retired]; exists {
+			t.Fatalf("wire projection retained retired field %q: %s", retired, payload)
+		}
+	}
+}
+
+func TestSessionProjectionOmitsEveryUnprovenOptionalIdentityFact(t *testing.T) {
+	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	card, err := mapSession(sessions.Session{
+		TmuxID:        "$8",
+		TmuxName:      "plain-shell",
+		IdentityToken: "v1-shell",
+		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+		Status: sessions.Status{
+			Kind: sessions.StatusShell, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
+		},
+	}, testProfileCatalog(), observedAt)
+	if err != nil {
+		t.Fatalf("project session without an agent: %v", err)
+	}
+	payload, err := json.Marshal(card)
+	if err != nil {
+		t.Fatalf("encode session without an agent: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		t.Fatalf("decode session without an agent: %v", err)
+	}
+	for _, absent := range []string{"launchProfile", "agent"} {
+		if _, present := fields[absent]; present {
+			t.Fatalf("wire projection invented optional field %q: %s", absent, payload)
+		}
+	}
+}
+
+func TestSessionProjectionAcceptsOnlyLegalAgentStatusRelations(t *testing.T) {
+	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	agents := []struct {
+		name  string
+		agent *agentruntime.AgentRuntime
+	}{
+		{name: "no-agent"},
+		{name: "Codex", agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312}},
+		{name: "Claude", agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderClaude, PID: 4313}},
+	}
+	kinds := []sessions.StatusKind{
+		sessions.StatusWorking,
+		sessions.StatusRunning,
+		sessions.StatusIdle,
+		sessions.StatusShell,
+		sessions.StatusUnknown,
+	}
+	signals := []sessions.StatusSignal{
+		sessions.StatusSignalLifecycle,
+		sessions.StatusSignalProcess,
+		sessions.StatusSignalPollFailure,
+	}
+	accepted := map[string]struct{}{
+		"no-agent/SHELL/Process":       {},
+		"no-agent/UNKNOWN/PollFailure": {},
+		"Codex/WORKING/Lifecycle":      {},
+		"Codex/RUNNING/Process":        {},
+		"Codex/IDLE/Lifecycle":         {},
+		"Claude/RUNNING/Process":       {},
+	}
+	base := sessions.Session{
+		TmuxID:        "$10",
+		TmuxName:      "strict-status-boundary",
+		IdentityToken: "v1-strict-status",
+		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+	}
+	for _, candidateAgent := range agents {
+		for _, kind := range kinds {
+			for _, signal := range signals {
+				key := candidateAgent.name + "/" + string(kind) + "/" + string(signal)
+				t.Run(key, func(t *testing.T) {
+					candidate := base
+					candidate.Agent = candidateAgent.agent
+					candidate.Status = sessions.Status{Kind: kind, Signal: signal, SignalAt: observedAt}
+					_, err := mapSession(candidate, testProfileCatalog(), observedAt)
+					_, wantAccepted := accepted[key]
+					if wantAccepted && err != nil {
+						t.Fatalf("session projection rejected legal agent/status relation %s: %v", key, err)
+					}
+					if !wantAccepted && err == nil {
+						t.Fatalf("session projection accepted impossible agent/status relation %s", key)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestSessionProjectionRejectsCodexProviderSessionName(t *testing.T) {
+	providerSession, err := agentruntime.NewProviderSessionFacts("codex-session", "must-not-serialize")
+	if err != nil {
+		t.Fatalf("construct provider session facts: %v", err)
+	}
+	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	_, err = mapSession(sessions.Session{
+		TmuxID:        "$11",
+		TmuxName:      "codex-name-boundary",
+		IdentityToken: "v1-codex-name",
+		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+		Agent: &agentruntime.AgentRuntime{
+			Provider:        agentruntime.ProviderCodex,
+			PID:             4312,
+			ProviderSession: providerSession,
+		},
+		Status: sessions.Status{
+			Kind: sessions.StatusRunning, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
+		},
+	}, testProfileCatalog(), observedAt)
+	if err == nil {
+		t.Fatal("session projection serialized a provider session name for Codex")
+	}
+}
+
+func TestSessionProjectionRejectsProfileFactsOutsideTheConfiguredCatalog(t *testing.T) {
+	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	base := sessions.Session{
+		TmuxID:        "$9",
+		TmuxName:      "strict-profile-boundary",
+		IdentityToken: "v1-strict-profile",
+		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+		Status: sessions.Status{
+			Kind: sessions.StatusRunning, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
+		},
+	}
+	tests := []struct {
+		name          string
+		launchProfile agentruntime.ProfileKey
+		agent         *agentruntime.AgentRuntime
+	}{
+		{
+			name:  "malformed runtime profile",
+			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "Work"},
+		},
+		{
+			name:  "unknown runtime profile",
+			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "other"},
+		},
+		{
+			name:  "provider-mismatched runtime profile",
+			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderClaude, PID: 4312, Profile: "work"},
+		},
+		{
+			name:          "unknown launch profile",
+			launchProfile: "other",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := base
+			candidate.LaunchProfile = test.launchProfile
+			candidate.Agent = test.agent
+			if _, err := mapSession(candidate, testProfileCatalog(), observedAt); err == nil {
+				t.Fatalf("session projection accepted %s outside the configured profile catalog", test.name)
+			}
+		})
+	}
+}
+
+func testProfileCatalog() []agentruntime.Profile {
+	return []agentruntime.Profile{
+		{Key: "work", Label: "Codex · Work", Provider: agentruntime.ProviderCodex},
+		{Key: "claude-work", Label: "Claude · Work", Provider: agentruntime.ProviderClaude},
+	}
+}
+
+func TestProfileProjectionRequiresAClosedProvider(t *testing.T) {
+	profiles, err := mapProfiles(validProfileProjectionCatalog())
+	if err != nil || len(profiles) != 1 || profiles[0].Provider != "Codex" {
+		t.Fatalf("profile projection = (%+v, %v), want required Codex provider", profiles, err)
+	}
+	if _, err := mapProfiles([]agentruntime.Profile{{Key: "work", Label: "Work", Provider: agentruntime.Provider("Other")}}); err == nil {
+		t.Fatal("profile projection accepted a provider outside the closed wire union")
+	}
+}
+
+func TestProfileProjectionRejectsInvalidConfiguredCatalogs(t *testing.T) {
+	tests := []struct {
+		name      string
+		catalogue func() []agentruntime.Profile
+	}{
+		{
+			name: "duplicate profile key",
+			catalogue: func() []agentruntime.Profile {
+				profiles := validProfileProjectionCatalog()
+				duplicate := profiles[0]
+				duplicate.Label = "Codex · Personal"
+				duplicate.Environment = []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: "/profiles/personal"}}
+				return append(profiles, duplicate)
+			},
+		},
+		{
+			name: "relative provider command",
+			catalogue: func() []agentruntime.Profile {
+				profiles := validProfileProjectionCatalog()
+				profiles[0].Command = "codex"
+				return profiles
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := mapProfiles(test.catalogue()); err == nil {
+				t.Fatalf("profile projection accepted %s", test.name)
+			}
+		})
+	}
+}
+
+func validProfileProjectionCatalog() []agentruntime.Profile {
+	return []agentruntime.Profile{{
+		Key:      "work",
+		Label:    "Codex · Work",
+		Provider: agentruntime.ProviderCodex,
+		Command:  "/bin/codex",
+		Environment: []agentruntime.EnvironmentVariable{
+			{Name: "CODEX_HOME", Value: "/profiles/work"},
+		},
+		ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "codex"}},
+	}}
 }
 
 // pressureMetricUniverse is the closed `PressureMetric` union of the wire
