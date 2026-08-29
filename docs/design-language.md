@@ -1,6 +1,6 @@
 # Niðavellir: the Skíðblaðnir design language
 
-Status: reviewed design reference, 2026-08-26. This document owns visual
+Status: reviewed design reference, updated 2026-08-28. This document owns visual
 identity: color, shape, ornament, typography, iconography, motion, and the
 terminal theme. [`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
@@ -480,6 +480,10 @@ it as a red test, not an assumption.
   text, or semantics. It is a redundant scanning cue; the status bay owns
   meaning and accessibility.
 - **Attention badge**: Orpiment lozenge, 10dp across, §12 pulse rules.
+- **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
+  ends, transparent track, horizontally inset 12dp at the collection's top
+  edge. Determinate while pulling and indeterminate while checking; absent at
+  rest. It has no surface, elevation, glow, ornament, or reserved stratum.
 - **The Forge sheet**: ForgeGlow surface, 12dp top cuts, single fret band
   under the title (Gold 40%, even unit count), Display-face title, mono cwd
   field (autocorrect off is architecture-owned). Invalid drafts preserved;
@@ -568,6 +572,9 @@ invariants, the mark on every Dwarves surface); **(9) detach chrome**
 to one symmetric, literal `Detach` control using the existing D2/D6 grammar).
 The numbers are delta numbers, not positions; D1–D9 each have one owner, and
 the roadmap's D-numbers and these agree.
+The non-numbered dashboard refresh-boundary correction is owned by
+[`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md); it does not
+create D10 or reopen another component.
 Until a delta lands, this document binds nothing; after it lands, this
 document is the review reference for that surface.
 

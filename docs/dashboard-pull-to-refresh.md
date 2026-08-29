@@ -4,6 +4,11 @@ Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and
 routine verification is green on the merged tree. The feature-tree signed
 36-test S22+ platform gate was green before integration; the merged 45-test
 platform gate and hands-on native-feel check remain `NOT_RUN`.
+The 2026-08-28 refresh-boundary correction source is implemented. Its focused
+signed same-version S22+ owner red and two-test green are recorded in
+[`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md); routine
+verification is green, while the release-bound full platform gate and
+hands-on acceptance remain `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns this delta's
@@ -112,15 +117,10 @@ only that scope mounts the platform pull owner. The same one lazy child remains
 for no-live scopes, so a no-op release cannot strand Material state at its
 threshold and no second scroll body exists.
 
-Indicator: use Material 3 1.4's `PullToRefreshDefaults.IndicatorBox` with the
-Material pull state and positional threshold unchanged. Configure a transparent
-container and zero elevation, with Gold determinate pull progress and Gold
-indeterminate active progress. Material owns indicator placement as well as all
-gesture, threshold, resistance, nested-scroll, and fling behavior. The
-active-only semantic label is `Checking tmux sessions`; no at-rest semantic
-node or action remains. Reserve stable local space or placement so it does not
-obscure essential first-row content. Keep the experimental-Material opt-in
-local to the pull composable; add no custom gesture physics or motion token.
+The 2026-08-28 correction hard-cuts only indicator placement and collection
+spacing per [`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md).
+Material continues to own gesture, threshold, resistance, nested-scroll, and
+fling behavior; no custom gesture physics or second refresh surface exists.
 
 ## API and state design
 

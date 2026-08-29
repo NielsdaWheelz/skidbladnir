@@ -1,5 +1,6 @@
 package dev.niels.skidbladnir
 
+import android.animation.ValueAnimator
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -34,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -42,13 +44,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -56,16 +59,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -193,13 +198,12 @@ internal fun DashboardDwarfCollection(
     }
     val sessions = visibleSessions(state.machines, state.selectedMachine)
     val gridState = rememberLazyGridState()
-    val topPadding = PullToRefreshDefaults.PositionalThreshold + 12.dp
     if (machines.any { it.access == MachineAccess.Ready }) {
         PullableDwarfCollection(state = state, onVerify = onVerify) {
-            DashboardDwarfGrid(state, machines, sessions, gridState, topPadding, onOpen, onKill)
+            DashboardDwarfGrid(state, machines, sessions, gridState, onOpen, onKill)
         }
     } else {
-        DashboardDwarfGrid(state, machines, sessions, gridState, topPadding, onOpen, onKill)
+        DashboardDwarfGrid(state, machines, sessions, gridState, onOpen, onKill)
     }
 }
 
@@ -237,29 +241,58 @@ private fun DwarfCollectionPullIndicator(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    PullToRefreshDefaults.IndicatorBox(
-        state = state,
-        isRefreshing = isRefreshing,
-        modifier = modifier,
-        containerColor = Color.Transparent,
-        elevation = 0.dp,
-    ) {
-        when {
-            isRefreshing -> CircularProgressIndicator(
-                modifier = Modifier.size(24.dp).semantics {
-                    contentDescription = "Checking tmux sessions"
-                },
-                color = Gold,
-                strokeWidth = 2.dp,
-            )
-            state.distanceFraction > 0f -> CircularProgressIndicator(
-                progress = { state.distanceFraction.coerceIn(0f, 1f) },
-                modifier = Modifier.size(24.dp),
-                color = Gold,
-                strokeWidth = 2.dp,
-                trackColor = Color.Transparent,
-            )
+    var animatorDurationScale by remember {
+        mutableFloatStateOf(ValueAnimator.getDurationScale())
+    }
+    DisposableEffect(Unit) {
+        val listener = ValueAnimator.DurationScaleChangeListener { scale ->
+            animatorDurationScale = scale
         }
+        check(ValueAnimator.registerDurationScaleChangeListener(listener)) {
+            "Animator duration-scale listener registration failed"
+        }
+        animatorDurationScale = ValueAnimator.getDurationScale()
+        onDispose {
+            check(ValueAnimator.unregisterDurationScaleChangeListener(listener)) {
+                "Animator duration-scale listener unregistration failed"
+            }
+        }
+    }
+    val indicatorModifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = 12.dp)
+        .height(2.dp)
+    when {
+        isRefreshing && animatorDurationScale == 0f -> LinearProgressIndicator(
+            progress = { 1f },
+            modifier = indicatorModifier.semantics {
+                contentDescription = "Checking tmux sessions"
+                progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate
+            },
+            color = Gold,
+            trackColor = Color.Transparent,
+            strokeCap = StrokeCap.Butt,
+            gapSize = 0.dp,
+            drawStopIndicator = {},
+        )
+        isRefreshing -> LinearProgressIndicator(
+            modifier = indicatorModifier.semantics {
+                contentDescription = "Checking tmux sessions"
+            },
+            color = Gold,
+            trackColor = Color.Transparent,
+            strokeCap = StrokeCap.Butt,
+            gapSize = 0.dp,
+        )
+        state.distanceFraction > 0f -> LinearProgressIndicator(
+            progress = { state.distanceFraction.coerceIn(0f, 1f) },
+            modifier = indicatorModifier,
+            color = Gold,
+            trackColor = Color.Transparent,
+            strokeCap = StrokeCap.Butt,
+            gapSize = 0.dp,
+            drawStopIndicator = {},
+        )
     }
 }
 
@@ -269,10 +302,10 @@ private fun DashboardDwarfGrid(
     machines: List<MachineState>,
     sessions: List<VisibleSession>,
     gridState: LazyGridState,
-    topPadding: Dp,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
 ) {
+    val topPadding = 12.dp
     val bottomPadding = 84.dp
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
