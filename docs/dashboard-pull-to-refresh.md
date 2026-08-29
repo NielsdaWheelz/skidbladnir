@@ -34,8 +34,9 @@ are consumed unchanged.
   only that machine. Scope is captured when the pull is released.
 - Completion means the required post-request `GET /v1/sessions` reads landed.
   Pressure remains independently automatic and is not part of pull completion.
-- Header, filters, machine/pressure strips, notices, Forge recovery, card order,
-  and terminal behavior stay fixed. Only the dwarf collection viewport pulls.
+- Header, filters, notices, Forge recovery, card order, terminal behavior, and
+  pressure-rail placement as owned by `machine-pressure-rail.md` stay outside
+  pull behavior. Only the dwarf collection viewport pulls.
 - No open product or architecture question remains for implementation.
 
 ## Goals and rules

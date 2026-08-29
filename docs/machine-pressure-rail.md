@@ -1,9 +1,12 @@
 # Machine pressure rail
 
-Status: source implemented; pure and real-Compose reds recorded; focused unit,
-signed same-version S22+ component, routine verification, and the approved S22+
-hands-on visual glance green. The release-bound full platform gate remains
-`NOT_RUN`.
+Status: the typographic rail source is implemented; its pure and real-Compose
+reds, focused unit, signed same-version S22+ component, routine verification,
+and approved hands-on visual glance are green. The All-filter density follow-up
+is source implemented with its pure red/green and routine verification green;
+its focused rendered-device placement proof is `NOT_RUN`. Earlier rail evidence
+does not substitute for that changed placement, and the release-bound full
+platform gate remains `NOT_RUN`.
 
 This is the implementation contract for one hard-cut presentation refactor.
 It is subordinate to [`architecture.md`](architecture.md),
@@ -27,6 +30,14 @@ CPU 34% i   MEM WARNING W   SWAP NO DATA ?   LOAD 1.3 W   DISK 61% N
 
 The row is presentation only. It is not a database, event ledger, threshold
 owner, alert, or second pressure model.
+
+### All-filter density follow-up
+
+The reviewed 2026-08-28 follow-up supersedes only the rail-placement clauses
+below: `All` renders no pressure rail, while an explicit machine filter renders
+exactly that machine's rail and details disclosure. Compact exceptional machine
+notices remain in `All`; pressure polling, accepted snapshots, presentation,
+history, disclosure, and action admission remain unchanged.
 
 ## Scope and closed decisions
 
@@ -187,7 +198,7 @@ Ownership is fixed:
 | Wire projection and strict decoding | Gateway/client boundary | Existing single `GET /v1/pressure` shape; unchanged |
 | Text, precision, order, marks, accents, accessibility summary | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
 | Rail geometry, spans, scrolling, semantics, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
-| Placement and selected machine | `DashboardScreen.kt` | Existing composition; unchanged |
+| Placement and selected machine | `DashboardScreen.kt` | No rail in `All`; exactly the selected machine's rail under an explicit filter |
 | History geometry | `PressureHistoryBand` | Frozen source and pixel contract |
 
 The external API remains exactly one strict shape:
@@ -245,10 +256,15 @@ broken Kotlin compilation unit or a forbidden compatibility path.
 | 2 | Android pressure builder | `android/app/src/main/java/dev/niels/skidbladnir/PressurePresentation.kt`, `android/app/src/main/java/dev/niels/skidbladnir/MachinePressureRail.kt`, `android/app/src/test/java/dev/niels/skidbladnir/PressurePresentationTest.kt`, pressure test in `android/app/src/androidTest/java/dev/niels/skidbladnir/MultiMachineUiInstrumentedTest.kt` | Owns and observes the compile-complete pure and real-Compose reds before the atomic production hard cut |
 | 3 | Verifier, read-only | none | Diff/contract/gate review; writes no test or production file |
 
-No owner changes `DashboardScreen.kt`, `Theme.kt`, `ProductModel.kt`,
-`GatewayClient.kt`, controller/polling code, Go code, build files, `scripts/test`,
-catalogue files, tmux code, terminal code, or another owner's tests. A necessary
-change outside a slice stops work and reopens scope; it is not absorbed.
+For the original typographic-row hard cut, no owner changes
+`DashboardScreen.kt`, `Theme.kt`, `ProductModel.kt`, `GatewayClient.kt`,
+controller/polling code, Go code, build files, `scripts/test`, catalogue files,
+tmux code, terminal code, or another owner's tests. The reviewed density
+follow-up explicitly reopens only `DashboardScreen.kt`, the pure visibility
+rule in `ProductModel.kt`, its existing multi-machine JVM and Compose proofs,
+the product-gate confirmation copy in `scripts/test`, and canonical placement
+prose. It does not reopen pressure presentation, polling, protocol, gateway,
+tmux, terminal, or device-mutation code.
 
 ## Red / green / refactor and 80/20 proof
 
@@ -274,6 +290,10 @@ One proof per ownership boundary:
 3. **Frozen history proof.** Retain the existing 16dp pixel test byte-for-byte
    in intent: top padding, heights, colours, ordering, and gaps. Do not create a
    second history test.
+4. **Filter-placement proof.** One pure rule proves that `All` suppresses the
+   rail and an explicit machine filter admits it. The existing Compose journey,
+   rather than a parallel test, proves zero rails in `All`, exactly the selected
+   machine's rail after filtering, and the unchanged local details interaction.
 
 Red must fail on an observable target assertion, not an unresolved symbol.
 Green makes the minimum production change. Refactor then deletes gem names,
@@ -297,16 +317,21 @@ Do not misreport the focused workflow as that gate. The workflow compares the
 encrypted pairing digest immediately before and after instrumentation while the
 signed test build owns read access, then proves final test-package absence and
 restoration of the captured APK's exact digest, signer, and version. It does not
-claim to read the non-debuggable release's private preferences after restore. No
-integration/live/product/second-phone proof is warranted because their owned
-behavior is unchanged. The release-bound platform gate is `NOT_RUN` without
-explicit approval in that future turn; `NOT_RUN` is never a pass.
+claim to read the non-debuggable release's private preferences after restore.
+No integration, live, or second-phone proof is warranted because their owned
+behavior is unchanged. The product journey's confirmation copy consumes the
+new placement but does not substitute for the focused component proof. Product
+and release-bound platform gates are `NOT_RUN` without explicit approval in a
+future turn; `NOT_RUN` is never a pass.
 
 ## Acceptance criteria
 
 - An accepted snapshot has one neutral machine identity, one status with
   dynamic-state colour, one flat metric row, and the unchanged history band;
   Reading/Unavailable states are honest header-only disclosures.
+- `All` renders no pressure rail. An explicit machine filter renders exactly
+  that machine's rail; switching back to `All` removes it. Compact exceptional
+  machine notices remain visible in `All`.
 - No metric pill, fill, border, nested surface/action, Frost informational wash,
   or Moss normal wash remains.
 - A fresh default rail is 68-76dp at 360dp/font scale 1.0; 320dp and large text
@@ -333,6 +358,6 @@ animation, external API/wire-schema change, polling change, or details-sheet
 redesign.
 
 Final state: one host-owned pressure model and wire format feed one pure Android
-presentation owner. Each machine renders one quiet typographic pressure rail,
-one frozen history band, and one local details sheet. The gem model and every
-legacy path are absent.
+presentation owner. An explicit machine filter renders that machine's quiet
+typographic pressure rail, frozen history band, and local details sheet; `All`
+renders none of those rails. The gem model and every legacy path are absent.

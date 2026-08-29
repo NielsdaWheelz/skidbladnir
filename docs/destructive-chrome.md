@@ -113,9 +113,12 @@ internal fun noticeToneColor(tone: NoticeTone): Color = when (tone) {
 
 ### Derivations (`ProductModel.kt`)
 
-`MachineAvailability`, `machineAvailability`, and `machineStateTag` move
-here from `DashboardScreen.kt` — they are pure product derivations and the
-Compose file is not their owner. `machineStateMessage` and
+`MachineAvailability`, `machineAvailability`, and, at this delta, the now-retired
+`machineStateTag` move here from `DashboardScreen.kt` — they are pure product
+derivations and the Compose file is not their owner. The later pressure-rail
+All-filter density follow-up removes `machineStateTag` when observation moves
+from the retired always-present strip node to each real machine filter.
+`machineStateMessage` and
 `machineStateMessageColor` are replaced by one function returning both:
 
 ```text

@@ -263,9 +263,13 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   `UNKNOWN`, machine label, tmux name, local tmux id. Android owns this full
   cross-host order; each gateway publishes only local facts.
 
-Each machine has its own pressure rail per
-[`machine-pressure-rail.md`](machine-pressure-rail.md), freshness, access state,
-inline error, and independent five-second poll work. A failed inventory poll preserves only
+Pressure remains machine-local per
+[`machine-pressure-rail.md`](machine-pressure-rail.md). `All` omits pressure
+rails; an explicit machine filter renders exactly that machine's rail and local
+details disclosure. Compact exceptional machine notices remain visible in
+`All`, so removing the repeated diagnostic rails does not hide stale,
+unreachable, unauthenticated, identity-changed, or failed-pressure state. Each
+machine retains independent five-second poll work. A failed inventory poll preserves only
 that machine's last in-memory snapshot as literal `STALE`; stale, unreachable,
 unauthenticated, or identity-changed machines cannot create, attach, send
 terminal input, or kill. Pressure failure never disables action against a
@@ -290,8 +294,9 @@ recovery copy is target-aware: a visible ready target teaches the pull, a
 ready target hidden by another filter first names the filter change,
 authentication names whole-fleet reconnect, and a changed or missing identity
 names app-data reset and a fresh connect. Review-ready copy remains a past-tense fact,
-not another verification command. Each pressure rail is one compact disclosure
-control: a machine/aggregate/cause/freshness header, one stable non-wrapping
+not another verification command. Under an explicit machine filter, the one
+pressure rail is a compact disclosure control: a
+machine/aggregate/cause/freshness header, one stable non-wrapping
 flat typographic metric row, then the unchanged 16dp categorical history band
 with no title. Metric labels are neutral; informational and normal values are
 quiet, while only host-evaluated warm/hot values and marks spend Gold/Ember.
@@ -616,7 +621,7 @@ enum values are defects, with no protocol branch or compatibility state.
   repaired in-app. Ordinary upgrades preserve the collection; app-data loss
   returns to Connect. There is no old store reader, ADB provisioning path, or
   smaller-fleet branch.
-- Grid, per-machine pressure rails/details sheets, filters, Forge, and terminal follow §4. The Forge
+- Grid, selected-machine pressure rail/details sheet, filters, Forge, and terminal follow §4. The Forge
   preserves invalid drafts; its cwd field disables autocorrect/smart
   punctuation. Inventory snapshots and drafts are process-memory only.
 - Terminal: the proven harness. Vendored pinned xterm.js in a locked WebView
@@ -733,8 +738,9 @@ Verification follows an 80/20 boundary shape:
   the byte-exact `dev-server` pin of the tag, source, and all five digests;
 - approved S22+ instrumentation owns exact-three encrypted collection
   install/reconnect, atomic failure/quarantine, lifecycle reconciliation, the
-  compact pressure rail and local details disclosure, terminal behavior, and
-  visible stale-action admission;
+  absence of pressure rails in `All`, the selected machine's compact pressure
+  rail and local details disclosure, terminal behavior, and visible
+  stale-action admission;
 - one approved physical S22+ product journey owns the real scanner,
   three-host federation/routing, per-machine pressure disclosure,
   process recreation, machine-local outage/recovery, and preserved pairings
@@ -779,9 +785,10 @@ private explicit `-L` or `-S` socket, and clean up only identities they created.
 A skipped external boundary is never a pass.
 
 Acceptance additionally requires: Devbox, MacBook, and Arch sessions remain distinct
-and route only by machine target; `All` cards, pressure/error state, Forge,
-terminal, and kill confirmation visibly name their machine, while a selected
-machine filter replaces only the card's repeated visual machine label and the
+and route only by machine target; `All` cards, exceptional machine notices,
+Forge, terminal, and kill confirmation visibly name their machine; `All`
+renders no pressure rail, while a selected machine filter renders exactly that
+machine's rail and replaces only the card's repeated visual machine label; the
 card remains machine-named to accessibility; one host outage leaves the
 other fresh and actionable while only the failed snapshot becomes stale and
 non-mutating; origin/handle or bearer failure cannot cross machines; each

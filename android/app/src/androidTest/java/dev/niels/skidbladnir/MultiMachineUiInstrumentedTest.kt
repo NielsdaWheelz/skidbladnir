@@ -698,6 +698,7 @@ class MultiMachineUiInstrumentedTest {
         )
         val macHandle = pressureMachine.handle.encoded
         val railTag = "machine-strip-$macHandle"
+        val devRailTag = "machine-strip-${TEST_MACHINE.handle.encoded}"
         var largeText by mutableStateOf(false)
         var density = 0f
         var controller: SkidbladnirController? = null
@@ -725,6 +726,13 @@ class MultiMachineUiInstrumentedTest {
                     }
                 }
 
+                compose.onNodeWithTag(railTag).assertDoesNotExist()
+                compose.onNodeWithTag(devRailTag).assertDoesNotExist()
+                compose.onNodeWithText("Prior sessions are STALE", substring = true)
+                    .assertIsDisplayed()
+                scenario.onActivity {
+                    dashboard = dashboard.copy(selectedMachine = pressureMachine.handle)
+                }
                 val rail = compose.onNodeWithTag(railTag)
                 rail.assertIsDisplayed().assertHasClickAction().assertContentDescriptionEquals(
                     "MacBook. Fresh pressure. Recovering from hot. Cause: load. " +
@@ -960,6 +968,9 @@ class MultiMachineUiInstrumentedTest {
                 scenario.onActivity { dashboard = dashboard.copy(machines = machines) }
                 compose.onNodeWithTag(railTag).assertIsDisplayed()
                 compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
+                scenario.onActivity { dashboard = dashboard.copy(selectedMachine = null) }
+                compose.onNodeWithTag(railTag).assertDoesNotExist()
+                compose.onNodeWithTag(devRailTag).assertDoesNotExist()
             }
         } finally {
             controller?.close()
@@ -1066,8 +1077,8 @@ class MultiMachineUiInstrumentedTest {
 
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
-                waitForTag(freshMachineTag(failed), 30_000)
-                healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
+                waitForInventoryObservation(failed, 30_000)
+                healthy.forEach { waitForInventoryObservation(it, 30_000) }
 
                 compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
                 compose.onNodeWithTag(killTag(failedTarget)).performClick()
@@ -1077,17 +1088,20 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag("kill-confirm").assertIsEnabled()
                 assertTrue("Could not publish outage coordination marker", readiness.createNewFile())
 
-                waitForTag("machine-state-stale-${failedHandle.encoded}", 30_000)
+                waitForDisabledTag("kill-confirm", 30_000)
                 val healthyAtOutage = requireNotNull(inventoryObservation(healthyProbe))
                 compose.waitUntil(30_000) {
                     inventoryObservation(healthyProbe).let { it != null && it != healthyAtOutage }
                 }
-                healthy.forEach { waitForTag(freshMachineTag(it), 30_000) }
-                compose.onNodeWithTag(stripLabelTag(failed), useUnmergedTree = true)
+                healthy.forEach { waitForInventoryObservation(it, 30_000) }
+                compose.onNodeWithTag(filterTag(failed), useUnmergedTree = true)
                     .assertTextContains(failed.machine.label.text, substring = true)
                 healthy.forEach { credential ->
-                    compose.onNodeWithTag(stripLabelTag(credential), useUnmergedTree = true)
+                    compose.onNodeWithTag(filterTag(credential), useUnmergedTree = true)
                         .assertTextContains(credential.machine.label.text, substring = true)
+                }
+                credentials.forEach { credential ->
+                    compose.onNodeWithTag(pressureRailTag(credential)).assertDoesNotExist()
                 }
                 compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
                 compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
@@ -1096,8 +1110,10 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithTag(killTag(failedTarget)).assertIsNotEnabled()
 
                 compose.onNodeWithTag(filterTag(healthyProbe)).performClick()
+                compose.onNodeWithTag(pressureRailTag(healthyProbe)).assertIsDisplayed()
                 compose.onNodeWithTag("new-session").assertIsEnabled()
                 compose.onNodeWithTag(filterTag(failed)).performClick()
+                compose.onNodeWithTag(pressureRailTag(failed)).assertIsDisplayed()
                 compose.onNodeWithTag("new-session").assertIsNotEnabled()
             }
         } finally {
@@ -1201,9 +1217,21 @@ class MultiMachineUiInstrumentedTest {
         node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag)?.startsWith(prefix) == true
     }
 
-    /** The machine strip's own record of when its freshest inventory arrived. */
+    private fun waitForInventoryObservation(credential: MachineCredential, timeoutMillis: Long) {
+        compose.waitUntil(timeoutMillis) { inventoryObservation(credential) != null }
+    }
+
+    private fun waitForDisabledTag(tag: String, timeoutMillis: Long) {
+        compose.waitUntil(timeoutMillis) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().singleOrNull()
+                ?.config
+                ?.getOrNull(SemanticsProperties.Disabled) != null
+        }
+    }
+
+    /** The machine filter's own record of when its freshest inventory arrived. */
     private fun inventoryObservation(credential: MachineCredential): Long? =
-        compose.onAllNodesWithTag(freshMachineTag(credential), useUnmergedTree = true)
+        compose.onAllNodesWithTag(filterTag(credential), useUnmergedTree = true)
             .fetchSemanticsNodes()
             .singleOrNull()
             ?.config
@@ -1214,14 +1242,11 @@ class MultiMachineUiInstrumentedTest {
         return (result as GatewayResult.Success).value
     }
 
-    private fun freshMachineTag(credential: MachineCredential) =
-        "machine-state-fresh-${credential.machine.handle.encoded}"
-
-    private fun stripLabelTag(credential: MachineCredential) =
-        "machine-strip-label-${credential.machine.handle.encoded}"
-
     private fun filterTag(credential: MachineCredential) =
         "machine-filter-${credential.machine.handle.encoded}"
+
+    private fun pressureRailTag(credential: MachineCredential) =
+        "machine-strip-${credential.machine.handle.encoded}"
 
     private fun cardTag(target: SessionTarget) =
         "session-card-${target.machineHandle.encoded}-${target.session.tmuxId}"

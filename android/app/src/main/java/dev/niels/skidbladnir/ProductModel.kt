@@ -631,16 +631,6 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
     }
 }
 
-internal fun machineStateTag(machine: MachineState): String = when (machineAvailability(machine)) {
-    MachineAvailability.Ready -> "fresh"
-    MachineAvailability.Refreshing -> "refreshing"
-    MachineAvailability.AuthRequired -> "auth"
-    MachineAvailability.IdentityChanged -> "identity"
-    MachineAvailability.Reading -> "reading"
-    is MachineAvailability.Stale -> "stale"
-    is MachineAvailability.Unavailable -> "unreachable"
-}
-
 internal data class VisibleSession(val machine: PairedMachine, val target: SessionTarget)
 
 internal fun visibleInventoryTargets(
@@ -651,6 +641,8 @@ internal fun visibleInventoryTargets(
     selectedMachine in liveMachineHandles -> setOf(selectedMachine)
     else -> emptySet()
 }
+
+internal fun pressureRailsVisible(selectedMachine: MachineHandle?): Boolean = selectedMachine != null
 
 internal fun visibleSessions(machines: List<MachineState>, selectedMachine: MachineHandle?): List<VisibleSession> = machines
     .asSequence()
