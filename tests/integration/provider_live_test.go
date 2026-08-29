@@ -44,6 +44,7 @@ const (
 	providerLiveOpaqueInputBytes      = 32
 	providerLiveWorkspacePrefix       = ".skid-provider-live-"
 	providerLiveCodexModel            = "skidbladnir-provider-live-offline"
+	providerLiveCodexModelCatalogName = "codex-model-catalog.json"
 	providerLiveCodexProvider         = "skidbladnir_provider_live"
 	providerLiveCodexProviderName     = "Skidbladnir provider live"
 	providerLiveClaudeBaseURL         = "http://127.0.0.1:0"
@@ -171,6 +172,7 @@ func TestProviderLiveLaunchersEnforceOfflineInputBoundary(t *testing.T) {
 		"exec", "--ephemeral", "--dangerously-bypass-hook-trust",
 		"--dangerously-bypass-approvals-and-sandbox",
 		"--config", `projects={` + strconv.Quote(harness.workspace) + `={trust_level="trusted"}}`,
+		"--config", `model_catalog_json=` + strconv.Quote(filepath.Join(harness.workspace, providerLiveCodexModelCatalogName)),
 		"--config", "features.hooks=true",
 		"--model", "skidbladnir-provider-live-offline",
 		"--config", `model_provider="skidbladnir_provider_live"`,
@@ -644,7 +646,13 @@ func providerLiveExecutionProfile(profile agentruntime.Profile, harness provider
 			"--config",
 			`projects={`+strconv.Quote(harness.workspace)+`={trust_level="trusted"}}`,
 		)
-		arguments = append(arguments, providerLiveCodexOfflineArguments(harness.codexBaseURL)...)
+		arguments = append(
+			arguments,
+			providerLiveCodexOfflineArguments(
+				harness.codexBaseURL,
+				filepath.Join(harness.workspace, providerLiveCodexModelCatalogName),
+			)...,
+		)
 		profile.Arguments = append(arguments, "-")
 	case agentruntime.ProviderClaude:
 		profile.Command = harness.claudeLauncher
@@ -662,9 +670,10 @@ func providerLiveExecutionProfile(profile agentruntime.Profile, harness provider
 	return profile
 }
 
-func providerLiveCodexOfflineArguments(baseURL string) []string {
+func providerLiveCodexOfflineArguments(baseURL, modelCatalogPath string) []string {
 	providerPrefix := "model_providers." + providerLiveCodexProvider + "."
 	return []string{
+		"--config", "model_catalog_json=" + strconv.Quote(modelCatalogPath),
 		"--config", "features.hooks=true",
 		"--model", providerLiveCodexModel,
 		"--config", "model_provider=" + strconv.Quote(providerLiveCodexProvider),
@@ -795,6 +804,29 @@ func newProviderLiveHarness(t *testing.T, home string) providerLiveHarness {
 
 	hold := filepath.Join(workspace, "session-start-hold")
 	writeProviderLiveFile(t, hold, []byte(providerLiveHoldScript()), 0o700)
+	writeProviderLiveJSON(t, filepath.Join(workspace, providerLiveCodexModelCatalogName), map[string]any{
+		"models": []any{map[string]any{
+			"slug":                           providerLiveCodexModel,
+			"display_name":                   providerLiveCodexModel,
+			"description":                    nil,
+			"default_reasoning_level":        "medium",
+			"supported_reasoning_levels":     []any{},
+			"shell_type":                     "unified_exec",
+			"visibility":                     "list",
+			"supported_in_api":               true,
+			"priority":                       0,
+			"upgrade":                        nil,
+			"support_verbosity":              false,
+			"default_verbosity":              nil,
+			"apply_patch_tool_type":          nil,
+			"truncation_policy":              map[string]any{"mode": "bytes", "limit": 10_000},
+			"supports_image_detail_original": false,
+			"context_window":                 272_000,
+			"max_context_window":             272_000,
+			"experimental_supported_tools":   []any{},
+			"base_instructions":              "",
+		}},
+	})
 
 	bashPath := requireProviderLivePATHExecutable(t, "bash")
 	odPath := requireProviderLivePATHExecutable(t, "od")
@@ -1001,7 +1033,7 @@ func writeProviderLiveJSON(t *testing.T, path string, value any) {
 	t.Helper()
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		t.Fatal("encode private provider-live hook configuration")
+		t.Fatal("encode private provider-live JSON configuration")
 	}
 	writeProviderLiveFile(t, path, append(encoded, '\n'), 0o600)
 }
