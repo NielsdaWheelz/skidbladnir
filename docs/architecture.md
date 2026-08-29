@@ -1,8 +1,9 @@
 # Skíðblaðnir v0: product and architecture
 
 Status: accepted implementation target after the 2026-08-25 scope reset, the
-2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, and
-the 2026-08-28 agent-identity projection hard cut.
+2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
+2026-08-28 agent-identity projection hard cut, and the 2026-08-28 dashboard
+refresh-boundary correction.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -289,7 +290,12 @@ satisfy that intent. Fixed chrome does not pull, existing collection content
 remains in place, and there is no tap, overflow, contextual-retry, or
 custom-accessibility equivalent. The pull owner is active only when the
 visible scope has a live poller; otherwise the same collection is inert and
-its access/connect outcome remains visible. Forge outcome-unknown
+its access/connect outcome remains visible. The collection always rests at a
+`12dp` top inset; the pull threshold reserves no layout space. Pulling and
+checking render one active-only `2dp` Gold progress line inside that gutter,
+with determinate progress semantics while pulling and indeterminate checking
+semantics after release. The line never moves or obscures collection content
+and is wholly absent at rest and in inert scopes. Forge outcome-unknown
 recovery copy is target-aware: a visible ready target teaches the pull, a
 ready target hidden by another filter first names the filter change,
 authentication names whole-fleet reconnect, and a changed or missing identity
@@ -844,4 +850,7 @@ is already active adds no work; a pull
 racing an ordinary inventory read requires exactly one later coalesced read;
 the shared indicator retains content and ends only after every targeted read
 lands or its poller stops; and manual verification performs no pressure,
-mutation, or terminal-input operation.
+mutation, or terminal-input operation. The collection's first content begins
+`12dp` below its viewport in live and inert scopes; the active progress line is
+confined to `y = 0..2dp`, horizontally inset `12dp`, and does not change card,
+empty-content, focus, or scroll bounds.

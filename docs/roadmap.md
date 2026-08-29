@@ -17,6 +17,10 @@ Skíðblaðnir and `dev-server`, both routine verification suites are green, and
 the approved exact-head isolated Darwin tmux integration is green. Android
 platform, exact release/pin/deployment, and the provider-live matrix remain
 `NOT_RUN`.
+The 2026-08-28 dashboard refresh-boundary correction source is implemented;
+its owner red and focused signed same-version S22+ two-test green are recorded,
+including the zero-duration branch. Routine verification is green. The
+release-bound full platform gate and hands-on acceptance remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -56,6 +60,7 @@ S1 tmux control plane
  -> v0 dashboard card hierarchy delta
  -> v0 machine-pressure rail delta
  -> v0 agent-identity projection hard cut
+ -> v0 dashboard refresh-boundary correction
  -> v0.5 (optional): push
 ```
 
@@ -622,6 +627,32 @@ focused S22+ component, deployment, and four-case live sample defined in
 [agent-identity-projection.md](agent-identity-projection.md). Unapproved
 external boundaries are `NOT_RUN`.
 
+## v0 dashboard refresh-boundary correction — implemented
+
+Outcome: the dwarf collection removes its permanent pull-threshold gutter and
+returns to a `12dp` resting inset without changing pull mechanics or inventory
+behavior. One active-only `2dp` Gold boundary line is determinate while pulling
+and indeterminate while checking; cards remain stationary and unobscured.
+
+Red: extend the existing real-Compose collection proof so the current `92dp`
+inset and `24dp` circular indicator fail the approved resting and active
+geometry. No pure, controller, pressure-internal, card-internal, gateway, or
+tmux proof is added.
+
+Acceptance: the focused red then green, routine verification, and—only when
+separately approved—one S22+ platform pass and hands-on native-pull,
+reduced-motion, spacing, and non-overlap glance. Every unapproved device gate is
+`NOT_RUN`; integration, live, and tmux do not re-prove this presentation-only
+boundary. Scope per
+[`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md).
+
+Implementation status: the legacy `92dp`/circular presentation failed the
+focused signed same-version S22+ owner proof, and the final two-test candidate
+passed on the same device at system animator scale `0.0`. The recovery boundary
+restored the exact original release and preserved encrypted pairing. Routine
+verification is green; the release-bound full platform and hands-on gates
+remain `NOT_RUN`.
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -661,4 +692,5 @@ orchestration, via a new architecture decision.
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green and routine verification green. Focused rendered-device placement, product, and release-bound platform gates are `NOT_RUN`; prior rail evidence does not prove the changed placement. |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
+| v0 dashboard refresh-boundary correction | Source implemented; focused signed same-version S22+ owner red observed and final two-test green at system animator scale `0.0`; exact original release and encrypted pairing restored. Routine verification green; release-bound full platform and hands-on acceptance `NOT_RUN` |
 | v0.5 push | Not scheduled |

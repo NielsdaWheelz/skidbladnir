@@ -20,8 +20,10 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
@@ -52,6 +54,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
@@ -153,9 +156,11 @@ class MultiMachineUiInstrumentedTest {
             val live = machine.access == MachineAccess.Ready
             var refreshing by mutableStateOf(false)
             var dispatchCount = 0
+            var density = 0f
 
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
+                    density = activity.resources.displayMetrics.density
                     activity.setContent {
                         MaterialTheme {
                             DashboardDwarfCollection(
@@ -201,6 +206,17 @@ class MultiMachineUiInstrumentedTest {
                 assertEquals("$fixtureName must begin without a verification", 0, dispatchCount)
 
                 val retainedBoundsAtRest = retained.getUnclippedBoundsInRoot()
+                val grid = compose.onNodeWithTag("sessions-grid").assertIsDisplayed()
+                val gridBoundsAtRest = grid.getUnclippedBoundsInRoot()
+                if (fixtureName == "short") {
+                    assertNoGoldInGridGutter(
+                        label = "short resting collection",
+                        grid = grid,
+                        gridBounds = gridBoundsAtRest,
+                        gutterHeight = 12.dp,
+                        density = density,
+                    )
+                }
                 val firstCard = sessions.firstOrNull()?.let {
                     compose.onNodeWithTag(cardTag(it)).assertIsDisplayed()
                 }
@@ -222,7 +238,71 @@ class MultiMachineUiInstrumentedTest {
                     assertEquals("$fixtureName below-threshold pull dispatched", 0, dispatchCount)
                 }
 
-                pull(beyondThreshold = true)
+                val pullingIndicatorEvidence = if (fixtureName == "short") {
+                    val cardBounds = requireNotNull(firstCardBoundsAtRest)
+                    val gridBounds = gridBoundsAtRest
+                    grid.performTouchInput {
+                        down(percentOffset(0.5f, 0.2f))
+                        moveTo(percentOffset(0.5f, 0.9f), delayMillis = 300)
+                    }
+
+                    compose.onAllNodes(hasProgressSemantics(), useUnmergedTree = true)
+                        .assertCountEquals(1)
+                    val pullingIndicator = compose.onNode(
+                        hasProgressSemantics(),
+                        useUnmergedTree = true,
+                    ).assertIsDisplayed().assertHasNoClickAction()
+                    val pullingConfig = pullingIndicator.fetchSemanticsNode().config
+                    val pullingProgress = pullingConfig.getOrNull(
+                        SemanticsProperties.ProgressBarRangeInfo,
+                    )
+                    val semanticsBounds = pullingIndicator.getUnclippedBoundsInRoot()
+                    val goldBounds = goldBoundsInGridGutter(
+                        grid = grid,
+                        gridBounds = gridBounds,
+                        gutterHeight = cardBounds.top - gridBounds.top,
+                        density = density,
+                    )
+                    assertTrue(
+                        "short held pull must expose determinate progress: " +
+                            "progress=$pullingProgress grid=$gridBounds card=$cardBounds " +
+                            "semantics=$semanticsBounds gold=$goldBounds",
+                        pullingProgress != null && pullingProgress != ProgressBarRangeInfo.Indeterminate,
+                    )
+                    assertEquals(
+                        "short held pull must not add a content description: " +
+                            "grid=$gridBounds card=$cardBounds semantics=$semanticsBounds gold=$goldBounds",
+                        null,
+                        pullingConfig.getOrNull(SemanticsProperties.ContentDescription),
+                    )
+                    assertEquals(
+                        "short held pull must not expose a role: " +
+                            "grid=$gridBounds card=$cardBounds semantics=$semanticsBounds gold=$goldBounds",
+                        null,
+                        pullingConfig.getOrNull(SemanticsProperties.Role),
+                    )
+                    val pullingCustomActions = pullingConfig.getOrNull(SemanticsActions.CustomActions)
+                    assertTrue(
+                        "short held pull must not expose custom actions: " +
+                            "actions=$pullingCustomActions grid=$gridBounds card=$cardBounds " +
+                            "semantics=$semanticsBounds gold=$goldBounds",
+                        pullingCustomActions.isNullOrEmpty(),
+                    )
+                    assertEquals(
+                        "short held pull moved the first card: " +
+                            "grid=$gridBounds cardAtRest=$cardBounds " +
+                            "semantics=$semanticsBounds gold=$goldBounds",
+                        cardBounds,
+                        requireNotNull(firstCard).getUnclippedBoundsInRoot(),
+                    )
+                    assertEquals("short held pull dispatched before release", 0, dispatchCount)
+
+                    grid.performTouchInput { up() }
+                    semanticsBounds to goldBounds
+                } else {
+                    pull(beyondThreshold = true)
+                    null
+                }
                 retained.assertIsDisplayed()
 
                 if (!live) {
@@ -230,6 +310,15 @@ class MultiMachineUiInstrumentedTest {
                     compose.onNodeWithContentDescription(CHECKING_SESSIONS).assertDoesNotExist()
                     assertNoProgressSemantics()
                     assertEquals("$fixtureName inert pull dispatched", 0, dispatchCount)
+                    if (fixtureName == "unreachable") {
+                        assertNoGoldInGridGutter(
+                            label = "unreachable inert collection after pull",
+                            grid = grid,
+                            gridBounds = gridBoundsAtRest,
+                            gutterHeight = 12.dp,
+                            density = density,
+                        )
+                    }
                     assertEquals(
                         "$fixtureName inert pull moved its access outcome",
                         retainedBoundsAtRest,
@@ -246,27 +335,69 @@ class MultiMachineUiInstrumentedTest {
                 val indicator = compose.onNodeWithContentDescription(CHECKING_SESSIONS)
                     .assertIsDisplayed()
                     .assertHasNoClickAction()
+                val indicatorConfig = indicator.fetchSemanticsNode().config
                 assertEquals(
                     "accepted pull must expose indeterminate checking progress",
                     ProgressBarRangeInfo.Indeterminate,
-                    indicator.fetchSemanticsNode().config.getOrNull(SemanticsProperties.ProgressBarRangeInfo),
+                    indicatorConfig.getOrNull(SemanticsProperties.ProgressBarRangeInfo),
+                )
+                assertEquals(
+                    "$fixtureName checking progress must not expose a role",
+                    null,
+                    indicatorConfig.getOrNull(SemanticsProperties.Role),
+                )
+                val checkingCustomActions = indicatorConfig.getOrNull(SemanticsActions.CustomActions)
+                assertTrue(
+                    "$fixtureName checking progress must not expose custom actions: " +
+                        "actions=$checkingCustomActions",
+                    checkingCustomActions.isNullOrEmpty(),
                 )
                 compose.onAllNodes(hasProgressSemantics(), useUnmergedTree = true).assertCountEquals(1)
                 assertEquals("$fixtureName threshold pull did not dispatch once", 1, dispatchCount)
-                val indicatorBounds = indicator.getUnclippedBoundsInRoot()
+                val indicatorSemanticsBounds = indicator.getUnclippedBoundsInRoot()
+                val contentBounds = firstCardBoundsAtRest ?: retainedBoundsAtRest
+                lateinit var indicatorGoldBounds: DpRect
+                compose.waitUntil(
+                    conditionDescription = "$fixtureName checking progress paints full-opacity Gold: " +
+                        "grid=$gridBoundsAtRest content=$contentBounds " +
+                        "semantics=$indicatorSemanticsBounds",
+                    timeoutMillis = 1_000,
+                ) {
+                    goldBoundsInGridGutter(
+                        grid = grid,
+                        gridBounds = gridBoundsAtRest,
+                        gutterHeight = contentBounds.top - gridBoundsAtRest.top,
+                        density = density,
+                    )?.let { bounds ->
+                        indicatorGoldBounds = bounds
+                        true
+                    } ?: false
+                }
+                if (fixtureName == "short") {
+                    val (pullingSemanticsBounds, pullingGoldBounds) =
+                        requireNotNull(pullingIndicatorEvidence)
+                    assertRefreshBoundaryBounds(
+                        grid = gridBoundsAtRest,
+                        card = requireNotNull(firstCardBoundsAtRest),
+                        pullingSemantics = pullingSemanticsBounds,
+                        pullingGold = pullingGoldBounds,
+                        checkingSemantics = indicatorSemanticsBounds,
+                        checkingGold = indicatorGoldBounds,
+                    )
+                }
                 assertEquals(
                     "$fixtureName checking moved retained content",
                     retainedBoundsAtRest,
                     retained.getUnclippedBoundsInRoot(),
                 )
-                assertNoOverlap("$fixtureName first-row text", indicatorBounds, retainedBoundsAtRest)
+                assertNoOverlap("$fixtureName first-row text", indicatorGoldBounds, retainedBoundsAtRest)
                 firstCardBoundsAtRest?.let { bounds ->
                     assertEquals(
                         "$fixtureName checking moved the first card",
                         bounds,
                         requireNotNull(firstCard).getUnclippedBoundsInRoot(),
                     )
-                    assertNoOverlap("$fixtureName first card", indicatorBounds, bounds)
+                    assertNoOverlap("$fixtureName first card", indicatorGoldBounds, bounds)
                 }
                 firstKillBoundsAtRest?.let { bounds ->
                     assertEquals(
@@ -274,7 +405,7 @@ class MultiMachineUiInstrumentedTest {
                         bounds,
                         requireNotNull(firstKill).getUnclippedBoundsInRoot(),
                     )
-                    assertNoOverlap("$fixtureName first-row Kill control", indicatorBounds, bounds)
+                    assertNoOverlap("$fixtureName first-row Kill control", indicatorGoldBounds, bounds)
                 }
                 if (machine.inventory is InventoryState.Stale) {
                     requireNotNull(firstKill).assertIsNotEnabled()
@@ -293,7 +424,7 @@ class MultiMachineUiInstrumentedTest {
                     )
                     assertEquals(
                         "a pull while checking must not create or move progress",
-                        indicatorBounds,
+                        indicatorSemanticsBounds,
                         indicator.getUnclippedBoundsInRoot(),
                     )
                 }
@@ -661,6 +792,8 @@ class MultiMachineUiInstrumentedTest {
             current = devCurrent,
             history = listOf(PressureHistorySample(devCurrent.sampledAt, devCurrent.level)),
         )
+        val placementSession = session(0)
+        val placementTarget = SessionTarget(pressureMachine.handle, placementSession)
         val macMachine = MachineState(
             machine = pressureMachine,
             access = MachineAccess.Ready,
@@ -755,6 +888,41 @@ class MultiMachineUiInstrumentedTest {
                 assertTrue(
                     "default 360dp rail must be 68–76dp, was $height",
                     height >= 68.dp - 0.001.dp && height <= 76.dp + 0.001.dp,
+                )
+                scenario.onActivity {
+                    dashboard = dashboard.copy(
+                        machines = dashboard.machines.map { machine ->
+                            if (machine.machine.handle == pressureMachine.handle) {
+                                machine.copy(
+                                    inventory = InventoryState.Fresh(
+                                        InventorySnapshot(
+                                            SessionsResponse(
+                                                MachineSummary(
+                                                    pressureMachine.handle,
+                                                    MachinePlatform.Darwin,
+                                                ),
+                                                macCurrent.sampledAt,
+                                                listOf(TEST_PROFILE),
+                                                listOf(placementSession),
+                                            ),
+                                            SystemClock.elapsedRealtime(),
+                                        ),
+                                    ),
+                                )
+                            } else {
+                                machine
+                            }
+                        },
+                    )
+                }
+                compose.onNodeWithText("Prior sessions are STALE", substring = true)
+                    .assertDoesNotExist()
+                val placementCard = compose.onNodeWithTag(cardTag(placementTarget))
+                    .assertIsDisplayed()
+                assertRailToCardGap(
+                    size = "360dp / 1.0x",
+                    rail = rail.getUnclippedBoundsInRoot(),
+                    card = placementCard.getUnclippedBoundsInRoot(),
                 )
                 val header = compose.onNodeWithText(
                     "MacBook RECOVERING FROM HOT · LOAD",
@@ -924,6 +1092,14 @@ class MultiMachineUiInstrumentedTest {
                 scenario.onActivity { largeText = true }
                 val largeRail = compose.onNodeWithTag(railTag)
                 val largeBounds = largeRail.getUnclippedBoundsInRoot()
+                val largeCardBounds = compose.onNodeWithTag(cardTag(placementTarget))
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+                assertRailToCardGap(
+                    size = "320dp / 2.0x",
+                    rail = largeBounds,
+                    card = largeCardBounds,
+                )
                 val headerBounds = compose.onNodeWithTag(
                     "machine-strip-label-$macHandle",
                     useUnmergedTree = true,
@@ -1188,6 +1364,125 @@ class MultiMachineUiInstrumentedTest {
             "$label is obscured by checking progress: indicator=$indicator, content=$content",
             indicator.right <= content.left || content.right <= indicator.left ||
                 indicator.bottom <= content.top || content.bottom <= indicator.top,
+        )
+    }
+
+    private fun assertRefreshBoundaryBounds(
+        grid: DpRect,
+        card: DpRect,
+        pullingSemantics: DpRect,
+        pullingGold: DpRect?,
+        checkingSemantics: DpRect,
+        checkingGold: DpRect,
+    ) {
+        val expectedIndicator = DpRect(
+            left = grid.left + 12.dp,
+            top = grid.top,
+            right = grid.right - 12.dp,
+            bottom = grid.top + 2.dp,
+        )
+        val failures = mutableListOf<String>()
+        fun compare(label: String, expected: Dp, actual: Dp) {
+            val delta = (actual - expected).value.absoluteValue
+            if (delta > 1f) failures += "$label expected=$expected actual=$actual delta=${delta}dp"
+        }
+
+        compare("resting card top", grid.top + 12.dp, card.top)
+        listOf(
+            "pulling" to pullingSemantics,
+            "checking" to checkingSemantics,
+        ).forEach { (phase, semantics) ->
+            compare("$phase semantics left", expectedIndicator.left, semantics.left)
+            compare("$phase semantics right", expectedIndicator.right, semantics.right)
+        }
+        if (pullingGold == null) {
+            failures += "pulling painted no full-opacity Gold in the pre-card gutter"
+        } else {
+            compare("pulling Gold left", expectedIndicator.left, pullingGold.left)
+            compare("pulling Gold top", expectedIndicator.top, pullingGold.top)
+            compare(
+                "pulling Gold height",
+                expectedIndicator.bottom - expectedIndicator.top,
+                pullingGold.bottom - pullingGold.top,
+            )
+            if (pullingGold.right > expectedIndicator.right + 1.dp) {
+                failures += "pulling Gold escaped horizontal band expected=$expectedIndicator actual=$pullingGold"
+            }
+        }
+        compare("checking Gold top", expectedIndicator.top, checkingGold.top)
+        compare(
+            "checking Gold height",
+            expectedIndicator.bottom - expectedIndicator.top,
+            checkingGold.bottom - checkingGold.top,
+        )
+        if (checkingGold.left < expectedIndicator.left - 1.dp ||
+            checkingGold.right > expectedIndicator.right + 1.dp
+        ) {
+            failures += "checking Gold escaped horizontal band expected=$expectedIndicator actual=$checkingGold"
+        }
+        assertTrue(
+            "refresh boundary geometry mismatch within 1dp: failures=$failures; " +
+                "expectedIndicator=$expectedIndicator grid=$grid card=$card " +
+                "pullingSemantics=$pullingSemantics pullingGold=$pullingGold " +
+                "checkingSemantics=$checkingSemantics checkingGold=$checkingGold",
+            failures.isEmpty(),
+        )
+    }
+
+    private fun assertNoGoldInGridGutter(
+        label: String,
+        grid: SemanticsNodeInteraction,
+        gridBounds: DpRect,
+        gutterHeight: Dp,
+        density: Float,
+    ) {
+        val goldBounds = goldBoundsInGridGutter(grid, gridBounds, gutterHeight, density)
+        assertEquals(
+            "$label must have no full-opacity Gold progress pixels: " +
+                "grid=$gridBounds gutterHeight=$gutterHeight gold=$goldBounds",
+            null,
+            goldBounds,
+        )
+    }
+
+    private fun goldBoundsInGridGutter(
+        grid: SemanticsNodeInteraction,
+        gridBounds: DpRect,
+        gutterHeight: Dp,
+        density: Float,
+    ): DpRect? {
+        val pixels = grid.captureToImage().toPixelMap()
+        val bottom = (gutterHeight.value * density).roundToInt().coerceIn(0, pixels.height)
+        val gold = Gold.toArgb()
+        var left = pixels.width
+        var top = bottom
+        var right = -1
+        var lastRow = -1
+        for (x in 0 until pixels.width) {
+            for (y in 0 until bottom) {
+                if (pixels[x, y].toArgb() == gold) {
+                    left = minOf(left, x)
+                    top = minOf(top, y)
+                    right = maxOf(right, x)
+                    lastRow = maxOf(lastRow, y)
+                }
+            }
+        }
+        if (right < 0) return null
+        return DpRect(
+            left = gridBounds.left + (left / density).dp,
+            top = gridBounds.top + (top / density).dp,
+            right = gridBounds.left + ((right + 1) / density).dp,
+            bottom = gridBounds.top + ((lastRow + 1) / density).dp,
+        )
+    }
+
+    private fun assertRailToCardGap(size: String, rail: DpRect, card: DpRect) {
+        val gap = card.top - rail.bottom
+        assertTrue(
+            "$size selected ready/fresh one-card rail-to-card gap must be 16dp +/- 1dp: " +
+                "actual=$gap rail=$rail card=$card",
+            (gap - 16.dp).value.absoluteValue <= 1f,
         )
     }
 
