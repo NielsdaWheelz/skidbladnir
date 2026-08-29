@@ -54,14 +54,14 @@ import androidx.compose.ui.unit.sp
 // descendant semantics, same roleless node, same minimum interactive size —
 // with the angular press flash (docs/chrome-tokens.md "Interaction states").
 @Composable
-internal fun AgentCard(
-    agent: VisibleAgent,
+internal fun SessionCard(
+    visibleSession: VisibleSession,
     machine: MachineState,
     showMachineLabel: Boolean,
     onOpen: () -> Unit,
     onKill: () -> Unit,
 ) {
-    val session = agent.target.session
+    val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
     val status = statusContent(
         session.status,
@@ -70,16 +70,13 @@ internal fun AgentCard(
         ),
     )
     val tone = statusColor(session.status.kind)
-    val profile = snapshot.inventory.profiles
-        .firstOrNull { it.key.encoded == session.profile }?.label
-        ?: session.profile
-        ?: "profile unknown"
-    val visibleContext = if (showMachineLabel) "${agent.machine.label.text} · $profile" else profile
+    val profile = sessionProfileLabel(session, snapshot.inventory.profiles)
+    val visibleContext = sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
     Surface(
         color = DeepSurface,
         shape = NidavellirShapes.Card,
         modifier = Modifier
-            .testTag("agent-card-${agent.target.machineHandle.encoded}-${session.id}")
+            .testTag("session-card-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}")
             .minimumInteractiveComponentSize()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -100,7 +97,8 @@ internal fun AgentCard(
                 dwarfName = session.character.displayName,
                 attention = session.attention,
                 statusTone = tone,
-                statusFacetTag = "agent-status-facet-${agent.target.machineHandle.encoded}-${session.id}",
+                statusFacetTag =
+                    "session-status-facet-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -132,7 +130,9 @@ internal fun AgentCard(
                     text = it,
                     modifier = Modifier
                         .padding(top = 8.dp)
-                        .testTag("agent-objective-${agent.target.machineHandle.encoded}-${session.id}"),
+                        .testTag(
+                            "session-objective-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
+                        ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
@@ -143,7 +143,9 @@ internal fun AgentCard(
                     text = abbreviatedDirectory(directory),
                     modifier = Modifier
                         .padding(top = 8.dp)
-                        .testTag("agent-directory-${agent.target.machineHandle.encoded}-${session.id}")
+                        .testTag(
+                            "session-directory-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
+                        )
                         .semantics { contentDescription = "Directory $directory" },
                     color = Muted,
                     maxLines = 1,
@@ -166,24 +168,47 @@ internal fun AgentCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .testTag("agent-context-${agent.target.machineHandle.encoded}-${session.id}")
+                        .testTag(
+                            "session-context-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
+                        )
                         .semantics {
-                            contentDescription = "Machine ${agent.machine.label.text}. Profile $profile."
+                            contentDescription =
+                                "Machine ${visibleSession.machine.label.text}. Profile $profile."
                         },
                 )
                 KillButton(
-                    machineLabel = agent.machine.label,
-                    target = agent.target,
+                    machineLabel = visibleSession.machine.label,
+                    target = visibleSession.target,
                     enabled = machine.canMutate,
                     onClick = onKill,
                     modifier = Modifier.testTag(
-                        "agent-kill-${agent.target.machineHandle.encoded}-${session.id}",
+                        "session-kill-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
                     ),
                 )
             }
         }
     }
 }
+
+internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileChoice>): String {
+    val agent = session.agent
+    if (agent == null) {
+        return session.launchProfile?.let { launchProfile ->
+            profiles.single { it.key == launchProfile }.label
+        } ?: "profile unknown"
+    }
+    return agent.profile?.let { runtimeProfile ->
+        profiles.single {
+            it.key == runtimeProfile && it.provider == agent.provider
+        }.label
+    } ?: when (agent.provider) {
+        AgentProvider.Codex -> "Codex · profile unknown"
+        AgentProvider.Claude -> "Claude · profile unknown"
+    }
+}
+
+internal fun sessionFooterText(machine: MachineLabel, profile: String, showMachineLabel: Boolean): String =
+    if (showMachineLabel) "${machine.text} · $profile" else profile
 
 @Composable
 private fun SessionIdentityHeader(

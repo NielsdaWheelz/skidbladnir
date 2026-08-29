@@ -35,12 +35,12 @@ class TerminalChromeInstrumentedTest {
     @Test
     fun terminalHeaderRendersOneQuietDetachControlBesideItsMachineSessionIdentity() {
         compose.mainClock.autoAdvance = false
-        val session = AgentSession(
-            id = "session-9",
+        val session = TmuxSession(
+            tmuxId = "session-9",
             tmuxName = "skidbladnir-personal-9",
             identityToken = "identity-9",
             character = CharacterSummary("dwarf-9", "Dwarf 9"),
-            profile = "personal",
+            launchProfile = requireNotNull(ProfileKey.parse("personal")),
             attachedClients = 1,
             attention = false,
             status = SessionStatus(
@@ -85,7 +85,7 @@ class TerminalChromeInstrumentedTest {
                         TerminalScreen(
                             state = SkidbladnirUiState.Terminal(
                                 machine = machineState,
-                                target = AgentTarget(machine.handle, session),
+                                target = SessionTarget(machine.handle, session),
                                 attempt = 1,
                                 connection = TerminalUiStatus.Verifying,
                                 kill = null,

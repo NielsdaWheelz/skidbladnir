@@ -34,69 +34,15 @@ class ProductContractTest {
     }
 
     @Test
-    fun `session contract requires character and hard-cut tmux names`() {
-        val inventory = decodeSessionsResponse(
-            """
-            {
-              "machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},
-              "observedAt":"2026-08-25T12:00:00Z",
-              "profiles":[{"key":"personal","label":"Personal"}],
-              "sessions":[
-                {
-                  "id":"${'$'}1",
-                  "tmuxName":"forge",
-                  "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.1",
-                  "profile":"personal",
-                  "objective":"Inspect the forge",
-                  "character":{"key":"norse.durinn","displayName":"Durinn"},
-                  "cwd":"/home/niels/src/personal",
-                  "activeCommand":"codex",
-                  "attachedClients":2,
-                  "attention":true,
-                  "status":{"kind":"Working","signal":"Lifecycle","signalAt":"2026-08-25T11:59:48Z"}
-                },
-                {
-                  "id":"${'$'}2",
-                  "tmuxName":"laptop",
-                  "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.2",
-                  "character":{"key":"norse.bifur","displayName":"Bifur"},
-                  "attachedClients":1,
-                  "attention":false,
-                  "status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}
-                }
-              ]
-            }
-            """.trimIndent(),
-        )
-
-        assertEquals("forge", inventory.sessions.first().tmuxName)
-        assertEquals("Durinn", inventory.sessions.first().character.displayName)
-        assertEquals(SessionStatusKind.Working, inventory.sessions.first().status.kind)
-        assertTrue(inventory.sessions.first().attention)
-        assertEquals(2, inventory.sessions.first().attachedClients)
-        assertNull(inventory.sessions.last().profile)
-        assertEquals("Bifur", inventory.sessions.last().character.displayName)
-        assertEquals(
-            "{\"tmuxName\":\"forge\",\"identityToken\":\"v1-0123456789abcdef0123456789abcdef.100.200.1\"}",
-            encodeKillSessionRequest(inventory.sessions.first()),
-        )
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodeAgentSession(
-                """{"id":"${'$'}3","tmuxName":"missing-character","identityToken":"token","attachedClients":0,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}""",
-            )
-        }
-    }
-
-    @Test
     fun `inventory decoder rejects duplicate picker and session identities`() {
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"},{"key":"personal","label":"Work"}],"sessions":[]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal","provider":"Codex"},{"key":"personal","label":"Work","provider":"Codex"}],"sessions":[]}""",
             )
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex"},{"key":"work","label":"Codex"}],"sessions":[]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex","provider":"Codex"},{"key":"work","label":"Codex","provider":"Codex"}],"sessions":[]}""",
             )
         }
         val first = inventorySession("${'$'}1", "one", "token")
@@ -372,13 +318,13 @@ class ProductContractTest {
                 {
                   "machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},
                   "observedAt":"2026-08-25T12:00:00Z",
-                  "profiles":[{"key":"personal","label":"Personal"}],
+                  "profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],
                   "sessions":[{
-                    "id":"${'$'}1",
+                    "tmuxId":"${'$'}1",
                     "tmuxName":"laptop",
                     "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.1",
                     "character":{"key":"norse.durinn","displayName":"Durinn"},
-                    "profile":null,
+                    "launchProfile":null,
                     "attachedClients":1,
                     "attention":false,
                     "status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}
@@ -399,7 +345,7 @@ class ProductContractTest {
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(
-                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"id":"${'$'}1","tmuxName":"forge","identityToken":"token","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
+                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"tmuxId":"${'$'}1","tmuxName":"forge","identityToken":"token","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
             )
         }
     }
@@ -407,9 +353,9 @@ class ProductContractTest {
     @Test
     fun `destructive copy has one owner so the button and the dialog cannot drift`() {
         val label = requireNotNull(MachineLabel.parse("MacBook"))
-        val target = AgentTarget(
+        val target = SessionTarget(
             machineHandle,
-            decodeAgentSession(inventorySession("${'$'}1", "ga-durinn", "token")),
+            decodeTmuxSession(inventorySession("${'$'}1", "ga-durinn", "token")),
         )
 
         assertEquals(
@@ -460,11 +406,11 @@ class ProductContractTest {
     private fun darwinPressureResponse(): String =
         """{"unsupported":["cpuPsiSomeAvg60Percent","ioPsiFullAvg60Percent","memoryAvailablePercent","memoryPsiFullAvg60Percent"],"current":{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm","phase":"Steady","reasons":["Memory"],"signals":{"cpuPercent":{"value":12.5,"state":"Informational"},"normalizedLoad":{"value":0.4,"state":"Normal"},"swapUsedPercent":{"value":0.0,"state":"Informational"},"diskAvailablePercent":{"value":60.0,"state":"Normal"},"memoryPressure":{"value":"Warning","state":"Warm"}},"missing":[]},"history":[{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm"}]}"""
 
-    private fun inventorySession(id: String, tmuxName: String, identityToken: String): String =
-        """{"id":"$id","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
+    private fun inventorySession(tmuxId: String, tmuxName: String, identityToken: String): String =
+        """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
 
     private fun inventoryWithSessions(vararg sessions: String): String =
-        """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Personal"}],"sessions":[${sessions.joinToString()}]}"""
+        """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[${sessions.joinToString()}]}"""
 
     private fun dashboardWithForge(forge: ForgeState): SkidbladnirUiState.Dashboard =
         SkidbladnirUiState.Dashboard(
@@ -474,7 +420,9 @@ class ProductContractTest {
                 inventory = InventoryState.Fresh(InventorySnapshot(SessionsResponse(
                     machine = MachineSummary(machineHandle, MachinePlatform.Linux),
                 observedAt = Instant.parse("2026-08-25T12:00:00Z"),
-                profiles = listOf(ProfileChoice(personalProfile, "Personal")),
+                profiles = listOf(
+                    ProfileChoice(personalProfile, "Codex · Personal", AgentProvider.Codex),
+                ),
                 sessions = emptyList(),
                 ), 0)),
                 pressure = PressureState.Reading,

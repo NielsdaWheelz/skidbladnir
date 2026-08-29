@@ -49,7 +49,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 
 	leftCreated := create(leftServer, leftBearer, integrationMachineText, left.project)
 	rightCreated := create(rightServer, rightBearer, secondIntegrationMachineText, right.project)
-	idsCollide := leftCreated["id"] == rightCreated["id"]
+	idsCollide := leftCreated["tmuxId"] == rightCreated["tmuxId"]
 	namesCollide := leftCreated["tmuxName"] == rightCreated["tmuxName"]
 	if !idsCollide || !namesCollide {
 		t.Fatalf("fixture did not establish colliding machine-local identities: id_collision=%t name_collision=%t", idsCollide, namesCollide)
@@ -117,7 +117,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		t, leftServer.Client(), http.MethodGet, leftServer.URL+"/v1/pressure", leftBearer, secondIntegrationMachineText, "", "",
 	)
 	assertError(t, wrongMachinePressure, http.StatusConflict, "MachineIdentityMismatch")
-	wrongTerminalURL := "ws" + leftServer.URL[len("http"):] + "/v1/sessions/" + url.PathEscape(leftCreated["id"].(string)) + "/terminal"
+	wrongTerminalURL := "ws" + leftServer.URL[len("http"):] + "/v1/sessions/" + url.PathEscape(leftCreated["tmuxId"].(string)) + "/terminal"
 	_, terminalResponse, terminalErr := websocket.Dial(context.Background(), wrongTerminalURL, &websocket.DialOptions{HTTPHeader: http.Header{
 		"Authorization":                []string{"Bearer " + leftBearer},
 		"Skidbladnir-Machine":          []string{secondIntegrationMachineText},
@@ -132,7 +132,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		t,
 		leftServer.Client(),
 		http.MethodDelete,
-		leftServer.URL+"/v1/sessions/"+url.PathEscape(leftCreated["id"].(string)),
+		leftServer.URL+"/v1/sessions/"+url.PathEscape(leftCreated["tmuxId"].(string)),
 		leftBearer,
 		secondIntegrationMachineText,
 		"",
@@ -154,7 +154,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		t,
 		leftServer.Client(),
 		http.MethodDelete,
-		leftServer.URL+"/v1/sessions/"+url.PathEscape(leftCreated["id"].(string)),
+		leftServer.URL+"/v1/sessions/"+url.PathEscape(leftCreated["tmuxId"].(string)),
 		leftBearer,
 		integrationMachineText,
 		"",

@@ -961,8 +961,10 @@ case "$gate" in
     run go-mod-verify go mod verify
     run go-vet go vet ./...
     run go-vet-integration go vet -tags=integration ./tests/integration ./internal/machine ./internal/process ./internal/pressure
+    run go-vet-provider-live go vet -tags='integration providerlive' ./tests/integration
     run go-vet-live go vet -tags=live ./tests/live
     run integration-compile go test -tags=integration -c -o /dev/null ./tests/integration
+    run provider-live-compile go test -tags='integration providerlive' -c -o /dev/null ./tests/integration
     run integration-host-compile go test -tags=integration -c -o /dev/null ./internal/machine ./internal/process ./internal/pressure
     run live-compile go test -tags=live -c -o /dev/null ./tests/live
     run android-static ./scripts/build android-static
@@ -970,6 +972,7 @@ case "$gate" in
   unit)
     cd "$repo_dir"
     run go-unit go test ./cmd/... ./internal/...
+    run provider-live-lifetime-unit go test ./tests/integration -count=1
     run codex-config-unit /usr/bin/python3 scripts/check-codex-config --self-test
     run android-signing-unit ./scripts/check-android-signing --self-test
     run go-toolchain-unit ./scripts/check-go-toolchain --self-test
@@ -999,6 +1002,41 @@ case "$gate" in
     run tmux-control-plane go test -tags=integration ./tests/integration -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \
       -skidbladnir-tmux-path="$tmux_path"
+    ;;
+  provider-live)
+    if [[ "${1:-}" != '--allow-isolated-tmux-mutation' ||
+      "${2:-}" != '--allow-provider-launch' || "$#" -ne 2 ]]; then
+      not_run provider-live \
+        'Pass --allow-isolated-tmux-mutation --allow-provider-launch only after explicit current-turn approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ]]; then
+      not_run provider-live \
+        'Set SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS=isolated-v1 after explicitly approving tmux tests'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_PROVIDER_LIVE_TESTS:-}" != 'provider-live-v1' ]]; then
+      not_run provider-live \
+        'Set SKIDBLADNIR_ALLOW_PROVIDER_LIVE_TESTS=provider-live-v1 after explicitly approving real provider launches'
+    fi
+    if [[ -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" ]]; then
+      not_run provider-live 'Provider-live proof refuses an invoking tmux client'
+    fi
+    if [[ ! -x "$tmux_path" ]]; then
+      not_run provider-live "Configured ${tmux_path} is unavailable on the target host"
+    fi
+    provider_live_release_tag="${SKIDBLADNIR_PROVIDER_LIVE_RELEASE_TAG:-}"
+    provider_live_source_sha="${SKIDBLADNIR_PROVIDER_LIVE_SOURCE_SHA:-}"
+    if [[ -z "$provider_live_release_tag" || -z "$provider_live_source_sha" ]]; then
+      not_run provider-live \
+        'Set SKIDBLADNIR_PROVIDER_LIVE_RELEASE_TAG and SKIDBLADNIR_PROVIDER_LIVE_SOURCE_SHA to the exact installed candidate'
+    fi
+    cd "$repo_dir"
+    run installed-provider-identity go test -tags='integration providerlive' ./tests/integration \
+      -run '^TestInstalledProviderHooksProjectTheApprovedPlatformSample$' -count=1 -args \
+      -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \
+      -skidbladnir-tmux-path="$tmux_path" \
+      -skidbladnir-provider-live-capability=provider-live-cli-v1 \
+      -skidbladnir-provider-live-release-tag="$provider_live_release_tag" \
+      -skidbladnir-provider-live-source-sha="$provider_live_source_sha"
     ;;
   platform)
     if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
@@ -1715,10 +1753,10 @@ case "$gate" in
     ;;
   full)
     "$0" verify
-    not_run full 'Run release, published-release, integration, live, platform, product, and second-phone separately after explicit approval for each external boundary'
+    not_run full 'Run release, published-release, integration, provider-live, live, platform, product, and second-phone separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation|provider-live --allow-isolated-tmux-mutation --allow-provider-launch}\n' "$0" >&2
     exit 64
     ;;
   *)

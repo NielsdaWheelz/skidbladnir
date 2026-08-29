@@ -25,7 +25,7 @@ private data class PendingResize(
 internal class TerminalConnection(
     private val client: GatewayClient,
     private val credential: MachineCredential,
-    private val target: AgentTarget,
+    private val target: SessionTarget,
     private val page: TerminalPage,
     private val observer: TerminalConnectionObserver,
 ) : WebSocketListener() {

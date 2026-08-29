@@ -3,6 +3,7 @@ package sessions
 import (
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 )
 
@@ -11,27 +12,7 @@ type Config struct {
 	SocketName    string
 	Home          string
 	CataloguePath string
-	Profiles      []Profile
-}
-
-type ForegroundSignature struct {
-	ExecutableBase string
-	Argument0      string
-	Argument1      string
-}
-
-type EnvironmentVariable struct {
-	Name  string
-	Value string
-}
-
-type Profile struct {
-	Key                  string
-	Label                string
-	Command              string
-	Environment          []EnvironmentVariable
-	ForegroundSignatures []ForegroundSignature
-	Arguments            []string
+	Profiles      []agentruntime.Profile
 }
 
 type CreateInput struct {
@@ -42,16 +23,17 @@ type CreateInput struct {
 }
 
 type KillInput struct {
-	ID            string
+	TmuxID        string
 	TmuxName      string
 	IdentityToken string
 }
 
 type Session struct {
-	ID              string
+	TmuxID          string
 	TmuxName        string
 	IdentityToken   string
-	Profile         string
+	LaunchProfile   agentruntime.ProfileKey
+	Agent           *agentruntime.AgentRuntime
 	Objective       string
 	Character       catalog.Character
 	CWD             string

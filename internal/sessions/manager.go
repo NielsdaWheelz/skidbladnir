@@ -19,7 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
@@ -36,8 +38,8 @@ type Manager struct {
 	tmux          tmuxclient.Client
 	home          string
 	catalogue     catalog.Catalogue
-	profiles      []Profile
-	profilesByKey map[string]Profile
+	profiles      []agentruntime.Profile
+	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
 	mutations     sync.RWMutex
 	activeShadows map[string]struct{}
 }
@@ -60,11 +62,11 @@ func New(config Config) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	profiles, err := validateProfiles(config.Profiles)
+	profiles, err := agentruntime.ValidateProfiles(config.Profiles)
 	if err != nil {
 		return nil, err
 	}
-	profilesByKey := make(map[string]Profile, len(profiles))
+	profilesByKey := make(map[agentruntime.ProfileKey]agentruntime.Profile, len(profiles))
 	for _, profile := range profiles {
 		profilesByKey[profile.Key] = profile
 	}
@@ -78,15 +80,8 @@ func New(config Config) (*Manager, error) {
 	}, nil
 }
 
-func (manager *Manager) Profiles() []Profile {
-	profiles := make([]Profile, len(manager.profiles))
-	for index, profile := range manager.profiles {
-		profile.Environment = append([]EnvironmentVariable(nil), profile.Environment...)
-		profile.ForegroundSignatures = append([]ForegroundSignature(nil), profile.ForegroundSignatures...)
-		profile.Arguments = append([]string(nil), profile.Arguments...)
-		profiles[index] = profile
-	}
-	return profiles
+func (manager *Manager) Profiles() []agentruntime.Profile {
+	return agentruntime.CloneProfiles(manager.profiles)
 }
 
 func (manager *Manager) List(ctx context.Context) ([]Session, error) {
@@ -137,7 +132,7 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session,
 	if err != nil {
 		return Session{}, err
 	}
-	profile, found := manager.profilesByKey[input.Profile]
+	profile, found := manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
 	if !found {
 		return Session{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 	}
@@ -158,7 +153,7 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session,
 	}
 	name := input.OptionalTmuxName
 	if name == "" {
-		name = generatedTmuxName(scan.names, profile.Key)
+		name = generatedTmuxName(scan.names, string(profile.Key))
 	} else if _, occupied := scan.names[name]; occupied {
 		return Session{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
@@ -168,11 +163,11 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session,
 		commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
 	}
 	commandArgs = append(commandArgs, "--", profile.Command)
-	commandArgs = append(commandArgs, profile.Arguments...)
+	commandArgs = append(commandArgs, agentruntime.LaunchArguments(profile, name)...)
 	exactName := "=" + name + ":"
 	commandArgs = append(commandArgs,
 		";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate,
-		";", "set-option", "-t", exactName, "--", "@skid_profile", profile.Key,
+		";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key),
 		";", "set-option", "-t", exactName, "--", "@skid_character", character.Key)
 	if input.Objective != "" {
 		encodedObjective := base64.RawURLEncoding.EncodeToString([]byte(input.Objective))
@@ -247,9 +242,9 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	if err != nil {
 		return err
 	}
-	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.ID, input.TmuxName, server)
+	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.TmuxID, input.TmuxName, server)
 	if err != nil {
-		return manager.classifyMissingSession(ctx, input.ID, err)
+		return manager.classifyMissingSession(ctx, input.TmuxID, err)
 	}
 	if !killed {
 		if _, identityErr := manager.killIdentity(ctx, input); identityErr != nil {
@@ -268,14 +263,14 @@ func (manager *Manager) ValidateKill(ctx context.Context, input KillInput) error
 }
 
 func (manager *Manager) killIdentity(ctx context.Context, input KillInput) (tmuxclient.ServerIdentity, error) {
-	if !sessionIDPattern.MatchString(input.ID) {
+	if !sessionIDPattern.MatchString(input.TmuxID) {
 		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	server, validToken := parseIdentityToken(input.IdentityToken, input.ID)
+	server, validToken := parseIdentityToken(input.IdentityToken, input.TmuxID)
 	if input.TmuxName == "" || !validToken {
 		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before killing it.")
 	}
-	name, found, err := manager.sessionIdentity(ctx, input.ID)
+	name, found, err := manager.sessionIdentity(ctx, input.TmuxID)
 	if err != nil {
 		return tmuxclient.ServerIdentity{}, err
 	}
@@ -306,7 +301,7 @@ func (manager *Manager) inspect(
 		return Session{}, err
 	}
 	session := Session{
-		ID: observed.id, TmuxName: observed.tmuxName,
+		TmuxID: observed.id, TmuxName: observed.tmuxName,
 		IdentityToken: identityToken, Character: observed.character,
 	}
 	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", observed.id,
@@ -347,8 +342,11 @@ func (manager *Manager) inspect(
 	if profile, optionErr := manager.sessionOption(ctx, observed.id, "@skid_profile"); optionErr != nil {
 		session.Status = unknownStatus()
 		return session, nil
-	} else if _, valid := manager.profilesByKey[profile]; valid {
-		session.Profile = profile
+	} else {
+		key := agentruntime.ProfileKey(profile)
+		if _, valid := manager.profilesByKey[key]; valid {
+			session.LaunchProfile = key
+		}
 	}
 	if encodedObjective, optionErr := manager.sessionOption(ctx, observed.id, "@skid_objective_b64"); optionErr != nil {
 		session.Status = unknownStatus()
@@ -369,8 +367,21 @@ func (manager *Manager) inspect(
 		session.Status = unknownStatus()
 		return session, nil
 	}
+	registration, err := manager.paneOption(ctx, fields[1], agentruntime.PaneOption)
+	if err != nil {
+		session.Status = unknownStatus()
+		return session, nil
+	}
 	now := time.Now().UTC()
-	session.Status = manager.deriveStatus(panePID, lifecycle, now)
+	foreground, err := processinfo.ObserveForeground(processinfo.PID(panePID))
+	if err != nil {
+		session.Status = Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: now}
+	} else {
+		if agent, found := agentruntime.Project(manager.profiles, foreground, registration); found {
+			session.Agent = &agent
+		}
+		session.Status = deriveStatus(foreground, session.Agent, lifecycle, now)
+	}
 	_, notified := parseAttentionTime(attention, now)
 	session.Attention = bell || notified
 	return session, nil

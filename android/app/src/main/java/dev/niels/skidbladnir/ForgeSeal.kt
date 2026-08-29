@@ -62,7 +62,7 @@ internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit) {
                 onClick = onClick,
             )
             .semantics {
-                testTag = "new-agent"
+                testTag = "new-session"
                 contentDescription = "New dwarf"
             },
     ) {

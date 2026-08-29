@@ -102,7 +102,7 @@ private fun SkidbladnirApp(
         controller.dismissForge()
     }
     BackHandler(enabled = state is SkidbladnirUiState.Terminal) {
-        controller.detachToAgents()
+        controller.detachToSessions()
     }
     BackHandler(
         enabled = state is SkidbladnirUiState.FleetConnect && fleetReconnectCanCancel(state),

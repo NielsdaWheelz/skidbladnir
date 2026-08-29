@@ -2,16 +2,24 @@ package logging
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 )
 
-func TestLoggerEmitsOnlyClosedContentFreeFields(t *testing.T) {
+func TestLoggerEmitsOnlyClosedTmuxIdentityFields(t *testing.T) {
 	var output bytes.Buffer
-	event, err := NewSessionCreated("$42", "skidbladnir-personal-1", "personal", 25*time.Millisecond)
+	launchProfile, err := agentruntime.ParseProfileKey("personal")
+	if err != nil {
+		t.Fatalf("parse launch profile: %v", err)
+	}
+	event, err := NewSessionCreated("$42", "skidbladnir-personal-1", launchProfile, 25*time.Millisecond)
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -19,22 +27,19 @@ func TestLoggerEmitsOnlyClosedContentFreeFields(t *testing.T) {
 		t.Fatalf("write event: %v", err)
 	}
 
-	line := output.String()
-	for _, want := range []string{
-		`"event.name":"Session.Created"`,
-		`"skidbladnir.session.id":"$42"`,
-		`"skidbladnir.session.name":"skidbladnir-personal-1"`,
-		`"skidbladnir.profile":"personal"`,
-		`"skidbladnir.duration.ms":25`,
-	} {
-		if !strings.Contains(line, want) {
-			t.Fatalf("log line omitted %s: %s", want, line)
-		}
+	var fields map[string]any
+	if err := json.Unmarshal(output.Bytes(), &fields); err != nil {
+		t.Fatalf("decode structured log: %v", err)
 	}
-	for _, forbidden := range []string{"cwd", "objective", "prompt", "terminal", "token", "credential", "account", "command", "environment"} {
-		if strings.Contains(line, forbidden) {
-			t.Fatalf("log line contains forbidden field %q: %s", forbidden, line)
-		}
+	want := map[string]any{
+		"event.name":                         "Session.Created",
+		"skidbladnir.session.tmux_id":        "$42",
+		"skidbladnir.session.tmux_name":      "skidbladnir-personal-1",
+		"skidbladnir.session.launch_profile": "personal",
+		"skidbladnir.duration.ms":            float64(25),
+	}
+	if !reflect.DeepEqual(fields, want) {
+		t.Fatalf("session-created structured fields = %#v, want %#v", fields, want)
 	}
 }
 
@@ -48,7 +53,7 @@ func TestRequestLogUsesRouteTemplatesAndClosedErrors(t *testing.T) {
 		t.Fatalf("write request event: %v", err)
 	}
 	line := output.String()
-	if strings.Contains(line, "$42") || !strings.Contains(line, `"http.route":"/v1/sessions/{id}"`) {
+	if strings.Contains(line, "$42") || !strings.Contains(line, `"http.route":"/v1/sessions/{tmuxId}"`) {
 		t.Fatalf("request log did not use a route template: %s", line)
 	}
 	if !strings.Contains(line, `"skidbladnir.error.code":"SessionIdentityMismatch"`) {
@@ -73,6 +78,9 @@ func TestLoggerRejectsInvalidEventsAndPropagatesWriterFailure(t *testing.T) {
 	if err := New(io.Discard).Write(Event{}); err == nil {
 		t.Fatal("zero event was emitted")
 	}
+	if _, err := NewSessionCreated("$42", "worker", agentruntime.ProfileKey("Work"), time.Millisecond); err == nil {
+		t.Fatal("session-created event accepted a noncanonical launch profile")
+	}
 	event, err := NewSessionsListed(2, time.Millisecond)
 	if err != nil {
 		t.Fatalf("list event: %v", err)
@@ -96,7 +104,7 @@ func TestLoggerSafelyEncodesAnOpaqueLaptopSessionName(t *testing.T) {
 	if err := New(&output).Write(event); err != nil {
 		t.Fatalf("write opaque session name: %v", err)
 	}
-	if strings.Contains(output.String(), "laptop\nname") || !strings.Contains(output.String(), `"skidbladnir.session.name":"laptop\nname"`) {
+	if strings.Contains(output.String(), "laptop\nname") || !strings.Contains(output.String(), `"skidbladnir.session.tmux_name":"laptop\nname"`) {
 		t.Fatalf("session name was not JSON escaped: %q", output.String())
 	}
 }

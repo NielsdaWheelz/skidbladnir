@@ -111,12 +111,12 @@ internal fun DashboardMain(
     val machines = state.machines.filter {
         state.selectedMachine == null || it.machine.handle == state.selectedMachine
     }
-    val agents = visibleAgents(state.machines, state.selectedMachine)
+    val sessions = visibleSessions(state.machines, state.selectedMachine)
     val canForge = machines.any(MachineState::canForge)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
-                summary = dashboardSummary(agents.size, machines.size),
+                summary = dashboardSummary(sessions.size, machines.size),
                 onReconnect = controller::requestFleetReconnect,
             )
 
@@ -181,21 +181,21 @@ internal fun DashboardMain(
 internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     onVerify: () -> Unit,
-    onOpen: (AgentTarget) -> Unit,
-    onKill: (AgentTarget) -> Unit,
+    onOpen: (SessionTarget) -> Unit,
+    onKill: (SessionTarget) -> Unit,
 ) {
     val machines = state.machines.filter {
         state.selectedMachine == null || it.machine.handle == state.selectedMachine
     }
-    val agents = visibleAgents(state.machines, state.selectedMachine)
+    val sessions = visibleSessions(state.machines, state.selectedMachine)
     val gridState = rememberLazyGridState()
     val topPadding = PullToRefreshDefaults.PositionalThreshold + 12.dp
     if (machines.any { it.access == MachineAccess.Ready }) {
         PullableDwarfCollection(state = state, onVerify = onVerify) {
-            DashboardDwarfGrid(state, machines, agents, gridState, topPadding, onOpen, onKill)
+            DashboardDwarfGrid(state, machines, sessions, gridState, topPadding, onOpen, onKill)
         }
     } else {
-        DashboardDwarfGrid(state, machines, agents, gridState, topPadding, onOpen, onKill)
+        DashboardDwarfGrid(state, machines, sessions, gridState, topPadding, onOpen, onKill)
     }
 }
 
@@ -263,18 +263,18 @@ private fun DwarfCollectionPullIndicator(
 private fun DashboardDwarfGrid(
     state: SkidbladnirUiState.Dashboard,
     machines: List<MachineState>,
-    agents: List<VisibleAgent>,
+    sessions: List<VisibleSession>,
     gridState: LazyGridState,
     topPadding: Dp,
-    onOpen: (AgentTarget) -> Unit,
-    onKill: (AgentTarget) -> Unit,
+    onOpen: (SessionTarget) -> Unit,
+    onKill: (SessionTarget) -> Unit,
 ) {
     val bottomPadding = 84.dp
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(170.dp),
-            modifier = Modifier.fillMaxSize().testTag("agents-grid"),
+            modifier = Modifier.fillMaxSize().testTag("sessions-grid"),
             state = gridState,
             contentPadding = PaddingValues(
                 start = 12.dp,
@@ -285,7 +285,7 @@ private fun DashboardDwarfGrid(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (agents.isEmpty()) {
+            if (sessions.isEmpty()) {
                 item(
                     key = "dashboard-empty-state",
                     span = { GridItemSpan(maxLineSpan) },
@@ -310,16 +310,18 @@ private fun DashboardDwarfGrid(
                 }
             } else {
                 items(
-                    items = agents,
-                    key = { "${it.target.machineHandle.encoded}:${it.target.session.id}:${it.target.session.identityToken}" },
-                ) { agent ->
-                    val machineState = state.machines.single { it.machine.handle == agent.target.machineHandle }
-                    AgentCard(
-                        agent,
+                    items = sessions,
+                    key = { "${it.target.machineHandle.encoded}:${it.target.session.tmuxId}:${it.target.session.identityToken}" },
+                ) { visibleSession ->
+                    val machineState = state.machines.single {
+                        it.machine.handle == visibleSession.target.machineHandle
+                    }
+                    SessionCard(
+                        visibleSession,
                         machineState,
                         showMachineLabel = state.selectedMachine == null,
-                        onOpen = { onOpen(agent.target) },
-                        onKill = { onKill(agent.target) },
+                        onOpen = { onOpen(visibleSession.target) },
+                        onKill = { onKill(visibleSession.target) },
                     )
                 }
             }

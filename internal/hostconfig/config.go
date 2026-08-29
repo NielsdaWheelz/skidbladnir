@@ -8,25 +8,31 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 const maximumConfigBytes = 64 * 1024
 
-var (
-	expectedProfileKeys = [...]string{"personal", "work", "work2", "claude-personal", "claude-work"}
-)
+var expectedProfiles = [...]struct {
+	key      string
+	provider agentruntime.Provider
+}{
+	{key: "personal", provider: agentruntime.ProviderCodex},
+	{key: "work", provider: agentruntime.ProviderCodex},
+	{key: "work2", provider: agentruntime.ProviderCodex},
+	{key: "claude-personal", provider: agentruntime.ProviderClaude},
+	{key: "claude-work", provider: agentruntime.ProviderClaude},
+}
 
 type Tmux struct {
 	Path string
 }
 
 type Config struct {
-	Platform            platform.Kind
-	Tmux                Tmux
-	CodexNodeEntrypoint string
-	Profiles            []sessions.Profile
+	Platform platform.Kind
+	Tmux     Tmux
+	Profiles []agentruntime.Profile
 }
 
 func Load(path string, runtime platform.Kind) (Config, error) {
@@ -78,10 +84,9 @@ func ValidateTmuxVersion(version string) error {
 }
 
 type configDTO struct {
-	Platform            stringField   `json:"platform"`
-	Tmux                *tmuxDTO      `json:"tmux"`
-	CodexNodeEntrypoint stringField   `json:"codexNodeEntrypoint"`
-	Profiles            *[]profileDTO `json:"profiles"`
+	Platform stringField   `json:"platform"`
+	Tmux     *tmuxDTO      `json:"tmux"`
+	Profiles *[]profileDTO `json:"profiles"`
 }
 
 type tmuxDTO struct {
@@ -92,6 +97,7 @@ type tmuxDTO struct {
 type profileDTO struct {
 	Key                  stringField               `json:"key"`
 	Label                stringField               `json:"label"`
+	Provider             stringField               `json:"provider"`
 	Command              stringField               `json:"command"`
 	Environment          *[]environmentVariableDTO `json:"environment"`
 	ForegroundSignatures *[]foregroundSignatureDTO `json:"foregroundSignatures"`
@@ -110,7 +116,7 @@ type foregroundSignatureDTO struct {
 }
 
 func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
-	if !wire.Platform.present || wire.Tmux == nil || !wire.CodexNodeEntrypoint.present || wire.Profiles == nil {
+	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil {
 		return Config{}, errors.New("host config omits a required member")
 	}
 	kind := platform.Kind(wire.Platform.value)
@@ -123,40 +129,44 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	if !wire.Tmux.Path.present || !wire.Tmux.TestedVersion.present || !validAbsolutePath(wire.Tmux.Path.value) || ValidateTmuxVersion(wire.Tmux.TestedVersion.value) != nil {
 		return Config{}, errors.New("host config tmux entry is invalid")
 	}
-	if !validAbsolutePath(wire.CodexNodeEntrypoint.value) {
-		return Config{}, errors.New("host config Codex entrypoint must be absolute")
-	}
 	profiles, err := mapProfiles(*wire.Profiles)
 	if err != nil {
 		return Config{}, err
 	}
 	return Config{
-		Platform:            kind,
-		Tmux:                Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
-		CodexNodeEntrypoint: filepath.Clean(wire.CodexNodeEntrypoint.value),
-		Profiles:            profiles,
+		Platform: kind,
+		Tmux:     Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
+		Profiles: profiles,
 	}, nil
 }
 
-func mapProfiles(wire []profileDTO) ([]sessions.Profile, error) {
-	if len(wire) != len(expectedProfileKeys) {
-		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfileKeys))
+func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
+	if len(wire) != len(expectedProfiles) {
+		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfiles))
 	}
-	profiles := make([]sessions.Profile, len(wire))
+	profiles := make([]agentruntime.Profile, len(wire))
 	for index, candidate := range wire {
-		if !candidate.Key.present || !candidate.Label.present || !candidate.Command.present || candidate.Environment == nil || candidate.ForegroundSignatures == nil || candidate.Arguments == nil {
+		expected := expectedProfiles[index]
+		if !candidate.Key.present || !candidate.Label.present || !candidate.Provider.present || !candidate.Command.present || candidate.Environment == nil || candidate.ForegroundSignatures == nil || candidate.Arguments == nil {
 			return nil, errors.New("host config profile omits a required member")
 		}
-		if candidate.Key.value != expectedProfileKeys[index] {
-			return nil, fmt.Errorf("host config profile %d must be %q", index, expectedProfileKeys[index])
+		if candidate.Key.value != expected.key {
+			return nil, fmt.Errorf("host config profile %d must be %q", index, expected.key)
+		}
+		provider, err := agentruntime.ParseProvider(candidate.Provider.value)
+		if err != nil {
+			return nil, fmt.Errorf("host config profile %s provider is invalid", candidate.Key.value)
+		}
+		if provider != expected.provider {
+			return nil, fmt.Errorf("host config profile %s must use provider %s", candidate.Key.value, expected.provider)
 		}
 		environment, err := mapEnvironment(*candidate.Environment)
 		if err != nil {
 			return nil, err
 		}
-		signatures := make([]sessions.ForegroundSignature, len(*candidate.ForegroundSignatures))
+		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
-			signatures[signatureIndex] = sessions.ForegroundSignature{
+			signatures[signatureIndex] = agentruntime.ForegroundSignature{
 				ExecutableBase: signature.ExecutableBase.value,
 				Argument0:      signature.Argument0.value,
 				Argument1:      signature.Argument1.value,
@@ -169,49 +179,34 @@ func mapProfiles(wire []profileDTO) ([]sessions.Profile, error) {
 			}
 			arguments[argumentIndex] = argument.value
 		}
-		profiles[index] = sessions.Profile{
-			Key:                  candidate.Key.value,
+		profiles[index] = agentruntime.Profile{
+			Key:                  agentruntime.ProfileKey(candidate.Key.value),
 			Label:                candidate.Label.value,
+			Provider:             provider,
 			Command:              candidate.Command.value,
 			Environment:          environment,
 			ForegroundSignatures: signatures,
 			Arguments:            arguments,
 		}
 	}
-	validated, err := sessions.ValidateProfiles(profiles)
+	validated, err := agentruntime.ValidateProfiles(profiles)
 	if err != nil {
 		return nil, fmt.Errorf("validate host profiles: %w", err)
 	}
 	return validated, nil
 }
 
-func mapEnvironment(wire []environmentVariableDTO) ([]sessions.EnvironmentVariable, error) {
-	environment := make([]sessions.EnvironmentVariable, len(wire))
+func mapEnvironment(wire []environmentVariableDTO) ([]agentruntime.EnvironmentVariable, error) {
+	environment := make([]agentruntime.EnvironmentVariable, len(wire))
 	for index, candidate := range wire {
 		if !candidate.Name.present || !candidate.Value.present {
 			return nil, errors.New("host config environment entry omits a required member")
 		}
-		environment[index] = sessions.EnvironmentVariable{Name: candidate.Name.value, Value: candidate.Value.value}
+		environment[index] = agentruntime.EnvironmentVariable{Name: candidate.Name.value, Value: candidate.Value.value}
 	}
 	return environment, nil
 }
 
-func safeText(value string, maximumRunes int) bool {
-	if value == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > maximumRunes {
-		return false
-	}
-	for _, character := range value {
-		if isUnsafeTextRune(character) {
-			return false
-		}
-	}
-	return true
-}
-
 func validAbsolutePath(value string) bool {
 	return filepath.IsAbs(value) && filepath.Clean(value) == value && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
-}
-
-func isUnsafeTextRune(value rune) bool {
-	return value <= '\u001f' || value >= '\u007f' && value <= '\u009f' || value == '\u2028' || value == '\u2029' || value >= '\u202a' && value <= '\u202e' || value >= '\u2066' && value <= '\u2069'
 }
