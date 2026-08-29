@@ -769,10 +769,24 @@ the installed version matching the declared tag and source SHA before tmux or
 a provider is launched. That sample proves provider/PID from the one foreground
 observation and accepts registered profile/id only for the exact current
 process lifetime; managed Claude name equals its initial tmux name and Codex
-names remain absent. The separately approved isolated session integration gate
-owns process replacement, tmux-server restart, and tmux rename behavior. No
-provider API, transcript parser, background worker, or communication action
-exists.
+names remain absent. The sample never dispatches provider input: Codex receives
+generated opaque stdin only through ephemeral `exec` with
+`--dangerously-bypass-hook-trust` while a test-owned, project-local synchronous
+`SessionStart` hold blocks the agent loop until the exact private tmux server
+dies; Claude runs `-p --no-session-persistence </dev/null>` with a separate
+test-owned hold-only plugin while the installed router plugin performs identity
+registration. Independently of hook loading, Codex selects a test-only,
+unauthenticated provider whose model traffic terminates at a content-free
+loopback sentinel. The sentinel never reads bytes and counts accepted
+connections; the gate requires zero. CLI-owned provider selection disables
+retries, WebSockets, and telemetry, and the launcher scrubs ambient proxies. A
+missing Codex hold therefore makes the gate red without exposing input to an
+external provider. Claude receives no input and cannot persist a session.
+Holds, input, and provider output remain content-free in evidence; input
+reaches neither an external provider API nor a provider session store. The
+separately approved isolated session integration gate owns process replacement,
+tmux-server restart, and tmux rename behavior. No provider API, transcript
+parser, background worker, or communication action exists.
 
 Routine `scripts/test verify` is static analysis, compile/build, and pure unit
 tests only; it never invokes tmux, a provider, or ADB. `integration`,
