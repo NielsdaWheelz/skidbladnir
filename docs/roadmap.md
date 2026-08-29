@@ -13,9 +13,10 @@ The 2026-08-27 public-fleet hard-cut source is implemented in Skíðblaðnir and
 conversion, exact-SHA hosted CI, signed release, immutable publication,
 host/tmux acceptance, and both physical-phone gates remain `NOT_RUN`.
 The 2026-08-28 agent-identity projection hard-cut source is implemented in
-Skíðblaðnir and `dev-server`, and both routine verification suites are green.
-Isolated tmux, Android platform, exact release/pin/deployment, and the
-provider-live matrix remain `NOT_RUN`.
+Skíðblaðnir and `dev-server`, both routine verification suites are green, and
+the approved exact-head isolated Darwin tmux integration is green. Android
+platform, exact release/pin/deployment, and the provider-live matrix remain
+`NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -644,5 +645,5 @@ orchestration, via a new architecture decision.
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented; pure and real-Compose reds recorded; focused unit, signed same-version one-test S22+ component, routine verification, and approved hands-on normal/mixed/missing/Darwin/large-text/greyscale acceptance green on 2026-08-28; release-bound full platform gate `NOT_RUN` |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
-| v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, and final routine verification green; isolated tmux, Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
+| v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
 | v0.5 push | Not scheduled |
