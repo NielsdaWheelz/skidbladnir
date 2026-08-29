@@ -402,6 +402,11 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget): 
     val objective: String? = null,
 )
 @Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
+@Serializable private data class RenameSessionRequest(
+    val tmuxName: String,
+    val newTmuxName: String,
+    val identityToken: String,
+)
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = strictJsonObject(encoded)
@@ -487,6 +492,14 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
 )
 internal fun encodeKillSessionRequest(session: TmuxSession): String =
     productJson.encodeToString(KillSessionRequest(session.tmuxName, session.identityToken))
+internal fun encodeRenameSessionRequest(target: SessionTarget, newTmuxName: String): String =
+    productJson.encodeToString(
+        RenameSessionRequest(
+            tmuxName = target.session.tmuxName,
+            newTmuxName = newTmuxName,
+            identityToken = target.session.identityToken,
+        ),
+    )
 
 internal data class InventorySnapshot(val inventory: SessionsResponse, val receivedAtElapsedMillis: Long)
 
@@ -691,7 +704,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
     ApiErrorCode.SessionNameConflict -> "A session with that name already exists."
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
-    ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh before killing it."
+    ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh and try again."
     ApiErrorCode.SessionGroupedConflict -> "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it."
     ApiErrorCode.PairingInviteRejected -> "This fleet invite is invalid, expired, or already used."
     ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Fleet reset is required."

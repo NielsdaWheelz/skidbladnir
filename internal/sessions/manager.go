@@ -136,8 +136,10 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session,
 	if !found {
 		return Session{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 	}
-	if err := validateOptionalTmuxName(input.OptionalTmuxName); err != nil {
-		return Session{}, err
+	if input.OptionalTmuxName != "" {
+		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
+			return Session{}, err
+		}
 	}
 	if err := validateObjective(input.Objective); err != nil {
 		return Session{}, err
@@ -231,23 +233,23 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
-	server, err := manager.killIdentity(ctx, input)
+	identity, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	if err != nil {
 		return err
 	}
-	if _, err := manager.tmux.ReconcilePhoneShadows(ctx, server, manager.protectedPhoneShadows()); err != nil {
+	if _, err := manager.tmux.ReconcilePhoneShadows(ctx, identity.server, manager.protectedPhoneShadows()); err != nil {
 		return err
 	}
-	server, err = manager.killIdentity(ctx, input)
+	identity, err = manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	if err != nil {
 		return err
 	}
-	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.TmuxID, input.TmuxName, server)
+	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.TmuxID, input.TmuxName, identity.server)
 	if err != nil {
 		return manager.classifyMissingSession(ctx, input.TmuxID, err)
 	}
 	if !killed {
-		if _, identityErr := manager.killIdentity(ctx, input); identityErr != nil {
+		if _, identityErr := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken); identityErr != nil {
 			return identityErr
 		}
 		return newSessionError(ErrorSessionGroupedConflict, "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.")
@@ -258,33 +260,149 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 func (manager *Manager) ValidateKill(ctx context.Context, input KillInput) error {
 	manager.mutations.RLock()
 	defer manager.mutations.RUnlock()
-	_, err := manager.killIdentity(ctx, input)
+	_, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	return err
 }
 
-func (manager *Manager) killIdentity(ctx context.Context, input KillInput) (tmuxclient.ServerIdentity, error) {
-	if !sessionIDPattern.MatchString(input.TmuxID) {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+type sessionMutationIdentity struct {
+	server      tmuxclient.ServerIdentity
+	phoneShadow bool
+}
+
+func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
+	manager.mutations.Lock()
+	defer manager.mutations.Unlock()
+
+	if err := validateTmuxName(input.NewTmuxName); err != nil {
+		return err
 	}
-	server, validToken := parseIdentityToken(input.IdentityToken, input.TmuxID)
-	if input.TmuxName == "" || !validToken {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before killing it.")
-	}
-	name, found, err := manager.sessionIdentity(ctx, input.TmuxID)
+	identity, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	if err != nil {
-		return tmuxclient.ServerIdentity{}, err
+		return err
+	}
+	if identity.phoneShadow {
+		return sessionIdentityMismatch()
+	}
+	if input.NewTmuxName == input.TmuxName {
+		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+	}
+	renamed, err := manager.tmux.RenameSessionIfIdentityAndOrdinary(
+		ctx, input.TmuxID, input.TmuxName, input.NewTmuxName, identity.server,
+	)
+	if err != nil {
+		return manager.classifyRenameFailure(ctx, input, identity.server, err)
+	}
+	if !renamed {
+		return manager.classifyRenameFailure(
+			ctx, input, identity.server, errors.New("tmux conditional rename rejected an exact preflight identity"),
+		)
+	}
+	return nil
+}
+
+func (manager *Manager) mutationIdentity(
+	ctx context.Context,
+	tmuxID string,
+	tmuxName string,
+	identityToken string,
+) (sessionMutationIdentity, error) {
+	if !sessionIDPattern.MatchString(tmuxID) {
+		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	}
+	server, validToken := parseIdentityToken(identityToken, tmuxID)
+	if tmuxName == "" || !validToken {
+		return sessionMutationIdentity{}, sessionIdentityMismatch()
+	}
+	name, found, err := manager.sessionIdentity(ctx, tmuxID)
+	if err != nil {
+		return sessionMutationIdentity{}, err
 	}
 	if !found {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	if name != input.TmuxName {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before killing it.")
+	if name != tmuxName {
+		return sessionMutationIdentity{}, sessionIdentityMismatch()
+	}
+	internal, found, err := manager.sessionOptionIfPresent(ctx, tmuxID, "@skid_internal")
+	if err != nil {
+		return sessionMutationIdentity{}, err
+	}
+	if !found {
+		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
 	observed, err := manager.tmux.ServerIdentity(ctx)
 	if err != nil || observed != server {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before killing it.")
+		return sessionMutationIdentity{}, sessionIdentityMismatch()
 	}
-	return server, nil
+	return sessionMutationIdentity{server: server, phoneShadow: tmuxclient.IsPhoneShadow(name, internal)}, nil
+}
+
+func (manager *Manager) classifyRenameFailure(
+	ctx context.Context,
+	input RenameInput,
+	expectedServer tmuxclient.ServerIdentity,
+	cause error,
+) error {
+	name, found, err := manager.sessionIdentity(ctx, input.TmuxID)
+	if err != nil {
+		return fmt.Errorf("reread failed rename source: %w", err)
+	}
+	if !found {
+		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	}
+	server, err := manager.tmux.ServerIdentity(ctx)
+	if err != nil || server != expectedServer {
+		return sessionIdentityMismatch()
+	}
+	internal, found, err := manager.sessionOptionIfPresent(ctx, input.TmuxID, "@skid_internal")
+	if err != nil {
+		return fmt.Errorf("reread failed rename source marker: %w", err)
+	}
+	if !found {
+		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	}
+	if name == input.NewTmuxName {
+		return fmt.Errorf("tmux rename failed after the source acquired the desired name: %w", cause)
+	}
+	if name != input.TmuxName || tmuxclient.IsPhoneShadow(name, internal) {
+		return sessionIdentityMismatch()
+	}
+	destinationID, occupied, err := manager.sessionIDNamed(ctx, input.NewTmuxName)
+	if err != nil {
+		return fmt.Errorf("reread failed rename destination: %w", err)
+	}
+	if occupied && destinationID != input.TmuxID {
+		identity, identityErr := manager.mutationIdentity(
+			ctx, input.TmuxID, input.TmuxName, input.IdentityToken,
+		)
+		if identityErr != nil {
+			return identityErr
+		}
+		if identity.phoneShadow {
+			return sessionIdentityMismatch()
+		}
+		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+	}
+	return fmt.Errorf("tmux rename failed for an unchanged exact identity: %w", cause)
+}
+
+func (manager *Manager) sessionIDNamed(ctx context.Context, name string) (string, bool, error) {
+	output, err := manager.tmux.Output(ctx, "read-session-name-owner", "list-sessions",
+		"-f", "#{==:#{session_name},"+name+"}", "-F", "#{session_id}")
+	if err != nil {
+		return "", false, err
+	}
+	if output == "" {
+		return "", false, nil
+	}
+	if strings.ContainsRune(output, '\n') || !sessionIDPattern.MatchString(output) {
+		return "", false, errors.New("tmux returned an invalid session name owner")
+	}
+	return output, true, nil
+}
+
+func sessionIdentityMismatch() *Error {
+	return newSessionError(ErrorSessionIdentityMismatch, "The session changed. Refresh and try again.")
 }
 
 func (manager *Manager) inspect(

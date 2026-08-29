@@ -211,6 +211,16 @@ class ProductContractTest {
     }
 
     @Test
+    fun `session identity mismatch recovery copy is action neutral`() {
+        assertEquals(
+            "rename and kill share one stale-identity outcome, so its public recovery must not " +
+                "claim that either destructive action was attempted",
+            "The session changed. Refresh and try again.",
+            apiErrorMessage(ApiErrorCode.SessionIdentityMismatch),
+        )
+    }
+
+    @Test
     fun `dashboard reentry preserves rejected Forge draft but never replays pending Start`() {
         val draft = ForgeDraft(
             machineHandle = machineHandle,

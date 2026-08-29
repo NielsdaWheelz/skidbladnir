@@ -25,11 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -65,22 +62,15 @@ internal fun TerminalScreen(
             DetachButton(
                 onClick = controller::detachToSessions,
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "${state.machine.machine.label.text} · ${state.target.session.tmuxName}",
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${state.machine.machine.label.text} · ${terminalPresence(state)}",
-                    color = terminalPresenceColor(state.connection),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    maxLines = 1,
-                    modifier = Modifier.testTag(terminalStatusTag(state.connection)),
-                )
-            }
+            TerminalRenameControl(
+                machine = state.machine.machine,
+                target = state.target,
+                presence = terminalPresence(state),
+                presenceColor = terminalPresenceColor(state.connection),
+                enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
+                onClick = controller::openRename,
+                modifier = Modifier.weight(1f).testTag(terminalStatusTag(state.connection)),
+            )
             KillButton(
                 machineLabel = state.machine.machine.label,
                 target = state.target,
@@ -160,6 +150,17 @@ internal fun TerminalScreen(
             actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
             onDismiss = controller::dismissKill,
             onConfirm = controller::confirmKill,
+        )
+    }
+    state.rename?.let { rename ->
+        SessionRenameSheet(
+            machine = state.machine.machine,
+            terminalTarget = state.target,
+            state = rename,
+            terminalActionsAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
+            onDraftChange = controller::updateRenameDraft,
+            onDismiss = controller::dismissRename,
+            onSubmit = controller::submitRename,
         )
     }
 }

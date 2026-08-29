@@ -3,10 +3,16 @@ package dev.niels.skidbladnir
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -715,6 +721,193 @@ class MultiMachineContractTest {
     }
 
     @Test
+    fun `rename is one unreplayed mutation followed by authoritative terminal reconciliation`() {
+        val credential = MachineCredential(
+            devbox,
+            requireNotNull(GatewayBearer.parse("A".repeat(43))),
+        )
+        val original = session()
+        val target = SessionTarget(devboxHandle, original)
+        val client = GatewayClient()
+        val request = client.renameRequest(credential, target, "review_ready")
+        val body = Buffer().also { buffer -> checkNotNull(request.body).writeTo(buffer) }.readUtf8()
+
+        assertEquals("PATCH", request.method)
+        assertEquals(
+            "https://devbox.example.ts.net:8443/v1/sessions/${original.tmuxId}",
+            request.url.toString(),
+        )
+        assertEquals(
+            "{\"tmuxName\":\"ga-durinn\",\"newTmuxName\":\"review_ready\"," +
+                "\"identityToken\":\"${original.identityToken}\"}",
+            body,
+        )
+        assertFalse("an unreplayable rename must keep OkHttp retry disabled", client.http.retryOnConnectionFailure)
+
+        assertEquals(
+            GatewayResult.Success(Unit),
+            decodeGatewayResponse(gatewayResponse(204, ""), 204, { Unit }, ::decodeRenameHttpFailure),
+        )
+        assertEquals(
+            GatewayResult.Failure(GatewayFailure.Transport),
+            decodeGatewayResponse(gatewayResponse(204, "unexpected"), 204, { Unit }, ::decodeRenameHttpFailure),
+        )
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodeRenameHttpFailure(
+                422,
+                "{\"code\":\"ProfileUnknown\",\"message\":\"Choose an available profile.\"}",
+            )
+        }
+
+        val editing = beginRename(target)
+        assertEquals(original.tmuxName, editing.draft)
+        assertFalse(renameSubmissionAdmissible(editing, target, terminalActionsAdmissible = true))
+        assertFalse(
+            renameSubmissionAdmissible(
+                updateRenameDraft(editing, "bad name"),
+                target,
+                terminalActionsAdmissible = true,
+            ),
+        )
+        val sending = checkNotNull(
+            beginRenameSending(
+                updateRenameDraft(editing, "review_ready"),
+                target,
+                terminalActionsAdmissible = true,
+            ),
+        )
+        assertEquals(RenamePhase.Sending, sending.phase)
+
+        val success = completeRenameHttp(sending, GatewayResult.Success(Unit))
+        assertTrue(success.state.phase is RenamePhase.Reconciling)
+        assertEquals(original, success.state.target.session)
+        assertFalse("204 must not optimistically replace the target", success.clearMutationFence)
+        assertTrue("204 requires a later authoritative inventory", success.requireInventoryRead)
+
+        val unknown = completeRenameHttp(sending, GatewayResult.Failure(GatewayFailure.Transport))
+        assertTrue("transport outcome must reconcile instead of returning to editing", unknown.state.phase is RenamePhase.Reconciling)
+        assertEquals(RENAME_OUTCOME_UNKNOWN, unknown.state.error)
+        assertFalse(unknown.clearMutationFence)
+        assertTrue("outcome-unknown must schedule inventory even after Terminal leaves", unknown.requireInventoryRead)
+
+        val invalid = completeRenameHttp(
+            sending,
+            GatewayResult.Failure(GatewayFailure.Api(ApiErrorCode.SessionNameInvalid)),
+        )
+        assertEquals(RenamePhase.Editing(), invalid.state.phase)
+        assertEquals("review_ready", invalid.state.draft)
+        assertEquals(apiErrorMessage(ApiErrorCode.SessionNameInvalid), invalid.state.error)
+        assertTrue(invalid.clearMutationFence)
+        assertFalse(invalid.requireInventoryRead)
+        for (code in listOf(
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.SessionNameInvalid,
+            ApiErrorCode.SessionNameConflict,
+        )) {
+            val definiteInvalid = completeRenameHttp(
+                sending,
+                GatewayResult.Failure(GatewayFailure.Api(code)),
+            )
+            assertTrue("only a definite invalid/conflict result clears its exact fence", definiteInvalid.clearMutationFence)
+            assertFalse(definiteInvalid.requireInventoryRead)
+        }
+
+        for (code in listOf(ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch)) {
+            val stale = completeRenameHttp(sending, GatewayResult.Failure(GatewayFailure.Api(code)))
+            assertTrue("$code requires authoritative reconciliation", stale.state.phase is RenamePhase.Reconciling)
+            assertFalse(stale.clearMutationFence)
+            assertTrue(stale.requireInventoryRead)
+        }
+
+        val fresh = readyMachine(devbox, original)
+        val snapshot = (fresh.inventory as InventoryState.Fresh).snapshot
+        val superseded = InventoryState.Superseded(snapshot, requiredMutationFence = 4)
+        assertEquals(
+            "an older callback must not clear a newer mutation fence",
+            superseded,
+            clearRenameMutationFence(superseded, fence = 3),
+        )
+        assertEquals(InventoryState.Fresh(snapshot), clearRenameMutationFence(superseded, fence = 4))
+
+        val laneEvents = mutableListOf<String>()
+        val lane = InventoryOperationLane(Executor(Runnable::run)) { throw it }
+        lane.submitMutation(
+            onReserved = { fence -> laneEvents += "reserved:$fence" },
+        ) {
+            laneEvents += "patch"
+            lane.submitRead { completedFence -> laneEvents += "inventory:$completedFence" }
+        }
+        assertEquals(
+            "the callback-owned inventory read must remain queued after the mutation and observe its fence",
+            listOf("reserved:1", "patch", "inventory:1"),
+            laneEvents,
+        )
+
+        val connection = TerminalUiStatus.Connected(2, TerminalGeometry.Constrained)
+        val reconcilingTerminal = SkidbladnirUiState.Terminal(
+            machine = fresh,
+            target = target,
+            attempt = 77,
+            connection = connection,
+            kill = null,
+            rename = success.state,
+        )
+        val authoritative = original.copy(
+            tmuxName = "review_ready",
+            attachedClients = 2,
+            attention = true,
+        )
+        val adopted = reconcileTerminalRename(
+            reconcilingTerminal.copy(machine = readyMachine(devbox, authoritative)),
+        )
+        assertEquals(authoritative, adopted.terminal.target.session)
+        assertEquals(77, adopted.terminal.attempt)
+        assertEquals(connection, adopted.terminal.connection)
+        assertNull(adopted.terminal.rename)
+        assertFalse("same lifetime rename must retain page, WSS, and terminal attempt", adopted.detachTransport)
+
+        val laterWriter = authoritative.copy(tmuxName = "later-writer")
+        val staleEdit = reconcileTerminalRename(
+            reconcilingTerminal.copy(machine = readyMachine(devbox, laterWriter)),
+        )
+        assertEquals(laterWriter, staleEdit.terminal.target.session)
+        assertEquals("review_ready", staleEdit.terminal.rename?.draft)
+        assertEquals(RenamePhase.Editing(stale = true), staleEdit.terminal.rename?.phase)
+        assertEquals(RENAME_STALE_EDIT, staleEdit.terminal.rename?.error)
+        assertFalse(staleEdit.detachTransport)
+
+        val hidden = checkNotNull(dismissRename(success.state))
+        val hiddenResolution = reconcileTerminalRename(
+            reconcilingTerminal.copy(
+                machine = readyMachine(devbox, laterWriter),
+                rename = hidden,
+            ),
+        )
+        assertEquals(laterWriter, hiddenResolution.terminal.target.session)
+        assertNull(hiddenResolution.terminal.rename)
+        assertFalse(hiddenResolution.detachTransport)
+
+        val missing = reconcileTerminalRename(
+            reconcilingTerminal.copy(machine = readyMachine(devbox)),
+        )
+        assertTrue(missing.terminal.connection is TerminalUiStatus.ReconnectRequired)
+        assertNull(missing.terminal.rename)
+        assertTrue("an absent or replaced lifetime must use the reconnect path", missing.detachTransport)
+
+        val externalRename = reconcileTerminalRename(
+            reconcilingTerminal.copy(
+                machine = readyMachine(devbox, laterWriter),
+                rename = null,
+            ),
+        )
+        assertEquals(laterWriter, externalRename.terminal.target.session)
+        assertEquals(77, externalRename.terminal.attempt)
+        assertEquals(connection, externalRename.terminal.connection)
+        assertFalse(externalRename.detachTransport)
+    }
+
+    @Test
     fun `machine notices tone absence as degraded and only trust events as failure`() {
         val pressure = decodePressureResponse(pressureJson("[\"memoryPressure\"]", linuxMetrics))
         val ready = readyMachine(devbox, session())
@@ -801,6 +994,14 @@ class MultiMachineContractTest {
         ),
         pressure = PressureState.Reading,
     )
+
+    private fun gatewayResponse(code: Int, body: String): Response = Response.Builder()
+        .request(Request.Builder().url("https://gateway.example.ts.net:8443/v1/sessions/session-1").build())
+        .protocol(Protocol.HTTP_1_1)
+        .code(code)
+        .message(if (code == 204) "No Content" else "Error")
+        .body(body.toResponseBody())
+        .build()
 
     private fun inventoryJson(handle: MachineHandle, platform: String): String =
         """{"machine":{"handle":"${handle.encoded}","platform":"$platform"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[]}"""

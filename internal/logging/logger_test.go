@@ -72,6 +72,21 @@ func TestRequestLogUsesRouteTemplatesAndClosedErrors(t *testing.T) {
 	if _, err := NewRequestCompleted(MethodOther, RouteUnmatched, 400, time.Millisecond, ErrorInvalidRequest); err != nil {
 		t.Fatalf("closed unsupported-method event: %v", err)
 	}
+
+	patchEvent, err := NewRequestCompleted(MethodPatch, RouteSession, 204, time.Millisecond, ErrorNone)
+	if err != nil {
+		t.Fatal("PATCH request event was not in the closed method set")
+	}
+	output.Reset()
+	if err := New(&output).Write(patchEvent); err != nil {
+		t.Fatalf("write PATCH request event: %v", err)
+	}
+	patchLine := output.String()
+	if !strings.Contains(patchLine, `"http.request.method":"PATCH"`) ||
+		!strings.Contains(patchLine, `"http.route":"/v1/sessions/{tmuxId}"`) ||
+		strings.Contains(patchLine, "tmux_name") {
+		t.Fatal("PATCH request log did not remain a content-free route-template event")
+	}
 }
 
 func TestLoggerRejectsInvalidEventsAndPropagatesWriterFailure(t *testing.T) {

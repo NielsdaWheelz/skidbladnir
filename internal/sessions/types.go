@@ -28,6 +28,13 @@ type KillInput struct {
 	IdentityToken string
 }
 
+type RenameInput struct {
+	TmuxID        string
+	TmuxName      string
+	NewTmuxName   string
+	IdentityToken string
+}
+
 type Session struct {
 	TmuxID          string
 	TmuxName        string

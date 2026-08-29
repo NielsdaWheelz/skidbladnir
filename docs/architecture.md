@@ -3,7 +3,7 @@
 Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
 2026-08-28 agent-identity projection hard cut, and the 2026-08-28 dashboard
-refresh-boundary correction.
+refresh-boundary correction, and the 2026-08-28 tmux-session rename delta.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -404,6 +404,29 @@ machine:
   `destroy-unattached`. Attached, protected, ambiguous, or changed sessions are
   never mutated.
 
+### Rename
+
+The active Terminal's middle identity control opens one literal tmux-name
+editor. It sends
+`PATCH /v1/sessions/{tmuxId} {tmuxName,newTmuxName,identityToken}` to the pinned
+machine. The desired name uses the Forge's existing 1–64-character ASCII grammar;
+unchanged input is disabled and is `SessionNameConflict` if submitted directly.
+
+Under the gateway's mutation lock, one tmux command queue verifies server
+epoch/PID/start-time, id, expected current name, and ordinary-session status
+before `rename-session` targets only the id. Tmux owns destination uniqueness.
+The request body has exactly three case-sensitive, non-duplicate string keys.
+Reserved shadow-shaped names additionally require the internal marker to be
+absent, and destination-failure classification revalidates source identity
+after observing the destination. Stale identity and collision mutate nothing.
+Success is bodyless `204`; Android never retries, supersedes that machine's
+inventory, and requires one later inventory read before replacing the terminal
+target. A content-free transient mutation fence survives terminal Detach until
+that read; no name or history does. The same id/token keeps the active phone
+attachment, process, panes, geometry, character, options, and provider facts;
+only the authoritative tmux name and header change. Provider session names are
+never synchronized.
+
 ### Detach
 
 Detach closes only the active target machine's phone client and shadow through
@@ -534,6 +557,7 @@ history item is `current`.
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
 | `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; every session has required `tmuxId`, `tmuxName`, `character`, local card facts, opaque `identityToken`, optional `launchProfile`, and optional exact `agent {provider,pid,profile?,providerSession?}` |
 | `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; typed failures |
+| `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before creating any shadow/PTY |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; owned stale-shadow reconciliation, then one-queue exact lifetime/last-link kill |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
@@ -552,7 +576,7 @@ Errors use only `{code,message}` with this exhaustive v0 mapping:
 | `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
 | `SessionNameConflict` | 409 | `A session with that name already exists.` |
 | `SessionNotFound` | 404 | `That session no longer exists.` |
-| `SessionIdentityMismatch` | 409 | `The session changed. Refresh before killing it.` |
+| `SessionIdentityMismatch` | 409 | `The session changed. Refresh and try again.` |
 | `PairingInviteRejected` | 401 | `This fleet invite is invalid, expired, or already used.` |
 | `MachineIdentityMismatch` | 409 | `The machine identity changed. Fleet reset is required.` |
 | `SessionGroupedConflict` | 409 | `This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.` |
@@ -656,8 +680,10 @@ enum values are defects, with no protocol branch or compatibility state.
   clipboard, and dictation; dictation stays editable and never auto-sends. IME
   composition and non-composition Gboard input stay inside the terminal edge;
   both the page and native WebView enforce zero horizontal viewport movement.
-- The terminal header always names machine and session. At most one active
-  phone terminal exists, and its connection owns one exact `SessionTarget`;
+- The terminal header always names machine and session; its middle identity
+  block is the literal Rename control and retains separate presence state. At
+  most one active phone terminal exists, and its connection owns one exact
+  `SessionTarget`;
   reconnect re-reads that machine before opening WSS.
   Identity change closes the active terminal and disables that pairing until
   explicit fleet reset.
@@ -831,6 +857,15 @@ recovery is explicit, and pressure
 disclosure adds no network or mutation; app, gateway, and LaunchAgent restart
 converge to each local
 `tmux list-sessions` truth.
+
+Rename acceptance additionally requires: one fresh exact request changes only
+the tmux name; the active terminal stays attached and adopts the reread
+same-id/token target; invalid, unchanged, conflicting, stale, missing,
+restarted-server, and concurrent-loser requests mutate nothing; an unknown
+transport outcome is never replayed and converges through inventory; and no
+provider rename, alias, history, second name owner, or content-bearing log is
+introduced. [`session-renaming.md`](session-renaming.md) owns the detailed
+delivery boundary and red/green proof shape.
 
 Distribution acceptance additionally requires: the public release has the
 five owned immutable assets and one signer; `dev-server` pins and converges the
