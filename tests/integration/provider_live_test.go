@@ -46,6 +46,7 @@ const (
 	providerLiveWorkspacePrefix       = ".skid-provider-live-"
 	providerLiveCodexModel            = "skidbladnir-provider-live-offline"
 	providerLiveCodexProvider         = "skidbladnir_provider_live"
+	providerLiveCodexProviderName     = "Skidbladnir provider live"
 	providerLiveClaudeBaseURL         = "http://127.0.0.1:0"
 	providerLiveNoProxy               = "127.0.0.1,localhost"
 	providerLiveTestCommandTimeout    = 5 * time.Second
@@ -173,6 +174,7 @@ func TestProviderLiveLaunchersEnforceOfflineInputBoundary(t *testing.T) {
 		"--config", "features.hooks=true",
 		"--model", "skidbladnir-provider-live-offline",
 		"--config", `model_provider="skidbladnir_provider_live"`,
+		"--config", `model_providers.skidbladnir_provider_live.name="Skidbladnir provider live"`,
 		"--config", `model_providers.skidbladnir_provider_live.base_url="` + harness.codexBaseURL + `"`,
 		"--config", `model_providers.skidbladnir_provider_live.wire_api="responses"`,
 		"--config", "model_providers.skidbladnir_provider_live.requires_openai_auth=false",
@@ -661,6 +663,7 @@ func providerLiveCodexOfflineArguments(baseURL string) []string {
 		"--config", "features.hooks=true",
 		"--model", providerLiveCodexModel,
 		"--config", "model_provider=" + strconv.Quote(providerLiveCodexProvider),
+		"--config", providerPrefix + "name=" + strconv.Quote(providerLiveCodexProviderName),
 		"--config", providerPrefix + "base_url=" + strconv.Quote(baseURL),
 		"--config", providerPrefix + `wire_api="responses"`,
 		"--config", providerPrefix + "requires_openai_auth=false",
