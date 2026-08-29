@@ -2,6 +2,7 @@ package sessions
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -34,5 +35,20 @@ func TestNormalizeWorkingDirectoryRejectsRelativeTildeLookalike(t *testing.T) {
 	var sessionError *Error
 	if !errors.As(err, &sessionError) || sessionError.Code != ErrorWorkingDirectoryInvalid {
 		t.Fatalf("validate working directory error = %v, want %s", err, ErrorWorkingDirectoryInvalid)
+	}
+}
+
+func TestValidateTmuxNameOwnsTheRequiredWireGrammar(t *testing.T) {
+	for _, valid := range []string{"a", "A0_-", strings.Repeat("a", 64)} {
+		if err := validateTmuxName(valid); err != nil {
+			t.Fatalf("valid tmux name %q was rejected: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"", "_leading", "-leading", "contains.dot", "a b", strings.Repeat("a", 65)} {
+		err := validateTmuxName(invalid)
+		var sessionError *Error
+		if !errors.As(err, &sessionError) || sessionError.Code != ErrorSessionNameInvalid {
+			t.Fatalf("invalid tmux name %q error = %v, want %s", invalid, err, ErrorSessionNameInvalid)
+		}
 	}
 }

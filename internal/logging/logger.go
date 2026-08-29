@@ -18,13 +18,14 @@ type Method string
 const (
 	MethodGet    Method = "GET"
 	MethodPost   Method = "POST"
+	MethodPatch  Method = "PATCH"
 	MethodDelete Method = "DELETE"
 	MethodOther  Method = "OTHER"
 )
 
 func (method Method) valid() bool {
 	switch method {
-	case MethodGet, MethodPost, MethodDelete, MethodOther:
+	case MethodGet, MethodPost, MethodPatch, MethodDelete, MethodOther:
 		return true
 	default:
 		return false

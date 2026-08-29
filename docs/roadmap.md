@@ -21,6 +21,9 @@ The 2026-08-28 dashboard refresh-boundary correction source is implemented;
 its owner red and focused signed same-version S22+ two-test green are recorded,
 including the zero-duration branch. Routine verification is green. The
 release-bound full platform gate and hands-on acceptance remain `NOT_RUN`.
+The 2026-08-28 tmux-session rename delta source is implemented under its
+accepted contract. Its owner reds are recorded; gate evidence is reported only
+against the exact tested SHA, with unavailable boundaries kept `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -61,6 +64,7 @@ S1 tmux control plane
  -> v0 machine-pressure rail delta
  -> v0 agent-identity projection hard cut
  -> v0 dashboard refresh-boundary correction
+ -> v0 tmux-session rename delta
  -> v0.5 (optional): push
 ```
 
@@ -653,6 +657,32 @@ restored the exact original release and preserved encrypted pairing. Routine
 verification is green; the release-bound full platform and hands-on gates
 remain `NOT_RUN`.
 
+## v0 tmux-session rename delta — source implemented
+
+Outcome: from an active Terminal, rename one exact ordinary tmux session in
+place without changing its lifetime, attachment, work, character, or provider
+facts.
+
+- Add strict `PATCH /v1/sessions/{tmuxId}` with expected name, desired name,
+  and lifetime token; success is bodyless `204` followed by mandatory inventory
+  confirmation.
+- One tmux queue compare-and-swaps server lifetime/id/current name before
+  `rename-session`; native uniqueness owns collision. No retry, alias, provider
+  synchronization, persistence, event observer, or compatibility route exists.
+- Add one literal, accessible Terminal identity control and focused editor;
+  keep the current ASCII name grammar and active phone attachment.
+- Hard-cut the public identity-mismatch copy to action-neutral wording and
+  extract only the now-shared name validator, identity predicate, session-path
+  parser, and bodyless client response owner.
+
+Red: one current-server authenticated PATCH journey and one real Compose
+Terminal proof. Green adds one focused proof at tmux/session, HTTP, Android
+state/client, and Compose boundaries. Acceptance is routine verification, the
+same isolated tmux/API proof on separately approved Linux and Darwin sockets,
+and one separately approved S22+ focused component/hands-on pass. Every other
+external gate remains `NOT_RUN`. Scope and ownership are closed in
+[session-renaming.md](session-renaming.md).
+
 ## v0.5 — optional, after corrected v0 is in daily use
 
 - Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
@@ -693,4 +723,5 @@ orchestration, via a new architecture decision.
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
 | v0 dashboard refresh-boundary correction | Source implemented; focused signed same-version S22+ owner red observed and final two-test green at system animator scale `0.0`; exact original release and encrypted pairing restored. Routine verification green; release-bound full platform and hands-on acceptance `NOT_RUN` |
+| v0 tmux-session rename delta | Source implemented under the accepted hard-cut contract; owner reds recorded; exact-SHA gate evidence and every `NOT_RUN` boundary are reported separately |
 | v0.5 push | Not scheduled |

@@ -39,21 +39,77 @@ func TestTmuxEnvironmentCannotFollowAnInvokingClient(t *testing.T) {
 	}
 }
 
-func TestKillIdentityConditionEscapesFormatLiterals(t *testing.T) {
+func TestMutationIdentityConditionEscapesFormatLiterals(t *testing.T) {
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
-	condition := killIdentityCondition("$7", "name#,}suffix", server)
+	condition := mutationIdentityCondition("$7", "name#,}suffix", server)
 	want := "#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},name###,#}suffix}}}}}"
 	if condition != want {
-		t.Fatalf("conditional kill format = %q, want %q", condition, want)
+		t.Fatalf("conditional mutation format = %q, want %q", condition, want)
 	}
 }
 
 func TestKillEligibilityRequiresTheLastGroupedLink(t *testing.T) {
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
 	condition := killEligibilityCondition("$7", "agent", server)
-	if !strings.Contains(condition, killIdentityCondition("$7", "agent", server)) ||
+	if !strings.Contains(condition, mutationIdentityCondition("$7", "agent", server)) ||
 		!strings.Contains(condition, "#{||:#{==:#{session_group_size},},#{==:#{session_group_size},1}}") {
 		t.Fatalf("kill eligibility is not closed over identity and last-link topology: %q", condition)
+	}
+}
+
+func TestRenameUsesOneNarrowConditionalCommand(t *testing.T) {
+	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
+	arguments, err := renameSessionArguments("$7", "laptop#,}name", "new_name-1", server)
+	if err != nil {
+		t.Fatalf("build rename command: %v", err)
+	}
+	want := []string{
+		"if-shell", "-F", "-t", "$7",
+		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},laptop###,#}name}}}}}",
+		"rename-session -t '$7' 'new_name-1' ; display-message -p -l 'SKIDBLADNIR_RENAME_SUCCESS_V1'",
+		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
+	}
+	if !slices.Equal(arguments, want) {
+		t.Fatalf("rename arguments\nwant: %q\n got: %q", want, arguments)
+	}
+	if strings.Contains(strings.Join(arguments, " "), "=new_name-1") {
+		t.Fatal("rename command targeted the desired name")
+	}
+	if _, err := renameSessionArguments("$7", "laptop", "unsafe;name", server); err == nil {
+		t.Fatal("unsafe desired rename token was accepted")
+	}
+}
+
+func TestRenameOrdinaryGuardClosesTheReservedShadowIdentity(t *testing.T) {
+	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
+	arguments, err := renameSessionArguments(
+		"$7", "skid-phone-0123456789abcdef0123456789abcdef", "ordinary", server,
+	)
+	if err != nil {
+		t.Fatalf("build reserved-name rename command: %v", err)
+	}
+	if !strings.Contains(arguments[4], "#{!=:#{@skid_internal},phone-shadow}") {
+		t.Fatalf("reserved-name rename omitted the phone-shadow marker guard: %q", arguments[4])
+	}
+	ordinary, err := renameSessionArguments("$7", "laptop", "ordinary", server)
+	if err != nil {
+		t.Fatalf("build ordinary rename command: %v", err)
+	}
+	if strings.Contains(ordinary[4], "@skid_internal") {
+		t.Fatalf("ordinary nonreserved identity was made dependent on a marker-only shadow fact: %q", ordinary[4])
+	}
+}
+
+func TestRenameIntoReservedNamespaceGuardsMarkerOnlyOrdinarySource(t *testing.T) {
+	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
+	arguments, err := renameSessionArguments(
+		"$7", "laptop", "skid-phone-0123456789abcdef0123456789abcdef", server,
+	)
+	if err != nil {
+		t.Fatalf("build reserved-destination rename command: %v", err)
+	}
+	if !strings.Contains(arguments[4], "#{!=:#{@skid_internal},phone-shadow}") {
+		t.Fatalf("reserved-destination rename omitted the marker-only source guard: %q", arguments[4])
 	}
 }
 

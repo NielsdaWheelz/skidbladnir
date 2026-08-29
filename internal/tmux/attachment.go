@@ -284,7 +284,7 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
 		return nil, errors.New("tmux attachment identity is invalid")
 	}
-	condition := killIdentityCondition(spec.SourceID, spec.SourceName, spec.Server)
+	condition := mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server)
 	shadowSessionTarget := "=" + spec.ShadowName
 	shadowPaneTarget := shadowSessionTarget + ":"
 	success := strings.Join([]string{
@@ -321,7 +321,7 @@ func (client Client) selectShadowWindow(ctx context.Context, spec AttachmentSpec
 		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
 		return errors.New("tmux shadow window selection identity is invalid")
 	}
-	condition := "#{&&:" + killIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
+	condition := "#{&&:" + mutationIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
 		",#{==:#{@skid_internal}," + phoneShadowMarker + "}}"
 	output, err := client.Output(ctx, "select-shadow-window", "if-shell", "-F", "-t", shadowID, condition,
 		"select-window -t '"+shadowID+":"+sourceWindowID+"'",
@@ -371,7 +371,7 @@ func attachmentArmArguments(spec AttachmentSpec, shadowID string) ([]string, err
 		!sessionIDPattern.MatchString(shadowID) {
 		return nil, errors.New("tmux attachment arm identity is invalid")
 	}
-	condition := "#{&&:" + killIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
+	condition := "#{&&:" + mutationIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
 		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{>:#{session_attached},0}}}"
 	return []string{
 		"if-shell", "-F", "-t", shadowID, condition,
@@ -471,7 +471,7 @@ func shadowReleaseCondition(id, name string, server ServerIdentity) (string, err
 	if !sessionIDPattern.MatchString(id) || !phoneShadowNamePattern.MatchString(name) || !server.valid() {
 		return "", errors.New("tmux shadow identity is invalid")
 	}
-	return "#{&&:" + killIdentityCondition(id, name, server) +
+	return "#{&&:" + mutationIdentityCondition(id, name, server) +
 		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{==:#{session_attached},0}}}", nil
 }
 
@@ -642,7 +642,7 @@ func phoneShadowReconciliationArguments(record phoneShadowRecord) ([]string, err
 			return nil, errors.New("tmux phone-shadow reconciliation topology is invalid")
 		}
 	}
-	condition := "#{&&:" + killIdentityCondition(record.id, record.name, record.server) +
+	condition := "#{&&:" + mutationIdentityCondition(record.id, record.name, record.server) +
 		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{&&:#{==:#{session_attached},0},#{==:#{session_group_size}," + groupSizeText + "}}}}"
 	action := "kill-session -t '" + record.id + "'"
 	if record.groupSize == 1 {

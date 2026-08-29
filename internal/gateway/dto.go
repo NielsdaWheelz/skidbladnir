@@ -14,6 +14,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 type apiError struct {
@@ -34,7 +35,7 @@ var (
 	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
 	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
-	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh before killing it.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
+	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
 	errorPairingInviteRejected       = apiError{Code: "PairingInviteRejected", Message: "This fleet invite is invalid, expired, or already used.", Status: http.StatusUnauthorized, logCode: logging.ErrorPairingInviteRejected}
 	errorMachineIdentityMismatch     = apiError{Code: "MachineIdentityMismatch", Message: "The machine identity changed. Fleet reset is required.", Status: http.StatusConflict, logCode: logging.ErrorMachineIdentityMismatch}
 	errorSessionGroupedConflict      = apiError{Code: "SessionGroupedConflict", Message: "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.", Status: http.StatusConflict, logCode: logging.ErrorSessionGroupedConflict}
@@ -121,6 +122,9 @@ type stringField struct {
 }
 
 func (field *stringField) UnmarshalJSON(encoded []byte) error {
+	if field.present {
+		return errors.New("duplicate string field")
+	}
 	field.present = true
 	if bytes.Equal(encoded, []byte("null")) {
 		return errors.New("null is not a string")
@@ -131,6 +135,35 @@ func (field *stringField) UnmarshalJSON(encoded []byte) error {
 type killSessionRequest struct {
 	TmuxName      string `json:"tmuxName"`
 	IdentityToken string `json:"identityToken"`
+}
+
+type renameSessionRequest struct {
+	TmuxName      stringField `json:"tmuxName"`
+	NewTmuxName   stringField `json:"newTmuxName"`
+	IdentityToken stringField `json:"identityToken"`
+}
+
+func (request *renameSessionRequest) UnmarshalJSON(encoded []byte) error {
+	var members map[string]json.RawMessage
+	if err := strictjson.Decode(encoded, &members); err != nil {
+		return err
+	}
+	if len(members) != 3 || members["tmuxName"] == nil ||
+		members["newTmuxName"] == nil || members["identityToken"] == nil {
+		return errors.New("rename request does not have its exact fields")
+	}
+	var decoded renameSessionRequest
+	if err := json.Unmarshal(members["tmuxName"], &decoded.TmuxName); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(members["newTmuxName"], &decoded.NewTmuxName); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(members["identityToken"], &decoded.IdentityToken); err != nil {
+		return err
+	}
+	*request = decoded
+	return nil
 }
 
 type pressureResponseDTO struct {

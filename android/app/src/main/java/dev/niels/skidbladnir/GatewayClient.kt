@@ -170,19 +170,36 @@ internal class GatewayClient {
 
     fun killSession(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> {
         require(target.machineHandle == credential.machine.handle)
-        return executeJson(
-            request = killRequest(credential, target),
-            expectedStatus = 204,
-            decode = { encoded ->
-                if (encoded.isNotEmpty()) throw SerializationException("kill response was not empty")
-            },
-        )
+        return executeBodyless(killRequest(credential, target))
     }
 
     internal fun killRequest(credential: MachineCredential, target: SessionTarget): Request {
         require(target.machineHandle == credential.machine.handle)
         return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId))
             .delete(encodeKillSessionRequest(target.session).toRequestBody(jsonMediaType))
+            .build()
+    }
+
+    fun renameSession(
+        credential: MachineCredential,
+        target: SessionTarget,
+        newTmuxName: String,
+    ): GatewayResult<Unit> {
+        require(target.machineHandle == credential.machine.handle)
+        return executeBodyless(
+            request = renameRequest(credential, target, newTmuxName),
+            decodeFailure = ::decodeRenameHttpFailure,
+        )
+    }
+
+    internal fun renameRequest(
+        credential: MachineCredential,
+        target: SessionTarget,
+        newTmuxName: String,
+    ): Request {
+        require(target.machineHandle == credential.machine.handle)
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId))
+            .patch(encodeRenameSessionRequest(target, newTmuxName).toRequestBody(jsonMediaType))
             .build()
     }
 
@@ -221,6 +238,18 @@ internal class GatewayClient {
     } catch (_: IOException) {
         GatewayResult.Failure(GatewayFailure.Transport)
     }
+
+    private fun executeBodyless(
+        request: Request,
+        decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
+    ): GatewayResult<Unit> = executeJson(
+        request = request,
+        expectedStatus = 204,
+        decode = { encoded ->
+            if (encoded.isNotEmpty()) throw SerializationException("bodyless response was not empty")
+        },
+        decodeFailure = decodeFailure,
+    )
 
 }
 
@@ -278,6 +307,23 @@ internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFail
             ApiErrorCode.InternalError,
         )
     ) throw ProtocolDecodeException("pairing route error set")
+    return failure
+}
+
+internal fun decodeRenameHttpFailure(status: Int, encoded: String): GatewayFailure {
+    val failure = decodeGatewayHttpFailure(status, encoded)
+    if (failure is GatewayFailure.Api && failure.code !in setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.SessionNameInvalid,
+            ApiErrorCode.SessionNameConflict,
+            ApiErrorCode.SessionNotFound,
+            ApiErrorCode.SessionIdentityMismatch,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        )
+    ) throw ProtocolDecodeException("rename route error set")
     return failure
 }
 

@@ -20,6 +20,7 @@ var (
 const (
 	ServerEpochOption      = "@skid_server_epoch"
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
+	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
 )
 
 var (
@@ -169,6 +170,47 @@ func (client Client) KillSessionIfIdentityAndIsolated(ctx context.Context, id, n
 	}
 }
 
+func (client Client) RenameSessionIfIdentityAndOrdinary(
+	ctx context.Context,
+	id string,
+	expectedName string,
+	newName string,
+	server ServerIdentity,
+) (bool, error) {
+	arguments, err := renameSessionArguments(id, expectedName, newName, server)
+	if err != nil {
+		return false, err
+	}
+	output, err := client.Output(ctx, "rename-session-if-identity", arguments[0], arguments[1:]...)
+	if err != nil {
+		return false, err
+	}
+	switch output {
+	case renameSuccessMarker:
+		return true, nil
+	case identityMismatchMarker:
+		return false, nil
+	default:
+		return false, errors.New("tmux conditional rename returned unexpected output")
+	}
+}
+
+func renameSessionArguments(id, expectedName, newName string, server ServerIdentity) ([]string, error) {
+	if !sessionIDPattern.MatchString(id) || expectedName == "" ||
+		!tmuxCommandTokenPattern.MatchString(newName) || !server.valid() {
+		return nil, errors.New("tmux rename identity is invalid")
+	}
+	conditions := []string{mutationIdentityCondition(id, expectedName, server)}
+	if phoneShadowNamePattern.MatchString(expectedName) || phoneShadowNamePattern.MatchString(newName) {
+		conditions = append(conditions, "#{!=:#{@skid_internal},"+phoneShadowMarker+"}")
+	}
+	return []string{
+		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
+		"rename-session -t '" + id + "' '" + newName + "' ; display-message -p -l '" + renameSuccessMarker + "'",
+		"display-message -p -l '" + identityMismatchMarker + "'",
+	}, nil
+}
+
 func (client Client) AssignCharacterIfUnchanged(
 	ctx context.Context,
 	id string,
@@ -215,7 +257,7 @@ func characterAssignmentArguments(id, expected, character string, server ServerI
 
 func killEligibilityCondition(id, name string, server ServerIdentity) string {
 	isolated := "#{||:#{==:#{session_group_size},},#{==:#{session_group_size},1}}"
-	return "#{&&:" + killIdentityCondition(id, name, server) + "," + isolated + "}"
+	return "#{&&:" + mutationIdentityCondition(id, name, server) + "," + isolated + "}"
 }
 
 func (client Client) readServerEpoch(ctx context.Context, allowAbsent bool) (string, error) {
@@ -233,7 +275,7 @@ func formatLiteral(value string) string {
 	return strings.NewReplacer("#", "##", ",", "#,", "}", "#}").Replace(value)
 }
 
-func killIdentityCondition(id, name string, server ServerIdentity) string {
+func mutationIdentityCondition(id, name string, server ServerIdentity) string {
 	conditions := []string{
 		"#{==:#{" + ServerEpochOption + "}," + formatLiteral(server.Epoch) + "}",
 		"#{==:#{pid}," + formatLiteral(server.PID) + "}",

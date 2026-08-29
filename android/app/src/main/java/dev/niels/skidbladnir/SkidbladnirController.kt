@@ -49,6 +49,7 @@ internal sealed interface SkidbladnirUiState {
         val attempt: Int,
         val connection: TerminalUiStatus,
         val kill: KillState?,
+        val rename: RenameState? = null,
     ) : SkidbladnirUiState
 }
 
@@ -518,6 +519,7 @@ internal class SkidbladnirController(context: Context) {
     private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = MachineInventoryOperations(network, ::surfaceDefect)
+    private val pendingRenameFences = mutableMapOf<MachineHandle, Long>()
 
     /** Main-thread owner of the app-wide inventory-read indicator. */
     private val awaitedInventoryReads = AwaitedInventoryReads()
@@ -1037,6 +1039,69 @@ internal class SkidbladnirController(context: Context) {
         if (current.attempt == attempt && current.connection is TerminalUiStatus.Connected) terminalPage?.sendAccessory(accessory)
     }
 
+    fun openRename() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.rename != null || current.kill != null ||
+            !terminalActionAdmissible(current.machine.canMutate, current.connection)
+        ) return
+        terminalPage?.resetModifiers()
+        state = current.copy(rename = beginRename(current.target))
+    }
+
+    fun updateRenameDraft(draft: String) {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        val rename = current.rename ?: return
+        val updated = updateRenameDraft(rename, draft)
+        if (updated != rename) state = current.copy(rename = updated)
+    }
+
+    fun dismissRename() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        val rename = current.rename ?: return
+        val updated = dismissRename(rename)
+        if (updated != rename) state = current.copy(rename = updated)
+    }
+
+    fun submitRename() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        val rename = current.rename ?: return
+        val sending = beginRenameSending(
+            state = rename,
+            terminalTarget = current.target,
+            terminalActionsAdmissible = terminalActionAdmissible(current.machine.canMutate, current.connection),
+        ) ?: return
+        val credential = credentials[current.target.machineHandle] ?: return
+        val runtime = polling[current.target.machineHandle] ?: return
+        val attempt = current.attempt
+        val activeGeneration = generation
+        state = current.copy(rename = sending)
+        runtime.inventoryOperation.submitMutation(
+            onReserved = { fence -> requireRenameInventoryRefresh(current.target.machineHandle, fence) },
+        ) { mutationFence ->
+            val result = client.renameSession(credential, sending.target, sending.draft)
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential)) return@post
+                if (result is GatewayResult.Failure &&
+                    acceptAccessFailure(sending.target.machineHandle, result.failure)
+                ) return@post
+                val transition = completeRenameHttp(sending, result)
+                if (transition.clearMutationFence) {
+                    clearRenameInventoryRefresh(sending.target.machineHandle, mutationFence)
+                }
+                val terminal = state as? SkidbladnirUiState.Terminal
+                val activeRename = terminal?.rename
+                if (terminal?.attempt == attempt && activeRename?.phase == RenamePhase.Sending &&
+                    activeRename.target == sending.target && activeRename.draft == sending.draft
+                ) {
+                    state = terminal.copy(rename = transition.state)
+                }
+                if (transition.requireInventoryRead) {
+                    awaitInventory(sending.target.machineHandle, activeGeneration)
+                }
+            }
+        }
+    }
+
     fun reattachTerminal() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val handle = current.target.machineHandle
@@ -1101,7 +1166,7 @@ internal class SkidbladnirController(context: Context) {
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
-                if (terminalActionAdmissible(machine.canMutate, current.connection)) {
+                if (current.rename == null && terminalActionAdmissible(machine.canMutate, current.connection)) {
                     terminalPage?.resetModifiers()
                     current.copy(kill = kill)
                 } else {
@@ -1160,8 +1225,6 @@ internal class SkidbladnirController(context: Context) {
                         if (acceptAccessFailure(kill.target.machineHandle, result.failure)) return@post
                         leaveTerminal()
                         val message = when {
-                            result.failure == GatewayFailure.Api(ApiErrorCode.SessionIdentityMismatch) ->
-                                "${kill.machine.label.text}: the session changed. Pull down to check again before killing it."
                             killFailureIsDefinitive(result.failure) -> machineError(kill.machine, result.failure)
                             else -> "${kill.machine.label.text}: kill outcome unknown. Sessions are refreshing."
                         }
@@ -1199,6 +1262,7 @@ internal class SkidbladnirController(context: Context) {
 
     private fun stopPolling(handle: MachineHandle) {
         awaitedInventoryReads.stop(handle)
+        pendingRenameFences.remove(handle)
         polling.remove(handle)?.let { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
@@ -1267,9 +1331,9 @@ internal class SkidbladnirController(context: Context) {
                 mutationFenceSatisfied(machine.inventory, completedMutationFence)
             ) {
                 when (result) {
-                    is GatewayResult.Failure -> if (!acceptAccessFailure(handle, result.failure)) {
-                        markInventoryFailed(handle, result.failure)
-                    }
+                    is GatewayResult.Failure -> if (!acceptAccessFailure(handle, result.failure) &&
+                        pendingRenameFences[handle]?.let { completedMutationFence >= it } != true
+                    ) markInventoryFailed(handle, result.failure)
                     is GatewayResult.Success -> if (acceptMachineIdentity(credential, result.value)) {
                         updateMachine(handle) {
                             it.copy(
@@ -1277,6 +1341,10 @@ internal class SkidbladnirController(context: Context) {
                                 inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
                             )
                         }
+                        pendingRenameFences[handle]?.let { fence ->
+                            if (completedMutationFence >= fence) pendingRenameFences.remove(handle)
+                        }
+                        advanceTerminalRename(handle)
                     }
                 }
                 advanceCreatedTerminalAdmission(handle, completedMutationFence)
@@ -1308,6 +1376,14 @@ internal class SkidbladnirController(context: Context) {
         createdTerminalAdmission = null
         if (connection is TerminalUiStatus.ReconnectRequired) leaveTerminal()
         state = terminal.copy(connection = connection)
+    }
+
+    private fun advanceTerminalRename(handle: MachineHandle) {
+        val terminal = state as? SkidbladnirUiState.Terminal ?: return
+        if (terminal.target.machineHandle != handle) return
+        val reconciled = reconcileTerminalRename(terminal)
+        if (reconciled.detachTransport) leaveTerminal()
+        state = reconciled.terminal
     }
 
     private fun pollPressure(credential: MachineCredential, activeGeneration: Long) {
@@ -1394,6 +1470,20 @@ internal class SkidbladnirController(context: Context) {
         }
         val dashboard = state as? SkidbladnirUiState.Dashboard
         if (dashboard != null) state = dashboard.copy(machines = sortedMachineStates())
+    }
+
+    private fun requireRenameInventoryRefresh(handle: MachineHandle, fence: Long) {
+        check(pendingRenameFences.put(handle, fence) == null)
+        requireInventoryRefresh(handle, fence)
+    }
+
+    private fun clearRenameInventoryRefresh(handle: MachineHandle, fence: Long) {
+        if (pendingRenameFences[handle] != fence) return
+        pendingRenameFences.remove(handle)
+        updateMachine(handle) { machine ->
+            machine.copy(inventory = clearRenameMutationFence(machine.inventory, fence))
+        }
+        publishDashboardIfVisible()
     }
 
     private fun clearInventoryRefresh(handle: MachineHandle) {

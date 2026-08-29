@@ -31,6 +31,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/coder/websocket"
 )
 
 func TestBearerRemintRevokesThePreviousCredential(t *testing.T) {
@@ -88,6 +89,443 @@ func TestPressureMonitorSamplesTheHost(t *testing.T) {
 	}
 	if _, known := snapshot.Current.DiskAvailablePercent.Value(); !known || !isThresholdSignalStatus(snapshot.Current.DiskAvailablePercent.Status) {
 		t.Fatalf("host statfs signal invalid: value_known=%t status=%s", known, snapshot.Current.DiskAvailablePercent.Status)
+	}
+}
+
+func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSessionFixture(t)
+	ctx := context.Background()
+	const (
+		sourceName       = "rename-source"
+		firstName        = "rename-current"
+		collisionName    = "rename-existing"
+		rivalName        = "rename-rival"
+		disappearingName = "rename-disappearing"
+	)
+
+	target, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD:              fixture.project,
+		Profile:          "claude-work",
+		OptionalTmuxName: sourceName,
+	})
+	if err != nil {
+		t.Fatal("create rename target")
+	}
+	target = fixture.waitForSession(t, ctx, sourceName, sessions.StatusRunning, isRenameAgentStartupPending)
+	if target.Agent == nil || target.Agent.Provider != agentruntime.ProviderClaude || target.Agent.ProviderSession == nil ||
+		target.Agent.ProviderSession.Name() != sourceName {
+		t.Fatal("rename target did not expose its initial provider-owned name")
+	}
+	if _, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD: fixture.project, Profile: "personal", OptionalTmuxName: collisionName,
+	}); err != nil {
+		t.Fatal("create rename collision fixture")
+	}
+
+	bearerPath := filepath.Join(fixture.root, "rename-bearer")
+	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
+	if err != nil {
+		t.Fatal("mint rename gateway bearer")
+	}
+	var logs bytes.Buffer
+	server := httptest.NewServer(gateway.New(gateway.Config{
+		Sessions: fixture.manager,
+		Pressure: pressure.NewMonitor(),
+		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Pairing:  pairing.NewSlot(),
+		Logger:   logging.New(&logs),
+		Machine:  integrationMachine(t),
+		Platform: platform.Current(),
+	}))
+	t.Cleanup(server.Close)
+
+	connection := dialTerminal(
+		t,
+		server.Client(),
+		"ws"+strings.TrimPrefix(server.URL, "http")+"/v1/sessions/"+url.PathEscape(target.TmuxID)+"/terminal",
+		bearer,
+		target.IdentityToken,
+	)
+	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+	terminalReader := startRenameTerminalReader(t, connection)
+
+	response := request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	inventoryBefore := decodeObject(t, response)
+	cardBefore := findSession(t, inventoryBefore, sourceName)
+	tmuxBefore := renameInvariantSnapshot(t, fixture, target.TmuxID)
+	renameLogsStart := logs.Len()
+
+	response = request(
+		t,
+		server.Client(),
+		http.MethodPatch,
+		server.URL+"/v1/sessions/"+url.PathEscape(target.TmuxID),
+		bearer,
+		"",
+		renameBody(t, sourceName, firstName, target.IdentityToken),
+	)
+	assertBodylessStatus(t, response, http.StatusNoContent)
+
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	inventoryAfter := decodeObject(t, response)
+	cardAfter := findSession(t, inventoryAfter, firstName)
+	assertSessionCardChangedOnlyName(t, cardBefore, cardAfter, firstName)
+	if providerSessionName(cardAfter) != sourceName {
+		t.Fatal("tmux rename synchronized the independent provider-owned name")
+	}
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("tmux rename changed session lifetime, topology, process, client, option, selection, or geometry facts")
+	}
+	terminalReader.requireResponsive(t, connection)
+
+	staleToken := target.IdentityToken
+	if staleToken[len(staleToken)-1] == '0' {
+		staleToken = staleToken[:len(staleToken)-1] + "1"
+	} else {
+		staleToken = staleToken[:len(staleToken)-1] + "0"
+	}
+	rejected := []struct {
+		name   string
+		body   string
+		status int
+		code   string
+	}{
+		{name: "empty expected name", body: renameBody(t, "", "rename-unused", target.IdentityToken), status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "empty identity token", body: renameBody(t, firstName, "rename-unused", ""), status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "missing desired name", body: fmt.Sprintf(`{"tmuxName":%q,"identityToken":%q}`, firstName, target.IdentityToken), status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "null desired name", body: fmt.Sprintf(`{"tmuxName":%q,"newTmuxName":null,"identityToken":%q}`, firstName, target.IdentityToken), status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "wrong-typed desired name", body: fmt.Sprintf(`{"tmuxName":%q,"newTmuxName":7,"identityToken":%q}`, firstName, target.IdentityToken), status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "trailing desired-name request", body: renameBody(t, firstName, "rename-unused", target.IdentityToken) + ` {}`, status: http.StatusBadRequest, code: "InvalidRequest"},
+		{name: "empty desired name", body: renameBody(t, firstName, "", target.IdentityToken), status: http.StatusUnprocessableEntity, code: "SessionNameInvalid"},
+		{name: "invalid desired name", body: renameBody(t, firstName, "unsafe:name", target.IdentityToken), status: http.StatusUnprocessableEntity, code: "SessionNameInvalid"},
+		{name: "same name", body: renameBody(t, firstName, firstName, target.IdentityToken), status: http.StatusConflict, code: "SessionNameConflict"},
+		{name: "stale identity precedes same name", body: renameBody(t, firstName, firstName, staleToken), status: http.StatusConflict, code: "SessionIdentityMismatch"},
+		{name: "destination collision", body: renameBody(t, firstName, collisionName, target.IdentityToken), status: http.StatusConflict, code: "SessionNameConflict"},
+		{name: "stale expected name", body: renameBody(t, sourceName, "rename-unused", target.IdentityToken), status: http.StatusConflict, code: "SessionIdentityMismatch"},
+		{name: "stale lifetime token", body: renameBody(t, firstName, "rename-unused", staleToken), status: http.StatusConflict, code: "SessionIdentityMismatch"},
+		{name: "unknown field", body: fmt.Sprintf(`{"tmuxName":%q,"newTmuxName":"rename-unused","identityToken":%q,"unknown":true}`, firstName, target.IdentityToken), status: http.StatusBadRequest, code: "InvalidRequest"},
+	}
+	for _, test := range rejected {
+		t.Run(test.name, func(t *testing.T) {
+			response := request(
+				t,
+				server.Client(),
+				http.MethodPatch,
+				server.URL+"/v1/sessions/"+url.PathEscape(target.TmuxID),
+				bearer,
+				"",
+				test.body,
+			)
+			assertError(t, response, test.status, test.code)
+		})
+	}
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("a rejected rename mutated the exact target")
+	}
+
+	classificationSource, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD: fixture.project, Profile: "personal", OptionalTmuxName: "rename-classify-source",
+	})
+	if err != nil {
+		t.Fatal("create rename classification source")
+	}
+	classificationDestination, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD: fixture.project, Profile: "personal", OptionalTmuxName: "rename-classify-occupied",
+	})
+	if err != nil {
+		t.Fatal("create rename classification destination")
+	}
+	classificationIDs := []string{classificationSource.TmuxID, classificationDestination.TmuxID}
+	t.Cleanup(func() {
+		if output, unsetErr := isolatedTmuxCommand(
+			tmuxPath, "-L", fixture.socket, "-f", "/dev/null", "set-hook", "-gu", "after-list-sessions",
+		).CombinedOutput(); unsetErr != nil {
+			t.Errorf("unset exact rename classification hook: output_bytes=%d", len(output))
+		}
+		for _, id := range classificationIDs {
+			_, _ = isolatedTmuxCommand(
+				tmuxPath, "-L", fixture.socket, "-f", "/dev/null", "kill-session", "-t", id,
+			).CombinedOutput()
+		}
+	})
+	const classificationExternalName = "rename-classify-external"
+	classificationHook := "set-hook -gu after-list-sessions ; rename-session -t '" +
+		classificationSource.TmuxID + "' '" + classificationExternalName + "'"
+	fixture.tmux(t, "set-hook", "-g", "after-list-sessions", classificationHook)
+	response = request(
+		t,
+		server.Client(),
+		http.MethodPatch,
+		server.URL+"/v1/sessions/"+url.PathEscape(classificationSource.TmuxID),
+		bearer,
+		"",
+		renameBody(
+			t,
+			classificationSource.TmuxName,
+			classificationDestination.TmuxName,
+			classificationSource.IdentityToken,
+		),
+	)
+	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	classificationInventory := decodeObject(t, response)
+	classificationCard := findSession(t, classificationInventory, classificationExternalName)
+	if classificationCard["tmuxId"] != classificationSource.TmuxID ||
+		classificationCard["identityToken"] != classificationSource.IdentityToken {
+		t.Fatal("rename classification race did not preserve the externally renamed source identity")
+	}
+
+	disappearing, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD: fixture.project, Profile: "personal", OptionalTmuxName: disappearingName,
+	})
+	if err != nil {
+		t.Fatal("create disappearing rename fixture")
+	}
+	fixture.tmux(t, "kill-session", "-t", disappearing.TmuxID)
+	response = request(
+		t,
+		server.Client(),
+		http.MethodPatch,
+		server.URL+"/v1/sessions/"+url.PathEscape(disappearing.TmuxID),
+		bearer,
+		"",
+		renameBody(t, disappearingName, "rename-missing-target", disappearing.IdentityToken),
+	)
+	assertError(t, response, http.StatusNotFound, "SessionNotFound")
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("a missing rename target caused collateral mutation")
+	}
+
+	const (
+		firstRaceName  = "rename-first-writer"
+		secondRaceName = "rename-second-writer"
+	)
+	sameSourceRace := runConcurrentRenameRequests(t, server.Client(), bearer, []renameHTTPRequest{
+		{target: server.URL + "/v1/sessions/" + url.PathEscape(target.TmuxID), body: renameBody(t, firstName, firstRaceName, target.IdentityToken)},
+		{target: server.URL + "/v1/sessions/" + url.PathEscape(target.TmuxID), body: renameBody(t, firstName, secondRaceName, target.IdentityToken)},
+	})
+	assertConcurrentRenameResults(t, sameSourceRace, "SessionIdentityMismatch", "The session changed. Refresh and try again.")
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	inventoryAfter = decodeObject(t, response)
+	mainAfterFirstRace := findSessionID(t, inventoryAfter, target.TmuxID)
+	mainRaceName := mainAfterFirstRace["tmuxName"].(string)
+	if mainRaceName != firstRaceName && mainRaceName != secondRaceName {
+		t.Fatal("same-source rename race published neither requested winner")
+	}
+	assertSessionCardChangedOnlyName(t, cardAfter, mainAfterFirstRace, mainRaceName)
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("same-source rename race changed non-name target facts")
+	}
+
+	rival, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		CWD: fixture.project, Profile: "personal", OptionalTmuxName: rivalName,
+	})
+	if err != nil {
+		t.Fatal("create destination-race rival")
+	}
+	rival = fixture.waitForSession(t, ctx, rivalName, sessions.StatusRunning, isRenameAgentStartupPending)
+	const destinationName = "rename-one-destination"
+	rivalBefore := renameInvariantSnapshot(t, fixture, rival.TmuxID)
+	destinationRace := runConcurrentRenameRequests(t, server.Client(), bearer, []renameHTTPRequest{
+		{target: server.URL + "/v1/sessions/" + url.PathEscape(target.TmuxID), body: renameBody(t, mainRaceName, destinationName, target.IdentityToken)},
+		{target: server.URL + "/v1/sessions/" + url.PathEscape(rival.TmuxID), body: renameBody(t, rivalName, destinationName, rival.IdentityToken)},
+	})
+	assertConcurrentRenameResults(t, destinationRace, "SessionNameConflict", "A session with that name already exists.")
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	inventoryAfter = decodeObject(t, response)
+	mainAfterDestinationRace := findSessionID(t, inventoryAfter, target.TmuxID)
+	rivalAfterDestinationRace := findSessionID(t, inventoryAfter, rival.TmuxID)
+	destinationWinners := 0
+	if mainAfterDestinationRace["tmuxName"] == destinationName {
+		destinationWinners++
+	}
+	if rivalAfterDestinationRace["tmuxName"] == destinationName {
+		destinationWinners++
+	}
+	if destinationWinners != 1 {
+		t.Fatalf("destination rename race winner count=%d, want 1", destinationWinners)
+	}
+	mainAfterDestinationName := mainAfterDestinationRace["tmuxName"].(string)
+	assertSessionCardChangedOnlyName(t, mainAfterFirstRace, mainAfterDestinationRace, mainAfterDestinationName)
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore || renameInvariantSnapshot(t, fixture, rival.TmuxID) != rivalBefore {
+		t.Fatal("destination rename race changed non-name facts")
+	}
+
+	rivalCurrentName := rivalAfterDestinationRace["tmuxName"].(string)
+	if err := fixture.manager.Kill(ctx, sessions.KillInput{
+		TmuxID: rival.TmuxID, TmuxName: rivalCurrentName, IdentityToken: rival.IdentityToken,
+	}); err != nil {
+		t.Fatal("remove destination-race rival")
+	}
+	response = request(
+		t,
+		server.Client(),
+		http.MethodPatch,
+		server.URL+"/v1/sessions/"+url.PathEscape(target.TmuxID),
+		bearer,
+		"",
+		renameBody(t, mainAfterDestinationName, sourceName, target.IdentityToken),
+	)
+	assertBodylessStatus(t, response, http.StatusNoContent)
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	finalInventory := decodeObject(t, response)
+	finalCard := findSession(t, finalInventory, sourceName)
+	assertSessionCardChangedOnlyName(t, cardBefore, finalCard, sourceName)
+	if providerSessionName(finalCard) != sourceName || renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("rename restoration changed provider or non-name tmux facts")
+	}
+	terminalReader.requireResponsive(t, connection)
+
+	assertContentFreePatchRequestLogs(t, logs.String()[renameLogsStart:])
+
+	assertGatewayRenameRejectsRestartedLifetime(t)
+}
+
+func assertGatewayRenameRejectsRestartedLifetime(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	project := filepath.Join(home, "project")
+	profileHome := filepath.Join(home, "profile")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		t.Fatal("create restart project fixture")
+	}
+	if err := os.Mkdir(profileHome, 0o700); err != nil {
+		t.Fatal("create restart profile fixture")
+	}
+	cataloguePath := filepath.Join(root, "catalogue.json")
+	if err := os.WriteFile(cataloguePath, []byte(`[{"key":"norse.durinn","displayName":"Durinn"}]`), 0o600); err != nil {
+		t.Fatal("write restart catalogue fixture")
+	}
+	socket := randomTmuxSocketName(t, "skid-rename-restart")
+	socketPath := namedTmuxSocketPath(socket)
+	manager, err := sessions.New(sessions.Config{
+		TmuxPath:      tmuxPath,
+		SocketName:    socket,
+		Home:          home,
+		CataloguePath: cataloguePath,
+		Profiles: []agentruntime.Profile{{
+			Key:                  "personal",
+			Label:                "Personal",
+			Provider:             agentruntime.ProviderCodex,
+			Command:              sleepPath,
+			Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHome}},
+			ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "sleep"}},
+			Arguments:            []string{"300"},
+		}},
+	})
+	if err != nil {
+		t.Fatal("construct restart rename manager")
+	}
+	ctx := context.Background()
+	var cleanup *sessions.Session
+	t.Cleanup(func() {
+		if cleanup == nil {
+			return
+		}
+		listed, listErr := manager.List(ctx)
+		if listErr != nil {
+			t.Error("list restart rename cleanup target")
+			return
+		}
+		for _, candidate := range listed {
+			if candidate.TmuxID != cleanup.TmuxID {
+				continue
+			}
+			if killErr := manager.Kill(ctx, sessions.KillInput{
+				TmuxID: candidate.TmuxID, TmuxName: candidate.TmuxName, IdentityToken: candidate.IdentityToken,
+			}); killErr != nil {
+				t.Error("kill restart rename cleanup target")
+			}
+			return
+		}
+	})
+
+	const recycledName = "rename-restarted"
+	first, err := manager.Create(ctx, sessions.CreateInput{
+		CWD: project, Profile: "personal", OptionalTmuxName: recycledName,
+	})
+	if err != nil {
+		t.Fatal("create pre-restart rename target")
+	}
+	cleanup = &first
+	firstServer := captureTestTmuxServer(t, tmuxPath, socketPath)
+
+	bearerPath := filepath.Join(root, "bearer")
+	bearer, err := auth.Mint(auth.MintOptions{Path: bearerPath})
+	if err != nil {
+		t.Fatal("mint restart gateway bearer")
+	}
+	server := httptest.NewServer(gateway.New(gateway.Config{
+		Sessions: manager,
+		Pressure: pressure.NewMonitor(),
+		Bearer:   auth.FileVerifier{Path: bearerPath},
+		Pairing:  pairing.NewSlot(),
+		Logger:   logging.New(io.Discard),
+		Machine:  integrationMachine(t),
+		Platform: platform.Current(),
+	}))
+	t.Cleanup(server.Close)
+
+	if err := manager.Kill(ctx, sessions.KillInput{
+		TmuxID: first.TmuxID, TmuxName: first.TmuxName, IdentityToken: first.IdentityToken,
+	}); err != nil {
+		t.Fatal("end pre-restart exact lifetime")
+	}
+	cleanup = nil
+	deadline := time.Now().Add(tmuxCleanupTimeout)
+	for processStartIdentity(firstServer.pid) == firstServer.kernelStartTime {
+		if time.Now().After(deadline) {
+			t.Fatal("pre-restart tmux server did not exit")
+		}
+		time.Sleep(tmuxConvergencePollInterval)
+	}
+
+	second, err := manager.Create(ctx, sessions.CreateInput{
+		CWD: project, Profile: "personal", OptionalTmuxName: recycledName,
+	})
+	if err != nil {
+		t.Fatal("create recycled rename target")
+	}
+	cleanup = &second
+	if second.TmuxID != first.TmuxID || second.TmuxName != first.TmuxName || second.IdentityToken == first.IdentityToken {
+		t.Fatalf(
+			"restart fixture did not recycle local identity under a new server lifetime: id_match=%t name_match=%t token_changed=%t",
+			second.TmuxID == first.TmuxID,
+			second.TmuxName == first.TmuxName,
+			second.IdentityToken != first.IdentityToken,
+		)
+	}
+	restartFixture := sessionFixture{manager: manager, socket: socket}
+	second = restartFixture.waitForSession(t, ctx, recycledName, sessions.StatusRunning, isRenameAgentStartupPending)
+	cleanup = &second
+	before := renameInvariantSnapshot(t, restartFixture, second.TmuxID)
+
+	response := request(
+		t,
+		server.Client(),
+		http.MethodPatch,
+		server.URL+"/v1/sessions/"+url.PathEscape(second.TmuxID),
+		bearer,
+		"",
+		renameBody(t, recycledName, "rename-stale-server", first.IdentityToken),
+	)
+	assertError(t, response, http.StatusConflict, "SessionIdentityMismatch")
+	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")
+	assertStatus(t, response, http.StatusOK)
+	inventory := decodeObject(t, response)
+	current := findSession(t, inventory, recycledName)
+	if current["tmuxId"] != second.TmuxID || current["identityToken"] != second.IdentityToken ||
+		renameInvariantSnapshot(t, restartFixture, second.TmuxID) != before {
+		t.Fatal("pre-restart rename token changed the recycled session")
 	}
 }
 
@@ -737,6 +1175,398 @@ func requestForMachine(t *testing.T, client *http.Client, method, target, bearer
 	return response
 }
 
+type renameHTTPRequest struct {
+	target string
+	body   string
+}
+
+type renameHTTPResult struct {
+	status int
+	body   []byte
+	err    error
+}
+
+type renameTerminalReader struct {
+	cancel context.CancelFunc
+	done   <-chan struct{}
+}
+
+func startRenameTerminalReader(t *testing.T, connection *websocket.Conn) renameTerminalReader {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			messageType, payload, err := connection.Read(ctx)
+			if err != nil {
+				return
+			}
+			if messageType != websocket.MessageText {
+				continue
+			}
+			var control struct {
+				Kind string `json:"kind"`
+			}
+			if json.Unmarshal(payload, &control) == nil && control.Kind == "Error" {
+				return
+			}
+		}
+	}()
+	reader := renameTerminalReader{cancel: cancel, done: done}
+	t.Cleanup(func() {
+		reader.cancel()
+		select {
+		case <-reader.done:
+		case <-time.After(terminalIntegrationTimeout):
+			t.Error("rename terminal reader did not stop within its test-owned deadline")
+		}
+	})
+	return reader
+}
+
+func (reader renameTerminalReader) requireResponsive(t *testing.T, connection *websocket.Conn) {
+	t.Helper()
+	select {
+	case <-reader.done:
+		t.Fatal("rename terminal reader ended before the survival probe")
+	default:
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), terminalIntegrationTimeout)
+	err := connection.Ping(ctx)
+	cancel()
+	if err != nil {
+		t.Fatal("rename terminal did not answer the bounded survival probe")
+	}
+	select {
+	case <-reader.done:
+		t.Fatal("rename terminal reader ended during the survival probe")
+	default:
+	}
+}
+
+func renameBody(t *testing.T, tmuxName, newTmuxName, identityToken string) string {
+	t.Helper()
+	body, err := json.Marshal(struct {
+		TmuxName      string `json:"tmuxName"`
+		NewTmuxName   string `json:"newTmuxName"`
+		IdentityToken string `json:"identityToken"`
+	}{
+		TmuxName: tmuxName, NewTmuxName: newTmuxName, IdentityToken: identityToken,
+	})
+	if err != nil {
+		t.Fatal("encode rename request")
+	}
+	return string(body)
+}
+
+func isRenameAgentStartupPending(status sessions.Status) bool {
+	return isUnknownPollFailure(status) ||
+		status.Kind == sessions.StatusShell && status.Signal == sessions.StatusSignalProcess
+}
+
+func runConcurrentRenameRequests(t *testing.T, client *http.Client, bearer string, requests []renameHTTPRequest) []renameHTTPResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), terminalIntegrationTimeout)
+	defer cancel()
+	start := make(chan struct{})
+	results := make(chan renameHTTPResult, len(requests))
+	for _, request := range requests {
+		request := request
+		go func() {
+			<-start
+			httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPatch, request.target, bytes.NewBufferString(request.body))
+			if err != nil {
+				results <- renameHTTPResult{err: err}
+				return
+			}
+			httpRequest.Header.Set("Authorization", "Bearer "+bearer)
+			httpRequest.Header.Set("Skidbladnir-Machine", integrationMachineText)
+			httpRequest.Header.Set("Content-Type", "application/json")
+			response, err := client.Do(httpRequest)
+			if err != nil {
+				results <- renameHTTPResult{err: err}
+				return
+			}
+			body, readErr := io.ReadAll(response.Body)
+			closeErr := response.Body.Close()
+			if readErr != nil {
+				err = readErr
+			} else if closeErr != nil {
+				err = closeErr
+			}
+			results <- renameHTTPResult{status: response.StatusCode, body: body, err: err}
+		}()
+	}
+	close(start)
+	observed := make([]renameHTTPResult, 0, len(requests))
+	for range requests {
+		select {
+		case result := <-results:
+			observed = append(observed, result)
+		case <-ctx.Done():
+			t.Fatal("concurrent rename requests did not finish within the test-owned deadline")
+		}
+	}
+	return observed
+}
+
+func assertContentFreePatchRequestLogs(t *testing.T, encoded string) {
+	t.Helper()
+	allowedKeys := map[string]struct{}{
+		"event.name":                {},
+		"http.request.method":       {},
+		"http.route":                {},
+		"http.response.status_code": {},
+		"skidbladnir.duration.ms":   {},
+		"skidbladnir.error.code":    {},
+	}
+	expectedErrors := map[int]map[string]struct{}{
+		http.StatusBadRequest: {
+			string(logging.ErrorInvalidRequest): {},
+		},
+		http.StatusNotFound: {
+			string(logging.ErrorSessionNotFound): {},
+		},
+		http.StatusConflict: {
+			string(logging.ErrorSessionNameConflict):     {},
+			string(logging.ErrorSessionIdentityMismatch): {},
+		},
+		http.StatusUnprocessableEntity: {
+			string(logging.ErrorSessionNameInvalid): {},
+		},
+	}
+	patchCount := 0
+	for _, line := range strings.Split(encoded, "\n") {
+		if line == "" {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(line), &fields); err != nil {
+			t.Fatal("rename flow emitted a non-JSON structured log line")
+		}
+		eventName, ok := fields["event.name"].(string)
+		if !ok {
+			t.Fatal("rename flow emitted a structured log without a closed event name")
+		}
+		switch eventName {
+		case "Sessions.Listed":
+			continue
+		case "Request.Completed":
+		default:
+			t.Fatal("rename flow emitted an event outside request completion and authoritative inventory")
+		}
+		method, ok := fields["http.request.method"].(string)
+		if !ok || method != http.MethodPatch {
+			continue
+		}
+		patchCount++
+		for key := range fields {
+			if _, allowed := allowedKeys[key]; !allowed {
+				t.Fatal("PATCH request completion log exposed a field outside the exact allowed set")
+			}
+		}
+		if fields["event.name"] != "Request.Completed" || fields["http.request.method"] != http.MethodPatch ||
+			fields["http.route"] != string(logging.RouteSession) {
+			t.Fatal("PATCH request completion log did not use the exact event, method, and route")
+		}
+		statusNumber, ok := fields["http.response.status_code"].(float64)
+		status := int(statusNumber)
+		if !ok || statusNumber != float64(status) {
+			t.Fatal("PATCH request completion log did not encode an integer HTTP status")
+		}
+		duration, ok := fields["skidbladnir.duration.ms"].(float64)
+		if !ok || duration < 0 || duration != float64(int64(duration)) {
+			t.Fatal("PATCH request completion log did not encode a nonnegative integer duration")
+		}
+		errorValue, hasError := fields["skidbladnir.error.code"]
+		if status == http.StatusNoContent {
+			if hasError || len(fields) != 5 {
+				t.Fatal("successful PATCH request completion log contained an error or an extra field")
+			}
+			continue
+		}
+		expectedCodes, knownStatus := expectedErrors[status]
+		errorCode, stringError := errorValue.(string)
+		if !knownStatus || !hasError || !stringError || len(fields) != 6 {
+			t.Fatal("rejected PATCH request completion log did not contain the exact closed fields")
+		}
+		if _, expected := expectedCodes[errorCode]; !expected {
+			t.Fatal("rejected PATCH request completion log used an error outside its closed status mapping")
+		}
+	}
+	if patchCount == 0 {
+		t.Fatal("rename flow emitted no PATCH request completion logs")
+	}
+}
+
+func assertConcurrentRenameResults(t *testing.T, results []renameHTTPResult, loserCode, loserMessage string) {
+	t.Helper()
+	if len(results) != 2 {
+		t.Fatalf("concurrent rename result count=%d, want 2", len(results))
+	}
+	successes := 0
+	losers := 0
+	for _, result := range results {
+		if result.err != nil {
+			t.Fatal("concurrent rename request did not return an HTTP result")
+		}
+		switch result.status {
+		case http.StatusNoContent:
+			successes++
+			if len(result.body) != 0 {
+				t.Fatalf("successful concurrent rename returned %d body bytes, want 0", len(result.body))
+			}
+		case http.StatusConflict:
+			losers++
+			var body map[string]any
+			if err := json.Unmarshal(result.body, &body); err != nil {
+				t.Fatal("decode concurrent rename rejection")
+			}
+			if len(body) != 2 || body["code"] != loserCode || body["message"] != loserMessage {
+				t.Fatal("concurrent rename loser did not expose the exact typed rejection")
+			}
+		default:
+			t.Fatalf("concurrent rename status=%d, want 204 or 409; response_body_bytes=%d", result.status, len(result.body))
+		}
+	}
+	if successes != 1 || losers != 1 {
+		t.Fatalf("concurrent rename outcomes: successes=%d losers=%d, want 1/1", successes, losers)
+	}
+}
+
+func assertBodylessStatus(t *testing.T, response *http.Response, want int) {
+	t.Helper()
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil {
+		t.Fatal("read bodyless HTTP response")
+	}
+	if response.StatusCode != want || len(body) != 0 {
+		t.Fatalf("HTTP bodyless result: status=%d want=%d response_body_bytes=%d", response.StatusCode, want, len(body))
+	}
+}
+
+func assertSessionCardChangedOnlyName(t *testing.T, before, after map[string]any, wantName string) {
+	t.Helper()
+	if after["tmuxName"] != wantName {
+		t.Fatal("authoritative inventory did not expose the expected tmux name")
+	}
+	beforeFacts := make(map[string]any, len(before)-1)
+	afterFacts := make(map[string]any, len(after)-1)
+	for key, value := range before {
+		if key != "tmuxName" {
+			beforeFacts[key] = renameStableCardField(key, value)
+		}
+	}
+	for key, value := range after {
+		if key != "tmuxName" {
+			afterFacts[key] = renameStableCardField(key, value)
+		}
+	}
+	if !reflect.DeepEqual(beforeFacts, afterFacts) {
+		t.Fatal("authoritative inventory changed a non-name session fact")
+	}
+}
+
+func renameStableCardField(key string, value any) any {
+	if key != "status" {
+		return value
+	}
+	status, ok := value.(map[string]any)
+	if !ok {
+		return value
+	}
+	stable := make(map[string]any, len(status)-1)
+	for statusKey, statusValue := range status {
+		if statusKey != "signalAt" {
+			stable[statusKey] = statusValue
+		}
+	}
+	return stable
+}
+
+func providerSessionName(card map[string]any) string {
+	agent, ok := card["agent"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	providerSession, ok := agent["providerSession"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	name, _ := providerSession["name"].(string)
+	return name
+}
+
+func renameInvariantSnapshot(t *testing.T, fixture sessionFixture, tmuxID string) string {
+	t.Helper()
+	session := fixture.tmux(t, "display-message", "-p", "-t", tmuxID,
+		"#{session_id}|#{session_attached}|#{session_group_size}|#{session_group_attached}|#{session_width}|#{session_height}|#{window_id}|#{pane_id}|#{pane_pid}|#{@skid_internal}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}")
+	windows := strings.Split(fixture.tmux(t, "list-windows", "-t", tmuxID, "-F",
+		"#{window_id}|#{window_index}|#{window_active}|#{window_name}|#{window_panes}|#{window_width}|#{window_height}|#{window_layout}|#{window_active_clients}"), "\n")
+	panes := strings.Split(fixture.tmux(t, "list-panes", "-s", "-t", tmuxID, "-F",
+		"#{window_id}|#{pane_id}|#{pane_index}|#{pane_active}|#{pane_pid}|#{pane_width}|#{pane_height}|#{pane_current_path}|#{pane_current_command}"), "\n")
+	group := fixture.tmux(t, "display-message", "-p", "-t", tmuxID, "#{session_group}")
+	groupMembers := make([]string, 0)
+	memberSet := make(map[string]struct{})
+	for _, line := range strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_group}"), "\n") {
+		fields := strings.SplitN(line, "|", 2)
+		if len(fields) == 2 && fields[1] == group {
+			groupMembers = append(groupMembers, fields[0])
+			memberSet[fields[0]] = struct{}{}
+		}
+	}
+	clients := make([]string, 0)
+	for _, line := range strings.Split(fixture.tmux(t, "list-clients", "-F",
+		"#{session_id}|#{client_name}|#{client_width}|#{client_height}|#{client_flags}"), "\n") {
+		fields := strings.SplitN(line, "|", 2)
+		if len(fields) == 2 {
+			if _, belongs := memberSet[fields[0]]; belongs {
+				clients = append(clients, line)
+			}
+		}
+	}
+	sessionOptions := strings.Split(fixture.tmux(t, "show-options", "-t", tmuxID), "\n")
+	windowOptions := make([]string, 0)
+	for _, window := range windows {
+		fields := strings.SplitN(window, "|", 2)
+		if len(fields) != 2 {
+			t.Fatal("malformed rename window snapshot")
+		}
+		for _, option := range strings.Split(fixture.tmux(t, "show-options", "-w", "-t", fields[0]), "\n") {
+			if option != "" {
+				windowOptions = append(windowOptions, fields[0]+"|"+option)
+			}
+		}
+	}
+	paneOptions := make([]string, 0)
+	for _, pane := range panes {
+		fields := strings.SplitN(pane, "|", 3)
+		if len(fields) != 3 {
+			t.Fatal("malformed rename pane snapshot")
+		}
+		for _, option := range strings.Split(fixture.tmux(t, "show-options", "-p", "-t", fields[1]), "\n") {
+			if option != "" {
+				paneOptions = append(paneOptions, fields[1]+"|"+option)
+			}
+		}
+	}
+	for _, values := range [][]string{windows, panes, groupMembers, clients, sessionOptions, windowOptions, paneOptions} {
+		slices.Sort(values)
+	}
+	return strings.Join([]string{
+		session,
+		strings.Join(windows, "\n"),
+		strings.Join(panes, "\n"),
+		strings.Join(groupMembers, "\n"),
+		strings.Join(clients, "\n"),
+		strings.Join(sessionOptions, "\n"),
+		strings.Join(windowOptions, "\n"),
+		strings.Join(paneOptions, "\n"),
+	}, "\n")
+}
+
 func assertStatus(t *testing.T, response *http.Response, want int) {
 	t.Helper()
 	if response.StatusCode != want {
@@ -757,8 +1587,10 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 		"WorkingDirectoryUnavailable": "That directory does not exist or cannot be opened.",
 		"ProfileUnknown":              "Choose an available profile.",
 		"SessionNameInvalid":          "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.",
+		"SessionNameConflict":         "A session with that name already exists.",
+		"SessionNotFound":             "That session no longer exists.",
 		"ObjectiveInvalid":            "Use 1–240 characters without terminal controls.",
-		"SessionIdentityMismatch":     "The session changed. Refresh before killing it.",
+		"SessionIdentityMismatch":     "The session changed. Refresh and try again.",
 		"MachineIdentityMismatch":     "The machine identity changed. Fleet reset is required.",
 		"SessionGroupedConflict":      "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.",
 	}
@@ -936,5 +1768,18 @@ func findSession(t *testing.T, inventory map[string]any, name string) map[string
 		}
 	}
 	t.Fatalf("expected session not found in inventory: session_count=%d", len(sessions))
+	return nil
+}
+
+func findSessionID(t *testing.T, inventory map[string]any, tmuxID string) map[string]any {
+	t.Helper()
+	sessions := inventory["sessions"].([]any)
+	for _, value := range sessions {
+		session := value.(map[string]any)
+		if session["tmuxId"] == tmuxID {
+			return session
+		}
+	}
+	t.Fatalf("expected session id not found in inventory: session_count=%d", len(sessions))
 	return nil
 }

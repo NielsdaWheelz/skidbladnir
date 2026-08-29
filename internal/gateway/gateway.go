@@ -33,6 +33,7 @@ type sessionManager interface {
 	Profiles() []agentruntime.Profile
 	List(context.Context) ([]sessions.Session, error)
 	Create(context.Context, sessions.CreateInput) (sessions.Session, error)
+	Rename(context.Context, sessions.RenameInput) error
 	ValidateKill(context.Context, sessions.KillInput) error
 	Kill(context.Context, sessions.KillInput) error
 	ValidateTerminal(context.Context, string, string) error
@@ -115,6 +116,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			method = logging.MethodGet
 		case http.MethodPost:
 			method = logging.MethodPost
+		case http.MethodPatch:
+			method = logging.MethodPatch
 		case http.MethodDelete:
 			method = logging.MethodDelete
 		}
@@ -172,6 +175,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.readPressure(writer)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/terminal"):
 		gateway.openTerminal(writer, request)
+	case request.Method == http.MethodPatch && strings.HasPrefix(request.URL.Path, "/v1/sessions/"):
+		gateway.renameSession(writer, request)
 	case request.Method == http.MethodDelete && strings.HasPrefix(request.URL.Path, "/v1/sessions/"):
 		gateway.killSession(writer, request)
 	default:
@@ -412,8 +417,8 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 
 func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
 	startedAt := time.Now()
-	tmuxID := strings.TrimPrefix(request.URL.Path, "/v1/sessions/")
-	if tmuxID == "" || strings.ContainsRune(tmuxID, '/') {
+	tmuxID, validPath := parseSessionPath(request.URL.Path)
+	if !validPath {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -447,6 +452,40 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 	}
 	gateway.log(event)
 	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (gateway *Gateway) renameSession(writer http.ResponseWriter, request *http.Request) {
+	tmuxID, validPath := parseSessionPath(request.URL.Path)
+	if !validPath {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	input, failure := decodeJSON[renameSessionRequest](writer, request)
+	if failure != nil {
+		writeError(writer, *failure)
+		return
+	}
+	if !input.TmuxName.present || !input.NewTmuxName.present || !input.IdentityToken.present ||
+		input.TmuxName.value == "" || input.IdentityToken.value == "" {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	err := gateway.sessions.Rename(request.Context(), sessions.RenameInput{
+		TmuxID:        tmuxID,
+		TmuxName:      input.TmuxName.value,
+		NewTmuxName:   input.NewTmuxName.value,
+		IdentityToken: input.IdentityToken.value,
+	})
+	if err != nil {
+		writeSessionError(writer, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func parseSessionPath(path string) (string, bool) {
+	tmuxID := strings.TrimPrefix(path, "/v1/sessions/")
+	return tmuxID, tmuxID != "" && tmuxID != path && !strings.ContainsRune(tmuxID, '/')
 }
 
 func (gateway *Gateway) readPressure(writer http.ResponseWriter) {

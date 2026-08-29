@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -463,7 +464,7 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 		{errorObjectiveInvalid, "ObjectiveInvalid", "Use 1–240 characters without terminal controls.", http.StatusUnprocessableEntity},
 		{errorSessionNameConflict, "SessionNameConflict", "A session with that name already exists.", http.StatusConflict},
 		{errorSessionNotFound, "SessionNotFound", "That session no longer exists.", http.StatusNotFound},
-		{errorSessionIdentityMismatch, "SessionIdentityMismatch", "The session changed. Refresh before killing it.", http.StatusConflict},
+		{errorSessionIdentityMismatch, "SessionIdentityMismatch", "The session changed. Refresh and try again.", http.StatusConflict},
 		{errorPairingInviteRejected, "PairingInviteRejected", "This fleet invite is invalid, expired, or already used.", http.StatusUnauthorized},
 		{errorMachineIdentityMismatch, "MachineIdentityMismatch", "The machine identity changed. Fleet reset is required.", http.StatusConflict},
 		{errorSessionGroupedConflict, "SessionGroupedConflict", "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.", http.StatusConflict},
@@ -495,5 +496,53 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestSessionPathParserIsSharedAndExact(t *testing.T) {
+	for _, valid := range []struct {
+		path string
+		id   string
+	}{
+		{path: "/v1/sessions/$7", id: "$7"},
+		{path: "/v1/sessions/opaque", id: "opaque"},
+	} {
+		id, ok := parseSessionPath(valid.path)
+		if !ok || id != valid.id {
+			t.Fatalf("parse session path %q = (%q, %t), want (%q, true)", valid.path, id, ok, valid.id)
+		}
+	}
+	for _, invalid := range []string{"", "/v1/sessions", "/v1/sessions/", "/v1/sessions/$7/terminal", "/v1/sessions/$7/extra"} {
+		if id, ok := parseSessionPath(invalid); ok {
+			t.Fatalf("invalid session path %q parsed as %q", invalid, id)
+		}
+	}
+}
+
+func TestRenameRequestRejectsDuplicateRequiredStringKey(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodPatch,
+		"/v1/sessions/$7",
+		strings.NewReader(`{"tmuxName":"current","newTmuxName":"first","newTmuxName":"second","identityToken":"token"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	_, failure := decodeJSON[renameSessionRequest](httptest.NewRecorder(), request)
+	if failure == nil || failure.Code != errorInvalidRequest.Code || failure.Status != errorInvalidRequest.Status {
+		t.Fatalf("duplicate required rename key failure = %#v, want InvalidRequest", failure)
+	}
+}
+
+func TestRenameRequestRejectsAlternateCaseRequiredKeys(t *testing.T) {
+	for _, body := range []string{
+		`{"TmuxName":"current","newTmuxName":"next","identityToken":"token"}`,
+		`{"tmuxName":"current","NewTmuxName":"next","identityToken":"token"}`,
+		`{"tmuxName":"current","newTmuxName":"next","IdentityToken":"token"}`,
+	} {
+		request := httptest.NewRequest(http.MethodPatch, "/v1/sessions/$7", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		_, failure := decodeJSON[renameSessionRequest](httptest.NewRecorder(), request)
+		if failure == nil || failure.Code != errorInvalidRequest.Code || failure.Status != errorInvalidRequest.Status {
+			t.Fatalf("alternate-case rename key failure = %#v, want InvalidRequest", failure)
+		}
 	}
 }
