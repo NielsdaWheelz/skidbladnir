@@ -3,6 +3,10 @@ package dev.niels.skidbladnir
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +28,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +51,8 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -69,6 +76,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 
 /**
  * The monotonic receipt of a machine's freshest inventory, published on that machine's real filter
@@ -80,8 +88,13 @@ internal val MachineInventoryObservationKey =
 internal var SemanticsPropertyReceiver.machineInventoryObservation by MachineInventoryObservationKey
 
 @Composable
-internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: SkidbladnirController) {
-    DashboardMain(state, controller, controller::verifyVisibleInventory)
+internal fun DashboardScreen(
+    state: SkidbladnirUiState.Dashboard,
+    entry: DashboardEntryState,
+    controller: SkidbladnirController,
+    onOpenTerminal: (SessionTarget) -> Unit,
+) {
+    DashboardMain(state, entry, controller, controller::verifyVisibleInventory, onOpenTerminal)
 
     state.forge?.let { forge ->
         ForgeSheet(forge, state.machines, controller::dismissForge, controller::updateForgeDraft, controller::forge)
@@ -100,24 +113,33 @@ internal fun DashboardScreen(state: SkidbladnirUiState.Dashboard, controller: Sk
 @Composable
 internal fun DashboardMain(
     state: SkidbladnirUiState.Dashboard,
+    entry: DashboardEntryState,
     controller: SkidbladnirController,
     onVerify: () -> Unit,
+    onOpenTerminal: (SessionTarget) -> Unit,
 ) {
     var selectedPressureHandle by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = entry.scope
     val selectedPressureMachine = selectedPressureHandle?.let { handle ->
-        state.machines.singleOrNull {
-            it.machine.handle.encoded == handle && it.machine.handle == state.selectedMachine
+        when (scope) {
+            DashboardScope.All -> null
+            is DashboardScope.Machine -> state.machines.singleOrNull {
+                it.machine.handle.encoded == handle && it.machine.handle == scope.handle
+            }
         }
     }
     if (selectedPressureHandle != null && selectedPressureMachine == null) {
         LaunchedEffect(selectedPressureHandle) { selectedPressureHandle = null }
     }
-    val machines = state.machines.filter {
-        state.selectedMachine == null || it.machine.handle == state.selectedMachine
+    val machines = state.machines.filter { machine ->
+        when (scope) {
+            DashboardScope.All -> true
+            is DashboardScope.Machine -> machine.machine.handle == scope.handle
+        }
     }
-    val sessions = visibleSessions(state.machines, state.selectedMachine)
+    val sessions = visibleSessions(state.machines, scope)
     val canForge = machines.any(MachineState::canForge)
-    val showPressureRails = pressureRailsVisible(state.selectedMachine)
+    val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
@@ -125,7 +147,7 @@ internal fun DashboardMain(
                 onReconnect = controller::requestFleetReconnect,
             )
 
-            MachineFilters(state.machines, state.selectedMachine, controller::selectMachine)
+            MachineFilters(state.machines, scope, entry::selectScope)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     MachineStrip(
@@ -142,7 +164,7 @@ internal fun DashboardMain(
             state.forgeRecovery?.let { recovery ->
                 NoticePanel(
                     tone = NoticeTone.Armed,
-                    body = forgeRecoveryMessage(state, recovery),
+                    body = forgeRecoveryMessage(state, recovery, scope),
                     actions = if (recovery is ForgeRecovery.ReviewReady) {
                         {
                             TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
@@ -156,8 +178,10 @@ internal fun DashboardMain(
 
             DashboardDwarfCollection(
                 state = state,
+                entry = entry,
                 onVerify = onVerify,
-                onOpen = controller::openTerminal,
+                onRestore = controller::restoreDashboardOnce,
+                onOpen = onOpenTerminal,
                 onKill = controller::requestKill,
             )
         }
@@ -186,22 +210,58 @@ internal fun DashboardMain(
 @Composable
 internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
+    entry: DashboardEntryState,
     onVerify: () -> Unit,
+    onRestore: (List<DashboardCardKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
 ) {
-    val machines = state.machines.filter {
-        state.selectedMachine == null || it.machine.handle == state.selectedMachine
+    val scope = entry.scope
+    val machines = state.machines.filter { machine ->
+        when (scope) {
+            DashboardScope.All -> true
+            is DashboardScope.Machine -> machine.machine.handle == scope.handle
+        }
     }
-    val sessions = visibleSessions(state.machines, state.selectedMachine)
-    val gridState = rememberLazyGridState()
+    val sessions = visibleSessions(state.machines, scope)
+    val keys = sessions.map(VisibleSession::cardKey)
+    val restorationOutcomes = machines.map { machine ->
+        Triple(machine.machine.handle, machine.access, machine.inventory)
+    }
+    LaunchedEffect(entry.restorationPending, scope, restorationOutcomes, keys) {
+        if (entry.restorationPending) onRestore(keys)
+    }
+    if (entry.restorationPending) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
     val motionEnabled = rememberMotionEnabled()
     if (machines.any { it.access == MachineAccess.Ready }) {
         PullableDwarfCollection(state = state, motionEnabled = motionEnabled, onVerify = onVerify) {
-            DashboardDwarfGrid(state, machines, sessions, gridState, motionEnabled, onOpen, onKill)
+            DashboardDwarfGrid(
+                state,
+                scope,
+                machines,
+                sessions,
+                entry.gridState,
+                motionEnabled,
+                onOpen,
+                onKill,
+            )
         }
     } else {
-        DashboardDwarfGrid(state, machines, sessions, gridState, motionEnabled, onOpen, onKill)
+        DashboardDwarfGrid(
+            state,
+            scope,
+            machines,
+            sessions,
+            entry.gridState,
+            motionEnabled,
+            onOpen,
+            onKill,
+        )
     }
 }
 
@@ -283,6 +343,7 @@ private fun DwarfCollectionPullIndicator(
 @Composable
 private fun DashboardDwarfGrid(
     state: SkidbladnirUiState.Dashboard,
+    scope: DashboardScope,
     machines: List<MachineState>,
     sessions: List<VisibleSession>,
     gridState: LazyGridState,
@@ -333,7 +394,7 @@ private fun DashboardDwarfGrid(
             } else {
                 items(
                     items = sessions,
-                    key = { "${it.target.machineHandle.encoded}:${it.target.session.tmuxId}:${it.target.session.identityToken}" },
+                    key = { it.cardKey.lifetimeFingerprint },
                 ) { visibleSession ->
                     val machineState = state.machines.single {
                         it.machine.handle == visibleSession.target.machineHandle
@@ -341,7 +402,10 @@ private fun DashboardDwarfGrid(
                     SessionCard(
                         visibleSession,
                         machineState,
-                        showMachineLabel = state.selectedMachine == null,
+                        showMachineLabel = when (scope) {
+                            DashboardScope.All -> true
+                            is DashboardScope.Machine -> false
+                        },
                         motionEnabled = motionEnabled,
                         onOpen = { onOpen(visibleSession.target) },
                         onKill = { onKill(visibleSession.target) },
@@ -410,42 +474,71 @@ internal fun UnreadableMachineStrip(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MachineFilters(
     machines: List<MachineState>,
-    selected: MachineHandle?,
-    onSelect: (MachineHandle?) -> Unit,
+    scope: DashboardScope,
+    onSelect: (DashboardScope) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .testTag("machine-filters"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = selected == null,
-            onClick = { onSelect(null) },
-            label = { Text("All", fontFamily = NidavellirType.Data) },
-            shape = NidavellirShapes.Chip,
-            modifier = Modifier.testTag("machine-filter-all"),
-        )
-        machines.forEach { machine ->
-            val fresh = machine.inventory as? InventoryState.Fresh
+    val selectedChip = remember { BringIntoViewRequester() }
+    LaunchedEffect(scope) { selectedChip.bringIntoView() }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides MachineFilterBringIntoViewSpec) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(remember { ScrollState(0) })
+                .padding(horizontal = 16.dp)
+                .testTag("machine-filters"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val allSelected = when (scope) {
+                DashboardScope.All -> true
+                is DashboardScope.Machine -> false
+            }
             FilterChip(
-                selected = selected == machine.machine.handle,
-                onClick = { onSelect(machine.machine.handle) },
-                label = { Text(machine.machine.label.text, fontFamily = NidavellirType.Data) },
+                selected = allSelected,
+                onClick = { onSelect(DashboardScope.All) },
+                label = { Text("All", fontFamily = NidavellirType.Data) },
                 shape = NidavellirShapes.Chip,
                 modifier = Modifier
-                    .testTag("machine-filter-${machine.machine.handle.encoded}")
-                    .semantics {
-                        if (fresh != null) {
-                            machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
-                        }
-                    },
+                    .testTag("machine-filter-all")
+                    .then(if (allSelected) Modifier.bringIntoViewRequester(selectedChip) else Modifier),
             )
+            machines.forEach { machine ->
+                val fresh = machine.inventory as? InventoryState.Fresh
+                val machineScope = DashboardScope.Machine(machine.machine.handle)
+                val selected = when (scope) {
+                    DashboardScope.All -> false
+                    is DashboardScope.Machine -> scope.handle == machineScope.handle
+                }
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelect(machineScope) },
+                    label = { Text(machine.machine.label.text, fontFamily = NidavellirType.Data) },
+                    shape = NidavellirShapes.Chip,
+                    modifier = Modifier
+                        .testTag("machine-filter-${machine.machine.handle.encoded}")
+                        .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier)
+                        .semantics {
+                            if (fresh != null) {
+                                machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
+                            }
+                        },
+                )
+            }
+        }
+    }
+}
+
+private object MachineFilterBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        if (size > containerSize) return offset
+        val trailingDistance = offset + size - containerSize
+        return when {
+            offset >= 0f && trailingDistance <= 0f -> 0f
+            abs(offset) < abs(trailingDistance) -> offset
+            else -> trailingDistance
         }
     }
 }
@@ -674,6 +767,7 @@ internal fun EmptyState(
 internal fun forgeRecoveryMessage(
     dashboard: SkidbladnirUiState.Dashboard,
     recovery: ForgeRecovery,
+    scope: DashboardScope,
 ): String {
     val target = dashboard.machines.singleOrNull {
         it.machine.handle == recovery.draft.machineHandle
@@ -685,12 +779,16 @@ internal fun forgeRecoveryMessage(
                 null, MachineAccess.IdentityChanged ->
                     "Fleet reset is required before reviewing this draft."
                 MachineAccess.AuthRequired -> "Reconnect fleet before reviewing this draft."
-                MachineAccess.Ready -> if (
-                    dashboard.selectedMachine == null || dashboard.selectedMachine == target.machine.handle
-                ) {
-                    "Pull down to check again before reviewing this draft."
-                } else {
-                    "Select $label, then pull down to check again before reviewing this draft."
+                MachineAccess.Ready -> {
+                    val targetVisible = when (scope) {
+                        DashboardScope.All -> true
+                        is DashboardScope.Machine -> scope.handle == target.machine.handle
+                    }
+                    if (targetVisible) {
+                        "Pull down to check again before reviewing this draft."
+                    } else {
+                        "Select $label, then pull down to check again before reviewing this draft."
+                    }
                 }
             }
             "$label: create outcome unknown. $repair"

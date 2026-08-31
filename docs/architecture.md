@@ -4,7 +4,8 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
 2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
-accepted 2026-08-31 tmux terminal-activity hard cut. The replacement source is
+accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
+dashboard-return-continuity target. The terminal-activity replacement source is
 implemented in dedicated Skíðblaðnir and `dev-server` review trees; its owner
 behavioral reds, focused greens, and both routine verification suites are
 green. Isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin,
@@ -75,7 +76,7 @@ authorize action against the other.
 | Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Every host exposes closed `personal \| work \| work2 \| claude-personal \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
-| State | Each host's tmux sessions/panes/user options are runtime truth; Android persists only pairings and keeps inventory snapshots in memory |
+| State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings plus one system-managed, task-scoped, content-free Dashboard return capsule and keeps inventory snapshots in memory |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
 | Client | Kotlin/Compose multi-machine dashboard; vendored pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
@@ -278,6 +279,25 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   case-folded/exact tmux name, and local tmux id. Retained activity never
   animates or claims current priority. Android owns this full cross-host order;
   each gateway publishes deterministic local tmux name/id order only.
+
+The Dashboard is one retained Android navigation entry. Opening Terminal does
+not replace that entry: top `Detach` and Android Back return to its same typed
+`All` or machine scope. That scope is restored before inventory verification;
+its semantic first-visible session lifetime and offset settle before Dashboard
+interaction. An unchanged list returns to the exact card and pixel offset; live
+insertion or reorder preserves the same lifetime at that offset; a removed
+lifetime clamps its former index; an empty or unavailable machine remains
+selected. Restoration is immediate, non-animated, and one-shot before cards
+become interactive; selecting a different filter cancels pending restoration,
+while selecting the active filter is a no-op. Terminal access-loss recovery
+remains the explicit exception that selects the affected machine, resets its
+viewport to top, and shows its notice.
+Lifecycle stop never consumes pending restoration; only a modeled non-live
+machine outcome may resolve it without an inventory snapshot.
+The filter strip need not retain its exact horizontal offset, but it reveals the
+selected machine chip before the restored Dashboard is settled.
+Filter changes use the one live grid's stable-key clamping; no per-filter
+viewport history exists.
 
 Pressure remains machine-local per
 [`machine-pressure-rail.md`](machine-pressure-rail.md). `All` omits pressure
@@ -659,9 +679,21 @@ enum values are defects, with no protocol branch or compatibility state.
   repaired in-app. Ordinary upgrades preserve the collection; app-data loss
   returns to Connect. There is no old store reader, ADB provisioning path, or
   smaller-fleet branch.
-- Grid, selected-machine pressure rail/details sheet, filters, Forge, and terminal follow §4. The Forge
-  preserves invalid drafts; its cwd field disables autocorrect/smart
-  punctuation. Inventory snapshots and drafts are process-memory only.
+- Grid, selected-machine pressure rail/details sheet, filters, Forge, and
+  terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
+  destination switch and exclusively owns typed scope, the live lazy-grid
+  state, and pending saved restoration. Android saved-instance state may retain
+  one exact-version capsule containing only scope, a comparison-only
+  lifetime fingerprint, fallback index, and pixel offset. It is validated
+  against the newly accepted fleet, never interpreted as a terminal target, and
+  never written to preferences, files, tmux, or a gateway. The fingerprint is
+  domain-separated SHA-256 over the machine handle, tmux id, and high-entropy
+  inventory identity token; the raw token never enters saved state. Scope
+  validation uses store-accepted paired handles, never current reachability or
+  inventory freshness. A fresh task or explicit app-data/fleet reset starts
+  `All` at top; no compatibility reader or per-filter history exists. The Forge
+  preserves invalid drafts; its cwd field disables autocorrect/smart punctuation.
+  Inventory snapshots and drafts are process-memory only.
 - Terminal: the proven harness. Vendored pinned xterm.js in a locked WebView
   (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
   network/file access; Kotlin owns WSS/auth; bearer never enters WebView).
@@ -696,7 +728,9 @@ enum values are defects, with no protocol branch or compatibility state.
   Identity change closes the active terminal and disables that pairing until
   explicit fleet reset.
   Rotation, IME resize, Activity/process recreation, and app backgrounding
-  cleanly recreate or release the attachment; nothing replays.
+  cleanly recreate or release the attachment; nothing replays. Recreation from
+  Terminal returns to the saved Dashboard entry and never restores or
+  automatically opens an attachment.
 - Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
   and semantic labels on all controls. [`design-language.md`](design-language.md)
   is the reviewed future visual target for palette, typography, shape,
@@ -904,3 +938,14 @@ mutation, or terminal-input operation. The collection's first content begins
 `12dp` below its viewport in live and inert scopes; the active progress line is
 confined to `y = 0..2dp`, horizontally inset `12dp`, and does not change card,
 empty-content, focus, or scroll bounds.
+
+Dashboard-return acceptance additionally requires: from `All` or one machine
+filter, leaving a scrolled collection for Terminal and returning through top
+`Detach` or Android Back restores the same filter and surviving first-visible
+session lifetime at the same offset without an intermediate `All`/top frame;
+post-detach verification targets only that restored scope; reorder, deletion,
+empty, unavailable, background, and same-task saved-state cases follow the
+rules in [`dashboard-return-continuity.md`](dashboard-return-continuity.md);
+fresh task/reset starts `All` at top; process restoration never retains a
+terminal target, attachment, bytes, or input; and no inventory snapshot/payload,
+raw identity token, or terminal content enters saved state.

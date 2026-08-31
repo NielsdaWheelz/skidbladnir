@@ -22,6 +22,8 @@ internal enum class FleetResetReason { InviteIdentityMismatch, StoredFleetUnusab
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
 
+    sealed interface Workspace : SkidbladnirUiState
+
     data class FleetConnect(
         val mode: FleetConnectMode,
         val phase: FleetConnectPhase,
@@ -34,14 +36,13 @@ internal sealed interface SkidbladnirUiState {
 
     data class Dashboard(
         val machines: List<MachineState>,
-        val selectedMachine: MachineHandle?,
         val refreshing: Boolean,
         val notice: String? = null,
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
         val kill: KillState?,
         val unreadableMachines: List<UnreadableStoredMachine> = emptyList(),
-    ) : SkidbladnirUiState
+    ) : Workspace
 
     data class Terminal(
         val machine: MachineState,
@@ -50,7 +51,44 @@ internal sealed interface SkidbladnirUiState {
         val connection: TerminalUiStatus,
         val kill: KillState?,
         val rename: RenameState? = null,
-    ) : SkidbladnirUiState
+    ) : Workspace
+}
+
+internal fun dashboardRestorationReady(
+    scope: DashboardScope,
+    machines: Collection<MachineState>,
+    livePollers: Set<MachineHandle>,
+    foreground: Boolean,
+): Boolean {
+    if (!foreground) return false
+    // justify-defect: acceptFleet validates restored scope before Dashboard publication;
+    // absence here means controller and entry ownership have diverged.
+    val scopedMachines = when (scope) {
+        DashboardScope.All -> machines
+        is DashboardScope.Machine -> listOf(
+            checkNotNull(machines.singleOrNull { it.machine.handle == scope.handle }),
+        )
+    }
+    return scopedMachines.all { machine ->
+        when (machine.access) {
+            MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> true
+            MachineAccess.Ready -> when (machine.inventory) {
+                is InventoryState.Fresh,
+                is InventoryState.Superseded,
+                is InventoryState.Stale,
+                is InventoryState.Unreachable,
+                -> true
+                InventoryState.Reading -> {
+                    // justify-defect: foreground Ready/Reading is maintained only while
+                    // this controller owns that machine's live poller.
+                    check(machine.machine.handle in livePollers) {
+                        "foreground inventory reading lost its poller"
+                    }
+                    false
+                }
+            }
+        }
+    }
 }
 
 internal fun fleetReconnectCanCancel(state: SkidbladnirUiState.FleetConnect): Boolean =
@@ -105,14 +143,15 @@ internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
 
 internal fun resumeForgeRecovery(
     dashboard: SkidbladnirUiState.Dashboard,
+    dashboardEntry: DashboardEntryState,
 ): SkidbladnirUiState.Dashboard {
     val recovery = dashboard.forgeRecovery as? ForgeRecovery.ReviewReady ?: return dashboard
     val target = dashboard.machines.singleOrNull {
         it.machine.handle == recovery.draft.machineHandle
     } ?: return dashboard
     if (!target.canMutate) return dashboard
+    dashboardEntry.selectScope(DashboardScope.Machine(target.machine.handle))
     return dashboard.copy(
-        selectedMachine = target.machine.handle,
         forge = ForgeState(ForgeForm(recovery.draft), pending = false, error = null),
         forgeRecovery = null,
     )
@@ -191,12 +230,13 @@ internal fun dashboardAfterTerminalAccessLoss(
     terminal: SkidbladnirUiState.Terminal,
     machines: List<MachineState>,
     refreshing: Boolean,
+    dashboardEntry: DashboardEntryState,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == terminal.target.machineHandle }
     require(machine.access != MachineAccess.Ready)
+    dashboardEntry.selectTerminalAccessLoss(machine.machine.handle)
     return SkidbladnirUiState.Dashboard(
         machines = machines,
-        selectedMachine = machine.machine.handle,
         refreshing = refreshing,
         notice = machineAccessMessage(machine),
         forge = null,
@@ -210,19 +250,18 @@ internal fun dashboardAfterMachineAccessLoss(
     machines: List<MachineState>,
     handle: MachineHandle,
     refreshing: Boolean,
+    dashboardEntry: DashboardEntryState,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == handle }
     require(machine.access != MachineAccess.Ready)
     val message = machineAccessMessage(machine)
     val affectedForge = dashboard.forge?.takeIf { it.form.machineHandle == handle }
     val affectedKill = dashboard.kill?.takeIf { it.target.machineHandle == handle }
+    if (affectedForge?.pending == true || affectedKill != null) {
+        dashboardEntry.selectScope(DashboardScope.Machine(handle))
+    }
     return dashboard.copy(
         machines = machines,
-        selectedMachine = if (affectedForge?.pending == true || affectedKill != null) {
-            handle
-        } else {
-            dashboard.selectedMachine
-        },
         refreshing = refreshing,
         notice = message,
         forge = if (affectedForge?.pending == true) {
@@ -498,7 +537,10 @@ internal fun reconcileStoredMachines(
     }
 }
 
-internal class SkidbladnirController(context: Context) {
+internal class SkidbladnirController(
+    context: Context,
+    private val dashboardEntry: DashboardEntryState,
+) {
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
 
@@ -580,6 +622,7 @@ internal class SkidbladnirController(context: Context) {
                 }
                 unreadableMachines.clear()
                 unreadableMachines += stored.unreadable
+                dashboardEntry.acceptFleet(machineStates.keys.toSet())
                 val interruptedDisposition = interruptedPersistence?.let {
                     resumedFleetPersistenceDisposition(it.mode, it.credentials, stored)
                 }
@@ -806,13 +849,8 @@ internal class SkidbladnirController(context: Context) {
             )
             startPolling(credential.machine.handle, activeGeneration)
         }
+        dashboardEntry.acceptFleet(machineStates.keys.toSet())
         publishDashboard()
-    }
-
-    fun selectMachine(handle: MachineHandle?) {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        if (handle != null && machineStates[handle] == null) return
-        state = current.copy(selectedMachine = handle)
     }
 
     fun verifyVisibleInventory() {
@@ -820,7 +858,7 @@ internal class SkidbladnirController(context: Context) {
         val activeGeneration = generation
         // Only machines that still own live polling work can be refreshed; a machine whose access
         // failed says so instead of silently dropping the request.
-        val targets = visibleInventoryTargets(polling.keys, current.selectedMachine)
+        val targets = visibleInventoryTargets(polling.keys, dashboardEntry.scope)
         var requested = false
         targets.forEach { handle -> if (awaitInventory(handle, activeGeneration)) requested = true }
         state = current.copy(
@@ -828,13 +866,28 @@ internal class SkidbladnirController(context: Context) {
             notice = if (requested) {
                 null
             } else {
-                unrefreshableNotice(current.selectedMachine)
+                unrefreshableNotice(dashboardEntry.scope)
             },
         )
     }
 
-    private fun unrefreshableNotice(selected: MachineHandle?): String {
-        val visible = machineStates.values.filter { selected == null || it.machine.handle == selected }
+    fun restoreDashboardOnce(keys: List<DashboardCardKey>) {
+        if (!dashboardEntry.restorationPending) return
+        if (dashboardRestorationReady(
+            scope = dashboardEntry.scope,
+            machines = machineStates.values,
+            livePollers = polling.keys,
+            foreground = foreground,
+        )) dashboardEntry.restoreOnce(keys)
+    }
+
+    private fun unrefreshableNotice(scope: DashboardScope): String {
+        val visible = machineStates.values.filter { machine ->
+            when (scope) {
+                DashboardScope.All -> true
+                is DashboardScope.Machine -> machine.machine.handle == scope.handle
+            }
+        }
         if (visible.isEmpty()) {
             return "No fleet is connected."
         }
@@ -843,11 +896,14 @@ internal class SkidbladnirController(context: Context) {
 
     fun openForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val handle = current.selectedMachine
-        val admissible = if (handle == null) {
-            machineStates.values.any { it.canForge }
-        } else {
-            machineStates[handle]?.canForge == true
+        val scope = dashboardEntry.scope
+        val handle = when (scope) {
+            DashboardScope.All -> null
+            is DashboardScope.Machine -> scope.handle
+        }
+        val admissible = when (scope) {
+            DashboardScope.All -> machineStates.values.any { it.canForge }
+            is DashboardScope.Machine -> machineStates[scope.handle]?.canForge == true
         }
         if (!admissible) return
         state = current.copy(
@@ -857,7 +913,7 @@ internal class SkidbladnirController(context: Context) {
 
     fun resumeForgeRecovery() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        state = dev.niels.skidbladnir.resumeForgeRecovery(current)
+        state = dev.niels.skidbladnir.resumeForgeRecovery(current, dashboardEntry)
     }
 
     fun dismissForge() {
@@ -1433,6 +1489,7 @@ internal class SkidbladnirController(context: Context) {
                 machines,
                 handle,
                 refreshing = awaitedInventoryReads.isActive,
+                dashboardEntry = dashboardEntry,
             )
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()
@@ -1440,6 +1497,7 @@ internal class SkidbladnirController(context: Context) {
                     current,
                     machines,
                     refreshing = awaitedInventoryReads.isActive,
+                    dashboardEntry = dashboardEntry,
                 )
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
@@ -1546,7 +1604,6 @@ internal class SkidbladnirController(context: Context) {
         pendingDashboardNotice = null
         state = SkidbladnirUiState.Dashboard(
             machines = sortedMachineStates(),
-            selectedMachine = (state as? SkidbladnirUiState.Dashboard)?.selectedMachine,
             refreshing = awaitedInventoryReads.isActive,
             notice = dashboardNotice,
             forge = carry.forge,
