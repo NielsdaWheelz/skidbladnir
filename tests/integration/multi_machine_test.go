@@ -44,7 +44,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		}
 		response := requestForMachine(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, handle, "", string(body))
 		assertStatus(t, response, http.StatusCreated)
-		return decodeObject(t, response)
+		return decodeCreateSessionResponse(t, response)
 	}
 
 	leftCreated := create(leftServer, leftBearer, integrationMachineText, left.project)

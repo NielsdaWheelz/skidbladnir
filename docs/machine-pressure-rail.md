@@ -4,9 +4,9 @@ Status: the typographic rail source is implemented; its pure and real-Compose
 reds, focused unit, signed same-version S22+ component, routine verification,
 and approved hands-on visual glance are green. The All-filter density follow-up
 is source implemented with its pure red/green and routine verification green;
-its focused rendered-device placement proof is `NOT_RUN`. Earlier rail evidence
-does not substitute for that changed placement, and the release-bound full
-platform gate remains `NOT_RUN`.
+its signed same-version S22+ component proof is green at 360dp/1× and
+320dp/2×, including exact-machine disclosure and one-Back dismissal. Product,
+hands-on, and the release-bound full platform gate remain `NOT_RUN`.
 
 This is the implementation contract for one hard-cut presentation refactor.
 It is subordinate to [`architecture.md`](architecture.md),
@@ -39,6 +39,10 @@ exactly that machine's rail and details disclosure. Compact exceptional machine
 notices remain in `All`; pressure polling, accepted snapshots, presentation,
 history, disclosure, and action admission remain unchanged.
 
+The details surface deliberately has no partially expanded resting state. That
+forgoes an intermediate sheet height so one system Back consistently dismisses
+the modal details and returns focus to the originating rail.
+
 ## Scope and closed decisions
 
 Own only:
@@ -65,7 +69,7 @@ Changing one of these decisions reopens scope and acceptance review.
 
 ## Goals and rules
 
-- Answer “which machine needs attention?” before showing diagnostic detail.
+- Answer “which machine warrants inspection?” before showing diagnostic detail.
 - Separate measurement from judgment: the value is an observation; the
   host-emitted state is the judgment.
 - Spend colour on active reading and exceptions, not metric identity or resting

@@ -167,7 +167,7 @@ def self_test() -> int:
         ("inline features table", "features = { hooks = true }\n", False),
         ("inline hooks table", "hooks = { state = {} }\n", False),
         ("root hooks table", "[hooks]\nstate = {}\n", False),
-        ("inline lifecycle hook", "[hooks.SessionStart]\n", False),
+        ("inline event hook table", "[hooks.SessionStart]\n", False),
         ("array hook table", "[[hooks.state.identity]]\n", False),
         ("multiline string", 'instructions = """\n[hooks.SessionStart]\n"""\n', False),
         ("malformed header", "[hooks.state\n", False),

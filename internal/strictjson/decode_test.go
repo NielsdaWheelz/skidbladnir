@@ -11,6 +11,8 @@ func TestDecodeRejectsAmbiguousDocuments(t *testing.T) {
 	}
 	tests := []string{
 		`{"name":"one","\u006eame":"two"}`,
+		`{"Name":"one"}`,
+		`{"name":"one","Name":"two"}`,
 		`{"name":"one"}{"name":"two"}`,
 		`{"name":"one","extra":true}`,
 		string([]byte{'{', '"', 'n', 'a', 'm', 'e', '"', ':', '"', 0xff, '"', '}'}),

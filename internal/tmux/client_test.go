@@ -150,7 +150,7 @@ func TestAttachmentCreationUsesOneIdentityGateBeforeEveryMutation(t *testing.T) 
 	want := []string{
 		"if-shell", "-F", "-t", "$7",
 		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},laptop}}}}}",
-		"new-session -d -E -t '$7' -s 'skid-phone-00112233445566778899aabbccddeeff' ; set-option -t '=skid-phone-00112233445566778899aabbccddeeff:' -- @skid_internal phone-shadow ; set-option -pqu -t '$7' -- @skid_attention ; display-message -p -t '=skid-phone-00112233445566778899aabbccddeeff:' '#{session_id}' ; display-message -p -t '$7' '#{window_id}'",
+		"new-session -d -E -t '$7' -s 'skid-phone-00112233445566778899aabbccddeeff' ; set-option -t '=skid-phone-00112233445566778899aabbccddeeff:' -- @skid_internal phone-shadow ; display-message -p -t '=skid-phone-00112233445566778899aabbccddeeff:' '#{session_id}' ; display-message -p -t '$7' '#{window_id}'",
 		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
 	}
 	if !slices.Equal(arguments, want) {

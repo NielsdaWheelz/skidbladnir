@@ -1,6 +1,5 @@
 package dev.niels.skidbladnir
 
-import android.animation.ValueAnimator
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -47,11 +46,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -198,12 +195,13 @@ internal fun DashboardDwarfCollection(
     }
     val sessions = visibleSessions(state.machines, state.selectedMachine)
     val gridState = rememberLazyGridState()
+    val motionEnabled = rememberMotionEnabled()
     if (machines.any { it.access == MachineAccess.Ready }) {
-        PullableDwarfCollection(state = state, onVerify = onVerify) {
-            DashboardDwarfGrid(state, machines, sessions, gridState, onOpen, onKill)
+        PullableDwarfCollection(state = state, motionEnabled = motionEnabled, onVerify = onVerify) {
+            DashboardDwarfGrid(state, machines, sessions, gridState, motionEnabled, onOpen, onKill)
         }
     } else {
-        DashboardDwarfGrid(state, machines, sessions, gridState, onOpen, onKill)
+        DashboardDwarfGrid(state, machines, sessions, gridState, motionEnabled, onOpen, onKill)
     }
 }
 
@@ -211,6 +209,7 @@ internal fun DashboardDwarfCollection(
 @Composable
 private fun PullableDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
+    motionEnabled: Boolean,
     onVerify: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -226,6 +225,7 @@ private fun PullableDwarfCollection(
             DwarfCollectionPullIndicator(
                 state = pullState,
                 isRefreshing = state.refreshing,
+                motionEnabled = motionEnabled,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         },
@@ -239,31 +239,15 @@ private fun PullableDwarfCollection(
 private fun DwarfCollectionPullIndicator(
     state: PullToRefreshState,
     isRefreshing: Boolean,
+    motionEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var animatorDurationScale by remember {
-        mutableFloatStateOf(ValueAnimator.getDurationScale())
-    }
-    DisposableEffect(Unit) {
-        val listener = ValueAnimator.DurationScaleChangeListener { scale ->
-            animatorDurationScale = scale
-        }
-        check(ValueAnimator.registerDurationScaleChangeListener(listener)) {
-            "Animator duration-scale listener registration failed"
-        }
-        animatorDurationScale = ValueAnimator.getDurationScale()
-        onDispose {
-            check(ValueAnimator.unregisterDurationScaleChangeListener(listener)) {
-                "Animator duration-scale listener unregistration failed"
-            }
-        }
-    }
     val indicatorModifier = modifier
         .fillMaxWidth()
         .padding(horizontal = 12.dp)
         .height(2.dp)
     when {
-        isRefreshing && animatorDurationScale == 0f -> LinearProgressIndicator(
+        isRefreshing && !motionEnabled -> LinearProgressIndicator(
             progress = { 1f },
             modifier = indicatorModifier.semantics {
                 contentDescription = "Checking tmux sessions"
@@ -302,6 +286,7 @@ private fun DashboardDwarfGrid(
     machines: List<MachineState>,
     sessions: List<VisibleSession>,
     gridState: LazyGridState,
+    motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
 ) {
@@ -357,6 +342,7 @@ private fun DashboardDwarfGrid(
                         visibleSession,
                         machineState,
                         showMachineLabel = state.selectedMachine == null,
+                        motionEnabled = motionEnabled,
                         onOpen = { onOpen(visibleSession.target) },
                         onKill = { onKill(visibleSession.target) },
                     )

@@ -8,7 +8,7 @@ import org.junit.Test
 
 class AgentIdentityContractTest {
     @Test
-    fun `inventory accepts every legal agent identity absence shape`() {
+    fun `inventory accepts every legal optional agent identity shape`() {
         val inventory = decodeSessionsResponse(identityInventory())
 
         assertEquals(
@@ -18,9 +18,7 @@ class AgentIdentityContractTest {
             ),
             inventory.profiles,
         )
-        assertEquals(workProfile, inventory.sessions[0].agent?.profile)
         assertEquals(workProfile, inventory.sessions[0].launchProfile)
-        assertEquals(claudeWorkProfile, inventory.sessions[1].launchProfile)
         assertEquals(
             AgentRuntime(
                 provider = AgentProvider.Codex,
@@ -31,6 +29,7 @@ class AgentIdentityContractTest {
             ),
             inventory.sessions[0].agent,
         )
+        assertEquals(claudeWorkProfile, inventory.sessions[1].launchProfile)
         assertEquals(
             AgentRuntime(
                 provider = AgentProvider.Claude,
@@ -53,26 +52,15 @@ class AgentIdentityContractTest {
         assertNull(inventory.sessions[3].agent)
         assertNull(inventory.sessions[4].launchProfile)
         assertNull(inventory.sessions[4].agent)
+        assertEquals(List(5) { SessionActivity.Quiet }, inventory.sessions.map(TmuxSession::activity))
     }
 
     @Test
     fun `profile keys use the gateway canonical grammar`() {
-        val accepted = listOf(
-            "a",
-            "a0_-z",
-            "a".repeat(32),
-        )
+        val accepted = listOf("a", "a0_-z", "a".repeat(32))
         val rejected = listOf(
-            "",
-            "A",
-            "0work",
-            "-work",
-            "_work",
-            "work.profile",
-            "work/profile",
-            "work profile",
-            "a".repeat(33),
-            "wörk",
+            "", "A", "0work", "-work", "_work", "work.profile", "work/profile",
+            "work profile", "a".repeat(33), "wörk",
         )
 
         accepted.forEachIndexed { index, candidate ->
@@ -108,6 +96,7 @@ class AgentIdentityContractTest {
                 "",
             ),
             "null agent" to tmuxSession(agent = "null"),
+            "null agent profile" to codex.replace("\"profile\":\"work\"", "\"profile\":null"),
             "zero pid" to codex.replace("\"pid\":1234", "\"pid\":0"),
             "Codex provider name" to codex.replace(
                 "{\"id\":\"codex-session\"}",
@@ -150,16 +139,17 @@ class AgentIdentityContractTest {
                 "{\"name\":\"bad${'\u2029'}name\"}",
             ),
             "unknown provider" to codex.replace("\"Codex\"", "\"Gemini\""),
+            "extra agent field" to codex.replace("\"pid\":1234", "\"pid\":1234,\"unexpected\":true"),
         )
         invalidSessions.forEach { (case, payload) ->
-            assertThrows(case, ProtocolDecodeException::class.java) { decodeTmuxSession(payload) }
+            assertThrows(case, ProtocolDecodeException::class.java) { decodeInventorySession(payload) }
         }
 
         val providerlessProfile = identityInventory().replace(
             """{"key":"work","label":"Codex · Work","provider":"Codex"}""",
             """{"key":"work","label":"Codex · Work"}""",
         )
-        val mismatchedRuntimeProfile = identityInventory().replaceFirst(
+        val mismatchedAgentProfile = identityInventory().replaceFirst(
             "\"profile\":\"work\"",
             "\"profile\":\"claude-work\"",
         )
@@ -168,36 +158,26 @@ class AgentIdentityContractTest {
             "\"launchProfile\":\"retired-profile\"",
         )
         assertThrows(ProtocolDecodeException::class.java) { decodeSessionsResponse(providerlessProfile) }
-        assertThrows(ProtocolDecodeException::class.java) { decodeSessionsResponse(mismatchedRuntimeProfile) }
+        assertThrows(ProtocolDecodeException::class.java) { decodeSessionsResponse(mismatchedAgentProfile) }
         assertThrows(ProtocolDecodeException::class.java) { decodeSessionsResponse(unknownLaunchProfile) }
     }
 
     @Test
-    fun `identity decoder admits exactly provider-compatible status kinds`() {
-        val codex = """{"provider":"Codex","pid":1234}"""
-        val claude = """{"provider":"Claude","pid":2345}"""
-        val cases = listOf(
-            Triple(
-                "Codex",
-                codex,
-                setOf(SessionStatusKind.Working, SessionStatusKind.Running, SessionStatusKind.Idle),
-            ),
-            Triple("Claude", claude, setOf(SessionStatusKind.Running)),
-            Triple("no agent", null, setOf(SessionStatusKind.Shell, SessionStatusKind.Unknown)),
+    fun `optional agent identity is orthogonal to activity and profile presentation`() {
+        val activeWithAgent = decodeInventorySession(
+            tmuxSession(activity = "Active", agent = """{"provider":"Codex","pid":1234}"""),
         )
+        val activeWithoutAgent = decodeInventorySession(tmuxSession(activity = "Active"))
+        val quietWithAgent = decodeInventorySession(
+            tmuxSession(activity = "Quiet", agent = """{"provider":"Codex","pid":1234}"""),
+        )
+        val profiles = listOf(ProfileChoice(workProfile, "Codex · Work", AgentProvider.Codex))
 
-        cases.forEach { (label, agent, legalKinds) ->
-            SessionStatusKind.entries.forEach { kind ->
-                val payload = tmuxSession(agent = agent, statusKind = kind)
-                if (kind in legalKinds) {
-                    assertEquals("$label/$kind", kind, decodeTmuxSession(payload).status.kind)
-                } else {
-                    assertThrows("$label/$kind", ProtocolDecodeException::class.java) {
-                        decodeTmuxSession(payload)
-                    }
-                }
-            }
-        }
+        assertEquals(SessionActivity.Active, activeWithAgent.activity)
+        assertEquals(SessionActivity.Active, activeWithoutAgent.activity)
+        assertEquals(SessionActivity.Quiet, quietWithAgent.activity)
+        assertEquals("Codex · profile unknown", sessionProfileLabel(activeWithAgent, profiles))
+        assertEquals("Codex · Work", sessionProfileLabel(activeWithoutAgent, profiles))
     }
 
     @Test
@@ -248,7 +228,6 @@ class AgentIdentityContractTest {
             tmuxName = "laptop-shell",
             identityToken = "laptop-shell-token",
             launchProfile = null,
-            statusKind = SessionStatusKind.Unknown,
         ),
     )
 
@@ -265,23 +244,20 @@ class AgentIdentityContractTest {
         }
         """.trimIndent()
 
+    private fun decodeInventorySession(session: String): TmuxSession =
+        decodeSessionsResponse(inventory(session)).sessions.single()
+
     private fun tmuxSession(
         tmuxId: String = "${'$'}9",
         tmuxName: String = "fixture",
         identityToken: String = "fixture-token",
         launchProfile: String? = "work",
+        activity: String = "Quiet",
         agent: String? = null,
-        statusKind: SessionStatusKind =
-            if (agent == null) SessionStatusKind.Shell else SessionStatusKind.Running,
     ): String {
         val launchProfileField = launchProfile?.let { ""","launchProfile":"$it"""" }.orEmpty()
-        val agentField = agent?.let { ""","agent":$it""" }.orEmpty()
-        val signal = when (statusKind) {
-            SessionStatusKind.Working, SessionStatusKind.Idle -> SessionStatusSignal.Lifecycle
-            SessionStatusKind.Running, SessionStatusKind.Shell -> SessionStatusSignal.Process
-            SessionStatusKind.Unknown -> SessionStatusSignal.PollFailure
-        }
-        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken"$launchProfileField$agentField,"character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0,"attention":false,"status":{"kind":"${statusKind.name}","signal":"${signal.name}","signalAt":"2026-08-25T11:59:58Z"}}"""
+        val agentField = agent?.let { ",\"agent\":$it" }.orEmpty()
+        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken"$launchProfileField,"character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0,"activity":"$activity"$agentField}"""
     }
 
     private companion object {

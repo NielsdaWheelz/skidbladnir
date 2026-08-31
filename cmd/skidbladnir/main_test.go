@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agenthook"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
@@ -28,7 +32,7 @@ func TestVersionReportsExactReleaseIdentity(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"version"}, &stdout, &stderr); exitCode != 0 {
+	if exitCode := run([]string{"version"}, emptyCommandInput(t), &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("version exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if got, want := stdout.String(), "v0.2.0 0123456789abcdef0123456789abcdef01234567\n"; got != want {
@@ -47,7 +51,7 @@ func TestAgentHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "UserPromptSubmit"}, &stdout, &stderr); exitCode != 0 {
+	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"}, commandInput(t, `{"session_id":"thr_123"}`), &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("agent-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
@@ -62,11 +66,251 @@ func TestAgentHookAllowsTmuxVersionDrift(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "UserPromptSubmit"}, &stdout, &stderr); exitCode != 0 {
+	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"}, commandInput(t, `{"session_id":"thr_123"}`), &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("agent-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("agent-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
+	}
+}
+
+func TestAgentHookFailsOpenSoAProviderNeverLosesTheUsersWork(t *testing.T) {
+	// A pane id and valid SessionStart payload are present, and the configured
+	// executable passes admission before failing the first publication read.
+	// The provider must still be allowed to start its session.
+	t.Setenv("TMUX_PANE", "%7")
+	tmuxPath := writeTmuxVersionThenFail(t, "tmux test")
+	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := run(
+		[]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"},
+		commandInput(t, `{"session_id":"thr_123"}`),
+		&stdout,
+		&stderr,
+	); exitCode != 0 {
+		t.Fatalf("agent-hook exit code = %d, want 0 on a failed projection; stderr = %q", exitCode, stderr.String())
+	}
+	if got, want := stderr.String(), "agent-hook did not publish\n"; got != want {
+		t.Fatalf("agent-hook diagnostic = %q, want the content-free %q", got, want)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("agent-hook stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestAgentHookRejectsAnUnconfiguredProviderEventPair(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+	tmuxPath := writeTmuxVersion(t, "tmux test")
+	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	for _, provider := range []string{"Codex", "Claude"} {
+		t.Run(provider, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, provider, "UnsupportedEvent"}, emptyCommandInput(t), &stdout, &stderr)
+			if exitCode != exitUsage {
+				t.Fatalf("agent-hook exit code = %d, want %d for an unsupported provider event", exitCode, exitUsage)
+			}
+			if got, want := stderr.String(), "agent-hook did not publish\n"; got != want {
+				t.Fatalf("agent-hook diagnostic = %q, want content-free %q", got, want)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("agent-hook stdout = %q, want empty", stdout.String())
+			}
+		})
+	}
+}
+
+func TestAgentHookRejectedPairReturnsWithoutReadingProviderInput(t *testing.T) {
+	tmuxPath := writeTmuxVersion(t, "tmux test")
+	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	input, provider, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = input.Close()
+		_ = provider.Close()
+	})
+	returned := make(chan int, 1)
+	go func() {
+		returned <- run(
+			[]string{"agent-hook", "--host-config=" + hostConfigPath, "Claude", "UnsupportedEvent"},
+			input,
+			io.Discard,
+			io.Discard,
+		)
+	}()
+	select {
+	case exitCode := <-returned:
+		if exitCode != exitUsage {
+			t.Fatalf("agent-hook exit code = %d, want %d for an unsupported event", exitCode, exitUsage)
+		}
+	case <-time.After(time.Second):
+		_ = provider.Close()
+		<-returned
+		t.Fatal("unsupported provider event waited for stdin")
+	}
+}
+
+func TestAgentHookRejectsAnUnconfiguredPairIndependentlyOfHostConfig(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := run(
+		[]string{"agent-hook", "--host-config=" + filepath.Join(t.TempDir(), "missing.json"), "Claude", "UnsupportedEvent"},
+		emptyCommandInput(t),
+		&stdout,
+		&stderr,
+	)
+	if exitCode != exitUsage {
+		t.Fatalf("agent-hook exit code = %d, want %d for a rejected invocation independent of host config", exitCode, exitUsage)
+	}
+}
+
+func TestAgentHookDrainsFiniteProviderInputWhenHostConfigFails(t *testing.T) {
+	input, provider, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = input.Close() })
+	payload := append([]byte(`{"session_id":"thr_123","opaque":"`), bytes.Repeat([]byte("x"), 48*1024)...)
+	payload = append(payload, []byte(`"}`)...)
+	written := make(chan error, 1)
+	go func() {
+		_, writeErr := provider.Write(payload)
+		if closeErr := provider.Close(); writeErr == nil {
+			writeErr = closeErr
+		}
+		written <- writeErr
+	}()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := run(
+		[]string{"agent-hook", "--host-config=" + filepath.Join(t.TempDir(), "missing.json"), "Codex", "SessionStart"},
+		input,
+		&stdout,
+		&stderr,
+	); exitCode != 0 {
+		t.Fatalf("agent-hook exit code = %d, want fail-open success", exitCode)
+	}
+	select {
+	case writeErr := <-written:
+		if writeErr != nil {
+			t.Fatalf("provider payload write failed before the hook drained it: %v", writeErr)
+		}
+	case <-time.After(time.Second):
+		_ = input.Close()
+		<-written
+		t.Fatal("agent-hook returned from host-config failure before draining finite provider input")
+	}
+}
+
+func TestAwaitAgentHookInputReportsAnUnexpectedCancellationCloseFailure(t *testing.T) {
+	input := newCloseErrorHookInput()
+	result := prepareAgentHookInput("Codex", "SessionStart", input)
+	<-input.readStarted
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := awaitAgentHookInput(ctx, input, result)
+	if !errors.Is(err, errAgentHookInputClose) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation close error = %v, want content-free owned error", err)
+	}
+}
+
+type closeErrorHookInput struct {
+	readStarted chan struct{}
+	closed      chan struct{}
+	readOnce    sync.Once
+	closeOnce   sync.Once
+}
+
+func newCloseErrorHookInput() *closeErrorHookInput {
+	return &closeErrorHookInput{readStarted: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (input *closeErrorHookInput) Read([]byte) (int, error) {
+	input.readOnce.Do(func() { close(input.readStarted) })
+	<-input.closed
+	return 0, io.EOF
+}
+
+func (input *closeErrorHookInput) Close() error {
+	input.closeOnce.Do(func() { close(input.closed) })
+	return errors.New("injected close failure")
+}
+
+func TestAgentHookTotalDeadlineBoundsBlockingProviderInput(t *testing.T) {
+	t.Setenv("TMUX_PANE", "")
+	tmuxPath := writeTmuxVersion(t, "tmux test")
+	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	input, provider, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = input.Close()
+		_ = provider.Close()
+	})
+	returned := make(chan int, 1)
+	startedAt := time.Now()
+	go func() {
+		returned <- run(
+			[]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"},
+			input,
+			io.Discard,
+			io.Discard,
+		)
+	}()
+
+	select {
+	case exitCode := <-returned:
+		if exitCode != 0 {
+			t.Fatalf("agent-hook exit code = %d, want fail-open success", exitCode)
+		}
+		if elapsed := time.Since(startedAt); elapsed > agenthook.PublicationDeadline+time.Second {
+			t.Fatalf("agent-hook returned after %s, beyond its total deadline", elapsed)
+		}
+	case <-time.After(agenthook.PublicationDeadline + time.Second):
+		_ = provider.Close()
+		<-returned
+		t.Fatal("agent-hook outlived its total deadline on blocking provider input")
+	}
+}
+
+func TestAgentHookRejectsANonRegularHostConfigWithoutOutlivingItsDeadline(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "host-config.fifo")
+	if err := syscall.Mkfifo(configPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := commandInput(t, `{"session_id":"thr_123"}`)
+	returned := make(chan int, 1)
+	go func() {
+		returned <- run(
+			[]string{"agent-hook", "--host-config=" + configPath, "Codex", "SessionStart"},
+			input,
+			io.Discard,
+			io.Discard,
+		)
+	}()
+
+	select {
+	case exitCode := <-returned:
+		if exitCode != 0 {
+			t.Fatalf("agent-hook exit code = %d, want fail-open success", exitCode)
+		}
+	case <-time.After(agenthook.PublicationDeadline + time.Second):
+		writer, err := os.OpenFile(configPath, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = writer.Close()
+		<-returned
+		t.Fatal("agent-hook blocked on a non-regular host-config path beyond its total deadline")
 	}
 }
 
@@ -166,6 +410,40 @@ func writeTmuxVersion(t *testing.T, version string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "tmux")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s\\n' "+fmt.Sprintf("%q", version)+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func emptyCommandInput(t *testing.T) *os.File {
+	t.Helper()
+	input, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = input.Close() })
+	return input
+}
+
+func commandInput(t *testing.T, content string) *os.File {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stdin")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = input.Close() })
+	return input
+}
+
+func writeTmuxVersionThenFail(t *testing.T, version string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "tmux")
+	script := "#!/bin/sh\nif [ \"${1:-}\" = -V ]; then printf '%s\\n' " + fmt.Sprintf("%q", version) + "; exit 0; fi\nexit 1\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return path

@@ -2,8 +2,15 @@
 
 Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
-2026-08-28 agent-identity projection hard cut, and the 2026-08-28 dashboard
-refresh-boundary correction, and the 2026-08-28 tmux-session rename delta.
+2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
+refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
+accepted 2026-08-31 tmux terminal-activity hard cut. The replacement source is
+implemented in dedicated Skíðblaðnir and `dev-server` review trees; its owner
+behavioral reds, focused greens, and both routine verification suites are
+green. Isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin,
+deployment, provider-live, and production acceptance remain `NOT_RUN`. The
+rejected 2026-08-28 agent-interaction-state candidate and its routine, Darwin,
+and S22+ evidence do not prove this target.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -11,11 +18,13 @@ history, but it built an audited Codex runtime system where the product is a
 specialized Android remote for tmux. Its platform evidence — tmux 3.4 grouped
 sessions, the pane-steal hazard, the Android terminal harness, profile
 isolation, TUI key behavior — remains valid and is carried forward. Its
-contract, provenance, and durable lifecycle machinery is retired. Field use on
-2026-08-26 added one narrow content-free Codex lifecycle adapter. The
-2026-08-28 identity cut extends that same pane-local boundary with a bounded
-provider SessionStart registration: it projects only exact current runtime
-identity facts and never parses content, tracks history, or creates authority.
+contract, provenance, and durable lifecycle machinery is retired. The
+2026-08-28 identity cut retains one narrow pane-local SessionStart registration:
+it projects only exact current runtime identity facts and never parses content,
+tracks history, or creates authority. The terminal-activity cut removes
+lifecycle, interaction, and attention projection entirely. It reads only
+tmux's built-in current-window activity timestamp and makes no claim about who
+owns the next move.
 
 Specification precedence: this document owns product behavior, architecture,
 scope, and acceptance; [`roadmap.md`](roadmap.md) owns delivery order;
@@ -33,11 +42,12 @@ v0 scope. A platform fact that contradicts a premise reopens this document.
 - **The agent is an opaque terminal program.** Codex and Claude own their
   conversations, approvals, git, configuration, and in-TUI commands.
   Skíðblaðnir never reads prompts, transcripts, results, or provider stores. A
-  closed pane-local hook adapter registers a bounded provider session id and
-  runtime profile for the exact foreground process lifetime. Codex's three
-  lifecycle events additionally project `working | idle`; Claude has no
-  lifecycle or attention semantics and therefore remains honestly `RUNNING`.
-  Missing registration never blocks or weakens process-derived status.
+  closed pane-local SessionStart adapter registers a bounded provider session id
+  and runtime profile for the exact foreground process lifetime. Process
+  observation proves optional identity only. A required `Active | Quiet` card
+  fact reports recent tmux activity in the session's current window; it is
+  independent of provider identity and never claims agent semantics. Missing
+  registration never blocks or changes activity.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
   capability over one local tmux server. Android composes paired gateways; an
   attachment still means one process, one screen, and one draft shared with
@@ -45,7 +55,7 @@ v0 scope. A platform fact that contradicts a premise reopens this document.
 
 From either trusted Android 16 phone, Niels can see every tmux session on the
 paired Devbox, MacBook, and Arch host in one collection, with an honest
-machine, status, and attention;
+machine, optional exact agent identity, and recent terminal activity;
 create on an explicit machine and directory using only that host's allowlisted
 profiles; attach the same stock TUI that host's laptop sees; type, paste, and
 dictate through Gboard; detach without stopping anything; and kill an exact
@@ -64,12 +74,12 @@ authorize action against the other.
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Every host exposes closed `personal \| work \| work2 \| claude-personal \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
-| Runtime | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane registration plus Codex coarse lifecycle, with no provider lookup, provenance, history, payload parsing, or pin enforcement |
+| Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists only pairings and keeps inventory snapshots in memory |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
 | Client | Kotlin/Compose multi-machine dashboard; vendored pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
-| Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no legacy envelope, reader, migration, fallback, or smaller-fleet branch |
+| Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, fallback, or smaller-fleet branch |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
 
 Profile mapping is one ordered, closed, host-local gateway-config table:
@@ -88,13 +98,12 @@ gateway execs the row's command with its flags in the requested
 cwd. The gateway does not gate launch on binary or configuration inspection;
 the agent sees exactly what a laptop launch would see. Deployment owns the
 exact Codex hook files and one local Claude hook plugin, while absent/unloaded
-hooks omit registered identity and degrade Codex status to `RUNNING` rather
-than blocking launch. The existing profile router only selects the provider
+hooks omit registered identity without blocking launch. The existing profile router only selects the provider
 home and, for Claude, adds the deployment-owned plugin directory; it never
 reads or forwards hook payloads. Direct raw-provider launches bypass that
 plugin and remain honestly unregistered. A row also owns exact
 foreground-process signatures for honest
-status detection; the shared observer resolves the pane tty's foreground
+presence detection; the shared observer resolves the pane tty's foreground
 process group using Linux `/proc` or native Darwin process facts and never
 treats every `node` process as an agent.
 
@@ -128,8 +137,9 @@ portrait manifest.
 
 ### Non-goals
 
-Provider conversation lookup, uniqueness, addressing, history, transcript-derived
-semantic state, a generalized hook runtime or trust-store editor, git/project-root
+Provider conversation lookup, uniqueness, addressing, history, agent work or
+next-move state, unread-result attention, transcript-derived semantic state, a
+generalized hook runtime or trust-store editor, git/project-root
 resolution, router-owned provider payload interception, SQLite lifecycle facts,
 durable command receipts and replay,
 adoption, pin-parity launch refusal, upgrade rehearsals, proof-ledger
@@ -198,7 +208,8 @@ chip per paired machine filter the same collection; local session IDs, names,
 identity tokens, profile keys, and dwarf keys remain machine-scoped:
 
 - One card anchors to the session's current window and that window's active
-  pane. Cwd, command, lifecycle, bell, and attention all come from that anchor.
+  pane. Cwd, command, runtime registration, and the built-in
+  `window_activity` timestamp all come from that anchor.
   Attached clients are `session_group_attached` for a grouped session and
   `session_attached` otherwise. Gateway-owned phone shadows carry
   `@skid_internal=phone-shadow` and never appear as cards.
@@ -209,15 +220,15 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   registered runtime profile and provider session id, observable explicit
   Claude name, objective (optional; URL-safe base64 in
   `@skid_objective_b64`, decoded by the gateway), pane cwd and active command when tmux exposes them,
-  attached-client count, status with its named signal and age, attention
-  badge. Missing or invalid character metadata is assigned from Dvergatal and
+  attached-client count, and required flat `Active | Quiet` activity.
+  Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
 - **Card presentation:** the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
-  A colour-only status facet occupies one fixed top-right position but is
-  redundant decoration: an adjacent named status bay remains the semantic and
-  accessible status source. The machine label is quiet footer context in
+  A colour/motion-only activity facet occupies one fixed top-right position but
+  is redundant decoration: an adjacent named activity bay remains the semantic and
+  accessible source. The machine label is quiet footer context in
   `All`; a selected-machine filter supplies that visible context once, so its
   cards omit the repeated visual machine label while retaining machine identity
   in accessibility and every routed or destructive action. The quiet footer
@@ -233,36 +244,40 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   write. A concurrent valid writer is accepted after reread; a changed or
   vanished session is never overwritten, and non-convergence fails the
   inventory instead of fabricating a card. Phone shadows are never candidates.
-- **Status and attention are orthogonal.** Attention is a badge, never a status
-  replacement. Every named status bay names its signal and age:
-  - `WORKING` — an allowlisted foreground agent process has a matching
-    process-lifetime-bound `@skid_lifecycle` `working` fact;
-  - `RUNNING` — an allowlisted agent is alive but no matching lifecycle fact is
-    available; this is deliberately not guessed as working or idle;
-  - `IDLE` — the same exact foreground process lifetime has an `idle` fact;
-  - `SHELL` — no agent process in the pane (exited to shell);
-  - `UNKNOWN` — the session was enumerated but its required anchor or process
-    observation failed. Failure of the inventory-wide `list-sessions` command
-    is an `InternalError`, not a fabricated cached card.
+- **Activity is exactly `Active | Quiet`.** The gateway derives it from the
+  current window's positive canonical `window_activity` and the host projection
+  clock: `Active` through the inclusive ten-second boundary and `Quiet`
+  afterward. Tmux output from any pane in that window, window creation, and
+  making the window current count exactly because tmux updates that timestamp.
+  Other windows, client-input `session_activity`, alert flags, hooks, process
+  facts, CPU, terminal parsing, provider state, and Android time do not.
+- The visible labels are `ACTIVE` and `QUIET`, spoken as recent or no recent
+  tmux activity at the last check. Neither label means agent work, readiness,
+  next-move ownership, completion, unread result, liveness, or safety.
+- A missing, malformed, zero, overflowing, or future required activity
+  timestamp is never mapped to either state. A vanished session reconciles out;
+  a still-present session with an invalid required fact fails that machine's
+  inventory. Failure of the inventory-wide `list-sessions` command is likewise
+  an `InternalError`, not a fabricated cached card.
 - Laptop-created sessions use the same current-pane observation and hook
   registration path. Their character is normalized as above; absent hooks,
   unnamed provider sessions, raw launches, and unproven profiles are successful
   omission, never guessed.
-- The age source is named honestly (`lifecycle`, `process`, or `poll failure`).
-  tmux input/output activity is never lifecycle evidence. The lifecycle value
-  is exactly `v1:<foreground-pid>:<kernel-start-time>:<working|idle>:<epoch>`;
-  PID and kernel start time prevent a later Codex process in the same pane from
-  inheriting stale state.
+- Activity carries no timestamp or age on the wire. The current poll is never
+  presented as state age; only top-level inventory freshness carries a clock.
+  Android never counts down or locally decays a host-projected value.
 - The agent registration is exactly
   `v1:<pid>:<kernel-start-id>:<Codex|Claude>:<profile-key|->:<session-id-b64url>`
   in pane option `@skid_agent_runtime`. Inventory accepts its registered fields
   only when provider, PID, start id, pane, and foreground origin match the same
-  observation used for status. Stale, malformed, nested, ambiguous, or
+  observation used for optional identity. Stale, malformed, nested, ambiguous, or
   wrong-provider registrations are ignored and never repaired. Provider ids and
   names are bounded facts, not unique keys, addresses, or authority.
-- Grid order: attention first, then `WORKING`, `RUNNING`, `IDLE`, `SHELL`,
-  `UNKNOWN`, machine label, tmux name, local tmux id. Android owns this full
-  cross-host order; each gateway publishes only local facts.
+- Grid order: fresh `Quiet`, fresh `Active`, retained stale/non-actionable
+  snapshots, then case-folded/exact machine label, machine handle,
+  case-folded/exact tmux name, and local tmux id. Retained activity never
+  animates or claims current priority. Android owns this full cross-host order;
+  each gateway publishes deterministic local tmux name/id order only.
 
 Pressure remains machine-local per
 [`machine-pressure-rail.md`](machine-pressure-rail.md). `All` omits pressure
@@ -276,8 +291,12 @@ unauthenticated, or identity-changed machines cannot create, attach, send
 terminal input, or kill. Pressure failure never disables action against a
 fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
-Signal age begins at the host's own `observedAt - signalAt` and then advances
-with Android monotonic time; host clocks are never compared to each other.
+The session service captures one projection clock after collecting and
+validating the tmux snapshot. Inventory and create expose that exact value as
+`observedAt`; the same host clock and the accepted `window_activity` second
+derive every card's activity. The gateway never substitutes a handler clock,
+Android never rederives activity, and host clocks are never compared to each
+other.
 The dashboard header is one compact row carrying the title and machine
 summary. The primary `New dwarf` action is the Forge seal, a
 bottom-trailing octagonal control over the grid; it is lit when a machine
@@ -315,43 +334,31 @@ snapshot and performs no request or mutation. Pressure freshness is independent
 of inventory freshness. Stale pressure preserves and labels its last snapshot;
 missing and unsupported remain distinct in the protocol.
 
-### Attention
+### Activity and optional identity
 
-The `notify` line in each Codex profile names `skid-notify`. Codex invokes it on turn
-completion; it reads inherited `$TMUX_PANE`, stores the current Unix epoch in
-`@skid_attention`, and rings the bell. Opening the card clears the flag (bell
-clears natively on view; the gateway unsets the option on attach).
-Claude Work makes no provider-specific lifecycle or attention promise.
+[`terminal-activity.md`](terminal-activity.md) owns the exact two-state
+derivation. Inventory reads the current window's built-in
+`#{window_activity}` without enabling a monitor, setting an option, installing
+a tmux hook, or clearing anything. The host projects `Active` through the
+inclusive ten-second boundary and `Quiet` afterward. The existing five-second
+inventory schedule is the only poller. A generic terminal program is the full
+integration fixture; no provider-live behavior is needed to establish activity.
 
-Each Codex profile has one deployment-owned hook configuration, while all
-Claude profiles use the one deployment-owned local plugin; both call the closed
-`agent-hook` command. Codex accepts only `SessionStart`, `UserPromptSubmit`, and
-`Stop`; Claude accepts only `SessionStart`. A bounded
-`SessionStart` decoder reads only the documented provider session id. Other
-events are drained without parsing. Every valid SessionStart writes
-`@skid_agent_runtime`; Codex additionally writes `IDLE`, while
-`UserPromptSubmit` writes `WORKING` and clears stale attention and `Stop` writes
-`IDLE`. The helper uses the shared platform process observer to walk its
-ancestry and accepts exactly one logical provider runtime. The accepted runtime
-and every terminal-bound ancestor through the pane session leader must remain
-inside the target pane tty's exact kernel device and terminal session. A
-provider-launched hook helper may itself be a tty-less subprocess session, as
-Claude documents; it is transport, never the origin. Acceptance still requires
-its inherited exact `TMUX_PANE`, the provider runtime in its ancestry, and that
-runtime as the pane tty's foreground process-group leader. A second/nested
-runtime is ignored even when it takes foreground control. The option is bound
-to the outer process's PID and kernel start time. Runtime profile is the unique
-configured row whose provider and provider-home value match the hook process's
-own inherited `CODEX_HOME` or `CLAUDE_CONFIG_DIR`; no other process environment
-is read. Codex retains its native hook-file digest review: install
-verifies the file bytes and rejects conflicting user-level hook sources, then
-the user approves a new digest once with `/hooks`; Skíðblaðnir does not edit an
-opaque trust store or bypass Codex review. Missing, untrusted, or unloaded hooks
-omit registered identity and leave the honest process-derived state. Claude's
-existing router loads one deployment-owned local plugin whose `SessionStart`
-hook merges with user hooks; deployment does not overwrite Claude settings.
-Invoking Claude's raw binary bypasses the plugin and therefore cannot publish
-registered identity.
+Each Codex profile has one deployment-owned `SessionStart` identity hook, while
+all Claude profiles use the one deployment-owned local `SessionStart` plugin;
+both call the closed `agent-hook` command. A bounded decoder reads only the
+documented provider session id and writes `@skid_agent_runtime` after the exact
+foreground PID/start/tty/profile validation defined by the agent-identity cut.
+Missing, untrusted, unloaded, stale, malformed, nested, or ambiguous hooks omit
+optional identity and never change activity. No prompt, stop, lifecycle,
+interaction, attention, or result event is accepted.
+
+Codex may retain `skid-notify` only as a terminal-local desktop convenience: it
+resolves the inherited exact pane and writes BEL. It stores no option, calls no
+gateway, carries no content, and has no privileged product meaning. If tmux
+observes that byte it is ordinary window activity, identical to output from any
+other program. Claude and raw launches remain fully activity-capable without a
+notifier.
 
 ### Start (The Forge)
 
@@ -511,8 +518,8 @@ history item is `current`.
   fail startup. A canonical installed version that differs from `testedVersion`
   remains runnable and is reported as a nonblocking `dev-server doctor` warning.
   `internal/process` is the single native observer consumed once per pane by
-  both session status and agent identity projection, and by the content-free
-  hook adapter. `internal/agentruntime` owns provider/profile validation,
+  optional agent identity projection and by the content-free SessionStart hook
+  adapter. It never derives activity. `internal/agentruntime` owns provider/profile validation,
   foreground classification, registration encoding/acceptance, and
   provider-specific argv rules. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
@@ -521,7 +528,8 @@ history item is `current`.
   `ps` output or a Linux fallback.
 - Public `dev-server` is the sole host-deployment owner. It pins one immutable
   GitHub release and asset digests, renders the exact Devbox/MacBook/Arch host
-  configs, Codex hook files, local Claude hook plugin, and notify assets; the
+  configs, SessionStart identity hook files, the local Claude identity plugin,
+  and the BEL-only Codex notify asset; the
   existing Claude router loads that plugin without editing user settings. It
   owns user systemd services with lingering on Linux and one RunAtLoad
   LaunchAgent on macOS, and converges only its dedicated
@@ -538,8 +546,7 @@ history item is `current`.
   content and never mints, repairs, or substitutes identity. Intentional
   deletion creates a new machine and requires explicit fleet reset on Android.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
-  `@skid_objective_b64`, `@skid_character`, `@skid_attention`,
-  `@skid_lifecycle`, `@skid_agent_runtime`, the
+  `@skid_objective_b64`, `@skid_character`, `@skid_agent_runtime`, the
   server-scoped `@skid_server_epoch`, and the reserved `@skid_internal` shadow
   marker). Poller state is in-memory and rebuilt on start.
 - Authentication runs before identity disclosure. Ordinary requests send
@@ -555,8 +562,8 @@ history item is `current`.
 | --- | --- |
 | `POST /v1/pairing-invites` | Normal bearer + machine auth, empty body; replaces the in-memory slot and returns one five-minute `pairingInviteToken`, expiry, and machine |
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; every session has required `tmuxId`, `tmuxName`, `character`, local card facts, opaque `identityToken`, optional `launchProfile`, and optional exact `agent {provider,pid,profile?,providerSession?}` |
-| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; typed failures |
+| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; every session has required `tmuxId`, `tmuxName`, `character`, local card facts, opaque `identityToken`, optional `launchProfile`, optional exact `agent`, and required flat `activity = Active \| Quiet` |
+| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before creating any shadow/PTY |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; owned stale-shadow reconciliation, then one-queue exact lifetime/last-link kill |
@@ -597,7 +604,8 @@ enum values are defects, with no protocol branch or compatibility state.
   frame 64 KiB; queue 1 MiB; geometry 20–240 × 5–120. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
-  providerless profile rows, and compatibility decoders do not exist.
+  providerless profile rows, `status`, `runtime`, `interaction`, `attention`,
+  and compatibility decoders do not exist.
 
 ## 6. Android surface
 
@@ -732,15 +740,12 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder (deliberately not in v0)
 
-- **v0.5 — push:** FCM (or ntfy/UnifiedPush) delivery of the Tier-1 attention
-  signal: redacted data-only message, deep link, dedupe bit in a tmux user
-  option, and a poller sweep that sends late rather than never. Push-to-glance
-  needs nothing more.
-- **Retired until push-to-act:** authenticated provenance, exactly-once
-  attention, durable provider-session authority/history, receipts, and replay return only if
-  notifications grow buttons that act unattended (resurrection, approval,
-  chaining), or unattended orchestration arrives. That decision reopens this
-  document; nothing here scaffolds for it.
+No push or semantic agent-state step is scheduled. A useful push notification
+would require an accepted unread-result source; tmux recency alone cannot prove
+one. Provider interaction, next-move ownership, unread results, authenticated
+provenance, exactly-once attention, durable provider-session history, receipts,
+and replay return only through a new architecture decision for a concrete user
+action. Nothing in v0 scaffolds for it.
 
 ## 9. Verification
 
@@ -750,12 +755,13 @@ Verification follows an 80/20 boundary shape:
   pressure signal and recovery classification, pressure capability partitions,
   Android pressure presentation, fleet-QR parsing, federation
   reduction/routing/sort, admission decisions, provider/profile validation,
-  foreground classification, registration acceptance, and provider argv;
+  foreground classification, registration acceptance, strict terminal-activity
+  parsing/derivation, Android activity presentation/order, and provider argv;
 - a gateway service test owns invitation replacement/expiry/bearer-rotation
   invalidation and proves exactly one winner under concurrent redemption,
   without invoking tmux;
 - the same approved isolated-socket integration runs on Linux and Darwin and
-  owns real gateway + tmux list/create/status/attention/agent identity/attach/
+  owns real gateway + tmux list/create/activity/agent identity/attach/
   detach/exact kill plus authentication and machine-binding rejection before
   mutation;
 - approved live publication owns Devbox and Arch systemd plus Mac LaunchAgent
@@ -764,12 +770,13 @@ Verification follows an 80/20 boundary shape:
   bearers, and identity-preserving reinstall;
 - a pre-publication release gate owns public-repository state, exact clean-main
   SHA, exact-SHA hosted verification, unused monotonic tag, signer, APK, two
-  host bundles, and checksums; missing signing or GitHub evidence is `NOT_RUN`;
+  host bundles and checksums;
+  missing signing or GitHub evidence is `NOT_RUN`;
 - a separate post-publication read-only gate downloads the release and owns the
   final non-draft immutable tag target, exact five assets, their contents, and
   the byte-exact `dev-server` pin of the tag, source, and all five digests;
 - approved S22+ instrumentation owns exact-three encrypted collection
-  install/reconnect, atomic failure/quarantine, lifecycle reconciliation, the
+  install/reconnect, atomic failure/quarantine, activity presentation/order, the
   absence of pressure rails in `All`, the selected machine's compact pressure
   rail and local details disclosure, terminal behavior, and visible
   stale-action admission;
@@ -784,7 +791,7 @@ Verification follows an 80/20 boundary shape:
 - one separately approved named second-phone gate installs the same public APK
   and connects with a fresh QR; until the device is named it is `NOT_RUN`.
 
-The terminal/status proofs additionally cover unchanged laptop geometry and
+The terminal/identity proofs additionally cover unchanged laptop geometry and
 focus, last-link detach, bounded backpressure, exact foreground process
 lifetime, inherited nested-Codex rejection, Gboard/IME/dictation, stable
 80-column rotation geometry, true color, the reviewed key-deck inputs and
@@ -818,7 +825,8 @@ Holds, input, and provider output remain content-free in evidence; input
 reaches neither an external provider API nor a provider session store. The
 separately approved isolated session integration gate owns process replacement,
 tmux-server restart, and tmux rename behavior. No provider API, transcript
-parser, background worker, or communication action exists.
+parser, background worker, or communication action exists. The sample proves
+optional identity only; it proves no terminal-activity behavior.
 
 Routine `scripts/test verify` is static analysis, compile/build, and pure unit
 tests only; it never invokes tmux, a provider, or ADB. `integration`,
@@ -841,9 +849,16 @@ non-mutating; origin/handle or bearer failure cannot cross machines; each
 Forge uses only local profiles/paths; laptop and phone share one pane/PID/draft
 with laptop geometry and focus unchanged; detach leaves work alive; kill ends
 only the exact unambiguously last machine-local lifetime; stale identities and
-ordinary groups mutate nothing; attention is independent from status; exact
-hooks move `IDLE -> WORKING -> IDLE` while an uninstrumented live agent remains
-`RUNNING`; every row exposes `tmuxId` and `tmuxName`, exact foreground Codex or
+ordinary groups mutate nothing; every fresh card exposes exactly one required
+`Active | Quiet` value from the current window's built-in activity timestamp;
+`ACTIVE` and `QUIET` are distinguishable without color and are spoken only as
+recent or no recent tmux activity at the last check; the inclusive ten-second
+host threshold, existing five-second poll, current-window/sibling-pane/window-
+selection semantics, stale qualification, Quiet-first ordering, reduced-motion
+fallback, and required-observation failure behavior match
+[`terminal-activity.md`](terminal-activity.md); no provider, hook, process fact,
+terminal parser, alert flag, phone clock, or user option derives it; every row
+exposes `tmuxId` and `tmuxName`, exact foreground Codex or
 Claude exposes provider/PID, valid hooks add only bounded runtime profile and
 provider session id, explicit Claude name flags map exactly, and launch profile
 never substitutes for an unknown runtime profile; first inventory persists one valid dwarf for every visible ordinary

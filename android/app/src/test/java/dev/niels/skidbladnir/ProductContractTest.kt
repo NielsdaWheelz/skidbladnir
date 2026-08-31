@@ -10,6 +10,64 @@ import org.junit.Test
 
 class ProductContractTest {
     @Test
+    fun `session activity wire is exact and legacy state is rejected`() {
+        val active = activitySession("${'$'}1", "active", "token-active", "Active")
+        val quietWithAgent = activitySession(
+            "${'$'}2",
+            "quiet",
+            "token-quiet",
+            "Quiet",
+            agent = """{"provider":"Codex","pid":1234}""",
+        )
+
+        val decoded = decodeSessionsResponse(inventoryWithSessions(active, quietWithAgent)).sessions
+        assertEquals(listOf(SessionActivity.Active, SessionActivity.Quiet), decoded.map(TmuxSession::activity))
+        assertNull(decoded[0].agent)
+        assertEquals(AgentRuntime(AgentProvider.Codex, 1234), decoded[1].agent)
+
+        val invalid = listOf(
+            active.replace(",\"activity\":\"Active\"", ""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":null"),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"Working\""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"active\""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"NewResult\""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"activity\":\"Quiet\""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"status\":\"Quiet\""),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"signal\":\"Working\""),
+            active.replace(
+                "\"activity\":\"Active\"",
+                "\"activity\":\"Active\",\"signalAt\":\"2026-08-25T12:00:00Z\"",
+            ),
+            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"agent\":null"),
+            active.replace(
+                "\"activity\":\"Active\"",
+                "\"activity\":\"Active\",\"runtime\":{\"kind\":\"AgentOpen\"," +
+                    "\"agent\":{\"provider\":\"Codex\",\"pid\":1234}," +
+                    "\"interaction\":{\"kind\":\"Ready\"}}",
+            ),
+            active.replace(
+                "\"activity\":\"Active\"",
+                "\"activity\":\"Active\",\"interaction\":{\"kind\":\"Ready\"}",
+            ),
+            active.replace(
+                "\"activity\":\"Active\"",
+                "\"activity\":\"Active\",\"attention\":{\"kind\":\"NewResult\"}",
+            ),
+            quietWithAgent.replace("\"pid\":1234", "\"pid\":1234,\"interaction\":\"Ready\""),
+        )
+        invalid.forEachIndexed { index, session ->
+            assertThrows("accepted invalid activity session case $index", ProtocolDecodeException::class.java) {
+                decodeSessionsResponse(inventoryWithSessions(session))
+            }
+            assertThrows("create accepted invalid activity session case $index", ProtocolDecodeException::class.java) {
+                decodeCreatedSessionResponse(
+                    """{"observedAt":"2026-08-25T12:00:00Z","session":$session}""",
+                )
+            }
+        }
+    }
+
+    @Test
     fun `stored machine origin must already be canonical`() {
         val canonical = "https://arch.example.ts.net:8443/"
         assertEquals(canonical, requireNotNull(parseStoredMachineOrigin(canonical)).encoded)
@@ -54,6 +112,63 @@ class ProductContractTest {
         assertThrows(ProtocolDecodeException::class.java) {
             decodeSessionsResponse(inventoryWithSessions(first, duplicateToken))
         }
+    }
+
+    @Test
+    fun `create response requires its exact observed session envelope`() {
+        val session = inventorySession("${'$'}1", "one", "token")
+        val envelope =
+            """{"observedAt":"2026-08-25T12:00:00Z","session":$session}"""
+
+        assertEquals("${'$'}1", decodeCreatedSessionResponse(envelope).tmuxId)
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodeCreatedSessionResponse(session)
+        }
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodeCreatedSessionResponse(envelope.dropLast(1) + ",\"machine\":{}}")
+        }
+    }
+
+    @Test
+    fun `session responses reject an unset projection clock`() {
+        val session = inventorySession("${'$'}1", "one", "token")
+        val unset = "0001-01-01T00:00:00Z"
+
+        assertThrows("inventory accepted Go's zero time", ProtocolDecodeException::class.java) {
+            decodeSessionsResponse(inventoryWithSessions(session).replace("2026-08-25T12:00:00Z", unset))
+        }
+        assertThrows("create accepted Go's zero time", ProtocolDecodeException::class.java) {
+            decodeCreatedSessionResponse("""{"observedAt":"$unset","session":$session}""")
+        }
+    }
+
+    @Test
+    fun `session responses reject projection clocks Go RFC3339Nano never emits`() {
+        val session = inventorySession("${'$'}1", "one", "token")
+        val trailingZero = "2026-08-25T12:00:00.0Z"
+        val canonicalFraction = "2026-08-25T12:00:00.123456789Z"
+
+        assertThrows("inventory accepted a noncanonical projection clock", ProtocolDecodeException::class.java) {
+            decodeSessionsResponse(inventoryWithSessions(session).replace("2026-08-25T12:00:00Z", trailingZero))
+        }
+        assertThrows("create accepted a noncanonical projection clock", ProtocolDecodeException::class.java) {
+            decodeCreatedSessionResponse("""{"observedAt":"$trailingZero","session":$session}""")
+        }
+        assertEquals(
+            Instant.parse(canonicalFraction),
+            decodeSessionsResponse(
+                inventoryWithSessions(session).replace("2026-08-25T12:00:00Z", canonicalFraction),
+            ).observedAt,
+        )
+    }
+
+    @Test
+    fun `wire instant serializer emits the same canonical language it accepts`() {
+        val instant = Instant.parse("2026-08-25T12:00:00.120Z")
+        val encoded = productJson.encodeToString(IsoInstantSerializer, instant)
+
+        assertEquals("\"2026-08-25T12:00:00.12Z\"", encoded)
+        assertEquals(instant, productJson.decodeFromString(IsoInstantSerializer, encoded))
     }
 
     @Test
@@ -336,8 +451,7 @@ class ProductContractTest {
                     "character":{"key":"norse.durinn","displayName":"Durinn"},
                     "launchProfile":null,
                     "attachedClients":1,
-                    "attention":false,
-                    "status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}
+                    "activity":"Quiet"
                   }]
                 }
                 """.trimIndent(),
@@ -353,11 +467,6 @@ class ProductContractTest {
                 """{"kind":"Error","error":{"code":"SessionNotFound","message":"That session no longer exists."}}""",
             )
         }
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodeSessionsResponse(
-                """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[],"sessions":[{"tmuxId":"${'$'}1","tmuxName":"forge","identityToken":"token","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Working","signal":"Notify","signalAt":"2026-08-25T11:58:00Z"}}]}""",
-            )
-        }
     }
 
     @Test
@@ -365,7 +474,9 @@ class ProductContractTest {
         val label = requireNotNull(MachineLabel.parse("MacBook"))
         val target = SessionTarget(
             machineHandle,
-            decodeTmuxSession(inventorySession("${'$'}1", "ga-durinn", "token")),
+            decodeSessionsResponse(
+                inventoryWithSessions(inventorySession("${'$'}1", "ga-durinn", "token")),
+            ).sessions.single(),
         )
 
         assertEquals(
@@ -417,7 +528,18 @@ class ProductContractTest {
         """{"unsupported":["cpuPsiSomeAvg60Percent","ioPsiFullAvg60Percent","memoryAvailablePercent","memoryPsiFullAvg60Percent"],"current":{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm","phase":"Steady","reasons":["Memory"],"signals":{"cpuPercent":{"value":12.5,"state":"Informational"},"normalizedLoad":{"value":0.4,"state":"Normal"},"swapUsedPercent":{"value":0.0,"state":"Informational"},"diskAvailablePercent":{"value":60.0,"state":"Normal"},"memoryPressure":{"value":"Warning","state":"Warm"}},"missing":[]},"history":[{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm"}]}"""
 
     private fun inventorySession(tmuxId: String, tmuxName: String, identityToken: String): String =
-        """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"attention":false,"status":{"kind":"Shell","signal":"Process","signalAt":"2026-08-25T11:58:00Z"}}"""
+        activitySession(tmuxId, tmuxName, identityToken, "Quiet")
+
+    private fun activitySession(
+        tmuxId: String,
+        tmuxName: String,
+        identityToken: String,
+        activity: String,
+        agent: String? = null,
+    ): String {
+        val encodedAgent = agent?.let { ",\"agent\":$it" }.orEmpty()
+        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"activity":"$activity"$encodedAgent}"""
+    }
 
     private fun inventoryWithSessions(vararg sessions: String): String =
         """{"machine":{"handle":"mh-0123456789abcdef0123456789abcdef","platform":"Linux"},"observedAt":"2026-08-25T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[${sessions.joinToString()}]}"""

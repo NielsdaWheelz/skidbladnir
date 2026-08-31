@@ -1493,12 +1493,12 @@ func waitForProviderLiveProjections(
 		cancel()
 		if err == nil {
 			listOK = true
-			if err := processGroups.record(listed); err != nil {
+			if err := processGroups.record(listed.Sessions); err != nil {
 				t.Fatal(err)
 			}
 			complete := true
 			for index, expectation := range expectations {
-				last[index] = summarizeProviderLiveProjection(listed, expectation)
+				last[index] = summarizeProviderLiveProjection(listed.Sessions, expectation)
 				complete = complete && providerLiveProjectionComplete(last[index])
 			}
 			if complete {

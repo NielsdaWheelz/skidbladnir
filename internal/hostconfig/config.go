@@ -3,9 +3,11 @@ package hostconfig
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -35,18 +37,46 @@ type Config struct {
 	Profiles []agentruntime.Profile
 }
 
+type hostConfigFile interface {
+	io.Reader
+	Stat() (os.FileInfo, error)
+	Close() error
+}
+
 func Load(path string, runtime platform.Kind) (Config, error) {
 	if path == "" {
 		return Config{}, errors.New("host config path is empty")
 	}
-	encoded, err := os.ReadFile(path)
+	// Host configuration is a deployment-owned local regular file. Nonblocking,
+	// no-follow admission rejects FIFOs, devices, and symlinks before a hook can
+	// wait on an unbounded filesystem producer; the capped read prevents a large
+	// file from being normalized into memory before its size is rejected.
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return Config{}, fmt.Errorf("read host config: %w", err)
+	}
+	return loadOpenedHostConfig(file, runtime)
+}
+
+func loadOpenedHostConfig(file hostConfigFile, runtime platform.Kind) (config Config, resultErr error) {
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			config = Config{}
+			resultErr = errors.Join(resultErr, fmt.Errorf("close host config: %w", closeErr))
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return Config{}, errors.New("host config is not a regular file")
+	}
+	encoded, err := io.ReadAll(io.LimitReader(file, maximumConfigBytes+1))
 	if err != nil {
 		return Config{}, fmt.Errorf("read host config: %w", err)
 	}
 	if len(encoded) > maximumConfigBytes {
 		return Config{}, errors.New("host config is too large")
 	}
-	config, err := parse(encoded, runtime)
+	config, err = parse(encoded, runtime)
 	if err != nil {
 		return Config{}, fmt.Errorf("parse host config: %w", err)
 	}

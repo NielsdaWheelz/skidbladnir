@@ -1124,7 +1124,9 @@ class MultiMachineUiInstrumentedTest {
                 largeRail.performClick()
                 compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
                 InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-                compose.waitForIdle()
+                compose.waitUntil(10_000) {
+                    compose.onAllNodes(hasText("MacBook pressure")).fetchSemanticsNodes().isEmpty()
+                }
                 compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
                 largeRail.assertIsDisplayed().assertIsFocused()
 
@@ -1167,12 +1169,8 @@ class MultiMachineUiInstrumentedTest {
             identityToken = "v1-0123456789abcdef0123456789abcdef.100.200.1",
             character = CharacterSummary("norse.durinn", "Durinn"),
             attachedClients = 1,
-            attention = false,
-            status = SessionStatus(
-                SessionStatusKind.Working,
-                SessionStatusSignal.Lifecycle,
-                Instant.parse("2026-08-26T11:59:55Z"),
-            ),
+            activity = SessionActivity.Active,
+            agent = AgentRuntime(AgentProvider.Codex, pid = 1234),
         )
         val target = SessionTarget(handle, session)
         val stale = MachineState(
@@ -1345,12 +1343,8 @@ class MultiMachineUiInstrumentedTest {
         character = CharacterSummary("dwarf-$index", "Dwarf $index"),
         launchProfile = TEST_PROFILE.key,
         attachedClients = 0,
-        attention = false,
-        status = SessionStatus(
-            SessionStatusKind.Working,
-            SessionStatusSignal.Lifecycle,
-            SIGNAL_AT,
-        ),
+        activity = SessionActivity.Active,
+        agent = AgentRuntime(AgentProvider.Codex, pid = 1234, profile = TEST_PROFILE.key),
     )
 
     private fun cardTag(session: TmuxSession) =
@@ -1554,7 +1548,6 @@ class MultiMachineUiInstrumentedTest {
         const val FAILED_MACHINE = "skidbladnir.failedMachine"
         const val OUTAGE_READY_FILE = "skidbladnir-multi-machine-outage-ready"
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
-        val SIGNAL_AT: Instant = Instant.parse("2026-08-26T11:59:55Z")
         val TEST_MACHINE = PairedMachine(
             requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")),
             requireNotNull(MachineLabel.parse("Devbox")),

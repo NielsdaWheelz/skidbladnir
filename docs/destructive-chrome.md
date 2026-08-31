@@ -69,8 +69,9 @@ provisioning repair is required" gets the calm armed accent.
   `MaterialTheme.colorScheme.error` is never read by app code (the scheme
   slot stays for M3-internal use such as text-field error state).
 - **Staleness is absence, not failure.** Missing knowledge renders Muted,
-  matching `UNKNOWN → Muted` (design language §5) and the honesty law
-  (§1.4): absence is displayed, not alarmed. Trust events — auth required,
+  matching the `QUIET` activity tone while remaining a separate freshness
+  fact (design language §5) and the honesty law (§1.4): absence is displayed,
+  not alarmed. Trust events — auth required,
   identity changed — are the loud ones.
 - **Geometry carries the destructive signal, not a picture.** No icon, no
   glyph, no rune, no figure. §15's ban on axe/hammer/helm clip-art and §7's

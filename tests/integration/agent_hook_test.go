@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -36,7 +37,7 @@ func TestAgentHookPublishesOnlyTheExactContentFreePaneRegistration(t *testing.T)
 	root := t.TempDir()
 	hook := buildAgentHookCLI(t, repositoryRoot, root)
 	provider := buildAgentHookProvider(t, root)
-	hostConfig := writeAgentHookHostConfig(t, root, provider)
+	hostConfig := writeAgentHookHostConfig(t, root, provider, tmuxPath)
 	start := filepath.Join(root, "start")
 	done := filepath.Join(root, "done")
 	claudeHome := filepath.Join(root, "claude-work")
@@ -69,10 +70,15 @@ func TestAgentHookPublishesOnlyTheExactContentFreePaneRegistration(t *testing.T)
 	if err != nil || panePID <= 0 {
 		t.Fatal("read test-owned provider process id")
 	}
-	agentHookTmux(t, socket, "set-option", "-p", "-t", pane, "--", "@skid_attention", "42")
+	const (
+		profileSentinel   = "profile-sentinel"
+		objectiveSentinel = "objective-sentinel"
+	)
+	agentHookTmux(t, socket, "set-option", "-p", "-t", pane, "--", "@skid_profile", profileSentinel)
+	agentHookTmux(t, socket, "set-option", "-p", "-t", pane, "--", "@skid_objective_b64", objectiveSentinel)
 	if got := agentHookTmux(t, socket, "display-message", "-p", "-t", pane,
-		"#{@skid_agent_runtime}|#{@skid_lifecycle}|#{@skid_attention}|#{@skid_profile}|#{@skid_objective_b64}"); got != "||42||" {
-		t.Fatal("test-owned pane did not begin with only its attention sentinel")
+		"#{@skid_agent_runtime}|#{@skid_profile}|#{@skid_objective_b64}"); got != "|"+profileSentinel+"|"+objectiveSentinel {
+		t.Fatal("test-owned pane did not begin with only its unrelated metadata sentinels")
 	}
 
 	if err := os.WriteFile(start, nil, 0o600); err != nil {
@@ -96,8 +102,67 @@ func TestAgentHookPublishesOnlyTheExactContentFreePaneRegistration(t *testing.T)
 		t.Fatal("published registration did not match the exact provider lifetime, profile, and session")
 	}
 	if got := agentHookTmux(t, socket, "display-message", "-p", "-t", pane,
-		"#{@skid_lifecycle}|#{@skid_attention}|#{@skid_profile}|#{@skid_objective_b64}"); got != "|42||" {
-		t.Fatal("Claude identity publication changed lifecycle, attention, or unrelated metadata")
+		"#{@skid_profile}|#{@skid_objective_b64}"); got != profileSentinel+"|"+objectiveSentinel {
+		t.Fatal("Claude identity publication changed unrelated metadata")
+	}
+}
+
+func TestSessionStartIdentityIsPublishedUnconditionally(t *testing.T) {
+	repositoryRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal("resolve repository root")
+	}
+	root := t.TempDir()
+	hook := buildAgentHookCLI(t, repositoryRoot, root)
+	provider := buildAgentHookProvider(t, root)
+	hostConfig := writeAgentHookHostConfig(
+		t, root, filepath.Join(root, "claude-hook-fixture"), tmuxPath,
+	)
+	start := filepath.Join(root, "start")
+	done := filepath.Join(root, "done")
+	claudeHome := filepath.Join(root, "claude-work")
+	if err := os.Mkdir(claudeHome, 0o700); err != nil {
+		t.Fatal("create provider home")
+	}
+
+	socket := randomTmuxSocketName(t, "skid-agent-hook-cas")
+	socketPath := namedTmuxSocketPath(socket)
+	const sessionName = "agent-hook-conditional-publication"
+	output, err := isolatedTmuxCommand(
+		tmuxPath,
+		"-L", socket,
+		"-f", "/dev/null",
+		"new-session", "-d", "-s", sessionName,
+		"-e", "CLAUDE_CONFIG_DIR="+claudeHome,
+		"--", provider, hook, hostConfig, start, done,
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("start test-owned provider runtime: output_bytes=%d", len(output))
+	}
+	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
+	t.Cleanup(func() {
+		stopTestTmuxServer(t, tmuxPath, socketPath, serverIdentity)
+	})
+
+	pane := agentHookTmux(t, socket, "display-message", "-p", "-t", "="+sessionName+":", "#{pane_id}")
+	// Architecture §4: every valid SessionStart writes the option. A prior
+	// value the hook cannot interpret — a hand-set string, a value from a
+	// future registration grammar — must never wedge identity registration for
+	// this pane, and a live provider's registration always wins.
+	agentHookTmux(t, socket, "set-option", "-p", "-t", pane, "--", agentruntime.PaneOption, "previous registration!")
+	if err := os.WriteFile(start, nil, 0o600); err != nil {
+		t.Fatal("trigger provider hook")
+	}
+	waitForAgentHookCompletion(t, done)
+	published := agentHookTmux(t, socket, "show-options", "-pqv", "-t", pane, agentruntime.PaneOption)
+	if published == "previous registration!" {
+		t.Fatal("an uninterpretable prior value suppressed SessionStart identity registration")
+	}
+	fields := strings.Split(published, ":")
+	encodedSession := base64.RawURLEncoding.EncodeToString([]byte(agentHookSessionID))
+	if len(fields) != 6 || fields[0] != "v1" || fields[3] != agentruntime.ProviderClaude.String() ||
+		fields[5] != encodedSession {
+		t.Fatalf("SessionStart published %d registration fields for the wrong provider or session", len(fields))
 	}
 }
 
@@ -185,9 +250,9 @@ func agentHookGoTool(t *testing.T) string {
 	return path
 }
 
-func writeAgentHookHostConfig(t *testing.T, destination, provider string) string {
+func writeAgentHookHostConfig(t *testing.T, destination, claudeProvider, configuredTmuxPath string) string {
 	t.Helper()
-	tmuxVersionOutput, err := exec.Command(tmuxPath, "-V").Output()
+	tmuxVersionOutput, err := exec.Command(configuredTmuxPath, "-V").Output()
 	if err != nil || len(tmuxVersionOutput) < 2 || tmuxVersionOutput[len(tmuxVersionOutput)-1] != '\n' ||
 		bytes.ContainsRune(tmuxVersionOutput[:len(tmuxVersionOutput)-1], '\n') {
 		t.Fatal("observe configured tmux version")
@@ -205,13 +270,13 @@ func writeAgentHookHostConfig(t *testing.T, destination, provider string) string
   ]
 }`,
 		platform.Current().Kind,
-		tmuxPath,
+		configuredTmuxPath,
 		string(tmuxVersionOutput[:len(tmuxVersionOutput)-1]),
 		filepath.Join(destination, "codex-personal"),
 		filepath.Join(destination, "codex-work"),
 		filepath.Join(destination, "codex-work2"),
-		filepath.Join(destination, "claude-personal"), provider,
-		provider, filepath.Join(destination, "claude-work"), provider,
+		filepath.Join(destination, "claude-personal"), claudeProvider,
+		claudeProvider, filepath.Join(destination, "claude-work"), claudeProvider,
 	)
 	if err := os.WriteFile(config, []byte(encoded), 0o600); err != nil {
 		t.Fatal("write agent-hook host config")

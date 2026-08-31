@@ -58,12 +58,8 @@ class TerminalChromeInstrumentedTest {
             character = CharacterSummary("dwarf-9", "Dwarf 9"),
             launchProfile = requireNotNull(ProfileKey.parse("personal")),
             attachedClients = 1,
-            attention = false,
-            status = SessionStatus(
-                SessionStatusKind.Working,
-                SessionStatusSignal.Lifecycle,
-                Instant.parse("2026-08-27T12:00:00Z"),
-            ),
+            activity = SessionActivity.Active,
+            agent = AgentRuntime(AgentProvider.Codex, pid = 1234),
         )
         val machine = PairedMachine(
             handle = MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")!!,

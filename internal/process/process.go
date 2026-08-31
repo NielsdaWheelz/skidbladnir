@@ -86,7 +86,7 @@ func equalObservation(left, right Observation) bool {
 
 // TerminalDeviceAt resolves the kernel device identity of an exact character
 // device path. Tmux's pane_tty and the hook process observation must name the
-// same value before lifecycle state may be published to a pane.
+// same value before runtime identity may mutate a pane option.
 func TerminalDeviceAt(path string) (TerminalDevice, error) {
 	info, err := os.Stat(path)
 	if err != nil {

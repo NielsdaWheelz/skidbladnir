@@ -290,7 +290,6 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 	success := strings.Join([]string{
 		"new-session -d -E -t '" + spec.SourceID + "' -s '" + spec.ShadowName + "'",
 		"set-option -t '" + shadowPaneTarget + "' -- @skid_internal " + phoneShadowMarker,
-		"set-option -pqu -t '" + spec.SourceID + "' -- @skid_attention",
 		"display-message -p -t '" + shadowPaneTarget + "' '#{session_id}'",
 		"display-message -p -t '" + spec.SourceID + "' '#{window_id}'",
 	}, " ; ")

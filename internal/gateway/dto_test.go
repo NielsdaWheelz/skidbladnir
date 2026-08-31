@@ -21,226 +21,224 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-func TestSessionProjectionUsesTmuxNameAndRequiredCharacterWithoutWideningStatus(t *testing.T) {
-	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	character := catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"}
+func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testing.T) {
+	profiles := testProfileCatalog()
 	providerSession, err := agentruntime.NewProviderSessionFacts("019-runtime", "")
 	if err != nil {
 		t.Fatalf("construct provider session facts: %v", err)
 	}
-	card, err := mapSession(sessions.Session{
-		TmuxID:        "$7",
-		TmuxName:      "laptop-work",
-		IdentityToken: "v1-lifetime",
-		Character:     character,
-		LaunchProfile: "work",
-		Agent: &agentruntime.AgentRuntime{
-			Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "work", ProviderSession: providerSession,
-		},
-		Attention:       true,
+	agent := &agentruntime.AgentRuntime{
+		Provider:        agentruntime.ProviderCodex,
+		PID:             4312,
+		Profile:         "work",
+		ProviderSession: providerSession,
+	}
+	candidate := sessions.Session{
+		TmuxID:          "$7",
+		TmuxName:        "laptop-work",
+		IdentityToken:   "v1-lifetime",
+		Character:       catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+		LaunchProfile:   "work",
+		Agent:           agent,
 		AttachedClients: 2,
-		Status: sessions.Status{
-			Kind:     sessions.StatusRunning,
-			Signal:   sessions.StatusSignalProcess,
-			SignalAt: observedAt,
+		Activity:        sessions.SessionActivityActive,
+	}
+	card, err := mapSession(candidate, profiles)
+	if err != nil {
+		t.Fatalf("project session with exact agent identity: %v", err)
+	}
+	fields := encodedObject(t, card)
+	want := map[string]any{
+		"tmuxId":        "$7",
+		"tmuxName":      "laptop-work",
+		"identityToken": "v1-lifetime",
+		"character": map[string]any{
+			"key":         "norse.durinn",
+			"displayName": "Durinn",
 		},
-	}, testProfileCatalog(), observedAt)
+		"launchProfile": "work",
+		"agent": map[string]any{
+			"provider":        "Codex",
+			"pid":             float64(4312),
+			"profile":         "work",
+			"providerSession": map[string]any{"id": "019-runtime"},
+		},
+		"attachedClients": float64(2),
+		"activity":        "Active",
+	}
+	if !maps.EqualFunc(fields, want, encodedValuesEqual) {
+		t.Fatalf("session wire projection = %#v, want exact closed contract %#v", fields, want)
+	}
+
+	candidate.Agent = nil
+	card, err = mapSession(candidate, profiles)
 	if err != nil {
-		t.Fatalf("project running session: %v", err)
+		t.Fatalf("project session without optional agent identity: %v", err)
 	}
-	if card.TmuxName != "laptop-work" || card.Character != (characterDTO{Key: character.Key, DisplayName: character.DisplayName}) {
-		t.Fatalf("session identity projection = %+v, want tmux name and required character", card)
+	fields = encodedObject(t, card)
+	if fields["activity"] != "Active" {
+		t.Fatalf("agent absence changed Active activity to %#v", fields["activity"])
 	}
-	if !card.Attention || card.Status.Kind != "Running" || card.Status.Signal != "Process" {
-		t.Fatalf("attention replaced or widened status: %+v", card)
+	if _, present := fields["agent"]; present {
+		t.Fatalf("absent agent identity crossed the wire: %#v", fields["agent"])
 	}
-	payload, err := json.Marshal(card)
+	candidate.Agent = agent
+	candidate.Activity = sessions.SessionActivityQuiet
+	card, err = mapSession(candidate, profiles)
 	if err != nil {
-		t.Fatalf("encode projected card: %v", err)
+		t.Fatalf("project Quiet session with optional agent identity: %v", err)
 	}
-	var fields map[string]any
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		t.Fatalf("decode projected card: %v", err)
+	fields = encodedObject(t, card)
+	if fields["activity"] != "Quiet" || fields["agent"] == nil {
+		t.Fatalf("agent presence changed Quiet activity or disappeared: %#v", fields)
 	}
-	if fields["tmuxId"] != "$7" || fields["tmuxName"] != "laptop-work" || fields["character"] == nil {
-		t.Fatalf("wire projection omitted required identity fields: %s", payload)
-	}
-	if fields["launchProfile"] != "work" {
-		t.Fatalf("wire projection launch profile = %v, want work: %s", fields["launchProfile"], payload)
-	}
-	agent, ok := fields["agent"].(map[string]any)
-	if !ok || agent["provider"] != "Codex" || agent["pid"] != float64(4312) || agent["profile"] != "work" {
-		t.Fatalf("wire projection agent = %#v, want exact Codex runtime: %s", fields["agent"], payload)
-	}
-	providerFacts, ok := agent["providerSession"].(map[string]any)
-	if !ok || providerFacts["id"] != "019-runtime" {
-		t.Fatalf("wire projection provider session = %#v, want id only: %s", agent["providerSession"], payload)
-	}
-	if _, present := providerFacts["name"]; present {
-		t.Fatalf("wire projection emitted absent provider name: %s", payload)
-	}
-	for _, retired := range []string{"id", "name", "profile"} {
-		if _, exists := fields[retired]; exists {
-			t.Fatalf("wire projection retained retired field %q: %s", retired, payload)
+	for _, retired := range []string{"status", "signal", "signalAt", "runtime", "interaction", "attention"} {
+		if _, present := fields[retired]; present {
+			t.Fatalf("session wire retained retired field %q", retired)
 		}
 	}
-}
 
-func TestSessionProjectionOmitsEveryUnprovenOptionalIdentityFact(t *testing.T) {
-	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	card, err := mapSession(sessions.Session{
-		TmuxID:        "$8",
-		TmuxName:      "plain-shell",
-		IdentityToken: "v1-shell",
-		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-		Status: sessions.Status{
-			Kind: sessions.StatusShell, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
-		},
-	}, testProfileCatalog(), observedAt)
-	if err != nil {
-		t.Fatalf("project session without an agent: %v", err)
-	}
-	payload, err := json.Marshal(card)
-	if err != nil {
-		t.Fatalf("encode session without an agent: %v", err)
-	}
-	var fields map[string]any
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		t.Fatalf("decode session without an agent: %v", err)
-	}
-	for _, absent := range []string{"launchProfile", "agent"} {
-		if _, present := fields[absent]; present {
-			t.Fatalf("wire projection invented optional field %q: %s", absent, payload)
+	for _, invalid := range []sessions.SessionActivity{"", "ACTIVE", "Unknown"} {
+		candidate.Activity = invalid
+		if _, err := mapSession(candidate, profiles); err == nil {
+			t.Fatalf("session projection accepted activity %q outside Active | Quiet", invalid)
 		}
 	}
-}
-
-func TestSessionProjectionAcceptsOnlyLegalAgentStatusRelations(t *testing.T) {
-	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	agents := []struct {
-		name  string
-		agent *agentruntime.AgentRuntime
+	candidate.Activity = sessions.SessionActivityActive
+	candidate.LaunchProfile = "other"
+	if _, err := mapSession(candidate, profiles); err == nil {
+		t.Fatal("session projection accepted a launch profile outside the emitted catalog")
+	}
+	candidate.LaunchProfile = ""
+	invalidAgent := *agent
+	invalidAgent.Provider = agentruntime.ProviderClaude
+	candidate.Agent = &invalidAgent
+	if _, err := mapSession(candidate, profiles); err == nil {
+		t.Fatal("session projection accepted agent metadata invalid for the emitted catalog")
+	}
+	candidate.Agent = agent
+	for _, test := range []struct {
+		name   string
+		mutate func(*sessions.Session)
 	}{
-		{name: "no-agent"},
-		{name: "Codex", agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312}},
-		{name: "Claude", agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderClaude, PID: 4313}},
-	}
-	kinds := []sessions.StatusKind{
-		sessions.StatusWorking,
-		sessions.StatusRunning,
-		sessions.StatusIdle,
-		sessions.StatusShell,
-		sessions.StatusUnknown,
-	}
-	signals := []sessions.StatusSignal{
-		sessions.StatusSignalLifecycle,
-		sessions.StatusSignalProcess,
-		sessions.StatusSignalPollFailure,
-	}
-	accepted := map[string]struct{}{
-		"no-agent/SHELL/Process":       {},
-		"no-agent/UNKNOWN/PollFailure": {},
-		"Codex/WORKING/Lifecycle":      {},
-		"Codex/RUNNING/Process":        {},
-		"Codex/IDLE/Lifecycle":         {},
-		"Claude/RUNNING/Process":       {},
-	}
-	base := sessions.Session{
-		TmuxID:        "$10",
-		TmuxName:      "strict-status-boundary",
-		IdentityToken: "v1-strict-status",
-		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-	}
-	for _, candidateAgent := range agents {
-		for _, kind := range kinds {
-			for _, signal := range signals {
-				key := candidateAgent.name + "/" + string(kind) + "/" + string(signal)
-				t.Run(key, func(t *testing.T) {
-					candidate := base
-					candidate.Agent = candidateAgent.agent
-					candidate.Status = sessions.Status{Kind: kind, Signal: signal, SignalAt: observedAt}
-					_, err := mapSession(candidate, testProfileCatalog(), observedAt)
-					_, wantAccepted := accepted[key]
-					if wantAccepted && err != nil {
-						t.Fatalf("session projection rejected legal agent/status relation %s: %v", key, err)
-					}
-					if !wantAccepted && err == nil {
-						t.Fatalf("session projection accepted impossible agent/status relation %s", key)
-					}
-				})
-			}
-		}
-	}
-}
-
-func TestSessionProjectionRejectsCodexProviderSessionName(t *testing.T) {
-	providerSession, err := agentruntime.NewProviderSessionFacts("codex-session", "must-not-serialize")
-	if err != nil {
-		t.Fatalf("construct provider session facts: %v", err)
-	}
-	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	_, err = mapSession(sessions.Session{
-		TmuxID:        "$11",
-		TmuxName:      "codex-name-boundary",
-		IdentityToken: "v1-codex-name",
-		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-		Agent: &agentruntime.AgentRuntime{
-			Provider:        agentruntime.ProviderCodex,
-			PID:             4312,
-			ProviderSession: providerSession,
-		},
-		Status: sessions.Status{
-			Kind: sessions.StatusRunning, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
-		},
-	}, testProfileCatalog(), observedAt)
-	if err == nil {
-		t.Fatal("session projection serialized a provider session name for Codex")
-	}
-}
-
-func TestSessionProjectionRejectsProfileFactsOutsideTheConfiguredCatalog(t *testing.T) {
-	observedAt := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	base := sessions.Session{
-		TmuxID:        "$9",
-		TmuxName:      "strict-profile-boundary",
-		IdentityToken: "v1-strict-profile",
-		Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-		Status: sessions.Status{
-			Kind: sessions.StatusRunning, Signal: sessions.StatusSignalProcess, SignalAt: observedAt,
-		},
-	}
-	tests := []struct {
-		name          string
-		launchProfile agentruntime.ProfileKey
-		agent         *agentruntime.AgentRuntime
-	}{
-		{
-			name:  "malformed runtime profile",
-			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "Work"},
-		},
-		{
-			name:  "unknown runtime profile",
-			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderCodex, PID: 4312, Profile: "other"},
-		},
-		{
-			name:  "provider-mismatched runtime profile",
-			agent: &agentruntime.AgentRuntime{Provider: agentruntime.ProviderClaude, PID: 4312, Profile: "work"},
-		},
-		{
-			name:          "unknown launch profile",
-			launchProfile: "other",
-		},
-	}
-	for _, test := range tests {
+		{name: "missing tmux id", mutate: func(value *sessions.Session) { value.TmuxID = "" }},
+		{name: "missing tmux name", mutate: func(value *sessions.Session) { value.TmuxName = "" }},
+		{name: "missing lifetime identity", mutate: func(value *sessions.Session) { value.IdentityToken = "" }},
+		{name: "missing character key", mutate: func(value *sessions.Session) { value.Character.Key = "" }},
+		{name: "missing character name", mutate: func(value *sessions.Session) { value.Character.DisplayName = "" }},
+		{name: "negative client count", mutate: func(value *sessions.Session) { value.AttachedClients = -1 }},
+	} {
 		t.Run(test.name, func(t *testing.T) {
-			candidate := base
-			candidate.LaunchProfile = test.launchProfile
-			candidate.Agent = test.agent
-			if _, err := mapSession(candidate, testProfileCatalog(), observedAt); err == nil {
-				t.Fatalf("session projection accepted %s outside the configured profile catalog", test.name)
+			invalid := candidate
+			test.mutate(&invalid)
+			if _, err := mapSession(invalid, profiles); err == nil {
+				t.Fatal("session projection accepted an invalid required fact")
 			}
 		})
 	}
+}
+
+func TestInventoryProjectionUsesItsSingleServiceObservationClock(t *testing.T) {
+	observedAt := time.Date(2026, time.August, 28, 19, 14, 53, 987654321, time.UTC)
+	inventory := sessions.Inventory{
+		ObservedAt: observedAt,
+		Sessions: []sessions.Session{{
+			TmuxID:        "$12",
+			TmuxName:      "observed",
+			IdentityToken: "v1-observed",
+			Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+			Activity:      sessions.SessionActivityActive,
+		}},
+	}
+	projected, err := mapSessionsResponse(
+		machineDTO{Handle: "mh-00112233445566778899aabbccddeeff", Platform: platform.KindLinux},
+		inventory,
+		validProfileProjectionCatalog(),
+	)
+	if err != nil {
+		t.Fatalf("project inventory: %v", err)
+	}
+	envelope := encodedObject(t, projected)
+	if got, want := slices.Sorted(maps.Keys(envelope)), []string{"machine", "observedAt", "profiles", "sessions"}; !slices.Equal(got, want) {
+		t.Fatalf("inventory response fields = %v, want exact envelope %v", got, want)
+	}
+	if envelope["observedAt"] != observedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("inventory observedAt = %#v, want exact service clock", envelope["observedAt"])
+	}
+	if len(projected.Sessions) != 1 || projected.Sessions[0].Activity != "Active" {
+		t.Fatalf("inventory session activity = %+v, want one Active card", projected.Sessions)
+	}
+
+	inventory.ObservedAt = time.Time{}
+	if _, err := mapSessionsResponse(machineDTO{}, inventory, validProfileProjectionCatalog()); err == nil {
+		t.Fatal("inventory projection accepted a zero observation clock")
+	}
+	inventory.ObservedAt = time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := mapSessionsResponse(machineDTO{}, inventory, validProfileProjectionCatalog()); err == nil {
+		t.Fatal("inventory projection accepted a clock outside canonical RFC 3339")
+	}
+}
+
+func TestCreateSessionProjectionCarriesTheSameStrictSessionDTO(t *testing.T) {
+	observedAt := time.Date(2026, time.August, 28, 19, 14, 53, 123456789, time.UTC)
+	observed := sessions.ObservedSession{
+		ObservedAt: observedAt,
+		Session: sessions.Session{
+			TmuxID:        "$11",
+			TmuxName:      "created",
+			IdentityToken: "v1-created",
+			Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
+			Activity:      sessions.SessionActivityQuiet,
+		},
+	}
+	projected, err := mapCreateSessionResponse(observed, validProfileProjectionCatalog())
+	if err != nil {
+		t.Fatalf("project created session: %v", err)
+	}
+	fields := encodedObject(t, projected)
+	if got, want := slices.Sorted(maps.Keys(fields)), []string{"observedAt", "session"}; !slices.Equal(got, want) {
+		t.Fatalf("create response fields = %v, want exact envelope %v", got, want)
+	}
+	if fields["observedAt"] != observedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("create observedAt = %#v, want exact mapping clock", fields["observedAt"])
+	}
+	sessionFields, ok := fields["session"].(map[string]any)
+	if !ok || sessionFields["activity"] != "Quiet" {
+		t.Fatalf("create session does not carry the strict Quiet DTO: %#v", fields["session"])
+	}
+	for _, retired := range []string{"status", "signal", "signalAt", "runtime", "interaction", "attention"} {
+		if _, present := sessionFields[retired]; present {
+			t.Fatalf("create session retained retired field %q", retired)
+		}
+	}
+
+	observed.ObservedAt = time.Time{}
+	if _, err := mapCreateSessionResponse(observed, validProfileProjectionCatalog()); err == nil {
+		t.Fatal("create response projection accepted a zero observation clock")
+	}
+	observed.ObservedAt = time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := mapCreateSessionResponse(observed, validProfileProjectionCatalog()); err == nil {
+		t.Fatal("create response projection accepted a clock outside canonical RFC 3339")
+	}
+}
+
+func encodedObject(t *testing.T, value any) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode projected object: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatalf("decode projected object: %v", err)
+	}
+	return fields
+}
+
+func encodedValuesEqual(left, right any) bool {
+	leftEncoded, leftErr := json.Marshal(left)
+	rightEncoded, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && string(leftEncoded) == string(rightEncoded)
 }
 
 func testProfileCatalog() []agentruntime.Profile {

@@ -62,6 +62,7 @@ Non-goals:
 
 ```text
 GitHub Release (APK + 2 host bundles + checksums + signer fingerprint)
+       | each host release.json: exact release identity
        |                                  |
        | user installs                    | dev-server pins + converges
        v                                  v
@@ -127,8 +128,9 @@ not supported.
    bundle, and `qrencode` where needed;
 2. creates a machine handle and bearer only when absent, preserving both on
    every reinstall;
-3. renders one strict host config, the content-free Codex lifecycle hooks, and
-   the Claude identity-registration hook;
+3. renders one strict host config, the content-free Codex and Claude
+   `SessionStart` identity adapters, and the optional content-free Codex BEL
+   notifier;
 4. installs a user systemd service with lingering on Linux or a LaunchAgent on
    macOS;
 5. owns only its dedicated Tailscale Serve `:8443/v1` mapping to
@@ -345,8 +347,9 @@ Reuse and centralize:
 - `machine.Handle`, canonical origins, `GatewayBearer`, strict JSON helpers,
   API error mapping, and controller machine-isolation primitives;
 - `MachineStore` sealing/quarantine and bearer-rotation rules;
-- the content-free, process-lifetime Codex lifecycle and Claude identity
-  registration adapters without retaining payloads or adding thread tracking;
+- the content-free, process-lifetime Codex and Claude `SessionStart` identity
+  adapters and optional Codex BEL notifier without retaining payloads, adding
+  thread tracking, or authoring activity;
 - one auth credential-file reader for verify, canonical read, and
   domain-separated digest instead of re-reading bearer files in pairing code.
 
@@ -386,7 +389,7 @@ GitHub mutation, ADB, or physical device.
 | Fleet schema | malformed/extra/duplicate/variable fleets enter redeem; only the exact canonical three-machine payload reaches it | Android unit |
 | Android persistence | a partial or pre-existing store can be overwritten; install/reconnect is one exact encrypted commit or no readable change | Android instrumentation |
 | Connect content/state | fresh install shows legacy administration; it shows the frozen Connect flow and failure saves nothing | Android component |
-| Release | an unsigned/mis-versioned/unlisted asset can stage or a draft can be mistaken for distribution; exact public repo, clean-main SHA/hosted verify, signer, tag/SHA, two bundles, checksums, then immutable public exact-five download are mandatory | pre-publication release and post-publication read-only gates; `NOT_RUN` without their evidence |
+| Release | an unsigned/mis-versioned/unlisted or deployment-incompatible asset can stage, or a draft can be mistaken for distribution; exact public repo, clean-main SHA/hosted verify, signer, tag/SHA, two matching bundles, checksums, then immutable public exact-five download are mandatory | routine manifest proof, pre-publication release, and post-publication read-only gates; external evidence is `NOT_RUN` without those runs |
 | `dev-server` rendering | pin/config/service drift passes; fixtures fail on drift and doctor keys are stable and credential-free | `dev-server` routine |
 | Native tmux composition | fixture behavior is mistaken for tmux behavior; configured binary performs existing inventory/create/attach/kill semantics on one isolated `-L` socket | separately approved integration |
 | Host convergence | an install changes identity/session lifetime or needs a manual daemon; reinstall preserves handle/bearer/tmux lifetime and service survives login/reboot | separately approved live gate on each host |
@@ -404,8 +407,8 @@ resize, rename, or retarget anything they did not create on an isolated socket.
 The capability is complete only when:
 
 1. A public immutable release exposes the exact five assets; APK install/update
-   preserves the signer and app data, and host artifacts report the same
-   tag/SHA.
+   preserves the signer and app data, and both host artifacts report the same
+   exact tag/SHA and verified release identity.
 2. `dev-server` converges and diagnoses the pinned gateway on Devbox, MacBook,
    and Arch without changing an existing handle, bearer, or tmux lifetime.
 3. A fresh phone needs only APK install, one-time Tailscale sign-in, `Connect`,
