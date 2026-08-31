@@ -1,6 +1,9 @@
 package dev.niels.skidbladnir
 
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -164,7 +167,7 @@ internal class GatewayClient {
                 .post(encodeCreateSessionRequest(draft).toRequestBody(jsonMediaType))
                 .build(),
             expectedStatus = 201,
-            decode = ::decodeTmuxSession,
+            decode = ::decodeCreatedSessionResponse,
         )
     }
 
@@ -273,9 +276,9 @@ internal fun <Value> decodeGatewayResponse(
     // an attacker-controlled response through ResponseBody.string().
     val bytes = body?.byteStream()?.readNBytes(MAXIMUM_HTTP_BODY_BYTES + 1) ?: ByteArray(0)
     if (bytes.size > MAXIMUM_HTTP_BODY_BYTES) return GatewayResult.Failure(GatewayFailure.Transport)
-    val encoded = String(bytes, StandardCharsets.UTF_8)
+    if (bodylessSuccess && bytes.isNotEmpty()) return GatewayResult.Failure(GatewayFailure.Transport)
+    val encoded = decodeStrictUtf8(bytes)
     if (bodylessSuccess) {
-        if (encoded.isNotEmpty()) return GatewayResult.Failure(GatewayFailure.Transport)
         return GatewayResult.Success(decodeProtocol { decode(encoded) })
     }
     return if (response.code != expectedStatus) {
@@ -283,6 +286,16 @@ internal fun <Value> decodeGatewayResponse(
     } else {
         GatewayResult.Success(decodeProtocol { decode(encoded) })
     }
+}
+
+private fun decodeStrictUtf8(bytes: ByteArray): String = try {
+    StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(bytes))
+        .toString()
+} catch (_: CharacterCodingException) {
+    throw ProtocolDecodeException("HTTP response body is not UTF-8")
 }
 
 internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {

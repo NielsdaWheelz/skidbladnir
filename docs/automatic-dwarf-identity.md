@@ -5,6 +5,13 @@ acceptance green (see [`roadmap.md`](roadmap.md)). The final behavior is cut
 into [`architecture.md`](architecture.md); this document remains the
 historical scope and red/green plan.
 
+Historical boundary: the accepted 2026-08-31
+[`terminal-activity.md`](terminal-activity.md) hard cut supersedes this plan's
+gateway-owned product ordering and status-era names. Android owns the one
+global freshness/activity order; the gateway derives the flat activity fact
+and otherwise orders only by tmux name/id. Conflicting examples below are
+historical, not active contracts.
+
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md). Architecture guardrails remain binding.
 

@@ -1,8 +1,9 @@
 # Niðavellir: the Skíðblaðnir design language
 
-Status: reviewed design reference, updated 2026-08-28. This document owns visual
+Status: reviewed design reference, updated 2026-08-31. This document owns visual
 identity: color, shape, ornament, typography, iconography, motion, and the
-terminal theme. [`architecture.md`](architecture.md) owns product behavior and
+terminal theme. The tmux terminal-activity hard cut is incorporated.
+[`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. This document changes no source. Adopting any section into the app is a
 delta slice with its own red/green plan; §17 names the deltas.
@@ -35,9 +36,10 @@ architecture §2.
    suggest a race relying on engineering and mechanical skill rather than magic
    (same source). Visual honesty is the app's existing law — chips name their
    signal and age, absence is displayed rather than guessed — and the
-   aesthetic must reinforce it: no glows implying activity that tmux did not
-   report, no ornament that reads as affordance, no decoration on error or
-   destructive copy.
+   aesthetic must reinforce it: activity is named literally, freshness stays a
+   separate fact, absence is displayed rather than guessed, no glow or motion
+   implies activity that tmux did not report, no ornament reads as an
+   affordance, and errors or destructive copy receive no decoration.
 5. **Carved, not printed.** Surfaces are rock strata: elevation is a tonal
    step computed from one formula (§5), never a drop shadow. Ornament reads as
    cut into or out of the surface. Motion has mass: stone does not bounce (§12).
@@ -100,9 +102,9 @@ Ink (5% and ~9% white; verified `#18191B` / `#222325` against actuals); the
 four accents fill the 2–4 accent-hue budget a small app can carry. The Nord
 palette's near-identical structure (dark ladder + cool accents) confirms this
 is the established Nordic-terminal convention. What was missing is the system
-around them — and two defects fixed below: `SHELL` and `RUNNING` share Frost
-today (`DashboardScreen.kt` `statusColor`), and the terminal ANSI table is
-One-Dark defaults with no relation to the brand (`terminal.js`).
+around them. The terminal-activity cut spends one existing accent on recent
+tmux activity and keeps quiet or stale knowledge visually quiet. The terminal
+ANSI table's One-Dark defaults remain the separate defect corrected below.
 
 ## 4. Voice
 
@@ -135,15 +137,13 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | --- | --- | ---: | --- |
 | Bone | `#F3F0E8` | 17.07 | Primary text |
 | Muted | `#AAA69D` | 8.01 | Secondary text |
-| Gold | `#D6A85F` | 8.91 | Primary accent; `IDLE`; cursor; selected/armed states |
+| Gold | `#D6A85F` | 8.91 | Primary accent; cursor; selected/armed states |
 | Ember | `#E46C55` | 6.09 | Error; destructive; `HOT` |
-| Moss | `#76B082` | 7.69 | `WORKING`; healthy |
-| Frost | `#78A9C6` | 7.67 | `RUNNING`; informational |
-| Bronze | `#CD7F32` | 6.18 | `SHELL` — new; Gold-family variant, no fifth hue. Fixes the Frost double-duty defect |
-| Orpiment | `#E8B923` | 10.55 | Attention badge only. The loudest color owned; spending it on exactly one mark keeps attention pre-attentive |
+| Moss | `#76B082` | 7.69 | `ACTIVE`; healthy |
+| Frost | `#78A9C6` | 7.67 | Informational |
+| Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-Status mapping becomes: `WORKING` Moss · `RUNNING` Frost · `IDLE` Gold ·
-`SHELL` Bronze · `UNKNOWN` Muted. Pressure history and detail rows keep Normal
+Activity mapping is `ACTIVE` Moss · `QUIET` Muted. Pressure history and detail rows keep Normal
 Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
 collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
 Muted, informational/normal values are Bone, and only Warm/Hot values and marks
@@ -162,8 +162,9 @@ a surface may reach for; it is what one tone resolves to.
 
 Two rules follow, and both are load-bearing:
 
-- **Staleness is absence, not failure.** Degraded is Muted, matching `UNKNOWN`
-  → Muted above and the honesty law (§1.4): absence is displayed, not alarmed.
+- **Staleness is absence, not failure.** Degraded knowledge is Muted, matching
+  `QUIET` while remaining a separate machine-freshness fact under the honesty
+  law (§1.4): absence is displayed, not alarmed.
   Ember spent on routine staleness is Ember spent on nothing — in a federation
   one host is out often enough that the alarm becomes the resting state.
 - **Trust events are the loud ones.** A broken bearer or a changed identity is
@@ -198,7 +199,7 @@ in Oklab, not sRGB, to avoid muddy midpoints.
 
 ### Budget
 
-Hard cap: four accent hue families in UI chrome (Gold+Bronze+Orpiment are one
+Hard cap: four accent hue families in UI chrome (Gold+Bronze are one
 family; Ember; Moss; Frost). New needs are met with fill-variants inside an
 existing family. The terminal ANSI table (§10) is exempt: it emulates a fixed
 external 8-hue protocol that git/ripgrep/pytest assume exists.
@@ -224,8 +225,8 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
   below the perceptual floor for a hairline outline, and not worth re-cutting
   every seal already struck. Whatever draws the octagon reads the same shipped constant
   the clip does, so a frame and its clip can never disagree.
-- **Badges are lozenges.** The attention badge is a rotated square (diamond),
-  the fret family's atom, in Orpiment.
+- **Activity facets are cut, never badged.** The fixed card facet reuses the
+  12dp cut-corner chip geometry. Activity has no unread marker or lozenge.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
   into 2–3 flat planes differing by one elevation step — the faceted-gemstone
   armor rule — never a smooth gradient or soft shadow.
@@ -327,7 +328,7 @@ covers ǫ, which appears solely in verbatim Old Norse.
 | --- | --- | --- | --- |
 | Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf signatures on cards | Body copy, sentences |
 | UI body | System Roboto (deliberate: quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
-| Data | JetBrains Mono (~293 KB variable) | Status bays, ages, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
+| Data | JetBrains Mono (~293 KB variable) | Activity bays, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
 | Scholarly | Junicode 2 (subset to the quotation repertoire) | Verbatim Old Norse only: Dvergatal stanza epigraphs in a future About/catalogue view | UI chrome, dynamic text |
 
 The Display role's caps direction applies only where the source is caps, such
@@ -344,7 +345,7 @@ catalogue casing.
   the two surfaces.
 - **Work-first hierarchy** on the session card: tmux name (Data, largest and
   highest contrast) → dwarf display-name signature (Display, smaller and
-  quieter) → named status bay → objective → directory and conditional
+  quieter) → named activity bay → objective → directory and conditional
   machine/profile context (Data, smallest, ≥ 11sp). A stepped decay around the
   operator's work label, not a flat metadata stack.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
@@ -455,31 +456,29 @@ it as a red test, not an assumption.
   cut-corner outline at pressed-state alpha (the documented custom-indication
   path since `rememberRipple` deprecation). One implementation, used
   everywhere.
-- **Attention pulse**: the Orpiment lozenge may pulse opacity 100%→55% on a
-  ~1.6s no-bounce loop. When `ANIMATOR_DURATION_SCALE == 0` it renders
-  static at 100% — a designed static state, not a frozen frame. Opening the
-  card clears attention (existing behavior), which is the WCAG 2.2.2
-  stop-mechanism; document it as such in the implementing slice.
-- **The forge breathes once.** Exactly one ambient animation is budgeted in
-  the whole app: the Forge sheet's ForgeGlow surface may warm from
-  DeepSurface to ForgeGlow over 400ms when opened. Everything else moves
+- **Activity motion is literal and bounded by state.** Only a fresh `ACTIVE`
+  facet may run one restrained angular spinner. `QUIET`, retained stale cards,
+  and reduced-motion mode are static. The named label remains fixed; no pulse,
+  glow, countdown, or unread-result motion exists.
+- **The forge breathes once.** Exactly one ambient decorative animation is
+  budgeted in the whole app: the Forge sheet's ForgeGlow surface may warm from
+  DeepSurface to ForgeGlow over 400ms when opened. The functional activity
+  spinner above is state-bound, not ambient ornament. Everything else moves
   only when state moves.
 
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  work-first text stack (§9), fixed 12dp status facet at top right with the
-  conditional attention lozenge immediately left, then 48dp seal beside the
-  named status bay. Machine/profile form one quiet unbadged footer line;
+  work-first text stack (§9), fixed 12dp activity facet at top right, then 48dp
+  seal beside the named activity bay. Machine/profile form one quiet unbadged footer line;
   machine renders there only in `All`.
-  Attention-first grid order is architecture-owned and unchanged.
-- **Status bay**: 4dp cut corners, fill = status color at 18% over surface,
-  1dp hairline + label in the status color, JetBrains Mono caps ≥ 11sp,
-  signal + age line in Muted mono. Colors per §5 mapping.
-- **Status facet**: 12dp `Chip` shape, solid status color, no border, motion,
-  text, or semantics. It is a redundant scanning cue; the status bay owns
-  meaning and accessibility.
-- **Attention badge**: Orpiment lozenge, 10dp across, §12 pulse rules.
+  Global grid order is architecture-owned.
+- **Activity bay**: 4dp cut corners, fill = activity color at 18% over surface,
+  1dp hairline + literal `ACTIVE` or `QUIET` label in the activity color,
+  JetBrains Mono caps ≥ 11sp. It has no age or evidence subline. Colors per §5.
+- **Activity facet**: 12dp `Chip` shape, solid activity color, no border, text,
+  or semantics. It uses the §12 spinner only for fresh `ACTIVE`; the named bay
+  owns meaning and accessibility.
 - **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
   ends, transparent track, horizontally inset 12dp at the collection's top
   edge. Determinate while pulling and indeterminate while checking; absent at
@@ -552,8 +551,8 @@ GPL knot code; fonts outside §9's table without a license entry here.
 Each is a separate slice with its own red proofs; roadmap owns ordering.
 The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
 `terminal.js` table §10 + vendored mono + CSP admit); **(2) chrome tokens**
-([chrome-tokens.md](chrome-tokens.md) — shape grammar, status remap incl.
-Bronze, state layers, angular indication, fonts); **(3) seals**
+([chrome-tokens.md](chrome-tokens.md) — shape grammar, historical status-token
+delivery, state layers, angular indication, fonts); **(3) seals**
 ([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
 test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
 build-time fret pipeline, Forge/empty-state art, app icon);

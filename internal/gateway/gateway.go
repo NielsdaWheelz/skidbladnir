@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 const (
@@ -31,8 +31,8 @@ const (
 
 type sessionManager interface {
 	Profiles() []agentruntime.Profile
-	List(context.Context) ([]sessions.Session, error)
-	Create(context.Context, sessions.CreateInput) (sessions.Session, error)
+	List(context.Context) (sessions.Inventory, error)
+	Create(context.Context, sessions.CreateInput) (sessions.ObservedSession, error)
 	Rename(context.Context, sessions.RenameInput) error
 	ValidateKill(context.Context, sessions.KillInput) error
 	Kill(context.Context, sessions.KillInput) error
@@ -317,52 +317,22 @@ func requireEmptyRequest(request *http.Request) bool {
 
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
 	startedAt := time.Now()
-	listed, err := gateway.sessions.List(request.Context())
+	inventory, err := gateway.sessions.List(request.Context())
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	observedAt := time.Now().UTC()
-	configuredProfiles := gateway.sessions.Profiles()
-	profiles, err := mapProfiles(configuredProfiles)
+	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	cards := make([]sessionDTO, len(listed))
-	for index, session := range listed {
-		card, mapErr := mapSession(session, configuredProfiles, observedAt)
-		if mapErr != nil {
-			writeError(writer, errorInternal)
-			return
-		}
-		cards[index] = card
-	}
-	sort.Slice(cards, func(left, right int) bool {
-		if cards[left].Attention != cards[right].Attention {
-			return cards[left].Attention
-		}
-		leftPriority := sessionPriority(cards[left].Status.Kind)
-		rightPriority := sessionPriority(cards[right].Status.Kind)
-		if leftPriority != rightPriority {
-			return leftPriority < rightPriority
-		}
-		if cards[left].TmuxName != cards[right].TmuxName {
-			return cards[left].TmuxName < cards[right].TmuxName
-		}
-		return cards[left].TmuxID < cards[right].TmuxID
-	})
-	event, eventErr := logging.NewSessionsListed(uint64(len(cards)), time.Since(startedAt))
+	event, eventErr := logging.NewSessionsListed(uint64(len(response.Sessions)), time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid sessions-listed log event") // justify-defect: count and duration are locally generated.
 	}
 	gateway.log(event)
-	writeJSON(writer, http.StatusOK, sessionsResponseDTO{
-		Machine:    gateway.machineDTO(),
-		ObservedAt: observedAt.Format(time.RFC3339Nano),
-		Profiles:   profiles,
-		Sessions:   cards,
-	})
+	writeJSON(writer, http.StatusOK, response)
 }
 
 func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.Request) {
@@ -402,17 +372,17 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeSessionError(writer, err)
 		return
 	}
-	card, err := mapSession(created, gateway.sessions.Profiles(), time.Now().UTC())
+	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.TmuxID, created.TmuxName, agentruntime.ProfileKey(input.Profile.value), time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.TmuxName, agentruntime.ProfileKey(input.Profile.value), time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-created log event") // justify-defect: Create validated the profile key and tmux minted the id and name.
 	}
 	gateway.log(event)
-	writeJSON(writer, http.StatusCreated, card)
+	writeJSON(writer, http.StatusCreated, response)
 }
 
 func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
@@ -536,29 +506,22 @@ func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *a
 		limitWriter = tracked.ResponseWriter
 	}
 	request.Body = http.MaxBytesReader(limitWriter, request.Body, MaximumBodyBytes)
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields()
+	// internal/strictjson owns this repository's one strict protocol decode:
+	// it rejects duplicate object members, invalid UTF-8, unknown fields, and
+	// trailing values. The HTTP ingress reads the capped body once and hands it
+	// the bytes rather than restating a weaker subset of that contract.
+	encoded, err := io.ReadAll(request.Body)
+	if err != nil {
+		var maximum *http.MaxBytesError
+		if errors.As(err, &maximum) {
+			failure := errorRequestTooLarge
+			return zero, &failure
+		}
+		failure := errorInvalidRequest
+		return zero, &failure
+	}
 	var decoded *T
-	if err := decoder.Decode(&decoded); err != nil {
-		var maximum *http.MaxBytesError
-		if errors.As(err, &maximum) {
-			failure := errorRequestTooLarge
-			return zero, &failure
-		}
-		failure := errorInvalidRequest
-		return zero, &failure
-	}
-	if decoded == nil {
-		failure := errorInvalidRequest
-		return zero, &failure
-	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		var maximum *http.MaxBytesError
-		if errors.As(err, &maximum) {
-			failure := errorRequestTooLarge
-			return zero, &failure
-		}
+	if err := strictjson.Decode(encoded, &decoded); err != nil || decoded == nil {
 		failure := errorInvalidRequest
 		return zero, &failure
 	}

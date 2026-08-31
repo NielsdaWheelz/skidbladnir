@@ -50,15 +50,20 @@ validate_release_source() {
     -z "$(git -C "$source_root" status --porcelain=v1 --untracked-files=all)" ]]
 }
 
-validate_manifest() {
-  local manifest="$1"
+validate_manifest_file() {
+  local manifest_file="$1"
   local tag="$2"
   local sha="$3"
   local platform="$4"
   local observed_keys
+  [[ -f "$manifest_file" && ! -L "$manifest_file" ]] || return 1
   observed_keys="$(
-    jq --stream -er 'select(length == 2 and (.[0] | length) == 1) | .[0][0]' \
-      <<<"$manifest" | LC_ALL=C sort
+    jq --stream -er '
+      if length == 1 then empty
+      elif length == 2 and (.[0] | length) == 1 then .[0][0]
+      else "__SKIDBLADNIR_INVALID_NESTING__"
+      end
+    ' "$manifest_file" | LC_ALL=C sort
   )" || return 1
   [[ "$observed_keys" == $'platform\nsourceSha\nversion' ]] || return 1
   jq -e \
@@ -68,7 +73,21 @@ validate_manifest() {
     'type == "object" and
      keys == ["platform", "sourceSha", "version"] and
      .version == $tag and .sourceSha == $sha and .platform == $platform' \
-    <<<"$manifest" >/dev/null
+    "$manifest_file" >/dev/null
+}
+
+validate_manifest_text_for_self_test() {
+  local manifest_text="$1"
+  local tag="$2"
+  local sha="$3"
+  local platform="$4"
+  local fixture
+  local status=0
+  fixture="$(mktemp /tmp/skidbladnir-manifest-check.XXXXXX)" || return 1
+  printf '%s' "$manifest_text" >"$fixture"
+  validate_manifest_file "$fixture" "$tag" "$sha" "$platform" || status=$?
+  rm -f -- "$fixture"
+  return "$status"
 }
 
 file_mode() {
@@ -114,7 +133,6 @@ verify_archive() (
   local goos="$5"
   local goarch="$6"
   local entries
-  local manifest
   local staging_dir
   local build_info
   local expected_go_version
@@ -123,11 +141,6 @@ verify_archive() (
   entries="$(tar -tzf "$archive")"
   [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
     printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
-    return 1
-  }
-  manifest="$(tar -xOzf "$archive" release.json)"
-  validate_manifest "$manifest" "$tag" "$sha" "$platform" || {
-    printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
   }
   staging_dir="$(mktemp -d /tmp/skidbladnir-archive-check.XXXXXX)"
@@ -149,6 +162,10 @@ verify_archive() (
       return 1
     }
   done
+  validate_manifest_file "$staging_dir/release.json" "$tag" "$sha" "$platform" || {
+    printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
+    return 1
+  }
   cmp -s "$repo_dir/catalog/characters.json" "$staging_dir/characters.json" || {
     printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
     return 1
@@ -232,6 +249,7 @@ archive_mode_self_test() (
   set -euo pipefail
   local archive
   local fixture_dir
+  local nul_archive
   local sha
   fixture_dir="$(mktemp -d /tmp/skidbladnir-release-check-mode.XXXXXX)"
   case "$fixture_dir" in
@@ -247,10 +265,27 @@ archive_mode_self_test() (
     "$repo_dir" v0.2.2 "$sha" linux amd64 linux-amd64 "$archive"
   verify_archive_metadata "$archive"
   extract_release_archive "$archive" "$fixture_dir/extracted"
+  validate_manifest_file "$fixture_dir/extracted/release.json" v0.2.2 "$sha" linux-amd64 || {
+    printf 'Host archive builder did not emit the exact release manifest contract\n' >&2
+    return 1
+  }
   [[ "$(file_mode "$fixture_dir/extracted/skidbladnir")" == 755 &&
     "$(file_mode "$fixture_dir/extracted/characters.json")" == 644 &&
     "$(file_mode "$fixture_dir/extracted/release.json")" == 644 ]] || {
     printf 'Release archive extraction inherited the caller umask\n' >&2
+    return 1
+  }
+  printf '\0' >>"$fixture_dir/extracted/release.json"
+  nul_archive="$fixture_dir/nul-release.tar.gz"
+  COPYFILE_DISABLE=1 tar -czf "$nul_archive" -C "$fixture_dir/extracted" \
+    skidbladnir characters.json release.json
+  if verify_archive "$nul_archive" v0.2.2 "$sha" linux-amd64 linux amd64 \
+    >"$fixture_dir/nul-output" 2>"$fixture_dir/nul-error"; then
+    printf 'NUL-bearing release manifest was normalized and accepted\n' >&2
+    return 1
+  fi
+  grep -Fq 'has an invalid release manifest' "$fixture_dir/nul-error" || {
+    printf 'NUL-bearing archive did not fail at manifest admission\n' >&2
     return 1
   }
   printf 'Release archive member mode and metadata policy passed\n'
@@ -289,30 +324,51 @@ CASES
     printf 'Short source SHA was accepted\n' >&2
     return 1
   fi
-  validate_manifest \
+  validate_manifest_text_for_self_test \
     '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
-    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64' || return 1
-  if validate_manifest \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64' || {
+    printf 'Exact release manifest was rejected\n' >&2
+    return 1
+  }
+  if validate_manifest_text_for_self_test \
+    '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Missing release manifest field was accepted\n' >&2
+    return 1
+  fi
+  if validate_manifest_text_for_self_test \
     '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0","legacy":true}' \
     'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
     printf 'Unknown release manifest key was accepted\n' >&2
     return 1
   fi
-  if validate_manifest \
-    '{"platform":"wrong","platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+  if validate_manifest_text_for_self_test \
+    '{"platform":"linux-old","platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
     'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
     printf 'Duplicate release manifest key was accepted\n' >&2
     return 1
   fi
-  if validate_manifest \
+  if validate_manifest_text_for_self_test \
     '{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
     'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
     printf 'Concatenated release manifests were accepted\n' >&2
     return 1
   fi
+  if validate_manifest_text_for_self_test \
+    '{"platform":{"nested":true},"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Object-valued duplicate release manifest key was accepted\n' >&2
+    return 1
+  fi
+  if validate_manifest_text_for_self_test \
+    '{"platform":{"nested":true},"sourceSha":{"nested":true},"version":{"nested":true}}{"platform":"linux-amd64","sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"v0.2.0"}' \
+    'v0.2.0' '0123456789abcdef0123456789abcdef01234567' 'linux-amd64'; then
+    printf 'Nested invalid manifest followed by a valid manifest was accepted\n' >&2
+    return 1
+  fi
   release_source_self_test
   archive_mode_self_test
-  printf 'Release policy passed: 10 tag cases and strict SHA/manifest cases\n'
+  printf 'Release policy passed: 10 tag cases, strict SHA, and 7 manifest cases\n'
 }
 
 if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then

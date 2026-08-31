@@ -4,6 +4,13 @@ Status: implemented and verified; routine verification, the 47-test physical
 S22+ platform gate, and hands-on synthetic-fixture visual/accessibility
 acceptance are green on 2026-08-27.
 
+Historical boundary: the accepted 2026-08-31
+[`terminal-activity.md`](terminal-activity.md) hard cut supersedes this
+document's status model, signal/age line, attention animation/copy, color
+mapping, and ordering. The card's work-first identity, geometry, metadata, and
+action layout remain carried-forward evidence. Every superseded status or
+attention example below is historical, not an active contract.
+
 This is the implementation contract for one hard-cut presentation refactor of
 the dashboard session card. It is subordinate to
 [`architecture.md`](architecture.md), [`roadmap.md`](roadmap.md),

@@ -1,7 +1,7 @@
 package dev.niels.skidbladnir
 
+import android.animation.ValueAnimator
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.DurationBasedAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -12,6 +12,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -42,7 +47,6 @@ internal val Ember = Color(0xFFE46C55)
 internal val Moss = Color(0xFF76B082)
 internal val Frost = Color(0xFF78A9C6)
 internal val Bronze = Color(0xFFCD7F32)
-internal val Orpiment = Color(0xFFE8B923)
 internal val ForgeGlow = Color(0xFF28231A)
 
 // Corners are cut, never rounded (design-language.md §6). Facet unit: cards
@@ -105,10 +109,6 @@ internal object NidavellirMotion {
     val EffectsTween: FiniteAnimationSpec<Float> = tween(durationMillis = 100, easing = StandardEasing)
     val ForgeWarmIn: FiniteAnimationSpec<Color> = tween(durationMillis = 400)
 
-    // One half of the attention lozenge's opacity pulse; reversed to loop.
-    val AttentionPulse: DurationBasedAnimationSpec<Float> =
-        tween(durationMillis = 800, easing = StandardEasing)
-
     // Material state-layer constants (design-language.md §12). Only the
     // consumed value ships; hover/focus/dragged join with their first consumer.
     object StateLayer {
@@ -121,23 +121,37 @@ internal object NidavellirMotion {
     }
 }
 
-// Moved from DashboardScreen.kt (was `private`, defective: Shell and Running
-// both returned Frost). Now internal so injectivity is a pure JVM proof
-// (ThemeTest.kt). Fix: Shell -> Bronze (design-language.md §5).
-internal fun statusColor(kind: SessionStatusKind): Color = when (kind) {
-    SessionStatusKind.Working -> Moss
-    SessionStatusKind.Running -> Frost
-    SessionStatusKind.Idle -> Gold
-    SessionStatusKind.Shell -> Bronze
-    SessionStatusKind.Unknown -> Muted
+internal fun sessionActivityColor(activity: SessionActivity): Color = when (activity) {
+    SessionActivity.Active -> Moss
+    SessionActivity.Quiet -> Muted
 }
+
+/** One observed Android motion setting shared by every state-bound animation. */
+@Composable
+internal fun rememberMotionEnabled(): Boolean {
+    var durationScale by remember { mutableFloatStateOf(ValueAnimator.getDurationScale()) }
+    DisposableEffect(Unit) {
+        val listener = ValueAnimator.DurationScaleChangeListener { durationScale = it }
+        check(ValueAnimator.registerDurationScaleChangeListener(listener)) {
+            "Animator duration-scale listener registration failed"
+        }
+        durationScale = ValueAnimator.getDurationScale()
+        onDispose {
+            check(ValueAnimator.unregisterDurationScaleChangeListener(listener)) {
+                "Animator duration-scale listener unregistration failed"
+            }
+        }
+    }
+    return durationScale != 0f
+}
+
 
 // One owner for severity (destructive-chrome.md). Ember carried five
 // unrelated jobs — destructive control, failed attempt, stale data, host load,
 // corrupt record — and because one federated host is routinely stale in normal
 // operation, Ember had become the dashboard's resting state and stopped
 // reading as an alarm. Degraded is Muted because staleness is ABSENCE, not
-// failure: it matches UNKNOWN -> Muted (design-language.md §5) and the honesty
+// failure: it matches the muted epistemic-state treatment (design-language.md §5) and the honesty
 // law (§1.4), absence is displayed rather than alarmed. No new hue is
 // introduced, so §5's four-accent-family cap still holds.
 internal enum class NoticeTone { Failure, Degraded, Armed }
@@ -147,11 +161,6 @@ internal fun noticeToneColor(tone: NoticeTone): Color = when (tone) {
     NoticeTone.Degraded -> Muted // knowledge is absent or old; nothing is broken
     NoticeTone.Armed -> Gold // a recovery is waiting on you
 }
-
-// The attention pulse renders static when the system disables animator scale
-// (design-language.md §12; the WCAG 2.2.2 stop-mechanism note lives with the
-// screens delta that consumes this).
-internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean = animatorDurationScale != 0f
 
 // The octagon's eight vertices in edge order, starting at the top-left cut
 // (design-language.md §6). Sole owner of the cut's expansion into pixels:

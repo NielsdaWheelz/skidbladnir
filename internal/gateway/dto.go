@@ -48,12 +48,6 @@ type profileDTO struct {
 	Provider string `json:"provider"`
 }
 
-type statusDTO struct {
-	Kind     string `json:"kind"`
-	Signal   string `json:"signal"`
-	SignalAt string `json:"signalAt"`
-}
-
 type characterDTO struct {
 	Key         string `json:"key"`
 	DisplayName string `json:"displayName"`
@@ -82,8 +76,7 @@ type sessionDTO struct {
 	CWD             string       `json:"cwd,omitempty"`
 	ActiveCommand   string       `json:"activeCommand,omitempty"`
 	AttachedClients int          `json:"attachedClients"`
-	Attention       bool         `json:"attention"`
-	Status          statusDTO    `json:"status"`
+	Activity        string       `json:"activity"`
 }
 
 type machineDTO struct {
@@ -96,6 +89,11 @@ type sessionsResponseDTO struct {
 	ObservedAt string       `json:"observedAt"`
 	Profiles   []profileDTO `json:"profiles"`
 	Sessions   []sessionDTO `json:"sessions"`
+}
+
+type createSessionResponseDTO struct {
+	ObservedAt string     `json:"observedAt"`
+	Session    sessionDTO `json:"session"`
 }
 
 type pairingInviteResponseDTO struct {
@@ -225,7 +223,7 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 		return nil, nil
 	}
 	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil {
-		return nil, err
+		return nil, errors.New("invalid agent runtime")
 	}
 	mapped := &agentDTO{
 		Provider: agent.Provider.String(),
@@ -240,49 +238,17 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 	return mapped, nil
 }
 
-func mapSession(session sessions.Session, profiles []agentruntime.Profile, observedAt time.Time) (sessionDTO, error) {
-	kind := ""
-	switch session.Status.Kind {
-	case sessions.StatusWorking:
-		kind = "Working"
-	case sessions.StatusRunning:
-		kind = "Running"
-	case sessions.StatusIdle:
-		kind = "Idle"
-	case sessions.StatusShell:
-		kind = "Shell"
-	case sessions.StatusUnknown:
-		kind = "Unknown"
-	default:
-		return sessionDTO{}, errors.New("invalid session status")
-	}
-	signal := ""
-	switch session.Status.Signal {
-	case sessions.StatusSignalLifecycle:
-		signal = "Lifecycle"
-	case sessions.StatusSignalProcess:
-		signal = "Process"
-	case sessions.StatusSignalPollFailure:
-		signal = "PollFailure"
-	default:
-		return sessionDTO{}, errors.New("invalid session status signal")
-	}
+func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sessionDTO, error) {
 	agent, err := mapAgent(session.Agent, profiles)
 	if err != nil {
 		return sessionDTO{}, err
 	}
-	switch {
-	case agent == nil && kind == "Shell" && signal == "Process":
-	case agent == nil && kind == "Unknown" && signal == "PollFailure":
-	case agent != nil && agent.Provider == "Codex" && kind == "Working" && signal == "Lifecycle":
-	case agent != nil && agent.Provider == "Codex" && kind == "Running" && signal == "Process":
-	case agent != nil && agent.Provider == "Codex" && kind == "Idle" && signal == "Lifecycle":
-	case agent != nil && agent.Provider == "Claude" && kind == "Running" && signal == "Process":
+	activity := ""
+	switch session.Activity {
+	case sessions.SessionActivityActive, sessions.SessionActivityQuiet:
+		activity = string(session.Activity)
 	default:
-		return sessionDTO{}, errors.New("invalid agent status relation")
-	}
-	if session.Status.SignalAt.IsZero() || session.Status.SignalAt.After(observedAt) {
-		return sessionDTO{}, errors.New("invalid session signal time")
+		return sessionDTO{}, errors.New("invalid session activity")
 	}
 	if session.LaunchProfile != "" {
 		matches := 0
@@ -306,34 +272,73 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile, obser
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
-		Attention:       session.Attention,
-		Status: statusDTO{
-			Kind:     kind,
-			Signal:   signal,
-			SignalAt: session.Status.SignalAt.UTC().Format(time.RFC3339Nano),
-		},
+		Activity:        activity,
 	}
-	if card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" {
-		return sessionDTO{}, errors.New("missing required session identity")
+	if card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
+		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
+		return sessionDTO{}, errors.New("invalid required session facts")
 	}
 	return card, nil
 }
 
-func sessionPriority(kind string) int {
-	switch kind {
-	case "Working":
-		return 0
-	case "Running":
-		return 1
-	case "Idle":
-		return 2
-	case "Shell":
-		return 3
-	case "Unknown":
-		return 4
-	default:
-		panic("invalid session status kind") // justify-defect: mapSession closes the status universe.
+func mapSessionsResponse(
+	machine machineDTO,
+	inventory sessions.Inventory,
+	configuredProfiles []agentruntime.Profile,
+) (sessionsResponseDTO, error) {
+	encodedObservedAt, err := formatProjectionInstant(inventory.ObservedAt)
+	if err != nil {
+		return sessionsResponseDTO{}, errors.New("invalid inventory observation time")
 	}
+	profiles, err := mapProfiles(configuredProfiles)
+	if err != nil {
+		return sessionsResponseDTO{}, err
+	}
+	cards := make([]sessionDTO, len(inventory.Sessions))
+	for index, session := range inventory.Sessions {
+		card, mapErr := mapSession(session, configuredProfiles)
+		if mapErr != nil {
+			return sessionsResponseDTO{}, mapErr
+		}
+		cards[index] = card
+	}
+	sort.Slice(cards, func(left, right int) bool {
+		if cards[left].TmuxName != cards[right].TmuxName {
+			return cards[left].TmuxName < cards[right].TmuxName
+		}
+		return cards[left].TmuxID < cards[right].TmuxID
+	})
+	return sessionsResponseDTO{
+		Machine:    machine,
+		ObservedAt: encodedObservedAt,
+		Profiles:   profiles,
+		Sessions:   cards,
+	}, nil
+}
+
+func mapCreateSessionResponse(
+	observed sessions.ObservedSession,
+	profiles []agentruntime.Profile,
+) (createSessionResponseDTO, error) {
+	encodedObservedAt, err := formatProjectionInstant(observed.ObservedAt)
+	if err != nil {
+		return createSessionResponseDTO{}, errors.New("invalid session observation time")
+	}
+	card, err := mapSession(observed.Session, profiles)
+	if err != nil {
+		return createSessionResponseDTO{}, err
+	}
+	return createSessionResponseDTO{
+		ObservedAt: encodedObservedAt,
+		Session:    card,
+	}, nil
+}
+
+func formatProjectionInstant(value time.Time) (string, error) {
+	if !sessions.ValidProjectionInstant(value) {
+		return "", errors.New("projection instant is outside canonical RFC 3339")
+	}
+	return value.UTC().Format(time.RFC3339Nano), nil
 }
 
 func mapHostSample(sample pressure.Sample, unsupported map[pressure.Metric]struct{}) (hostSampleDTO, error) {

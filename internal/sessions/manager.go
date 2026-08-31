@@ -84,80 +84,121 @@ func (manager *Manager) Profiles() []agentruntime.Profile {
 	return agentruntime.CloneProfiles(manager.profiles)
 }
 
-func (manager *Manager) List(ctx context.Context) ([]Session, error) {
+func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
 	ids, err := manager.tmux.ListSessionIDs(ctx)
 	if err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
 	if len(ids) == 0 {
-		return []Session{}, nil
+		// ListSessionIDs reports a host with no tmux server as empty, so this
+		// branch also covers "no server exists". It must stay ahead of
+		// ensureServerIdentity: that call sets a server option, which would
+		// start a tmux server on an idle host every poll. There is no snapshot
+		// to validate, so the poll time is the whole honest projection.
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}}, nil
 	}
 	server, err := manager.ensureServerIdentity(ctx)
 	if err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
 	if _, err := manager.tmux.ReconcilePhoneShadows(ctx, server, manager.protectedPhoneShadows()); err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
 	scan, err := manager.scanSessions(ctx)
 	if err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
 	visible, err := manager.normalizeCharacters(ctx, scan, server)
 	if err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
-	sessions := make([]Session, 0, len(visible))
+	observations := make([]inspectedSession, 0, len(visible))
 	for _, observed := range visible {
-		session, err := manager.inspect(ctx, observed, server)
+		sessionObservation, present, err := manager.inspectRequired(ctx, observed, server)
 		if err != nil {
-			return nil, err
+			return Inventory{}, err
 		}
-		sessions = append(sessions, session)
+		if present {
+			observations = append(observations, sessionObservation)
+		}
 	}
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return nil, err
+		return Inventory{}, err
 	}
-	return sessions, nil
+	// One clock for the whole projection, minted only once the snapshot and the
+	// server identity that produced it are both validated.
+	observedAt := time.Now().UTC()
+	projected := make([]inspectedSession, 0, len(observations))
+	reconciled := false
+	for _, observation := range observations {
+		session, projectErr := projectSession(observation, observedAt)
+		if projectErr != nil {
+			present, reconcileErr := manager.classifyRequiredObservationFailure(
+				ctx, observation.session.TmuxID, projectErr,
+			)
+			if reconcileErr != nil {
+				return Inventory{}, reconcileErr
+			}
+			if !present {
+				reconciled = true
+				continue
+			}
+		}
+		observation.session = session
+		projected = append(projected, observation)
+	}
+	if reconciled {
+		if err := manager.requireServerIdentity(ctx, server); err != nil {
+			return Inventory{}, err
+		}
+	}
+	sessions := make([]Session, 0, len(projected))
+	for _, observation := range projected {
+		sessions = append(sessions, manager.enrichSession(ctx, observation))
+	}
+	if err := manager.requireServerIdentity(ctx, server); err != nil {
+		return Inventory{}, err
+	}
+	return Inventory{ObservedAt: observedAt, Sessions: sessions}, nil
 }
 
-func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session, error) {
+func (manager *Manager) Create(ctx context.Context, input CreateInput) (ObservedSession, error) {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
 	cwd, err := validateWorkingDirectory(input.CWD, manager.home)
 	if err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 	profile, found := manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
 	if !found {
-		return Session{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
+		return ObservedSession{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 	}
 	if input.OptionalTmuxName != "" {
 		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
-			return Session{}, err
+			return ObservedSession{}, err
 		}
 	}
 	if err := validateObjective(input.Objective); err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 
 	epochCandidate, err := newServerEpoch()
 	if err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 	scan, err := manager.scanSessions(ctx)
 	if err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 	name := input.OptionalTmuxName
 	if name == "" {
 		name = generatedTmuxName(scan.names, string(profile.Key))
 	} else if _, occupied := scan.names[name]; occupied {
-		return Session{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+		return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
 	character := selectCharacter(manager.catalogue.Characters(), scan.characterUse, epochCandidate)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name, "-c", cwd}
@@ -182,51 +223,70 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Session,
 	if err != nil {
 		firstLine, _, _ := strings.Cut(output, "\n")
 		if sessionIDPattern.MatchString(firstLine) {
-			return Session{}, fmt.Errorf("tmux create sequence failed after session creation: %w", err)
+			return ObservedSession{}, fmt.Errorf("tmux create sequence failed after session creation: %w", err)
 		}
 		observed, listErr := manager.scanSessions(ctx)
 		if listErr != nil {
-			return Session{}, fmt.Errorf("create tmux session: %w; classify name conflict: %v", err, listErr)
+			return ObservedSession{}, fmt.Errorf("create tmux session: %w; classify name conflict: %v", err, listErr)
 		}
 		_, occupied := observed.names[name]
 		if occupied {
-			return Session{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+			return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 		}
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 	firstLine, identityLine, separated := strings.Cut(output, "\n")
 	if !separated || strings.ContainsRune(identityLine, '\n') {
-		return Session{}, errors.New("tmux create returned an invalid identity transcript")
+		return ObservedSession{}, errors.New("tmux create returned an invalid identity transcript")
 	}
 	id := firstLine
 	if !sessionIDPattern.MatchString(id) {
-		return Session{}, errors.New("tmux create returned an invalid session id")
+		return ObservedSession{}, errors.New("tmux create returned an invalid session id")
 	}
 	identityFields := strings.Split(identityLine, "|")
 	if len(identityFields) != 4 || identityFields[3] != id {
-		return Session{}, errors.New("tmux create returned an invalid server identity")
+		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
 	}
 	server := tmuxclient.ServerIdentity{
 		Epoch: identityFields[0], PID: identityFields[1], StartTime: identityFields[2],
 	}
 	if !validServerIdentity(server) {
-		return Session{}, errors.New("tmux create returned an invalid server identity")
+		return ObservedSession{}, errors.New("tmux create returned an invalid server identity")
 	}
 	observed, found, err := manager.scanSession(ctx, id)
 	if err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
 	if !found || observed.phoneShadow {
-		return Session{}, errors.New("created tmux session is absent from inventory")
+		return ObservedSession{}, errors.New("created tmux session is absent from inventory")
 	}
-	session, err := manager.inspect(ctx, observed, server)
+	session, present, err := manager.inspectRequired(ctx, observed, server)
 	if err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
+	}
+	if !present {
+		return ObservedSession{}, errors.New("created tmux session is absent from inventory")
 	}
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return Session{}, err
+		return ObservedSession{}, err
 	}
-	return session, nil
+	observedAt := time.Now().UTC()
+	projected, err := projectSession(session, observedAt)
+	if err != nil {
+		present, reconcileErr := manager.classifyRequiredObservationFailure(ctx, observed.id, err)
+		if reconcileErr != nil {
+			return ObservedSession{}, reconcileErr
+		}
+		if !present {
+			return ObservedSession{}, errors.New("created tmux session is absent from inventory")
+		}
+	}
+	session.session = projected
+	projected = manager.enrichSession(ctx, session)
+	if err := manager.requireServerIdentity(ctx, server); err != nil {
+		return ObservedSession{}, err
+	}
+	return ObservedSession{ObservedAt: observedAt, Session: projected}, nil
 }
 
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
@@ -405,104 +465,138 @@ func sessionIdentityMismatch() *Error {
 	return newSessionError(ErrorSessionIdentityMismatch, "The session changed. Refresh and try again.")
 }
 
-func (manager *Manager) inspect(
+func (manager *Manager) inspectRequired(
 	ctx context.Context,
 	observed scannedSession,
 	server tmuxclient.ServerIdentity,
-) (Session, error) {
+) (inspectedSession, bool, error) {
 	if observed.character.Key == "" {
-		return Session{}, errors.New("tmux session has no valid character after normalization")
+		return inspectedSession{}, false, errors.New("tmux session has no valid character after normalization")
 	}
 
 	identityToken, err := makeIdentityToken(server, observed.id)
 	if err != nil {
-		return Session{}, err
+		return inspectedSession{}, false, err
 	}
-	session := Session{
+	inspected := inspectedSession{session: Session{
 		TmuxID: observed.id, TmuxName: observed.tmuxName,
 		IdentityToken: identityToken, Character: observed.character,
-	}
+	}}
 	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", observed.id,
-		"#{session_id}|#{pane_id}|#{pane_pid}|#{window_bell_flag}|#{session_attached}|#{session_group_attached}")
+		"#{session_id}|#{pane_id}|#{pane_pid}|#{window_activity}|#{session_attached}|#{session_group_attached}")
 	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+		return manager.reconcileFailedInspection(ctx, observed.id, fmt.Errorf("read required tmux card anchor: %w", err))
 	}
 	fields := strings.Split(anchor, "|")
-	if len(fields) != 6 || fields[0] != observed.id || !paneIDPattern.MatchString(fields[1]) {
-		session.Status = unknownStatus()
-		return session, nil
+	if len(fields) != 6 || fields[0] != observed.id {
+		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
+	}
+	activity, err := parseActivitySecond(fields[3])
+	if err != nil {
+		return manager.reconcileFailedInspection(ctx, observed.id, err)
+	}
+	inspected.activitySecond = activity
+	if !paneIDPattern.MatchString(fields[1]) {
+		return inspected, true, nil
 	}
 	panePID, paneErr := strconv.Atoi(fields[2])
-	bell, bellErr := parseTmuxBoolean(fields[3])
 	attached, attachedErr := strconv.Atoi(fields[4])
 	groupAttached := attached
 	var groupErr error
 	if fields[5] != "" {
 		groupAttached, groupErr = strconv.Atoi(fields[5])
 	}
-	if paneErr != nil || panePID <= 0 || bellErr != nil || attachedErr != nil || attached < 0 || groupErr != nil || groupAttached < 0 {
-		session.Status = unknownStatus()
-		return session, nil
+	if paneErr != nil || panePID <= 0 || attachedErr != nil || attached < 0 || groupErr != nil || groupAttached < 0 {
+		return inspected, true, nil
 	}
-	session.AttachedClients = groupAttached
+	inspected.paneID = fields[1]
+	inspected.panePID = processinfo.PID(panePID)
+	inspected.attachedClients = groupAttached
+	return inspected, true, nil
+}
 
-	session.CWD, err = manager.tmux.Output(ctx, "read-pane-cwd", "display-message", "-p", "-t", fields[1], "#{pane_current_path}")
-	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
+	session := inspected.session
+	if inspected.paneID == "" {
+		return session
 	}
-	session.ActiveCommand, err = manager.tmux.Output(ctx, "read-pane-command", "display-message", "-p", "-t", fields[1], "#{pane_current_command}")
-	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+	session.AttachedClients = inspected.attachedClients
+	// justify-ignore-error: after the required current-window activity is valid,
+	// every remaining field is optional card metadata. A failed read omits only
+	// that field and cannot manufacture or suppress activity.
+	if cwd, readErr := manager.tmux.Output(ctx, "read-pane-cwd", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_path}"); readErr == nil {
+		session.CWD = cwd
 	}
-	if profile, optionErr := manager.sessionOption(ctx, observed.id, "@skid_profile"); optionErr != nil {
-		session.Status = unknownStatus()
-		return session, nil
-	} else {
+	if activeCommand, readErr := manager.tmux.Output(ctx, "read-pane-command", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_command}"); readErr == nil {
+		session.ActiveCommand = activeCommand
+	}
+	if profile, optionErr := manager.sessionOption(ctx, inspected.session.TmuxID, "@skid_profile"); optionErr == nil {
 		key := agentruntime.ProfileKey(profile)
 		if _, valid := manager.profilesByKey[key]; valid {
 			session.LaunchProfile = key
 		}
 	}
-	if encodedObjective, optionErr := manager.sessionOption(ctx, observed.id, "@skid_objective_b64"); optionErr != nil {
-		session.Status = unknownStatus()
-		return session, nil
-	} else if encodedObjective != "" {
+	if encodedObjective, optionErr := manager.sessionOption(ctx, inspected.session.TmuxID, "@skid_objective_b64"); optionErr == nil && encodedObjective != "" {
 		objective, decodeErr := base64.RawURLEncoding.DecodeString(encodedObjective)
 		if decodeErr == nil && validateObjective(string(objective)) == nil {
 			session.Objective = string(objective)
 		}
 	}
-	attention, err := manager.paneOption(ctx, fields[1], "@skid_attention")
-	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+	registration := ""
+	if observedRegistration, optionErr := manager.paneOption(ctx, inspected.paneID, agentruntime.PaneOption); optionErr == nil {
+		registration = observedRegistration
 	}
-	lifecycle, err := manager.paneOption(ctx, fields[1], "@skid_lifecycle")
-	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+	// justify-ignore-error: process identity is optional card metadata. An exited
+	// process or unstable read omits agent identity without changing the required
+	// activity observation.
+	foreground, observeErr := processinfo.ObserveForeground(inspected.panePID)
+	if observeErr != nil {
+		foreground = processinfo.Observation{}
 	}
-	registration, err := manager.paneOption(ctx, fields[1], agentruntime.PaneOption)
+	session.Agent = deriveAgent(manager.profiles, foreground, registration)
+	return session
+}
+
+type inspectedSession struct {
+	session         Session
+	activitySecond  activitySecond
+	paneID          string
+	panePID         processinfo.PID
+	attachedClients int
+}
+
+func projectSession(inspected inspectedSession, observedAt time.Time) (Session, error) {
+	activity, err := deriveActivity(inspected.activitySecond, observedAt)
 	if err != nil {
-		session.Status = unknownStatus()
-		return session, nil
+		return Session{}, err
 	}
-	now := time.Now().UTC()
-	foreground, err := processinfo.ObserveForeground(processinfo.PID(panePID))
+	projected := inspected.session
+	projected.Activity = activity
+	return projected, nil
+}
+
+func (manager *Manager) reconcileFailedInspection(
+	ctx context.Context,
+	id string,
+	cause error,
+) (inspectedSession, bool, error) {
+	present, err := manager.classifyRequiredObservationFailure(ctx, id, cause)
+	return inspectedSession{}, present, err
+}
+
+func (manager *Manager) classifyRequiredObservationFailure(
+	ctx context.Context,
+	id string,
+	cause error,
+) (bool, error) {
+	exists, err := manager.tmux.HasSession(ctx, id)
 	if err != nil {
-		session.Status = Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: now}
-	} else {
-		if agent, found := agentruntime.Project(manager.profiles, foreground, registration); found {
-			session.Agent = &agent
-		}
-		session.Status = deriveStatus(foreground, session.Agent, lifecycle, now)
+		return false, err
 	}
-	_, notified := parseAttentionTime(attention, now)
-	session.Attention = bell || notified
-	return session, nil
+	if !exists {
+		return false, nil
+	}
+	return true, cause
 }
 
 type scannedSession struct {
@@ -788,19 +882,4 @@ func parseIdentityToken(token, id string) (tmuxclient.ServerIdentity, bool) {
 func validServerIdentity(identity tmuxclient.ServerIdentity) bool {
 	return serverEpochPattern.MatchString(identity.Epoch) &&
 		serverPIDPattern.MatchString(identity.PID) && serverStartPattern.MatchString(identity.StartTime)
-}
-
-func parseTmuxBoolean(value string) (bool, error) {
-	switch value {
-	case "0":
-		return false, nil
-	case "1":
-		return true, nil
-	default:
-		return false, errors.New("tmux returned an invalid boolean")
-	}
-}
-
-func unknownStatus() Status {
-	return Status{Kind: StatusUnknown, Signal: StatusSignalPollFailure, SignalAt: time.Now().UTC()}
 }

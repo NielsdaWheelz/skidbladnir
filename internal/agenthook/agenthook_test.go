@@ -1,32 +1,43 @@
 package agenthook
 
 import (
-	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func TestPromptBearingCodexEventsAreDrainedWithoutParsing(t *testing.T) {
-	t.Setenv("TMUX_PANE", "")
-	for _, event := range []string{"UserPromptSubmit", "Stop"} {
-		t.Run(event, func(t *testing.T) {
-			input := strings.NewReader("opaque input that is deliberately not JSON")
-			var output strings.Builder
-			if err := Run(context.Background(), Config{}, "Codex", event, input, &output); err != nil {
-				t.Fatalf("drain %s input: %v", event, err)
-			}
-			if input.Len() != 0 {
-				t.Fatalf("%s left %d opaque input bytes unread", event, input.Len())
-			}
-			if event == "Stop" && output.String() != "{}\n" {
-				t.Fatalf("Stop output = %q, want empty JSON object", output.String())
-			}
-		})
+func TestUnsupportedHookEventIsRejectedWithoutReadingProviderInput(t *testing.T) {
+	input := &countingHookReader{}
+	if _, err := Prepare("Codex", "UnsupportedEvent", input); !errors.Is(err, ErrInvocationRejected) {
+		t.Fatalf("unsupported invocation error = %v, want ErrInvocationRejected", err)
+	}
+	if input.reads != 0 {
+		t.Fatalf("unsupported event read provider input %d times", input.reads)
+	}
+}
+
+type countingHookReader struct {
+	reads int
+}
+
+func (reader *countingHookReader) Read([]byte) (int, error) {
+	reader.reads++
+	return 0, errors.New("provider input must not be read")
+}
+
+func TestOversizeSessionStartInputStopsAtTheAdmissionBound(t *testing.T) {
+	const extraBytes = 4096
+	input := strings.NewReader(strings.Repeat("x", maximumSessionStartBytes+extraBytes))
+	inputBytes := input.Len()
+	if _, err := Prepare("Codex", "SessionStart", input); err == nil {
+		t.Fatal("oversize SessionStart payload was accepted")
+	}
+	if input.Len() == 0 {
+		t.Fatal("oversize SessionStart input was drained after its rejection was known")
+	}
+	if consumed := inputBytes - input.Len(); consumed > maximumSessionStartBytes+1 {
+		t.Fatalf("oversize SessionStart admission read %d bytes, beyond its %d-byte bound", consumed, maximumSessionStartBytes+1)
 	}
 }
 
@@ -36,8 +47,6 @@ func TestProviderHookEventsAreClosed(t *testing.T) {
 		event    string
 	}{
 		{provider: "Codex", event: "SessionStart"},
-		{provider: "Codex", event: "UserPromptSubmit"},
-		{provider: "Codex", event: "Stop"},
 		{provider: "Claude", event: "SessionStart"},
 	} {
 		if _, err := parseInvocation(valid.provider, valid.event); err != nil {
@@ -51,85 +60,47 @@ func TestProviderHookEventsAreClosed(t *testing.T) {
 		{provider: "", event: "SessionStart"},
 		{provider: "codex", event: "SessionStart"},
 		{provider: "Other", event: "SessionStart"},
-		{provider: "Codex", event: "PostToolUse"},
-		{provider: "Claude", event: "UserPromptSubmit"},
-		{provider: "Claude", event: "Stop"},
+		{provider: "Codex", event: "UnsupportedEvent"},
+		{provider: "Claude", event: "UnsupportedEvent"},
 	} {
-		if _, err := parseInvocation(invalid.provider, invalid.event); err == nil {
-			t.Fatalf("accepted provider/event outside the hook contract: %q %q", invalid.provider, invalid.event)
+		if _, err := parseInvocation(invalid.provider, invalid.event); !errors.Is(err, ErrInvocationRejected) {
+			t.Fatalf("provider/event outside the hook contract returned %v: %q %q", err, invalid.provider, invalid.event)
 		}
 	}
 }
 
-func TestPublicationPreservesCodexLifecycleAndAddsOnlyClaudeIdentity(t *testing.T) {
-	now := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
-	origin := agentruntime.Foreground{
-		Provider:      agentruntime.ProviderCodex,
-		PID:           processinfo.PID(4312),
-		StartIdentity: "991827",
-	}
+func TestPublicationOwnsOnlySessionStartIdentity(t *testing.T) {
 	tests := []struct {
 		name         string
-		hook         invocation
 		registration string
 		want         []string
 	}{
 		{
-			name:         "Codex SessionStart publishes identity and idle in one queue",
-			hook:         invocation{provider: agentruntime.ProviderCodex, event: hookSessionStart},
-			registration: "registration",
+			name:         "Codex SessionStart publishes identity unconditionally",
+			registration: "v1:4312:991827:Codex:work:dGhyXzEyMw",
 			want: []string{
-				"set-option", "-p", "-t", "%7", "--", "@skid_agent_runtime", "registration",
-				";", "set-option", "-p", "-t", "%7", "--", "@skid_lifecycle", "v1:4312:991827:idle:1787745600",
+				"set-option", "-p", "-t", "%7", "--",
+				"@skid_agent_runtime", "v1:4312:991827:Codex:work:dGhyXzEyMw",
 			},
 		},
 		{
-			name: "Codex prompt publishes working and clears attention",
-			hook: invocation{provider: agentruntime.ProviderCodex, event: hookUserPromptSubmit},
+			name:         "Claude SessionStart publishes identity unconditionally",
+			registration: "v1:4312:991827:Claude:claude-work:dGhyXzEyMw",
 			want: []string{
-				"set-option", "-p", "-t", "%7", "--", "@skid_lifecycle", "v1:4312:991827:working:1787745600",
-				";", "set-option", "-pqu", "-t", "%7", "--", "@skid_attention",
-			},
-		},
-		{
-			name: "Codex Stop publishes idle",
-			hook: invocation{provider: agentruntime.ProviderCodex, event: hookStop},
-			want: []string{
-				"set-option", "-p", "-t", "%7", "--", "@skid_lifecycle", "v1:4312:991827:idle:1787745600",
-			},
-		},
-		{
-			name:         "Claude SessionStart publishes identity only",
-			hook:         invocation{provider: agentruntime.ProviderClaude, event: hookSessionStart},
-			registration: "registration",
-			want: []string{
-				"set-option", "-p", "-t", "%7", "--", "@skid_agent_runtime", "registration",
+				"set-option", "-p", "-t", "%7", "--",
+				"@skid_agent_runtime", "v1:4312:991827:Claude:claude-work:dGhyXzEyMw",
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := publicationArguments("%7", test.hook, origin, test.registration, now); !slices.Equal(got, test.want) {
+			got := publicationArguments("%7", test.registration)
+			if !slices.Equal(got, test.want) {
 				t.Fatalf("publication arguments = %q, want %q", got, test.want)
+			}
+			if slices.Contains(got, "if-shell") {
+				t.Fatal("SessionStart identity was made conditional on a prior pane value")
 			}
 		})
 	}
-}
-
-func TestStopWritesTheRequiredCodexAcknowledgement(t *testing.T) {
-	if got := hookSuccessOutput(t, hookStop); got != "{}\n" {
-		t.Fatalf("Stop success output = %q, want empty JSON object", got)
-	}
-	if got := hookSuccessOutput(t, hookSessionStart); got != "" {
-		t.Fatalf("SessionStart success output = %q, want silence", got)
-	}
-}
-
-func hookSuccessOutput(t *testing.T, event hookEvent) string {
-	t.Helper()
-	var output strings.Builder
-	if err := writeSuccess(&output, event); err != nil {
-		t.Fatalf("write %s success output: %v", event, err)
-	}
-	return output.String()
 }

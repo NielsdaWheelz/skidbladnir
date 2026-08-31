@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 
 private const val MAXIMUM_PROTOCOL_JSON_DEPTH = 12
 
@@ -12,7 +11,10 @@ internal fun strictJsonObject(encoded: String): JsonObject {
     if (!UniqueJsonObjectKeyScanner(encoded).accepts()) {
         throw SerializationException("JSON must be one bounded document with unique object keys")
     }
-    return productJson.parseToJsonElement(encoded).jsonObject
+    // Keep the top-level object requirement explicit at this boundary rather
+    // than depending on a library accessor's exception type.
+    return productJson.parseToJsonElement(encoded) as? JsonObject
+        ?: throw SerializationException("protocol payload is not a JSON object")
 }
 
 private class UniqueJsonObjectKeyScanner(private val encoded: String) {

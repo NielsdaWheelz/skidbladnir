@@ -7,8 +7,15 @@ S22+ (devbox debug-signed run — the signed deviceDebug platform gate is
 MacBook-owned); the hands-on pass (incl. the Forge warm-in) stays
 `NOT_RUN`.
 
+Historical boundary: the accepted 2026-08-31
+[`terminal-activity.md`](terminal-activity.md) hard cut supersedes this
+delivery plan's status labels/colors and pulsing attention badge. The single
+token owner, shapes, typography, target sizes, and non-state chrome remain
+current. Every superseded status or attention example below is historical,
+not an active contract.
+
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
-including literal labels, 48dp targets, and the distinct-status-color
+including literal labels, 48dp targets, and the current terminal-activity
 contract; [`design-language.md`](design-language.md) owns the visual values
 (§5 color, §6 shape, §9 type, §12 motion, §13 components); this document owns
 the implementation boundary and delivery plan.
@@ -105,8 +112,9 @@ Gold/Ember only on host-evaluated Warm/Hot exceptions.
   `android/app/src/main/assets/licenses/BigShoulders-OFL.txt` and
   `JetBrainsMono-OFL.txt` (the OFL requires the license accompany the fonts).
 - Roles per design language §9: Display carries the wordmark, screen titles,
-  and dwarf display names; Data carries every machine fact (status bays,
-  ages, cwd, tmux names, ids, pressure numerals, key-deck labels) at ≥ 11sp;
+  and dwarf display names; Data carries every machine fact
+  (activity bay, freshness, cwd, tmux names, ids, pressure
+  numerals, key-deck labels) at ≥ 11sp;
   body text stays the system face. Junicode does not ship in this delta.
 
 ### Surfaces restyled (visual only)

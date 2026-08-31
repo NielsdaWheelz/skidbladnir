@@ -43,10 +43,10 @@ var (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func run(arguments []string, stdout, stderr io.Writer) int {
+func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
 		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
@@ -63,24 +63,50 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if arguments[0] == "agent-hook" {
+		// One budget covers argument admission, bounded SessionStart input,
+		// host-config admission, and publication. Closing stdin is the
+		// cancellation boundary when a provider never reaches EOF.
+		ctx, cancel := context.WithTimeout(context.Background(), agenthook.PublicationDeadline)
+		defer cancel()
 		flags := flag.NewFlagSet("agent-hook", flag.ContinueOnError)
 		flags.SetOutput(stderr)
 		hostConfigPath := flags.String("host-config", "", "required host config")
 		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || *hostConfigPath == "" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH {Codex {SessionStart|UserPromptSubmit|Stop}|Claude SessionStart}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH {Codex|Claude} SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
-		config, err := loadRuntimeHostConfig(*hostConfigPath, platform.Current().Kind)
-		if err != nil {
-			_, _ = io.WriteString(stderr, "agent-hook host configuration failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
+		preparedInput := prepareAgentHookInput(flags.Arg(0), flags.Arg(1), stdin)
+		prepared, prepareErr := awaitAgentHookInput(ctx, stdin, preparedInput)
+		if errors.Is(prepareErr, agenthook.ErrInvocationRejected) {
+			// Prepare admits the closed argv union before reading stdin; deployment
+			// state is intentionally still untouched here.
+			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitUsage
 		}
-		if err := agenthook.Run(context.Background(), agenthook.Config{
+		if prepareErr != nil {
+			// Invalid or nonterminating provider input is projection-local and
+			// cannot prevent the provider session from starting.
+			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return 0
+		}
+		config, configErr := loadRuntimeHostConfig(ctx, *hostConfigPath, platform.Current().Kind)
+		if configErr != nil {
+			// A host-configuration defect is the deployment's to fix, not the
+			// provider's to pay for: doctor and check-codex-config own that
+			// validation. This command stays out of the provider's way.
+			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return 0
+		}
+		if err := agenthook.Run(ctx, agenthook.Config{
 			TmuxPath: config.Tmux.Path,
 			Profiles: config.Profiles,
-		}, flags.Arg(0), flags.Arg(1), os.Stdin, stdout); err != nil {
-			_, _ = io.WriteString(stderr, "agent-hook failed\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
+		}, prepared); err != nil {
+			// The hook is a passive projection of pane-local facts. Publication
+			// failure must not prevent the provider session from starting, so only
+			// the argv rejection above exits non-zero. A failed projection reports
+			// itself content-free and leaves the provider's own work untouched.
+			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return 0
 		}
 		return 0
 	}
@@ -191,6 +217,57 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	}
 }
 
+type agentHookInputResult struct {
+	prepared agenthook.Prepared
+	err      error
+}
+
+type agentHookInput interface {
+	io.Reader
+	io.Closer
+}
+
+var errAgentHookInputClose = errors.New("close provider hook input")
+
+func prepareAgentHookInput(provider, event string, input io.Reader) <-chan agentHookInputResult {
+	result := make(chan agentHookInputResult, 1)
+	go func() {
+		prepared, err := agenthook.Prepare(provider, event, input)
+		result <- agentHookInputResult{prepared: prepared, err: err}
+	}()
+	return result
+}
+
+func awaitAgentHookInput(
+	ctx context.Context,
+	input agentHookInput,
+	result <-chan agentHookInputResult,
+) (agenthook.Prepared, error) {
+	select {
+	case prepared := <-result:
+		return prepared.prepared, prepared.err
+	case <-ctx.Done():
+		// The command owns this hook-only stdin. Closing a provider pipe is the
+		// cancellation boundary for a writer that never reaches EOF; the worker
+		// is then joined so run never leaks input work in tests or production.
+		closeErr := input.Close()
+		prepared := <-result
+		causes := []error{ctx.Err()}
+		if closeErr != nil {
+			if errors.Is(closeErr, os.ErrClosed) {
+				// justify-ignore-error: an already-closed owned input has already
+				// established the cancellation boundary and the worker was joined.
+			} else {
+				causes = append(causes, errAgentHookInputClose)
+			}
+		}
+		if prepared.err != nil {
+			causes = append(causes, prepared.err)
+		}
+		return prepared.prepared, errors.Join(causes...)
+	}
+}
+
 func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, cataloguePath, home string, logOutput io.Writer) error {
 	for _, name := range []string{"TMUX", "TMUX_PANE", "TMUX_TMPDIR"} {
 		if err := os.Unsetenv(name); err != nil {
@@ -202,7 +279,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		return fmt.Errorf("load machine handle: %w", err)
 	}
 	descriptor := platform.Current()
-	host, err := loadRuntimeHostConfig(hostConfigPath, descriptor.Kind)
+	host, err := loadRuntimeHostConfig(context.Background(), hostConfigPath, descriptor.Kind)
 	if err != nil {
 		return fmt.Errorf("validate host configuration: %w", err)
 	}
@@ -234,12 +311,12 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	return nil
 }
 
-func loadRuntimeHostConfig(path string, runtime platform.Kind) (hostconfig.Config, error) {
+func loadRuntimeHostConfig(ctx context.Context, path string, runtime platform.Kind) (hostconfig.Config, error) {
 	config, err := hostconfig.Load(path, runtime)
 	if err != nil {
 		return hostconfig.Config{}, err
 	}
-	tmuxVersion, err := observedTmuxVersion(config.Tmux.Path)
+	tmuxVersion, err := observedTmuxVersion(ctx, config.Tmux.Path)
 	if err != nil {
 		return hostconfig.Config{}, err
 	}
@@ -249,8 +326,8 @@ func loadRuntimeHostConfig(path string, runtime platform.Kind) (hostconfig.Confi
 	return config, nil
 }
 
-func observedTmuxVersion(path string) (string, error) {
-	output, err := exec.Command(path, "-V").Output()
+func observedTmuxVersion(ctx context.Context, path string) (string, error) {
+	output, err := exec.CommandContext(ctx, path, "-V").Output()
 	if err != nil || len(output) < 2 || output[len(output)-1] != '\n' || bytes.ContainsRune(output[:len(output)-1], '\n') {
 		return "", errors.New("read configured tmux version")
 	}

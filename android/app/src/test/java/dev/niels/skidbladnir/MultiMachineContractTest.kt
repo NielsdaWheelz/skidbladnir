@@ -135,38 +135,61 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `sessions sort by attention, then status, machine label, session name, and local tmux ID`() {
-        val alpha = devbox.copy(label = requireNotNull(MachineLabel.parse("Alpha")))
-        val beta = macBook.copy(label = requireNotNull(MachineLabel.parse("Beta")))
-        val alphaMachine = readyMachine(
-            alpha,
-            session(tmuxId = tmuxId(1), tmuxName = "zeta", status = status(SessionStatusKind.Idle)),
-            session(tmuxId = tmuxId(3), tmuxName = "beta"),
-            session(tmuxId = tmuxId(5), tmuxName = "Alpha"),
-            session(tmuxId = tmuxId(0), tmuxName = "Alpha"),
+    fun `sessions sort fresh quiet then fresh active then retained and use total identity order`() {
+        fun machine(handle: String, label: String) = PairedMachine(
+            handle = requireNotNull(MachineHandle.parse(handle)),
+            label = requireNotNull(MachineLabel.parse(label)),
+            origin = requireNotNull(MachineOrigin.parse("https://${handle.takeLast(4)}.example.ts.net:8443/")),
         )
-        val betaMachine = readyMachine(
-            beta,
-            session(
-                tmuxId = tmuxId(2),
-                tmuxName = "aaa",
-                attention = true,
-                status = status(SessionStatusKind.Unknown),
+        val exactAlpha = machine("mh-00000000000000000000000000000001", "Alpha")
+        val laterHandle = machine("mh-00000000000000000000000000000002", "Alpha")
+        val caseAlpha = machine("mh-00000000000000000000000000000003", "alpha")
+        val stale = machine("mh-00000000000000000000000000000004", "Aardvark")
+        val authRequired = machine("mh-00000000000000000000000000000005", "Aardvark")
+        val exactAlphaState = readyMachine(
+            exactAlpha,
+            activitySession(tmuxId(3), "aardvark", "Active"),
+            activitySession(tmuxId(2), "work", "Quiet"),
+            activitySession(tmuxId(1), "Work", "Quiet"),
+            activitySession(tmuxId(0), "Work", "Quiet"),
+        )
+        val laterHandleState = readyMachine(
+            laterHandle,
+            activitySession(tmuxId(4), "Work", "Quiet"),
+        )
+        val caseAlphaState = readyMachine(
+            caseAlpha,
+            activitySession(tmuxId(5), "Work", "Quiet"),
+        )
+        val freshStale = readyMachine(stale, activitySession(tmuxId(6), "z-retained", "Active"))
+        val staleState = freshStale.copy(
+            inventory = InventoryState.Stale(
+                (freshStale.inventory as InventoryState.Fresh).snapshot,
+                GatewayFailure.Transport,
             ),
-            session(tmuxId = tmuxId(4), tmuxName = "alpha"),
         )
+        val authRequiredState = readyMachine(
+            authRequired,
+            activitySession(tmuxId(7), "a-retained", "Quiet"),
+        ).copy(access = MachineAccess.AuthRequired)
 
         assertEquals(
             listOf(
-                "Beta/aaa/${tmuxId(2)}",
-                "Alpha/Alpha/${tmuxId(0)}",
-                "Alpha/Alpha/${tmuxId(5)}",
-                "Alpha/beta/${tmuxId(3)}",
-                "Beta/alpha/${tmuxId(4)}",
-                "Alpha/zeta/${tmuxId(1)}",
+                "Alpha/${exactAlpha.handle.encoded}/Work/${tmuxId(0)}",
+                "Alpha/${exactAlpha.handle.encoded}/Work/${tmuxId(1)}",
+                "Alpha/${exactAlpha.handle.encoded}/work/${tmuxId(2)}",
+                "Alpha/${laterHandle.handle.encoded}/Work/${tmuxId(4)}",
+                "alpha/${caseAlpha.handle.encoded}/Work/${tmuxId(5)}",
+                "Alpha/${exactAlpha.handle.encoded}/aardvark/${tmuxId(3)}",
+                "Aardvark/${stale.handle.encoded}/z-retained/${tmuxId(6)}",
+                "Aardvark/${authRequired.handle.encoded}/a-retained/${tmuxId(7)}",
             ),
-            visibleSessions(listOf(betaMachine, alphaMachine), selectedMachine = null).map {
-                "${it.machine.label.text}/${it.target.session.tmuxName}/${it.target.session.tmuxId}"
+            visibleSessions(
+                listOf(authRequiredState, caseAlphaState, staleState, laterHandleState, exactAlphaState),
+                selectedMachine = null,
+            ).map {
+                "${it.machine.label.text}/${it.machine.handle.encoded}/" +
+                    "${it.target.session.tmuxName}/${it.target.session.tmuxId}"
             },
         )
     }
@@ -856,7 +879,7 @@ class MultiMachineContractTest {
         val authoritative = original.copy(
             tmuxName = "review_ready",
             attachedClients = 2,
-            attention = true,
+            activity = SessionActivity.Active,
         )
         val adopted = reconcileTerminalRename(
             reconcilingTerminal.copy(machine = readyMachine(devbox, authoritative)),
@@ -923,9 +946,8 @@ class MultiMachineContractTest {
             machineNotice(stalePressure)?.tone,
         )
 
-        // The card's degraded marker reads this derivation rather than a fixed Degraded. A machine
-        // whose bearer broke still holds a Fresh inventory, so it reaches that marker as a trust
-        // failure; toning it by staleness would paint a broken machine calm.
+        // The retained-card marker and machine notice share the availability classifier. This
+        // table prevents an auth or identity fence from being mislabeled as stale.
         val brokenTrustOnFreshInventory = ready.copy(access = MachineAccess.AuthRequired)
         assertTrue(
             "the fixture must hold a Fresh inventory for this to prove anything",
@@ -937,6 +959,22 @@ class MultiMachineContractTest {
             NoticeTone.Failure,
             availabilityTone(machineAvailability(brokenTrustOnFreshInventory)),
         )
+        val retainedCardCases = listOf(
+            ready to null,
+            ready.copy(inventory = InventoryState.Superseded(snapshot, requiredMutationFence = 4)) to
+                SessionAvailabilityContent("REFRESHING · actions disabled", NoticeTone.Degraded),
+            ready.copy(inventory = InventoryState.Stale(snapshot, GatewayFailure.Transport)) to
+                SessionAvailabilityContent("STALE · actions disabled", NoticeTone.Degraded),
+            brokenTrustOnFreshInventory to
+                SessionAvailabilityContent("AUTH REQUIRED · actions disabled", NoticeTone.Failure),
+            ready.copy(access = MachineAccess.IdentityChanged) to
+                SessionAvailabilityContent("IDENTITY CHANGED · actions disabled", NoticeTone.Failure),
+            ready.copy(inventory = InventoryState.Reading) to null,
+            ready.copy(inventory = InventoryState.Unreachable(GatewayFailure.Transport)) to null,
+        )
+        retainedCardCases.forEach { (machine, expected) ->
+            assertEquals(machineAvailability(machine).toString(), expected, sessionAvailabilityContent(machine))
+        }
 
         // The table below is machineNotice's coverage record: a new MachineAvailability
         // variant must be given a row here.
@@ -1006,39 +1044,34 @@ class MultiMachineContractTest {
     private fun inventoryJson(handle: MachineHandle, platform: String): String =
         """{"machine":{"handle":"${handle.encoded}","platform":"$platform"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[]}"""
 
-    private fun status(kind: SessionStatusKind): SessionStatus = SessionStatus(
-        kind,
-        when (kind) {
-            SessionStatusKind.Working, SessionStatusKind.Idle -> SessionStatusSignal.Lifecycle
-            SessionStatusKind.Running, SessionStatusKind.Shell -> SessionStatusSignal.Process
-            SessionStatusKind.Unknown -> SessionStatusSignal.PollFailure
-        },
-        SIGNAL_AT,
-    )
+    private fun activitySession(
+        tmuxId: String,
+        tmuxName: String,
+        activity: String,
+    ): TmuxSession {
+        val session =
+            """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"token-$tmuxId","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0,"activity":"$activity"}"""
+        return decodeSessionsResponse(
+            """{"machine":{"handle":"${devboxHandle.encoded}","platform":"Linux"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[$session]}""",
+        ).sessions.single()
+    }
 
     private fun session(
         tmuxId: String = tmuxId(1),
         tmuxName: String = "ga-durinn",
         identityToken: String = "v1-0123456789abcdef0123456789abcdef.100.200.1",
-        attention: Boolean = false,
-        status: SessionStatus = status(SessionStatusKind.Working),
     ): TmuxSession = TmuxSession(
         tmuxId = tmuxId,
         tmuxName = tmuxName,
         identityToken = identityToken,
         launchProfile = personal,
-        agent = when (status.kind) {
-            SessionStatusKind.Working, SessionStatusKind.Running, SessionStatusKind.Idle ->
-                AgentRuntime(AgentProvider.Codex, pid = 1234, profile = personal)
-            SessionStatusKind.Shell, SessionStatusKind.Unknown -> null
-        },
         objective = null,
         character = CharacterSummary("norse.durinn", "Durinn"),
         cwd = "/src/skidbladnir",
         activeCommand = "codex",
         attachedClients = 1,
-        attention = attention,
-        status = status,
+        activity = SessionActivity.Quiet,
+        agent = AgentRuntime(AgentProvider.Codex, pid = 1234, profile = personal),
     )
 
     private fun pressureJson(unsupported: String, metrics: String): String {
@@ -1050,8 +1083,6 @@ class MultiMachineContractTest {
 
     private companion object {
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
-        val SIGNAL_AT: Instant = Instant.parse("2026-08-26T11:59:55Z")
-
         fun tmuxId(index: Int): String = "${'$'}$index"
 
         const val linuxMetrics =

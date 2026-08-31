@@ -46,33 +46,35 @@ type Session struct {
 	CWD             string
 	ActiveCommand   string
 	AttachedClients int
-	Status          Status
-	Attention       bool
+	Activity        SessionActivity
 }
 
-type Status struct {
-	Kind     StatusKind
-	Signal   StatusSignal
-	SignalAt time.Time
+type Inventory struct {
+	ObservedAt time.Time
+	Sessions   []Session
 }
 
-type StatusKind string
+type ObservedSession struct {
+	ObservedAt time.Time
+	Session    Session
+}
+
+type SessionActivity string
 
 const (
-	StatusWorking StatusKind = "WORKING"
-	StatusRunning StatusKind = "RUNNING"
-	StatusIdle    StatusKind = "IDLE"
-	StatusShell   StatusKind = "SHELL"
-	StatusUnknown StatusKind = "UNKNOWN"
+	SessionActivityActive SessionActivity = "Active"
+	SessionActivityQuiet  SessionActivity = "Quiet"
 )
 
-type StatusSignal string
-
-const (
-	StatusSignalLifecycle   StatusSignal = "Lifecycle"
-	StatusSignalProcess     StatusSignal = "Process"
-	StatusSignalPollFailure StatusSignal = "PollFailure"
-)
+// ValidProjectionInstant closes observation clocks at the same four-digit UTC
+// year boundary as Go's RFC3339 JSON encoder.
+func ValidProjectionInstant(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	_, err := value.UTC().MarshalJSON()
+	return err == nil
+}
 
 type ErrorCode string
 

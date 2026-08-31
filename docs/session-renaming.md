@@ -13,8 +13,10 @@ parallel `testing-standards.md`.
 From an active Terminal, the operator can rename the exact ordinary tmux
 session being viewed. The tmux session is renamed in place. Its machine,
 server lifetime, `$session_id`, phone attachment, panes, windows, processes,
-clients, geometry, character, objective, options, status, attention, and
-provider facts do not change.
+clients, geometry, character, objective, options, and provider facts do not
+change. Rename writes no activity fact; the next inventory independently
+re-derives activity from tmux, so elapsed time or concurrent output may change
+the projected value.
 
 Tmux remains the database. The phone stores no alias, rename history, or second
 name. Claude/Codex provider names remain independent and are never synchronized.
@@ -318,8 +320,9 @@ a new risk in this slice.
 3. Invalid, unchanged, conflicting, stale, missing, restarted-server, and
    concurrent-loser requests mutate no session.
 4. Unknown transport outcome is never retried and converges through inventory.
-5. Provider session id/name, character, objective, status, attention, panes,
-   processes, group topology, clients, selection, and geometry do not change.
+5. Provider session id/name, character, objective, panes, processes, group
+   topology, clients, selection, and geometry do not change. Rename authors no
+   activity state; the next inventory remains authoritative.
 6. The UI is literal, discoverable, keyboard-safe, TalkBack-addressable, and
    usable at the supported narrow width and large font scale.
 7. Logs and evidence contain no request body, names, token, provider fact,

@@ -6,9 +6,13 @@ Before changing this repository, read [the architecture](docs/architecture.md),
 2026-08-25: tmux is the database, the agent is an opaque terminal program, and
 the phone is a tmux client. Do not reintroduce retired machinery (general hook
 runtimes, provenance, SQLite lifecycle facts, contract codegen, proof ledgers).
-The sole hook exception is the content-free, process-lifetime-bound Codex pane
-lifecycle adapter in architecture §4; do not widen it into thread tracking or
-payload parsing. The architecture's §8 upgrade ladder governs everything else.
+The sole hook exception is the content-free, process-lifetime-bound
+SessionStart runtime-identity projection in architecture §4. Hooks never
+publish activity, track threads, or parse prompt payloads. Terminal activity is
+derived only from tmux's built-in current-window activity timestamp. A Codex
+completion notifier may emit BEL as terminal-local presentation, but it stores
+no state and has no privileged product meaning. The architecture's §8 upgrade
+ladder governs everything else.
 
 Implement only the reviewed v0 target and its red/green proof shape. A new
 capability requires an explicit scope and acceptance-criterion change.

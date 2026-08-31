@@ -46,7 +46,6 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	fixture.tmux(t, "split-window", "-h", "-t", "shared-terminal:0", "-c", fixture.project,
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logB, "B")
 	fixture.tmux(t, "select-pane", "-t", "shared-terminal:0.0")
-	fixture.tmux(t, "set-option", "-p", "-t", "shared-terminal:0.0", "--", "@skid_attention", "1")
 
 	listed, err := fixture.manager.List(context.Background())
 	if err != nil {
@@ -144,9 +143,6 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		)
 	}
 	readTerminalBinaryUntil(t, connection, []string{"FRAME=A BUFFER=seed-A"}, nil)
-	if attention := fixture.tmux(t, "show-options", "-pqv", "-t", "shared-terminal:0.0", "@skid_attention"); attention != "" {
-		t.Fatal("opening terminal did not clear active-pane attention")
-	}
 
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Resize","columns":100,"rows":30}`))
 	waitForTerminalCondition(t, "phone resize", func() bool {
@@ -198,7 +194,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 		if listErr != nil {
 			return false
 		}
-		for _, session := range listed {
+		for _, session := range listed.Sessions {
 			if session.TmuxID == source.TmuxID {
 				return session.AttachedClients == 1
 			}
@@ -895,7 +891,7 @@ func waitForTerminalAttachmentCount(t *testing.T, fixture sessionFixture, source
 		if err != nil {
 			return false
 		}
-		for _, session := range listed {
+		for _, session := range listed.Sessions {
 			if session.TmuxID == sourceID {
 				return session.AttachedClients == want
 			}

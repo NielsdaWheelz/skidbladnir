@@ -1,6 +1,8 @@
 package hostconfig
 
 import (
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -27,6 +29,36 @@ func TestParseAcceptsTheClosedDeploymentHostConfig(t *testing.T) {
 			t.Fatalf("profile[%d].key = %q, want %q", index, got, want)
 		}
 	}
+}
+
+func TestLoadOpenedHostConfigPropagatesACloseFailure(t *testing.T) {
+	path := t.TempDir() + "/host-config.json"
+	if err := os.WriteFile(path, []byte(validLinuxConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := loadOpenedHostConfig(closeErrorHostConfigFile{File: file}, platform.KindLinux)
+	if err == nil || !strings.Contains(err.Error(), "close host config") {
+		t.Fatalf("close failure = %v, want owned host-config close error", err)
+	}
+	if config.Platform != "" || config.Tmux != (Tmux{}) || config.Profiles != nil {
+		t.Fatalf("close failure returned a usable config: %+v", config)
+	}
+}
+
+type closeErrorHostConfigFile struct {
+	*os.File
+}
+
+func (file closeErrorHostConfigFile) Close() error {
+	if err := file.File.Close(); err != nil {
+		return err
+	}
+	return errors.New("injected close failure")
 }
 
 func TestParseAcceptsDeploymentOwnedDevboxArchAndMacBookPaths(t *testing.T) {

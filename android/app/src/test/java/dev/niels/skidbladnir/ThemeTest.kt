@@ -1,38 +1,38 @@
 package dev.niels.skidbladnir
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThemeTest {
     @Test
-    fun `statusColor is injective across all session status kinds`() {
-        val mapping = SessionStatusKind.entries.associateWith(::statusColor)
-        val distinctColors = mapping.values.toSet()
-
+    fun `session activity copy is exact and retained values are qualified`() {
         assertEquals(
-            "statusColor must be injective so every status kind is visually distinct; " +
-                "colliding mapping was $mapping",
-            mapping.size,
-            distinctColors.size,
+            SessionActivityContent("ACTIVE", "Recent tmux activity at the last check"),
+            sessionActivityContent(SessionActivity.Active, fresh = true),
+        )
+        assertEquals(
+            SessionActivityContent("QUIET", "No recent tmux activity at the last check"),
+            sessionActivityContent(SessionActivity.Quiet, fresh = true),
+        )
+        assertEquals(
+            SessionActivityContent("ACTIVE", "Last observed: recent tmux activity"),
+            sessionActivityContent(SessionActivity.Active, fresh = false),
+        )
+        assertEquals(
+            SessionActivityContent("QUIET", "Last observed: no recent tmux activity"),
+            sessionActivityContent(SessionActivity.Quiet, fresh = false),
         )
     }
 
     @Test
-    fun `attentionPulseEnabled is false only when the animator duration scale is zero`() {
-        assertFalse(
-            "scale 0f means the system disabled animations; the pulse must render static",
-            attentionPulseEnabled(0f),
-        )
-        assertTrue(
-            "scale 1f is the normal animator rate; the pulse must be enabled",
-            attentionPulseEnabled(1f),
-        )
-        assertTrue(
-            "scale 0.5f is reduced but nonzero; the pulse must still be enabled",
-            attentionPulseEnabled(0.5f),
+    fun `session activity tones map to the normative design tokens`() {
+        assertEquals(
+            mapOf(
+                SessionActivity.Active to Moss,
+                SessionActivity.Quiet to Muted,
+            ),
+            SessionActivity.entries.associateWith(::sessionActivityColor),
         )
     }
 

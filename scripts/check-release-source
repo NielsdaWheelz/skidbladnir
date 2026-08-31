@@ -4,22 +4,44 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 repo_name='NielsdaWheelz/skidbladnir'
 
-immutable_release_policy_enabled() {
-  local policy
+immutable_release_policy_file_enabled() {
+  local policy_file="$1"
+  local policy_bytes
   local observed_keys
-  policy="$(cat)" || return 1
-  ((${#policy} <= 4096)) || return 1
+  [[ -f "$policy_file" && ! -L "$policy_file" ]] || return 1
+  policy_bytes="$(LC_ALL=C wc -c <"$policy_file" | tr -d '[:space:]')" || return 1
+  [[ "$policy_bytes" =~ ^[1-9][0-9]{0,3}$ && "$policy_bytes" -le 4096 ]] || return 1
   observed_keys="$(
-    jq --stream -er 'select(length == 2 and (.[0] | length) == 1) | .[0][0]' \
-      <<<"$policy" | LC_ALL=C sort
+    jq --stream -er '
+      if length == 1 then empty
+      elif length == 2 and (.[0] | length) == 1 then .[0][0]
+      else "__SKIDBLADNIR_INVALID_NESTING__"
+      end
+    ' "$policy_file" 2>/dev/null | LC_ALL=C sort
   )" || return 1
   [[ "$observed_keys" == $'enabled\nenforced_by_owner' ]] || return 1
   jq -e '
     type == "object" and
     .enabled == true and
     (.enforced_by_owner | type == "boolean")
-  ' <<<"$policy" >/dev/null
+  ' "$policy_file" >/dev/null 2>&1
 }
+
+immutable_release_policy_enabled() (
+  set -euo pipefail
+  local fixture_dir
+  local policy_file
+  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-policy-self-test.XXXXXX)"
+  case "$fixture_dir" in
+    /tmp/skidbladnir-release-policy-self-test.* | /private/tmp/skidbladnir-release-policy-self-test.*) ;;
+    *) return 1 ;;
+  esac
+  trap 'rm -R -- "$fixture_dir"' EXIT HUP INT TERM
+  policy_file="$fixture_dir/policy.json"
+  umask 077
+  head -c 4097 >"$policy_file"
+  immutable_release_policy_file_enabled "$policy_file"
+)
 
 self_test() {
   if printf '%s\n' '{"enabled":false,"enforced_by_owner":false}' |
@@ -37,9 +59,27 @@ self_test() {
     return 1
   fi
   if printf '%s\n' \
+    '{"enabled":{"nested":false},"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'Object-valued duplicate immutable-release policy field was accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\n' \
     '{"enabled":false,"enforced_by_owner":false}{"enabled":true,"enforced_by_owner":false}' |
     immutable_release_policy_enabled; then
     printf 'Concatenated immutable-release policy documents were accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\n' \
+    '{"enabled":{"nested":false},"enforced_by_owner":{"nested":false}}' \
+    '{"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'Nested invalid immutable-release policy followed by valid policy was accepted\n' >&2
+    return 1
+  fi
+  if printf '%s\0' '{"enabled":true,"enforced_by_owner":false}' |
+    immutable_release_policy_enabled; then
+    printf 'NUL-bearing immutable-release policy was normalized and accepted\n' >&2
     return 1
   fi
   printf '%s\n' '{"enabled":true,"enforced_by_owner":false}' |
@@ -93,19 +133,30 @@ repo_identity="$(gh repo view "$repo_name" --json nameWithOwner,visibility \
   printf 'Release requires the public %s repository\n' "$repo_name" >&2
   exit 1
 }
-immutable_release_settings="$(
-  gh api --method GET \
-    -H 'Accept: application/vnd.github+json' \
-    -H 'X-GitHub-Api-Version: 2026-03-10' \
-    "repos/$repo_name/immutable-releases"
-)" || {
+immutable_release_policy_dir="$(mktemp -d /tmp/skidbladnir-release-policy.XXXXXX)"
+case "$immutable_release_policy_dir" in
+  /tmp/skidbladnir-release-policy.* | /private/tmp/skidbladnir-release-policy.*) ;;
+  *)
+    printf 'Could not create a private immutable-release policy directory\n' >&2
+    exit 1
+    ;;
+esac
+trap 'rm -R -- "$immutable_release_policy_dir"' EXIT HUP INT TERM
+immutable_release_policy_file="$immutable_release_policy_dir/policy.json"
+install -m 0600 /dev/null "$immutable_release_policy_file"
+gh api --method GET \
+  -H 'Accept: application/vnd.github+json' \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  "repos/$repo_name/immutable-releases" | head -c 4097 >"$immutable_release_policy_file" || {
   printf 'GitHub immutable-release policy is unavailable for %s\n' "$repo_name" >&2
   exit 1
 }
-immutable_release_policy_enabled <<<"$immutable_release_settings" || {
+immutable_release_policy_file_enabled "$immutable_release_policy_file" || {
   printf 'Release requires GitHub immutable releases to be enabled for %s\n' "$repo_name" >&2
   exit 1
 }
+rm -R -- "$immutable_release_policy_dir"
+trap - EXIT HUP INT TERM
 
 git fetch --quiet origin main --tags
 sha="$(git rev-parse HEAD)"

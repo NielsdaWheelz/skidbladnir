@@ -1,11 +1,10 @@
 package dev.niels.skidbladnir
 
-import android.os.SystemClock
-import android.provider.Settings
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -38,15 +37,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 // M3's `Card(onClick)` hardcodes its internal ripple and never reads
 // LocalIndication, so the card is a plain Surface carrying the same
@@ -58,18 +55,14 @@ internal fun SessionCard(
     visibleSession: VisibleSession,
     machine: MachineState,
     showMachineLabel: Boolean,
+    motionEnabled: Boolean,
     onOpen: () -> Unit,
     onKill: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
-    val status = statusContent(
-        session.status,
-        snapshot.inventory.observedAt.plusMillis(
-            (SystemClock.elapsedRealtime() - snapshot.receivedAtElapsedMillis).coerceAtLeast(0),
-        ),
-    )
-    val tone = statusColor(session.status.kind)
+    val activity = sessionActivityContent(session.activity, fresh = machine.canMutate)
+    val tone = sessionActivityColor(session.activity)
     val profile = sessionProfileLabel(session, snapshot.inventory.profiles)
     val visibleContext = sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
     Surface(
@@ -95,10 +88,11 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                attention = session.attention,
-                statusTone = tone,
-                statusFacetTag =
-                    "session-status-facet-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
+                activity = session.activity,
+                activityTone = tone,
+                animateActivity = machine.canMutate && motionEnabled,
+                activityFacetTag =
+                    "session-activity-facet-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -106,20 +100,12 @@ internal fun SessionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 DwarfPortrait(session.character)
-                StatusBay(status = status, tone = tone, modifier = Modifier.weight(1f))
+                SessionActivityBay(activity = activity, tone = tone, modifier = Modifier.weight(1f))
             }
-            if (!machine.canMutate) {
-                // The tone is the machine's own, never a fixed Degraded: a machine whose bearer
-                // broke or whose identity changed still has a Fresh inventory, so it reaches this
-                // marker as a trust failure, and painting that calm is the inversion this delta
-                // exists to abolish. The marker's wording remains architecture-owned.
+            sessionAvailabilityContent(machine)?.let { availability ->
                 Text(
-                    if (machine.inventory is InventoryState.Superseded) {
-                        "REFRESHING · actions disabled"
-                    } else {
-                        "STALE · actions disabled"
-                    },
-                    color = noticeToneColor(availabilityTone(machineAvailability(machine))),
+                    availability.label,
+                    color = noticeToneColor(availability.tone),
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = NidavellirType.Data,
                     modifier = Modifier.padding(top = 8.dp),
@@ -192,18 +178,19 @@ internal fun SessionCard(
 
 internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileChoice>): String {
     val agent = session.agent
-    if (agent == null) {
-        return session.launchProfile?.let { launchProfile ->
+    return if (agent != null) {
+        agent.profile?.let { runtimeProfile ->
+            profiles.single {
+                it.key == runtimeProfile && it.provider == agent.provider
+            }.label
+        } ?: when (agent.provider) {
+            AgentProvider.Codex -> "Codex · profile unknown"
+            AgentProvider.Claude -> "Claude · profile unknown"
+        }
+    } else {
+        session.launchProfile?.let { launchProfile ->
             profiles.single { it.key == launchProfile }.label
         } ?: "profile unknown"
-    }
-    return agent.profile?.let { runtimeProfile ->
-        profiles.single {
-            it.key == runtimeProfile && it.provider == agent.provider
-        }.label
-    } ?: when (agent.provider) {
-        AgentProvider.Codex -> "Codex · profile unknown"
-        AgentProvider.Claude -> "Claude · profile unknown"
     }
 }
 
@@ -214,9 +201,10 @@ internal fun sessionFooterText(machine: MachineLabel, profile: String, showMachi
 private fun SessionIdentityHeader(
     tmuxName: String,
     dwarfName: String,
-    attention: Boolean,
-    statusTone: Color,
-    statusFacetTag: String,
+    activity: SessionActivity,
+    activityTone: Color,
+    animateActivity: Boolean,
+    activityFacetTag: String,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(modifier = Modifier.weight(1f)) {
@@ -239,49 +227,79 @@ private fun SessionIdentityHeader(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (attention) AttentionLozenge()
-            StatusFacet(statusTone, statusFacetTag)
+        ActivityFacet(activity, activityTone, animateActivity, activityFacetTag)
+    }
+}
+
+@Composable
+private fun ActivityFacet(
+    activity: SessionActivity,
+    tone: Color,
+    animate: Boolean,
+    tag: String,
+) {
+    val active = when (activity) {
+        SessionActivity.Active -> true
+        SessionActivity.Quiet -> false
+    }
+    val modifier = Modifier
+        .size(12.dp)
+        .clip(NidavellirShapes.Chip)
+        .testTag(tag)
+    if (!active || !animate) {
+        Box(modifier.background(tone))
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "active session activity")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_200, easing = LinearEasing),
+        ),
+        label = "active session facet rotation",
+    )
+    Canvas(modifier) {
+        drawRect(tone)
+        val inset = 3.dp.toPx()
+        val angle = Path().apply {
+            moveTo(inset, size.height - inset)
+            lineTo(inset, inset)
+            lineTo(size.width - inset, inset)
+        }
+        rotate(rotation) {
+            drawPath(
+                path = angle,
+                color = DeepSurface,
+                style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Butt, join = StrokeJoin.Miter),
+            )
         }
     }
 }
 
 @Composable
-private fun StatusFacet(tone: Color, tag: String) {
-    Box(
-        modifier = Modifier
-            .size(12.dp)
-            .clip(NidavellirShapes.Chip)
-            .background(tone)
-            .testTag(tag),
-    )
-}
-
-@Composable
-private fun StatusBay(status: StatusContent, tone: Color, modifier: Modifier = Modifier) {
+private fun SessionActivityBay(activity: SessionActivityContent, tone: Color, modifier: Modifier = Modifier) {
     Surface(
         color = tone.copy(alpha = 0.18f),
         shape = NidavellirShapes.Chip,
         border = BorderStroke(1.dp, tone),
         modifier = modifier
-            .heightIn(min = 48.dp)
-            .semantics { contentDescription = status.accessibilityLabel },
+            .semantics { contentDescription = activity.accessibilityLabel },
     ) {
-        Column(modifier = Modifier.padding(horizontal = 3.dp, vertical = 4.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 3.dp, vertical = 4.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
             Text(
-                text = status.kind,
+                text = activity.label,
                 color = tone,
                 style = MaterialTheme.typography.labelLarge,
                 fontFamily = NidavellirType.Data,
                 fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = status.evidence,
-                color = Muted,
-                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = (-0.6).sp),
-                fontFamily = NidavellirType.Data,
             )
         }
     }
@@ -290,43 +308,6 @@ private fun StatusBay(status: StatusContent, tone: Color, modifier: Modifier = M
 internal fun abbreviatedDirectory(directory: String): String {
     val segments = directory.split('/').filter(String::isNotEmpty)
     return if (segments.size <= 2) directory else "…/${segments.takeLast(2).joinToString("/")}"
-}
-
-// The attention mark is an Orpiment lozenge — a rotated square, the fret
-// family's atom (design-language.md §6). It pulses 1.0 -> 0.55 on a ~1.6s
-// no-bounce loop, and renders static at full opacity when the system disables
-// animations (§12); opening the card clears attention, which is the WCAG
-// 2.2.2 stop mechanism.
-@Composable
-private fun AttentionLozenge() {
-    val resolver = LocalContext.current.contentResolver
-    val pulsing = remember(resolver) {
-        attentionPulseEnabled(
-            Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f),
-        )
-    }
-    val alpha = if (pulsing) {
-        rememberInfiniteTransition(label = "attention").animateFloat(
-            initialValue = 1f,
-            targetValue = 0.55f,
-            animationSpec = infiniteRepeatable(
-                animation = NidavellirMotion.AttentionPulse,
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "attention alpha",
-        ).value
-    } else {
-        1f
-    }
-    Box(Modifier.size(width = 14.dp, height = 8.dp)) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .semantics { contentDescription = "Needs attention" }
-                .graphicsLayer(rotationZ = 45f, alpha = alpha)
-                .background(Orpiment),
-        )
-    }
 }
 
 // The Niðavellir seal (design-language.md §11, dwarf-seals.md): a

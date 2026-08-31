@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -21,6 +23,12 @@ func Decode(encoded []byte, target any) error {
 	if err := validateDocument(encoded); err != nil {
 		return err
 	}
+	if target == nil {
+		return errors.New("JSON target is nil")
+	}
+	if err := validateExactSchema(encoded, reflect.TypeOf(target)); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
@@ -30,6 +38,105 @@ func Decode(encoded []byte, target any) error {
 		return err
 	}
 	return nil
+}
+
+var jsonUnmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+
+// validateExactSchema closes encoding/json's case-insensitive struct-field
+// matching before decoding. Custom JSON unmarshallers remain the exact owner of
+// their own value shape; every ordinary struct, slice, and map is traversed
+// against its declared schema.
+func validateExactSchema(encoded []byte, targetType reflect.Type) error {
+	var document json.RawMessage = encoded
+	if err := validateExactValue(document, targetType); err != nil {
+		return errors.New("JSON object members do not match their exact schema")
+	}
+	return nil
+}
+
+func validateExactValue(encoded json.RawMessage, targetType reflect.Type) error {
+	for targetType.Kind() == reflect.Pointer {
+		targetType = targetType.Elem()
+	}
+	if targetType.Implements(jsonUnmarshalerType) ||
+		(reflect.PointerTo(targetType).Implements(jsonUnmarshalerType)) {
+		return nil
+	}
+	switch targetType.Kind() {
+	case reflect.Struct:
+		if bytes.Equal(encoded, []byte("null")) {
+			return nil
+		}
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &object); err != nil || object == nil {
+			return errors.New("JSON value is not an object")
+		}
+		fields, err := exactStructFields(targetType)
+		if err != nil {
+			return err
+		}
+		for name, value := range object {
+			fieldType, present := fields[name]
+			if !present {
+				return errors.New("JSON object member is unknown or has the wrong case")
+			}
+			if err := validateExactValue(value, fieldType); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		if bytes.Equal(encoded, []byte("null")) && targetType.Kind() == reflect.Slice {
+			return nil
+		}
+		var values []json.RawMessage
+		if err := json.Unmarshal(encoded, &values); err != nil {
+			return errors.New("JSON value is not an array")
+		}
+		for _, value := range values {
+			if err := validateExactValue(value, targetType.Elem()); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		if targetType.Key().Kind() != reflect.String || bytes.Equal(encoded, []byte("null")) {
+			return nil
+		}
+		var values map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &values); err != nil {
+			return errors.New("JSON value is not an object")
+		}
+		for _, value := range values {
+			if err := validateExactValue(value, targetType.Elem()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func exactStructFields(targetType reflect.Type) (map[string]reflect.Type, error) {
+	fields := make(map[string]reflect.Type)
+	for index := 0; index < targetType.NumField(); index++ {
+		field := targetType.Field(index)
+		if !field.IsExported() {
+			continue
+		}
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if tag == "-" {
+			continue
+		}
+		if field.Anonymous && tag == "" {
+			return nil, errors.New("embedded JSON schema fields are unsupported")
+		}
+		if tag == "" {
+			tag = field.Name
+		}
+		if _, duplicate := fields[tag]; duplicate {
+			return nil, errors.New("JSON schema member is duplicated")
+		}
+		fields[tag] = field.Type
+	}
+	return fields, nil
 }
 
 func validateDocument(encoded []byte) error {

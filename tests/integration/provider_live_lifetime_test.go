@@ -209,14 +209,20 @@ func TestProviderLiveProcessGroupTrackerRetainsEveryValidObservationForCleanup(t
 		t.Fatal("resolve the test process group")
 	}
 	tracker := providerLiveProcessGroupTracker{}
-	invalid := sessions.Session{Agent: &agentruntime.AgentRuntime{PID: -1}}
-	observed := sessions.Session{Agent: &agentruntime.AgentRuntime{PID: pid}}
-	if err := tracker.record([]sessions.Session{invalid, observed}); err == nil {
+	absent := sessions.Session{Agent: &agentruntime.AgentRuntime{
+		Provider: agentruntime.ProviderCodex,
+		PID:      processinfo.PID(1 << 30),
+	}}
+	observed := sessions.Session{Agent: &agentruntime.AgentRuntime{
+		Provider: agentruntime.ProviderCodex,
+		PID:      pid,
+	}}
+	if err := tracker.record([]sessions.Session{absent, observed}); err == nil {
 		t.Fatal("partial provider observation did not fail closed")
 	}
 	partial := tracker.forCleanup()
 	if len(partial) != 1 || partial[0] != wantObserved {
-		t.Fatal("an invalid earlier observation suppressed a later valid cleanup process group")
+		t.Fatal("an absent earlier observation suppressed a later valid cleanup process group")
 	}
 	if err := tracker.record([]sessions.Session{observed}); err != nil {
 		t.Fatal("record overlapping provider observation")

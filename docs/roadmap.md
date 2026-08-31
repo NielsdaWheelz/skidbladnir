@@ -24,6 +24,14 @@ release-bound full platform gate and hands-on acceptance remain `NOT_RUN`.
 The 2026-08-28 tmux-session rename delta source is implemented under its
 accepted contract. Its owner reds are recorded; gate evidence is reported only
 against the exact tested SHA, with unavailable boundaries kept `NOT_RUN`.
+The 2026-08-28 agent-interaction-state candidate and its routine, exact-tree
+Darwin, and signed same-version S22+ evidence were reviewed and rejected by the
+accepted 2026-08-31 tmux terminal-activity scope correction. That evidence does
+not prove the replacement. The replacement source is implemented in dedicated
+Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused
+greens, and both routine verification suites are green. Linux/Darwin isolated
+tmux integration, Android component/hands-on, exact release/pin/deployment,
+provider-live, and production acceptance remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -31,6 +39,9 @@ architecture and are abandoned, not merged.
 This document owns delivery order. The [architecture](architecture.md) owns
 behavior and acceptance. Each slice has one observable outcome, a red proof
 observed before implementation, and real-boundary tests.
+Completed slice text records its historical delivery point; a later hard cut
+supersedes conflicting behavior without rewriting that evidence as if it had
+always existed.
 No proof ledger, evidence digests, or acceptance matrix — `NOT_RUN` honesty
 and the closed logger survive; the ceremony does not.
 
@@ -65,7 +76,7 @@ S1 tmux control plane
  -> v0 agent-identity projection hard cut
  -> v0 dashboard refresh-boundary correction
  -> v0 tmux-session rename delta
- -> v0.5 (optional): push
+ -> v0 tmux terminal-activity hard cut
 ```
 
 ## S1 — tmux control plane
@@ -78,11 +89,10 @@ tmux sessions and reads its pressure.
 
 - Go gateway: loopback bind, Tailscale Serve mapping, host-minted bearer
   (constant-time check; re-mint revokes).
-- `GET /v1/sessions`: poller over `list-sessions`/`list-panes` + `/proc`;
-  card facts incl. user-option metadata, independent attention, named status
-  bays with age, client count. Exact Codex `WORKING|IDLE` comes only from the
-  narrow process-lifetime-bound hook adapter; otherwise a live agent is
-  `RUNNING`.
+- `GET /v1/sessions`: read-only poll over tmux plus one optional foreground
+  process observation; each card has exact identity, client count, required
+  current-window `Active | Quiet`, and optional process-lifetime agent
+  metadata.
 - `POST /v1/sessions`: cwd/tmux-name/objective validation, host profile-table
   allowlist, unbounded `skidbladnir-<profile>-<N>` generated names, independent
   balanced Dvergatal assignment, user options set at create, YOLO exec.
@@ -92,11 +102,11 @@ tmux sessions and reads its pressure.
   one tmux client queue; owned stale phone shadows reconcile first, while any
   remaining ordinary group fails closed.
 - `GET /v1/pressure` with the proven thresholds.
-- `skid-notify` script + idempotent per-profile `notify` config line;
-  `@skid_attention` is surfaced; opening-and-clearing belongs to S2.
-- Exact per-profile Codex lifecycle hook file; native digest review remains
-  manual and fail-visible, and the helper accepts only the pane foreground
-  Codex origin.
+- `skid-notify` is a BEL-only terminal convenience with no product-state
+  authority.
+- Exact provider `SessionStart` identity installation; native digest review
+  remains manual and fail-visible, and the helper accepts only an exact pane
+  foreground provider origin.
 
 Red: a kill with a stale lifetime token (including server restart plus id/name
 reuse) destroys the wrong session; a grouped ordinary sibling lets Kill claim
@@ -217,9 +227,9 @@ against the reviewed contract and the repository rules, with every confirmed
 finding fixed at the source.
 
 - Darwin ancestry observation now ends cleanly at the privilege/lifetime
-  frontier instead of failing at root-owned `launchd`, so the Mac status hook
-  can publish `@skid_lifecycle` at all; the faked hook proof in the
-  integration suite was replaced by one that executes the real hook binary.
+  frontier instead of failing at root-owned `launchd`; the retained optional
+  identity adapter therefore observes the same exact foreground origin as
+  Linux.
 - Gateway, installer, dashboard, store, and test-suite findings (error-cause
   fidelity, ingress uniqueness quarantine, IPv6 origins, machine-bound bearer
   repair, exhaustive sealed matching, single-owner dedup, honest gate
@@ -611,8 +621,10 @@ less opaque or adding communication.
   classifies the already-observed foreground process, accepts one bounded
   process-lifetime registration, and applies Claude name/launch argv rules.
 - Replace `status-hook` with the closed Codex/Claude `agent-hook`. SessionStart
-  registers provider session id and runtime profile; only Codex retains the
-  existing three-event lifecycle semantics.
+  registers provider session id and runtime profile. At this slice's delivery,
+  Codex also retained the then-current coarse lifecycle semantics; the later
+  terminal-activity hard cut removes them without replacing them with provider
+  state.
 - Deployment hard-cuts the Codex hook files and loads one owned Claude
   SessionStart plugin through the existing router; it does not overwrite
   Claude user settings, and raw-binary launches remain unregistered.
@@ -683,20 +695,52 @@ and one separately approved S22+ focused component/hands-on pass. Every other
 external gate remains `NOT_RUN`. Scope and ownership are closed in
 [session-renaming.md](session-renaming.md).
 
-## v0.5 — optional, after corrected v0 is in daily use
+## v0 tmux terminal-activity hard cut — source implemented
 
-- Push: FCM or ntfy delivery of the attention signal — redacted, deep-linked,
-  deduped via a user option, with a late-send poller sweep.
+Outcome: every fresh card exposes one provider-neutral answer to whether its
+current tmux window had recent activity, with no agent-state or unread-result
+claim.
 
-Tier-3 machinery (authenticated provenance, exactly-once attention, durable
-receipts, thread identity) returns only for push-to-act or unattended
-orchestration, via a new architecture decision.
+- Add one required flat `activity: Active | Quiet` session field. Derive it on
+  the host only from the existing card anchor's built-in `window_activity`, the
+  inclusive ten-second window, and the existing five-second inventory cadence.
+- Treat current-window creation/selection and output from any sibling pane as
+  tmux activity. Ignore other windows, `session_activity`, alert flags, process
+  facts, hooks, provider state, terminal content, CPU, and Android time.
+- Retain optional exact `agent` metadata without a runtime-state wrapper or any
+  influence on activity. Retain only the content-free `SessionStart` identity
+  hook; make the Codex notifier BEL-only.
+- Hard-delete every superseded state union and writer, result acknowledgement,
+  semantic-adapter/lease plan, legacy decoder/presenter/priority/color path,
+  and the rejected second semantic release epoch.
+- Android renders `ACTIVE` and `QUIET` with literal/spoken meaning, Quiet-first
+  fresh ordering, a restrained reduced-motion-safe Active facet, and existing
+  stale-machine qualification. It owns no timer or threshold.
+- Gateway and Android release atomically under the existing exact release
+  tag/SHA/digest boundary. No alias, fallback, schema version, dual reader, or
+  compatibility window exists.
+
+Red: one behavior proof at strict timestamp derivation, authenticated HTTP DTO,
+Android decode/order, real Compose presentation, and installed hook/notifier
+topology. Green implements only those reds; refactor reuses the card-anchor,
+projection-clock, poller, strict-ingress, sorting, and presentation owners before
+requiring zero active legacy residue.
+
+Acceptance: routine verification plus separately approved generic-program
+isolated tmux and focused S22+ component/hands-on gates defined in
+[terminal-activity.md](terminal-activity.md). Provider-live remains an optional
+agent-identity proof and does not prove activity. Every unapproved external
+boundary remains `NOT_RUN`.
+
+Push, semantic next-move state, and unread-result attention are unscheduled.
+Any one of them requires a new architecture decision; this slice adds no
+scaffold.
 
 ## Status
 
 | Slice | Status |
 | --- | --- |
-| S1 tmux control plane | Implemented; corrective lifecycle source, isolated integration/live proof, and devbox install/verify green; Codex hook-digest review and hands-on status proof `NOT_RUN` |
+| S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
 | v0 corrective delta | Source implemented; routine verification and automated external gates green; named hands-on checks above remain `NOT_RUN` |
@@ -719,9 +763,11 @@ orchestration, via a new architecture decision.
 | v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
-| v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green and routine verification green. Focused rendered-device placement, product, and release-bound platform gates are `NOT_RUN`; prior rail evidence does not prove the changed placement. |
+| v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green, routine verification, and signed same-version S22+ component placement green at 360dp/1× and 320dp/2×, including exact-machine disclosure and one-Back dismissal. Product, hands-on, and release-bound platform gates remain `NOT_RUN`. |
 | v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
 | v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
 | v0 dashboard refresh-boundary correction | Source implemented; focused signed same-version S22+ owner red observed and final two-test green at system animator scale `0.0`; exact original release and encrypted pairing restored. Routine verification green; release-bound full platform and hands-on acceptance `NOT_RUN` |
 | v0 tmux-session rename delta | Source implemented under the accepted hard-cut contract; owner reds recorded; exact-SHA gate evidence and every `NOT_RUN` boundary are reported separately |
-| v0.5 push | Not scheduled |
+| v0 agent interaction-state candidate | Rejected and superseded by the 2026-08-31 terminal-activity correction; its source and evidence are historical and prove no active target |
+| v0 tmux terminal-activity hard cut | Source implemented in dedicated Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused greens, and both routine suites green; isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin, deployment, provider-live, and production acceptance `NOT_RUN` |
+| Push or semantic agent state | Not scheduled; requires a new architecture decision |
