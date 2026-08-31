@@ -32,6 +32,13 @@ Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused
 greens, and both routine verification suites are green. Linux/Darwin isolated
 tmux integration, Android component/hands-on, exact release/pin/deployment,
 provider-live, and production acceptance remain `NOT_RUN`.
+The 2026-08-31 dashboard-return-continuity delta source is implemented. Its
+boundary-owner and review-corrective reds are recorded; routine verification
+is green. A production-signed same-version 56-test S22+ candidate suite was
+green at `69.542` seconds before the terminal-activity rebase, with encrypted
+pairing preserved and the exact public release restored; it does not prove the
+rebased tree. The rebased platform gate and hands-on acceptance remain
+`NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -77,6 +84,7 @@ S1 tmux control plane
  -> v0 dashboard refresh-boundary correction
  -> v0 tmux-session rename delta
  -> v0 tmux terminal-activity hard cut
+ -> v0 dashboard return-continuity delta
 ```
 
 ## S1 — tmux control plane
@@ -736,6 +744,39 @@ Push, semantic next-move state, and unread-result attention are unscheduled.
 Any one of them requires a new architecture decision; this slice adds no
 scaffold.
 
+## v0 dashboard return-continuity delta — implemented
+
+Outcome: Dashboard is one retained route entry. Terminal drill-in followed by
+top `Detach` or Android Back restores its typed filter before current-scope
+verification, settles its semantic grid before card interaction, and reveals
+the selected chip before Dashboard is considered settled. Saved-task recreation
+returns to Dashboard without restoring the attachment.
+
+Hard cut: replace nullable Dashboard-only selection with `DashboardScope`, move
+grid ownership above the destination switch, centralize the existing
+machine/id/lifetime card key, and delete reconstruction/local-grid paths. No
+Terminal return payload, inventory snapshot/payload persistence, compatibility
+path, navigation framework, backend, tmux, or dependency change.
+
+Red: one device-free state/target proof plus separately approved real-Compose
+return and real-`SavedStateRegistry` adapter proofs, all owned and observed by
+the one Android builder. Acceptance is routine verification, the approved
+platform proof, and one hands-on real-`MainActivity` MacBook
+bottom-to-Terminal Detach/Back/recreation sample. Unapproved device work is
+`NOT_RUN`; no integration, live, host, provider, or tmux gate re-proves this
+Android-only boundary. Scope and split are closed in
+[`dashboard-return-continuity.md`](dashboard-return-continuity.md).
+
+Evidence: the three boundary-owner reds and four review-corrective reds failed
+behaviorally against their intended contracts, and routine verification is
+green. Before the terminal-activity rebase, the focused signed S22+ Detach/Back
+journey passed at `OK (1 test)` in `7.925` seconds and the production-signed
+same-version candidate ran the complete checked-in instrumentation suite at
+`OK (56 tests)` in `69.542` seconds inside the 90-second boundary. The encrypted
+pairing digest was unchanged, the test package was removed, and the exact public
+v0.2.21 APK was restored. That evidence does not prove the rebased tree; its
+platform gate and the hands-on real-product sample remain `NOT_RUN`.
+
 ## Status
 
 | Slice | Status |
@@ -770,4 +811,5 @@ scaffold.
 | v0 tmux-session rename delta | Source implemented under the accepted hard-cut contract; owner reds recorded; exact-SHA gate evidence and every `NOT_RUN` boundary are reported separately |
 | v0 agent interaction-state candidate | Rejected and superseded by the 2026-08-31 terminal-activity correction; its source and evidence are historical and prove no active target |
 | v0 tmux terminal-activity hard cut | Source implemented in dedicated Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused greens, and both routine suites green; isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin, deployment, provider-live, and production acceptance `NOT_RUN` |
+| v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase, which they do not prove; rebased platform and hands-on acceptance `NOT_RUN` |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

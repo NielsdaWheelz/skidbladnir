@@ -108,7 +108,7 @@ class MultiMachineContractTest {
         val duplicate = session()
         val initial = listOf(readyMachine(macBook, duplicate), readyMachine(devbox, duplicate))
 
-        val sessions = visibleSessions(initial, selectedMachine = null)
+        val sessions = visibleSessions(initial, scope = DashboardScope.All)
         assertEquals(listOf("Devbox", "MacBook"), sessions.map { it.machine.label.text })
         assertTrue(sessions[0].target != sessions[1].target)
         assertEquals(2, sessions.map(VisibleSession::target).distinct().size)
@@ -126,11 +126,11 @@ class MultiMachineContractTest {
     fun `pressure rails require an explicit machine filter`() {
         assertFalse(
             "All must omit machine pressure rails",
-            pressureRailsVisible(selectedMachine = null),
+            pressureRailsVisible(DashboardScope.All),
         )
         assertTrue(
             "an explicit machine filter must show its pressure rail",
-            pressureRailsVisible(selectedMachine = macBookHandle),
+            pressureRailsVisible(DashboardScope.Machine(macBookHandle)),
         )
     }
 
@@ -186,7 +186,7 @@ class MultiMachineContractTest {
             ),
             visibleSessions(
                 listOf(authRequiredState, caseAlphaState, staleState, laterHandleState, exactAlphaState),
-                selectedMachine = null,
+                scope = DashboardScope.All,
             ).map {
                 "${it.machine.label.text}/${it.machine.handle.encoded}/" +
                     "${it.target.session.tmuxName}/${it.target.session.tmuxId}"
@@ -205,7 +205,7 @@ class MultiMachineContractTest {
                 listOf("Iota", "Zeta"),
                 visibleSessions(
                     listOf(readyMachine(zeta, session()), readyMachine(iota, session())),
-                    selectedMachine = null,
+                    scope = DashboardScope.All,
                 ).map { it.machine.label.text },
             )
 
@@ -216,7 +216,7 @@ class MultiMachineContractTest {
             )
             assertEquals(
                 listOf("Iota", "Zeta"),
-                visibleSessions(listOf(sessions), selectedMachine = null).map { it.target.session.tmuxName },
+                visibleSessions(listOf(sessions), scope = DashboardScope.All).map { it.target.session.tmuxName },
             )
         } finally {
             Locale.setDefault(original)
@@ -385,30 +385,6 @@ class MultiMachineContractTest {
     }
 
     @Test
-    fun `manual inventory verification targets only live machines in the current filter`() {
-        val bothLive = listOf(devboxHandle, macBookHandle)
-
-        assertEquals(
-            "All must snapshot every live poller",
-            setOf(devboxHandle, macBookHandle),
-            visibleInventoryTargets(bothLive, selectedMachine = null),
-        )
-        assertEquals(
-            "a machine filter must target only its live poller",
-            setOf(macBookHandle),
-            visibleInventoryTargets(bothLive, selectedMachine = macBookHandle),
-        )
-        assertTrue(
-            "a selected machine without a live poller must add no work",
-            visibleInventoryTargets(listOf(macBookHandle), selectedMachine = devboxHandle).isEmpty(),
-        )
-        assertTrue(
-            "an empty live collection must add no work",
-            visibleInventoryTargets(emptyList(), selectedMachine = null).isEmpty(),
-        )
-    }
-
-    @Test
     fun `changing Forge machine clears local path and profile but preserves intent`() {
         val form = ForgeForm(
             machineHandle = devboxHandle,
@@ -468,23 +444,30 @@ class MultiMachineContractTest {
         )
         val dashboard = SkidbladnirUiState.Dashboard(
             machines = listOf(readyMachine(devbox, session()), readyMachine(macBook, session())),
-            selectedMachine = macBookHandle,
             refreshing = false,
             forge = null,
             forgeRecovery = ForgeRecovery.ReviewReady(recoveryDraft),
             kill = null,
         )
+        val entry = DashboardEntryState().apply {
+            acceptFleet(setOf(devboxHandle, macBookHandle))
+            selectScope(DashboardScope.Machine(macBookHandle))
+        }
 
-        val resumed = resumeForgeRecovery(dashboard)
-        assertEquals(devboxHandle, resumed.selectedMachine)
+        val resumed = resumeForgeRecovery(dashboard, entry)
+        assertEquals(DashboardScope.Machine(devboxHandle), entry.scope)
         assertTrue(resumed.forge?.form?.submission() == recoveryDraft)
         assertEquals(null, resumed.forgeRecovery)
 
         val staleDevbox = dashboard.machines.map {
             if (it.machine.handle == devboxHandle) it.inventoryFailed(GatewayFailure.Transport) else it
         }
-        val refused = resumeForgeRecovery(dashboard.copy(machines = staleDevbox))
-        assertEquals(macBookHandle, refused.selectedMachine)
+        val refusedEntry = DashboardEntryState().apply {
+            acceptFleet(setOf(devboxHandle, macBookHandle))
+            selectScope(DashboardScope.Machine(macBookHandle))
+        }
+        val refused = resumeForgeRecovery(dashboard.copy(machines = staleDevbox), refusedEntry)
+        assertEquals(DashboardScope.Machine(macBookHandle), refusedEntry.scope)
         assertEquals(null, refused.forge)
         assertTrue(refused.forgeRecovery?.draft == recoveryDraft)
     }
@@ -500,7 +483,7 @@ class MultiMachineContractTest {
         assertEquals(
             "a superseded machine still shows its last sessions",
             snapshot.inventory.sessions.map(TmuxSession::tmuxId),
-            visibleSessions(listOf(superseded), selectedMachine = null).map { it.target.session.tmuxId },
+            visibleSessions(listOf(superseded), DashboardScope.All).map { it.target.session.tmuxId },
         )
         assertEquals(
             "a failed read downgrades a superseded snapshot to stale rather than losing it",
@@ -599,6 +582,18 @@ class MultiMachineContractTest {
                 "Devbox: machine identity changed. Fleet reset is required.",
         ).forEach { (access, expectedNotice) ->
             val lost = readyMachine(devbox, target.session).copy(access = access)
+            val dashboardEntry = DashboardEntryState(
+                DashboardEntrySnapshot(
+                    schemaVersion = 1,
+                    scope = DashboardScope.Machine(macBookHandle),
+                    viewport = DashboardViewport(
+                        anchor = DashboardCardKey("4".repeat(64)),
+                        fallbackIndex = 1,
+                        offsetPx = 11,
+                    ),
+                ),
+            )
+            dashboardEntry.acceptFleet(setOf(devboxHandle, macBookHandle))
             val terminal = SkidbladnirUiState.Terminal(
                 machine = lost,
                 target = target,
@@ -610,9 +605,17 @@ class MultiMachineContractTest {
                 terminal,
                 listOf(lost, readyMachine(macBook, session())),
                 refreshing = false,
+                dashboardEntry = dashboardEntry,
             )
 
-            assertEquals(devboxHandle, dashboard.selectedMachine)
+            assertEquals(
+                "terminal access loss must make the affected machine the retained Dashboard scope",
+                DashboardScope.Machine(devboxHandle),
+                dashboardEntry.scope,
+            )
+            assertFalse(dashboardEntry.restorationPending)
+            assertEquals(0, dashboardEntry.gridState.firstVisibleItemIndex)
+            assertEquals(0, dashboardEntry.gridState.firstVisibleItemScrollOffset)
             assertEquals(expectedNotice, dashboard.notice)
             assertEquals(null, dashboard.kill)
             assertEquals(null, dashboard.forge)
@@ -627,7 +630,6 @@ class MultiMachineContractTest {
         val draft = ForgeDraft(devboxHandle, "/src", personal, "name", "objective")
         val base = SkidbladnirUiState.Dashboard(
             machines = listOf(readyMachine(devbox, target.session), readyMachine(macBook, session())),
-            selectedMachine = null,
             refreshing = false,
             forge = null,
             forgeRecovery = null,
@@ -650,16 +652,50 @@ class MultiMachineContractTest {
                 readyMachine(macBook, session()),
             )
 
-            val createFailed = dashboardAfterMachineAccessLoss(pendingForge, machines, devboxHandle, refreshing = true)
-            assertEquals(devboxHandle, createFailed.selectedMachine)
+            val createEntry = DashboardEntryState().apply {
+                acceptFleet(setOf(devboxHandle, macBookHandle))
+                gridState.requestScrollToItem(3, 17)
+            }
+            assertFalse(createEntry.restorationPending)
+            val createFailed = dashboardAfterMachineAccessLoss(
+                pendingForge,
+                machines,
+                devboxHandle,
+                refreshing = true,
+                dashboardEntry = createEntry,
+            )
+            assertEquals(DashboardScope.Machine(devboxHandle), createEntry.scope)
+            assertEquals(
+                "Dashboard Forge access loss must not use Terminal's top reset",
+                3,
+                createEntry.gridState.firstVisibleItemIndex,
+            )
+            assertEquals(17, createEntry.gridState.firstVisibleItemScrollOffset)
             assertEquals(expectedNotice, createFailed.notice)
             assertEquals(false, createFailed.forge?.pending)
             assertEquals(expectedNotice, createFailed.forge?.error)
             assertTrue(createFailed.forge?.form?.submission() == draft)
             assertTrue("the read indicator has one owner", createFailed.refreshing)
 
-            val killFailed = dashboardAfterMachineAccessLoss(pendingKill, machines, devboxHandle, refreshing = false)
-            assertEquals(devboxHandle, killFailed.selectedMachine)
+            val killEntry = DashboardEntryState().apply {
+                acceptFleet(setOf(devboxHandle, macBookHandle))
+                gridState.requestScrollToItem(4, 23)
+            }
+            assertFalse(killEntry.restorationPending)
+            val killFailed = dashboardAfterMachineAccessLoss(
+                pendingKill,
+                machines,
+                devboxHandle,
+                refreshing = false,
+                dashboardEntry = killEntry,
+            )
+            assertEquals(DashboardScope.Machine(devboxHandle), killEntry.scope)
+            assertEquals(
+                "Dashboard kill access loss must not use Terminal's top reset",
+                4,
+                killEntry.gridState.firstVisibleItemIndex,
+            )
+            assertEquals(23, killEntry.gridState.firstVisibleItemScrollOffset)
             assertEquals(expectedNotice, killFailed.notice)
             assertEquals(null, killFailed.kill)
             assertFalse(killFailed.refreshing)

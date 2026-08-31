@@ -1,7 +1,9 @@
 package dev.niels.skidbladnir
 
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,9 +34,12 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.filterToOne
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
@@ -60,10 +65,18 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleRegistry
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
 import java.time.Instant
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -122,6 +135,663 @@ class MultiMachineUiInstrumentedTest {
         }
     }
 
+    @Test
+    fun dashboardReturnKeepsMachineAndSemanticViewportThroughDetachAndBack() {
+        compose.mainClock.autoAdvance = false
+        assertEquals(
+            "the established overflow fixture must retain its maximum-length label",
+            40,
+            OTHER_MACHINE.label.text.length,
+        )
+        val macBookSessions = List(24) { index ->
+            session(index + 100).copy(
+                tmuxName = "macbook-${index.toString().padStart(2, '0')}",
+                identityToken = "macbook-identity-$index",
+                character = CharacterSummary("macbook-dwarf-$index", "MacBook Dwarf $index"),
+            )
+        }
+        val macBookMachine = MachineState(
+            machine = OTHER_MACHINE,
+            access = MachineAccess.Ready,
+            inventory = InventoryState.Fresh(
+                InventorySnapshot(
+                    SessionsResponse(
+                        MachineSummary(OTHER_MACHINE.handle, MachinePlatform.Darwin),
+                        OBSERVED_AT,
+                        listOf(TEST_PROFILE),
+                        macBookSessions,
+                    ),
+                    SystemClock.elapsedRealtime(),
+                ),
+            ),
+            pressure = PressureState.Reading,
+        )
+        val devboxSessions = listOf(session(0), session(1))
+        val devboxMachine = MachineState(
+            machine = TEST_MACHINE,
+            access = MachineAccess.Ready,
+            inventory = InventoryState.Fresh(snapshot(devboxSessions)),
+            pressure = PressureState.Reading,
+        )
+        val readingDashboard = SkidbladnirUiState.Dashboard(
+            machines = listOf(
+                devboxMachine,
+                macBookMachine.copy(inventory = InventoryState.Reading),
+            ),
+            refreshing = false,
+            forge = null,
+            forgeRecovery = null,
+            kill = null,
+        )
+        val freshDashboard = readingDashboard.copy(
+            machines = listOf(devboxMachine, macBookMachine),
+        )
+        val macBookSnapshot = (macBookMachine.inventory as InventoryState.Fresh).snapshot
+        val insertedMacBookSessions = List(2) { index ->
+            session(index + 200).copy(
+                tmuxName = "00-inserted-$index",
+                identityToken = "inserted-identity-$index",
+                character = CharacterSummary("inserted-dwarf-$index", "Inserted Dwarf $index"),
+            )
+        }
+        val shiftedMacBookMachine = macBookMachine.copy(
+            inventory = InventoryState.Fresh(
+                macBookSnapshot.copy(
+                    inventory = macBookSnapshot.inventory.copy(
+                        sessions = insertedMacBookSessions + macBookSessions,
+                    ),
+                    receivedAtElapsedMillis = macBookSnapshot.receivedAtElapsedMillis + 2,
+                ),
+            ),
+        )
+        val shiftedReadingDashboard = readingDashboard.copy(
+            machines = listOf(
+                devboxMachine,
+                shiftedMacBookMachine.copy(inventory = InventoryState.Reading),
+            ),
+        )
+        val shiftedFreshDashboard = freshDashboard.copy(
+            machines = listOf(devboxMachine, shiftedMacBookMachine),
+        )
+        val shiftedVisibleSessions = visibleSessions(
+            shiftedFreshDashboard.machines,
+            DashboardScope.Machine(OTHER_MACHINE.handle),
+        )
+        assertEquals(
+            "the recreation fixture must insert one ordered two-card row before prior lifetimes",
+            insertedMacBookSessions.map(TmuxSession::tmuxId),
+            shiftedVisibleSessions.take(2).map { it.target.session.tmuxId },
+        )
+        val shiftedKeys = shiftedVisibleSessions.map(VisibleSession::cardKey)
+        val reobservedMacBook = macBookMachine.copy(
+            inventory = InventoryState.Fresh(
+                macBookSnapshot.copy(
+                    receivedAtElapsedMillis = macBookSnapshot.receivedAtElapsedMillis + 1,
+                ),
+            ),
+        )
+        val reobservedDashboard = freshDashboard.copy(
+            machines = listOf(devboxMachine, reobservedMacBook),
+        )
+        val restoredTarget = SessionTarget(OTHER_MACHINE.handle, macBookSessions[12])
+        val routeTarget = SessionTarget(OTHER_MACHINE.handle, macBookSessions.last())
+        val measuredTarget = SessionTarget(OTHER_MACHINE.handle, macBookSessions[14])
+        val shiftedMacBookTopTarget = SessionTarget(
+            OTHER_MACHINE.handle,
+            insertedMacBookSessions.first(),
+        )
+        val allTopTarget = SessionTarget(TEST_MACHINE.handle, devboxSessions.first())
+        val entry = DashboardEntryState(
+            DashboardEntrySnapshot(
+                schemaVersion = 1,
+                scope = DashboardScope.Machine(OTHER_MACHINE.handle),
+                viewport = DashboardViewport(
+                    anchor = dashboardCardKey(restoredTarget),
+                    fallbackIndex = 12,
+                    offsetPx = 23,
+                ),
+            ),
+        )
+        entry.acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
+        lateinit var measuredRegistryOwner: RegistryOwner
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            measuredRegistryOwner = RegistryOwner().apply { restore(null) }
+            entry.install(measuredRegistryOwner.savedStateRegistry)
+        }
+        var workspace: SkidbladnirUiState.Workspace by mutableStateOf(readingDashboard)
+        var activeEntry by mutableStateOf(entry)
+        val applicationContext =
+            InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        val controller = SkidbladnirController(
+            applicationContext,
+            entry,
+        )
+        var activeController by mutableStateOf(controller)
+        var recreatedController: SkidbladnirController? = null
+        var topResetController: SkidbladnirController? = null
+        var phoneDensity = Density(1f, fontScale = 1f)
+
+        fun restoredOffsetTop(gridTop: Dp): Dp =
+            gridTop + 12.dp - with(phoneDensity) { 23.toDp() }
+
+        fun assertMacBookFrame(label: String) {
+            compose.onNodeWithTag("machine-filter-${OTHER_MACHINE.handle.encoded}")
+                .assertIsSelected()
+            compose.onNodeWithTag("machine-filter-all").assertIsNotSelected()
+            compose.onNodeWithText("No tmux sessions").assertDoesNotExist()
+            assertFalse(
+                "$label exposed an ordinary empty projection while restoration was pending",
+                compose.onAllNodesWithTag("EmptyStateOrnament", useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .isNotEmpty(),
+            )
+        }
+
+        try {
+            ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    phoneDensity = Density(
+                        density = activity.resources.displayMetrics.density,
+                        fontScale = 1f,
+                    )
+                    activity.setContent {
+                        CompositionLocalProvider(LocalDensity provides phoneDensity) {
+                            MaterialTheme {
+                                Box(Modifier.width(360.dp).fillMaxHeight()) {
+                                    DashboardTerminalHost(
+                                        state = workspace,
+                                        entry = activeEntry,
+                                        controller = activeController,
+                                        onOpenTerminal = { target ->
+                                            workspace = SkidbladnirUiState.Terminal(
+                                                machine = macBookMachine,
+                                                target = target,
+                                                attempt = 1,
+                                                connection = TerminalUiStatus.Verifying,
+                                                kill = null,
+                                                rename = null,
+                                            )
+                                        },
+                                        onDetach = { workspace = freshDashboard },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                repeat(3) { frame ->
+                    compose.mainClock.advanceTimeByFrame()
+                    assertMacBookFrame("Reading frame $frame")
+                    compose.onNodeWithTag("sessions-grid").assertDoesNotExist()
+                    compose.onNodeWithText("Sessions not current").assertDoesNotExist()
+                    compose.onAllNodes(hasProgressSemantics(), useUnmergedTree = true)
+                        .assertCountEquals(1)
+                    val pendingProgress = compose.onNode(
+                        hasProgressSemantics(),
+                        useUnmergedTree = true,
+                    ).assertIsDisplayed()
+                    assertEquals(
+                        "Reading frame $frame must expose indeterminate pending progress",
+                        ProgressBarRangeInfo.Indeterminate,
+                        pendingProgress.fetchSemanticsNode().config.getOrNull(
+                            SemanticsProperties.ProgressBarRangeInfo,
+                        ),
+                    )
+                }
+
+                val restoredKeys = visibleSessions(
+                    freshDashboard.machines,
+                    scope = DashboardScope.Machine(OTHER_MACHINE.handle),
+                ).map(VisibleSession::cardKey)
+                compose.runOnIdle {
+                    entry.restoreOnce(restoredKeys)
+                    workspace = freshDashboard
+                }
+                var restorationSettled = false
+                repeat(60) { frame ->
+                    if (!restorationSettled) {
+                        compose.mainClock.advanceTimeByFrame()
+                        assertMacBookFrame("settling frame $frame")
+                        val gridVisible = compose.onAllNodesWithTag("sessions-grid")
+                            .fetchSemanticsNodes()
+                            .isNotEmpty()
+                        if (gridVisible) {
+                            val gridTop = compose.onNodeWithTag("sessions-grid")
+                                .assertIsDisplayed()
+                                .getBoundsInRoot()
+                                .top
+                            val cardTop = compose.onNodeWithTag(cardTag(restoredTarget))
+                                .assertIsDisplayed()
+                                .getUnclippedBoundsInRoot()
+                                .top
+                            val expectedCardTop = restoredOffsetTop(gridTop)
+                            assertTrue(
+                                "first restored grid frame flashed at the wrong position: " +
+                                    "expected=$expectedCardTop actual=$cardTop",
+                                (cardTop - expectedCardTop).value.absoluteValue <= 1f,
+                            )
+                            val viewport = compose.onNodeWithTag("machine-filters").getBoundsInRoot()
+                            val chip = compose.onNodeWithTag(
+                                "machine-filter-${OTHER_MACHINE.handle.encoded}",
+                            ).getUnclippedBoundsInRoot()
+                            restorationSettled =
+                                (chip.left - viewport.left).value.absoluteValue <= 1f
+                        }
+                    }
+                }
+                assertTrue(
+                    "the restored lifetime and selected chip never settled after fresh inventory",
+                    restorationSettled,
+                )
+                val filters = compose.onNodeWithTag("machine-filters").assertIsDisplayed()
+                val filterViewport = filters.getBoundsInRoot()
+                val devboxFilter = compose.onNodeWithTag(
+                    "machine-filter-${TEST_MACHINE.handle.encoded}",
+                )
+                val macBookFilter = compose.onNodeWithTag(
+                    "machine-filter-${OTHER_MACHINE.handle.encoded}",
+                )
+                val fittingFixtureBounds = devboxFilter.getUnclippedBoundsInRoot()
+                val restoredMacBookBounds = macBookFilter.getUnclippedBoundsInRoot()
+                assertTrue(
+                    "the Devbox chip must fit this fixed phone viewport: " +
+                        "viewport=$filterViewport chip=$fittingFixtureBounds",
+                    fittingFixtureBounds.right - fittingFixtureBounds.left <=
+                        filterViewport.right - filterViewport.left,
+                )
+                assertTrue(
+                    "the oversized-chip fixture must exceed its filter viewport: " +
+                        "viewport=$filterViewport chip=$restoredMacBookBounds",
+                    restoredMacBookBounds.right - restoredMacBookBounds.left >
+                        filterViewport.right - filterViewport.left,
+                )
+                assertTrue(
+                    "saved restoration must lead-align the oversized selected chip before input: " +
+                        "viewport=$filterViewport chip=$restoredMacBookBounds",
+                    (restoredMacBookBounds.left - filterViewport.left).value.absoluteValue <= 1f,
+                )
+                val restoredGridTop = compose.onNodeWithTag("sessions-grid")
+                    .assertIsDisplayed()
+                    .getBoundsInRoot()
+                    .top
+                val restoredCardTop = compose.onNodeWithTag(cardTag(restoredTarget))
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+                    .top
+                // LazyGrid's requested offset starts at its content-padded zero position.
+                val expectedRestoredCardTop = restoredOffsetTop(restoredGridTop)
+                assertTrue(
+                    "saved restoration changed the card's 23px semantic offset: " +
+                        "expected=$expectedRestoredCardTop actual=$restoredCardTop",
+                    (restoredCardTop - expectedRestoredCardTop).value.absoluteValue <= 1f,
+                )
+
+                compose.mainClock.autoAdvance = true
+                devboxFilter.performScrollTo().assertIsDisplayed()
+                val userPositionedMacBookLeft = macBookFilter.getUnclippedBoundsInRoot().left
+                assertTrue(
+                    "revealing Devbox must move the oversized selected chip away from its leading edge",
+                    userPositionedMacBookLeft > filterViewport.left + 1.dp,
+                )
+                compose.runOnIdle { workspace = reobservedDashboard }
+                compose.waitForIdle()
+                val stableUserPositionedMacBookLeft = macBookFilter.getUnclippedBoundsInRoot().left
+                assertTrue(
+                    "an inventory-only recomposition overrode later direct horizontal input",
+                    (stableUserPositionedMacBookLeft - userPositionedMacBookLeft)
+                        .value.absoluteValue <= 1f,
+                )
+
+                devboxFilter.performClick().assertIsSelected()
+                compose.waitForIdle()
+                val fittingBounds = devboxFilter.getUnclippedBoundsInRoot()
+                assertTrue(
+                    "the fitting selected chip must be wholly visible: " +
+                        "viewport=$filterViewport chip=$fittingBounds",
+                    fittingBounds.left >= filterViewport.left - 1.dp &&
+                        fittingBounds.right <= filterViewport.right + 1.dp,
+                )
+
+                macBookFilter.assertIsNotSelected().performScrollTo().assertIsDisplayed()
+                val alignedMacBook = macBookFilter.getUnclippedBoundsInRoot()
+                val oversizedSlack =
+                    (alignedMacBook.right - alignedMacBook.left) -
+                        (filterViewport.right - filterViewport.left)
+                val straddlingLeft = filterViewport.left - oversizedSlack / 2
+                val straddlingScroll = alignedMacBook.left - straddlingLeft
+                filters.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
+                    scrollBy(with(phoneDensity) { straddlingScroll.toPx() }, 0f)
+                }
+                macBookFilter.assertIsDisplayed()
+                val macBookBeforeSelection = macBookFilter.getUnclippedBoundsInRoot()
+                assertTrue(
+                    "the unselected oversized chip must straddle both viewport edges before tap: " +
+                        "viewport=$filterViewport chip=$macBookBeforeSelection",
+                    macBookBeforeSelection.left < filterViewport.left &&
+                        macBookBeforeSelection.right > filterViewport.right,
+                )
+                macBookFilter.performClick().assertIsSelected()
+                compose.waitUntil(
+                    conditionDescription = "oversized selected MacBook chip reaches the leading edge",
+                    timeoutMillis = 5_000,
+                ) {
+                    val viewport = filters.getBoundsInRoot()
+                    val chip = macBookFilter.getUnclippedBoundsInRoot()
+                    (chip.left - viewport.left).value.absoluteValue <= 1f
+                }
+                val oversizedBounds = macBookFilter.getUnclippedBoundsInRoot()
+                assertTrue(
+                    "the oversized selected chip must align its leading edge within 1dp: " +
+                        "viewport=$filterViewport chip=$oversizedBounds",
+                    (oversizedBounds.left - filterViewport.left).value.absoluteValue <= 1f,
+                )
+
+                fun openRouteTerminal(): Dp {
+                    compose.onNodeWithTag("sessions-grid")
+                        .performScrollToNode(hasTestTag(cardTag(routeTarget)))
+                    val card = compose.onNodeWithTag(cardTag(routeTarget)).assertIsDisplayed()
+                    val topBefore = card.getUnclippedBoundsInRoot().top
+                    card.performClick()
+                    compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                        .assertIsDisplayed()
+                    compose.onNodeWithTag("terminal-status-verifying").assertIsDisplayed()
+                    return topBefore
+                }
+
+                fun returnThrough(back: Boolean) {
+                    val topBefore = openRouteTerminal()
+                    if (back) {
+                        InstrumentationRegistry.getInstrumentation()
+                            .sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                    } else {
+                        compose.onNodeWithText("Detach").assertIsDisplayed().performClick()
+                    }
+                    compose.waitForIdle()
+                    compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                        .assertDoesNotExist()
+                    macBookFilter.assertIsSelected()
+                    compose.onNodeWithTag("machine-filter-all").assertIsNotSelected()
+                    val returned = compose.onNodeWithTag(cardTag(routeTarget)).assertIsDisplayed()
+                    val topAfter = returned.getUnclippedBoundsInRoot().top
+                    assertTrue(
+                        "${if (back) "Back" else "Detach"} changed the retained card top: " +
+                            "before=$topBefore after=$topAfter",
+                        (topAfter - topBefore).value.absoluteValue <= 1f,
+                    )
+                }
+
+                returnThrough(back = false)
+                returnThrough(back = true)
+
+                val measuredIndex = restoredKeys.indexOf(dashboardCardKey(measuredTarget))
+                assertTrue("the measured-save target must remain in the projection", measuredIndex >= 0)
+                compose.runOnIdle { entry.gridState.requestScrollToItem(measuredIndex, 23) }
+                compose.waitForIdle()
+                val measuredGridTop = compose.onNodeWithTag("sessions-grid")
+                    .assertIsDisplayed()
+                    .getBoundsInRoot()
+                    .top
+                val measuredRouteCard = compose.onNodeWithTag(cardTag(measuredTarget))
+                    .assertIsDisplayed()
+                val beforeRecreationTop = measuredRouteCard.getUnclippedBoundsInRoot().top
+                assertTrue(
+                    "the registry save fixture must visibly retain its nonzero 23px offset: " +
+                        "gridTop=$measuredGridTop cardTop=$beforeRecreationTop",
+                    (beforeRecreationTop - restoredOffsetTop(measuredGridTop))
+                        .value.absoluteValue <= 1f,
+                )
+                measuredRouteCard.performClick()
+                compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                    .assertIsDisplayed()
+                compose.onNodeWithTag("terminal-status-verifying").assertIsDisplayed()
+                lateinit var measuredSave: Bundle
+                compose.runOnIdle { measuredSave = measuredRegistryOwner.save() }
+                lateinit var recreatedEntry: DashboardEntryState
+                lateinit var recreatedRegistryOwner: RegistryOwner
+                compose.runOnIdle {
+                    recreatedRegistryOwner = RegistryOwner().apply { restore(measuredSave) }
+                    recreatedEntry = DashboardEntryState().apply {
+                        install(recreatedRegistryOwner.savedStateRegistry)
+                        acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
+                    }
+                    val nextController = SkidbladnirController(applicationContext, recreatedEntry)
+                    recreatedController = nextController
+                    activeEntry = recreatedEntry
+                    activeController = nextController
+                    workspace = shiftedReadingDashboard
+                }
+                compose.waitForIdle()
+                compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                    .assertDoesNotExist()
+                macBookFilter.assertIsSelected()
+                compose.onNodeWithTag("machine-filter-all").assertIsNotSelected()
+                compose.onNodeWithTag("sessions-grid").assertDoesNotExist()
+
+                compose.runOnIdle {
+                    recreatedEntry.restoreOnce(shiftedKeys)
+                    workspace = shiftedFreshDashboard
+                }
+                compose.waitForIdle()
+                val recreatedCardTop = compose.onNodeWithTag(cardTag(measuredTarget))
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+                    .top
+                assertTrue(
+                    "measured-grid registry recreation changed the visible card top: " +
+                        "before=$beforeRecreationTop after=$recreatedCardTop",
+                    (recreatedCardTop - beforeRecreationTop).value.absoluteValue <= 1f,
+                )
+
+                val recreatedGrid = compose.onNodeWithTag("sessions-grid").assertIsDisplayed()
+                recreatedGrid.performScrollToNode(hasTestTag(cardTag(shiftedMacBookTopTarget)))
+                recreatedGrid.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
+                    scrollBy(0f, 23f)
+                }
+                compose.waitForIdle()
+                val nonTopGridTop = recreatedGrid.getBoundsInRoot().top
+                val nonTopCard = compose.onNodeWithTag(cardTag(shiftedMacBookTopTarget))
+                    .assertIsDisplayed()
+                val nonTopCardTop = nonTopCard.getUnclippedBoundsInRoot().top
+                assertTrue(
+                    "the top-reset fixture never reached its measured non-top position",
+                    (nonTopCardTop - restoredOffsetTop(nonTopGridTop)).value.absoluteValue <= 1f,
+                )
+                nonTopCard.performClick()
+                compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                    .assertIsDisplayed()
+
+                lateinit var topResetSave: Bundle
+                compose.runOnIdle {
+                    recreatedEntry.resetAll()
+                    topResetSave = recreatedRegistryOwner.save()
+                }
+                lateinit var topResetEntry: DashboardEntryState
+                compose.runOnIdle {
+                    val topResetOwner = RegistryOwner().apply { restore(topResetSave) }
+                    topResetEntry = DashboardEntryState().apply {
+                        install(topResetOwner.savedStateRegistry)
+                        acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
+                    }
+                    val nextController = SkidbladnirController(applicationContext, topResetEntry)
+                    topResetController = nextController
+                    activeEntry = topResetEntry
+                    activeController = nextController
+                    workspace = shiftedReadingDashboard
+                }
+                compose.waitForIdle()
+                compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
+                    .assertDoesNotExist()
+                compose.onNodeWithTag("machine-filter-all").assertIsSelected()
+                macBookFilter.assertIsNotSelected()
+                compose.onNodeWithTag("sessions-grid").assertDoesNotExist()
+
+                val allKeys = visibleSessions(
+                    shiftedFreshDashboard.machines,
+                    DashboardScope.All,
+                ).map(VisibleSession::cardKey)
+                compose.runOnIdle {
+                    topResetEntry.restoreOnce(allKeys)
+                    workspace = shiftedFreshDashboard
+                }
+                compose.waitForIdle()
+                val topResetGridTop = compose.onNodeWithTag("sessions-grid")
+                    .assertIsDisplayed()
+                    .getBoundsInRoot()
+                    .top
+                val allTopCard = compose.onNodeWithTag(cardTag(allTopTarget))
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+                    .top
+                assertTrue(
+                    "registry save after an uncomposed top override resurrected the old card: " +
+                        "gridTop=$topResetGridTop cardTop=$allTopCard",
+                    (allTopCard - (topResetGridTop + 12.dp)).value.absoluteValue <= 1f,
+                )
+            }
+        } finally {
+            topResetController?.close()
+            recreatedController?.close()
+            controller.close()
+        }
+    }
+
+    @Test
+    fun dashboardEntryRegistryRoundTripsPendingAndSettledStateStrictly() =
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val pending = DashboardEntrySnapshot(
+                schemaVersion = 1,
+                scope = DashboardScope.Machine(OTHER_MACHINE.handle),
+                viewport = DashboardViewport(
+                    anchor = DashboardCardKey("a".repeat(64)),
+                    fallbackIndex = 17,
+                    offsetPx = 29,
+                ),
+            )
+            val paired = setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle)
+
+            val firstOwner = RegistryOwner().apply { restore(null) }
+            val firstEntry = DashboardEntryState(pending)
+            firstEntry.install(firstOwner.savedStateRegistry)
+            firstEntry.acceptFleet(paired)
+            val firstSave = firstOwner.save()
+
+            val writerInspectionOwner = RegistryOwner().apply { restore(firstOwner.save()) }
+            val writerPayload = writerInspectionOwner.savedStateRegistry
+                .consumeRestoredStateForKey(DASHBOARD_ENTRY_REGISTRY_KEY)
+            assertNotNull("the production provider did not write its registry capsule", writerPayload)
+            requireNotNull(writerPayload)
+            assertEquals(
+                "the writer must emit only the exact primitive v1 fields",
+                setOf(
+                    "version",
+                    "scopeKind",
+                    "scopeMachine",
+                    "anchorLifetimeSha256",
+                    "fallbackIndex",
+                    "offsetPx",
+                ),
+                writerPayload.keySet(),
+            )
+            assertEquals(1, writerPayload.getInt("version", Int.MIN_VALUE))
+            assertEquals("machine", writerPayload.getString("scopeKind"))
+            assertEquals(OTHER_MACHINE.handle.encoded, writerPayload.getString("scopeMachine"))
+            assertEquals(
+                pending.viewport.anchor?.lifetimeFingerprint,
+                writerPayload.getString("anchorLifetimeSha256"),
+            )
+            assertEquals(17, writerPayload.getInt("fallbackIndex", Int.MIN_VALUE))
+            assertEquals(29, writerPayload.getInt("offsetPx", Int.MIN_VALUE))
+
+            val restoredOwner = RegistryOwner().apply { restore(firstSave) }
+            val restoredEntry = DashboardEntryState()
+            restoredEntry.install(restoredOwner.savedStateRegistry)
+            restoredEntry.acceptFleet(paired)
+            assertEquals(
+                "pending scope changed at the registry boundary",
+                pending.scope,
+                restoredEntry.scope,
+            )
+            assertTrue(
+                "pending restoration was consumed by registry recreation",
+                restoredEntry.restorationPending,
+            )
+            assertEquals(
+                "pending fingerprint/index/offset must survive exactly",
+                pending,
+                restoredEntry.snapshot(),
+            )
+
+            val savedAgain = restoredOwner.save()
+            val savedAgainOwner = RegistryOwner().apply { restore(savedAgain) }
+            val savedAgainEntry = DashboardEntryState()
+            savedAgainEntry.install(savedAgainOwner.savedStateRegistry)
+            savedAgainEntry.acceptFleet(paired)
+            assertEquals("save-again erased pending place", pending, savedAgainEntry.snapshot())
+
+            val settledOwner = RegistryOwner().apply { restore(null) }
+            val settledEntry = DashboardEntryState()
+            settledEntry.install(settledOwner.savedStateRegistry)
+            settledEntry.acceptFleet(paired)
+            assertFalse("a fresh settled entry cannot be pending", settledEntry.restorationPending)
+            assertEquals(FRESH_DASHBOARD_ENTRY, settledEntry.snapshot())
+            val settledSave = settledOwner.save()
+            val settledRestoredOwner = RegistryOwner().apply { restore(settledSave) }
+            val settledRestoredEntry = DashboardEntryState()
+            settledRestoredEntry.install(settledRestoredOwner.savedStateRegistry)
+            assertEquals(
+                "the settled provider must write genuine All/top state",
+                FRESH_DASHBOARD_ENTRY,
+                settledRestoredEntry.snapshot(),
+            )
+
+            val absentOwner = RegistryOwner().apply { restore(null) }
+            val absentEntry = DashboardEntryState()
+            absentEntry.install(absentOwner.savedStateRegistry)
+            assertFalse(absentEntry.restorationPending)
+            assertEquals(FRESH_DASHBOARD_ENTRY, absentEntry.snapshot())
+
+            val unknownOwner = RegistryOwner().apply {
+                restore(savedRegistryPayload(Bundle().apply { putInt("version", 2) }))
+            }
+            val unknownEntry = DashboardEntryState()
+            unknownEntry.install(unknownOwner.savedStateRegistry)
+            assertFalse("an unknown schema must start fresh", unknownEntry.restorationPending)
+            assertEquals(FRESH_DASHBOARD_ENTRY, unknownEntry.snapshot())
+
+            listOf(
+                "partial current-version machine variant" to Bundle().apply {
+                    putInt("version", 1)
+                    putString("scopeKind", "machine")
+                    putInt("fallbackIndex", 0)
+                    putInt("offsetPx", 0)
+                },
+                "otherwise-valid All/top variant with a legacy field" to Bundle().apply {
+                    putInt("version", 1)
+                    putString("scopeKind", "all")
+                    putInt("fallbackIndex", 0)
+                    putInt("offsetPx", 0)
+                    putString("selectedMachine", OTHER_MACHINE.handle.encoded)
+                },
+                "otherwise-valid All/top variant with a non-Int fallback" to Bundle().apply {
+                    putInt("version", 1)
+                    putString("scopeKind", "all")
+                    putString("fallbackIndex", "0")
+                    putInt("offsetPx", 0)
+                },
+            ).forEach { (case, malformed) ->
+                val malformedOwner = RegistryOwner().apply {
+                    restore(savedRegistryPayload(malformed))
+                }
+                assertThrows(
+                    "$case must be a trusted-state defect",
+                    IllegalStateException::class.java,
+                ) {
+                    DashboardEntryState().install(malformedOwner.savedStateRegistry)
+                }
+            }
+        }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Test
     fun dwarfCollectionPullKeepsContentAndExposesOnlyActiveCheckingProgress() {
@@ -157,6 +827,9 @@ class MultiMachineUiInstrumentedTest {
             var refreshing by mutableStateOf(false)
             var dispatchCount = 0
             var density = 0f
+            val entry = DashboardEntryState().apply {
+                acceptFleet(dashboard.machines.map { it.machine.handle }.toSet())
+            }
 
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
@@ -165,10 +838,12 @@ class MultiMachineUiInstrumentedTest {
                         MaterialTheme {
                             DashboardDwarfCollection(
                                 state = dashboard.copy(refreshing = refreshing),
+                                entry = entry,
                                 onVerify = {
                                     dispatchCount += 1
                                     refreshing = !refreshing
                                 },
+                                onRestore = entry::restoreOnce,
                                 onOpen = { error("pull opened a tmux session") },
                                 onKill = { error("pull killed a tmux session") },
                             )
@@ -529,30 +1204,37 @@ class MultiMachineUiInstrumentedTest {
         var dashboard by mutableStateOf(
             SkidbladnirUiState.Dashboard(
                 machines = listOf(staleMachine, unreachableMachine),
-                selectedMachine = null,
                 refreshing = false,
                 forge = null,
                 forgeRecovery = ForgeRecovery.RefreshRequired(recoveryDraft),
                 kill = null,
             ),
         )
+        val dashboardEntry = DashboardEntryState().apply {
+            acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
+        }
         var dispatchCount = 0
         var controller: SkidbladnirController? = null
 
         try {
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
-                    val dashboardController = SkidbladnirController(activity.applicationContext)
+                    val dashboardController = SkidbladnirController(
+                        activity.applicationContext,
+                        dashboardEntry,
+                    )
                     controller = dashboardController
                     activity.setContent {
                         MaterialTheme {
                             DashboardMain(
                                 state = dashboard,
+                                entry = dashboardEntry,
                                 controller = dashboardController,
                                 onVerify = {
                                     dispatchCount += 1
                                     dashboard = dashboard.copy(refreshing = true)
                                 },
+                                onOpenTerminal = { error("chrome fixture opened a terminal") },
                             )
                         }
                     }
@@ -644,20 +1326,18 @@ class MultiMachineUiInstrumentedTest {
         val cases = listOf(
             Triple(
                 "all machines",
-                ready,
+                ready to DashboardScope.All,
                 "Devbox: create outcome unknown. Pull down to check again before reviewing this draft.",
             ),
             Triple(
                 "target selected",
-                ready.copy(selectedMachine = TEST_MACHINE.handle),
+                ready to DashboardScope.Machine(TEST_MACHINE.handle),
                 "Devbox: create outcome unknown. Pull down to check again before reviewing this draft.",
             ),
             Triple(
                 "another machine selected",
-                ready.copy(
-                    machines = ready.machines + otherMachine,
-                    selectedMachine = OTHER_MACHINE.handle,
-                ),
+                ready.copy(machines = ready.machines + otherMachine) to
+                    DashboardScope.Machine(OTHER_MACHINE.handle),
                 "Devbox: create outcome unknown. " +
                     "Select Devbox, then pull down to check again before reviewing this draft.",
             ),
@@ -668,7 +1348,7 @@ class MultiMachineUiInstrumentedTest {
                         GatewayFailure.Api(ApiErrorCode.Unauthenticated),
                     ),
                     access = MachineAccess.AuthRequired,
-                ),
+                ) to DashboardScope.All,
                 "Devbox: create outcome unknown. Reconnect fleet before reviewing this draft.",
             ),
             Triple(
@@ -678,25 +1358,26 @@ class MultiMachineUiInstrumentedTest {
                         GatewayFailure.Api(ApiErrorCode.MachineIdentityMismatch),
                     ),
                     access = MachineAccess.IdentityChanged,
-                ),
+                ) to DashboardScope.All,
                 "Devbox: create outcome unknown. " +
                     "Fleet reset is required before reviewing this draft.",
             ),
             Triple(
                 "missing target",
-                ready.copy(machines = emptyList()),
+                ready.copy(machines = emptyList()) to DashboardScope.All,
                 "Machine: create outcome unknown. " +
                     "Fleet reset is required before reviewing this draft.",
             ),
         )
 
-        cases.forEach { (name, state, expected) ->
-            assertEquals(name, expected, forgeRecoveryMessage(state, refreshRequired))
+        cases.forEach { (name, fixture, expected) ->
+            val (state, scope) = fixture
+            assertEquals(name, expected, forgeRecoveryMessage(state, refreshRequired, scope))
         }
         assertEquals(
             "review-ready copy",
             "Devbox refreshed. Review its sessions before resuming this draft.",
-            forgeRecoveryMessage(ready, ForgeRecovery.ReviewReady(draft)),
+            forgeRecoveryMessage(ready, ForgeRecovery.ReviewReady(draft), DashboardScope.All),
         )
     }
 
@@ -822,7 +1503,6 @@ class MultiMachineUiInstrumentedTest {
                     ),
                     macMachine,
                 ),
-                selectedMachine = null,
                 refreshing = false,
                 forge = null,
                 forgeRecovery = null,
@@ -832,6 +1512,9 @@ class MultiMachineUiInstrumentedTest {
         val macHandle = pressureMachine.handle.encoded
         val railTag = "machine-strip-$macHandle"
         val devRailTag = "machine-strip-${TEST_MACHINE.handle.encoded}"
+        val dashboardEntry = DashboardEntryState().apply {
+            acceptFleet(setOf(TEST_MACHINE.handle, pressureMachine.handle))
+        }
         var largeText by mutableStateOf(false)
         var density = 0f
         var controller: SkidbladnirController? = null
@@ -840,7 +1523,10 @@ class MultiMachineUiInstrumentedTest {
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
                     density = activity.resources.displayMetrics.density
-                    val dashboardController = SkidbladnirController(activity.applicationContext)
+                    val dashboardController = SkidbladnirController(
+                        activity.applicationContext,
+                        dashboardEntry,
+                    )
                     controller = dashboardController
                     activity.setContent {
                         CompositionLocalProvider(
@@ -852,7 +1538,13 @@ class MultiMachineUiInstrumentedTest {
                                         .width(if (largeText) 320.dp else 360.dp)
                                         .fillMaxHeight(),
                                 ) {
-                                    DashboardMain(dashboard, dashboardController, onVerify = {})
+                                    DashboardMain(
+                                        state = dashboard,
+                                        entry = dashboardEntry,
+                                        controller = dashboardController,
+                                        onVerify = {},
+                                        onOpenTerminal = { error("pressure fixture opened a terminal") },
+                                    )
                                 }
                             }
                         }
@@ -864,7 +1556,7 @@ class MultiMachineUiInstrumentedTest {
                 compose.onNodeWithText("Prior sessions are STALE", substring = true)
                     .assertIsDisplayed()
                 scenario.onActivity {
-                    dashboard = dashboard.copy(selectedMachine = pressureMachine.handle)
+                    dashboardEntry.selectScope(DashboardScope.Machine(pressureMachine.handle))
                 }
                 val rail = compose.onNodeWithTag(railTag)
                 rail.assertIsDisplayed().assertHasClickAction().assertContentDescriptionEquals(
@@ -1146,7 +1838,7 @@ class MultiMachineUiInstrumentedTest {
                 scenario.onActivity { dashboard = dashboard.copy(machines = machines) }
                 compose.onNodeWithTag(railTag).assertIsDisplayed()
                 compose.onNodeWithText("MacBook pressure").assertDoesNotExist()
-                scenario.onActivity { dashboard = dashboard.copy(selectedMachine = null) }
+                scenario.onActivity { dashboardEntry.selectScope(DashboardScope.All) }
                 compose.onNodeWithTag(railTag).assertDoesNotExist()
                 compose.onNodeWithTag(devRailTag).assertDoesNotExist()
             }
@@ -1296,6 +1988,34 @@ class MultiMachineUiInstrumentedTest {
         }
     }
 
+    private fun savedRegistryPayload(payload: Bundle): Bundle {
+        val owner = RegistryOwner()
+        owner.restore(null)
+        owner.savedStateRegistry.registerSavedStateProvider(DASHBOARD_ENTRY_REGISTRY_KEY) {
+            payload
+        }
+        return owner.save()
+    }
+
+    private class RegistryOwner : SavedStateRegistryOwner {
+        private val lifecycleRegistry = LifecycleRegistry(this)
+        private val controller = SavedStateRegistryController.create(this)
+
+        override val lifecycle: Lifecycle get() = lifecycleRegistry
+        override val savedStateRegistry: SavedStateRegistry get() = controller.savedStateRegistry
+
+        init {
+            controller.performAttach()
+        }
+
+        fun restore(savedState: Bundle?) {
+            controller.performRestore(savedState)
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        }
+
+        fun save(): Bundle = Bundle().also(controller::performSave)
+    }
+
     private fun pull(beyondThreshold: Boolean) {
         compose.onNodeWithTag("sessions-grid").performTouchInput {
             swipe(
@@ -1319,7 +2039,6 @@ class MultiMachineUiInstrumentedTest {
                     pressure = PressureState.Reading,
                 ),
             ),
-            selectedMachine = null,
             refreshing = false,
             forge = null,
             forgeRecovery = null,
@@ -1544,10 +2263,16 @@ class MultiMachineUiInstrumentedTest {
         "session-kill-${target.machineHandle.encoded}-${target.session.tmuxId}"
 
     private companion object {
+        const val DASHBOARD_ENTRY_REGISTRY_KEY = "dev.niels.skidbladnir.dashboard-entry"
         const val CHECKING_SESSIONS = "Checking tmux sessions"
         const val FAILED_MACHINE = "skidbladnir.failedMachine"
         const val OUTAGE_READY_FILE = "skidbladnir-multi-machine-outage-ready"
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
+        val FRESH_DASHBOARD_ENTRY = DashboardEntrySnapshot(
+            schemaVersion = 1,
+            scope = DashboardScope.All,
+            viewport = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0),
+        )
         val TEST_MACHINE = PairedMachine(
             requireNotNull(MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")),
             requireNotNull(MachineLabel.parse("Devbox")),

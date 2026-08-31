@@ -84,6 +84,7 @@ class TerminalChromeInstrumentedTest {
         )
         val controller = SkidbladnirController(
             InstrumentationRegistry.getInstrumentation().targetContext.applicationContext,
+            DashboardEntryState(),
         )
         val target = SessionTarget(machine.handle, session)
         val connected = TerminalUiStatus.Connected(1, TerminalGeometry.Owner)
@@ -109,6 +110,7 @@ class TerminalChromeInstrumentedTest {
                                     kill = null,
                                 ),
                                 controller = controller,
+                                onDetach = {},
                             )
                         } else {
                             Column(modifier = Modifier.fillMaxSize()) {

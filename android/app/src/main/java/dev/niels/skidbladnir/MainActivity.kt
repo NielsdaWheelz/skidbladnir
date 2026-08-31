@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -36,12 +35,15 @@ private val NidavellirMaterialShapes = Shapes(
 )
 
 class MainActivity : ComponentActivity() {
+    private lateinit var dashboardEntry: DashboardEntryState
     private lateinit var controller: SkidbladnirController
     private lateinit var scanner: FleetScanner
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        controller = SkidbladnirController(applicationContext)
+        dashboardEntry = DashboardEntryState()
+        dashboardEntry.install(savedStateRegistry)
+        controller = SkidbladnirController(applicationContext, dashboardEntry)
         scanner = FleetScanner(this)
         enableEdgeToEdge()
         setContent {
@@ -68,7 +70,9 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) {
-                    SkidbladnirApp(controller, scanner) { openOrInstallTailscale(this) }
+                    SkidbladnirApp(controller, dashboardEntry, scanner) {
+                        openOrInstallTailscale(this)
+                    }
                 }
             }
         }
@@ -91,8 +95,37 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+internal fun DashboardTerminalHost(
+    state: SkidbladnirUiState.Workspace,
+    entry: DashboardEntryState,
+    controller: SkidbladnirController,
+    onOpenTerminal: (SessionTarget) -> Unit,
+    onDetach: () -> Unit,
+) {
+    val terminalVisible = when (state) {
+        is SkidbladnirUiState.Dashboard -> false
+        is SkidbladnirUiState.Terminal -> true
+    }
+    BackHandler(enabled = terminalVisible, onBack = onDetach)
+    when (state) {
+        is SkidbladnirUiState.Dashboard -> DashboardScreen(
+            state = state,
+            entry = entry,
+            controller = controller,
+            onOpenTerminal = onOpenTerminal,
+        )
+        is SkidbladnirUiState.Terminal -> TerminalScreen(
+            state = state,
+            controller = controller,
+            onDetach = onDetach,
+        )
+    }
+}
+
+@Composable
 private fun SkidbladnirApp(
     controller: SkidbladnirController,
+    dashboardEntry: DashboardEntryState,
     scanner: FleetScanner,
     onTailscale: () -> Unit,
 ) {
@@ -100,9 +133,6 @@ private fun SkidbladnirApp(
     val context = LocalContext.current
     BackHandler(enabled = state is SkidbladnirUiState.Dashboard && state.forge != null) {
         controller.dismissForge()
-    }
-    BackHandler(enabled = state is SkidbladnirUiState.Terminal) {
-        controller.detachToSessions()
     }
     BackHandler(
         enabled = state is SkidbladnirUiState.FleetConnect && fleetReconnectCanCancel(state),
@@ -131,7 +161,12 @@ private fun SkidbladnirApp(
             onConnect = controller::requestFleetScan,
             onTailscale = onTailscale,
         )
-        is SkidbladnirUiState.Dashboard -> DashboardScreen(state, controller)
-        is SkidbladnirUiState.Terminal -> TerminalScreen(state, controller)
+        is SkidbladnirUiState.Workspace -> DashboardTerminalHost(
+            state = state,
+            entry = dashboardEntry,
+            controller = controller,
+            onOpenTerminal = controller::openTerminal,
+            onDetach = controller::detachToSessions,
+        )
     }
 }

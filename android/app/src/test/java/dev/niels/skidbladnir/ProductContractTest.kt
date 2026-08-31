@@ -559,7 +559,6 @@ class ProductContractTest {
                 ), 0)),
                 pressure = PressureState.Reading,
             )),
-            selectedMachine = machineHandle,
             refreshing = false,
             forge = forge,
             forgeRecovery = null,

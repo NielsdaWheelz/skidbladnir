@@ -34,6 +34,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 internal fun TerminalScreen(
     state: SkidbladnirUiState.Terminal,
     controller: SkidbladnirController,
+    onDetach: () -> Unit,
 ) {
     var modifiers by remember(state.attempt) {
         mutableStateOf(
@@ -60,7 +61,7 @@ internal fun TerminalScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             DetachButton(
-                onClick = controller::detachToSessions,
+                onClick = onDetach,
             )
             TerminalRenameControl(
                 machine = state.machine.machine,
@@ -132,7 +133,7 @@ internal fun TerminalScreen(
                     message = connection.message,
                     actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
                     onReattach = controller::reattachTerminal,
-                    onSessions = controller::detachToSessions,
+                    onSessions = onDetach,
                 )
             }
         }

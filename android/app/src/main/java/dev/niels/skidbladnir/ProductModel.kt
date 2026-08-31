@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import java.net.URI
 import java.net.URISyntaxException
+import java.security.MessageDigest
 import java.text.Normalizer
 import java.time.DateTimeException
 import java.time.Duration
@@ -709,23 +710,65 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
     }
 }
 
-internal data class VisibleSession(val machine: PairedMachine, val target: SessionTarget)
+internal data class VisibleSession(
+    val machine: PairedMachine,
+    val target: SessionTarget,
+) {
+    val cardKey: DashboardCardKey = dashboardCardKey(target)
+}
+
+internal fun dashboardCardKey(target: SessionTarget): DashboardCardKey {
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.update("skidbladnir.dashboard-card.v1".encodeToByteArray())
+    listOf(
+        target.machineHandle.encoded,
+        target.session.tmuxId,
+        target.session.identityToken,
+    ).forEach { value ->
+        val bytes = value.encodeToByteArray()
+        digest.update(
+            byteArrayOf(
+                (bytes.size ushr 24).toByte(),
+                (bytes.size ushr 16).toByte(),
+                (bytes.size ushr 8).toByte(),
+                bytes.size.toByte(),
+            ),
+        )
+        digest.update(bytes)
+    }
+    val hexadecimal = "0123456789abcdef"
+    return DashboardCardKey(buildString(64) {
+        digest.digest().forEach { byte ->
+            val value = byte.toInt() and 0xff
+            append(hexadecimal[value ushr 4])
+            append(hexadecimal[value and 0x0f])
+        }
+    })
+}
+
 private data class RankedVisibleSession(val machine: MachineState, val visible: VisibleSession)
 
 internal fun visibleInventoryTargets(
     liveMachineHandles: Collection<MachineHandle>,
-    selectedMachine: MachineHandle?,
-): Set<MachineHandle> = when {
-    selectedMachine == null -> liveMachineHandles.toSet()
-    selectedMachine in liveMachineHandles -> setOf(selectedMachine)
-    else -> emptySet()
+    scope: DashboardScope,
+): Set<MachineHandle> = when (scope) {
+    DashboardScope.All -> liveMachineHandles.toSet()
+    is DashboardScope.Machine -> if (scope.handle in liveMachineHandles) setOf(scope.handle) else emptySet()
 }
 
-internal fun pressureRailsVisible(selectedMachine: MachineHandle?): Boolean = selectedMachine != null
+internal fun pressureRailsVisible(scope: DashboardScope): Boolean = when (scope) {
+    DashboardScope.All -> false
+    is DashboardScope.Machine -> true
+}
 
-internal fun visibleSessions(machines: List<MachineState>, selectedMachine: MachineHandle?): List<VisibleSession> = machines
+internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope): List<VisibleSession> = machines
     .asSequence()
-    .filter { selectedMachine == null || it.machine.handle == selectedMachine }
+    .filter { machine ->
+        when (scope) {
+            DashboardScope.All -> true
+            is DashboardScope.Machine -> machine.machine.handle == scope.handle
+        }
+    }
     .flatMap { state ->
         state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().asSequence().map { session ->
             RankedVisibleSession(
