@@ -1105,7 +1105,7 @@ func TestInstalledProviderHooksProjectTheApprovedPlatformSample(t *testing.T) {
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      preflight.host.Tmux.Path,
 		SocketName:    socket,
-		Home:          preflight.home,
+		Workdir:       newWorkdirFixture(t, preflight.home),
 		CataloguePath: preflight.cataloguePath,
 		Profiles: providerLiveManagedProfiles(
 			t,

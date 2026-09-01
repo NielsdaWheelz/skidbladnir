@@ -100,10 +100,8 @@ internal fun decodePairingResponse(encoded: String): PairingResponse = decodePro
     )
 }
 
-internal class GatewayClient {
-    private val closeScheduled = AtomicBoolean(false)
-
-    internal val http = OkHttpClient.Builder()
+internal class GatewayClient(
+    internal val http: OkHttpClient = OkHttpClient.Builder()
         .retryOnConnectionFailure(false)
         .followRedirects(false)
         .followSslRedirects(false)
@@ -111,7 +109,9 @@ internal class GatewayClient {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
-        .build()
+        .build(),
+) {
+    private val closeScheduled = AtomicBoolean(false)
 
     fun closeAsync() {
         if (!closeScheduled.compareAndSet(false, true)) return
@@ -131,13 +131,36 @@ internal class GatewayClient {
         request = authorizedRequest(credential, listOf("v1", "sessions")).get().build(),
         expectedStatus = 200,
         decode = ::decodeSessionsResponse,
+        decodeFailure = ::decodeSessionsHttpFailure,
     )
 
     fun readPressure(credential: MachineCredential): GatewayResult<PressureResponse> = executeJson(
         request = authorizedRequest(credential, listOf("v1", "pressure")).get().build(),
         expectedStatus = 200,
         decode = ::decodePressureResponse,
+        decodeFailure = ::decodePressureHttpFailure,
     )
+
+    fun listDirectory(
+        credential: MachineCredential,
+        directory: HomeDirectory,
+        expectedMachine: MachineSummary,
+    ): GatewayResult<DirectoryListing> {
+        require(expectedMachine.handle == credential.machine.handle)
+        return executeJson(
+            request = directoryListingRequest(credential, directory),
+            expectedStatus = 200,
+            decode = { encoded -> decodeDirectoryListingResponse(encoded, expectedMachine) },
+            decodeFailure = ::decodeDirectoryListingHttpFailure,
+        )
+    }
+
+    internal fun directoryListingRequest(
+        credential: MachineCredential,
+        directory: HomeDirectory,
+    ): Request = authorizedRequest(credential, listOf("v1", "directory-listings"))
+        .post(encodeDirectoryListingRequest(directory).toRequestBody(jsonMediaType))
+        .build()
 
     fun redeemPairing(machine: FleetInviteMachine): GatewayResult<PairingResponse> = executeJson(
         request = pairingRequest(machine),
@@ -168,12 +191,13 @@ internal class GatewayClient {
                 .build(),
             expectedStatus = 201,
             decode = ::decodeCreatedSessionResponse,
+            decodeFailure = ::decodeCreateHttpFailure,
         )
     }
 
     fun killSession(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> {
         require(target.machineHandle == credential.machine.handle)
-        return executeBodyless(killRequest(credential, target))
+        return executeBodyless(killRequest(credential, target), ::decodeKillHttpFailure)
     }
 
     internal fun killRequest(credential: MachineCredential, target: SessionTarget): Request {
@@ -298,7 +322,7 @@ private fun decodeStrictUtf8(bytes: ByteArray): String = try {
     throw ProtocolDecodeException("HTTP response body is not UTF-8")
 }
 
-internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
+private fun decodeApiHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
     if (status == 502 || status == 503 || status == 504) return@decodeProtocol GatewayFailure.Transport
     val response = productJson.decodeFromJsonElement<ErrorResponse>(strictJsonObject(encoded))
     val code = parseApiErrorCode(response.code)
@@ -312,20 +336,114 @@ internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFail
     GatewayFailure.Api(code)
 }
 
-internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFailure {
-    val failure = decodeGatewayHttpFailure(status, encoded)
-    if (failure is GatewayFailure.Api && failure.code !in setOf(
-            ApiErrorCode.PairingInviteRejected,
-            ApiErrorCode.InvalidRequest,
-            ApiErrorCode.InternalError,
-        )
-    ) throw ProtocolDecodeException("pairing route error set")
+private fun decodeClosedHttpFailure(
+    status: Int,
+    encoded: String,
+    allowed: Set<ApiErrorCode>,
+    route: String,
+): GatewayFailure {
+    val failure = decodeApiHttpFailure(status, encoded)
+    if (failure is GatewayFailure.Api && failure.code !in allowed) {
+        throw ProtocolDecodeException("$route route error set")
+    }
     return failure
 }
 
+internal fun decodeGatewayHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.SessionNotFound,
+            ApiErrorCode.SessionIdentityMismatch,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "terminal",
+    )
+
+internal fun decodeSessionsHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "sessions",
+    )
+
+internal fun decodePressureHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "pressure",
+    )
+
+internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.WorkingDirectoryInvalid,
+            ApiErrorCode.WorkingDirectoryUnavailable,
+            ApiErrorCode.ProfileUnknown,
+            ApiErrorCode.SessionNameInvalid,
+            ApiErrorCode.ObjectiveInvalid,
+            ApiErrorCode.SessionNameConflict,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "create",
+    )
+
+internal fun decodeKillHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.SessionNotFound,
+            ApiErrorCode.SessionIdentityMismatch,
+            ApiErrorCode.SessionGroupedConflict,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "kill",
+    )
+
+internal fun decodePairingHttpFailure(status: Int, encoded: String): GatewayFailure {
+    return decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.PairingInviteRejected,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.InternalError,
+        ),
+        "pairing",
+    )
+}
+
 internal fun decodeRenameHttpFailure(status: Int, encoded: String): GatewayFailure {
-    val failure = decodeGatewayHttpFailure(status, encoded)
-    if (failure is GatewayFailure.Api && failure.code !in setOf(
+    return decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
             ApiErrorCode.Unauthenticated,
             ApiErrorCode.InvalidRequest,
             ApiErrorCode.RequestTooLarge,
@@ -335,9 +453,26 @@ internal fun decodeRenameHttpFailure(status: Int, encoded: String): GatewayFailu
             ApiErrorCode.SessionIdentityMismatch,
             ApiErrorCode.MachineIdentityMismatch,
             ApiErrorCode.InternalError,
-        )
-    ) throw ProtocolDecodeException("rename route error set")
-    return failure
+        ),
+        "rename",
+    )
+}
+
+internal fun decodeDirectoryListingHttpFailure(status: Int, encoded: String): GatewayFailure {
+    return decodeClosedHttpFailure(
+        status,
+        encoded,
+        setOf(
+            ApiErrorCode.Unauthenticated,
+            ApiErrorCode.InvalidRequest,
+            ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.DirectoryListingUnavailable,
+            ApiErrorCode.DirectoryListingTooLarge,
+            ApiErrorCode.MachineIdentityMismatch,
+            ApiErrorCode.InternalError,
+        ),
+        "directory-listing",
+    )
 }
 
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
@@ -347,6 +482,8 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.RequestTooLarge -> 413
     ApiErrorCode.WorkingDirectoryInvalid,
     ApiErrorCode.WorkingDirectoryUnavailable,
+    ApiErrorCode.DirectoryListingUnavailable,
+    ApiErrorCode.DirectoryListingTooLarge,
     ApiErrorCode.ProfileUnknown,
     ApiErrorCode.SessionNameInvalid,
     ApiErrorCode.ObjectiveInvalid,

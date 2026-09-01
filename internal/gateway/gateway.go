@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 const (
@@ -42,6 +44,7 @@ type sessionManager interface {
 
 type Config struct {
 	Sessions sessionManager
+	Workdir  *workdir.Service
 	Pressure *pressure.Monitor
 	Bearer   auth.FileVerifier
 	Pairing  *pairing.Slot
@@ -52,6 +55,7 @@ type Config struct {
 
 type Gateway struct {
 	sessions sessionManager
+	workdir  *workdir.Service
 	pressure *pressure.Monitor
 	bearer   auth.FileVerifier
 	pairing  *pairing.Slot
@@ -73,6 +77,9 @@ type Gateway struct {
 }
 
 func New(config Config) *Gateway {
+	if config.Workdir == nil {
+		panic("gateway working directory service is not configured") // justify-defect: main must share one concrete validated workdir service with sessions and the gateway.
+	}
 	if config.Machine.String() == "" {
 		panic("gateway machine identity is not configured") // justify-defect: gateway composition must load one canonical machine handle before construction.
 	}
@@ -87,6 +94,7 @@ func New(config Config) *Gateway {
 	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	return &Gateway{
 		sessions:             config.Sessions,
+		workdir:              config.Workdir,
 		pressure:             config.Pressure,
 		bearer:               config.Bearer,
 		pairing:              config.Pairing,
@@ -171,6 +179,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.listSessions(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/sessions":
 		gateway.createSession(writer, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/directory-listings":
+		gateway.listDirectory(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/pressure":
 		gateway.readPressure(writer)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/terminal"):
@@ -182,6 +192,84 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	default:
 		writeError(writer, errorInvalidRequest)
 	}
+}
+
+func (gateway *Gateway) listDirectory(writer http.ResponseWriter, request *http.Request) {
+	input, failure := decodeJSON[directoryListingRequest](writer, request)
+	if failure != nil {
+		writeError(writer, *failure)
+		return
+	}
+	if !input.Directory.present {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	directory, err := gateway.workdir.ParseBrowseDirectory(input.Directory.value)
+	if err != nil {
+		writeDirectoryListingError(writer, err)
+		return
+	}
+	listing, err := gateway.workdir.List(request.Context(), directory)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		writeDirectoryListingError(writer, err)
+		return
+	}
+	mapped, err := mapDirectoryListing(gateway.machineDTO(), listing)
+	if err != nil {
+		writeError(writer, errorInternal)
+		return
+	}
+	writeDirectoryListing(writer, mapped)
+}
+
+func writeDirectoryListingError(writer http.ResponseWriter, err error) {
+	code, classified := workdir.ErrorCodeOf(err)
+	if !classified {
+		writeError(writer, errorInternal)
+		return
+	}
+	switch code {
+	case workdir.Invalid:
+		writeError(writer, errorInvalidRequest)
+	case workdir.Unavailable:
+		writeError(writer, errorDirectoryListingUnavailable)
+	case workdir.TooLarge:
+		writeError(writer, errorDirectoryListingTooLarge)
+	default:
+		writeError(writer, errorInternal)
+	}
+}
+
+var errDirectoryListingEncodingTooLarge = errors.New("directory listing encoding is too large")
+
+type boundedJSONBuffer struct {
+	buffer bytes.Buffer
+}
+
+func (buffer *boundedJSONBuffer) Write(contents []byte) (int, error) {
+	if len(contents) > int(MaximumBodyBytes)-buffer.buffer.Len() {
+		return 0, errDirectoryListingEncodingTooLarge
+	}
+	return buffer.buffer.Write(contents)
+}
+
+func writeDirectoryListing(writer http.ResponseWriter, listing directoryListingResponseDTO) {
+	var encoded boundedJSONBuffer
+	if err := json.NewEncoder(&encoded).Encode(listing); err != nil {
+		if errors.Is(err, errDirectoryListingEncodingTooLarge) {
+			writeError(writer, errorDirectoryListingTooLarge)
+			return
+		}
+		writeError(writer, errorInternal)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(encoded.buffer.Bytes()) // justify-ignore-error: a client disconnect after headers cannot be repaired.
 }
 
 func (gateway *Gateway) bindMachine(writer http.ResponseWriter, request *http.Request) bool {
@@ -623,6 +711,8 @@ func requestRoute(path string) logging.Route {
 		return logging.RoutePairings
 	case path == "/v1/pressure":
 		return logging.RoutePressure
+	case path == "/v1/directory-listings":
+		return logging.RouteDirectoryListings
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):
 		return logging.RouteTerminal
 	case strings.HasPrefix(path, "/v1/sessions/"):

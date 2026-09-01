@@ -19,6 +19,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testing.T) {
@@ -347,7 +348,12 @@ func TestPressureResponsePublishesRichSignalsAndCompactHistoryForTheDeclaredHost
 	if err != nil {
 		t.Fatalf("construct test machine identity: %v", err)
 	}
+	workingDirectories, err := workdir.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("construct working directory service: %v", err)
+	}
 	gateway := New(Config{
+		Workdir:  workingDirectories,
 		Pressure: monitor,
 		Pairing:  pairing.NewSlot(),
 		Logger:   logging.New(io.Discard),
@@ -457,6 +463,8 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 		{errorRequestTooLarge, "RequestTooLarge", "The request is too large.", http.StatusRequestEntityTooLarge},
 		{errorWorkingDirectoryInvalid, "WorkingDirectoryInvalid", "Choose a valid working directory.", http.StatusUnprocessableEntity},
 		{errorWorkingDirectoryUnavailable, "WorkingDirectoryUnavailable", "That directory does not exist or cannot be opened.", http.StatusUnprocessableEntity},
+		{errorDirectoryListingUnavailable, "DirectoryListingUnavailable", "This directory cannot be browsed. Enter the path instead.", http.StatusUnprocessableEntity},
+		{errorDirectoryListingTooLarge, "DirectoryListingTooLarge", "This directory has too many folders to show. Enter the path instead.", http.StatusUnprocessableEntity},
 		{errorProfileUnknown, "ProfileUnknown", "Choose an available profile.", http.StatusUnprocessableEntity},
 		{errorSessionNameInvalid, "SessionNameInvalid", "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", http.StatusUnprocessableEntity},
 		{errorObjectiveInvalid, "ObjectiveInvalid", "Use 1–240 characters without terminal controls.", http.StatusUnprocessableEntity},
@@ -541,6 +549,22 @@ func TestRenameRequestRejectsAlternateCaseRequiredKeys(t *testing.T) {
 		_, failure := decodeJSON[renameSessionRequest](httptest.NewRecorder(), request)
 		if failure == nil || failure.Code != errorInvalidRequest.Code || failure.Status != errorInvalidRequest.Status {
 			t.Fatalf("alternate-case rename key failure = %#v, want InvalidRequest", failure)
+		}
+	}
+}
+
+func TestCreateRequestRejectsAmbiguousOrLossyJSONBeforeCWDValidation(t *testing.T) {
+	invalidUTF8 := `{"cwd":"/tmp/` + string([]byte{0xff}) + `","profile":"codex"}`
+	for _, body := range []string{
+		`{"Cwd":"/tmp","profile":"codex"}`,
+		`{"cwd":"/tmp/\ud800","profile":"codex"}`,
+		invalidUTF8,
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		_, failure := decodeJSON[createSessionRequest](httptest.NewRecorder(), request)
+		if failure == nil || failure.Code != errorInvalidRequest.Code || failure.Status != errorInvalidRequest.Status {
+			t.Fatalf("ambiguous or lossy Create JSON failure = %#v, want InvalidRequest", failure)
 		}
 	}
 }

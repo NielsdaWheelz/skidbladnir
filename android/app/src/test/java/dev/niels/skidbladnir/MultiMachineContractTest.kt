@@ -636,7 +636,12 @@ class MultiMachineContractTest {
             kill = null,
         )
         val pendingForge = base.copy(
-            forge = ForgeState(ForgeForm(draft), pending = true, error = null),
+            forge = ForgeState(
+                ForgeForm(draft),
+                pending = true,
+                failure = ForgeFailure.None,
+                surface = ForgeSurface.Form,
+            ),
         )
         val pendingKill = base.copy(
             kill = KillState(devbox, target, pending = true),
@@ -652,6 +657,13 @@ class MultiMachineContractTest {
                 readyMachine(macBook, session()),
             )
 
+            val accessFailure = GatewayFailure.Api(
+                when (access) {
+                    MachineAccess.AuthRequired -> ApiErrorCode.Unauthenticated
+                    MachineAccess.IdentityChanged -> ApiErrorCode.MachineIdentityMismatch
+                    MachineAccess.Ready -> error("test access loss cannot be ready")
+                },
+            )
             val createEntry = DashboardEntryState().apply {
                 acceptFleet(setOf(devboxHandle, macBookHandle))
                 gridState.requestScrollToItem(3, 17)
@@ -663,6 +675,7 @@ class MultiMachineContractTest {
                 devboxHandle,
                 refreshing = true,
                 dashboardEntry = createEntry,
+                failure = accessFailure,
             )
             assertEquals(DashboardScope.Machine(devboxHandle), createEntry.scope)
             assertEquals(
@@ -673,7 +686,7 @@ class MultiMachineContractTest {
             assertEquals(17, createEntry.gridState.firstVisibleItemScrollOffset)
             assertEquals(expectedNotice, createFailed.notice)
             assertEquals(false, createFailed.forge?.pending)
-            assertEquals(expectedNotice, createFailed.forge?.error)
+            assertEquals(ForgeFailure.Definite(accessFailure), createFailed.forge?.failure)
             assertTrue(createFailed.forge?.form?.submission() == draft)
             assertTrue("the read indicator has one owner", createFailed.refreshing)
 
@@ -688,6 +701,7 @@ class MultiMachineContractTest {
                 devboxHandle,
                 refreshing = false,
                 dashboardEntry = killEntry,
+                failure = accessFailure,
             )
             assertEquals(DashboardScope.Machine(devboxHandle), killEntry.scope)
             assertEquals(

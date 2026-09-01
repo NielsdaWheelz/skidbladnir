@@ -20,6 +20,9 @@ func Decode(encoded []byte, target any) error {
 	if !utf8.Valid(encoded) {
 		return errors.New("JSON is not UTF-8")
 	}
+	if !validUnicodeScalarEscapes(encoded) {
+		return errors.New("JSON contains an invalid Unicode escape")
+	}
 	if err := validateDocument(encoded); err != nil {
 		return err
 	}
@@ -137,6 +140,80 @@ func exactStructFields(targetType reflect.Type) (map[string]reflect.Type, error)
 		fields[tag] = field.Type
 	}
 	return fields, nil
+}
+
+func validUnicodeScalarEscapes(encoded []byte) bool {
+	for index := 0; index < len(encoded); {
+		if encoded[index] != '"' {
+			index++
+			continue
+		}
+		index++
+		closed := false
+		for index < len(encoded) {
+			switch encoded[index] {
+			case '"':
+				index++
+				closed = true
+			case '\\':
+				if index+1 >= len(encoded) {
+					return false
+				}
+				if encoded[index+1] != 'u' {
+					index += 2
+					continue
+				}
+				first, ok := decodeHex16(encoded, index+2)
+				if !ok {
+					return false
+				}
+				index += 6
+				switch {
+				case first >= 0xd800 && first <= 0xdbff:
+					if index+6 > len(encoded) || encoded[index] != '\\' || encoded[index+1] != 'u' {
+						return false
+					}
+					second, secondOK := decodeHex16(encoded, index+2)
+					if !secondOK || second < 0xdc00 || second > 0xdfff {
+						return false
+					}
+					index += 6
+				case first >= 0xdc00 && first <= 0xdfff:
+					return false
+				}
+			default:
+				index++
+			}
+			if closed {
+				break
+			}
+		}
+		if !closed {
+			return false
+		}
+	}
+	return true
+}
+
+func decodeHex16(encoded []byte, start int) (uint16, bool) {
+	if start+4 > len(encoded) {
+		return 0, false
+	}
+	var value uint16
+	for _, character := range encoded[start : start+4] {
+		value <<= 4
+		switch {
+		case character >= '0' && character <= '9':
+			value += uint16(character - '0')
+		case character >= 'a' && character <= 'f':
+			value += uint16(character-'a') + 10
+		case character >= 'A' && character <= 'F':
+			value += uint16(character-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return value, true
 }
 
 func validateDocument(encoded []byte) error {

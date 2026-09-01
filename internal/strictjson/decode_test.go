@@ -15,6 +15,9 @@ func TestDecodeRejectsAmbiguousDocuments(t *testing.T) {
 		`{"name":"one","Name":"two"}`,
 		`{"name":"one"}{"name":"two"}`,
 		`{"name":"one","extra":true}`,
+		`{"name":"\ud800"}`,
+		`{"name":"\udc00"}`,
+		`{"name":"\ud800x\udc00"}`,
 		string([]byte{'{', '"', 'n', 'a', 'm', 'e', '"', ':', '"', 0xff, '"', '}'}),
 		strings.Repeat("[", maximumNestingDepth+2) + `null` + strings.Repeat("]", maximumNestingDepth+2),
 	}
@@ -35,5 +38,19 @@ func TestDecodeAcceptsOneStrictDocument(t *testing.T) {
 	}
 	if target.Name != "Skíðblaðnir" {
 		t.Fatalf("name = %q", target.Name)
+	}
+}
+
+func TestDecodePreservesValidSurrogatePairsAndLiteralReplacementCharacters(t *testing.T) {
+	for _, encoded := range []string{
+		`{"name":"\ud83d\ude00"}`,
+		`{"name":"�"}`,
+	} {
+		var target struct {
+			Name string `json:"name"`
+		}
+		if err := Decode([]byte(encoded), &target); err != nil {
+			t.Fatalf("Decode(%q): %v", encoded, err)
+		}
 	}
 }

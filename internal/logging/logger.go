@@ -35,19 +35,20 @@ func (method Method) valid() bool {
 type Route string
 
 const (
-	RouteHealth         Route = "/healthz"
-	RouteSessions       Route = "/v1/sessions"
-	RouteSession        Route = "/v1/sessions/{tmuxId}"
-	RouteTerminal       Route = "/v1/sessions/{tmuxId}/terminal"
-	RoutePressure       Route = "/v1/pressure"
-	RoutePairingInvites Route = "/v1/pairing-invites"
-	RoutePairings       Route = "/v1/pairings"
-	RouteUnmatched      Route = "unmatched"
+	RouteHealth            Route = "/healthz"
+	RouteSessions          Route = "/v1/sessions"
+	RouteSession           Route = "/v1/sessions/{tmuxId}"
+	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
+	RoutePressure          Route = "/v1/pressure"
+	RoutePairingInvites    Route = "/v1/pairing-invites"
+	RoutePairings          Route = "/v1/pairings"
+	RouteDirectoryListings Route = "/v1/directory-listings"
+	RouteUnmatched         Route = "unmatched"
 )
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteUnmatched:
+	case RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -63,6 +64,8 @@ const (
 	ErrorRequestTooLarge             ErrorCode = "RequestTooLarge"
 	ErrorWorkingDirectoryInvalid     ErrorCode = "WorkingDirectoryInvalid"
 	ErrorWorkingDirectoryUnavailable ErrorCode = "WorkingDirectoryUnavailable"
+	ErrorDirectoryListingUnavailable ErrorCode = "DirectoryListingUnavailable"
+	ErrorDirectoryListingTooLarge    ErrorCode = "DirectoryListingTooLarge"
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
@@ -82,6 +85,8 @@ func (code ErrorCode) valid() bool {
 		ErrorRequestTooLarge,
 		ErrorWorkingDirectoryInvalid,
 		ErrorWorkingDirectoryUnavailable,
+		ErrorDirectoryListingUnavailable,
+		ErrorDirectoryListingTooLarge,
 		ErrorProfileUnknown,
 		ErrorSessionNameInvalid,
 		ErrorObjectiveInvalid,

@@ -209,6 +209,7 @@ func newMachineGateway(t *testing.T, fixture sessionFixture, handleText string) 
 	}
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
+		Workdir:  fixture.workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),

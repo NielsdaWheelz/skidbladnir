@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 
 type Manager struct {
 	tmux          tmuxclient.Client
-	home          string
+	workdir       *workdir.Service
 	catalogue     catalog.Catalogue
 	profiles      []agentruntime.Profile
 	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
@@ -52,11 +52,8 @@ func New(config Config) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(config.Home) {
-		return nil, errors.New("service home must be absolute")
-	}
-	if err := requireSearchableDirectory(config.Home); err != nil {
-		return nil, fmt.Errorf("service home: %w", err)
+	if config.Workdir == nil {
+		return nil, errors.New("working directory service is not configured")
 	}
 	characters, err := catalog.Load(config.CataloguePath)
 	if err != nil {
@@ -72,7 +69,7 @@ func New(config Config) (*Manager, error) {
 	}
 	return &Manager{
 		tmux:          tmux,
-		home:          filepath.Clean(config.Home),
+		workdir:       config.Workdir,
 		catalogue:     characters,
 		profiles:      profiles,
 		profilesByKey: profilesByKey,
@@ -169,9 +166,13 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
-	cwd, err := validateWorkingDirectory(input.CWD, manager.home)
+	candidate, err := manager.workdir.ParseCandidate(input.CWD)
 	if err != nil {
-		return ObservedSession{}, err
+		return ObservedSession{}, mapWorkingDirectoryError(err)
+	}
+	cwd, err := manager.workdir.ValidateStart(candidate)
+	if err != nil {
+		return ObservedSession{}, mapWorkingDirectoryError(err)
 	}
 	profile, found := manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
 	if !found {
@@ -201,7 +202,7 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 		return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
 	character := selectCharacter(manager.catalogue.Characters(), scan.characterUse, epochCandidate)
-	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name, "-c", cwd}
+	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name, "-c", cwd.String()}
 	for _, variable := range profile.Environment {
 		commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
 	}
@@ -219,6 +220,9 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	commandArgs = append(commandArgs,
 		";", "display-message", "-p", "-t", exactName,
 		"#{"+tmuxclient.ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}")
+	if _, err := manager.workdir.ValidateStart(candidate); err != nil {
+		return ObservedSession{}, mapWorkingDirectoryError(err)
+	}
 	output, err := manager.tmux.Output(ctx, "create-session", "new-session", commandArgs...)
 	if err != nil {
 		firstLine, _, _ := strings.Cut(output, "\n")
@@ -287,6 +291,21 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 		return ObservedSession{}, err
 	}
 	return ObservedSession{ObservedAt: observedAt, Session: projected}, nil
+}
+
+func mapWorkingDirectoryError(err error) error {
+	code, classified := workdir.ErrorCodeOf(err)
+	if !classified {
+		return err
+	}
+	switch code {
+	case workdir.Invalid:
+		return newSessionError(ErrorWorkingDirectoryInvalid, "Use an absolute directory path or ~/… without terminal controls.")
+	case workdir.Unavailable:
+		return newSessionError(ErrorWorkingDirectoryUnavailable, "That directory is unavailable.")
+	default:
+		return err
+	}
 }
 
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {

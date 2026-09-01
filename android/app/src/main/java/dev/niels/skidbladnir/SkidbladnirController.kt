@@ -97,7 +97,16 @@ internal fun fleetReconnectCanCancel(state: SkidbladnirUiState.FleetConnect): Bo
         (state.phase != FleetConnectPhase.ResetRequired ||
             state.resetReason == FleetResetReason.InviteIdentityMismatch)
 
-internal data class ForgeState(val form: ForgeForm, val pending: Boolean, val error: String?)
+internal data class ForgeState(
+    val form: ForgeForm,
+    val pending: Boolean,
+    val failure: ForgeFailure,
+    val surface: ForgeSurface,
+)
+
+internal fun ForgeState.admissibleSubmission(): ForgeDraft? =
+    if (!pending && surface == ForgeSurface.Form) form.submission() else null
+
 private data class PendingFleetPersistence(
     val mode: FleetConnectMode,
     val credentials: List<MachineCredential>,
@@ -152,7 +161,12 @@ internal fun resumeForgeRecovery(
     if (!target.canMutate) return dashboard
     dashboardEntry.selectScope(DashboardScope.Machine(target.machine.handle))
     return dashboard.copy(
-        forge = ForgeState(ForgeForm(recovery.draft), pending = false, error = null),
+        forge = ForgeState(
+            ForgeForm(recovery.draft),
+            pending = false,
+            failure = ForgeFailure.None,
+            surface = ForgeSurface.Form,
+        ),
         forgeRecovery = null,
     )
 }
@@ -251,21 +265,35 @@ internal fun dashboardAfterMachineAccessLoss(
     handle: MachineHandle,
     refreshing: Boolean,
     dashboardEntry: DashboardEntryState,
+    failure: GatewayFailure.Api,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == handle }
     require(machine.access != MachineAccess.Ready)
+    require(
+        (machine.access == MachineAccess.AuthRequired && failure.code == ApiErrorCode.Unauthenticated) ||
+            (machine.access == MachineAccess.IdentityChanged &&
+                failure.code == ApiErrorCode.MachineIdentityMismatch),
+    )
     val message = machineAccessMessage(machine)
     val affectedForge = dashboard.forge?.takeIf { it.form.machineHandle == handle }
     val affectedKill = dashboard.kill?.takeIf { it.target.machineHandle == handle }
-    if (affectedForge?.pending == true || affectedKill != null) {
+    val recoveryOwnsScope =
+        affectedForge?.pending == true ||
+            affectedForge?.surface is ForgeSurface.DirectoryPicker ||
+            affectedKill != null
+    if (recoveryOwnsScope) {
         dashboardEntry.selectScope(DashboardScope.Machine(handle))
     }
     return dashboard.copy(
         machines = machines,
         refreshing = refreshing,
         notice = message,
-        forge = if (affectedForge?.pending == true) {
-            affectedForge.copy(pending = false, error = message)
+        forge = if (affectedForge != null) {
+            affectedForge.copy(
+                pending = false,
+                failure = ForgeFailure.Definite(failure),
+                surface = ForgeSurface.Form,
+            )
         } else {
             dashboard.forge
         },
@@ -540,6 +568,8 @@ internal fun reconcileStoredMachines(
 internal class SkidbladnirController(
     context: Context,
     private val dashboardEntry: DashboardEntryState,
+    storage: MachineStorage = MachineStorage.production,
+    private val client: GatewayClient = GatewayClient(),
 ) {
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
@@ -554,8 +584,7 @@ internal class SkidbladnirController(
     private val credentialOperations = Executors.newSingleThreadExecutor { task ->
         Thread(task, "skidbladnir-machine-store").apply { isDaemon = true }
     }
-    private val store = MachineStore(context.applicationContext, MachineStorage.production)
-    private val client = GatewayClient()
+    private val store = MachineStore(context.applicationContext, storage)
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
     private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
@@ -574,6 +603,7 @@ internal class SkidbladnirController(
     private var terminalOwner: Any? = null
     private var createdTerminalAdmission: CreatedTerminalAdmission? = null
     private var nextTerminalAttempt = 1
+    private var nextWorkingDirectoryPickerInstance = 1L
     private var pendingFleetScan: String? = null
     @Volatile private var pendingFleetPersistence: PendingFleetPersistence? = null
 
@@ -694,7 +724,10 @@ internal class SkidbladnirController(
         awaitedInventoryReads.clear()
         leaveTerminal()
         when (val current = state) {
-            is SkidbladnirUiState.Dashboard -> state = current.copy(refreshing = awaitedInventoryReads.isActive)
+            is SkidbladnirUiState.Dashboard -> state = current.copy(
+                refreshing = awaitedInventoryReads.isActive,
+                forge = current.forge?.let(::workingDirectoryPickerAfterForegroundInvalidation),
+            )
             is SkidbladnirUiState.Terminal -> publishDashboard()
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> Unit
         }
@@ -907,8 +940,175 @@ internal class SkidbladnirController(
         }
         if (!admissible) return
         state = current.copy(
-            forge = ForgeState(ForgeForm(handle, "", null, "", ""), pending = false, error = null),
+            forge = ForgeState(
+                ForgeForm(handle, "", null, "", ""),
+                pending = false,
+                failure = ForgeFailure.None,
+                surface = ForgeSurface.Form,
+            ),
         )
+    }
+
+    fun openWorkingDirectoryPicker() {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val forge = current.forge ?: return
+        val handle = forge.form.machineHandle ?: return
+        val machine = machineStates[handle] ?: return
+        val opened = openWorkingDirectoryPicker(
+            forge,
+            machine,
+            nextWorkingDirectoryPickerInstance,
+        ) ?: return
+        nextWorkingDirectoryPickerInstance += 1
+        state = current.copy(forge = opened)
+    }
+
+    fun openExactWorkingDirectoryPicker() {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val forge = current.forge ?: return
+        val handle = forge.form.machineHandle ?: return
+        val machine = machineStates[handle] ?: return
+        val opened = openExactWorkingDirectoryPicker(
+            forge,
+            machine,
+            nextWorkingDirectoryPickerInstance,
+        ) ?: return
+        nextWorkingDirectoryPickerInstance += 1
+        state = current.copy(forge = opened)
+    }
+
+    fun browseWorkingDirectoryHome() {
+        val picker = activeWorkingDirectoryPicker() ?: return
+        startWorkingDirectoryRequest(
+            browseWorkingDirectoryHome(picker, generation) ?: return,
+        )
+    }
+
+    fun openWorkingDirectoryChild(directory: HomeDirectory) {
+        val picker = activeWorkingDirectoryPicker() ?: return
+        startWorkingDirectoryRequest(
+            openWorkingDirectoryChild(picker, directory, generation) ?: return,
+        )
+    }
+
+    fun openWorkingDirectoryParent() {
+        val picker = activeWorkingDirectoryPicker() ?: return
+        startWorkingDirectoryRequest(
+            openWorkingDirectoryParent(picker, generation) ?: return,
+        )
+    }
+
+    fun retryWorkingDirectory() {
+        val picker = activeWorkingDirectoryPicker() ?: return
+        startWorkingDirectoryRequest(
+            retryWorkingDirectory(picker, generation) ?: return,
+        )
+    }
+
+    fun updateWorkingDirectoryFilter(filter: String) {
+        updateWorkingDirectoryPicker { picker -> updateWorkingDirectoryFilter(picker, filter) }
+    }
+
+    fun setWorkingDirectoryHidden(showHidden: Boolean) {
+        updateWorkingDirectoryPicker { picker -> setWorkingDirectoryHidden(picker, showHidden) }
+    }
+
+    fun updateWorkingDirectoryViewport(viewport: DirectoryViewport) {
+        updateWorkingDirectoryPicker { picker -> updateWorkingDirectoryViewport(picker, viewport) }
+    }
+
+    fun showExactWorkingDirectory() {
+        updateForge(::showExactWorkingDirectory)
+    }
+
+    fun updateExactWorkingDirectory(draft: String) {
+        updateForge { forge -> updateExactWorkingDirectory(forge, draft) }
+    }
+
+    fun chooseActiveWorkingDirectory(directory: WorkingDirectoryPath) {
+        updateForge { forge -> chooseActiveWorkingDirectory(forge, directory) }
+    }
+
+    fun useCurrentWorkingDirectory() {
+        updateForge(::useCurrentWorkingDirectory)
+    }
+
+    fun useExactWorkingDirectory() {
+        updateForge(::useExactWorkingDirectory)
+    }
+
+    fun workingDirectoryBack() {
+        updateForge(::workingDirectoryBack)
+    }
+
+    fun cancelWorkingDirectoryPicker() {
+        updateForge(::cancelWorkingDirectoryPicker)
+    }
+
+    private fun updateForge(transform: (ForgeState) -> ForgeState) {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val forge = current.forge ?: return
+        val updated = transform(forge)
+        if (updated != forge) state = current.copy(forge = updated)
+    }
+
+    private fun updateWorkingDirectoryPicker(
+        transform: (WorkingDirectoryPickerState) -> WorkingDirectoryPickerState,
+    ) {
+        updateForge { forge ->
+            val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return@updateForge forge
+            val picker = transform(surface.picker)
+            if (picker == surface.picker) forge else forge.copy(
+                surface = surface.copy(picker = picker),
+            )
+        }
+    }
+
+    private fun activeWorkingDirectoryPicker(): WorkingDirectoryPickerState? {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return null
+        return (dashboard.forge?.surface as? ForgeSurface.DirectoryPicker)?.picker
+    }
+
+    private fun startWorkingDirectoryRequest(start: WorkingDirectoryRequestStart) {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val forge = current.forge ?: return
+        val active = forge.surface as? ForgeSurface.DirectoryPicker ?: return
+        if (active.picker.instance != start.request.pickerInstance) return
+        val credential = credentials[start.request.machine.handle] ?: return
+        if (credential.machine.handle != start.request.machine.handle) return
+        state = current.copy(
+            forge = forge.copy(surface = active.copy(picker = start.picker)),
+        )
+        executeNetwork {
+            val result = client.listDirectory(
+                credential,
+                start.request.directory,
+                start.request.machine,
+            )
+            main.post {
+                if (credentials[start.request.machine.handle] != credential) return@post
+                val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
+                val currentForge = dashboard.forge ?: return@post
+                val surface = currentForge.surface as? ForgeSurface.DirectoryPicker ?: return@post
+                when (val completion = completeWorkingDirectoryRequest(
+                    picker = surface.picker,
+                    request = start.request,
+                    foregroundGeneration = generation.takeIf {
+                        isActiveGeneration(start.request.generation)
+                    },
+                    result = result,
+                )) {
+                    WorkingDirectoryCompletion.Ignored -> Unit
+                    is WorkingDirectoryCompletion.Updated -> state = dashboard.copy(
+                        forge = currentForge.copy(
+                            surface = surface.copy(picker = completion.picker),
+                        ),
+                    )
+                    is WorkingDirectoryCompletion.AccessLost ->
+                        acceptAccessFailure(start.request.machine.handle, completion.failure)
+                }
+            }
+        }
     }
 
     fun resumeForgeRecovery() {
@@ -930,20 +1130,26 @@ internal class SkidbladnirController(
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
         if (forge.pending) return
-        val updated = changeForgeDraft(forge.form, transform(forge.form))
-        if (updated.machineHandle != null && machineStates[updated.machineHandle] == null) return
-        state = current.copy(forge = forge.copy(form = updated, error = null))
+        val proposed = transform(forge.form)
+        if (proposed.machineHandle != null && machineStates[proposed.machineHandle] == null) return
+        state = current.copy(forge = updateForgeState(forge, proposed))
     }
 
     fun forge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
-        val draft = forge.form.submission() ?: return
+        val draft = forge.admissibleSubmission() ?: return
         val credential = credentials[draft.machineHandle] ?: return
         val machine = machineStates[draft.machineHandle] ?: return
         val runtime = polling[draft.machineHandle] ?: return
-        if (forge.pending || !machine.canMutate) return
-        state = current.copy(forge = forge.copy(pending = true, error = null))
+        if (!machine.canMutate) return
+        state = current.copy(
+            forge = forge.copy(
+                pending = true,
+                failure = ForgeFailure.None,
+                surface = ForgeSurface.Form,
+            ),
+        )
         val activeGeneration = generation
         runtime.inventoryOperation.submitMutation(
             onReserved = { fence -> requireInventoryRefresh(credential.machine.handle, fence) },
@@ -966,11 +1172,20 @@ internal class SkidbladnirController(
                     val activeForge = dashboard.forge ?: return@post
                     awaitInventory(credential.machine.handle, activeGeneration)
                     if (createFailureIsDefinitive(result.failure)) {
+                        val definiteFailure = when (val failure = result.failure) {
+                            GatewayFailure.Transport ->
+                                error("transport failure cannot be a definite Create rejection")
+                            is GatewayFailure.Api -> ForgeFailure.Definite(failure)
+                        }
                         clearInventoryRefresh(credential.machine.handle)
                         state = dashboard.copy(
                             machines = sortedMachineStates(),
                             refreshing = awaitedInventoryReads.isActive,
-                            forge = activeForge.copy(pending = false, error = machineError(credential.machine, result.failure)),
+                            forge = activeForge.copy(
+                                pending = false,
+                                failure = definiteFailure,
+                                surface = ForgeSurface.Form,
+                            ),
                         )
                     } else {
                         markInventoryFailed(credential.machine.handle, result.failure)
@@ -1468,7 +1683,8 @@ internal class SkidbladnirController(
     }
 
     private fun acceptAccessFailure(handle: MachineHandle, failure: GatewayFailure): Boolean {
-        val code = (failure as? GatewayFailure.Api)?.code ?: return false
+        val apiFailure = failure as? GatewayFailure.Api ?: return false
+        val code = apiFailure.code
         val access = when (code) {
             ApiErrorCode.Unauthenticated -> MachineAccess.AuthRequired
             ApiErrorCode.MachineIdentityMismatch -> MachineAccess.IdentityChanged
@@ -1490,6 +1706,7 @@ internal class SkidbladnirController(
                 handle,
                 refreshing = awaitedInventoryReads.isActive,
                 dashboardEntry = dashboardEntry,
+                failure = apiFailure,
             )
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()

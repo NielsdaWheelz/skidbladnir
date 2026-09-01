@@ -42,6 +42,14 @@ green at `69.542` seconds before the terminal-activity rebase. The rebased
 54-test release-bound platform gate is now green with encrypted pairing
 preserved and the exact public release restored. Hands-on acceptance remains
 `NOT_RUN`.
+The 2026-08-31 working-directory chooser production hard cut has all four owner
+reds recorded. On the pre-rebase feature tree, routine verification, approved
+isolated Darwin/Linux real-tmux Create regressions, and the repository-signed
+same-version S22+ owner journey and full 55-test candidate suite were green,
+with pairing unchanged and the exact production APK restored. Those proofs do
+not prove the rebased source. Rebased routine verification and the approved
+Darwin/Linux isolated-tmux gates are green; governed platform and hands-on
+gates remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -91,6 +99,7 @@ S1 tmux control plane
  -> v0 tmux-session rename delta
  -> v0 tmux terminal-activity hard cut
  -> v0 dashboard return-continuity delta
+ -> v0 working-directory chooser delta
 ```
 
 ## S1 — tmux control plane
@@ -785,6 +794,31 @@ rebased complete 54-test release-bound platform gate is now green with pairing
 preserved and the exact public release restored; the hands-on real-product
 sample remains `NOT_RUN`.
 
+## v0 working-directory chooser delta — implementation candidate
+
+Outcome: on one fresh selected machine, Forge replaces its primary raw cwd
+editor with Home, current tmux cwd choices, bounded one-level Home browsing and
+current-folder filtering, plus one secondary exact-path route. Selection fills
+the draft; Create remains separate and revalidates immediately before tmux.
+
+Hard cut: add one narrow `internal/workdir` owner and strict authenticated
+`POST /v1/directory-listings`; move cwd normalization out of sessions; add one
+closed Forge-local Android picker state; extract Forge presentation; delete the
+raw primary editor and every duplicate validator, compatibility path, fallback,
+durable state, index, crawler, cache, watcher, or filesystem mutation surface.
+
+Red: one real-temp-tree workdir proof, one normal Gateway `httptest`, one
+Android JVM protocol/state fixture matrix, and—only with separate current-turn
+device approval—one real Compose semantic journey. All four owner reds are
+recorded. Pre-rebase routine verification, approved isolated Darwin/Linux
+real-tmux Create regressions, and the repository-signed same-version S22+ owner
+journey and full 55-test candidate suite were green with exact release
+restoration and unchanged pairing. They do not prove the rebased source.
+Rebased routine verification and the approved Darwin/Linux isolated-tmux gates
+are green; governed platform and hands-on touch/large-text/TalkBack gates remain
+`NOT_RUN`. Scope and non-overlapping ownership are closed in
+[`working-directory-chooser.md`](working-directory-chooser.md).
+
 ## Status
 
 | Slice | Status |
@@ -820,4 +854,5 @@ sample remains `NOT_RUN`.
 | v0 agent interaction-state candidate | Rejected and superseded by the 2026-08-31 terminal-activity correction; its source and evidence are historical and prove no active target |
 | v0 tmux terminal-activity hard cut | Implemented and merged; owner reds, focused greens, both routine suites, release-tree Darwin isolated tmux, focused S22+ component, exact `v0.2.24` release/pin/deployment, three-host doctor, and complete 54-test release-bound S22+ platform green; Linux isolated, S22+ hands-on, provider-live, product, and second-phone acceptance `NOT_RUN` |
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase; rebased complete 54-test release-bound platform green with pairing preserved and exact release restored; hands-on acceptance `NOT_RUN` |
+| v0 working-directory chooser delta | Production hard cut implemented with all four owner reds; rebased routine verification and approved Darwin/Linux isolated-tmux gates green; pre-rebase signed same-version 55-test S22+ candidate green with exact release restoration and unchanged pairing but not proof of the rebased source; governed platform and hands-on gates `NOT_RUN` |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

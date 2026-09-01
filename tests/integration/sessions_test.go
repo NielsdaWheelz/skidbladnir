@@ -22,6 +22,7 @@ import (
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 	"github.com/creack/pty"
 )
 
@@ -54,7 +55,7 @@ func TestUnavailableProfileCommandDoesNotPreventInventory(t *testing.T) {
 	_, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    randomTmuxSocketName(t, "skid-unavailable"),
-		Home:          home,
+		Workdir:       newWorkdirFixture(t, home),
 		CataloguePath: catalogue,
 		Profiles: []agentruntime.Profile{{
 			Key:                  "future",
@@ -259,7 +260,7 @@ exec %s -S "$expected_root/owned-default.sock" "$@"
 
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      guardedTmux,
-		Home:          home,
+		Workdir:       newWorkdirFixture(t, home),
 		CataloguePath: catalogue,
 		Profiles: []agentruntime.Profile{{
 			Key:                  "personal",
@@ -447,7 +448,7 @@ exec %s "$@"
 		manager, err := sessions.New(sessions.Config{
 			TmuxPath:      wrapper,
 			SocketName:    fixture.socket,
-			Home:          fixture.home,
+			Workdir:       fixture.workingDirectories,
 			CataloguePath: fixture.cataloguePath,
 			Profiles: []agentruntime.Profile{{
 				Key:                  "personal",
@@ -630,7 +631,7 @@ exec %s "$@"
 			t.Fatalf("write concurrent-character tmux wrapper: %v", err)
 		}
 		manager, err := sessions.New(sessions.Config{
-			TmuxPath: wrapper, SocketName: fixture.socket, Home: fixture.home, CataloguePath: fixture.cataloguePath,
+			TmuxPath: wrapper, SocketName: fixture.socket, Workdir: fixture.workingDirectories, CataloguePath: fixture.cataloguePath,
 			Profiles: []agentruntime.Profile{{
 				Key: "personal", Label: "Codex · Personal", Provider: agentruntime.ProviderCodex, Command: fixture.agent,
 				Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
@@ -711,7 +712,7 @@ exec %s "$@"
 			t.Fatalf("write disappearing-character tmux wrapper: %v", err)
 		}
 		manager, err := sessions.New(sessions.Config{
-			TmuxPath: wrapper, SocketName: fixture.socket, Home: fixture.home, CataloguePath: fixture.cataloguePath,
+			TmuxPath: wrapper, SocketName: fixture.socket, Workdir: fixture.workingDirectories, CataloguePath: fixture.cataloguePath,
 			Profiles: []agentruntime.Profile{{
 				Key: "personal", Label: "Codex · Personal", Provider: agentruntime.ProviderCodex, Command: fixture.agent,
 				Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
@@ -1343,7 +1344,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    socket,
-		Home:          home,
+		Workdir:       newWorkdirFixture(t, home),
 		CataloguePath: cataloguePath,
 		Profiles: []agentruntime.Profile{{
 			Key:                  "personal",
@@ -1529,17 +1530,18 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 }
 
 type sessionFixture struct {
-	manager       *sessions.Manager
-	root          string
-	home          string
-	project       string
-	agent         string
-	cataloguePath string
-	nodePath      string
-	nodeScript    string
-	profileHomes  map[string]string
-	socket        string
-	socketPath    string
+	manager            *sessions.Manager
+	workingDirectories *workdir.Service
+	root               string
+	home               string
+	project            string
+	agent              string
+	cataloguePath      string
+	nodePath           string
+	nodeScript         string
+	profileHomes       map[string]string
+	socket             string
+	socketPath         string
 }
 
 func newSessionFixture(t *testing.T) sessionFixture {
@@ -1608,10 +1610,11 @@ exec -a "$runtime" /bin/bash -c 'while :; do /bin/sleep 300; done' "$runtime" "$
 	t.Cleanup(func() {
 		stopTestTmuxServer(t, tmuxPath, socketPath, serverIdentity)
 	})
+	workingDirectories := newWorkdirFixture(t, home)
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    socket,
-		Home:          home,
+		Workdir:       workingDirectories,
 		CataloguePath: cataloguePath,
 		Profiles: []agentruntime.Profile{
 			{Key: "personal", Label: "Codex · Personal", Provider: agentruntime.ProviderCodex, Command: agent, Environment: []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: profileHomes["personal"]}}, ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "sleep"}, {ExecutableBase: "codex"}, {ExecutableBase: "node", Argument1: nodeScript}}, Arguments: []string{yoloFlag}},
@@ -1625,17 +1628,18 @@ exec -a "$runtime" /bin/bash -c 'while :; do /bin/sleep 300; done' "$runtime" "$
 	}
 
 	return sessionFixture{
-		manager:       manager,
-		root:          root,
-		home:          home,
-		project:       project,
-		agent:         agent,
-		cataloguePath: cataloguePath,
-		nodePath:      nodePath,
-		nodeScript:    nodeScript,
-		profileHomes:  profileHomes,
-		socket:        socket,
-		socketPath:    socketPath,
+		manager:            manager,
+		workingDirectories: workingDirectories,
+		root:               root,
+		home:               home,
+		project:            project,
+		agent:              agent,
+		cataloguePath:      cataloguePath,
+		nodePath:           nodePath,
+		nodeScript:         nodeScript,
+		profileHomes:       profileHomes,
+		socket:             socket,
+		socketPath:         socketPath,
 	}
 }
 

@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"syscall"
 	"unicode/utf8"
 
@@ -16,33 +14,6 @@ import (
 var (
 	sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 )
-
-func validateWorkingDirectory(input, home string) (string, error) {
-	path, err := normalizeWorkingDirectory(input, home)
-	if err != nil {
-		return "", err
-	}
-	if err := requireSearchableDirectory(path); err != nil {
-		return "", newSessionError(ErrorWorkingDirectoryUnavailable, "That directory is unavailable.")
-	}
-	return path, nil
-}
-
-func normalizeWorkingDirectory(input, home string) (string, error) {
-	if input == "" || len(input) > 4096 || !utf8.ValidString(input) || hasTerminalControl(input) {
-		return "", newSessionError(ErrorWorkingDirectoryInvalid, "Use an absolute directory path or ~/… without terminal controls.")
-	}
-	path := input
-	if input == "~" {
-		path = home
-	} else if strings.HasPrefix(input, "~/") {
-		path = filepath.Join(home, input[2:])
-	}
-	if !filepath.IsAbs(path) {
-		return "", newSessionError(ErrorWorkingDirectoryInvalid, "Use an absolute directory path or ~/… without terminal controls.")
-	}
-	return filepath.Clean(path), nil
-}
 
 func validateTmuxName(name string) error {
 	if !sessionNamePattern.MatchString(name) {
@@ -78,29 +49,6 @@ func requireExecutable(path string) error {
 		return fmt.Errorf("is not executable: %w", err)
 	}
 	return nil
-}
-
-func requireSearchableDirectory(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return errors.New("is not a directory")
-	}
-	if err := syscall.Access(path, 1); err != nil {
-		return fmt.Errorf("is not searchable: %w", err)
-	}
-	return nil
-}
-
-func hasTerminalControl(value string) bool {
-	for _, character := range value {
-		if isC0OrC1(character) {
-			return true
-		}
-	}
-	return false
 }
 
 func isC0OrC1(value rune) bool {

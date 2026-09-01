@@ -47,24 +47,7 @@ class MainActivity : ComponentActivity() {
         scanner = FleetScanner(this)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = Gold,
-                    onPrimary = Ink,
-                    secondary = Frost,
-                    background = Ink,
-                    onBackground = Bone,
-                    surface = DeepSurface,
-                    onSurface = Bone,
-                    surfaceVariant = RaisedSurface,
-                    onSurfaceVariant = Muted,
-                    // Unread by app code; the slot stays for M3-internal error
-                    // state such as text fields (destructive-chrome.md).
-                    error = noticeToneColor(NoticeTone.Failure),
-                ),
-                shapes = NidavellirMaterialShapes,
-                typography = NidavellirTypography,
-            ) {
+            NidavellirTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -123,7 +106,30 @@ internal fun DashboardTerminalHost(
 }
 
 @Composable
-private fun SkidbladnirApp(
+internal fun NidavellirTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Gold,
+            onPrimary = Ink,
+            secondary = Frost,
+            background = Ink,
+            onBackground = Bone,
+            surface = DeepSurface,
+            onSurface = Bone,
+            surfaceVariant = RaisedSurface,
+            onSurfaceVariant = Muted,
+            // Unread by app code; the slot stays for M3-internal error
+            // state such as text fields (destructive-chrome.md).
+            error = noticeToneColor(NoticeTone.Failure),
+        ),
+        shapes = NidavellirMaterialShapes,
+        typography = NidavellirTypography,
+        content = content,
+    )
+}
+
+@Composable
+internal fun SkidbladnirApp(
     controller: SkidbladnirController,
     dashboardEntry: DashboardEntryState,
     scanner: FleetScanner,

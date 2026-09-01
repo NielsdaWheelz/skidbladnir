@@ -5,12 +5,13 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type Config struct {
 	TmuxPath      string
 	SocketName    string
-	Home          string
+	Workdir       *workdir.Service
 	CataloguePath string
 	Profiles      []agentruntime.Profile
 }

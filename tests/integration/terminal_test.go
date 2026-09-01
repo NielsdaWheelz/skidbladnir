@@ -70,6 +70,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	}
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
+		Workdir:  fixture.workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),
@@ -617,6 +618,7 @@ func newTerminalGateway(t *testing.T, fixture sessionFixture, writeGate *termina
 	}
 	server := httptest.NewUnstartedServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
+		Workdir:  fixture.workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),

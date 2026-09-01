@@ -1,8 +1,6 @@
 package dev.niels.skidbladnir
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -14,15 +12,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -31,8 +25,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,9 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,8 +62,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
@@ -97,7 +85,33 @@ internal fun DashboardScreen(
     DashboardMain(state, entry, controller, controller::verifyVisibleInventory, onOpenTerminal)
 
     state.forge?.let { forge ->
-        ForgeSheet(forge, state.machines, controller::dismissForge, controller::updateForgeDraft, controller::forge)
+        ForgeSheet(
+            state = forge,
+            machines = state.machines,
+            actions = ForgeSheetActions(
+                dismiss = controller::dismissForge,
+                updateDraft = controller::updateForgeDraft,
+                submit = controller::forge,
+                openWorkingDirectoryPicker = controller::openWorkingDirectoryPicker,
+                openExactWorkingDirectoryPicker = controller::openExactWorkingDirectoryPicker,
+                workingDirectory = WorkingDirectoryPickerActions(
+                    browseHome = controller::browseWorkingDirectoryHome,
+                    openChild = controller::openWorkingDirectoryChild,
+                    openParent = controller::openWorkingDirectoryParent,
+                    retry = controller::retryWorkingDirectory,
+                    updateFilter = controller::updateWorkingDirectoryFilter,
+                    setHidden = controller::setWorkingDirectoryHidden,
+                    updateViewport = controller::updateWorkingDirectoryViewport,
+                    showExact = controller::showExactWorkingDirectory,
+                    updateExact = controller::updateExactWorkingDirectory,
+                    chooseActive = controller::chooseActiveWorkingDirectory,
+                    useCurrent = controller::useCurrentWorkingDirectory,
+                    useExact = controller::useExactWorkingDirectory,
+                    back = controller::workingDirectoryBack,
+                    cancel = controller::cancelWorkingDirectoryPicker,
+                ),
+            ),
+        )
     }
     state.kill?.let { kill ->
         KillConfirmation(
@@ -569,130 +583,6 @@ private fun MachineStrip(
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ForgeSheet(
-    state: ForgeState,
-    machines: List<MachineState>,
-    onDismiss: () -> Unit,
-    onDraftChange: ((ForgeForm) -> ForgeForm) -> Unit,
-    onSubmit: () -> Unit,
-) {
-    val selected = state.form.machineHandle?.let { handle ->
-        machines.singleOrNull { it.machine.handle == handle }
-    }
-    val inventory = selected?.inventory?.lastSnapshot()?.inventory
-    val fieldsEnabled = !state.pending && selected?.canMutate == true
-    // The one ambient animation in the app: the sheet warms from stone to
-    // firelight once on open (design-language.md §12). A zero animator scale
-    // collapses the tween, so the sheet simply opens lit.
-    var lit by remember { mutableStateOf(false) }
-    val containerColor by animateColorAsState(
-        targetValue = if (lit) ForgeGlow else DeepSurface,
-        animationSpec = NidavellirMotion.ForgeWarmIn,
-        label = "forge warm-in",
-    )
-    LaunchedEffect(Unit) { lit = true }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        shape = NidavellirShapes.Sheet,
-        containerColor = containerColor,
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
-                .testTag("forge-sheet"),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                "Create dwarf",
-                style = MaterialTheme.typography.headlineSmall,
-                fontFamily = NidavellirType.Display,
-                fontWeight = FontWeight.SemiBold,
-            )
-            // The fret band (design-language.md §7): decorative only, drawn
-            // under the title block, Gold at the family's 40% ceiling.
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp),
-            ) {
-                drawFretBand(Gold.copy(alpha = 0.40f))
-            }
-            Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                machines.forEach { machine ->
-                    FilterChip(
-                        selected = machine.machine.handle == state.form.machineHandle,
-                        onClick = { onDraftChange { it.copy(machineHandle = machine.machine.handle) } },
-                        enabled = !state.pending && machine.canMutate,
-                        label = { Text(forgeMachineChoiceLabel(machine), fontFamily = NidavellirType.Data) },
-                        shape = NidavellirShapes.Chip,
-                        modifier = Modifier.testTag("forge-machine-${machine.machine.handle.encoded}"),
-                    )
-                }
-            }
-            if (selected == null) {
-                Text("Choose a machine to load its profiles and paths.", color = Muted)
-            } else {
-                Text("Profiles on ${selected.machine.label.text}", color = Muted, style = MaterialTheme.typography.labelLarge)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    inventory?.profiles.orEmpty().forEach { profile ->
-                        FilterChip(
-                            selected = state.form.profile == profile.key,
-                            onClick = { onDraftChange { it.copy(profile = profile.key) } },
-                            enabled = fieldsEnabled,
-                            label = { Text(profile.label, fontFamily = NidavellirType.Data) },
-                            shape = NidavellirShapes.Chip,
-                            modifier = Modifier.testTag("forge-profile-${selected.machine.handle.encoded}"),
-                        )
-                    }
-                }
-                forgeUnavailableCopy(selected)?.let {
-                    Text(
-                        it.message,
-                        color = noticeToneColor(it.tone),
-                        modifier = Modifier.testTag("forge-machine-unavailable"),
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = state.form.cwd,
-                onValueChange = { value -> onDraftChange { it.copy(cwd = value) } },
-                modifier = Modifier.fillMaxWidth().testTag("forge-cwd"), enabled = fieldsEnabled,
-                label = { Text(selected?.let { "Working directory on ${it.machine.label.text}" } ?: "Working directory") },
-                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-            )
-            OutlinedTextField(
-                value = state.form.optionalTmuxName,
-                onValueChange = { value -> onDraftChange { it.copy(optionalTmuxName = value) } },
-                modifier = Modifier.fillMaxWidth().testTag("forge-name"), enabled = fieldsEnabled,
-                label = { Text("tmux name (optional)") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
-            )
-            OutlinedTextField(
-                value = state.form.objective,
-                onValueChange = { value -> onDraftChange { it.copy(objective = value) } },
-                modifier = Modifier.fillMaxWidth().testTag("forge-objective"), enabled = fieldsEnabled,
-                label = { Text("Objective (optional)") }, minLines = 2, maxLines = 4,
-            )
-            state.error?.let { Text(it, color = noticeToneColor(NoticeTone.Failure)) }
-            Button(
-                onClick = onSubmit,
-                enabled = state.form.submission() != null && !state.pending && selected?.canMutate == true,
-                modifier = Modifier.fillMaxWidth().testTag("forge-submit"),
-            ) {
-                if (state.pending) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
-                Text(selected?.let { forgeActionLabel(it.machine.label) } ?: "Choose a machine")
-            }
         }
     }
 }

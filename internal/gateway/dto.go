@@ -15,6 +15,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type apiError struct {
@@ -30,6 +31,8 @@ var (
 	errorRequestTooLarge             = apiError{Code: "RequestTooLarge", Message: "The request is too large.", Status: http.StatusRequestEntityTooLarge, logCode: logging.ErrorRequestTooLarge}
 	errorWorkingDirectoryInvalid     = apiError{Code: "WorkingDirectoryInvalid", Message: "Choose a valid working directory.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryInvalid}
 	errorWorkingDirectoryUnavailable = apiError{Code: "WorkingDirectoryUnavailable", Message: "That directory does not exist or cannot be opened.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryUnavailable}
+	errorDirectoryListingUnavailable = apiError{Code: "DirectoryListingUnavailable", Message: "This directory cannot be browsed. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingUnavailable}
+	errorDirectoryListingTooLarge    = apiError{Code: "DirectoryListingTooLarge", Message: "This directory has too many folders to show. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingTooLarge}
 	errorProfileUnknown              = apiError{Code: "ProfileUnknown", Message: "Choose an available profile.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorProfileUnknown}
 	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
 	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
@@ -107,11 +110,113 @@ type pairingResponseDTO struct {
 	Bearer  string     `json:"bearer"`
 }
 
+type directoryListingRequest struct {
+	Directory stringField `json:"directory"`
+}
+
+func (request *directoryListingRequest) UnmarshalJSON(encoded []byte) error {
+	var members map[string]json.RawMessage
+	if err := strictjson.Decode(encoded, &members); err != nil {
+		return err
+	}
+	if len(members) != 1 || members["directory"] == nil {
+		return errors.New("directory listing request does not have its exact field")
+	}
+	var decoded directoryListingRequest
+	if err := json.Unmarshal(members["directory"], &decoded.Directory); err != nil {
+		return err
+	}
+	*request = decoded
+	return nil
+}
+
+type directoryListingResponseDTO struct {
+	Machine         machineDTO                      `json:"machine"`
+	Directory       string                          `json:"directory"`
+	ParentDirectory *string                         `json:"parentDirectory,omitempty"`
+	Children        []directoryListingEntryResponse `json:"children"`
+	Omitted         bool                            `json:"omitted"`
+}
+
+type directoryListingEntryResponse struct {
+	Directory string `json:"directory"`
+	Kind      string `json:"kind"`
+}
+
+func mapDirectoryListing(machine machineDTO, listing workdir.Listing) (directoryListingResponseDTO, error) {
+	children := listing.Children()
+	mappedChildren := make([]directoryListingEntryResponse, len(children))
+	for index, entry := range children {
+		switch entry.Kind() {
+		case workdir.Directory, workdir.SymbolicLink:
+		default:
+			return directoryListingResponseDTO{}, errors.New("invalid working directory entry kind")
+		}
+		mappedChildren[index] = directoryListingEntryResponse{
+			Directory: entry.Directory().String(),
+			Kind:      string(entry.Kind()),
+		}
+	}
+	var parentDirectory *string
+	if parent, present := listing.Parent().Value(); present {
+		value := parent.String()
+		parentDirectory = &value
+	}
+	switch listing.Omissions() {
+	case workdir.None, workdir.Present:
+	default:
+		return directoryListingResponseDTO{}, errors.New("invalid working directory omission state")
+	}
+	return directoryListingResponseDTO{
+		Machine:         machine,
+		Directory:       listing.Directory().String(),
+		ParentDirectory: parentDirectory,
+		Children:        mappedChildren,
+		Omitted:         listing.Omissions() == workdir.Present,
+	}, nil
+}
+
 type createSessionRequest struct {
 	CWD              stringField `json:"cwd"`
 	Profile          stringField `json:"profile"`
 	OptionalTmuxName stringField `json:"optionalTmuxName"`
 	Objective        stringField `json:"objective"`
+}
+
+func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
+	var members map[string]json.RawMessage
+	if err := strictjson.Decode(encoded, &members); err != nil {
+		return err
+	}
+	if len(members) < 2 || len(members) > 4 || members["cwd"] == nil || members["profile"] == nil {
+		return errors.New("create request does not have its exact required fields")
+	}
+	for member := range members {
+		switch member {
+		case "cwd", "profile", "optionalTmuxName", "objective":
+		default:
+			return errors.New("create request has an unknown field")
+		}
+	}
+	var decoded createSessionRequest
+	if err := json.Unmarshal(members["cwd"], &decoded.CWD); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(members["profile"], &decoded.Profile); err != nil {
+		return err
+	}
+	if optionalTmuxName, present := members["optionalTmuxName"]; present {
+		if err := json.Unmarshal(optionalTmuxName, &decoded.OptionalTmuxName); err != nil {
+			return err
+		}
+	}
+	if objective, present := members["objective"]; present {
+		if err := json.Unmarshal(objective, &decoded.Objective); err != nil {
+			return err
+		}
+	}
+	*request = decoded
+	return nil
 }
 
 type stringField struct {
