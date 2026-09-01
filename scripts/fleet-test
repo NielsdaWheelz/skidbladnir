@@ -251,6 +251,17 @@ printf 'qrencode stdin-only\n' >>"$FLEET_TEST_LOG"
 printf '[fleet QR]\n'
 EOF
 
+cat >"$fake_bin/shlock" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == -f && -n "${2:-}" && "${3:-}" == -p &&
+  "${4:-}" =~ ^[1-9][0-9]*$ && $# -eq 4 ]]
+(
+  set -o noclobber
+  printf '%s\n' "$4" >"$2"
+) 2>/dev/null
+EOF
+
 cat >"$fake_bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
