@@ -1,10 +1,12 @@
 # Public Fleet Distribution And Connect
 
-Status: accepted contract with source implemented and routine proofs green.
-Exact `v0.2.24` publication/pinning, three-host convergence/doctor, and the
-complete 54-test release-bound S22+ platform gate are green. Host
-reinstall/reboot acceptance, the physical product journey, and the named
-second-phone gate remain `NOT_RUN`.
+Status: accepted contract with the host-installer/operator hard-cut source
+implemented in this candidate. The complete upstream pin and host-only
+`dev-server` pin agree on exact `v0.2.25`; upstream routine proofs are green.
+Machine-local live apply, host reinstall/reboot/outage acceptance, the governed
+release-bound platform gate, the physical product journey, and the named
+second-phone gate remain `NOT_RUN` for this candidate. Retired
+convergence/doctor evidence does not prove this boundary.
 [architecture.md](architecture.md) owns the resulting product contract and
 [roadmap.md](roadmap.md) owns delivery order; this document owns the slice's
 detailed capability and work split.
@@ -18,12 +20,12 @@ Ship one public GitHub Release and one fixed personal fleet:
 
 - Android 16/API 36 phones install `skidbladnir-android.apk` from GitHub.
 - Two trusted users pair separately on the same tailnet with one fresh QR each.
-- `dev-server` pins that release and converges Devbox, MacBook, and Arch.
+- `dev-server` pins that release and applies Devbox, MacBook, and Arch.
 - Each gateway is a machine-local, auto-started service over Tailscale Serve.
-- A MacBook operator command displays one transient fleet QR per phone.
+- Upstream `scripts/fleet invite` displays one transient fleet QR per phone.
 - `Connect` scans that QR, redeems all three one-use invitations, and commits
   the exact fleet atomically.
-- After initial host convergence and Tailscale login, no process is started by
+- After initial host apply and Tailscale login, no process is started by
   hand. tmux remains the database; the phone remains a tmux client.
 
 This is a hard cut. Delete external ADB provisioning, two-machine assumptions,
@@ -40,8 +42,9 @@ Goals:
 
 1. A new trusted user installs one obvious APK, signs into Tailscale once,
    taps `Connect`, scans one QR, and sees all three machines.
-2. `dev-server converge` owns repeatable installation, configuration,
-   autostart, Serve publication, and diagnosis on all three hosts.
+2. `dev-server` owns repeatable machine-local installation, configuration,
+   autostart, and Serve publication; upstream `scripts/fleet` owns fixed-fleet
+   verification, invitation, and acceptance.
 3. Releases are signed, attributable, checksummed, version-locked, and easy to
    update without introducing an app store or hosted control plane.
 4. Setup and repair are create-only or identity-preserving, fail closed, and
@@ -67,22 +70,23 @@ Non-goals:
 GitHub Release (APK + 2 host bundles + checksums + signer fingerprint)
        | each host release.json: exact release identity
        |                                  |
-       | user installs                    | dev-server pins + converges
+       | user installs                    | dev-server pins + applies
        v                                  v
 Android phone -- Tailscale tailnet --> Devbox gateway --> local tmux
        |                             --> MacBook gateway -> local tmux
        |                             --> Arch gateway ----> local tmux
        |
-       +-- scan one QR <-- dev-server `./skidbladnir invite`
-                             | local fixed command
-                             + SSH fixed command to Devbox
-                             + SSH fixed command to Arch
+       +-- scan one QR <-- Skíðblaðnir `scripts/fleet invite`
+                             | local fixed gateway call
+                             + SSH fixed call to Devbox
+                             + SSH fixed call to Arch
 ```
 
 | Owner | Owns | Must not own |
 |---|---|---|
-| Skíðblaðnir | Android product, gateway/API, strict host-config parser, pairing protocol, release artifacts, protocol tests | Fleet topology, host service convergence, durable host secrets |
-| `dev-server` | Exact three hosts, pinned release/checksums, host configs, services, Tailscale Serve desired state, doctor, fleet-invite aggregation | App behavior, API semantics, release signing key, copied gateway source |
+| Skíðblaðnir | Android product, gateway/API, strict host-config parser, pairing protocol, release artifacts, protocol tests | Machine-local installation policy, durable host secrets |
+| `dev-server` | Pinned release/checksums, per-host configs, services, Tailscale Serve desired state, and machine-local apply | Fleet verification/invitation/acceptance, app behavior, API semantics, release signing key, copied gateway source |
+| `scripts/fleet` | Exact three-host topology, verification, invitation, apply acceptance, lifetime digests, reboot checkpoints, and bounded outage/recovery | Machine-local desired state, arbitrary hosts/commands, durable credentials |
 | Each host | One immutable machine handle and one mode-0600 bearer; local tmux truth | Other hosts' credentials or runtime state |
 | Phone | One encrypted fixed fleet and ephemeral scan/redeem state | Host administration, Tailscale credentials, terminal content outside the terminal boundary |
 
@@ -114,18 +118,31 @@ checksum verification. It creates a GitHub **draft** only. Publication is one
 manual review action; published assets are never replaced. No signing secret is
 stored in GitHub. A separate read-only post-publication gate requires the final
 release to be non-draft, non-prerelease, immutable, exact-SHA, exact-five-assets,
-and byte-valid after a fresh public download. That gate also compares the
-canonical tag, SHA, and all five downloaded-asset digests byte-for-byte with
-the committed `dev-server` release pin; partial pins cannot pass.
+and byte-valid after a fresh public download. That gate compares the canonical
+tag, SHA, and all five downloaded-asset digests byte-for-byte with this
+repository's `release-pin.json`. The product gate separately requires the
+`dev-server` pin's tag, source, and two host-bundle digests to match it. Both
+pins must be tracked and byte-exact at their declared checkout `HEAD`; a dirty
+working-tree pin is not release authority.
+
+The release-bound Android platform gate deliberately has two checkouts. The
+post-publication checkout running `scripts/test` owns the tracked final pin and
+policy. A separate clean checkout at the exact release source SHA is supplied
+in `SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` and owns every source, signing-policy,
+build-output, and test-enumeration path. This permits the immutable `v0.2.25`
+source to remain exact after the later pin commit, without a same-checkout
+fallback.
 
 Update order is hosts first, verify, then phone. Mixed versions are not
 supported. A failed host update is repinned before the phone advances; after a
 phone update, recovery is a forward release because ordinary APK downgrade is
 not supported.
 
-### 4.2 Host convergence
+### 4.2 Host apply
 
-`dev-server` pins one release tag and every asset digest. Convergence:
+`dev-server` pins one release tag, source SHA, and the Darwin/Linux host-bundle
+digests. This repository owns the complete five-asset release pin.
+Machine-local apply:
 
 1. installs the latest stable tmux, Tailscale, the pinned Skíðblaðnir release
    bundle, and `qrencode` where needed;
@@ -141,12 +158,12 @@ not supported.
    reset unrelated Serve state or expose loopback-only `/healthz`;
 6. starts/restarts only the gateway service when its owned artifact or config
    changes; and
-7. reports stable `PASS|WARN|FAIL <key> <message>` doctor facts for artifact
-   version/digest, config, secret modes, service, loopback health, Serve, tmux,
-   and Tailscale login.
+7. reports only stable mutations, deferrals, and required actions, followed by
+   one summary. Upstream `scripts/fleet verify` separately proves functional
+   health for the fixed three-host fleet.
 
 Tailscale authentication is a one-time human boundary per host and phone.
-Convergence may install and diagnose Tailscale; it must not manufacture login
+Apply may install and inspect Tailscale; it must not manufacture login
 state or claim that an installed client is connected.
 
 The gateway and `agent-hook` require `--host-config=PATH`. There are no host
@@ -161,10 +178,10 @@ defaults. JSON is decoded strictly with unknown and null members rejected:
       "key": "personal",
       "label": "Codex · Personal",
       "provider": "Codex",
-      "command": "/home/niels/bin/codex-personal",
-      "environment": [{"name": "CODEX_HOME", "value": "/home/niels/.codex-personal"}],
+      "command": "/home/niels/.local/bin/codex",
+      "environment": [{"name": "CODEX_HOME", "value": "/home/niels/.codex"}],
       "foregroundSignatures": [{"executableBase": "codex"}],
-      "arguments": ["--dangerously-bypass-approvals-and-sandbox"]
+      "arguments": []
     }
   ]
 }
@@ -173,11 +190,13 @@ defaults. JSON is decoded strictly with unknown and null members rejected:
 All paths are rendered absolute by `dev-server`; no interpolation occurs in the
 gateway. Platform is exactly `Linux|Darwin`; runtime mismatch or a
 missing/broken/noncanonical configured tmux prevents startup. `testedVersion`
-records the last acceptance target for an advisory doctor warning; a different
-canonical installed version does not block convergence, gateway startup, or the
-agent-hook adapter. Profiles reuse `agentruntime.Profile` validation. Every
+records the last acceptance target; a different canonical installed version
+does not block apply, gateway startup, the agent-hook adapter, or fleet
+verification. Profiles reuse `agentruntime.Profile` validation. Every
 host config declares exactly `personal`, `work`, `work2`, `claude-personal`, and
-`claude-work`, matching the existing `dev-server` shortcuts. Platform adapters
+`claude-work`. Personal rows use plain upstream commands; work rows use only
+their explicit account wrapper. Every row has an empty argument list, so no
+unattended permission bypass enters a gateway launch. Platform adapters
 retain only native observation/process/pressure behavior; they no longer choose
 paths, runtime versions, commands, or profiles.
 
@@ -239,16 +258,23 @@ to stderr.
 
 ### 4.4 Fleet invitation
 
-From the MacBook, `dev-server` exposes `./skidbladnir invite`. It maps the fixed
-closed host enum `Local|DevServer|Arch` to fixed local/SSH invocations; no config
-field may contain a command. Origins come from one mode-0600, gitignored
-operator manifest. Bearers never leave their host.
+From the MacBook, this repository exposes `scripts/fleet invite`. The operator
+supplies the dev-server checkout explicitly, for example
+`SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite`.
+Its release pin must be tracked and byte-exact at that checkout's `HEAD`.
+It maps only the fixed MacBook/Devbox/Arch topology to fixed local/SSH invocations; no config
+field may contain a command. Each verified host supplies its canonical origin
+from its authoritative Tailscale identity and exact private Serve mapping;
+there is no second origins manifest. Bearers never leave their host.
 
 The command requests all three invitations, awaits every result, validates the
 fixed labels/origins/handles, and emits no QR unless all succeed. It renders the
 payload to `qrencode` through stdin, never an argument or file. It persists
 nothing and prints no machine secret outside the QR. A failed/uncertain attempt
 requires a new command and new QR; there is no retry or partial reuse.
+
+Each request executes the verified `current` release generation directly, and
+each response is stream-bounded before it can enter shell memory.
 
 The QR is UTF-8 JSON, at most 4096 bytes, with no null or unknown members:
 
@@ -311,7 +337,7 @@ the red proof. Content changes after green require that owner and proof again.
 | Feature / designer | Required schema | “Good” means |
 |---|---|---|
 | GitHub release / release-content designer | version, source SHA, signer fingerprint, asset/checksum table, install steps, host-before-phone update order, known limits | exact, terse, copyable, no unsupported compatibility or CI claim |
-| Converge + doctor / operator-content designer | `PASS|WARN|FAIL`, stable key, host/component fact, one next action | distinguishes installed/running/connected; names exact failing boundary; leaks no secret or terminal content |
+| Apply + fleet verify / operator-content designer | apply mutation/action vocabulary plus stable `scripts/fleet verify` host facts | distinguishes changed, deferred, and verified state; names the exact failing boundary; leaks no secret or terminal content |
 | Fleet QR / security-content designer | title, five-minute/single-use warning, QR, phone action, regeneration action | one task per screen, no durable bearer, no token in logs/files/argv, never calls the QR permanent |
 | Android connect / product-accessibility designer | ready, external-Tailscale, scanning, connecting, success, failure, reconnect states; visible and spoken labels | literal `Connect`; truthful boundary; one recovery action; focus order and touch targets remain accessible |
 | API / API-security content designer | exhaustive code/status/frozen-message table | typed, stable, actionable where safe, non-oracular, no raw downstream error |
@@ -339,7 +365,7 @@ Delete, do not deprecate:
   `deploy/launchd`, and duplicated deployment assets after `dev-server` owns
   them;
 - `scripts/test devbox|macbook` publication ownership after equivalent
-  `dev-server` gates exist;
+  `dev-server` machine-local apply and upstream `scripts/fleet` gates exist;
 - Devbox/MacBook-size constants and the headerless inventory exception; and
 - `gatewayProfiles` plus host-specific tmux and agent-runtime fields in
   `internal/platform`.
@@ -371,9 +397,9 @@ seams. Work may be parallel only where rows do not overlap.
 | 3. Android data / Android builder | `FleetInvite.kt`, `GatewayClient.kt`, `MachineStore.kt`, focused unit/storage tests | Strict schema, redeem, atomic install/reconnect; no UI/controller edit |
 | 4. Android experience / UI builder + content designer | `FleetConnectScreen.kt`, scanner adapter, `SkidbladnirController.kt`, `DashboardScreen.kt`, `MainActivity.kt`, focused component tests | Connect/reconnect states and final copy; no storage edit |
 | 5. Release / release builder + content designer | `scripts/build`, `scripts/release`, signing/version checks, release-focused tests | Exact artifacts and draft release; no workflow/composition edit |
-| 6. Host runtime / `dev-server` builder + operator designer | `assets/skidbladnir/**`, `lib/skidbladnir.sh`, package lists, `workstation`, Ansible role/playbook, focused tests | Three strict configs, packages, service/Serve convergence, doctor |
-| 7. Fleet invite / `dev-server` builder + security designer | top-level `skidbladnir`, invite library/tests, README section | Fixed three-host aggregation and stdin-only QR |
-| 8. Integration / root | `cmd/skidbladnir/**`, Gradle dependency/version seam, `scripts/test`, deletions, cross-repo pin | Compose frozen APIs; remove old paths; no new behavior |
+| 6. Host runtime / `dev-server` builder + operator designer | external `assets/skidbladnir/**`, `lib/skidbladnir.sh`, package lists, `workstation`, `devbox`, Ansible role/playbook, focused tests | Three strict safe configs plus idempotent machine-local service/Serve apply; no fleet command |
+| 7. Fleet operator / Skíðblaðnir builder + security designer | `scripts/fleet`, `scripts/fleet-test`, operator documentation | Fixed three-host verify/invite/acceptance and stdin-only QR; no installer implementation |
+| 8. Integration / root | `cmd/skidbladnir/**`, Gradle dependency/version seam, `scripts/test`, release notes, deletions, cross-repo pin | Compose frozen APIs and gates; remove old paths; no new behavior |
 | 9. Verification / verifier | read-only | Fresh exact-SHA evidence and honest `NOT_RUN` gates |
 
 Edges sharing `cmd/skidbladnir`, Gradle, packages, or test composition are
@@ -393,9 +419,10 @@ GitHub mutation, ADB, or physical device.
 | Android persistence | a partial or pre-existing store can be overwritten; install/reconnect is one exact encrypted commit or no readable change | Android instrumentation |
 | Connect content/state | fresh install shows legacy administration; it shows the frozen Connect flow and failure saves nothing | Android component |
 | Release | an unsigned/mis-versioned/unlisted or deployment-incompatible asset can stage, or a draft can be mistaken for distribution; exact public repo, clean-main SHA/hosted verify, signer, tag/SHA, two matching bundles, checksums, then immutable public exact-five download are mandatory | routine manifest proof, pre-publication release, and post-publication read-only gates; external evidence is `NOT_RUN` without those runs |
-| `dev-server` rendering | pin/config/service drift passes; fixtures fail on drift and doctor keys are stable and credential-free | `dev-server` routine |
+| `dev-server` rendering | pin/config/service drift passes; fixtures fail on drift and apply mutation/action output is stable and credential-free | `dev-server` routine |
+| Fleet operator | a duplicate topology source or partial invitation can misroute credentials; `scripts/fleet` derives the exact fixed fleet from verified hosts, prints no partial QR, and exposes no legacy installer command | Skíðblaðnir routine |
 | Native tmux composition | fixture behavior is mistaken for tmux behavior; configured binary performs existing inventory/create/attach/kill semantics on one isolated `-L` socket | separately approved integration |
-| Host convergence | an install changes identity/session lifetime or needs a manual daemon; reinstall preserves handle/bearer/tmux lifetime and service survives login/reboot | separately approved live gate on each host |
+| Host apply | an install changes identity/session lifetime or needs a manual daemon; repeat apply preserves handle/bearer/tmux lifetime and service survives login/reboot | separately approved live gate on each host |
 | Physical product | injected scan/network is mistaken for product; signed release update preserves the fleet before reconnect, real scanner pairs, process recreation preserves routing, all hosts render, and one-host outage/recovery stays isolated while lifetime digests remain unchanged | separately approved S22+ product gate with bounded inventory-reconciliation capability for gateway-owned character metadata and stale phone shadows |
 | Second user | first phone or ADB install substitutes for distribution proof; named second API 36 phone downloads the public GitHub APK in its browser, installs an exact digest/signer match, and pairs with a new QR | separately approved second-phone gate; otherwise `NOT_RUN` |
 
@@ -412,8 +439,9 @@ The capability is complete only when:
 1. A public immutable release exposes the exact five assets; APK install/update
    preserves the signer and app data, and both host artifacts report the same
    exact tag/SHA and verified release identity.
-2. `dev-server` converges and diagnoses the pinned gateway on Devbox, MacBook,
-   and Arch without changing an existing handle, bearer, or tmux lifetime.
+2. `dev-server` applies the pinned gateway on Devbox, MacBook, and Arch without
+   changing an existing handle, bearer, or tmux lifetime; upstream
+   `scripts/fleet verify` accepts the resulting fixed fleet.
 3. A fresh phone needs only APK install, one-time Tailscale sign-in, `Connect`,
    and one fresh QR; no ADB, laptop-side secret copying, or manual process start
    is involved.
@@ -442,19 +470,20 @@ Skíðblaðnir additions/changes are limited to:
 - Android `FleetInvite`, scanner/connect UI, client/store/controller seams, and
   their focused tests;
 - Android version/scanner dependency, `scripts/build`, `scripts/release`,
-  signing/release checks, and root test composition; and
+  signing/release checks, `scripts/fleet`, its hermetic contract test, and root
+  test composition; and
 - deletion of the legacy provisioning/install/deploy surfaces named above.
 
 `dev-server` additions/changes are limited to:
 
 - `assets/skidbladnir/**`, `lib/skidbladnir.sh`, package lists, `workstation`,
-  one Ansible role/playbook inclusion, and their tests;
-- top-level `skidbladnir` operator command, one gitignored mode-0600 fleet
-  manifest, and a concise README runbook; and
-- a pinned release tag plus exact per-asset digests, never copied source or
-  committed credentials; and
-- deletion of the retired Skíðblaðnir interception branch from
-  `assets/routers/ai-router` plus its now-dead focused assertions. The general
-  AI router remains unchanged outside that hard-cut removal.
+  `devbox`, one Ansible role/playbook inclusion, and their tests;
+- a pinned release tag, source SHA, and exact two-host-bundle digests, never
+  copied source or committed credentials; and
+- explicit safe AI wrappers and host-config rows with no hidden-path routing,
+  personal alias, or unattended permission argument.
+
+`dev-server` contains no fleet operator command, origins manifest, fleet
+invitation aggregation, acceptance, reboot, outage, or compatibility fallback.
 
 Anything else is a new reviewed capability, not implementation discretion.

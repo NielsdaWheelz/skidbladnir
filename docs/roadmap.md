@@ -8,16 +8,20 @@ Devbox and MacBook publication, create-only fixed-collection provisioning,
 outage/recovery journey are green. The earlier corrective
 delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 `NOT_RUN`; federation acceptance does not substitute for them.
-The 2026-08-27 public-fleet hard cut is implemented and public. Exact-SHA
-hosted CI, immutable `v0.2.24` publication and pinning, three-host convergence,
-fleet doctor, and the complete 54-test release-bound S22+ platform gate are
-green. Product and the named second-phone gate remain `NOT_RUN`.
+The 2026-08-27 public-fleet hard cut is implemented and public. The current
+host-installer/operator candidate hard-cuts `dev-server` to machine-local apply,
+moves fixed-fleet behavior here to `scripts/fleet`, and binds the complete and
+host-only pins to exact `v0.2.25`; upstream routine proofs are green.
+Machine-local live apply, host reinstall/reboot/outage, the governed
+release-bound platform gate, product, and the named second-phone gate remain
+`NOT_RUN` for this candidate. Retired convergence/doctor evidence does not
+prove this boundary.
 The 2026-08-28 agent-identity projection hard-cut source is implemented in
 Skíðblaðnir and `dev-server`, both routine verification suites are green, and
-the approved exact-head isolated Darwin tmux integration is green. Exact
-`v0.2.24` release/pin/deployment and the current Android platform gate are
-green; Linux isolated, current Android hands-on, and the provider-live matrix
-remain `NOT_RUN`.
+the approved exact-head isolated Darwin tmux integration is green. That
+historical evidence remains valid; Linux isolated, current Android platform and
+hands-on, and the provider-live matrix remain `NOT_RUN` for the current
+host-installer/operator candidate.
 The 2026-08-28 dashboard refresh-boundary correction source is implemented;
 its owner red and focused signed same-version S22+ two-test green are recorded,
 including the zero-duration branch. Routine verification and the complete
@@ -30,11 +34,11 @@ The 2026-08-28 agent-interaction-state candidate and its routine, exact-tree
 Darwin, and signed same-version S22+ evidence were reviewed and rejected by the
 accepted 2026-08-31 tmux terminal-activity scope correction. That evidence does
 not prove the replacement. The replacement is merged in both repositories;
-owner behavioral reds, focused greens, both routine suites, release-tree
-Darwin isolated tmux, focused S22+ component, exact `v0.2.24`
-release/pin/deployment, three-host doctor, and the complete 54-test
-release-bound S22+ platform gate are green. Linux isolated tmux, S22+
-hands-on, provider-live, product, and second-phone acceptance remain `NOT_RUN`.
+its owner behavioral reds, focused greens, release-tree Darwin isolated tmux,
+and focused S22+ component evidence are recorded. Upstream routine proof is
+green on the current boundary candidate. Linux isolated tmux, the governed
+S22+ platform and hands-on gates, provider-live, product, and second-phone
+acceptance remain `NOT_RUN`.
 The 2026-08-31 dashboard-return-continuity delta source is implemented. Its
 boundary-owner and review-corrective reds are recorded; routine verification
 is green. A production-signed same-version 56-test S22+ candidate suite was
@@ -91,6 +95,7 @@ S1 tmux control plane
  -> v0 design delta D5: the Forge seal
  -> v0 dashboard pull-to-refresh delta
  -> v0 public-fleet distribution and Connect hard cut
+ -> v0 host-installer/operator boundary hard cut
  -> v0 design delta D9: detach chrome
  -> v0 dashboard card hierarchy delta
  -> v0 machine-pressure rail delta
@@ -511,13 +516,15 @@ unchanged and require no integration or live gate.
 Outcome: a trusted API-36 user installs one signed public GitHub APK, signs
 into Tailscale once, taps `Connect`, scans one five-minute QR, and receives the
 exact Devbox/MacBook/Arch fleet atomically. Public `dev-server` pins the same
-release, converges each machine-local gateway as an auto-started service, and
-generates a fresh QR per phone without copying durable bearers off-host.
+release and applies each machine-local gateway as an auto-started service;
+upstream `scripts/fleet invite` generates a fresh QR per phone without copying
+durable bearers off-host.
 
 - One release publishes the APK, Linux-amd64 and Darwin-arm64 host bundles,
   checksums, and Android signer fingerprint from one tag/SHA.
 - Deployment-owned strict host configs replace platform-derived paths and
-  expose the five existing `dev-server` Codex/Claude shortcuts on every host.
+  expose five safe profiles using plain personal commands plus explicit work
+  wrappers on every host; no unattended permission bypass is configured.
 - Each gateway owns one in-memory, five-minute, one-use pairing invitation;
   restart, replacement, or bearer rotation invalidates it.
 - Android accepts only the ordered exact-three QR, awaits all three redeems,
@@ -529,14 +536,30 @@ generates a fresh QR per phone without copying durable bearers off-host.
 
 Red: host config cannot represent Arch/all profiles; two concurrent redeems
 both win; malformed or partial fleets reach storage; partial storage becomes
-readable; a release can stage with the wrong signer/version/assets; or
-convergence changes identity/tmux lifetime or needs a manually started daemon.
+readable; a release can stage with the wrong signer/version/assets; or host
+apply changes identity/tmux lifetime or needs a manually started daemon.
 
 Gate: routine pure/service/component proofs; separately approved release,
-isolated tmux, live convergence on each host, real-scanner S22+ product, and
+isolated tmux, live apply on each host, real-scanner S22+ product, and
 named second-phone gates. Every unavailable or unapproved external boundary is
 `NOT_RUN`, never substituted by a lower proof. The detailed contract and
 non-overlapping ownership are [public-fleet-distribution.md](public-fleet-distribution.md).
+
+## v0 host-installer/operator boundary hard cut — active
+
+Outcome: `dev-server` has only machine-local `workstation apply` and
+`devbox apply`; this repository owns fleet behavior through `scripts/fleet`.
+The operator performs verification, invitation, two-apply acceptance,
+lifetime digests, reboot checkpoints, and bounded outage/recovery. It names
+one absolute dev-server checkout explicitly and uses the installer-owned
+DevServer SSH config with `ssh -F`; there is no repository-level installer
+fleet command, compatibility alias, or fallback path. Its public health and
+invitation commands are `scripts/fleet verify` and `scripts/fleet invite`, each
+with an explicit absolute `SKIDBLADNIR_DEV_SERVER_CHECKOUT`.
+
+Gate: `scripts/fleet-test` is part of routine verification. Physical host,
+reboot, outage, product, and device gates remain separately approved and are
+never inferred from the hermetic proof.
 
 ## v0 design delta D9 — detach chrome
 
@@ -613,20 +636,20 @@ focused component proof. Scope per
 
 ## v0 runtime-release policy hard cut — active
 
-Outcome: Codex, Claude, and tmux follow the latest stable release available
-through each platform's managed channel. Skíðblaðnir release artifacts remain
-immutable and digest-pinned; tool versions do not.
+Outcome: Codex and Claude use exact reviewable npm locks; tmux follows each
+platform's native stable package channel. Skíðblaðnir release artifacts remain
+immutable and digest-pinned.
 
-- Red: a changed tmux version blocks gateway or lifecycle startup; macOS pins
+- Historical red: a changed tmux version blocks gateway or lifecycle startup; macOS pins
   the Homebrew formula; Arch excludes tmux from upgrades; Devbox rejects the
   repository's current stable package; Codex convergence installs one exact npm
   version and doctor rejects any other binary or payload digest.
-- Green: the strict host config hard-cuts `tmux.version` to advisory
+- Historical green: the strict host config hard-cuts `tmux.version` to advisory
   `tmux.testedVersion`; runtime boundaries require a canonical executable but
-  do not compare versions; doctor emits a nonblocking warning on drift; native
-  package channels converge tmux and Claude to stable; npm selects
-  `@openai/codex@latest`; all Codex version and payload-digest machinery is
-  removed.
+  do not compare versions; native package channels update tmux. The later
+  host-installer/operator boundary hard cut supersedes its mutable AI-tool
+  policy: Codex and Claude now come from exact reviewable npm locks, while
+  `scripts/fleet verify` owns functional fleet verification.
 - Acceptance: routine verification in both repositories. Integration, live
   host, release publication, and device gates remain explicit `NOT_RUN` until
   separately approved.
@@ -844,6 +867,7 @@ are green; governed platform and hands-on touch/large-text/TalkBack gates remain
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27 and current complete 54-test release-bound platform green; hands-on native threshold/resistance/viewport checks `NOT_RUN` |
 | v0 public-fleet distribution and Connect hard cut | Implemented and public; exact-SHA hosted CI, immutable `v0.2.24` release/pin, three-host convergence, fleet doctor, and complete 54-test release-bound S22+ platform green; product and second-phone gates `NOT_RUN` |
+| v0 host-installer/operator boundary hard cut | Implemented in this candidate: `scripts/fleet` owns fleet workflows and its hermetic contract suite is routine; machine-local installer integration and all live boundaries are reported separately |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green, routine verification, signed same-version S22+ component placement, and complete 54-test release-bound platform green. Product and hands-on acceptance remain `NOT_RUN`. |
