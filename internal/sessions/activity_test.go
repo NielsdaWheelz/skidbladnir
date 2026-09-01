@@ -11,6 +11,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 func TestWindowActivityTimestampDerivesTheClosedSessionActivity(t *testing.T) {
@@ -317,8 +318,12 @@ exit 64
 	if err := os.WriteFile(cataloguePath, []byte(`[{"key":"norse.fixture","displayName":"Fixture"}]`), 0o600); err != nil {
 		t.Fatalf("write activity character catalogue: %v", err)
 	}
+	workingDirectories, err := workdir.New(root)
+	if err != nil {
+		t.Fatalf("construct activity working-directory service: %v", err)
+	}
 	manager, err := New(Config{
-		TmuxPath: tmuxPath, SocketName: "activity-unit", Home: root, CataloguePath: cataloguePath,
+		TmuxPath: tmuxPath, SocketName: "activity-unit", Workdir: workingDirectories, CataloguePath: cataloguePath,
 		Profiles: []agentruntime.Profile{{
 			Key: "unit", Label: "Unit", Provider: agentruntime.ProviderCodex, Command: "/bin/false",
 			Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: filepath.Join(root, "codex-home")}},

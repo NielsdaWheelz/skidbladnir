@@ -72,6 +72,9 @@ func TestRequestLogUsesRouteTemplatesAndClosedErrors(t *testing.T) {
 	if _, err := NewRequestCompleted(MethodOther, RouteUnmatched, 400, time.Millisecond, ErrorInvalidRequest); err != nil {
 		t.Fatalf("closed unsupported-method event: %v", err)
 	}
+	if _, err := NewRequestCompleted(MethodPost, RouteDirectoryListings, 422, time.Millisecond, ErrorDirectoryListingTooLarge); err != nil {
+		t.Fatalf("closed directory-listing event: %v", err)
+	}
 
 	patchEvent, err := NewRequestCompleted(MethodPatch, RouteSession, 204, time.Millisecond, ErrorNone)
 	if err != nil {

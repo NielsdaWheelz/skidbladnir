@@ -20,6 +20,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 func TestPairingHTTPServiceAllowsExactlyOneConcurrentRedemption(t *testing.T) {
@@ -236,6 +237,7 @@ type pairingHarness struct {
 	bearer     string
 	machine    machine.Handle
 	logs       *bytes.Buffer
+	workdir    *workdir.Service
 }
 
 func newPairingHarness(t *testing.T) *pairingHarness {
@@ -249,6 +251,10 @@ func newPairingHarness(t *testing.T) *pairingHarness {
 	if err != nil {
 		t.Fatalf("parse machine handle: %v", err)
 	}
+	workingDirectories, err := workdir.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("construct working directory service: %v", err)
+	}
 	harness := &pairingHarness{
 		slot:       pairing.NewSlot(),
 		verifier:   auth.FileVerifier{Path: bearerPath},
@@ -256,6 +262,7 @@ func newPairingHarness(t *testing.T) *pairingHarness {
 		bearer:     bearer,
 		machine:    handle,
 		logs:       &bytes.Buffer{},
+		workdir:    workingDirectories,
 	}
 	harness.server = harness.newServer()
 	t.Cleanup(harness.server.Close)
@@ -271,6 +278,7 @@ func (harness *pairingHarness) restart(t *testing.T) *pairingHarness {
 		bearer:     harness.bearer,
 		machine:    harness.machine,
 		logs:       &bytes.Buffer{},
+		workdir:    harness.workdir,
 	}
 	restarted.server = restarted.newServer()
 	t.Cleanup(restarted.server.Close)
@@ -279,6 +287,7 @@ func (harness *pairingHarness) restart(t *testing.T) *pairingHarness {
 
 func (harness *pairingHarness) newServer() *httptest.Server {
 	return httptest.NewServer(New(Config{
+		Workdir:  harness.workdir,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   harness.verifier,
 		Pairing:  harness.slot,

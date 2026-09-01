@@ -564,28 +564,3 @@ internal class LockedTerminalWebView(
         url.scheme == "https" && url.host == LOCAL_ASSET_HOST && url.path?.startsWith("/assets/terminal/") == true
 
 }
-
-internal fun String.utf8ByteCountWithin(maximum: Int): Int? {
-    if (length > maximum) return null
-    var byteCount = 0
-    var index = 0
-    while (index < length) {
-        val character = this[index]
-        val increment = when {
-            character.code <= 0x7f -> 1
-            character.code <= 0x7ff -> 2
-            character.isHighSurrogate() &&
-                index + 1 < length &&
-                this[index + 1].isLowSurrogate() -> {
-                index += 1
-                4
-            }
-            character.isSurrogate() -> return null
-            else -> 3
-        }
-        byteCount += increment
-        if (byteCount > maximum) return null
-        index += 1
-    }
-    return byteCount
-}

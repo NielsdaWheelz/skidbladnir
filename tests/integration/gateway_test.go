@@ -136,6 +136,7 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 	var logs bytes.Buffer
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: fixture.manager,
+		Workdir:  fixture.workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),
@@ -417,10 +418,11 @@ func assertGatewayRenameRejectsRestartedLifetime(t *testing.T) {
 	}
 	socket := randomTmuxSocketName(t, "skid-rename-restart")
 	socketPath := namedTmuxSocketPath(socket)
+	workingDirectories := newWorkdirFixture(t, home)
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    socket,
-		Home:          home,
+		Workdir:       workingDirectories,
 		CataloguePath: cataloguePath,
 		Profiles: []agentruntime.Profile{{
 			Key:                  "personal",
@@ -477,6 +479,7 @@ func assertGatewayRenameRejectsRestartedLifetime(t *testing.T) {
 	}
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: manager,
+		Workdir:  workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),
@@ -548,10 +551,11 @@ func TestAuthenticatedEmptyInventoryDoesNotStartAnIsolatedTmuxServer(t *testing.
 	if _, err := os.Lstat(socketPath); !os.IsNotExist(err) {
 		t.Fatalf("isolated tmux socket exists before empty inventory: absent=%t", os.IsNotExist(err))
 	}
+	workingDirectories := newWorkdirFixture(t, testRoot)
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      tmuxPath,
 		SocketName:    socketName,
-		Home:          testRoot,
+		Workdir:       workingDirectories,
 		CataloguePath: filepath.Join(repositoryRoot(t), "catalog", "characters.json"),
 		Profiles: []agentruntime.Profile{
 			gatewayTestProfile("personal", "Codex · Personal", "/bin/true", filepath.Join(testRoot, "codex-personal")),
@@ -567,6 +571,7 @@ func TestAuthenticatedEmptyInventoryDoesNotStartAnIsolatedTmuxServer(t *testing.
 	}
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: manager,
+		Workdir:  workingDirectories,
 		Pressure: pressure.NewMonitor(),
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),
@@ -668,7 +673,7 @@ exec "$tmux_real" "$@"
 	managerConfig := sessions.Config{
 		TmuxPath:      tmuxWrapper,
 		SocketName:    socketName,
-		Home:          testRoot,
+		Workdir:       newWorkdirFixture(t, testRoot),
 		CataloguePath: filepath.Join(repositoryRoot(t), "catalog", "characters.json"),
 		Profiles: []agentruntime.Profile{
 			gatewayTestProfile("personal", "Codex · Personal", codexAgentCommand, filepath.Join(testRoot, "personal")),
@@ -709,6 +714,7 @@ exec "$tmux_real" "$@"
 	var logs bytes.Buffer
 	server := httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: manager,
+		Workdir:  managerConfig.Workdir,
 		Pressure: monitor,
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),
@@ -835,6 +841,7 @@ exec "$tmux_real" "$@"
 	}
 	server = httptest.NewServer(gateway.New(gateway.Config{
 		Sessions: reconstructedManager,
+		Workdir:  managerConfig.Workdir,
 		Pressure: monitor,
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),

@@ -148,6 +148,8 @@ internal fun completeRenameHttp(
             ApiErrorCode.InternalError -> renameNeedsInventory(state, RENAME_OUTCOME_UNKNOWN)
             ApiErrorCode.WorkingDirectoryInvalid,
             ApiErrorCode.WorkingDirectoryUnavailable,
+            ApiErrorCode.DirectoryListingUnavailable,
+            ApiErrorCode.DirectoryListingTooLarge,
             ApiErrorCode.ProfileUnknown,
             ApiErrorCode.ObjectiveInvalid,
             ApiErrorCode.SessionGroupedConflict,

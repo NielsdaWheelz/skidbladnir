@@ -5,7 +5,8 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
-dashboard-return-continuity target. The terminal-activity replacement is
+dashboard-return-continuity target, and the 2026-08-31 working-directory
+chooser target. The terminal-activity replacement is
 merged in both repositories; exact `v0.2.24` publication, pinning, three-host
 convergence, fleet doctor, release-tree Darwin isolated tmux, and the complete
 54-test release-bound S22+ platform gate are green. Its owner behavioral reds,
@@ -386,14 +387,25 @@ notifier.
 
 The Forge first requires a machine and then renders only that machine's
 declared profiles. An explicit machine filter may preselect it; otherwise no
-machine is inferred. Changing machine clears cwd/profile and preserves
-tmux name/objective. Submission names the target and sends
+machine is inferred. A fresh machine replaces the primary cwd editor with one
+full-height, machine-bound chooser: Home, distinct current tmux cwd values,
+one-level-at-a-time Home browsing with local folder filtering, and a secondary
+exact-path page. Folder entry and explicit `Use` remain distinct; selection
+only fills the Forge draft. Listing is bounded, read-only, on demand, and
+non-persistent. It never invokes tmux, a shell, an agent, a crawler, a watcher,
+or another gateway. [`working-directory-chooser.md`](working-directory-chooser.md)
+owns the exact state, content, symlink, bound, and red/green contracts.
+
+Changing machine closes the chooser, invalidates its requests, clears
+cwd/profile, and preserves tmux name/objective. Submission names the target and sends
 `POST /v1/sessions {cwd, profile, optionalTmuxName?, objective?}` to only that
 machine:
 
-1. Cwd: ≤4,096 UTF-8 bytes, no NUL/C0/C1; optional leading `~`/`~/` expands
-   against the service UID home; must be an existing directory. Failure is
-   typed and mutates nothing.
+1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
+   U+2028/U+2029, and bidi controls are rejected. Exact `~`/`~/` expands against
+   the service UID home; all other input must be absolute. The normalized path
+   must be an existing searchable directory. Failure is typed and mutates
+   nothing.
 2. Profile must be one of the target gateway's declared allowlisted commands.
 3. Optional tmux name is 1–64 ASCII letters, digits, underscores, or hyphens;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
@@ -585,6 +597,7 @@ history item is `current`.
 | `POST /v1/pairing-invites` | Normal bearer + machine auth, empty body; replaces the in-memory slot and returns one five-minute `pairingInviteToken`, expiry, and machine |
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
 | `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; every session has required `tmuxId`, `tmuxName`, `character`, local card facts, opaque `identityToken`, optional `launchProfile`, optional exact `agent`, and required flat `activity = Active \| Quiet` |
+| `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before creating any shadow/PTY |
@@ -600,6 +613,8 @@ Errors use only `{code,message}` with this exhaustive v0 mapping:
 | `RequestTooLarge` | 413 | `The request is too large.` |
 | `WorkingDirectoryInvalid` | 422 | `Choose a valid working directory.` |
 | `WorkingDirectoryUnavailable` | 422 | `That directory does not exist or cannot be opened.` |
+| `DirectoryListingUnavailable` | 422 | `This directory cannot be browsed. Enter the path instead.` |
+| `DirectoryListingTooLarge` | 422 | `This directory has too many folders to show. Enter the path instead.` |
 | `ProfileUnknown` | 422 | `Choose an available profile.` |
 | `SessionNameInvalid` | 422 | `Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.` |
 | `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
@@ -622,8 +637,11 @@ enum values are defects, with no protocol branch or compatibility state.
   tears all three down on any close, subject to the last-link guard. No byte
   replay or gateway scrollback; slow clients disconnect and reattach fresh.
   Any WSS loss freezes terminal input behind a typed `Reconnect required`.
-- Bounds: HTTP body 64 KiB; cwd 4,096 bytes; objective 240 scalars; terminal
-  frame 64 KiB; queue 1 MiB; geometry 20–240 × 5–120. Named, not schema-frozen.
+- Bounds: HTTP body 64 KiB; cwd 4,096 bytes; one directory listing scans at
+  most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
+  encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
+  views; objective 240 scalars; terminal frame 64 KiB; queue 1 MiB; geometry
+  20–240 × 5–120. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
   providerless profile rows, `status`, `runtime`, `interaction`, `attention`,
@@ -694,8 +712,11 @@ enum values are defects, with no protocol branch or compatibility state.
   validation uses store-accepted paired handles, never current reachability or
   inventory freshness. A fresh task or explicit app-data/fleet reset starts
   `All` at top; no compatibility reader or per-filter history exists. The Forge
-  preserves invalid drafts; its cwd field disables autocorrect/smart punctuation.
-  Inventory snapshots and drafts are process-memory only.
+  preserves invalid drafts. Exact cwd entry
+  exists only on the chooser's focused URI-keyboard page with autocorrect and
+  smart punctuation disabled; IME Done uses the path and never creates a
+  session. Picker state, inventory snapshots, and drafts are process-memory
+  only.
 - Terminal: the proven harness. Vendored pinned xterm.js in a locked WebView
   (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
   network/file access; Kotlin owns WSS/auth; bearer never enters WebView).
@@ -796,6 +817,12 @@ Verification follows an 80/20 boundary shape:
 - a gateway service test owns invitation replacement/expiry/bearer-rotation
   invalidation and proves exactly one winner under concurrent redemption,
   without invoking tmux;
+- one real-temp-tree workdir proof owns cwd grammar, Home containment,
+  one-level ordering, omissions, symlinks, cancellation, and bounds; one normal
+  authenticated Gateway `httptest` owns the strict listing transport without
+  tmux; one Android JVM fixture matrix owns protocol and picker state; with
+  separately approved device capability, one production-owned Compose semantic
+  journey owns picker interaction and accessibility without posting Create;
 - the same approved isolated-socket integration runs on Linux and Darwin and
   owns real gateway + tmux list/create/activity/agent identity/attach/
   detach/exact kill plus authentication and machine-binding rejection before
@@ -917,6 +944,17 @@ transport outcome is never replayed and converges through inventory; and no
 provider rename, alias, history, second name owner, or content-bearing log is
 introduced. [`session-renaming.md`](session-renaming.md) owns the detailed
 delivery boundary and red/green proof shape.
+
+Working-directory chooser acceptance additionally requires: Home or a current
+machine-local cwd is selectable without a keyboard; a six-level Home path is
+reachable by touch with truthful machine, location, Parent, Back, and explicit
+Use semantics; exact entry still reaches every valid cwd; listing reveals only
+bounded immediate folders and never mutates; create revalidates; stale or late
+responses cannot cross machine or chooser lifetime; and no path, folder name,
+filter, payload, size, or selection enters logs or evidence. The hard cut leaves
+no primary raw cwd editor, duplicate validator, compatibility route, fallback,
+durable chooser state, or filesystem machinery. The full contract and owner
+proofs are [`working-directory-chooser.md`](working-directory-chooser.md).
 
 Distribution acceptance additionally requires: the public release has the
 five owned immutable assets and one signer; `dev-server` pins and converges the

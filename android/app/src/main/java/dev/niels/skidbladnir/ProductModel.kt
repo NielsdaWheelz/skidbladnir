@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import java.net.URI
 import java.net.URISyntaxException
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.time.DateTimeException
@@ -108,13 +109,47 @@ internal class MachineLabel private constructor(val text: String) {
     companion object {
         fun parse(candidate: String): MachineLabel? {
             if (candidate.isEmpty() || candidate.length > 40 || candidate != candidate.trim()) return null
-            if (candidate.any(Char::isISOControl)) return null
+            if (candidate.hasDisplayUnsafeCodePoint()) return null
             return MachineLabel(candidate)
         }
     }
     override fun equals(other: Any?): Boolean = other is MachineLabel && text == other.text
     override fun hashCode(): Int = text.hashCode()
     override fun toString(): String = text
+}
+
+internal fun String.hasDisplayUnsafeCodePoint(): Boolean = codePoints().anyMatch { codePoint ->
+    Character.isISOControl(codePoint) ||
+        codePoint in 0xd800..0xdfff ||
+        codePoint == 0x061c ||
+        codePoint in 0x200e..0x200f ||
+        codePoint in 0x2028..0x202e ||
+        codePoint in 0x2066..0x2069
+}
+
+internal fun String.utf8ByteCountWithin(maximum: Int): Int? {
+    if (length > maximum) return null
+    var byteCount = 0
+    var index = 0
+    while (index < length) {
+        val character = this[index]
+        val increment = when {
+            character.code <= 0x7f -> 1
+            character.code <= 0x7ff -> 2
+            character.isHighSurrogate() &&
+                index + 1 < length &&
+                this[index + 1].isLowSurrogate() -> {
+                index += 1
+                4
+            }
+            character.isSurrogate() -> return null
+            else -> 3
+        }
+        byteCount += increment
+        if (byteCount > maximum) return null
+        index += 1
+    }
+    return byteCount
 }
 
 internal class MachineOrigin private constructor(val encoded: String) {
@@ -397,6 +432,158 @@ internal data class ForgeDraft(
     val objective: String,
 )
 
+internal const val MAXIMUM_WORKING_DIRECTORY_BYTES = 4_096
+internal const val MAXIMUM_DIRECTORY_LISTING_CHILDREN = 256
+internal const val MAXIMUM_DIRECTORY_LISTING_PATH_TEXT_BYTES = 32 * 1_024
+
+internal class HomeDirectory private constructor(val encoded: String) {
+    companion object {
+        val Home = HomeDirectory("~")
+
+        fun parse(candidate: String): HomeDirectory? {
+            if (candidate == "~") return Home
+            if (!candidate.startsWith("~/") || candidate.endsWith('/')) return null
+            if (candidate.utf8ByteCountWithin(MAXIMUM_WORKING_DIRECTORY_BYTES) == null) return null
+            if (candidate.hasDisplayUnsafeCodePoint()) return null
+            val components = candidate.substring(2).split('/')
+            if (components.any { component -> component.isEmpty() || component == "." || component == ".." }) {
+                return null
+            }
+            return HomeDirectory(candidate)
+        }
+    }
+
+    val basename: String get() = if (this == Home) "~" else encoded.substringAfterLast('/')
+    val hidden: Boolean get() = this != Home && basename.startsWith('.')
+
+    internal fun parent(): ParentDirectory = if (this == Home) {
+        ParentDirectory.Absent
+    } else {
+        ParentDirectory.Available(
+            checkNotNull(parse(encoded.substringBeforeLast('/').ifEmpty { "~" })),
+        )
+    }
+
+    internal fun isDirectChildOf(parent: HomeDirectory): Boolean =
+        parent() == ParentDirectory.Available(parent)
+
+    override fun equals(other: Any?): Boolean = other is HomeDirectory && encoded == other.encoded
+    override fun hashCode(): Int = encoded.hashCode()
+    override fun toString(): String = encoded
+}
+
+internal enum class DirectoryEntryKind { Directory, SymbolicLink }
+internal sealed interface ParentDirectory {
+    data object Absent : ParentDirectory
+    data class Available(val directory: HomeDirectory) : ParentDirectory
+}
+internal enum class DirectoryOmissions { None, Present }
+internal data class DirectoryEntry(val directory: HomeDirectory, val kind: DirectoryEntryKind)
+internal data class DirectoryListing(
+    val machine: MachineSummary,
+    val directory: HomeDirectory,
+    val parent: ParentDirectory,
+    val children: List<DirectoryEntry>,
+    val omissions: DirectoryOmissions,
+)
+
+@Serializable
+private data class WireDirectoryListingResponse(
+    val machine: WireMachineSummary,
+    val directory: String,
+    val parentDirectory: String? = null,
+    val children: List<WireDirectoryEntry>,
+    val omitted: Boolean,
+)
+
+@Serializable
+private data class WireDirectoryEntry(
+    val directory: String,
+    val kind: WireDirectoryEntryKind,
+)
+
+@Serializable
+private enum class WireDirectoryEntryKind { Directory, SymbolicLink }
+
+internal fun decodeDirectoryListingResponse(
+    encoded: String,
+    expectedMachine: MachineSummary,
+): DirectoryListing = decodeProtocol {
+    val element = strictJsonObject(encoded)
+    element.requireAbsentOrNonNull(setOf("parentDirectory"))
+    val wire = productJson.decodeFromJsonElement<WireDirectoryListingResponse>(element)
+    val machineHandle = requireNotNull(MachineHandle.parse(wire.machine.handle))
+    val machine = MachineSummary(machineHandle, acceptMachinePlatform(wire.machine.platform))
+    require(machine == expectedMachine)
+    val directory = requireNotNull(HomeDirectory.parse(wire.directory))
+    val parent = wire.parentDirectory?.let { encodedParent ->
+        ParentDirectory.Available(requireNotNull(HomeDirectory.parse(encodedParent)))
+    } ?: ParentDirectory.Absent
+    require(parent == directory.parent())
+    require(wire.children.size <= MAXIMUM_DIRECTORY_LISTING_CHILDREN)
+    val children = wire.children.map { child ->
+        val childDirectory = requireNotNull(HomeDirectory.parse(child.directory))
+        require(childDirectory.isDirectChildOf(directory))
+        DirectoryEntry(
+            directory = childDirectory,
+            kind = when (child.kind) {
+                WireDirectoryEntryKind.Directory -> DirectoryEntryKind.Directory
+                WireDirectoryEntryKind.SymbolicLink -> DirectoryEntryKind.SymbolicLink
+            },
+        )
+    }
+    require(children.map(DirectoryEntry::directory).allUnique())
+    require(
+        children == children.sortedWith { first, second ->
+            compareCaseInsensitiveUtf8(first.directory.basename, second.directory.basename)
+        },
+    )
+    val pathTextBytes = sequenceOf(directory) +
+        when (parent) {
+            ParentDirectory.Absent -> emptySequence()
+            is ParentDirectory.Available -> sequenceOf(parent.directory)
+        } + children.asSequence().map(DirectoryEntry::directory)
+    require(
+        pathTextBytes.sumOf { path -> path.encoded.toByteArray(StandardCharsets.UTF_8).size } <=
+            MAXIMUM_DIRECTORY_LISTING_PATH_TEXT_BYTES,
+    )
+    DirectoryListing(
+        machine = machine,
+        directory = directory,
+        parent = parent,
+        children = children,
+        omissions = if (wire.omitted) DirectoryOmissions.Present else DirectoryOmissions.None,
+    )
+}
+
+internal fun compareCaseInsensitiveUtf8(first: String, second: String): Int {
+    val folded = compareAsciiFoldedUtf8(first, second)
+    return if (folded != 0) folded else compareUtf8(first, second)
+}
+
+private fun compareAsciiFoldedUtf8(first: String, second: String): Int {
+    val firstBytes = first.toByteArray(StandardCharsets.UTF_8)
+    val secondBytes = second.toByteArray(StandardCharsets.UTF_8)
+    for (index in 0 until minOf(firstBytes.size, secondBytes.size)) {
+        val firstByte = asciiLowercase(firstBytes[index].toInt() and 0xff)
+        val secondByte = asciiLowercase(secondBytes[index].toInt() and 0xff)
+        if (firstByte != secondByte) return firstByte - secondByte
+    }
+    return firstBytes.size - secondBytes.size
+}
+
+private fun asciiLowercase(byte: Int): Int = if (byte in 0x41..0x5a) byte + 0x20 else byte
+
+private fun compareUtf8(first: String, second: String): Int {
+    val firstBytes = first.toByteArray(StandardCharsets.UTF_8)
+    val secondBytes = second.toByteArray(StandardCharsets.UTF_8)
+    for (index in 0 until minOf(firstBytes.size, secondBytes.size)) {
+        val difference = (firstBytes[index].toInt() and 0xff) - (secondBytes[index].toInt() and 0xff)
+        if (difference != 0) return difference
+    }
+    return firstBytes.size - secondBytes.size
+}
+
 internal data class ForgeForm(
     val machineHandle: MachineHandle?,
     val cwd: String,
@@ -442,6 +629,7 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget): 
     val optionalTmuxName: String? = null,
     val objective: String? = null,
 )
+@Serializable private data class DirectoryListingRequest(val directory: String)
 @Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
 @Serializable private data class RenameSessionRequest(
     val tmuxName: String,
@@ -536,6 +724,8 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
         draft.objective.ifEmpty { null },
     ),
 )
+internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
+    productJson.encodeToString(DirectoryListingRequest(directory.encoded))
 internal fun encodeKillSessionRequest(session: TmuxSession): String =
     productJson.encodeToString(KillSessionRequest(session.tmuxName, session.identityToken))
 internal fun encodeRenameSessionRequest(target: SessionTarget, newTmuxName: String): String =
@@ -802,6 +992,7 @@ internal fun sessionPriority(machine: MachineState, session: TmuxSession): Int =
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
+    DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"), SessionGroupedConflict("SessionGroupedConflict"),
@@ -816,6 +1007,10 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.RequestTooLarge -> "The request is too large."
     ApiErrorCode.WorkingDirectoryInvalid -> "Choose a valid working directory."
     ApiErrorCode.WorkingDirectoryUnavailable -> "That directory does not exist or cannot be opened."
+    ApiErrorCode.DirectoryListingUnavailable ->
+        "This directory cannot be browsed. Enter the path instead."
+    ApiErrorCode.DirectoryListingTooLarge ->
+        "This directory has too many folders to show. Enter the path instead."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
@@ -974,7 +1169,8 @@ private fun acceptProviderSessionFacts(facts: WireProviderSessionFacts): Provide
 private fun acceptSession(session: TmuxSession) {
     require(session.tmuxId.isNotEmpty() && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
     require(session.attachedClients >= 0)
-    require(session.cwd?.isNotEmpty() != false && session.activeCommand?.isNotEmpty() != false)
+    require(session.cwd?.let(WorkingDirectoryPath::parse) != null || session.cwd == null)
+    require(session.activeCommand?.isNotEmpty() != false)
     require(session.objective?.isNotEmpty() != false)
     require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 const (
@@ -283,9 +284,13 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	if err != nil {
 		return fmt.Errorf("validate host configuration: %w", err)
 	}
+	workingDirectories, err := workdir.New(home)
+	if err != nil {
+		return fmt.Errorf("initialize working directories: %w", err)
+	}
 	manager, err := sessions.New(sessions.Config{
 		TmuxPath:      host.Tmux.Path,
-		Home:          home,
+		Workdir:       workingDirectories,
 		CataloguePath: cataloguePath,
 		Profiles:      host.Profiles,
 	})
@@ -298,6 +303,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	go monitor.Run(ctx)
 	handler := gateway.New(gateway.Config{
 		Sessions: manager,
+		Workdir:  workingDirectories,
 		Pressure: monitor,
 		Bearer:   auth.FileVerifier{Path: bearerPath},
 		Pairing:  pairing.NewSlot(),

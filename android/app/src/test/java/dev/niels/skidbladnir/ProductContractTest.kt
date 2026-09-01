@@ -68,6 +68,27 @@ class ProductContractTest {
     }
 
     @Test
+    fun `machine labels reject every display-unsafe control family at ingress`() {
+        assertEquals("Devbox", requireNotNull(MachineLabel.parse("Devbox")).text)
+
+        listOf(
+            "Dev\u0000box",
+            "Dev\u0085box",
+            "Dev\u061cbox",
+            "Dev\u200ebox",
+            "Dev\u200fbox",
+            "Dev\u2028box",
+            "Dev\u2029box",
+            "Dev\u202abox",
+            "Dev\u202ebox",
+            "Dev\u2066box",
+            "Dev\u2069box",
+        ).forEachIndexed { index, candidate ->
+            assertNull("accepted display-unsafe machine label case $index", MachineLabel.parse(candidate))
+        }
+    }
+
+    @Test
     fun `stored machine origin must already be canonical`() {
         val canonical = "https://arch.example.ts.net:8443/"
         assertEquals(canonical, requireNotNull(parseStoredMachineOrigin(canonical)).encoded)
@@ -345,16 +366,33 @@ class ProductContractTest {
             objective = "Inspect the forge",
         )
         val rejected = dashboardWithForge(
-            ForgeState(form = ForgeForm(draft), pending = false, error = "Choose a valid working directory."),
+            ForgeState(
+                form = ForgeForm(draft),
+                pending = false,
+                failure = ForgeFailure.Definite(
+                    GatewayFailure.Api(ApiErrorCode.WorkingDirectoryInvalid),
+                ),
+                surface = ForgeSurface.Form,
+            ),
         )
 
         val rejectedCarry = forgeCarry(rejected)
         assertTrue(rejectedCarry.forge?.form?.submission() == draft)
-        assertEquals("Choose a valid working directory.", rejectedCarry.forge?.error)
+        assertEquals(
+            ForgeFailure.Definite(GatewayFailure.Api(ApiErrorCode.WorkingDirectoryInvalid)),
+            rejectedCarry.forge?.failure,
+        )
         assertNull(rejectedCarry.recovery)
 
         val pendingCarry = forgeCarry(
-            dashboardWithForge(ForgeState(form = ForgeForm(draft), pending = true, error = null)),
+            dashboardWithForge(
+                ForgeState(
+                    form = ForgeForm(draft),
+                    pending = true,
+                    failure = ForgeFailure.None,
+                    surface = ForgeSurface.Form,
+                ),
+            ),
         )
         assertNull(pendingCarry.forge)
         assertTrue((pendingCarry.recovery as ForgeRecovery.RefreshRequired).draft == draft)
