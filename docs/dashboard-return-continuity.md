@@ -7,8 +7,9 @@ intended behavior. Routine verification
 is green. Before the terminal-activity rebase, the production-signed
 same-version 56-test S22+ candidate suite was green at `69.542` seconds;
 encrypted pairing was preserved and the exact public release was restored.
-That candidate does not prove the rebased tree. The rebased platform gate and
-hands-on sample remain `NOT_RUN`.
+That candidate does not prove the rebased tree. The rebased complete 54-test
+release-bound platform gate is now green with encrypted pairing preserved and
+the exact public release restored. The hands-on sample remains `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns the Android

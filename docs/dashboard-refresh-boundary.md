@@ -3,8 +3,8 @@
 Status: source implemented 2026-08-28. The focused signed same-version S22+
 owner red was observed against the retired source, and the final two-test green
 passed at system animator scale `0.0`; the exact original release and encrypted
-pairing were restored. Routine verification is green. The release-bound full
-platform gate and hands-on acceptance remain `NOT_RUN`.
+pairing were restored. Routine verification and the complete 54-test
+release-bound platform gate are green. Hands-on acceptance remains `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order;

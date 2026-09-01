@@ -2,10 +2,10 @@
 
 Status: implemented 2026-08-28. Both owner proofs were observed red; routine
 verification and the signed same-version 54-test S22+ candidate suite are green
-on the joined source tree. Pairing remained unchanged and the runner restored
-the exact previously installed app. The release-bound standard platform gate
-and hands-on Gboard, TalkBack, Switch Access, reach, haptic, and `80 x 5`
-viewport checks remain `NOT_RUN`. [`architecture.md`](architecture.md) owns
+on the joined source tree. The current complete 54-test release-bound platform
+gate is also green; pairing remained unchanged and the runner restored the
+exact public release. Hands-on Gboard, TalkBack, Switch Access, reach, haptic,
+and `80 x 5` viewport checks remain `NOT_RUN`. [`architecture.md`](architecture.md) owns
 product behavior and acceptance; this document owns the implementation
 boundary. [`roadmap.md`](roadmap.md) owns delivery status.
 
