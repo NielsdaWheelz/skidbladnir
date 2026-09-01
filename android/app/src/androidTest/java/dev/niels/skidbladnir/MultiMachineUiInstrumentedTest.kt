@@ -78,7 +78,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -1915,79 +1914,6 @@ class MultiMachineUiInstrumentedTest {
         }
     }
 
-    @Test
-    fun genuinelyUnavailablePairingDisablesMachineMutations() {
-        val arguments = InstrumentationRegistry.getArguments()
-        val encodedHandle = arguments.getString(FAILED_MACHINE)
-        assumeTrue(
-            "NOT_RUN: pass skidbladnir.failedMachine=<handle> with that real gateway unavailable",
-            !encodedHandle.isNullOrBlank(),
-        )
-        val failedHandle = requireNotNull(MachineHandle.parse(requireNotNull(encodedHandle)))
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val credentials = MachineStore(context, MachineStorage.production).read().credentials
-        assertEquals(3, credentials.size)
-        assertTrue(credentials.any { it.machine.handle == failedHandle })
-        val failed = credentials.single { it.machine.handle == failedHandle }
-        val healthy = credentials.filter { it.machine.handle != failedHandle }
-        val healthyProbe = healthy.first()
-        val readiness = context.cacheDir.resolve(OUTAGE_READY_FILE)
-        assertTrue("Could not clear stale outage coordination marker", !readiness.exists() || readiness.delete())
-        val client = GatewayClient()
-        val failedTarget = SessionTarget(
-            failedHandle,
-            requireNotNull(gatewaySuccess(client.listSessions(failed)).sessions.firstOrNull()) {
-                "Outage journey requires one pre-existing session on ${failed.machine.handle.encoded}"
-            },
-        )
-
-        try {
-            ActivityScenario.launch(MainActivity::class.java).use {
-                waitForInventoryObservation(failed, 30_000)
-                healthy.forEach { waitForInventoryObservation(it, 30_000) }
-
-                compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
-                compose.onNodeWithTag(killTag(failedTarget)).performClick()
-                compose.onNodeWithText(
-                    "Kill ${failedTarget.session.tmuxName} on ${failed.machine.label.text}?",
-                ).assertIsDisplayed()
-                compose.onNodeWithTag("kill-confirm").assertIsEnabled()
-                assertTrue("Could not publish outage coordination marker", readiness.createNewFile())
-
-                waitForDisabledTag("kill-confirm", 30_000)
-                val healthyAtOutage = requireNotNull(inventoryObservation(healthyProbe))
-                compose.waitUntil(30_000) {
-                    inventoryObservation(healthyProbe).let { it != null && it != healthyAtOutage }
-                }
-                healthy.forEach { waitForInventoryObservation(it, 30_000) }
-                compose.onNodeWithTag(filterTag(failed), useUnmergedTree = true)
-                    .assertTextContains(failed.machine.label.text, substring = true)
-                healthy.forEach { credential ->
-                    compose.onNodeWithTag(filterTag(credential), useUnmergedTree = true)
-                        .assertTextContains(credential.machine.label.text, substring = true)
-                }
-                credentials.forEach { credential ->
-                    compose.onNodeWithTag(pressureRailTag(credential)).assertDoesNotExist()
-                }
-                compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
-                compose.onNodeWithText("Cancel").assertIsEnabled().performClick()
-
-                compose.onNodeWithTag("sessions-grid").performScrollToNode(hasTestTag(cardTag(failedTarget)))
-                compose.onNodeWithTag(killTag(failedTarget)).assertIsNotEnabled()
-
-                compose.onNodeWithTag(filterTag(healthyProbe)).performClick()
-                compose.onNodeWithTag(pressureRailTag(healthyProbe)).assertIsDisplayed()
-                compose.onNodeWithTag("new-session").assertIsEnabled()
-                compose.onNodeWithTag(filterTag(failed)).performClick()
-                compose.onNodeWithTag(pressureRailTag(failed)).assertIsDisplayed()
-                compose.onNodeWithTag("new-session").assertIsNotEnabled()
-            }
-        } finally {
-            assertTrue("Could not clear outage coordination marker", !readiness.exists() || readiness.delete())
-            client.closeAsync()
-        }
-    }
-
     private fun savedRegistryPayload(payload: Bundle): Bundle {
         val owner = RegistryOwner()
         owner.restore(null)
@@ -2225,37 +2151,6 @@ class MultiMachineUiInstrumentedTest {
         node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag)?.startsWith(prefix) == true
     }
 
-    private fun waitForInventoryObservation(credential: MachineCredential, timeoutMillis: Long) {
-        compose.waitUntil(timeoutMillis) { inventoryObservation(credential) != null }
-    }
-
-    private fun waitForDisabledTag(tag: String, timeoutMillis: Long) {
-        compose.waitUntil(timeoutMillis) {
-            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().singleOrNull()
-                ?.config
-                ?.getOrNull(SemanticsProperties.Disabled) != null
-        }
-    }
-
-    /** The machine filter's own record of when its freshest inventory arrived. */
-    private fun inventoryObservation(credential: MachineCredential): Long? =
-        compose.onAllNodesWithTag(filterTag(credential), useUnmergedTree = true)
-            .fetchSemanticsNodes()
-            .singleOrNull()
-            ?.config
-            ?.getOrNull(MachineInventoryObservationKey)
-
-    private fun <Value> gatewaySuccess(result: GatewayResult<Value>): Value {
-        assertTrue("Expected gateway success", result is GatewayResult.Success)
-        return (result as GatewayResult.Success).value
-    }
-
-    private fun filterTag(credential: MachineCredential) =
-        "machine-filter-${credential.machine.handle.encoded}"
-
-    private fun pressureRailTag(credential: MachineCredential) =
-        "machine-strip-${credential.machine.handle.encoded}"
-
     private fun cardTag(target: SessionTarget) =
         "session-card-${target.machineHandle.encoded}-${target.session.tmuxId}"
 
@@ -2265,8 +2160,6 @@ class MultiMachineUiInstrumentedTest {
     private companion object {
         const val DASHBOARD_ENTRY_REGISTRY_KEY = "dev.niels.skidbladnir.dashboard-entry"
         const val CHECKING_SESSIONS = "Checking tmux sessions"
-        const val FAILED_MACHINE = "skidbladnir.failedMachine"
-        const val OUTAGE_READY_FILE = "skidbladnir-multi-machine-outage-ready"
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
         val FRESH_DASHBOARD_ENTRY = DashboardEntrySnapshot(
             schemaVersion = 1,

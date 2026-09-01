@@ -5,13 +5,15 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
-dashboard-return-continuity target. The terminal-activity replacement source is
-implemented in dedicated Skíðblaðnir and `dev-server` review trees; its owner
-behavioral reds, focused greens, and both routine verification suites are
-green. Isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin,
-deployment, provider-live, and production acceptance remain `NOT_RUN`. The
-rejected 2026-08-28 agent-interaction-state candidate and its routine, Darwin,
-and S22+ evidence do not prove this target.
+dashboard-return-continuity target. The terminal-activity replacement is
+merged in both repositories; exact `v0.2.23` publication, pinning, three-host
+convergence, and fleet doctor are green. Its owner behavioral reds, focused
+greens, both routine suites, exact-feature-tree Darwin isolated tmux gate, and
+focused S22+ component proof are recorded separately. Linux isolated tmux,
+release-bound S22+ platform and hands-on, provider-live, product, and
+second-phone acceptance remain `NOT_RUN`. The rejected 2026-08-28
+agent-interaction-state candidate and its
+evidence do not prove this target.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in

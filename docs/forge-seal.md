@@ -375,9 +375,10 @@ Closed decision 6's **zero-machine** case is also unproven. `DashboardScreen`
 takes a `SkidbladnirController`, whose constructor spawns three executors, a
 `MachineStore` over real storage, and a `GatewayClient`, and starts polling — so
 no component test can render it, and the device journeys all require provisioned
-pairings. The nearest gate is `genuinelyUnavailablePairingDisablesMachineMutations`,
-which does render a cold seal over an empty grid once the failed machine is
-filtered. The `state.machines.isEmpty()` branch itself is unreachable on a
+pairings. The nearest gate is the physical product outage journey, which
+requires the failed MacBook filter's `New dwarf` control to remain cold and
+disabled while the healthy hosts stay actionable. It does not exercise the
+zero-machine branch: `state.machines.isEmpty()` remains unreachable on a
 provisioned device and is not gated at all.
 
 Proofs 3–5 require the real Android runtime. Obtain explicit current-turn
