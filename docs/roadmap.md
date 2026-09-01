@@ -12,10 +12,11 @@ The 2026-08-27 public-fleet hard cut is implemented and public. The current
 host-installer/operator candidate hard-cuts `dev-server` to machine-local apply,
 moves fixed-fleet behavior here to `scripts/fleet`, and binds the complete and
 host-only pins to exact `v0.2.25`; upstream routine proofs are green.
-Machine-local live apply, host reinstall/reboot/outage, the governed
-release-bound platform gate, product, and the named second-phone gate remain
-`NOT_RUN` for this candidate. Retired convergence/doctor evidence does not
-prove this boundary.
+Arch machine-local apply, exact no-op, reboot persistence, and bounded
+outage/recovery are green. MacBook and Devbox machine-local live apply, the
+governed release-bound platform gate, product, and the named second-phone gate
+remain `NOT_RUN` for this candidate. Retired convergence/doctor evidence does
+not prove this boundary.
 The 2026-08-28 agent-identity projection hard-cut source is implemented in
 Skíðblaðnir and `dev-server`, both routine verification suites are green, and
 the approved exact-head isolated Darwin tmux integration is green. That
@@ -556,6 +557,9 @@ DevServer SSH config with `ssh -F`; there is no repository-level installer
 fleet command, compatibility alias, or fallback path. Its public health and
 invitation commands are `scripts/fleet verify` and `scripts/fleet invite`, each
 with an explicit absolute `SKIDBLADNIR_DEV_SERVER_CHECKOUT`.
+Arch acceptance alone opens one SSH TTY for normal operator sudo; the streamed
+internal host protocol has no apply action. The deliberate trade-off is a
+human prompt instead of blanket unattended root for the user/agent account.
 
 Gate: `scripts/fleet-test` is part of routine verification. Physical host,
 reboot, outage, product, and device gates remain separately approved and are
@@ -867,7 +871,7 @@ are green; governed platform and hands-on touch/large-text/TalkBack gates remain
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27 and current complete 54-test release-bound platform green; hands-on native threshold/resistance/viewport checks `NOT_RUN` |
 | v0 public-fleet distribution and Connect hard cut | Implemented and public; exact-SHA hosted CI, immutable `v0.2.24` release/pin, three-host convergence, fleet doctor, and complete 54-test release-bound S22+ platform green; product and second-phone gates `NOT_RUN` |
-| v0 host-installer/operator boundary hard cut | Implemented in this candidate: `scripts/fleet` owns fleet workflows and its hermetic contract suite is routine; machine-local installer integration and all live boundaries are reported separately |
+| v0 host-installer/operator boundary hard cut | Implemented in this candidate: `scripts/fleet` owns fleet workflows and its hermetic contract suite is routine; Arch apply/no-op, reboot persistence, and bounded outage/recovery are green; MacBook and Devbox live boundaries are `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green, routine verification, signed same-version S22+ component placement, and complete 54-test release-bound platform green. Product and hands-on acceptance remain `NOT_RUN`. |

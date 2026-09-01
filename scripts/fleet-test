@@ -266,11 +266,24 @@ cat >"$fake_bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 config=''
+tty_mode=none
 while [[ "${1:-}" == -* ]]; do
   case "$1" in
   -F)
     config="${2:-}"
     shift 2
+    ;;
+  -t)
+    tty_mode=request
+    shift
+    ;;
+  -tt)
+    tty_mode=force
+    shift
+    ;;
+  -T)
+    tty_mode=disabled
+    shift
     ;;
   -o) shift 2 ;;
   *) shift ;;
@@ -286,9 +299,12 @@ dev-server)
 nnandal@arch) export HOME="$FLEET_TEST_ARCH_HOME" FLEET_TEST_UNAME=Linux ;;
 *) exit 64 ;;
 esac
-printf 'ssh %s\n' "$target" >>"$FLEET_TEST_LOG"
+printf 'ssh %s tty=%s\n' "$target" "$tty_mode" >>"$FLEET_TEST_LOG"
 if [[ $# -eq 1 && "$1" == '$HOME/.local/share/skidbladnir/current/skidbladnir pairing-invite create' ]]; then
   exec "$HOME/.local/share/skidbladnir/current/skidbladnir" pairing-invite create
+fi
+if [[ $# -eq 1 ]]; then
+  exec bash -c "$1"
 fi
 exec "$@"
 EOF
@@ -762,7 +778,8 @@ capture "$fleet" accept-host devbox --allow-host-apply --allow-inventory-reconci
 
 : >"$log_file"
 capture "$fleet" accept-host arch --allow-host-apply --allow-inventory-reconciliation
-[[ "$status" == 0 && "$(grep -c '^apply arch workstation apply$' "$log_file")" == 2 ]] ||
+[[ "$status" == 0 && "$(grep -c '^apply arch workstation apply$' "$log_file")" == 2 &&
+  "$(grep -c '^ssh nnandal@arch tty=request$' "$log_file")" == 1 ]] ||
   fail 'arch host acceptance did not use the fixed remote workstation apply exactly twice'
 
 touch "$test_root/mutate-local-credential"
@@ -907,8 +924,9 @@ capture "$fleet" accept-host macbook --allow-inventory-reconciliation --allow-ho
 [[ "$status" == 64 && ! -s "$log_file" ]] ||
   fail 'reordered acceptance capabilities were accepted'
 
-# The streamed host protocol is not a second capability boundary. Every
-# mutating action must revalidate its exact transport and public capability.
+# The streamed host protocol is read-only except for the separately capability-
+# guarded reboot and service lifecycle actions. Host apply is never exposed
+# through a streamed internal route because Arch sudo is operator-interactive.
 : >"$log_file"
 capture env HOME="$arch_home" FLEET_TEST_UNAME=Linux \
   "$fleet" _host accept Linux arch --allow-host-apply --allow-inventory-reconciliation \
@@ -918,11 +936,12 @@ capture env HOME="$arch_home" FLEET_TEST_UNAME=Linux \
   fail 'direct host acceptance ran without the internal transport capability'
 capture env HOME="$arch_home" FLEET_TEST_UNAME=Linux \
   SKIDBLADNIR_FLEET_TRANSPORT=fleet-host-v1 \
+  SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE=host-acceptance-v1 \
   "$fleet" _host accept Linux arch --allow-host-apply --allow-inventory-reconciliation \
   --candidate-commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   --release-identity aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 [[ "$status" == 64 && ! -s "$log_file" ]] ||
-  fail 'direct host acceptance ran without the host-acceptance capability'
+  fail 'legacy streamed host acceptance remained reachable'
 capture env HOME="$arch_home" FLEET_TEST_UNAME=Linux \
   SKIDBLADNIR_FLEET_TRANSPORT=fleet-host-v1 \
   "$fleet" _host prepare-reboot Linux arch --allow-reboot-acceptance

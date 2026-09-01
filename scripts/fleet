@@ -632,41 +632,6 @@ verified_release_from_evidence() {
   printf '%s\n' "$release"
 }
 
-apply_arch_twice() {
-  local expected_commit="$1"
-  local checkout="$HOME/src/personal/dev-server"
-  local workstation="$HOME/src/personal/dev-server/workstation"
-  [[ -f "$workstation" && ! -L "$workstation" && -x "$workstation" ]] ||
-    die 'arch dev-server workstation checkout is unavailable'
-  [[ "$(candidate_checkout_commit "$checkout")" == "$expected_commit" ]] ||
-    die 'arch dev-server checkout does not match the accepted candidate'
-  apply_and_require_noop "$workstation" arch
-  [[ "$(candidate_checkout_commit "$checkout")" == "$expected_commit" ]] ||
-    die 'arch dev-server checkout changed during acceptance'
-}
-
-accept_arch() {
-  local expected_commit="$1"
-  local expected_release="$2"
-  local checkout="$HOME/src/personal/dev-server"
-  local before after evidence observed_release
-  [[ "$(candidate_release_digest "$checkout" Linux)" == "$expected_release" ]] ||
-    die 'arch release pin does not match the accepted candidate'
-  before="$(host_snapshot Linux arch)" || die 'arch acceptance precondition failed'
-  apply_arch_twice "$expected_commit"
-  evidence="$(verify_host Linux arch)" || die 'arch gateway verification failed after apply'
-  observed_release="$(verified_release_from_evidence "$evidence")" ||
-    die 'arch gateway returned invalid release evidence'
-  [[ "$observed_release" == "$expected_release" ]] ||
-    die 'arch active release does not match the accepted candidate'
-  after="$(host_snapshot Linux arch)" || die 'arch acceptance postcondition failed'
-  [[ "$after" == "$before" ]] || {
-    [[ "${after%%$'\t'*}" == "${before%%$'\t'*}" ]] || die 'arch credentials changed during acceptance'
-    die 'arch reconciled tmux lifetime changed during acceptance'
-  }
-  printf 'PASS  fleet.accept-host arch identity-preserving apply completed twice; credentials, lifetime, and service intent hold\n'
-}
-
 change_service() {
   local action="$1"
   local platform="$2"
@@ -739,15 +704,6 @@ host_main() {
     [[ $# -eq 3 ]] || return 64
     host_snapshot "$platform" "$label"
     ;;
-  accept)
-    [[ $# -eq 9 && "$platform:$label" == Linux:arch &&
-      "${4:-}" == --allow-host-apply &&
-      "${5:-}" == --allow-inventory-reconciliation &&
-      "${6:-}" == --candidate-commit && "${7:-}" =~ ^[0-9a-f]{40}$ &&
-      "${8:-}" == --release-identity && "${9:-}" =~ ^[0-9a-f]{64}$ &&
-      "${SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE:-}" == host-acceptance-v1 ]] || return 64
-    accept_arch "$7" "$9"
-    ;;
   prepare-reboot | verify-reboot)
     [[ $# -eq 4 && "${4:-}" == --allow-reboot-acceptance &&
       "${SKIDBLADNIR_ALLOW_REBOOT_ACCEPTANCE:-}" == reboot-acceptance-v1 ]] || return 64
@@ -782,6 +738,11 @@ fleet_ssh() {
   esac
 }
 
+fleet_ssh_interactive_arch() {
+  ssh -t -o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 \
+    nnandal@arch "$@"
+}
+
 remote_host() {
   local action="$1"
   local label="$2"
@@ -792,17 +753,6 @@ remote_host() {
     [[ $# -eq 0 ]] || return 64
     fleet_ssh "$label" env SKIDBLADNIR_FLEET_TRANSPORT=fleet-host-v1 \
       bash -s -- _host "$action" Linux "$label" <"$fleet_source"
-    ;;
-  accept)
-    [[ $# -eq 6 && "${1:-}" == --allow-host-apply &&
-      "${2:-}" == --allow-inventory-reconciliation &&
-      "${3:-}" == --candidate-commit && "${4:-}" =~ ^[0-9a-f]{40}$ &&
-      "${5:-}" == --release-identity && "${6:-}" =~ ^[0-9a-f]{64}$ &&
-      "${SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE:-}" == host-acceptance-v1 ]] || return 64
-    fleet_ssh "$label" env \
-      SKIDBLADNIR_FLEET_TRANSPORT=fleet-host-v1 \
-      SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE=host-acceptance-v1 \
-      bash -s -- _host accept Linux "$label" "$@" <"$fleet_source"
     ;;
   prepare-reboot | verify-reboot)
     [[ $# -eq 1 && "${1:-}" == --allow-reboot-acceptance &&
@@ -822,6 +772,59 @@ remote_host() {
     ;;
   *) return 64 ;;
   esac
+}
+
+apply_arch_twice_interactively() {
+  local expected_commit="$1"
+  local script encoded remote_command
+  [[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]] || return 64
+  require_command base64
+  script="$(cat <<'EOF'
+set -euo pipefail
+expected_commit="$1"
+checkout="$HOME/src/personal/dev-server"
+workstation="$checkout/workstation"
+die() {
+  printf 'error: %s\n' "$1" >&2
+  exit 1
+}
+[[ -d "$checkout" && ! -L "$checkout" &&
+  -f "$workstation" && ! -L "$workstation" && -x "$workstation" ]] ||
+  die 'arch dev-server workstation checkout is unavailable'
+actual_commit="$(git -C "$checkout" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" ||
+  die 'arch dev-server checkout is not a Git commit'
+[[ "$actual_commit" == "$expected_commit" ]] ||
+  die 'arch dev-server checkout does not match the accepted candidate'
+status="$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)" ||
+  die 'could not inspect the arch dev-server checkout'
+[[ -z "$status" ]] || die 'arch dev-server checkout must be clean for acceptance'
+"$workstation" apply
+second="$("$workstation" apply)" || {
+  printf '%s\n' "$second"
+  die 'arch second apply failed'
+}
+printf '%s\n' "$second"
+result_lines="$(printf '%s\n' "$second" | grep -E \
+  '^(INSTALLED|UPDATED|CHANGED|STARTED|RELOADED|RESTARTED|DEFERRED|ACTION|UP TO DATE|ERROR)  ' || true)"
+[[ "$result_lines" == 'UP TO DATE  arch' ]] ||
+  die 'arch second apply was not an exact no-op'
+actual_commit="$(git -C "$checkout" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" ||
+  die 'arch dev-server checkout changed during acceptance'
+[[ "$actual_commit" == "$expected_commit" ]] ||
+  die 'arch dev-server checkout changed during acceptance'
+status="$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)" ||
+  die 'could not inspect the arch dev-server checkout after apply'
+[[ -z "$status" ]] || die 'arch dev-server checkout changed during acceptance'
+EOF
+)"
+  encoded="$(printf '%s' "$script" | base64 | tr -d '\r\n')" ||
+    die 'could not encode the fixed Arch acceptance command'
+  [[ "$encoded" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] ||
+    die 'fixed Arch acceptance command encoding is invalid'
+  printf -v remote_command \
+    "bash -c \"\$(printf '%%s' '%s' | base64 --decode)\" bash '%s'" \
+    "$encoded" "$expected_commit"
+  fleet_ssh_interactive_arch "$remote_command"
 }
 
 fleet_evidence() {
@@ -1013,10 +1016,10 @@ accept_host() {
     after="$(remote_host snapshot devbox)" || die 'devbox acceptance postcondition failed'
     ;;
   arch)
-    remote_host accept arch \
-      --allow-host-apply --allow-inventory-reconciliation \
-      --candidate-commit "$expected_commit" --release-identity "$expected_release"
-    return
+    before="$(remote_host snapshot arch)" || die 'arch acceptance precondition failed'
+    apply_arch_twice_interactively "$expected_commit" || die 'arch interactive apply failed'
+    evidence="$(remote_host verify arch)" || die 'arch gateway verification failed after apply'
+    after="$(remote_host snapshot arch)" || die 'arch acceptance postcondition failed'
     ;;
   *) return 64 ;;
   esac
@@ -1051,7 +1054,8 @@ Commands:
 verify, invite, and accept-host require SKIDBLADNIR_DEV_SERVER_CHECKOUT naming
 the exact local dev-server checkout with its release pin tracked and byte-exact
 at HEAD. accept-host also requires the whole candidate checkout to be clean and
-SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE=host-acceptance-v1.
+SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE=host-acceptance-v1. Arch accept-host must run
+from an attached operator terminal because normal sudo may prompt there.
 prepare-reboot and verify-reboot require
 SKIDBLADNIR_ALLOW_REBOOT_ACCEPTANCE=reboot-acceptance-v1.
 outage and recover require SKIDBLADNIR_ALLOW_ONE_HOST_OUTAGE=one-host-outage-v1.

@@ -3,9 +3,10 @@
 Status: accepted contract with the host-installer/operator hard-cut source
 implemented in this candidate. The complete upstream pin and host-only
 `dev-server` pin agree on exact `v0.2.25`; upstream routine proofs are green.
-Machine-local live apply, host reinstall/reboot/outage acceptance, the governed
-release-bound platform gate, the physical product journey, and the named
-second-phone gate remain `NOT_RUN` for this candidate. Retired
+Arch machine-local apply, exact no-op, reboot persistence, and bounded
+outage/recovery are green. MacBook and Devbox machine-local live apply, the
+governed release-bound platform gate, the physical product journey, and the
+named second-phone gate remain `NOT_RUN` for this candidate. Retired
 convergence/doctor evidence does not prove this boundary.
 [architecture.md](architecture.md) owns the resulting product contract and
 [roadmap.md](roadmap.md) owns delivery order; this document owns the slice's
@@ -92,6 +93,10 @@ Android phone -- Tailscale tailnet --> Devbox gateway --> local tmux
 
 There is no runtime dependency on GitHub, `dev-server`, the MacBook operator,
 or another gateway after pairing.
+
+Arch apply acceptance uses one attached SSH TTY and normal operator sudo. The
+streamed internal host protocol has no apply action; unattended user/agent root
+is not an accepted automation dependency.
 
 ## 4. Capability Contract
 

@@ -10,8 +10,9 @@ chooser target. The terminal-activity replacement and exact `v0.2.25` source
 are merged. The current host-installer/operator candidate hard-cuts
 `dev-server` to machine-local apply and moves fixed-fleet behavior here to
 `scripts/fleet`; the complete and host-only release pins agree on exact
-`v0.2.25`, and upstream routine proofs are green. Machine-local live apply,
-reinstall, reboot, and outage acceptance, Linux isolated tmux, the governed
+`v0.2.25`, and upstream routine proofs are green. Arch machine-local apply,
+exact no-op, reboot persistence, and bounded outage/recovery are green.
+MacBook and Devbox machine-local live apply, Linux isolated tmux, the governed
 S22+ platform and hands-on gates, provider-live, product, and second-phone
 acceptance remain `NOT_RUN` for this candidate. Retired convergence/doctor
 evidence and the rejected 2026-08-28 agent-interaction-state candidate do not
@@ -591,6 +592,11 @@ history item is `current`.
   the installed launcher and service definition against the installer's
   durable `skid.unit.sha256` intent, plus the exact loaded service path, before
   any lifecycle mutation.
+  Arch apply acceptance opens one SSH TTY for normal operator sudo, validates
+  the exact clean remote candidate before and after two applies, and requires
+  the second apply to be an exact no-op. The streamed internal host protocol
+  exposes no apply action. Trade-off: Arch acceptance is deliberately
+  interactive rather than granting the user/agent account unattended root.
   Machine-local installers own no fleet command or acceptance fallback.
 - Host apply atomically initializes and then preserves
   `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The
