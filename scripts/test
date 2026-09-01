@@ -356,6 +356,105 @@ android_platform_helper_self_test() (
     *) printf 'Unexpected Android platform policy fixture path\n' >&2; return 1 ;;
   esac
   trap '/bin/rm -R -- "$fixture"' EXIT HUP INT TERM
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (2 tests)' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/complete-instrumentation"
+  assert_complete_instrumentation \
+    android-platform-fixture 2 0 "$fixture/complete-instrumentation" || {
+    printf 'Android platform policy rejected a complete instrumentation run\n' >&2
+    return 1
+  }
+  for rejected_status in -4 -3 -2 -1 2; do
+    printf '%s\n' \
+      'INSTRUMENTATION_STATUS_CODE: 1' \
+      "INSTRUMENTATION_STATUS_CODE: $rejected_status" \
+      'OK (1 test)' \
+      'INSTRUMENTATION_CODE: -1' >"$fixture/rejected-instrumentation"
+    if assert_complete_instrumentation \
+      android-platform-fixture 1 0 "$fixture/rejected-instrumentation" >/dev/null 2>&1; then
+      printf 'Android platform policy accepted terminal status %s\n' "$rejected_status" >&2
+      return 1
+    fi
+  done
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'OK (1 test)' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/incomplete-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/incomplete-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted a missing test outcome\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (1 test)' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/extra-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/extra-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted an extra test outcome\n' >&2
+    return 1
+  fi
+  if assert_complete_instrumentation \
+    android-platform-fixture 2 1 "$fixture/complete-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted a failed instrumentation process\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/missing-summary-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/missing-summary-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted a missing final summary\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (1 test)' \
+    'OK (1 test)' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/duplicate-summary-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/duplicate-summary-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted duplicate final summaries\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (1 test)' >"$fixture/missing-completion-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/missing-completion-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted a missing instrumentation completion code\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (1 test)' \
+    'INSTRUMENTATION_CODE: 0' >"$fixture/wrong-completion-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/wrong-completion-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted a wrong instrumentation completion code\n' >&2
+    return 1
+  fi
+  printf '%s\n' \
+    'INSTRUMENTATION_STATUS_CODE: 1' \
+    'INSTRUMENTATION_STATUS_CODE: 0' \
+    'OK (1 test)' \
+    'INSTRUMENTATION_CODE: -1' \
+    'INSTRUMENTATION_CODE: -1' >"$fixture/duplicate-completion-instrumentation"
+  if assert_complete_instrumentation \
+    android-platform-fixture 1 0 "$fixture/duplicate-completion-instrumentation" >/dev/null 2>&1; then
+    printf 'Android platform policy accepted duplicate instrumentation completion codes\n' >&2
+    return 1
+  fi
   snapshot_probe="$(android_platform_create_release_snapshot)"
   snapshot_probe_dir="${snapshot_probe%/*}"
   [[ "$snapshot_probe" == "$snapshot_probe_dir/release.apk" &&
@@ -685,16 +784,34 @@ run_bounded_to_file() {
     "$@"
 }
 
-assert_one_executed_test() {
+assert_complete_instrumentation() {
   local proof_name="$1"
-  local output_file="$2"
+  local expected_tests="$2"
+  local command_status="$3"
+  local output_file="$4"
+  local status_events
+  local started_tests
   local passed_tests
   local unpassed_tests
+  local final_summaries
+  local completion_events
+  local successful_completions
+  status_events="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE:' "$output_file" || true)"
+  started_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: 1[[:space:]]*$' "$output_file" || true)"
   passed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: 0[[:space:]]*$' "$output_file" || true)"
   unpassed_tests="$(grep -c -E '^INSTRUMENTATION_STATUS_CODE: -[0-9]+[[:space:]]*$' "$output_file" || true)"
-  if [[ "$passed_tests" -ne 1 || "$unpassed_tests" -ne 0 ]]; then
-    printf '%s did not execute exactly one passing test (passed %s, not passed %s)\n' \
-      "$proof_name" "$passed_tests" "$unpassed_tests" >&2
+  final_summaries="$(grep -c -E "^OK \(${expected_tests} tests?\)[[:space:]]*$" "$output_file" || true)"
+  completion_events="$(grep -c -E '^INSTRUMENTATION_CODE:' "$output_file" || true)"
+  successful_completions="$(grep -c -E '^INSTRUMENTATION_CODE: -1[[:space:]]*$' "$output_file" || true)"
+  if [[ "$command_status" -ne 0 || "$status_events" -ne $((expected_tests * 2)) ||
+    "$started_tests" -ne "$expected_tests" ||
+    "$passed_tests" -ne "$expected_tests" || "$unpassed_tests" -ne 0 ||
+    "$final_summaries" -ne 1 || "$completion_events" -ne 1 ||
+    "$successful_completions" -ne 1 ]]; then
+    printf '%s did not execute exactly %s passing tests (status %s, events %s, started %s, passed %s, not passed %s, summaries %s, completions %s, successful completions %s)\n' \
+      "$proof_name" "$expected_tests" "$command_status" "$status_events" "$started_tests" \
+      "$passed_tests" "$unpassed_tests" "$final_summaries" "$completion_events" \
+      "$successful_completions" >&2
     return 1
   fi
 }
@@ -1181,22 +1298,23 @@ case "$gate" in
     instrumentation_status=0
     platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
     run_bounded_to_file "$android_instrumentation_timeout_seconds" "$platform_instrumentation_output_file" \
-      "$adb" -s "$serial" shell am instrument -w \
+      "$adb" -s "$serial" shell am instrument -r -w \
       "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
     instrumentation_output="$(<"$platform_instrumentation_output_file")"
-    /bin/unlink "$platform_instrumentation_output_file"
-    platform_instrumentation_output_file=''
     printf '%s\n' "$instrumentation_output"
     # Pin discovery to the checked-in suite so partial instrumentation cannot
     # false-green as a complete platform gate.
     platform_expected_tests="$(grep -c '@Test' \
       "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt | \
       awk -F: '{ total += $2 } END { print total }')"
-    if [[ "$instrumentation_status" -ne 0 ]] ||
-      ! grep -Eq "^OK \(${platform_expected_tests} tests?\)$" <<<"$instrumentation_output"; then
-      printf 'Android instrumentation failed or ran fewer than %s tests\n' "$platform_expected_tests" >&2
+    if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
+      "$instrumentation_status" "$platform_instrumentation_output_file"; then
+      printf 'Android instrumentation failed, skipped, or did not pass exactly %s tests\n' \
+        "$platform_expected_tests" >&2
       exit 1
     fi
+    /bin/unlink "$platform_instrumentation_output_file"
+    platform_instrumentation_output_file=''
     current_pairing_digest="$(
       "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
         content_digest
@@ -1389,10 +1507,12 @@ case "$gate" in
     physical_confirmation PROCESS_RESTORED \
       'Confirm that process recreation restores the same three fleet identities and machine-bound routing; All has no pressure rails, and each machine filter reveals only its own rail.'
 
+    physical_confirmation OUTAGE_ARMED \
+      'Select MacBook, open one existing session Kill confirmation, verify Confirm is enabled, and leave the confirmation open without activating it.'
     service_restore_required=1
     run one-host-outage "$fleet_operator" outage Local
-    physical_confirmation OUTAGE_ISOLATED \
-      'Confirm that All still has no pressure rails and keeps the MacBook exception notice visible. Select MacBook to confirm pressure becomes stale with retained evidence or unavailable with a header-only rail; select Arch and Devbox to confirm each remains fresh and renders only its own pressure.'
+    physical_confirmation OUTAGE_FENCED \
+      'Confirm the open MacBook Kill action becomes disabled while Cancel remains available, then dismiss it. All keeps the MacBook exception notice and no pressure rails; MacBook Kill stays disabled and New dwarf stays visually cold and disabled with stale retained pressure or a header-only unavailable rail; Arch and Devbox remain fresh, actionable, and render only their own pressure.'
     run one-host-recovery "$fleet_operator" recover Local
     service_restore_required=''
     run recovered-fleet-doctor "$fleet_operator" doctor

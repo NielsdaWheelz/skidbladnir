@@ -8,30 +8,31 @@ Devbox and MacBook publication, create-only fixed-collection provisioning,
 outage/recovery journey are green. The earlier corrective
 delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 `NOT_RUN`; federation acceptance does not substitute for them.
-The 2026-08-27 public-fleet hard-cut source is implemented in Skíðblaðnir and
-`dev-server`, and both routine verification suites are green. Public-repository
-conversion, exact-SHA hosted CI, signed release, immutable publication,
-host/tmux acceptance, and both physical-phone gates remain `NOT_RUN`.
+The 2026-08-27 public-fleet hard cut is implemented and public. Exact-SHA
+hosted CI, immutable `v0.2.23` publication and pinning, three-host convergence,
+and fleet doctor are green. Current release-bound platform/product and the
+named second-phone gate remain `NOT_RUN`.
 The 2026-08-28 agent-identity projection hard-cut source is implemented in
 Skíðblaðnir and `dev-server`, both routine verification suites are green, and
-the approved exact-head isolated Darwin tmux integration is green. Android
-platform, exact release/pin/deployment, and the provider-live matrix remain
-`NOT_RUN`.
+the approved exact-head isolated Darwin tmux integration is green. Exact
+`v0.2.23` release/pin/deployment is green; Linux isolated, current Android
+platform/hands-on, and the provider-live matrix remain `NOT_RUN`.
 The 2026-08-28 dashboard refresh-boundary correction source is implemented;
 its owner red and focused signed same-version S22+ two-test green are recorded,
 including the zero-duration branch. Routine verification is green. The
 release-bound full platform gate and hands-on acceptance remain `NOT_RUN`.
-The 2026-08-28 tmux-session rename delta source is implemented under its
-accepted contract. Its owner reds are recorded; gate evidence is reported only
-against the exact tested SHA, with unavailable boundaries kept `NOT_RUN`.
+The 2026-08-28 tmux-session rename delta is implemented, released, and deployed
+under its accepted contract. Its owner reds and exact-tree gates are recorded;
+unavailable boundaries remain `NOT_RUN`.
 The 2026-08-28 agent-interaction-state candidate and its routine, exact-tree
 Darwin, and signed same-version S22+ evidence were reviewed and rejected by the
 accepted 2026-08-31 tmux terminal-activity scope correction. That evidence does
-not prove the replacement. The replacement source is implemented in dedicated
-Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused
-greens, and both routine verification suites are green. Linux/Darwin isolated
-tmux integration, Android component/hands-on, exact release/pin/deployment,
-provider-live, and production acceptance remain `NOT_RUN`.
+not prove the replacement. The replacement is merged in both repositories;
+owner behavioral reds, focused greens, both routine suites, exact-feature-tree
+Darwin isolated tmux, focused S22+ component, exact `v0.2.23`
+release/pin/deployment, and three-host doctor are green. Linux isolated tmux,
+release-bound S22+ platform and hands-on, provider-live, product, and
+second-phone acceptance remain `NOT_RUN`.
 The 2026-08-31 dashboard-return-continuity delta source is implemented. Its
 boundary-owner and review-corrective reds are recorded; routine verification
 is green. A production-signed same-version 56-test S22+ candidate suite was
@@ -49,6 +50,9 @@ observed before implementation, and real-boundary tests.
 Completed slice text records its historical delivery point; a later hard cut
 supersedes conflicting behavior without rewriting that evidence as if it had
 always existed.
+Retired agent lifecycle/status/attention terms and enum names inside
+completed-slice or red/green delivery records are historical only. The
+terminal-activity section and architecture own current behavior.
 No proof ledger, evidence digests, or acceptance matrix — `NOT_RUN` honesty
 and the closed logger survive; the ceremony does not.
 
@@ -636,7 +640,7 @@ less opaque or adding communication.
 - Deployment hard-cuts the Codex hook files and loads one owned Claude
   SessionStart plugin through the existing router; it does not overwrite
   Claude user settings, and raw-binary launches remain unregistered.
-- Inventory observes foreground once for status and identity. Missing or stale
+- Inventory observes foreground once for optional agent identity. Missing or stale
   hooks omit registered facts; `@skid_profile` remains only the launch fact and
   never fills an unknown runtime profile.
 - No provider API, transcript/config-store parsing, second registry, background
@@ -677,7 +681,7 @@ restored the exact original release and preserved encrypted pairing. Routine
 verification is green; the release-bound full platform and hands-on gates
 remain `NOT_RUN`.
 
-## v0 tmux-session rename delta — source implemented
+## v0 tmux-session rename delta — implemented, released, and deployed
 
 Outcome: from an active Terminal, rename one exact ordinary tmux session in
 place without changing its lifetime, attachment, work, character, or provider
@@ -703,7 +707,7 @@ and one separately approved S22+ focused component/hands-on pass. Every other
 external gate remains `NOT_RUN`. Scope and ownership are closed in
 [session-renaming.md](session-renaming.md).
 
-## v0 tmux terminal-activity hard cut — source implemented
+## v0 tmux terminal-activity hard cut — implemented, released, and deployed
 
 Outcome: every fresh card exposes one provider-neutral answer to whether its
 current tmux window had recent activity, with no agent-state or unread-result
@@ -801,15 +805,15 @@ platform gate and the hands-on real-product sample remain `NOT_RUN`.
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27; merged 45-test platform and hands-on native threshold/resistance/viewport checks `NOT_RUN` |
-| v0 public-fleet distribution and Connect hard cut | Source implemented; Skíðblaðnir is public with immutable releases enabled and both repositories' routine proofs green; hosted CI, release, host/tmux, S22+, and second-phone gates `NOT_RUN` |
+| v0 public-fleet distribution and Connect hard cut | Implemented and public; exact-SHA hosted CI, immutable `v0.2.23` release/pin, three-host convergence, and fleet doctor green; current platform/product and second-phone gates `NOT_RUN` |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green, routine verification, and signed same-version S22+ component placement green at 360dp/1× and 320dp/2×, including exact-machine disclosure and one-Back dismissal. Product, hands-on, and release-bound platform gates remain `NOT_RUN`. |
-| v0 runtime-release policy hard cut | Source implemented; red proofs recorded and both repositories' routine verification green; integration, live-host, release, and device gates `NOT_RUN` |
-| v0 agent-identity projection hard cut | Source implemented; owner reds, focused greens, final routine verification, and approved exact-head isolated Darwin tmux integration green; Android platform, exact release/pin/deployment, and provider-live acceptance `NOT_RUN` |
+| v0 runtime-release policy hard cut | Implemented; red proofs and both routine suites green; exact `v0.2.23` release/pin and three-host convergence green; remaining integration and device gates reported separately |
+| v0 agent-identity projection hard cut | Implemented; owner reds, focused greens, routine verification, approved exact-head Darwin isolated tmux, and exact `v0.2.23` release/pin/deployment green; Linux isolated, current Android platform/hands-on, and provider-live acceptance `NOT_RUN` |
 | v0 dashboard refresh-boundary correction | Source implemented; focused signed same-version S22+ owner red observed and final two-test green at system animator scale `0.0`; exact original release and encrypted pairing restored. Routine verification green; release-bound full platform and hands-on acceptance `NOT_RUN` |
-| v0 tmux-session rename delta | Source implemented under the accepted hard-cut contract; owner reds recorded; exact-SHA gate evidence and every `NOT_RUN` boundary are reported separately |
+| v0 tmux-session rename delta | Implemented, released, and deployed under the accepted hard-cut contract; owner reds and exact-SHA gates recorded; every remaining boundary reported separately |
 | v0 agent interaction-state candidate | Rejected and superseded by the 2026-08-31 terminal-activity correction; its source and evidence are historical and prove no active target |
-| v0 tmux terminal-activity hard cut | Source implemented in dedicated Skíðblaðnir and `dev-server` review trees; owner behavioral reds, focused greens, and both routine suites green; isolated Linux/Darwin tmux, S22+ component/hands-on, release, pin, deployment, provider-live, and production acceptance `NOT_RUN` |
+| v0 tmux terminal-activity hard cut | Implemented and merged; owner reds, focused greens, both routine suites, exact-feature-tree Darwin isolated tmux/S22+ component, exact `v0.2.23` release/pin/deployment, and three-host doctor green; Linux isolated, release-bound S22+ platform and hands-on, provider-live, product, and second-phone acceptance `NOT_RUN` |
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase, which they do not prove; rebased platform and hands-on acceptance `NOT_RUN` |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

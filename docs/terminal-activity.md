@@ -1,14 +1,20 @@
 # Tmux terminal-activity hard cut
 
-Status: **source implemented in dedicated Skíðblaðnir and `dev-server` review
-trees**. Owner behavioral reds are recorded; focused greens and both routine
-verification suites are green. Isolated Linux/Darwin tmux, S22+
-component/hands-on, release, pin, deployment, provider-live, and production
-acceptance remain `NOT_RUN`. This 2026-08-31 scope correction supersedes the
-rejected agent-interaction-state candidate. Its source and its routine, Darwin,
-and S22+ proofs do not prove this contract. Git history retains that candidate;
-no historical runtime, interaction, or attention model remains an active path
-or compatibility obligation.
+Status: **implemented, merged, released, pinned, and deployed**. The terminal
+activity source merged into Skíðblaðnir `main` at `b53ee7f`, and its deployment
+source merged into `dev-server` `main` at `e09f336`. Later Skíðblaðnir release
+source `7317d1e` shipped as exact `v0.2.23`, pinned by `dev-server` at `410c469`;
+publication, pinning, and three-host convergence/doctor are green. Owner
+behavioral reds, focused greens, both routine suites, the approved
+exact-feature-tree Darwin isolated tmux gate, and focused S22+ component proof
+are recorded separately. Linux
+isolated tmux, release-bound S22+ platform and hands-on, provider-live,
+product, and second-phone acceptance remain `NOT_RUN`. This 2026-08-31 scope
+correction supersedes the
+rejected agent-interaction-state candidate. Its source and proofs do not prove
+this contract. Git history retains that candidate; no historical runtime,
+interaction, or attention model remains an active path or compatibility
+obligation.
 
 This document owns the terminal-activity capability, implementation boundary,
 and red/green proof shape. [`architecture.md`](architecture.md) owns final
@@ -80,8 +86,8 @@ exports only its [whole Unix second](https://github.com/tmux/tmux/blob/e476c1230
 updates it from the [pane PTY output path](https://github.com/tmux/tmux/blob/e476c1230b958df0cb12977517d24b3dc931375b/input.c#L1012-L1051)
 and [current-window selection](https://github.com/tmux/tmux/blob/e476c1230b958df0cb12977517d24b3dc931375b/session.c#L474-L497),
 and exposes it through read-only formatting. This source review is platform
-evidence, not a substitute for the separately approved isolated-tmux gate,
-which remains `NOT_RUN`.
+evidence, not a substitute for the isolated-tmux gate. Its approved
+exact-feature-tree Darwin run is green; Linux remains `NOT_RUN`.
 
 ## Derivation and time
 
