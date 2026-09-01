@@ -10,6 +10,8 @@ fail() {
 }
 
 [[ -x "$fleet" ]] || fail 'scripts/fleet is missing or not executable'
+grep -Fqx "macos_tailscale_app='/Applications/Tailscale.app'" "$fleet" ||
+  fail 'fleet operator does not pin the App Store Tailscale bundle'
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/skidbladnir-fleet-test.XXXXXX")"
 case "$test_root" in
@@ -241,6 +243,17 @@ case "$*" in
 *) exit 64 ;;
 esac
 EOF
+
+test_macos_tailscale_app="$test_root/Applications/Tailscale.app"
+install -d -m 0755 \
+  "$test_macos_tailscale_app/Contents/MacOS" \
+  "$test_macos_tailscale_app/Contents/_MASReceipt"
+cp "$fake_bin/tailscale" "$test_macos_tailscale_app/Contents/MacOS/Tailscale"
+printf 'receipt\n' >"$test_macos_tailscale_app/Contents/_MASReceipt/receipt"
+fleet="$test_root/fleet"
+sed "s|^macos_tailscale_app='/Applications/Tailscale.app'$|macos_tailscale_app='$test_macos_tailscale_app'|" \
+  "$repo_dir/scripts/fleet" >"$fleet"
+chmod 0700 "$fleet" "$test_macos_tailscale_app/Contents/MacOS/Tailscale"
 
 cat >"$fake_bin/qrencode" <<'EOF'
 #!/usr/bin/env bash
@@ -553,6 +566,12 @@ capture "$fleet" verify
   fail "fixed-fleet verification did not pass: status=$status output=$output"
 [[ "$(grep -c '^curl .* pressure$' "$log_file")" == 3 ]] ||
   fail 'verify did not inspect exactly three authenticated pressure endpoints'
+
+rm "$test_macos_tailscale_app/Contents/_MASReceipt/receipt"
+capture "$fleet" verify
+[[ "$status" != 0 && "$output" == *'macbook private Tailscale Serve mapping is invalid or unavailable'* ]] ||
+  fail 'fleet verification accepted a Mac Tailscale app without an App Store receipt'
+printf 'receipt\n' >"$test_macos_tailscale_app/Contents/_MASReceipt/receipt"
 
 printf '%s\n' "$local_handle" >"$arch_home/.config/skidbladnir/machine-handle"
 capture "$fleet" verify

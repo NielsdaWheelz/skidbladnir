@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+macos_tailscale_app='/Applications/Tailscale.app'
 
 die() {
   printf 'error: %s\n' "$1" >&2
@@ -319,10 +320,30 @@ service_is_active() {
   esac
 }
 
+tailscale_cli() {
+  local platform="$1"
+  local cli receipt
+
+  case "$platform" in
+  Darwin)
+    cli="$macos_tailscale_app/Contents/MacOS/Tailscale"
+    receipt="$macos_tailscale_app/Contents/_MASReceipt/receipt"
+    [[ -d "$macos_tailscale_app" && ! -L "$macos_tailscale_app" &&
+      -f "$receipt" && ! -L "$receipt" ]] || return 1
+    ;;
+  Linux) cli="$(command -v tailscale 2>/dev/null)" || return ;;
+  *) return 64 ;;
+  esac
+  [[ -f "$cli" && ! -L "$cli" && -x "$cli" ]] || return 1
+  printf '%s\n' "$cli"
+}
+
 private_serve_origin() {
-  local status serve dns_name key
-  status="$(TAILSCALE_BE_CLI=1 tailscale status --json 2>/dev/null)" || return
-  serve="$(TAILSCALE_BE_CLI=1 tailscale serve status --json 2>/dev/null)" || return
+  local platform="$1"
+  local status serve dns_name key cli
+  cli="$(tailscale_cli "$platform")" || return
+  status="$(TAILSCALE_BE_CLI=1 "$cli" status --json 2>/dev/null)" || return
+  serve="$(TAILSCALE_BE_CLI=1 "$cli" serve status --json 2>/dev/null)" || return
   json_is_single_and_duplicate_free "$status" || return
   json_is_single_and_duplicate_free "$serve" || return
   dns_name="$(printf '%s' "$status" | jq -er '
@@ -390,7 +411,7 @@ verify_host() {
     return 1
   }
   [[ "$runtime" =~ ^[0-9a-f]{64}$ ]] || return 1
-  origin="$(private_serve_origin)" || {
+  origin="$(private_serve_origin "$platform")" || {
     printf 'error: %s private Tailscale Serve mapping is invalid or unavailable\n' "$label" >&2
     return 1
   }

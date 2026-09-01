@@ -149,8 +149,9 @@ not supported.
 digests. This repository owns the complete five-asset release pin.
 Machine-local apply:
 
-1. installs the latest stable tmux, Tailscale, the pinned Skíðblaðnir release
-   bundle, and `qrencode` where needed;
+1. installs the latest stable tmux, Linux Tailscale, the pinned Skíðblaðnir
+   release bundle, and `qrencode` where needed; on macOS it requires the exact
+   externally owned App Store Tailscale app;
 2. creates a machine handle and bearer only when absent, preserving both on
    every reinstall;
 3. renders one strict host config, the content-free Codex and Claude
@@ -168,8 +169,10 @@ Machine-local apply:
    health for the fixed three-host fleet.
 
 Tailscale authentication is a one-time human boundary per host and phone.
-Apply may install and inspect Tailscale; it must not manufacture login
-state or claim that an installed client is connected.
+On macOS, App Store installation and upgrades are also human-owned boundaries;
+apply may verify and start that exact app but never install or replace it.
+Apply must not manufacture login state or claim that an installed client is
+connected.
 
 The gateway and `agent-hook` require `--host-config=PATH`. There are no host
 defaults. JSON is decoded strictly with unknown and null members rejected:
