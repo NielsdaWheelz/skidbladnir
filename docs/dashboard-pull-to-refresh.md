@@ -2,13 +2,14 @@
 
 Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and
 routine verification is green on the merged tree. The feature-tree signed
-36-test S22+ platform gate was green before integration; the merged 45-test
-platform gate and hands-on native-feel check remain `NOT_RUN`.
+36-test S22+ platform gate was green before integration; the current complete
+54-test release-bound platform gate is green. The hands-on native-feel check
+remains `NOT_RUN`.
 The 2026-08-28 refresh-boundary correction source is implemented. Its focused
 signed same-version S22+ owner red and two-test green are recorded in
 [`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md); routine
-verification is green, while the release-bound full platform gate and
-hands-on acceptance remain `NOT_RUN`.
+verification and the complete 54-test release-bound platform gate are green,
+while hands-on acceptance remains `NOT_RUN`.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order; this document owns this delta's

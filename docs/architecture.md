@@ -6,12 +6,12 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
 dashboard-return-continuity target. The terminal-activity replacement is
-merged in both repositories; exact `v0.2.23` publication, pinning, three-host
-convergence, and fleet doctor are green. Its owner behavioral reds, focused
-greens, both routine suites, exact-feature-tree Darwin isolated tmux gate, and
-focused S22+ component proof are recorded separately. Linux isolated tmux,
-release-bound S22+ platform and hands-on, provider-live, product, and
-second-phone acceptance remain `NOT_RUN`. The rejected 2026-08-28
+merged in both repositories; exact `v0.2.24` publication, pinning, three-host
+convergence, fleet doctor, release-tree Darwin isolated tmux, and the complete
+54-test release-bound S22+ platform gate are green. Its owner behavioral reds,
+focused greens, both routine suites, and earlier focused S22+ component proof
+are recorded separately. Linux isolated tmux, S22+ hands-on, provider-live,
+product, and second-phone acceptance remain `NOT_RUN`. The rejected 2026-08-28
 agent-interaction-state candidate and its
 evidence do not prove this target.
 

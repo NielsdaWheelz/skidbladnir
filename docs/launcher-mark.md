@@ -5,10 +5,10 @@ then green; `scripts/test verify` — static, build and unit — is green, and t
 ornament drift gate inside it is green over five generated files. The
 separately approved S22+ platform gate is green — `OK (34 tests)`, proof 4
 among them, on the physical device. That run was on the D7 branch before it
-merged D6 and D8, whose own instrumented tests were not in it; verification is
-green again on the merged tree, but the device gate has not been re-run there.
-The hands-on glance is `NOT_RUN`: it is a human-eye check and no gate
-substitutes for it.
+merged D6 and D8, whose own instrumented tests were not in it. Verification is
+green again on the merged tree, and the current complete 54-test release-bound
+S22+ platform gate is green. The hands-on glance is `NOT_RUN`: it is a
+human-eye check and no gate substitutes for it.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`design-language.md`](design-language.md) owns visual identity and wins on

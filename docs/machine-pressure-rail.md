@@ -5,8 +5,9 @@ reds, focused unit, signed same-version S22+ component, routine verification,
 and approved hands-on visual glance are green. The All-filter density follow-up
 is source implemented with its pure red/green and routine verification green;
 its signed same-version S22+ component proof is green at 360dp/1× and
-320dp/2×, including exact-machine disclosure and one-Back dismissal. Product,
-hands-on, and the release-bound full platform gate remain `NOT_RUN`.
+320dp/2×, including exact-machine disclosure and one-Back dismissal. The
+complete 54-test release-bound platform gate is green. Product and current
+hands-on acceptance remain `NOT_RUN`.
 
 This is the implementation contract for one hard-cut presentation refactor.
 It is subordinate to [`architecture.md`](architecture.md),
@@ -324,9 +325,9 @@ restoration of the captured APK's exact digest, signer, and version. It does not
 claim to read the non-debuggable release's private preferences after restore.
 No integration, live, or second-phone proof is warranted because their owned
 behavior is unchanged. The product journey's confirmation copy consumes the
-new placement but does not substitute for the focused component proof. Product
-and release-bound platform gates are `NOT_RUN` without explicit approval in a
-future turn; `NOT_RUN` is never a pass.
+new placement but does not substitute for the focused component proof. The
+complete 54-test release-bound platform gate is green. Product and current
+hands-on acceptance remain `NOT_RUN`; `NOT_RUN` is never a pass.
 
 ## Acceptance criteria
 

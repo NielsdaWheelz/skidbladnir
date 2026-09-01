@@ -3,14 +3,13 @@
 Status: **implemented, merged, released, pinned, and deployed**. The terminal
 activity source merged into Skíðblaðnir `main` at `b53ee7f`, and its deployment
 source merged into `dev-server` `main` at `e09f336`. Later Skíðblaðnir release
-source `7317d1e` shipped as exact `v0.2.23`, pinned by `dev-server` at `410c469`;
-publication, pinning, and three-host convergence/doctor are green. Owner
-behavioral reds, focused greens, both routine suites, the approved
-exact-feature-tree Darwin isolated tmux gate, and focused S22+ component proof
-are recorded separately. Linux
-isolated tmux, release-bound S22+ platform and hands-on, provider-live,
-product, and second-phone acceptance remain `NOT_RUN`. This 2026-08-31 scope
-correction supersedes the
+source `ed47666` shipped as exact `v0.2.24`, pinned by `dev-server` at `c941db3`;
+publication, pinning, three-host convergence/doctor, the release-tree Darwin
+isolated tmux gate, and the complete 54-test release-bound S22+ platform gate
+are green. Owner behavioral reds, focused greens, both routine suites, and the
+earlier focused S22+ component proof are recorded separately. Linux isolated
+tmux, S22+ hands-on, provider-live, product, and second-phone acceptance remain
+`NOT_RUN`. This 2026-08-31 scope correction supersedes the
 rejected agent-interaction-state candidate. Its source and proofs do not prove
 this contract. Git history retains that candidate; no historical runtime,
 interaction, or attention model remains an active path or compatibility

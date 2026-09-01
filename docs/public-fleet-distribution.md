@@ -1,7 +1,10 @@
 # Public Fleet Distribution And Connect
 
-Status: accepted contract with source implemented and routine proofs green;
-external release, host/tmux, and phone gates remain `NOT_RUN`.
+Status: accepted contract with source implemented and routine proofs green.
+Exact `v0.2.24` publication/pinning, three-host convergence/doctor, and the
+complete 54-test release-bound S22+ platform gate are green. Host
+reinstall/reboot acceptance, the physical product journey, and the named
+second-phone gate remain `NOT_RUN`.
 [architecture.md](architecture.md) owns the resulting product contract and
 [roadmap.md](roadmap.md) owns delivery order; this document owns the slice's
 detailed capability and work split.
