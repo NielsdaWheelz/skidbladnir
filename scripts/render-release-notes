@@ -62,22 +62,17 @@ render_notes() {
     "- Verify run: \`$run_id\`" \
     "- Android signer SHA-256: \`$signer\`" "" \
     "## Install" "" \
-    '1. In a separate post-publication pin-control checkout, confirm its' \
-    '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
-    '   Pin the same tag, source, and two host-bundle' \
-    '   digests in `dev-server`, then apply Devbox, Arch, and MacBook.' \
-    '2. From that pin-control checkout, run' \
-    '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
-    '3. On the phone, download `skidbladnir-android.apk` from this release and' \
+    "1. The fleet owner pins this exact tag and all five asset digests in" \
+    '   `dev-server`, converges Devbox, Arch, and MacBook, then runs fleet doctor.' \
+    '2. On the phone, download `skidbladnir-android.apk` from this release and' \
     '   approve installation from the browser when Android asks.' \
-    '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
+    '3. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
-    '5. Open Skíðblaðnir and tap **Connect**.' \
-    '6. On the MacBook, run' \
-    '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite`' \
-    '   from that checkout, then scan the fresh QR within five minutes. It works once.' "" \
+    '4. Open Skíðblaðnir and tap **Connect**.' \
+    '5. On the MacBook, run `./skidbladnir invite` in `dev-server`, then scan' \
+    '   the fresh QR within five minutes. The QR works once.' "" \
     '## Update order' "" \
-    'Apply and verify all three hosts first; update the phone second. Mixed' \
+    'Converge and verify all three hosts first; update the phone second. Mixed' \
     'versions and ordinary APK downgrade are not supported.' "" \
     '## Assets' "" \
     '| Asset | SHA-256 |' \
@@ -119,16 +114,7 @@ self_test() (
   notes="$(render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 "$fixture_dir")"
   # shellcheck disable=SC2016 # The backticks are literal Markdown delimiters.
   [[ "$notes" == *'## Update order'* && "$notes" == *'hosts first'* &&
-    "$notes" == *'update the phone second'* && "$notes" == *'`42`'* &&
-    "$notes" == *'SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify'* &&
-    "$notes" == *'SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite'* &&
-    "$notes" == *'separate post-publication pin-control checkout'* &&
-    "$notes" == *'tracked `release-pin.json`'* &&
-    "$notes" == *'all five asset digests'* &&
-    "$notes" == *'two host-bundle'* ]] || return 1
-  [[ "$notes" != *'./skidbladnir invite'* && "$notes" != *'fleet doctor'* &&
-    "$notes" != *'dev-server converge'* && "$notes" != *"this checkout's \`release-pin.json\`"* ]] ||
-    return 1
+    "$notes" == *'update the phone second'* && "$notes" == *'`42`'* ]] || return 1
   printf '%064d  %s\n' 5 skidbladnir-linux-amd64.tar.gz >>"$fixture_dir/SHA256SUMS"
   if render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 \
     "$fixture_dir" >/dev/null; then

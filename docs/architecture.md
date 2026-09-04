@@ -6,22 +6,26 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
 dashboard-return-continuity target, and the 2026-08-31 working-directory
-chooser target, plus the accepted 2026-09-01 terminal touch-scroll target and
-the accepted 2026-09-04 host-installer/operator hard cut. The terminal-activity
-and touch-scroll changes are merged; exact `v0.2.27` publication, historical
-three-host deployment/doctor evidence, and the complete 60-test release-bound
-S22+ platform gate are green. The touch-scroll final targeted mutation rerun,
-final-candidate hands-on journey, and live tmux/Claude Code journey were
-explicitly waived for shipment on 2026-09-04, not passed. The
-host-installer/operator cut makes `dev-server` the machine-local installer and
-this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
-complete upstream pin names exact `v0.2.27`. Its owner red and hermetic green
-are recorded separately. Historical convergence/doctor evidence does not prove
-the new ownership boundary. Cross-repository host-only pin agreement, host
-apply, reboot, outage/recovery, product, second-phone, Linux isolated tmux, S22+
-hands-on, and provider-live acceptance remain `NOT_RUN` for this cut. The
-rejected 2026-08-28 agent-interaction-state
-candidate and its evidence prove no active target.
+chooser target, plus the accepted 2026-09-01 terminal touch-scroll target.
+The terminal-activity replacement is
+merged in both repositories; exact `v0.2.24` publication, pinning, three-host
+convergence, fleet doctor, release-tree Darwin isolated tmux, and the complete
+54-test release-bound S22+ platform gate are green. Its owner behavioral reds,
+focused greens, both routine suites, and earlier focused S22+ component proof
+are recorded separately. Linux isolated tmux, S22+ hands-on, provider-live,
+product, and second-phone acceptance remain `NOT_RUN`. The rejected 2026-08-28
+agent-interaction-state candidate and its
+evidence do not prove this target. The touch-scroll unchanged-source owner reds,
+rejected synthetic-wheel feasibility result, final five-owner signed S22+
+green, complete 60-test signed same-version S22+ candidate green, reproducible
+xterm build, and routine verification are recorded. The final targeted mutation
+rerun, final-candidate hands-on journey, and live tmux/Claude Code journey were
+explicitly waived for shipment on 2026-09-04, not passed. The hard cut and its
+suite-scaled platform-budget correction are merged; exact `v0.2.27`
+publication, three-host pinning/convergence/acceptance, fleet doctor, and the
+complete 60-test release-bound S22+ platform gate are green. That gate preserved
+pairing and restored the exact public APK. Product, second-phone, and reboot
+persistence acceptance remain `NOT_RUN`.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -97,11 +101,11 @@ Profile mapping is one ordered, closed, host-local gateway-config table:
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | none | native executable basename `codex`; or `node` with exact configured argv[1] |
-| `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | none | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | none | same |
-| `claude-personal` / `Claude · Personal` | `Claude` | all | `<home>/.local/bin/claude` | `CLAUDE_CONFIG_DIR=<home>/.claude` | none | exact configured Claude argv[0] |
-| `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | none | exact configured Claude argv[0] |
+| `personal` / `Codex · Personal` | `Codex` | all | `<home>/bin/codex-personal` | `CODEX_HOME=<home>/.codex-personal` | `--dangerously-bypass-approvals-and-sandbox` | native executable basename `codex`; or `node` with exact configured argv[1] |
+| `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | same | same |
+| `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | same | same |
+| `claude-personal` / `Claude · Personal` | `Claude` | all | `<home>/bin/claude-personal` | `CLAUDE_CONFIG_DIR=<home>/.claude-personal` | `--permission-mode auto` | exact configured Claude argv[0] |
+| `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--permission-mode auto` | exact configured Claude argv[0] |
 
 Adding a launch profile is adding one host-local row — a config change, not a
 design event; the app renders exactly the rows each gateway declares. The
@@ -109,11 +113,10 @@ gateway execs the row's command with its flags in the requested
 cwd. The gateway does not gate launch on binary or configuration inspection;
 the agent sees exactly what a laptop launch would see. Deployment owns the
 exact Codex hook files and one local Claude hook plugin, while absent/unloaded
-hooks omit registered identity without blocking launch. Plain personal commands
-remain upstream commands. Explicit work wrappers select only their fixed
-provider home and, for Claude, add the deployment-owned plugin directory; they
-never infer from cwd or read or forward hook payloads. Direct raw-provider
-launches bypass that plugin and remain honestly unregistered. A row also owns exact
+hooks omit registered identity without blocking launch. The existing profile router only selects the provider
+home and, for Claude, adds the deployment-owned plugin directory; it never
+reads or forwards hook payloads. Direct raw-provider launches bypass that
+plugin and remain honestly unregistered. A row also owns exact
 foreground-process signatures for honest
 presence detection; the shared observer resolves the pane tty's foreground
 process group using Linux `/proc` or native Darwin process facts and never
@@ -558,8 +561,7 @@ history item is `current`.
   Unknown/null members, relative paths, duplicate keys,
   runtime platform mismatch, or a missing/broken/noncanonical tmux executable
   fail startup. A canonical installed version that differs from `testedVersion`
-  remains runnable; `scripts/fleet verify` reports functional fleet health
-  without turning advisory tmux-version drift into failure.
+  remains runnable and is reported as a nonblocking `dev-server doctor` warning.
   `internal/process` is the single native observer consumed once per pane by
   optional agent identity projection and by the content-free SessionStart hook
   adapter. It never derives activity. `internal/agentruntime` owns provider/profile validation,
@@ -569,41 +571,20 @@ history item is `current`.
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
   `ps` output or a Linux fallback.
-- Public `dev-server` is the sole machine-local install owner. It pins one immutable
-  GitHub release, source SHA, and two host-bundle digests, while this repository
-  owns the complete five-asset release pin. It renders the exact Devbox/MacBook/Arch host
+- Public `dev-server` is the sole host-deployment owner. It pins one immutable
+  GitHub release and asset digests, renders the exact Devbox/MacBook/Arch host
   configs, SessionStart identity hook files, the local Claude identity plugin,
   and the BEL-only Codex notify asset; the
-  explicit Claude work wrapper loads that plugin without editing user settings. It
+  existing Claude router loads that plugin without editing user settings. It
   owns user systemd services with lingering on Linux and one RunAtLoad
-  LaunchAgent on macOS, and applies only its dedicated
+  LaunchAgent on macOS, and converges only its dedicated
   Tailscale Serve `:8443/v1` mapping. It removes only the retired owned root
   handler and never resets unrelated Serve state. Reinstall preserves credentials and tmux
   lifetimes. Sleep, logout, Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
-  Codex and Claude are installed from exact reviewable npm locks; tmux follows
-  each platform's native stable package channel. No agent launcher enables an
-  unsafe unattended permission mode.
-- `scripts/fleet` in this repository exclusively owns three-host verification,
-  invitation, apply acceptance, lifetime digests, reboot checkpoints, and
-  bounded outage/recovery. It requires one explicit absolute
-  `SKIDBLADNIR_DEV_SERVER_CHECKOUT`; its release pin must be tracked and
-  byte-exact at that checkout's `HEAD`. It uses that checkout only for
-  `workstation apply`, `devbox apply`, and release admission, and reaches
-  DevServer through the installer-owned `~/.ssh/config.d/dev-server` with
-  explicit `ssh -F`.
-  Invitation executes each verified `current` generation directly and
-  stream-bounds every response before aggregation. Outage/recovery validates
-  the installed launcher and service definition against the installer's
-  durable `skid.unit.sha256` intent, plus the exact loaded service path, before
-  any lifecycle mutation.
-  Arch apply acceptance opens one SSH TTY for normal operator sudo, validates
-  the exact clean remote candidate before and after two applies, and requires
-  the second apply to be an exact no-op. The streamed internal host protocol
-  exposes no apply action. Trade-off: Arch acceptance is deliberately
-  interactive rather than granting the user/agent account unattended root.
-  Machine-local installers own no fleet command or acceptance fallback.
-- Host apply atomically initializes and then preserves
+  Codex, Claude, and tmux are intentionally outside the immutable Skíðblaðnir
+  release pin; convergence follows each platform's latest stable channel.
+- Convergence atomically initializes and then preserves
   `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The
   handle is 128 random bits encoded as `mh-` plus 32 lowercase hexadecimal
   digits. Gateway startup fails closed on missing, insecure, or malformed
@@ -876,8 +857,7 @@ Verification follows an 80/20 boundary shape:
   missing signing or GitHub evidence is `NOT_RUN`;
 - a separate post-publication read-only gate downloads the release and owns the
   final non-draft immutable tag target, exact five assets, their contents, and
-  this repository's byte-exact five-asset pin; product verification separately
-  binds the `dev-server` tag, source, and two host-bundle digests;
+  the byte-exact `dev-server` pin of the tag, source, and all five digests;
 - approved S22+ instrumentation owns exact-three encrypted collection
   install/reconnect, atomic failure/quarantine, activity presentation/order, the
   absence of pressure rails in `All`, the selected machine's compact pressure
@@ -1018,21 +998,14 @@ omission. Another build platform requires its own explicit pin and
 identical-output proof.
 
 Distribution acceptance additionally requires: the public release has the
-five owned immutable assets and one signer; `dev-server` pins and applies the
-same version on all three hosts, and `scripts/fleet verify` accepts them without
-changing existing credentials or tmux lifetimes; a fresh phone needs only APK install, one-time Tailscale login,
+five owned immutable assets and one signer; `dev-server` pins and converges the
+same version on all three hosts without changing existing credentials or tmux
+lifetimes; a fresh phone needs only APK install, one-time Tailscale login,
 `Connect`, and one fresh five-minute QR; concurrent double redemption has one
 winner; Android commits all three encrypted credentials or none; reconnect
 changes bearers only for exact installed identities; and no coordinator,
 public ingress, credential in source/release/logs/argv, legacy provisioning,
 host defaults, compatibility fallback, or partial retry remains.
-
-The Android platform gate uses two explicit trust roots. The post-publication
-checkout running `scripts/test` owns policy and a `release-pin.json` that is
-tracked and byte-exact at `HEAD`. The required absolute, non-symlink
-`SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` is clean at the release's exact source SHA
-and owns metadata, signing behavior, build inputs/outputs, and test enumeration.
-The later pin commit is never treated as release source.
 
 Dashboard acceptance additionally requires: a threshold pull at the top of an
 empty, short, stale, reading, or populated dwarf collection verifies only the

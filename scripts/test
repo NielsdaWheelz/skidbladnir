@@ -33,10 +33,6 @@ run() {
   "$@"
 }
 
-run_fleet_operator() {
-  env SKIDBLADNIR_DEV_SERVER_CHECKOUT="$dev_server_checkout" "$fleet_operator" "$@"
-}
-
 not_run() {
   printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
   exit 2
@@ -46,23 +42,9 @@ content_digest() {
   "${digest_command[@]}" | cut -d ' ' -f 1
 }
 
-tracked_file_at_head() {
-  local checkout="$1"
-  local relative="$2"
-  local resolved top file
-  resolved="$(cd "$checkout" && pwd -P)" || return 1
-  top="$(git -C "$resolved" rev-parse --show-toplevel 2>/dev/null)" || return 1
-  [[ "$top" == "$resolved" ]] || return 1
-  file="$resolved/$relative"
-  [[ -f "$file" && ! -L "$file" ]] || return 1
-  git -C "$resolved" cat-file -e "HEAD:$relative" 2>/dev/null || return 1
-  git -C "$resolved" diff --quiet HEAD -- "$relative" || return 1
-  cmp -s "$file" <(git -C "$resolved" show "HEAD:$relative")
-}
-
 pinned_android_release_values() {
   local checkout="$1"
-  local pin="$checkout/release-pin.json"
+  local pin="$checkout/assets/skidbladnir/release-pin.json"
   [[ -f "$pin" && ! -L "$pin" ]] || return 1
   jq -er '
     if type == "object" and keys == [
@@ -92,116 +74,13 @@ pinned_android_release_values() {
 android_release_matches_pin() {
   local checkout="$1"
   local apk="$2"
-  local source_checkout="$3"
   local values expected_apk expected_signer_asset _version
-  [[ -d "$source_checkout" && ! -L "$source_checkout" ]] || return 1
   values="$(pinned_android_release_values "$checkout")" || return 1
   IFS=$'\t' read -r expected_apk expected_signer_asset _version <<<"$values"
   [[ -n "$expected_apk" && -n "$expected_signer_asset" ]] || return 1
   [[ "$(content_digest <"$apk")" == "$expected_apk" ]] || return 1
-  [[ "$(content_digest <"$source_checkout/android/app-signing-cert.sha256")" == \
-    "$expected_signer_asset" ]]
+  [[ "$(content_digest <"$repo_dir/android/app-signing-cert.sha256")" == "$expected_signer_asset" ]]
 }
-
-host_release_matches_upstream_pin() {
-  local dev_checkout="$1"
-  local host_pin="$dev_checkout/assets/skidbladnir/release-pin.json"
-  local upstream_pin="$repo_dir/release-pin.json"
-  local host_identity upstream_identity
-  [[ -f "$host_pin" && ! -L "$host_pin" && -f "$upstream_pin" && ! -L "$upstream_pin" ]] ||
-    return 1
-  host_identity="$(jq -er '
-    def canonical_version:
-      type == "string" and test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$");
-    def exact_artifact($name; $version):
-      type == "object" and keys == ["sha256", "url"] and
-      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-      .url == ("https://github.com/NielsdaWheelz/skidbladnir/releases/download/" +
-        $version + "/skidbladnir-" + $name + ".tar.gz");
-    .version as $version |
-    if type == "object" and keys == ["artifacts", "schemaVersion", "sourceSha", "version"] and
-      .schemaVersion == 1 and
-      (.version | canonical_version) and
-      (.sourceSha | type == "string" and test("^[0-9a-f]{40}$")) and
-      (.artifacts | type == "object" and keys == ["darwin-arm64", "linux-amd64"] and
-        (."darwin-arm64" | exact_artifact("darwin-arm64"; $version)) and
-        (."linux-amd64" | exact_artifact("linux-amd64"; $version)))
-    then [.version, .sourceSha, .artifacts["darwin-arm64"].sha256,
-      .artifacts["linux-amd64"].sha256] | @tsv
-    else error("invalid host pin") end
-  ' "$host_pin")" || return
-  upstream_identity="$(jq -er '
-    if type == "object" and keys == [
-      "androidApkSha256",
-      "androidSigningCertAssetSha256",
-      "darwinArm64Sha256",
-      "linuxAmd64Sha256",
-      "sha256SumsAssetSha256",
-      "sourceSha",
-      "version"
-    ] and
-      (.version | type == "string" and
-        test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
-      (.sourceSha | type == "string" and test("^[0-9a-f]{40}$")) and
-      ([.androidApkSha256, .androidSigningCertAssetSha256,
-        .darwinArm64Sha256, .linuxAmd64Sha256,
-        .sha256SumsAssetSha256] |
-        all(type == "string" and test("^[0-9a-f]{64}$")))
-    then [.version, .sourceSha, .darwinArm64Sha256,
-      .linuxAmd64Sha256] | @tsv
-    else error("invalid upstream pin") end
-  ' "$upstream_pin")" || return
-  [[ "$host_identity" == "$upstream_identity" ]]
-}
-
-host_release_binding_self_test() (
-  set -euo pipefail
-  local fixture host_pin next valid
-  fixture="$(mktemp -d /tmp/skidbladnir-host-release-binding.XXXXXX)"
-  trap 'rm -R -- "$fixture"' EXIT HUP INT TERM
-  install -d -m 0700 "$fixture/assets/skidbladnir"
-  host_pin="$fixture/assets/skidbladnir/release-pin.json"
-  jq -S '
-    {
-      schemaVersion: 1,
-      version: .version,
-      sourceSha: .sourceSha,
-      artifacts: {
-        "darwin-arm64": {
-          url: ("https://github.com/NielsdaWheelz/skidbladnir/releases/download/" +
-            .version + "/skidbladnir-darwin-arm64.tar.gz"),
-          sha256: .darwinArm64Sha256
-        },
-        "linux-amd64": {
-          url: ("https://github.com/NielsdaWheelz/skidbladnir/releases/download/" +
-            .version + "/skidbladnir-linux-amd64.tar.gz"),
-          sha256: .linuxAmd64Sha256
-        }
-      }
-    }
-  ' "$repo_dir/release-pin.json" >"$host_pin"
-  host_release_matches_upstream_pin "$fixture" || {
-    printf 'Exact upstream and host release pins did not bind\n' >&2
-    return 1
-  }
-  valid="$fixture/valid.json"
-  cp "$host_pin" "$valid"
-  next="$fixture/next.json"
-  jq '.artifacts["darwin-arm64"].sha256 = ("0" * 64)' "$host_pin" >"$next"
-  mv "$next" "$host_pin"
-  if host_release_matches_upstream_pin "$fixture"; then
-    printf 'Darwin host artifact drift passed release binding\n' >&2
-    return 1
-  fi
-  cp "$valid" "$host_pin"
-  jq '.artifacts["linux-amd64"].sha256 = ("0" * 64)' "$host_pin" >"$next"
-  mv "$next" "$host_pin"
-  if host_release_matches_upstream_pin "$fixture"; then
-    printf 'Linux host artifact drift passed release binding\n' >&2
-    return 1
-  fi
-  printf 'Host release binding passed\n'
-)
 
 installed_android_package_path() {
   local output="$1"
@@ -283,27 +162,30 @@ android_update_candidate_is_distinct_newer() {
 }
 
 android_platform_release_values() {
-  local declared_pin_checkout="$1"
+  local declared_dev_checkout="$1"
   local release_apk="$2"
   local declared_source_checkout="$3"
-  local pin_checkout source_checkout pin_relative pin release_values
+  local dev_checkout source_checkout pin_relative pin release_values
   local expected_apk_digest _signer_asset_digest release_version source_sha
   local expected_version_name expected_version_code observed_version_name observed_version_code
-  pin_checkout="$(cd "$declared_pin_checkout" && pwd -P)" || return 1
+  dev_checkout="$(cd "$declared_dev_checkout" && pwd -P)" || return 1
   source_checkout="$(cd "$declared_source_checkout" && pwd -P)" || return 1
-  [[ "$(git -C "$source_checkout" rev-parse --show-toplevel 2>/dev/null)" == "$source_checkout" ]] ||
-    return 1
-  pin_relative='release-pin.json'
-  pin="$pin_checkout/$pin_relative"
-  tracked_file_at_head "$pin_checkout" "$pin_relative" || return 1
-  release_values="$(pinned_android_release_values "$pin_checkout")" || return 1
+  [[ "$(git -C "$dev_checkout" rev-parse --show-toplevel 2>/dev/null)" == "$dev_checkout" &&
+    "$(git -C "$source_checkout" rev-parse --show-toplevel 2>/dev/null)" == "$source_checkout" ]] || return 1
+  pin_relative='assets/skidbladnir/release-pin.json'
+  pin="$dev_checkout/$pin_relative"
+  [[ -f "$pin" && ! -L "$pin" ]] || return 1
+  git -C "$dev_checkout" cat-file -e "HEAD:$pin_relative" 2>/dev/null || return 1
+  git -C "$dev_checkout" diff --quiet HEAD -- "$pin_relative" || return 1
+  cmp -s "$pin" <(git -C "$dev_checkout" show "HEAD:$pin_relative") || return 1
+  release_values="$(pinned_android_release_values "$dev_checkout")" || return 1
   IFS=$'\t' read -r expected_apk_digest _signer_asset_digest release_version \
     <<<"$release_values"
   source_sha="$(jq -er '.sourceSha | select(type == "string" and test("^[0-9a-f]{40}$"))' "$pin")" ||
     return 1
   [[ "$(git -C "$source_checkout" rev-parse HEAD)" == "$source_sha" &&
     -z "$(git -C "$source_checkout" status --porcelain=v1 --untracked-files=all)" ]] || return 1
-  android_release_matches_pin "$pin_checkout" "$release_apk" "$source_checkout" || return 1
+  android_release_matches_pin "$dev_checkout" "$release_apk" || return 1
   read -r expected_version_name expected_version_code \
     < <("$source_checkout/scripts/check-release" --android-version "$release_version") || return 1
   observed_version_name="$(android_apk_version_name "$release_apk")" || return 1
@@ -354,7 +236,7 @@ android_platform_restore_owned_state() {
   if [[ "${platform_app_replaced:-0}" == 1 ]]; then
     if "$platform_adb" -s "$platform_serial" install -r "$platform_release_apk" >/dev/null &&
       verify_installed_android_signer \
-        "$platform_signing_check" "$platform_adb" "$platform_serial" "$platform_app_package" \
+        "$platform_adb" "$platform_serial" "$platform_app_package" \
         "$platform_expected_apk_digest"; then
       platform_app_replaced=0
     else
@@ -604,19 +486,17 @@ android_platform_helper_self_test() (
   source_checkout="$fixture/source"
   dev_checkout="$fixture/dev-server"
   release_apk="$fixture/skidbladnir-android.apk"
-  mkdir -p "$source_checkout/scripts" "$source_checkout/android" "$dev_checkout"
+  mkdir -p "$source_checkout/scripts" "$dev_checkout/assets/skidbladnir"
   printf 'source fixture\n' >"$source_checkout/fixture"
   install -m 0755 "$repo_dir/scripts/check-release" "$source_checkout/scripts/check-release"
-  install -m 0644 "$repo_dir/android/app-signing-cert.sha256" \
-    "$source_checkout/android/app-signing-cert.sha256"
   git -C "$source_checkout" init -q
-  git -C "$source_checkout" add fixture scripts/check-release android/app-signing-cert.sha256
+  git -C "$source_checkout" add fixture scripts/check-release
   git -C "$source_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
     -c commit.gpgsign=false commit -qm 'source fixture'
   source_sha="$(git -C "$source_checkout" rev-parse HEAD)"
   printf 'release apk fixture\n' >"$release_apk"
   apk_digest="$(content_digest <"$release_apk")"
-  signer_digest="$(content_digest <"$source_checkout/android/app-signing-cert.sha256")"
+  signer_digest="$(content_digest <"$repo_dir/android/app-signing-cert.sha256")"
   jq -S -n \
     --arg apk "$apk_digest" \
     --arg signer "$signer_digest" \
@@ -629,15 +509,11 @@ android_platform_helper_self_test() (
       sha256SumsAssetSha256:("2" * 64),
       sourceSha:$source,
       version:"v0.2.2"
-    }' >"$dev_checkout/release-pin.json"
+    }' >"$dev_checkout/assets/skidbladnir/release-pin.json"
   git -C "$dev_checkout" init -q
-  git -C "$dev_checkout" add release-pin.json
+  git -C "$dev_checkout" add assets/skidbladnir/release-pin.json
   git -C "$dev_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
     -c commit.gpgsign=false commit -qm 'pin fixture'
-  [[ "$(git -C "$dev_checkout" rev-parse HEAD)" != "$source_sha" ]] || {
-    printf 'Android platform policy fixture did not model separate source and pin-control trust roots\n' >&2
-    return 1
-  }
 
   values="$(
     android_apk_version_name() { printf '0.2.2\n'; }
@@ -648,17 +524,6 @@ android_platform_helper_self_test() (
     printf 'Android platform release values were not bound to the exact pin and source\n' >&2
     return 1
   }
-  cp "$dev_checkout/release-pin.json" "$fixture/release-pin.valid.json"
-  printf ' \n' >>"$dev_checkout/release-pin.json"
-  if (
-    android_apk_version_name() { printf '0.2.2\n'; }
-    android_apk_version_code() { printf '2002\n'; }
-    android_platform_release_values "$dev_checkout" "$release_apk" "$source_checkout" >/dev/null
-  ); then
-    printf 'Android platform policy accepted a dirty pin-control checkout\n' >&2
-    return 1
-  fi
-  mv "$fixture/release-pin.valid.json" "$dev_checkout/release-pin.json"
   if (
     android_apk_version_name() { printf '0.2.1\n'; }
     android_apk_version_code() { printf '2002\n'; }
@@ -705,10 +570,10 @@ android_platform_helper_self_test() (
     printf 'Android platform policy accepted the release as its own companion\n' >&2
     return 1
   fi
-  jq '.sourceSha = ("0" * 40)' "$dev_checkout/release-pin.json" \
+  jq '.sourceSha = ("0" * 40)' "$dev_checkout/assets/skidbladnir/release-pin.json" \
     >"$fixture/release-pin.next.json"
-  mv "$fixture/release-pin.next.json" "$dev_checkout/release-pin.json"
-  git -C "$dev_checkout" add release-pin.json
+  mv "$fixture/release-pin.next.json" "$dev_checkout/assets/skidbladnir/release-pin.json"
+  git -C "$dev_checkout" add assets/skidbladnir/release-pin.json
   git -C "$dev_checkout" -c user.name=Skidbladnir -c user.email=fixture@example.invalid \
     -c commit.gpgsign=false commit -qm 'mismatched source fixture'
   if (
@@ -781,10 +646,9 @@ EOF
     platform_instrumentation_output_file="$fixture/platform-output"
     platform_release_snapshot="$fixture/release-snapshot.apk"
     platform_release_snapshot_dir=''
-    platform_signing_check="$fixture/signing-check"
     # shellcheck disable=SC2317,SC2329 # Invoked indirectly by Android platform cleanup.
     verify_installed_android_signer() {
-      printf 'verify %s %s\n' "$4" "$5" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+      printf 'verify %s %s\n' "$3" "$4" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
     }
     trap android_platform_cleanup EXIT
     exit 130
@@ -818,7 +682,6 @@ EOF
     platform_instrumentation_output_file=''
     platform_release_snapshot="$fixture/retained-release-snapshot.apk"
     platform_release_snapshot_dir=''
-    platform_signing_check="$fixture/signing-check"
     # shellcheck disable=SC2317,SC2329 # Invoked indirectly by Android platform cleanup.
     verify_installed_android_signer() { return 0; }
     trap android_platform_cleanup EXIT
@@ -834,150 +697,12 @@ EOF
   printf 'Android platform release and cleanup policy passed\n'
 )
 
-android_platform_dispatch_self_test() (
-  set -euo pipefail
-  local fixture control_checkout source_checkout resolved_source_checkout fixture_android_sdk
-  local release_apk probe_log output
-  local source_sha apk_digest signer_digest control_sha status
-  fixture="$(mktemp -d /tmp/skidbladnir-platform-dispatch.XXXXXX)"
-  case "$fixture" in
-    /tmp/skidbladnir-platform-dispatch.* | /private/tmp/skidbladnir-platform-dispatch.*) ;;
-    *) printf 'Unexpected Android platform dispatch fixture path\n' >&2; return 1 ;;
-  esac
-  trap '/bin/rm -R -- "$fixture"' EXIT HUP INT TERM
-  control_checkout="$fixture/pin-control"
-  source_checkout="$fixture/exact-source"
-  fixture_android_sdk="$fixture/android-sdk"
-  release_apk="$fixture/skidbladnir-android.apk"
-  probe_log="$fixture/signing-probe"
-  output="$fixture/platform-output"
-  install -d -m 0700 \
-    "$control_checkout/scripts" \
-    "$source_checkout/scripts" \
-    "$source_checkout/android/app/src/androidTest/java/dev/niels/skidbladnir" \
-    "$fixture_android_sdk/build-tools/fixture/bin" \
-    "$fixture/home"
-  resolved_source_checkout="$(cd "$source_checkout" && pwd -P)"
-
-  cat >"$source_checkout/scripts/check-release" <<'EOF'
-#!/bin/sh
-set -eu
-[ "$#" -eq 2 ] && [ "$1" = --android-version ] && [ "$2" = v0.2.2 ]
-printf '0.2.2 2002\n'
-EOF
-  cat >"$source_checkout/scripts/check-android-signing" <<'EOF'
-#!/bin/sh
-set -eu
-printf '%s %s\n' "$0" "$*" >"$SKIDBLADNIR_DISPATCH_PROBE_LOG"
-exit 86
-EOF
-  printf 'fixture signing certificate digest\n' \
-    >"$source_checkout/android/app-signing-cert.sha256"
-  printf '@Test\n' \
-    >"$source_checkout/android/app/src/androidTest/java/dev/niels/skidbladnir/FixtureTest.kt"
-  chmod 0755 \
-    "$source_checkout/scripts/check-release" \
-    "$source_checkout/scripts/check-android-signing"
-  git -C "$source_checkout" init -q
-  git -C "$source_checkout" add scripts android/app-signing-cert.sha256 \
-    android/app/src/androidTest/java/dev/niels/skidbladnir/FixtureTest.kt
-  git -C "$source_checkout" -c user.name=Skidbladnir \
-    -c user.email=fixture@example.invalid -c commit.gpgsign=false \
-    commit -qm 'exact source fixture'
-  source_sha="$(git -C "$source_checkout" rev-parse HEAD)"
-
-  printf 'release apk dispatch fixture\n' >"$release_apk"
-  apk_digest="$(content_digest <"$release_apk")"
-  signer_digest="$(content_digest \
-    <"$source_checkout/android/app-signing-cert.sha256")"
-  install -m 0755 "$repo_dir/scripts/test" "$control_checkout/scripts/test"
-  jq -S -n \
-    --arg apk "$apk_digest" \
-    --arg signer "$signer_digest" \
-    --arg source "$source_sha" \
-    '{
-      androidApkSha256:$apk,
-      androidSigningCertAssetSha256:$signer,
-      darwinArm64Sha256:("0" * 64),
-      linuxAmd64Sha256:("1" * 64),
-      sha256SumsAssetSha256:("2" * 64),
-      sourceSha:$source,
-      version:"v0.2.2"
-    }' >"$control_checkout/release-pin.json"
-  git -C "$control_checkout" init -q
-  git -C "$control_checkout" add scripts/test release-pin.json
-  git -C "$control_checkout" -c user.name=Skidbladnir \
-    -c user.email=fixture@example.invalid -c commit.gpgsign=false \
-    commit -qm 'post-publication pin-control fixture'
-  control_sha="$(git -C "$control_checkout" rev-parse HEAD)"
-  [[ "$control_sha" != "$source_sha" ]] || {
-    printf 'Android platform dispatcher fixture trust-root HEADs are not distinct\n' >&2
-    return 1
-  }
-
-  cat >"$fixture_android_sdk/build-tools/fixture/bin/apkanalyzer" <<'EOF'
-#!/bin/sh
-set -eu
-[ "$#" -eq 3 ] && [ "$1" = manifest ]
-case "$2" in
-  version-name) printf '0.2.2\n' ;;
-  version-code) printf '2002\n' ;;
-  *) exit 64 ;;
-esac
-EOF
-  chmod 0755 "$fixture_android_sdk/build-tools/fixture/bin/apkanalyzer"
-
-  set +e
-  HOME="$fixture/home" ANDROID_HOME="$fixture_android_sdk" \
-    SKIDBLADNIR_RELEASE_APK="$release_apk" \
-    SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT='' \
-    "$control_checkout/scripts/test" platform --allow-device-mutation \
-    >"$output" 2>&1
-  status=$?
-  set -e
-  if [[ "$status" != 2 || -e "$probe_log" ]] ||
-    ! grep -Fq 'SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT' "$output"; then
-    printf 'Android platform dispatcher accepted an implicit source checkout\n' >&2
-    return 1
-  fi
-
-  set +e
-  HOME="$fixture/home" ANDROID_HOME="$fixture_android_sdk" \
-    SKIDBLADNIR_RELEASE_APK="$release_apk" \
-    SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT="$source_checkout" \
-    SKIDBLADNIR_DISPATCH_PROBE_LOG="$probe_log" \
-    "$control_checkout/scripts/test" platform --allow-device-mutation \
-    >"$output" 2>&1
-  status=$?
-  set -e
-  [[ "$status" == 86 && -f "$probe_log" && ! -L "$probe_log" ]] || {
-    printf 'Android platform dispatcher did not cross the two-root release preflight\n' >&2
-    return 1
-  }
-  [[ "$(cat "$probe_log")" == \
-    "$resolved_source_checkout/scripts/check-android-signing --config-only" ]] || {
-    printf 'Android platform dispatcher did not use exact-source signing policy\n' >&2
-    return 1
-  }
-  grep -Fq '==> android-signing-preflight' "$output" || {
-    printf 'Android platform dispatcher did not reach the bounded signing probe\n' >&2
-    return 1
-  }
-  [[ -z "$(git -C "$control_checkout" status --porcelain=v1 --untracked-files=all)" &&
-    -z "$(git -C "$source_checkout" status --porcelain=v1 --untracked-files=all)" ]] || {
-    printf 'Android platform dispatcher mutated a trust-root checkout\n' >&2
-    return 1
-  }
-  printf 'Android platform dispatcher used distinct pin-control and exact-source HEADs\n'
-)
-
 verify_installed_android_signer() {
-  local signing_check="$1"
-  local adb="$2"
-  local serial="$3"
-  local app_package="$4"
-  local expected_apk_digest="${5:-}"
-  local evidence_file="${6:-}"
+  local adb="$1"
+  local serial="$2"
+  local app_package="$3"
+  local expected_apk_digest="${4:-}"
+  local evidence_file="${5:-}"
   local apk_size
   local apk_size_output
   local package_path
@@ -986,7 +711,6 @@ verify_installed_android_signer() {
   local installed_digest
   local installed_version_code
   local transfer_timeout_seconds
-  [[ -f "$signing_check" && ! -L "$signing_check" && -x "$signing_check" ]] || return 1
   package_output="$(mktemp -t skidbladnir-package-path.XXXXXX)"
   if ! run_bounded_to_file "$android_preflight_timeout_seconds" "$package_output" \
     "$adb" -s "$serial" shell pm path "$app_package"; then
@@ -1019,7 +743,7 @@ verify_installed_android_signer() {
     rm -f "$installed_apk"
     return 1
   fi
-  if ! "$signing_check" --public-apk "$installed_apk"; then
+  if ! "$repo_dir/scripts/check-android-signing" --public-apk "$installed_apk"; then
     rm -f "$installed_apk"
     return 1
   fi
@@ -1357,17 +1081,17 @@ case "$gate" in
     # expanding it out here would resolve $files against this shell instead of the one that sets it.
     # shellcheck disable=SC2016
     run gofmt-test bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
-    run bash-syntax bash -n scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/fleet scripts/fleet-test scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run bash-syntax bash -n scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run shell-indentation awk \
       '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
        END { exit found ? 1 : 0 }' \
-      scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/fleet scripts/fleet-test scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     # justify-override: SC2016 — the single-quoted text is the inner POSIX shell's own source, and
     # expanding it out here would resolve $file before the inner loop ever binds it.
     # shellcheck disable=SC2016
     run executable-static sh -c 'for file do test -x "$file" || exit 1; done' sh \
-      scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/check-codex-config scripts/fleet scripts/fleet-test scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
-    run shellcheck shellcheck scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/fleet scripts/fleet-test scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+      scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/check-codex-config scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
+    run shellcheck shellcheck scripts/build scripts/build-host-archive scripts/build-host-binary scripts/check-android-signing scripts/check-go-toolchain scripts/check-release scripts/check-release-source scripts/release scripts/render-release-notes scripts/test
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"
@@ -1399,11 +1123,8 @@ case "$gate" in
     run release-notes-unit bash ./scripts/render-release-notes --self-test
     run release-source-unit bash ./scripts/check-release-source --self-test
     run release-worktree-unit bash ./scripts/release --self-test
-    run fleet-unit ./scripts/fleet-test
-    run host-release-binding-unit host_release_binding_self_test
     run installed-android-release-unit android_release_helper_self_test
     run android-platform-policy-unit android_platform_helper_self_test
-    run android-platform-dispatch-unit android_platform_dispatch_self_test
     run android-unit ./scripts/build android-unit
     ;;
   integration)
@@ -1469,18 +1190,10 @@ case "$gate" in
       not_run platform 'Pass --allow-device-mutation only after explicit current-turn user approval'
     fi
     platform_declared_release_apk="${SKIDBLADNIR_RELEASE_APK:-}"
-    platform_declared_source_checkout="${SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT:-}"
+    platform_dev_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-/Users/nnandal/Documents/code/dev-server}"
     if [[ ! -f "$platform_declared_release_apk" || -L "$platform_declared_release_apk" ]]; then
       not_run platform 'Set SKIDBLADNIR_RELEASE_APK to the regular pinned release APK'
     fi
-    if [[ "$platform_declared_source_checkout" != /* ||
-      ! -d "$platform_declared_source_checkout" || -L "$platform_declared_source_checkout" ]]; then
-      not_run platform 'Set SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT to the absolute non-symlink exact-source checkout'
-    fi
-    platform_source_checkout="$(cd "$platform_declared_source_checkout" && pwd -P)" ||
-      not_run platform 'Could not resolve the exact-source checkout'
-    [[ "$platform_source_checkout" != "$repo_dir" ]] ||
-      not_run platform 'The exact-source and post-publication pin-control checkouts must be distinct'
     platform_release_snapshot="$(android_platform_create_release_snapshot)" ||
       not_run platform 'Could not create the private Android release recovery boundary'
     platform_release_snapshot_dir="${platform_release_snapshot%/*}"
@@ -1492,7 +1205,6 @@ case "$gate" in
     platform_test_package_installed=0
     platform_app_replaced=0
     platform_instrumentation_output_file=''
-    platform_signing_check="$platform_source_checkout/scripts/check-android-signing"
     trap android_platform_cleanup EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
@@ -1500,15 +1212,15 @@ case "$gate" in
     install -m 0600 "$platform_declared_release_apk" "$platform_release_apk"
     platform_release_values="$(
       android_platform_release_values \
-        "$repo_dir" "$platform_release_apk" "$platform_source_checkout"
+        "$platform_dev_checkout" "$platform_release_apk" "$repo_dir"
     )" || not_run platform \
-      'Release APK, tracked pin-control checkout, APK metadata, and clean exact-source checkout must agree'
+      'Release APK, committed dev-server pin, APK metadata, and clean exact source SHA must agree'
     IFS=$'\t' read -r platform_expected_apk_digest _platform_release_version \
       platform_version_name platform_version_code _platform_source_sha \
       <<<"$platform_release_values"
     platform_expected_tests="$(awk \
       '/@Test/ { total++ } END { print total + 0 }' \
-      "$platform_source_checkout"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt
+      "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt
     )" || {
       printf 'Could not discover the Android instrumentation test count\n' >&2
       exit 1
@@ -1520,9 +1232,9 @@ case "$gate" in
       exit 1
     }
     run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
-      "$platform_signing_check" --config-only
+      "$repo_dir/scripts/check-android-signing" --config-only
     run android-platform-release-signature \
-      "$platform_signing_check" --public-apk "$platform_release_apk"
+      "$repo_dir/scripts/check-android-signing" --public-apk "$platform_release_apk"
     adb="$android_sdk/platform-tools/adb"
     if [[ ! -x "$adb" ]]; then
       not_run platform 'Pinned Android SDK adb is unavailable'
@@ -1542,16 +1254,15 @@ case "$gate" in
     fi
     app_package='dev.niels.skidbladnir'
     test_package='dev.niels.skidbladnir.test'
-    app_apk="$platform_source_checkout/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
-    test_apk="$platform_source_checkout/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
+    app_apk="$repo_dir/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
+    test_apk="$repo_dir/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
     platform_adb="$adb"
     platform_serial="$serial"
     platform_app_package="$app_package"
     platform_test_package="$test_package"
     platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform-installed.XXXXXX)"
     verify_installed_android_signer \
-      "$platform_signing_check" "$adb" "$serial" "$app_package" '' \
-      "$platform_instrumentation_output_file" ||
+      "$adb" "$serial" "$app_package" '' "$platform_instrumentation_output_file" ||
       not_run platform 'The S22+ must begin with an installation carrying the pinned signing identity'
     IFS=$'\t' read -r platform_installed_apk_digest platform_installed_version_code \
       <"$platform_instrumentation_output_file"
@@ -1568,8 +1279,7 @@ case "$gate" in
       platform_app_replaced=1
       if [[ -n "$existing_test_package" ]]; then
         if ! installed_android_package_path "$existing_test_package" >/dev/null ||
-          ! verify_installed_android_signer \
-            "$platform_signing_check" "$adb" "$serial" "$test_package"; then
+          ! verify_installed_android_signer "$adb" "$serial" "$test_package"; then
           run android-platform-interrupted-app-restore android_platform_restore_owned_state
           not_run platform 'A pre-existing test package does not carry the pinned signing identity'
         fi
@@ -1581,8 +1291,7 @@ case "$gate" in
       not_run platform 'The S22+ must carry the exact pinned release; run product first'
     fi
     verify_installed_android_signer \
-      "$platform_signing_check" "$adb" "$serial" "$app_package" \
-      "$platform_expected_apk_digest" || {
+      "$adb" "$serial" "$app_package" "$platform_expected_apk_digest" || {
       printf 'The S22+ does not carry the exact pinned release after platform recovery\n' >&2
       exit 1
     }
@@ -1591,7 +1300,7 @@ case "$gate" in
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
       not_run platform 'Connected Android device must be awake and unlocked'
     fi
-    cd "$platform_source_checkout/android"
+    cd "$repo_dir/android"
     run android-platform-build env ANDROID_HOME="$android_sdk" \
       SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
       -Pskidbladnir.android.testBuildType=deviceDebug \
@@ -1599,7 +1308,7 @@ case "$gate" in
       -Pskidbladnir.versionCode="$platform_version_code" \
       :app:assembleDeviceDebug :app:assembleDeviceDebugAndroidTest --no-daemon
     run android-platform-signatures env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
-      "$platform_signing_check" "$app_apk" "$test_apk"
+      "$repo_dir/scripts/check-android-signing" "$app_apk" "$test_apk"
     android_platform_companion_matches_release \
       "$app_apk" "$platform_expected_apk_digest" \
       "$platform_version_name" "$platform_version_code" || {
@@ -1634,6 +1343,8 @@ case "$gate" in
       "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
     instrumentation_output="$(<"$platform_instrumentation_output_file")"
     printf '%s\n' "$instrumentation_output"
+    # Pin discovery to the checked-in suite so partial instrumentation cannot
+    # false-green as a complete platform gate.
     if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
       "$instrumentation_status" "$platform_instrumentation_output_file"; then
       printf 'Android instrumentation failed, skipped, or did not pass exactly %s tests\n' \
@@ -1675,28 +1386,18 @@ case "$gate" in
     fi
 
     release_apk="${SKIDBLADNIR_RELEASE_APK:-}"
-    dev_server_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-}"
-    fleet_operator="$repo_dir/scripts/fleet"
+    dev_server_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-/Users/nnandal/Documents/code/dev-server}"
+    fleet_operator="$dev_server_checkout/skidbladnir"
     if [[ ! -f "$release_apk" || -L "$release_apk" ]]; then
       not_run product 'Set SKIDBLADNIR_RELEASE_APK to the regular signed release APK'
     fi
-    if [[ "$dev_server_checkout" != /* || ! -d "$dev_server_checkout" ||
-      -L "$dev_server_checkout" ]]; then
-      not_run product 'Set SKIDBLADNIR_DEV_SERVER_CHECKOUT to the absolute non-symlink dev-server checkout'
-    fi
     if [[ ! -x "$fleet_operator" ]]; then
-      not_run product 'The Skíðblaðnir source checkout lacks executable scripts/fleet'
+      not_run product 'Set SKIDBLADNIR_DEV_SERVER_CHECKOUT to a checkout with the fleet operator'
     fi
-    tracked_file_at_head "$repo_dir" release-pin.json ||
-      not_run product 'The upstream release pin must be tracked and byte-exact at checkout HEAD'
-    tracked_file_at_head "$dev_server_checkout" assets/skidbladnir/release-pin.json ||
-      not_run product 'The dev-server release pin must be tracked and byte-exact at checkout HEAD'
-    if ! android_release_matches_pin "$repo_dir" "$release_apk" "$repo_dir"; then
-      not_run product 'Release APK does not match the complete upstream release pin'
+    if ! android_release_matches_pin "$dev_server_checkout" "$release_apk"; then
+      not_run product 'Release APK does not match the complete published dev-server release pin'
     fi
-    release_values="$(pinned_android_release_values "$repo_dir")"
-    host_release_matches_upstream_pin "$dev_server_checkout" ||
-      not_run product 'The dev-server host release and upstream Android release pins differ'
+    release_values="$(pinned_android_release_values "$dev_server_checkout")"
     IFS=$'\t' read -r expected_apk_digest _signer_asset_digest release_version \
       <<<"$release_values"
     run android-signing-preflight env \
@@ -1744,16 +1445,16 @@ case "$gate" in
     fleet_lifetime_valid() {
       awk '
         BEGIN { valid = 1 }
-        NR == 1 && NF == 2 && $1 == "macbook" && $2 ~ /^[0-9a-f]{64}$/ { next }
-        NR == 2 && NF == 2 && $1 == "devbox" && $2 ~ /^[0-9a-f]{64}$/ { next }
-        NR == 3 && NF == 2 && $1 == "arch" && $2 ~ /^[0-9a-f]{64}$/ { next }
+        NR == 1 && NF == 2 && $1 == "Local" && $2 ~ /^[0-9a-f]{64}$/ { next }
+        NR == 2 && NF == 2 && $1 == "DevServer" && $2 ~ /^[0-9a-f]{64}$/ { next }
+        NR == 3 && NF == 2 && $1 == "Arch" && $2 ~ /^[0-9a-f]{64}$/ { next }
         { valid = 0 }
         END { exit valid && NR == 3 ? 0 : 1 }
       '
     }
     restore_product_gateway() {
       if [[ -n "$service_restore_required" ]]; then
-        run_fleet_operator recover macbook --allow-service-lifecycle || return
+        "$fleet_operator" recover Local || return
         service_restore_required=''
       fi
     }
@@ -1779,8 +1480,8 @@ case "$gate" in
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
-    run fleet-verify run_fleet_operator verify
-    baseline_lifetime="$(run_fleet_operator reconcile-lifetime-digests)"
+    run fleet-doctor "$fleet_operator" doctor
+    baseline_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     printf '%s\n' "$baseline_lifetime" | fleet_lifetime_valid || {
       printf 'Fleet operator returned invalid lifetime evidence.\n' >&2
       exit 1
@@ -1793,8 +1494,7 @@ case "$gate" in
     fi
     preupdate_evidence="$(mktemp -t skidbladnir-preupdate.XXXXXX)"
     verify_installed_android_signer \
-      "$repo_dir/scripts/check-android-signing" "$adb" "$serial" "$app_package" '' \
-      "$preupdate_evidence" || {
+      "$adb" "$serial" "$app_package" '' "$preupdate_evidence" || {
       printf 'Pre-update app does not carry the pinned production signing identity.\n' >&2
       exit 1
     }
@@ -1824,8 +1524,7 @@ case "$gate" in
       exit 1
     }
     verify_installed_android_signer \
-      "$repo_dir/scripts/check-android-signing" "$adb" "$serial" "$app_package" \
-      "$expected_apk_digest" || {
+      "$adb" "$serial" "$app_package" "$expected_apk_digest" || {
       printf 'Installed release APK does not match the pinned digest and signing identity.\n' >&2
       exit 1
     }
@@ -1833,7 +1532,7 @@ case "$gate" in
     physical_confirmation UPDATE_PRESERVED \
       "Confirm that $release_version opens with the same Arch, Devbox, and MacBook fleet before a new invite."
     printf '%s\n' 'On the S22+, tap Reconnect fleet, then scan the fresh QR below.'
-    run fleet-invite run_fleet_operator invite
+    run fleet-invite "$fleet_operator" invite
     physical_confirmation RECONNECTED \
       'Confirm that All renders no pressure rails. Select Arch, Devbox, and MacBook one at a time; exactly the selected machine renders its compact rail, and that rail opens only its own details with CPU, status words, and evaluated or NO DATA evidence. No details sheet shows Unsupported or a second history band.'
     terminal_cleanup_required=1
@@ -1849,16 +1548,16 @@ case "$gate" in
     physical_confirmation OUTAGE_ARMED \
       'Select MacBook, open one existing session Kill confirmation, verify Confirm is enabled, and leave the confirmation open without activating it.'
     service_restore_required=1
-    run one-host-outage run_fleet_operator outage macbook --allow-service-lifecycle
+    run one-host-outage "$fleet_operator" outage Local
     physical_confirmation OUTAGE_FENCED \
       'Confirm the open MacBook Kill action becomes disabled while Cancel remains available, then dismiss it. All keeps the MacBook exception notice and no pressure rails; MacBook Kill stays disabled and New dwarf stays visually cold and disabled with stale retained pressure or a header-only unavailable rail; Arch and Devbox remain fresh, actionable, and render only their own pressure.'
-    run one-host-recovery run_fleet_operator recover macbook --allow-service-lifecycle
+    run one-host-recovery "$fleet_operator" recover Local
     service_restore_required=''
-    run recovered-fleet-verify run_fleet_operator verify
+    run recovered-fleet-doctor "$fleet_operator" doctor
     physical_confirmation RECOVERED \
       'Confirm that Arch, Devbox, and MacBook all return to fresh pressure under their own filters, remain bound to their original labels, and leave All free of pressure rails.'
 
-    after_lifetime="$(run_fleet_operator reconcile-lifetime-digests)"
+    after_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     printf '%s\n' "$after_lifetime" | fleet_lifetime_valid || {
       printf 'Fleet operator returned invalid recovery lifetime evidence.\n' >&2
       exit 1
@@ -1868,8 +1567,7 @@ case "$gate" in
       exit 1
     }
     verify_installed_android_signer \
-      "$repo_dir/scripts/check-android-signing" "$adb" "$serial" "$app_package" \
-      "$expected_apk_digest" || {
+      "$adb" "$serial" "$app_package" "$expected_apk_digest" || {
       printf 'Installed release digest or signing identity changed during the journey.\n' >&2
       exit 1
     }
@@ -1896,23 +1594,13 @@ case "$gate" in
       ! "$second_phone_model" =~ ^[A-Za-z0-9._+-]{1,64}$ ]]; then
       not_run second-phone 'Name the non-S22+ API 36 phone in SKIDBLADNIR_SECOND_PHONE_MODEL'
     fi
-    dev_server_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-}"
-    fleet_operator="$repo_dir/scripts/fleet"
-    if [[ "$dev_server_checkout" != /* || ! -d "$dev_server_checkout" ||
-      -L "$dev_server_checkout" ]]; then
-      not_run second-phone 'Set SKIDBLADNIR_DEV_SERVER_CHECKOUT to the absolute non-symlink dev-server checkout'
-    fi
+    dev_server_checkout="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-/Users/nnandal/Documents/code/dev-server}"
+    fleet_operator="$dev_server_checkout/skidbladnir"
     if [[ ! -x "$fleet_operator" ]]; then
-      not_run second-phone 'The Skíðblaðnir source checkout lacks executable scripts/fleet'
+      not_run second-phone 'Set SKIDBLADNIR_DEV_SERVER_CHECKOUT to a checkout with the fleet operator'
     fi
-    tracked_file_at_head "$repo_dir" release-pin.json ||
-      not_run second-phone 'The upstream release pin must be tracked and byte-exact at checkout HEAD'
-    tracked_file_at_head "$dev_server_checkout" assets/skidbladnir/release-pin.json ||
-      not_run second-phone 'The dev-server release pin must be tracked and byte-exact at checkout HEAD'
-    release_values="$(pinned_android_release_values "$repo_dir")" ||
-      not_run second-phone 'The complete published upstream release pin is unavailable'
-    host_release_matches_upstream_pin "$dev_server_checkout" ||
-      not_run second-phone 'The dev-server host release and upstream Android release pins differ'
+    release_values="$(pinned_android_release_values "$dev_server_checkout")" ||
+      not_run second-phone 'The complete published dev-server release pin is unavailable'
     IFS=$'\t' read -r expected_apk_digest expected_signer_asset_digest release_version \
       <<<"$release_values"
     if [[ "$(content_digest <"$repo_dir/android/app-signing-cert.sha256")" != "$expected_signer_asset_digest" ]]; then
@@ -1941,13 +1629,13 @@ case "$gate" in
       not_run second-phone 'The named second phone must begin without Skíðblaðnir installed'
     fi
 
-    run fleet-verify run_fleet_operator verify
-    baseline_lifetime="$(run_fleet_operator reconcile-lifetime-digests)"
+    run fleet-doctor "$fleet_operator" doctor
+    baseline_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     printf '%s\n' "$baseline_lifetime" | awk '
       BEGIN { valid = 1 }
-      NR == 1 && NF == 2 && $1 == "macbook" && $2 ~ /^[0-9a-f]{64}$/ { next }
-      NR == 2 && NF == 2 && $1 == "devbox" && $2 ~ /^[0-9a-f]{64}$/ { next }
-      NR == 3 && NF == 2 && $1 == "arch" && $2 ~ /^[0-9a-f]{64}$/ { next }
+      NR == 1 && NF == 2 && $1 == "Local" && $2 ~ /^[0-9a-f]{64}$/ { next }
+      NR == 2 && NF == 2 && $1 == "DevServer" && $2 ~ /^[0-9a-f]{64}$/ { next }
+      NR == 3 && NF == 2 && $1 == "Arch" && $2 ~ /^[0-9a-f]{64}$/ { next }
       { valid = 0 }
       END { exit valid && NR == 3 ? 0 : 1 }
     ' || {
@@ -1967,15 +1655,14 @@ case "$gate" in
       exit 1
     }
     verify_installed_android_signer \
-      "$repo_dir/scripts/check-android-signing" "$adb" "$serial" \
-      dev.niels.skidbladnir "$expected_apk_digest" || {
+      "$adb" "$serial" dev.niels.skidbladnir "$expected_apk_digest" || {
       printf 'Installed APK does not match the public release digest and signing identity.\n' >&2
       exit 1
     }
     run second-phone-launch "$adb" -s "$serial" shell am start -n \
       'dev.niels.skidbladnir/.MainActivity'
     printf '%s\n' 'On the named second phone, sign in to Tailscale, tap Connect, then scan the QR below.'
-    run second-phone-invite run_fleet_operator invite
+    run second-phone-invite "$fleet_operator" invite
     printf '%s\n' \
       'Confirm that this newly installed app renders Arch, Devbox, and MacBook and each can be selected.'
     printf '%s' 'Type SECOND_PHONE_CONNECTED to confirm: '
@@ -1985,14 +1672,13 @@ case "$gate" in
       exit 1
     }
 
-    after_lifetime="$(run_fleet_operator reconcile-lifetime-digests)"
+    after_lifetime="$("$fleet_operator" reconcile-lifetime-digests)"
     [[ "$after_lifetime" == "$baseline_lifetime" ]] || {
       printf 'The second-phone journey changed a host tmux lifetime inventory.\n' >&2
       exit 1
     }
     verify_installed_android_signer \
-      "$repo_dir/scripts/check-android-signing" "$adb" "$serial" \
-      dev.niels.skidbladnir "$expected_apk_digest" || {
+      "$adb" "$serial" dev.niels.skidbladnir "$expected_apk_digest" || {
       printf 'Installed release digest or signing identity changed during the journey.\n' >&2
       exit 1
     }
@@ -2135,23 +1821,37 @@ case "$gate" in
       --repo "$published_repo" --dir "$published_assets"
     run public-release-assets "$published_source/scripts/check-release" \
       --public-assets "$published_assets" "$published_tag" "$published_sha"
-    published_pin_relative='release-pin.json'
-    published_pin="$repo_dir/$published_pin_relative"
+    published_declared_dev_server="${SKIDBLADNIR_DEV_SERVER_CHECKOUT:-/Users/nnandal/Documents/code/dev-server}"
+    published_dev_server="$(cd "$published_declared_dev_server" && pwd -P)" || {
+      printf 'Published release requires an available dev-server checkout.\n' >&2
+      exit 1
+    }
+    published_pin_relative='assets/skidbladnir/release-pin.json'
+    published_pin="$published_dev_server/$published_pin_relative"
     [[ -f "$published_pin" && ! -L "$published_pin" ]] || {
-      printf 'Published release requires one regular upstream release pin.\n' >&2
+      printf 'Published release requires one regular dev-server release pin.\n' >&2
       exit 1
     }
-    [[ "$(git -C "$repo_dir" rev-parse --show-toplevel)" == "$repo_dir" ]] || {
-      printf 'Published release requires the root of the upstream Git checkout.\n' >&2
+    [[ "$(git -C "$published_dev_server" rev-parse --show-toplevel)" == \
+        "$published_dev_server" ]] || {
+      printf 'Published release requires the root of one dev-server Git checkout.\n' >&2
       exit 1
     }
-    if ! git -C "$repo_dir" cat-file -e \
+    case "$(git -C "$published_dev_server" remote get-url origin)" in
+      git@github.com:NielsdaWheelz/dev-server.git | \
+        https://github.com/NielsdaWheelz/dev-server.git) ;;
+      *)
+        printf 'Published release requires the canonical dev-server origin.\n' >&2
+        exit 1
+        ;;
+    esac
+    if ! git -C "$published_dev_server" cat-file -e \
       "HEAD:$published_pin_relative" 2>/dev/null ||
-      ! git -C "$repo_dir" diff --quiet HEAD -- \
+      ! git -C "$published_dev_server" diff --quiet HEAD -- \
         "$published_pin_relative" ||
       ! cmp -s "$published_pin" \
-        <(git -C "$repo_dir" show "HEAD:$published_pin_relative"); then
-      printf 'Upstream release pin must be tracked and byte-exact at its current HEAD.\n' >&2
+        <(git -C "$published_dev_server" show "HEAD:$published_pin_relative"); then
+      printf 'dev-server release pin must be tracked and byte-exact at its current HEAD.\n' >&2
       exit 1
     fi
     published_expected_pin="$(
@@ -2174,7 +1874,7 @@ case "$gate" in
         }'
     )"
     cmp -s "$published_pin" <(printf '%s\n' "$published_expected_pin") || {
-      printf 'Upstream does not pin the exact public tag, source, and all five asset digests.\n' >&2
+      printf 'dev-server does not pin the exact public tag, source, and all five asset digests.\n' >&2
       exit 1
     }
     published_body="$(jq -r '.body' <<<"$published_metadata")"
