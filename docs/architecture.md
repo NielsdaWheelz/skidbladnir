@@ -20,8 +20,12 @@ rejected synthetic-wheel feasibility result, final five-owner signed S22+
 green, complete 60-test signed same-version S22+ candidate green, reproducible
 xterm build, and routine verification are recorded. The final targeted mutation
 rerun, final-candidate hands-on journey, and live tmux/Claude Code journey were
-explicitly waived for shipment on 2026-09-04, not passed. The release-bound
-platform gate, release, and deployment remain `NOT_RUN`.
+explicitly waived for shipment on 2026-09-04, not passed. The hard cut and its
+suite-scaled platform-budget correction are merged; exact `v0.2.27`
+publication, three-host pinning/convergence/acceptance, fleet doctor, and the
+complete 60-test release-bound S22+ platform gate are green. That gate preserved
+pairing and restored the exact public APK. Product, second-phone, and reboot
+persistence acceptance remain `NOT_RUN`.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in

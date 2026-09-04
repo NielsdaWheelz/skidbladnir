@@ -56,7 +56,11 @@ five-owner and complete 60-test signed same-version S22+ candidate greens,
 reproducible xterm build, and routine verification are recorded. The final
 targeted mutation rerun, final-candidate hands-on journey, and live tmux/Claude
 Code journey were explicitly waived for shipment on 2026-09-04, not passed.
-The release-bound platform gate, release, and deployment remain `NOT_RUN`.
+The hard cut and suite-scaled platform-budget correction are merged. Exact
+`v0.2.27` publication, three-host pinning/convergence/acceptance, fleet doctor,
+and the complete 60-test release-bound S22+ platform gate are green with
+pairing unchanged and the exact public APK restored. Product, second-phone,
+and reboot-persistence acceptance remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -850,7 +854,11 @@ injection, final five-owner and complete 60-test signed same-version S22+
 candidate greens, reproducible xterm build, and routine verification are
 recorded. The final targeted mutation rerun, final-candidate hands-on, and live
 tmux/Claude Code journeys were explicitly waived for shipment on 2026-09-04,
-not passed. Release-bound platform, release, and deployment remain `NOT_RUN`.
+not passed. PRs #54 and #55 are merged; exact `v0.2.27` publication, three-host
+pinning/convergence/acceptance, fleet doctor, and the complete 60-test
+release-bound S22+ platform gate are green with pairing unchanged and the exact
+public APK restored. Product, second-phone, and reboot-persistence acceptance
+remain `NOT_RUN`.
 Scope, files, acceptance, and non-overlapping ownership are closed in
 [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
 
@@ -890,5 +898,5 @@ Scope, files, acceptance, and non-overlapping ownership are closed in
 | v0 tmux terminal-activity hard cut | Implemented and merged; owner reds, focused greens, both routine suites, release-tree Darwin isolated tmux, focused S22+ component, exact `v0.2.24` release/pin/deployment, three-host doctor, and complete 54-test release-bound S22+ platform green; Linux isolated, S22+ hands-on, provider-live, product, and second-phone acceptance `NOT_RUN` |
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase; rebased complete 54-test release-bound platform green with pairing preserved and exact release restored; hands-on acceptance `NOT_RUN` |
 | v0 working-directory chooser delta | Production hard cut implemented with all four owner reds; rebased routine verification and approved Darwin/Linux isolated-tmux gates green; pre-rebase signed same-version 55-test S22+ candidate green with exact release restoration and unchanged pairing but not proof of the rebased source; governed platform and hands-on gates `NOT_RUN` |
-| v0 terminal touch-scroll delta | Source implemented; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, and routine verification recorded; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; release-bound platform, release, and deployment `NOT_RUN` |
+| v0 terminal touch-scroll delta | Implemented, released, and deployed; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, routine verification, exact `v0.2.27` publication, three-host acceptance/doctor, and the complete 60-test release-bound S22+ platform gate are green with pairing unchanged and the exact public APK restored; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; product, second-phone, and reboot persistence `NOT_RUN` |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |
