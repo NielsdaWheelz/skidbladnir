@@ -1,13 +1,16 @@
 # v0 terminal touch-scroll delta
 
-Status: source implementation complete 2026-09-01. The unchanged-source owner
+Status: implemented, released, and deployed. The unchanged-source owner
 reds, rejected synthetic-wheel feasibility result, final five-owner signed S22+
 green, complete 60-test signed same-version S22+ candidate green, two clean
 161-test xterm rebuilds with identical output, and routine verification are
 recorded. On 2026-09-04 the operator explicitly waived the outstanding targeted
 mutation rerun, final-candidate hands-on journey, and live tmux/Claude Code
-journey for shipment; those are waivers, not passes. The release-bound platform
-gate, release, and deployment remain `NOT_RUN`.
+journey for shipment; those are waivers, not passes. PRs #54 and #55 are merged,
+the exact `v0.2.27` source and artifacts are public, all three fleet hosts run
+the pinned release, and the complete release-bound 60-test S22+ platform gate
+is green with pairing unchanged and the exact public APK restored. Product,
+second-phone, and reboot-persistence acceptance remain `NOT_RUN`.
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the closed
 implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md).
@@ -329,6 +332,24 @@ On 2026-09-04 the operator explicitly accepted that remaining evidence gap and
 directed shipment without the outstanding targeted mutation rerun, final
 hands-on matrix, or live tmux/Claude Code journey. Those boundaries are
 `WAIVED`, not green, and no lower-layer result is promoted to replace them.
+
+PR #54 merged the terminal touch-scroll hard cut. The first two release-bound
+`v0.2.26` platform attempts failed closed at the harness's stale fixed
+90-second instrumentation deadline: the second had passed all 45 tests it had
+started, but had not started all 60. The harness owner red then proved that no
+suite-scaled deadline existed; PR #55 replaced the fixed ceiling with one
+discovered-suite budget, retaining the existing strict completeness checks and
+a finite timeout. Exact-head hosted CI passed for the final source
+`6bba344d3e965285fe0a9b8535924962ecb52c62`.
+
+The immutable `v0.2.27` release was published from that source. Its public APK
+then passed the complete release-bound platform gate on the approved S22+:
+`OK (60 tests)` in `199.959` seconds. Cleanup removed the test package,
+restored the byte-identical public APK with its pinned signer and
+`0.2.27`/`2027` version, preserved the encrypted pairing, and relaunched the
+production activity. The release pin was merged in the deployment repository;
+MacBook, DevServer, and Arch acceptance and final fleet doctor passed on
+`v0.2.27`. Reboot persistence was not exercised and remains `NOT_RUN`.
 
 **Green:** implement only the source-pinned xterm line-wheel API/router, page
 gesture owner, scoped CSS ownership, two native custom actions, exact commands,
