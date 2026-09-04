@@ -5,10 +5,15 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeProvider
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -50,11 +55,23 @@ private enum class PageOutputAdvance {
     Invalid,
 }
 
+private enum class TerminalScrollDirection {
+    Backward,
+    Forward,
+}
+
+private sealed interface TerminalPageCommand {
+    data object Focus : TerminalPageCommand
+    data class Accessory(val accessory: TerminalAccessory) : TerminalPageCommand
+    data object ResetInputState : TerminalPageCommand
+    data class Scroll(val direction: TerminalScrollDirection) : TerminalPageCommand
+}
+
 internal interface TerminalPage {
     fun write(bytes: ByteArray)
     fun focus()
     fun sendAccessory(accessory: TerminalAccessory)
-    fun resetModifiers()
+    fun resetInputState()
 }
 
 internal enum class TerminalAccessory {
@@ -120,6 +137,22 @@ internal class LockedTerminalWebView(
     private var pendingOutputBytes = 0L
     private var outputInFlight = false
     private var nextOutputSequence = 1L
+    private var accessibilityDelegate: AccessibilityNodeProvider? = null
+    private var accessibilityWrapper: AccessibilityNodeProvider? = null
+    private var accessibilityActionsWereAvailable = false
+    private var activeTouchEvent: MotionEvent? = null
+    private val backwardWheelAction by lazy {
+        AccessibilityNodeInfo.AccessibilityAction(
+            R.id.terminal_wheel_backward,
+            context.getString(R.string.terminal_wheel_backward_label),
+        )
+    }
+    private val forwardWheelAction by lazy {
+        AccessibilityNodeInfo.AccessibilityAction(
+            R.id.terminal_wheel_forward,
+            context.getString(R.string.terminal_wheel_forward_label),
+        )
+    }
 
     init {
         require(initialUrl.startsWith("https://$LOCAL_ASSET_HOST/assets/terminal/"))
@@ -191,64 +224,59 @@ internal class LockedTerminalWebView(
     }
 
     override fun focus() {
-        post {
-            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
-            val port = pagePort
-            if (port == null) {
-                markUnavailable()
-                return@post
-            }
-            try {
-                port.postMessage(WebMessageCompat("{\"kind\":\"Focus\"}"))
-            } catch (_: IllegalStateException) {
-                markUnavailable()
-            }
-        }
+        sendPageCommand(TerminalPageCommand.Focus)
     }
 
     override fun sendAccessory(accessory: TerminalAccessory) {
-        post {
-            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
-            val port = pagePort
-            if (port == null) {
-                markUnavailable()
-                return@post
-            }
-            try {
-                port.postMessage(
-                    WebMessageCompat(
-                        JSONObject()
-                            .put("kind", "Accessory")
-                            .put("key", accessory.name)
-                            .toString(),
-                    ),
-                )
-            } catch (_: IllegalStateException) {
-                markUnavailable()
-            }
-        }
+        sendPageCommand(TerminalPageCommand.Accessory(accessory))
     }
 
-    override fun resetModifiers() {
-        post {
-            if (synchronized(outputMonitor) { disposed || unavailable }) return@post
-            val port = pagePort
-            if (port == null) {
-                markUnavailable()
-                return@post
-            }
-            try {
-                port.postMessage(WebMessageCompat("{\"kind\":\"ResetModifiers\"}"))
-            } catch (_: IllegalStateException) {
-                markUnavailable()
-            }
+    override fun resetInputState() {
+        sendPageCommand(TerminalPageCommand.ResetInputState)
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        val changed = enabled != isEnabled
+        if (changed && !enabled) {
+            cancelActiveTouch()
+            if (pageIsLive()) sendPageCommand(TerminalPageCommand.ResetInputState)
         }
+        super.setEnabled(enabled)
+        if (changed) refreshAccessibilityActionAvailability()
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!isEnabled) return false
+        val handled = super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> clearActiveTouch()
+            MotionEvent.ACTION_DOWN -> if (handled) retainActiveTouch(event)
+            MotionEvent.ACTION_MOVE,
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_POINTER_UP,
+            -> if (activeTouchEvent != null) retainActiveTouch(event)
+        }
+        return handled
+    }
+
+    override fun getAccessibilityNodeProvider(): AccessibilityNodeProvider? {
+        val delegate = super.getAccessibilityNodeProvider()
+        if (delegate == null) {
+            accessibilityDelegate = null
+            accessibilityWrapper = null
+            return null
+        }
+        if (delegate !== accessibilityDelegate) {
+            accessibilityDelegate = delegate
+            accessibilityWrapper = TerminalAccessibilityNodeProvider(delegate)
+        }
+        return accessibilityWrapper
     }
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
         if (!hasWindowFocus && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetModifiers()
+            resetInputState()
         }
     }
 
@@ -265,18 +293,21 @@ internal class LockedTerminalWebView(
             nextOrientationIsKnown
         orientation = nextOrientation
         if (rotated && synchronized(outputMonitor) { pageReady && !disposed && !unavailable }) {
-            resetModifiers()
+            resetInputState()
         }
     }
 
     fun dispose() {
         main.removeCallbacks(pageReadinessDeadline)
+        cancelActiveTouch()
+        if (pageIsLive()) sendPageCommand(TerminalPageCommand.ResetInputState)
         synchronized(outputMonitor) {
             if (disposed) return
             disposed = true
             clearOutputLocked()
             unavailable = true
         }
+        refreshAccessibilityActionAvailability()
         pagePort?.close()
         pagePort = null
         stopLoading()
@@ -284,6 +315,29 @@ internal class LockedTerminalWebView(
         (parent as? android.view.ViewGroup)?.removeView(this)
         removeAllViews()
         destroy()
+    }
+
+    private fun retainActiveTouch(event: MotionEvent) {
+        activeTouchEvent?.recycle()
+        activeTouchEvent = MotionEvent.obtain(event)
+    }
+
+    private fun clearActiveTouch() {
+        activeTouchEvent?.recycle()
+        activeTouchEvent = null
+    }
+
+    private fun cancelActiveTouch() {
+        val active = activeTouchEvent ?: return
+        activeTouchEvent = null
+        val cancellation = MotionEvent.obtain(active)
+        active.recycle()
+        cancellation.action = MotionEvent.ACTION_CANCEL
+        try {
+            super.onTouchEvent(cancellation)
+        } finally {
+            cancellation.recycle()
+        }
     }
 
     @SuppressLint("MissingOnRenderProcessGone") // The detector does not recognize the WebViewClientCompat override directly below.
@@ -375,6 +429,7 @@ internal class LockedTerminalWebView(
                             }
                             if (firstReady) {
                                 main.removeCallbacks(pageReadinessDeadline)
+                                refreshAccessibilityActionAvailability()
                                 listener.onReady(this@LockedTerminalWebView)
                             } else {
                                 markUnavailable()
@@ -466,6 +521,148 @@ internal class LockedTerminalWebView(
         check(required.all(WebViewFeature::isFeatureSupported)) // justify-service-invariant-check: the bearer-free native terminal boundary cannot be implemented without every message-port operation.
     }
 
+    private fun sendPageCommand(command: TerminalPageCommand): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) return sendPageCommandNow(command)
+        if (!pageCommandAllowed(command)) return false
+        return post { sendPageCommandNow(command) }
+    }
+
+    private fun sendPageCommandNow(command: TerminalPageCommand): Boolean {
+        if (!pageCommandAllowed(command)) return false
+        val port = pagePort
+        if (port == null) {
+            markUnavailable()
+            return false
+        }
+        return try {
+            port.postMessage(WebMessageCompat(command.toPayload()))
+            true
+        } catch (_: IllegalStateException) {
+            markUnavailable()
+            false
+        }
+    }
+
+    private fun pageCommandAllowed(command: TerminalPageCommand): Boolean =
+        pageIsLive() && (command !is TerminalPageCommand.Scroll || isEnabled)
+
+    private fun pageIsLive(): Boolean = synchronized(outputMonitor) {
+        pageReady && !disposed && !unavailable
+    }
+
+    private fun TerminalPageCommand.toPayload(): String = when (this) {
+        TerminalPageCommand.Focus -> "{\"kind\":\"Focus\"}"
+        is TerminalPageCommand.Accessory -> JSONObject()
+            .put("kind", "Accessory")
+            .put("key", accessory.name)
+            .toString()
+        TerminalPageCommand.ResetInputState -> "{\"kind\":\"ResetInputState\"}"
+        is TerminalPageCommand.Scroll -> JSONObject()
+            .put("kind", "Scroll")
+            .put("direction", direction.name)
+            .toString()
+    }
+
+    private fun accessibilityActionsAvailable(): Boolean = pageIsLive() && isEnabled
+
+    private fun refreshAccessibilityActionAvailability() {
+        val available = accessibilityActionsAvailable()
+        if (available == accessibilityActionsWereAvailable) return
+        accessibilityActionsWereAvailable = available
+        parent?.notifySubtreeAccessibilityStateChanged(
+            this,
+            this,
+            AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE,
+        )
+    }
+
+    private inner class TerminalAccessibilityNodeProvider(
+        private val delegate: AccessibilityNodeProvider,
+    ) : AccessibilityNodeProvider() {
+        override fun createAccessibilityNodeInfo(virtualViewId: Int): AccessibilityNodeInfo? =
+            delegate.createAccessibilityNodeInfo(virtualViewId)?.also { node ->
+                decorate(node, virtualViewId)
+            }
+
+        override fun findAccessibilityNodeInfosByText(
+            text: String?,
+            virtualViewId: Int,
+        ): MutableList<AccessibilityNodeInfo>? =
+            delegate.findAccessibilityNodeInfosByText(text, virtualViewId)?.also { nodes ->
+                nodes.forEach { node -> decorate(node) }
+            }
+
+        override fun findFocus(focus: Int): AccessibilityNodeInfo? =
+            delegate.findFocus(focus)?.also { node ->
+                decorate(node)
+            }
+
+        override fun performAction(
+            virtualViewId: Int,
+            action: Int,
+            arguments: Bundle?,
+        ): Boolean {
+            val direction = when (action) {
+                R.id.terminal_wheel_backward -> TerminalScrollDirection.Backward
+                R.id.terminal_wheel_forward -> TerminalScrollDirection.Forward
+                else -> return delegate.performAction(virtualViewId, action, arguments)
+            }
+            val current = delegate.createAccessibilityNodeInfo(virtualViewId)
+            if (current == null || !isTerminalRowNode(current, virtualViewId)) {
+                return delegate.performAction(virtualViewId, action, arguments)
+            }
+            if (!accessibilityActionsAvailable()) return false
+            if (!current.isAccessibilityFocused) return false
+            return sendPageCommand(TerminalPageCommand.Scroll(direction))
+        }
+
+        override fun addExtraDataToAccessibilityNodeInfo(
+            virtualViewId: Int,
+            info: AccessibilityNodeInfo,
+            extraDataKey: String,
+            arguments: Bundle?,
+        ) {
+            delegate.addExtraDataToAccessibilityNodeInfo(
+                virtualViewId,
+                info,
+                extraDataKey,
+                arguments,
+            )
+        }
+
+        private fun decorate(
+            node: AccessibilityNodeInfo,
+            virtualViewId: Int? = null,
+        ) {
+            if (!isTerminalRowNode(node, virtualViewId) ||
+                !node.isAccessibilityFocused ||
+                !accessibilityActionsAvailable()
+            ) return
+            if (node.actionList.none { it.id == backwardWheelAction.id }) {
+                node.addAction(backwardWheelAction)
+            }
+            if (node.actionList.none { it.id == forwardWheelAction.id }) {
+                node.addAction(forwardWheelAction)
+            }
+        }
+
+        private fun isTerminalRowNode(
+            node: AccessibilityNodeInfo,
+            virtualViewId: Int? = null,
+        ): Boolean {
+            // Chromium's row nodes carry CollectionItemInfo. Provider-returned
+            // nodes are still mutable here, so Android's public parent query is
+            // unavailable until the framework seals the node; instrumentation
+            // also requires its delivered parent to carry CollectionInfo.
+            val item = node.collectionItemInfo ?: return false
+            return virtualViewId != HOST_VIEW_ID &&
+                node.packageName?.toString() == context.packageName &&
+                node.className?.toString() != WebView::class.java.name &&
+                item.rowSpan > 0 &&
+                item.columnSpan > 0
+        }
+    }
+
     private fun sendNextOutput() {
         val output = synchronized(outputMonitor) {
             if (disposed || unavailable) return
@@ -533,6 +730,7 @@ internal class LockedTerminalWebView(
     }
 
     private fun reportUnavailable() {
+        refreshAccessibilityActionAvailability()
         if (disposed) return
         pagePort?.close()
         pagePort = null

@@ -50,6 +50,13 @@ with pairing unchanged and the exact production APK restored. Those proofs do
 not prove the rebased source. Rebased routine verification and the approved
 Darwin/Linux isolated-tmux gates are green; governed platform and hands-on
 gates remain `NOT_RUN`.
+The 2026-09-01 terminal touch-scroll source delta is implemented. Its
+unchanged-source owner reds, rejected synthetic-wheel feasibility result, final
+five-owner and complete 60-test signed same-version S22+ candidate greens,
+reproducible xterm build, and routine verification are recorded. The final
+targeted mutation rerun, final-candidate hands-on journey, and live tmux/Claude
+Code journey were explicitly waived for shipment on 2026-09-04, not passed.
+The release-bound platform gate, release, and deployment remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -100,6 +107,7 @@ S1 tmux control plane
  -> v0 tmux terminal-activity hard cut
  -> v0 dashboard return-continuity delta
  -> v0 working-directory chooser delta
+ -> v0 terminal touch-scroll delta
 ```
 
 ## S1 — tmux control plane
@@ -819,6 +827,33 @@ are green; governed platform and hands-on touch/large-text/TalkBack gates remain
 `NOT_RUN`. Scope and non-overlapping ownership are closed in
 [`working-directory-chooser.md`](working-directory-chooser.md).
 
+## v0 terminal touch-scroll delta — source implemented
+
+Outcome: a one-finger vertical drag over the live terminal behaves like a real
+xterm wheel. One source-pinned xterm line-wheel API/router alone selects exact
+local scrollback, cursor fallback, or mouse reporting; truthful custom Android
+accessibility wheel actions use the same route.
+
+Hard cut: add one page-owned Pointer Events recognizer, scoped `touch-action`,
+two custom native actions, exact `Scroll`/`ResetInputState` commands, and one
+reviewed xterm source patch with a reproducibly built, fork-suffixed artifact.
+Delete global `pan-y` and synthetic wheel dispatch; add no transcript,
+application-side mode router, escape encoder, tmux command, fallback, setting,
+persistence, or product/network API.
+
+Red: one boundary-weighted real-WebView matrix owns trusted touch arbitration,
+all three xterm routes, accessibility entry, cancellation, and containment.
+Routine verification remains structural; separately approved platform and
+hands-on S22+ gates own the real WebView and finger/accessibility journey. The
+unchanged-source owner reds, the device proof rejecting synthetic wheel
+injection, final five-owner and complete 60-test signed same-version S22+
+candidate greens, reproducible xterm build, and routine verification are
+recorded. The final targeted mutation rerun, final-candidate hands-on, and live
+tmux/Claude Code journeys were explicitly waived for shipment on 2026-09-04,
+not passed. Release-bound platform, release, and deployment remain `NOT_RUN`.
+Scope, files, acceptance, and non-overlapping ownership are closed in
+[`terminal-touch-scroll.md`](terminal-touch-scroll.md).
+
 ## Status
 
 | Slice | Status |
@@ -855,4 +890,5 @@ are green; governed platform and hands-on touch/large-text/TalkBack gates remain
 | v0 tmux terminal-activity hard cut | Implemented and merged; owner reds, focused greens, both routine suites, release-tree Darwin isolated tmux, focused S22+ component, exact `v0.2.24` release/pin/deployment, three-host doctor, and complete 54-test release-bound S22+ platform green; Linux isolated, S22+ hands-on, provider-live, product, and second-phone acceptance `NOT_RUN` |
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase; rebased complete 54-test release-bound platform green with pairing preserved and exact release restored; hands-on acceptance `NOT_RUN` |
 | v0 working-directory chooser delta | Production hard cut implemented with all four owner reds; rebased routine verification and approved Darwin/Linux isolated-tmux gates green; pre-rebase signed same-version 55-test S22+ candidate green with exact release restoration and unchanged pairing but not proof of the rebased source; governed platform and hands-on gates `NOT_RUN` |
+| v0 terminal touch-scroll delta | Source implemented; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, and routine verification recorded; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; release-bound platform, release, and deployment `NOT_RUN` |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

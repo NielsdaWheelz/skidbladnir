@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -12,6 +13,97 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LOCK_PATH = ROOT / "android" / "terminal.lock"
 VENDOR_PATH = ROOT / "android" / "app" / "src" / "main" / "assets" / "terminal" / "vendor"
+XTERM_BUILD_KEYS = {
+    "source",
+    "tag",
+    "commit",
+    "sourceTreeSha256",
+    "sourceLockSha256",
+    "patchedSourceManifestSha256",
+    "patchedSourceLockSha256",
+    "node",
+    "npm",
+    "buildPlatform",
+    "esbuildPackage",
+    "esbuildVersion",
+    "esbuildSource",
+    "esbuildIntegrity",
+    "patch",
+    "patchSha256",
+    "command",
+}
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def check_xterm_build(lock: dict[str, object], files: dict[str, object]) -> None:
+    build = lock.get("xtermJavascriptBuild")
+    if not isinstance(build, dict) or set(build) != XTERM_BUILD_KEYS:
+        raise ValueError("terminal lock xterm JavaScript build shape is invalid")
+    for key in XTERM_BUILD_KEYS:
+        if not isinstance(build[key], str) or not build[key]:
+            raise ValueError(f"terminal lock xterm JavaScript field is invalid: {key}")
+    if build["source"] != "https://github.com/xtermjs/xterm.js.git":
+        raise ValueError("terminal lock xterm source is not canonical")
+    if build["tag"] != lock.get("version"):
+        raise ValueError("terminal lock xterm tag and version differ")
+    if build["commit"] != "f447274f430fd22513f6adbf9862d19524471c04":
+        raise ValueError("terminal lock xterm commit is not the reviewed pin")
+    if build["node"] != "22.23.2" or build["npm"] != "10.9.8":
+        raise ValueError("terminal lock xterm build toolchain is not pinned")
+    if (
+        build["buildPlatform"] != "darwin-arm64"
+        or build["esbuildPackage"] != "@esbuild/darwin-arm64"
+        or build["esbuildVersion"] != "0.25.2"
+        or build["esbuildSource"]
+        != "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.2.tgz"
+        or build["esbuildIntegrity"]
+        != "sha512-MpM6LUVTXAzOvN4KbjzU/q5smzryuoNjlriAIx+06RpecwCkL9JpenNzpKd2YMzLJFOdPqBpuub6eVRP5IgiSA=="
+    ):
+        raise ValueError("terminal lock xterm esbuild platform input is not pinned")
+    for key in (
+        "sourceTreeSha256",
+        "sourceLockSha256",
+        "patchedSourceManifestSha256",
+        "patchedSourceLockSha256",
+        "patchSha256",
+    ):
+        if not SHA256_PATTERN.fullmatch(build[key]):
+            raise ValueError(f"terminal lock xterm digest is invalid: {key}")
+    patch_relative = Path(build["patch"])
+    patch_path = ROOT / patch_relative
+    if (
+        patch_relative.is_absolute()
+        or ".." in patch_relative.parts
+        or patch_relative != Path("android/xterm-6.0.0-skidbladnir-wheel.patch")
+        or not patch_path.is_file()
+        or patch_path.is_symlink()
+    ):
+        raise ValueError("terminal lock xterm patch path is invalid")
+    if hashlib.sha256(patch_path.read_bytes()).hexdigest() != build["patchSha256"]:
+        raise ValueError("terminal lock xterm patch digest differs")
+    if build["command"] != "./scripts/build-terminal-xterm":
+        raise ValueError("terminal lock xterm generation command is not canonical")
+    command_path = ROOT / build["command"].removeprefix("./")
+    if (
+        not command_path.is_file()
+        or command_path.is_symlink()
+        or not (command_path.stat().st_mode & 0o111)
+    ):
+        raise ValueError("terminal xterm generation command is missing or not executable")
+    xterm_outputs = [
+        relative
+        for relative in files
+        if isinstance(relative, str)
+        and Path(relative).name.startswith("xterm-")
+        and not Path(relative).name.startswith("xterm-addon-")
+        and relative.endswith(".js")
+    ]
+    expected_output = (
+        "android/app/src/main/assets/terminal/vendor/"
+        "xterm-6.0.0-skidbladnir-wheel.js"
+    )
+    if xterm_outputs != [expected_output]:
+        raise ValueError("terminal lock must own only the fork-suffixed xterm JavaScript")
 
 
 def main() -> int:
@@ -20,6 +112,7 @@ def main() -> int:
         files = lock["files"]
         if not isinstance(files, dict) or not files:
             raise ValueError("terminal lock has no files")
+        check_xterm_build(lock, files)
         expected_paths = {ROOT / relative for relative in files}
         observed_paths = {path for path in VENDOR_PATH.rglob("*") if path.is_file()}
         if observed_paths != expected_paths:
@@ -27,7 +120,12 @@ def main() -> int:
         for relative, expected_digest in files.items():
             if not isinstance(relative, str) or not isinstance(expected_digest, str):
                 raise ValueError("terminal lock file entry is invalid")
-            observed_digest = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+            path = ROOT / relative
+            if path.is_symlink() or not path.is_file():
+                raise ValueError(f"terminal asset is not a regular file: {relative}")
+            if not SHA256_PATTERN.fullmatch(expected_digest):
+                raise ValueError(f"terminal asset digest is invalid: {relative}")
+            observed_digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if observed_digest != expected_digest:
                 raise ValueError(f"terminal asset digest differs: {relative}")
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:

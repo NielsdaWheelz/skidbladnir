@@ -1315,7 +1315,7 @@ internal class SkidbladnirController(
         if (current.rename != null || current.kill != null ||
             !terminalActionAdmissible(current.machine.canMutate, current.connection)
         ) return
-        terminalPage?.resetModifiers()
+        terminalPage?.resetInputState()
         state = current.copy(rename = beginRename(current.target))
     }
 
@@ -1438,7 +1438,7 @@ internal class SkidbladnirController(
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
                 if (current.rename == null && terminalActionAdmissible(machine.canMutate, current.connection)) {
-                    terminalPage?.resetModifiers()
+                    terminalPage?.resetInputState()
                     current.copy(kill = kill)
                 } else {
                     return
@@ -1841,7 +1841,7 @@ internal class SkidbladnirController(
         val page = terminalPage
         terminalConnection = null
         terminalPage = null
-        page?.resetModifiers()
+        page?.resetInputState()
         connection?.detach()
     }
 

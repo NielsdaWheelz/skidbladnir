@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+"""Rebuild or verify the source-pinned Skíðblaðnir xterm artifact."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+from base64 import b64encode
+from pathlib import Path
+from pathlib import PurePosixPath
+
+
+ROOT = Path(__file__).resolve().parent.parent
+LOCK_PATH = ROOT / "android" / "terminal.lock"
+OUTPUT_PATH = (
+    ROOT
+    / "android"
+    / "app"
+    / "src"
+    / "main"
+    / "assets"
+    / "terminal"
+    / "vendor"
+    / "xterm-6.0.0-skidbladnir-wheel.js"
+)
+
+
+class BuildError(RuntimeError):
+    pass
+
+
+def digest_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def digest_file(path: Path) -> str:
+    return digest_bytes(path.read_bytes())
+
+
+def run(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str] | None = None,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        arguments,
+        cwd=cwd,
+        env=environment,
+        check=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+    )
+
+
+def required_text(owner: dict[str, object], key: str) -> str:
+    value = owner.get(key)
+    if not isinstance(value, str) or not value:
+        raise BuildError(f"terminal lock field xtermJavascriptBuild.{key} is invalid")
+    return value
+
+
+def load_build_contract() -> dict[str, str]:
+    try:
+        lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+        raw_build = lock["xtermJavascriptBuild"]
+        if not isinstance(raw_build, dict):
+            raise BuildError("terminal lock build owner is invalid")
+        keys = (
+            "source",
+            "tag",
+            "commit",
+            "sourceTreeSha256",
+            "sourceLockSha256",
+            "patchedSourceManifestSha256",
+            "patchedSourceLockSha256",
+            "node",
+            "npm",
+            "buildPlatform",
+            "esbuildPackage",
+            "esbuildVersion",
+            "esbuildSource",
+            "esbuildIntegrity",
+            "patch",
+            "patchSha256",
+            "command",
+        )
+        build = {key: required_text(raw_build, key) for key in keys}
+        return build
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise BuildError(f"could not read terminal build contract: {error}") from error
+
+
+def pinned_environment(build: dict[str, str]) -> dict[str, str]:
+    try:
+        installation = run(
+            ["mise", "where", f"node@{build['node']}"],
+            cwd=ROOT,
+            capture=True,
+        ).stdout.decode("utf-8").strip()
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as error:
+        raise BuildError(
+            f"install pinned Node {build['node']} with mise before rebuilding xterm"
+        ) from error
+    binary_directory = Path(installation) / "bin"
+    environment = {
+        "PATH": os.pathsep.join(
+            (
+                str(binary_directory),
+                "/opt/homebrew/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            )
+        ),
+        "CI": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "SOURCE_DATE_EPOCH": "1766411329",
+        "TZ": "UTC",
+    }
+    node_version = run(["node", "--version"], cwd=ROOT, environment=environment, capture=True)
+    npm_version = run(["npm", "--version"], cwd=ROOT, environment=environment, capture=True)
+    if node_version.stdout.decode("utf-8").strip() != f"v{build['node']}":
+        raise BuildError("resolved Node version differs from terminal lock")
+    if npm_version.stdout.decode("utf-8").strip() != build["npm"]:
+        raise BuildError("resolved npm version differs from terminal lock")
+    return environment
+
+
+def changed_source_tests(source: Path, environment: dict[str, str]) -> list[str]:
+    changed = run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=AM", "HEAD"],
+        cwd=source,
+        environment=environment,
+        capture=True,
+    ).stdout.decode("utf-8").splitlines()
+    tests = []
+    for relative in changed:
+        if relative.startswith("src/") and relative.endswith(".test.ts"):
+            tests.append(f"out-esbuild/{relative.removeprefix('src/').removesuffix('.ts')}.js")
+    if not tests:
+        raise BuildError("xterm source patch must own at least one focused source test")
+    return tests
+
+
+def install_pinned_esbuild(
+    source: Path,
+    build: dict[str, str],
+    environment: dict[str, str],
+) -> None:
+    observed_platform = f"{platform.system().lower()}-{platform.machine().lower()}"
+    if observed_platform != build["buildPlatform"]:
+        raise BuildError(
+            f"terminal xterm build requires platform {build['buildPlatform']}"
+        )
+    if build["esbuildPackage"] != "@esbuild/darwin-arm64":
+        raise BuildError("terminal lock esbuild package is not the reviewed platform pin")
+    if build["esbuildVersion"] != "0.25.2":
+        raise BuildError("terminal lock esbuild version differs from the source lock")
+    expected_source = (
+        "https://registry.npmjs.org/@esbuild/darwin-arm64/-/"
+        "darwin-arm64-0.25.2.tgz"
+    )
+    if build["esbuildSource"] != expected_source:
+        raise BuildError("terminal lock esbuild source is not canonical")
+
+    archive = source.parent / "esbuild-platform.tgz"
+    run(
+        [
+            "curl",
+            "--fail",
+            "--location",
+            "--proto",
+            "=https",
+            "--silent",
+            "--show-error",
+            "--output",
+            str(archive),
+            build["esbuildSource"],
+        ],
+        cwd=source,
+        environment=environment,
+    )
+    observed_integrity = "sha512-" + b64encode(
+        hashlib.sha512(archive.read_bytes()).digest()
+    ).decode("ascii")
+    if observed_integrity != build["esbuildIntegrity"]:
+        raise BuildError("downloaded esbuild platform package differs from terminal lock")
+
+    destination = source / "node_modules" / "@esbuild" / "darwin-arm64"
+    destination.mkdir(parents=True, exist_ok=False)
+    with tarfile.open(archive, mode="r:gz") as package:
+        for member in package.getmembers():
+            member_path = PurePosixPath(member.name)
+            if (
+                member_path.is_absolute()
+                or not member_path.parts
+                or member_path.parts[0] != "package"
+                or ".." in member_path.parts
+                or not (member.isdir() or member.isfile())
+            ):
+                raise BuildError("esbuild platform package contains an invalid entry")
+            relative = member_path.parts[1:]
+            if not relative:
+                continue
+            target = destination.joinpath(*relative)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = package.extractfile(member)
+            if payload is None:
+                raise BuildError("esbuild platform package file could not be read")
+            with payload, target.open("wb") as output:
+                shutil.copyfileobj(payload, output)
+            target.chmod(member.mode & 0o777)
+
+    metadata = json.loads((destination / "package.json").read_text(encoding="utf-8"))
+    if (
+        metadata.get("name") != build["esbuildPackage"]
+        or metadata.get("version") != build["esbuildVersion"]
+        or not (destination / "bin" / "esbuild").is_file()
+    ):
+        raise BuildError("installed esbuild platform package metadata is invalid")
+
+
+def build_artifact(build: dict[str, str], environment: dict[str, str]) -> bytes:
+    patch_path = ROOT / build["patch"]
+    if not patch_path.is_file() or patch_path.is_symlink():
+        raise BuildError("xterm source patch is missing or not a regular file")
+    if digest_file(patch_path) != build["patchSha256"]:
+        raise BuildError("xterm source patch digest differs from terminal lock")
+
+    with tempfile.TemporaryDirectory(prefix="skidbladnir-xterm-build-") as temporary:
+        source = Path(temporary) / "source"
+        environment = environment | {
+            "NPM_CONFIG_CACHE": str(Path(temporary) / "npm-cache"),
+            "NPM_CONFIG_PACKAGE_LOCK": "true",
+            "NPM_CONFIG_USERCONFIG": "/dev/null",
+        }
+        run(
+            ["git", "clone", "--quiet", "--filter=blob:none", "--no-checkout", build["source"], str(source)],
+            cwd=ROOT,
+            environment=environment,
+        )
+        run(
+            [
+                "git",
+                "fetch",
+                "--quiet",
+                "--depth",
+                "1",
+                "origin",
+                f"refs/tags/{build['tag']}:refs/tags/{build['tag']}",
+            ],
+            cwd=source,
+            environment=environment,
+        )
+        tag_commit = run(
+            ["git", "rev-list", "-n", "1", f"refs/tags/{build['tag']}"],
+            cwd=source,
+            environment=environment,
+            capture=True,
+        ).stdout.decode("utf-8").strip()
+        if tag_commit != build["commit"]:
+            raise BuildError("xterm tag does not resolve to the locked commit")
+        run(
+            ["git", "checkout", "--quiet", "--detach", build["commit"]],
+            cwd=source,
+            environment=environment,
+        )
+
+        archive = run(
+            ["git", "archive", "--format=tar", "HEAD"],
+            cwd=source,
+            environment=environment,
+            capture=True,
+        ).stdout
+        if digest_bytes(archive) != build["sourceTreeSha256"]:
+            raise BuildError("xterm source tree digest differs from terminal lock")
+        if digest_file(source / "package-lock.json") != build["sourceLockSha256"]:
+            raise BuildError("xterm package lock digest differs from terminal lock")
+
+        run(
+            ["git", "apply", "--check", "--index", str(patch_path)],
+            cwd=source,
+            environment=environment,
+        )
+        run(
+            ["git", "apply", "--index", str(patch_path)],
+            cwd=source,
+            environment=environment,
+        )
+        if digest_file(source / "package.json") != build["patchedSourceManifestSha256"]:
+            raise BuildError("patched xterm source manifest differs from terminal lock")
+        if digest_file(source / "package-lock.json") != build["patchedSourceLockSha256"]:
+            raise BuildError("patched xterm source lock differs from terminal lock")
+        focused_tests = changed_source_tests(source, environment)
+
+        package_lock_setting = run(
+            ["npm", "config", "get", "package-lock"],
+            cwd=source,
+            environment=environment,
+            capture=True,
+        ).stdout.decode("utf-8").strip()
+        if package_lock_setting != "true":
+            raise BuildError("npm is not configured to honor the pinned xterm lock")
+
+        run(
+            [
+                "npm",
+                "ci",
+                "--engine-strict",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+            ],
+            cwd=source,
+            environment=environment,
+        )
+        # Audit the exact full lock used below, including the development
+        # dependencies that execute as the compiler, linter, test runner, and
+        # bundler. Omitting them would make this build-chain gate a false green.
+        run(["npm", "audit", "--audit-level=low"], cwd=source, environment=environment)
+        run(["npm", "run", "build", "--ignore-scripts"], cwd=source, environment=environment)
+        run(["npm", "run", "lint"], cwd=source, environment=environment)
+        run(["npm", "run", "lint-api"], cwd=source, environment=environment)
+        install_pinned_esbuild(source, build, environment)
+        run(["node", "bin/esbuild.mjs"], cwd=source, environment=environment)
+        run(["npm", "run", "test-unit", "--", *focused_tests], cwd=source, environment=environment)
+        run(
+            [
+                str(source / "node_modules" / ".bin" / "webpack"),
+                "--config",
+                "webpack.config.js",
+            ],
+            cwd=source,
+            environment=environment,
+        )
+
+        artifact = source / "lib" / "xterm.js"
+        if not artifact.is_file() or artifact.is_symlink():
+            raise BuildError("xterm build did not produce a regular UMD artifact")
+        return artifact.read_bytes()
+
+
+def main() -> int:
+    check_only = False
+    if len(sys.argv) == 2 and sys.argv[1] == "--check":
+        check_only = True
+    elif len(sys.argv) != 1:
+        print("usage: ./scripts/build-terminal-xterm [--check]", file=sys.stderr)
+        return 2
+
+    try:
+        build = load_build_contract()
+        if build["command"] != "./scripts/build-terminal-xterm":
+            raise BuildError("terminal lock generation command is not canonical")
+        environment = pinned_environment(build)
+        generated = build_artifact(build, environment)
+        generated_digest = digest_bytes(generated)
+        if check_only:
+            if (
+                not OUTPUT_PATH.is_file()
+                or OUTPUT_PATH.is_symlink()
+                or OUTPUT_PATH.read_bytes() != generated
+            ):
+                raise BuildError("checked-in xterm artifact is stale")
+            print(f"terminal xterm rebuild passed: {generated_digest}")
+            return 0
+        OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        OUTPUT_PATH.write_bytes(generated)
+        OUTPUT_PATH.chmod(0o644)
+        print(f"terminal xterm artifact generated: {generated_digest}")
+        return 0
+    except (BuildError, OSError, subprocess.CalledProcessError, UnicodeDecodeError) as error:
+        print(f"terminal xterm build failed: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

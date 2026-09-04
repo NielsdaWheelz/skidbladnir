@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="terminal_wheel_backward" type="id" />
+    <item name="terminal_wheel_forward" type="id" />
+    <string name="terminal_wheel_backward_label">Terminal wheel backward</string>
+    <string name="terminal_wheel_forward_label">Terminal wheel forward</string>
+</resources>
