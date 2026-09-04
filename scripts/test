@@ -350,6 +350,19 @@ android_platform_helper_self_test() (
   local fixture source_checkout dev_checkout release_apk companion_apk
   local source_sha apk_digest signer_digest values
   local cleanup_status snapshot_probe snapshot_probe_dir
+  local current_suite_timeout grown_suite_timeout
+  current_suite_timeout="$(android_instrumentation_timeout_for_tests 60)"
+  grown_suite_timeout="$(android_instrumentation_timeout_for_tests 61)"
+  if [[ "$current_suite_timeout" -lt 180 ||
+    "$grown_suite_timeout" -le "$current_suite_timeout" ]]; then
+    printf 'Android instrumentation timeout does not scale with the complete suite\n' >&2
+    return 1
+  fi
+  if android_instrumentation_timeout_for_tests 0 >/dev/null 2>&1 ||
+    android_instrumentation_timeout_for_tests invalid >/dev/null 2>&1; then
+    printf 'Android instrumentation timeout accepted an invalid test count\n' >&2
+    return 1
+  fi
   fixture="$(mktemp -d /tmp/skidbladnir-platform-policy.XXXXXX)"
   case "$fixture" in
     /tmp/skidbladnir-platform-policy.* | /private/tmp/skidbladnir-platform-policy.*) ;;
@@ -761,13 +774,23 @@ verify_installed_android_signer() {
   rm -f "$installed_apk"
 }
 
-android_instrumentation_timeout_seconds=90
+android_instrumentation_base_timeout_seconds=30
+android_instrumentation_per_test_timeout_seconds=3
 android_preflight_timeout_seconds=20
 android_apk_pull_overhead_seconds=30
 android_apk_pull_minimum_rate_bytes_per_second=262144
 android_apk_max_bytes=268435456
 android_process_termination_grace_seconds=2
 android_process_reap_timeout_seconds=2
+
+android_instrumentation_timeout_for_tests() {
+  local test_count="${1:-}"
+  [[ "$#" -eq 1 && "$test_count" =~ ^[1-9][0-9]*$ ]] || return 1
+  printf '%s\n' "$((
+    android_instrumentation_base_timeout_seconds +
+      android_instrumentation_per_test_timeout_seconds * 10#$test_count
+  ))"
+}
 
 bounded_runner_source="$(sed -n '/^# BOUNDED_RUNNER_BEGIN$/,/^# BOUNDED_RUNNER_END$/p' "$0" | sed '1d;$d')"
 bounded_runner_test_source="$(sed -n '/^# BOUNDED_RUNNER_TEST_BEGIN$/,/^# BOUNDED_RUNNER_TEST_END$/p' "$0" | sed '1d;$d')"
@@ -1195,6 +1218,19 @@ case "$gate" in
     IFS=$'\t' read -r platform_expected_apk_digest _platform_release_version \
       platform_version_name platform_version_code _platform_source_sha \
       <<<"$platform_release_values"
+    platform_expected_tests="$(awk \
+      '/@Test/ { total++ } END { print total + 0 }' \
+      "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt
+    )" || {
+      printf 'Could not discover the Android instrumentation test count\n' >&2
+      exit 1
+    }
+    platform_instrumentation_timeout_seconds="$(
+      android_instrumentation_timeout_for_tests "$platform_expected_tests"
+    )" || {
+      printf 'Android instrumentation test count is invalid\n' >&2
+      exit 1
+    }
     run android-signing-preflight env SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" \
       "$repo_dir/scripts/check-android-signing" --config-only
     run android-platform-release-signature \
@@ -1300,16 +1336,15 @@ case "$gate" in
     run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
     instrumentation_status=0
     platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
-    run_bounded_to_file "$android_instrumentation_timeout_seconds" "$platform_instrumentation_output_file" \
+    run_bounded_to_file \
+      "$platform_instrumentation_timeout_seconds" \
+      "$platform_instrumentation_output_file" \
       "$adb" -s "$serial" shell am instrument -r -w \
       "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
     instrumentation_output="$(<"$platform_instrumentation_output_file")"
     printf '%s\n' "$instrumentation_output"
     # Pin discovery to the checked-in suite so partial instrumentation cannot
     # false-green as a complete platform gate.
-    platform_expected_tests="$(grep -c '@Test' \
-      "$repo_dir"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt | \
-      awk -F: '{ total += $2 } END { print total }')"
     if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
       "$instrumentation_status" "$platform_instrumentation_output_file"; then
       printf 'Android instrumentation failed, skipped, or did not pass exactly %s tests\n' \
