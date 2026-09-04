@@ -3,6 +3,25 @@
   "version": "6.0.0",
   "source": "https://registry.npmjs.org/@xterm/xterm/-/xterm-6.0.0.tgz",
   "integrity": "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==",
+  "xtermJavascriptBuild": {
+    "source": "https://github.com/xtermjs/xterm.js.git",
+    "tag": "6.0.0",
+    "commit": "f447274f430fd22513f6adbf9862d19524471c04",
+    "sourceTreeSha256": "3a76bf9a3833766937694f1d8e77f72cb1a9785df576ff9c441d99070bcba0ff",
+    "sourceLockSha256": "be3cc17b035f88119b89a71e5c3c656bac0edcd6f9494a1393d8aef3e17b7688",
+    "patchedSourceManifestSha256": "4b211a77a1e9150b4b7580de3d5ee6a450c735c4b72f956ceecafbd5a87315f4",
+    "patchedSourceLockSha256": "a4437fd33dad0c085fc15dff5dacc8d282f91c9bf6c7fc70e6b9c5a4297024ae",
+    "node": "22.23.2",
+    "npm": "10.9.8",
+    "buildPlatform": "darwin-arm64",
+    "esbuildPackage": "@esbuild/darwin-arm64",
+    "esbuildVersion": "0.25.2",
+    "esbuildSource": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.2.tgz",
+    "esbuildIntegrity": "sha512-MpM6LUVTXAzOvN4KbjzU/q5smzryuoNjlriAIx+06RpecwCkL9JpenNzpKd2YMzLJFOdPqBpuub6eVRP5IgiSA==",
+    "patch": "android/xterm-6.0.0-skidbladnir-wheel.patch",
+    "patchSha256": "57291e717d9e69e8f3a16bf4d841b269c1b04118c1087bfd38be19c8ed76c6dd",
+    "command": "./scripts/build-terminal-xterm"
+  },
   "fitAddon": {
     "package": "@xterm/addon-fit",
     "version": "0.11.0",
@@ -15,7 +34,7 @@
     "source": "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip"
   },
   "files": {
-    "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.js": "14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972",
+    "android/app/src/main/assets/terminal/vendor/xterm-6.0.0-skidbladnir-wheel.js": "6fdbbe8a66b871a358763b558865d6d93d6af53cde11d4cf0c5300dabd2ec4ff",
     "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.css": "854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6",
     "android/app/src/main/assets/terminal/vendor/xterm-6.0.0.LICENSE": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd",
     "android/app/src/main/assets/terminal/vendor/xterm-addon-fit-0.11.0.js": "ba3ea256ce0620a0992a197d6c9baea64823fc93d8da07a9e366ca9943c18527",

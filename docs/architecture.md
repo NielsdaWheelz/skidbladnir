@@ -6,7 +6,8 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
 dashboard-return-continuity target, and the 2026-08-31 working-directory
-chooser target. The terminal-activity replacement is
+chooser target, plus the accepted 2026-09-01 terminal touch-scroll target.
+The terminal-activity replacement is
 merged in both repositories; exact `v0.2.24` publication, pinning, three-host
 convergence, fleet doctor, release-tree Darwin isolated tmux, and the complete
 54-test release-bound S22+ platform gate are green. Its owner behavioral reds,
@@ -14,7 +15,13 @@ focused greens, both routine suites, and earlier focused S22+ component proof
 are recorded separately. Linux isolated tmux, S22+ hands-on, provider-live,
 product, and second-phone acceptance remain `NOT_RUN`. The rejected 2026-08-28
 agent-interaction-state candidate and its
-evidence do not prove this target.
+evidence do not prove this target. The touch-scroll unchanged-source owner reds,
+rejected synthetic-wheel feasibility result, final five-owner signed S22+
+green, complete 60-test signed same-version S22+ candidate green, reproducible
+xterm build, and routine verification are recorded. The final targeted mutation
+rerun, final-candidate hands-on journey, and live tmux/Claude Code journey were
+explicitly waived for shipment on 2026-09-04, not passed. The release-bound
+platform gate, release, and deployment remain `NOT_RUN`.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -81,7 +88,7 @@ authorize action against the other.
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings plus one system-managed, task-scoped, content-free Dashboard return capsule and keeps inventory snapshots in memory |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
-| Client | Kotlin/Compose multi-machine dashboard; vendored pinned xterm.js terminal |
+| Client | Kotlin/Compose multi-machine dashboard; source-pinned, reproducibly built xterm.js terminal fork |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
 | Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, fallback, or smaller-fleet branch |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
@@ -743,6 +750,14 @@ enum values are defects, with no protocol branch or compatibility state.
   clipboard, and dictation; dictation stays editable and never auto-sends. IME
   composition and non-composition Gboard input stay inside the terminal edge;
   both the page and native WebView enforce zero horizontal viewport movement.
+  A primary one-finger vertical drag over the xterm screen becomes a normalized
+  xterm line-wheel input; xterm alone routes it to exact local scrollback,
+  cursor fallback, or negotiated mouse reporting. Two truthful Android
+  accessibility wheel actions enter the same route. Physical DOM wheels and
+  semantic line-wheel input share one xterm-owned router. There is no
+  transcript, mode detector, application-side router, synthetic wheel-event
+  injection, or tmux scroll command. The closed implementation and proof
+  boundary is [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
 - The terminal header always names machine and session; its middle identity
   block is the literal Rename control and retains separate presence state. At
   most one active phone terminal exists, and its connection owns one exact
@@ -759,7 +774,8 @@ enum values are defects, with no protocol branch or compatibility state.
   is the reviewed future visual target for palette, typography, shape,
   ornament, motion, and terminal theme; roadmap D1–D4 remain unimplemented and
   do not describe the current source. The key deck has stable row-major
-  traversal and spoken Ctrl/Alt state; accessibility beyond the reviewed surface remains
+  traversal and spoken Ctrl/Alt state; terminal scroll exposes reviewed custom
+  accessibility actions. Accessibility beyond those reviewed surfaces remains
   best-effort.
 
 ## 7. Security
@@ -955,6 +971,27 @@ filter, payload, size, or selection enters logs or evidence. The hard cut leaves
 no primary raw cwd editor, duplicate validator, compatibility route, fallback,
 durable chooser state, or filesystem machinery. The full contract and owner
 proofs are [`working-directory-chooser.md`](working-directory-chooser.md).
+
+Terminal touch-scroll acceptance additionally requires: a trusted one-finger
+vertical drag and truthful custom accessibility wheel actions traverse xterm's
+single normalized wheel owner; a scrollback-capable buffer attempts exact
+phone-local line movement even at its bounds, a buffer with no scrollback
+capability emits only xterm's cursor sequence, and negotiated mouse tracking
+emits only xterm's mouse report. Gesture arbitration, direction, bounded
+amplification, cancellation, selection/focus/IME coexistence, and
+outer viewport containment match [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
+The hard cut leaves no transcript, application-side `scrollLines`, mode branch,
+escape encoder, synthetic wheel event, tmux command, fallback, or compatibility
+path. The sole dependency delta is one source-pinned, digest-locked,
+reproducibly generated xterm patch/API whose physical and semantic callers
+share one internal router. Its declared Darwin arm64 audit build uses pinned
+Node/npm and an integrity-checked platform esbuild package with install scripts
+disabled; it pins the upstream source/lock and post-patch manifest/lock
+separately, including the reviewed build-only remediation for the tag's stale
+lock metadata and executable development dependency advisories. It audits the
+complete executable build lock with no severity or development-dependency
+omission. Another build platform requires its own explicit pin and
+identical-output proof.
 
 Distribution acceptance additionally requires: the public release has the
 five owned immutable assets and one signer; `dev-server` pins and converges the

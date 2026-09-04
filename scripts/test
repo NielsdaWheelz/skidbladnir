@@ -1072,6 +1072,9 @@ case "$gate" in
     run bounded-runner-static python3 -c \
       'import sys; compile(sys.argv[1], "bounded-runner", "exec")' "$bounded_runner_source"
     run bounded-runner-behavior python3 -c "$bounded_runner_test_source" "$bounded_runner_source"
+    run terminal-xterm-generator-static python3 -c \
+      'import pathlib, sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec")' \
+      scripts/build-terminal-xterm
     run catalogue-static ./scripts/check-catalogue
     run terminal-assets-static ./scripts/check-terminal-assets
     run ornament-static ./scripts/check-ornament

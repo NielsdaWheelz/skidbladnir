@@ -17,6 +17,7 @@
     var lastPublishedColumns = 0;
     var lastPublishedRows = 0;
     var terminal = null;
+    var terminalTouchScroll = null;
 
     window.addEventListener("message", acceptPagePort);
     if (!terminalHost || !terminalStatus) {
@@ -87,8 +88,9 @@
     function failPage() {
         if (pageFailed) return;
         pageFailed = true;
+        if (terminalTouchScroll) terminalTouchScroll.dispose();
         clearProvenKey();
-        resetModifiers();
+        setModifiers("Off", "Off");
         send({ kind: "PageFailure" });
         pagePort = null;
     }
@@ -107,7 +109,9 @@
         publishModifiers();
     }
 
-    function resetModifiers() {
+    function resetInputState() {
+        clearProvenKey();
+        if (terminalTouchScroll) terminalTouchScroll.cancel();
         setModifiers("Off", "Off");
     }
 
@@ -150,7 +154,7 @@
 
     function acceptInput(value, keyProven) {
         var armed = modifiers;
-        resetModifiers();
+        setModifiers("Off", "Off");
         if (keyProven && armed.control === "Armed") value = controlValue(value);
         if (keyProven && armed.alt === "Armed") value = "\u001b" + value;
         sendInput(value);
@@ -284,6 +288,332 @@
         acceptInput(value, keyProven);
     });
 
+    function createTerminalTouchScroll(options) {
+        var ownerTerminal = options.terminal;
+        var ownerScreen = options.screen;
+        var ownerInput = document.querySelector(".xterm-helper-textarea");
+        var touchSlop = 8;
+        var gesture = null;
+        var disposed = false;
+        var suppressedPointerId = null;
+        var compatibilityEvents = ["mousedown", "mousemove", "mouseup", "click", "contextmenu"];
+
+        function isTrustedTouch(event) {
+            return event.isTrusted === true && event.pointerType === "touch";
+        }
+
+        function suppressPointerEvent(event) {
+            if (event.cancelable) event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+
+        function clearCompatibilitySuppression() {
+            suppressedPointerId = null;
+        }
+
+        function beginCompatibilitySuppression(pointerId) {
+            clearCompatibilitySuppression();
+            suppressedPointerId = pointerId;
+        }
+
+        function suppressCompatibilityEvent(event) {
+            if (suppressedPointerId === null) return;
+            if (event.isTrusted !== true) return;
+            var sourceCapabilities = event.sourceCapabilities;
+            if (sourceCapabilities && sourceCapabilities.firesTouchEvents !== true) return;
+            var target = event.target;
+            if (target !== ownerScreen && !ownerScreen.contains(target)) return;
+            if (event.cancelable) event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+
+        function clearFrame(active) {
+            if (active.frame === null) return;
+            window.cancelAnimationFrame(active.frame);
+            active.frame = null;
+        }
+
+        function releaseCapture(active) {
+            try {
+                if (ownerScreen.hasPointerCapture(active.pointerId)) {
+                    ownerScreen.releasePointerCapture(active.pointerId);
+                }
+            } catch (error) {
+                // Cancellation is already authoritative even if the platform
+                // has independently released the pointer.
+            }
+        }
+
+        function cancelGesture() {
+            var active = gesture;
+            if (active === null) return;
+            gesture = null;
+            clearFrame(active);
+            active.accumulator = 0;
+            active.emittedRows = 0;
+            if (active.state === "Dragging") releaseCapture(active);
+        }
+
+        function sendWheelLines(deltaLines, clientX, clientY) {
+            ownerTerminal.handleWheelInput({
+                deltaLines: deltaLines,
+                clientX: clientX,
+                clientY: clientY,
+                altKey: false,
+                ctrlKey: false,
+                shiftKey: false
+            });
+        }
+
+        function wholeRows(displacement, rowHeight) {
+            return displacement < 0 ?
+                Math.ceil(displacement / rowHeight) :
+                Math.floor(displacement / rowHeight);
+        }
+
+        function dispatchAccumulatedRows(active) {
+            if (gesture !== active || active.state !== "Dragging") return;
+            if (ownerTerminal.hasSelection()) {
+                cancelGesture();
+                return;
+            }
+            var rows = wholeRows(active.accumulator, active.rowHeight);
+            if (rows === 0) return;
+            var rowLimit = ownerTerminal.rows;
+            if (!Number.isFinite(rowLimit) || rowLimit <= 0) {
+                cancelGesture();
+                return;
+            }
+            var boundedRows = Math.max(-rowLimit, Math.min(rowLimit, rows));
+            active.accumulator -= rows * active.rowHeight;
+            active.emittedRows += boundedRows;
+            sendWheelLines(boundedRows, active.clientX, active.clientY);
+        }
+
+        function scheduleDispatch(active) {
+            if (active.frame !== null) return;
+            active.frame = window.requestAnimationFrame(function () {
+                active.frame = null;
+                dispatchAccumulatedRows(active);
+            });
+        }
+
+        function addMovement(active, currentY) {
+            if (!Number.isFinite(currentY)) {
+                cancelGesture();
+                return false;
+            }
+            active.accumulator += active.previousY - currentY;
+            active.previousY = currentY;
+            return true;
+        }
+
+        function onPointerDown(event) {
+            if (disposed || !isTrustedTouch(event)) return;
+            if (gesture !== null) {
+                if (event.pointerId !== gesture.pointerId) cancelGesture();
+                return;
+            }
+            if (!event.isPrimary) return;
+            // A new primary sequence proves that any cancelled sequence which
+            // never delivered its final up/cancel tail is complete.
+            clearCompatibilitySuppression();
+            if (ownerTerminal.hasSelection()) return;
+            var bounds = ownerScreen.getBoundingClientRect();
+            var rows = ownerTerminal.rows;
+            var inside = Number.isFinite(event.clientX) && Number.isFinite(event.clientY) &&
+                event.clientX > bounds.left && event.clientX < bounds.right &&
+                event.clientY > bounds.top && event.clientY < bounds.bottom;
+            var rowHeight = bounds.height / rows;
+            if (!inside || !Number.isFinite(rowHeight) || rowHeight <= 0) return;
+            var horizontalInset = Math.min(0.5, bounds.width / 2);
+            var verticalInset = Math.min(0.5, bounds.height / 2);
+            gesture = {
+                state: "Pending",
+                pointerId: event.pointerId,
+                startX: event.clientX,
+                startY: event.clientY,
+                previousY: event.clientY,
+                clientX: Math.max(bounds.left + horizontalInset,
+                    Math.min(bounds.right - horizontalInset, event.clientX)),
+                clientY: Math.max(bounds.top + verticalInset,
+                    Math.min(bounds.bottom - verticalInset, event.clientY)),
+                rowHeight: rowHeight,
+                accumulator: 0,
+                emittedRows: 0,
+                frame: null
+            };
+        }
+
+        function onPointerMove(event) {
+            if (disposed || !isTrustedTouch(event)) return;
+            var active = gesture;
+            if (active === null || event.pointerId !== active.pointerId) {
+                if (event.pointerId === suppressedPointerId) suppressPointerEvent(event);
+                return;
+            }
+            if (active.state === "Dragging") suppressPointerEvent(event);
+            if (ownerTerminal.hasSelection()) {
+                cancelGesture();
+                return;
+            }
+            if (active.state === "Pending") {
+                var deltaX = event.clientX - active.startX;
+                var deltaY = event.clientY - active.startY;
+                var absoluteX = Math.abs(deltaX);
+                var absoluteY = Math.abs(deltaY);
+                if (absoluteX <= touchSlop && absoluteY <= touchSlop) return;
+                if (absoluteY <= absoluteX) {
+                    cancelGesture();
+                    return;
+                }
+                try {
+                    ownerScreen.setPointerCapture(active.pointerId);
+                    if (!ownerScreen.hasPointerCapture(active.pointerId)) {
+                        cancelGesture();
+                        return;
+                    }
+                } catch (error) {
+                    cancelGesture();
+                    return;
+                }
+                active.state = "Dragging";
+                beginCompatibilitySuppression(active.pointerId);
+                suppressPointerEvent(event);
+            }
+            if (addMovement(active, event.clientY)) scheduleDispatch(active);
+        }
+
+        function onPointerUp(event) {
+            if (disposed || !isTrustedTouch(event)) return;
+            var active = gesture;
+            if (active !== null && event.pointerId === active.pointerId) {
+                if (active.state === "Pending") {
+                    gesture = null;
+                    return;
+                }
+                suppressPointerEvent(event);
+                clearFrame(active);
+                if (!Number.isFinite(event.clientY)) {
+                    cancelGesture();
+                    return;
+                }
+                if (ownerTerminal.hasSelection()) {
+                    cancelGesture();
+                    return;
+                }
+                if (gesture === active) {
+                    var rowLimit = ownerTerminal.rows;
+                    if (!Number.isFinite(rowLimit) || rowLimit <= 0) {
+                        cancelGesture();
+                        return;
+                    }
+                    var targetRows = wholeRows(
+                        active.startY - event.clientY,
+                        active.rowHeight
+                    );
+                    targetRows = Math.max(-rowLimit, Math.min(rowLimit, targetRows));
+                    var correctionRows = Math.max(
+                        -rowLimit,
+                        Math.min(rowLimit, targetRows - active.emittedRows)
+                    );
+                    if (correctionRows !== 0) {
+                        sendWheelLines(correctionRows, active.clientX, active.clientY);
+                    }
+                    gesture = null;
+                    active.accumulator = 0;
+                    active.emittedRows = 0;
+                    releaseCapture(active);
+                }
+                return;
+            }
+            if (event.pointerId === suppressedPointerId) {
+                suppressPointerEvent(event);
+            }
+        }
+
+        function onPointerCancel(event) {
+            if (disposed || !isTrustedTouch(event)) return;
+            var active = gesture;
+            if (active !== null && event.pointerId === active.pointerId) {
+                if (active.state === "Dragging") suppressPointerEvent(event);
+                cancelGesture();
+            } else if (event.pointerId === suppressedPointerId) {
+                suppressPointerEvent(event);
+            }
+        }
+
+        function onLostPointerCapture(event) {
+            var active = gesture;
+            if (active !== null && active.state === "Dragging" &&
+                event.pointerId === active.pointerId) {
+                cancelGesture();
+            }
+        }
+
+        function onInputBlur() {
+            if (gesture !== null && gesture.state === "Dragging") cancelGesture();
+        }
+
+        function onVisibilityChange() {
+            if (document.visibilityState === "hidden") cancelGesture();
+        }
+
+        function scroll(direction) {
+            if (disposed) return;
+            cancelGesture();
+            var bounds = ownerScreen.getBoundingClientRect();
+            var rows = ownerTerminal.rows;
+            if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) ||
+                bounds.width <= 0 || bounds.height <= 0 ||
+                !Number.isFinite(rows) || rows <= 0) return;
+            var magnitude = Math.max(1, rows - 1);
+            sendWheelLines(
+                direction === "Backward" ? -magnitude : magnitude,
+                bounds.left + bounds.width / 2,
+                bounds.top + bounds.height / 2
+            );
+        }
+
+        function dispose() {
+            if (disposed) return;
+            cancelGesture();
+            disposed = true;
+            clearCompatibilitySuppression();
+            window.removeEventListener("pointerdown", onPointerDown, true);
+            window.removeEventListener("pointermove", onPointerMove, true);
+            window.removeEventListener("pointerup", onPointerUp, true);
+            window.removeEventListener("pointercancel", onPointerCancel, true);
+            ownerScreen.removeEventListener("lostpointercapture", onLostPointerCapture, true);
+            compatibilityEvents.forEach(function (eventName) {
+                ownerScreen.removeEventListener(eventName, suppressCompatibilityEvent, true);
+            });
+            if (ownerInput) ownerInput.removeEventListener("blur", onInputBlur, true);
+            window.removeEventListener("blur", cancelGesture, true);
+            window.removeEventListener("resize", cancelGesture, true);
+            window.removeEventListener("orientationchange", cancelGesture, true);
+            window.removeEventListener("pagehide", dispose, true);
+            document.removeEventListener("visibilitychange", onVisibilityChange, true);
+        }
+
+        window.addEventListener("pointerdown", onPointerDown, { capture: true, passive: false });
+        window.addEventListener("pointermove", onPointerMove, { capture: true, passive: false });
+        window.addEventListener("pointerup", onPointerUp, { capture: true, passive: false });
+        window.addEventListener("pointercancel", onPointerCancel, { capture: true, passive: false });
+        ownerScreen.addEventListener("lostpointercapture", onLostPointerCapture, true);
+        compatibilityEvents.forEach(function (eventName) {
+            ownerScreen.addEventListener(eventName, suppressCompatibilityEvent, true);
+        });
+        if (ownerInput) ownerInput.addEventListener("blur", onInputBlur, true);
+        window.addEventListener("blur", cancelGesture, true);
+        window.addEventListener("resize", cancelGesture, true);
+        window.addEventListener("orientationchange", cancelGesture, true);
+        window.addEventListener("pagehide", dispose, true);
+        document.addEventListener("visibilitychange", onVisibilityChange, true);
+
+        return { cancel: cancelGesture, scroll: scroll, dispose: dispose };
+    }
+
     var input = document.querySelector(".xterm-helper-textarea");
     var composition = document.querySelector(".composition-view");
     var screen = document.querySelector(".xterm-screen");
@@ -335,6 +665,7 @@
         failPage();
         return;
     }
+    terminalTouchScroll = createTerminalTouchScroll({ terminal: terminal, screen: screen });
     ["compositionstart", "compositionend", "beforeinput", "input", "keydown", "focus"]
         .forEach(function (eventName) {
             input.addEventListener(eventName, scheduleImeContainment);
@@ -455,6 +786,7 @@
     }
 
     function acceptNativeMessage(message) {
+        if (pageFailed) return;
         var payload = parseObject(message.data);
         if (!payload) {
             failPage();
@@ -482,9 +814,14 @@
             acceptAccessory(payload.key);
             return;
         }
-        if (payload.kind === "ResetModifiers" && exactObject(payload, ["kind"])) {
+        if (payload.kind === "ResetInputState" && exactObject(payload, ["kind"])) {
+            resetInputState();
+            return;
+        }
+        if (payload.kind === "Scroll" && exactObject(payload, ["kind", "direction"]) &&
+            (payload.direction === "Backward" || payload.direction === "Forward")) {
             clearProvenKey();
-            resetModifiers();
+            terminalTouchScroll.scroll(payload.direction);
             return;
         }
         failPage();

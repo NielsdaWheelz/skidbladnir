@@ -42,7 +42,6 @@ body {
     position: fixed;
     inset: 0;
     background: #0c0d0f;
-    touch-action: pan-y;
 }
 
 main {
@@ -64,6 +63,10 @@ main {
 #terminal .xterm-viewport {
     overflow-x: hidden !important;
     overscroll-behavior-x: none;
+}
+
+#terminal .xterm {
+    touch-action: none;
 }
 
 #terminal .xterm-helper-textarea,
