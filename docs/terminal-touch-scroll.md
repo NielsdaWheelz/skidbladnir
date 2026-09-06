@@ -11,9 +11,18 @@ the exact `v0.2.27` source and artifacts are public, all three fleet hosts run
 the pinned release, and the complete release-bound 60-test S22+ platform gate
 is green with pairing unchanged and the exact public APK restored. Product,
 second-phone, and reboot-persistence acceptance remain `NOT_RUN`.
+The accepted 2026-09-06 composition-intent correction has its unchanged-runtime
+S22+ red, focused green, complete `38`-owner candidate matrix, and routine
+verification recorded; selection-copy owns that joined-source evidence.
 [`architecture.md`](architecture.md) owns product behavior and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the closed
 implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md).
+The accepted
+[`terminal-selection-copy.md`](terminal-selection-copy.md) target supersedes
+this document's direct-touch PointerEvent, capture, compatibility-tail, and tap
+ownership. This document remains authoritative for fixed `8 CSS px` scroll
+arbitration and every xterm wheel/mouse route; its recorded evidence describes
+the shipped pre-selection-copy source.
 
 ## Outcome
 
@@ -58,23 +67,15 @@ terminal interaction; it is not a history subsystem.
 
 ### Direct manipulation
 
-- Accept only a trusted primary pointer with `pointerType == "touch"` that
-  starts inside the existing xterm screen.
-- At pointer-down, reject an existing `terminal.hasSelection()`. Otherwise
-  snapshot the coordinate clamped inside the screen and the row height as
-  `screen.getBoundingClientRect().height / terminal.rows`. A non-finite or
-  non-positive height cancels without output. Never read xterm private fields.
-- Use one named `8 CSS px` touch slop. Pending ends when either axis first
-  exceeds slop: claim only when absolute vertical displacement is also greater
-  than horizontal displacement; otherwise cancel. A second touch pointer or a
-  selection observed before claim also cancels. Every pre-claim cancellation
-  emits zero.
-- Once claimed, acquire pointer capture before emitting, prevent the pointer's
-  remaining default actions, and suppress matching touch-derived `mousedown`,
-  `mousemove`, `mouseup`, `click`, and `contextmenu` at capture phase through
-  the post-`pointerup` compatibility tail. Capture failure cancels with zero
-  output; `lostpointercapture` cancels future output. Below-slop taps stay
-  xterm-owned and retain focus and long-press selection behavior.
+- The current direct-touch owner and its trusted/cancelable TouchEvent admission,
+  single-contact drain, tap, long-press, and lifecycle rules live only in
+  [`terminal-selection-copy.md`](terminal-selection-copy.md). The retired
+  PointerEvent, pointer-capture, and compatibility-tail implementation described
+  by the release evidence below is not a current contract or fallback.
+- Scroll retains one named `8 CSS px` slop. Before long-press expiry, movement
+  past slop claims scroll only when absolute vertical displacement is greater
+  than absolute horizontal displacement. Every other pre-claim outcome emits
+  zero wheel input. Never read xterm private fields.
 - Accumulate each move as signed incremental travel `previousY - currentY`,
   then update `previousY`; reversal therefore cancels un-emitted opposite debt.
   Convert the accumulator by the snapshotted row height. On each
@@ -84,15 +85,15 @@ terminal interaction; it is not a history subsystem.
   finger-up/forward. Clamp magnitude to `terminal.rows`, drop excess whole-row
   debt, and retain only the fractional remainder for that gesture. No DOM
   wheel event is constructed or dispatched.
-- On claimed `pointerup`, cancel the pending frame and derive the bounded
+- On claimed `touchend`, cancel the pending frame and derive the bounded
   whole-row target directly from `startY - finalY`. Emit at most one bounded
   correction from the already emitted row total to that target, then release
   capture and discard all debt. This final absolute reconciliation removes
   Chromium resampling overshoot without adding a second remote-input call.
   Nothing is emitted after release.
-- After claim, any second pointer, selection, `pointercancel`, native
-  `ACTION_CANCEL`, `lostpointercapture`, xterm textarea blur, window blur,
-  resize, rotation, page hide, `ResetInputState`, page failure, or disposal
+- After claim, a second contact, selection, `touchcancel`, native
+  `ACTION_CANCEL`, xterm textarea blur, window blur, resize, rotation, page
+  hide, `ResetInputState`, page failure, or disposal
   immediately prevents future events, cancels a pending frame, and discards all
   debt. Events already dispatched remain authoritative.
 - On a live enabled -> disabled transition, `ResetInputState` is synchronously
@@ -100,15 +101,22 @@ terminal interaction; it is not a history subsystem.
   queues a command and is not a failure. A disabled native WebView accepts
   neither touch nor accessibility wheel actions. Reconnect starts with fresh
   gesture state and the attachment's fresh local buffer.
-- Do not blur/refocus the terminal, dismiss/reopen the IME, clear selection, or
-  move the horizontal/page viewport.
+- Do not blur/refocus the terminal, dismiss/reopen the IME, or move the
+  horizontal/page viewport. Selection cancellation belongs to the current
+  shared touch owner.
+- If composition is active at an eligible `touchstart` and no released
+  selection already owns the interaction, latch the entire stream as
+  `Composing`. Consume its valid move/end tail without starting a timer or
+  invoking tap, wheel, mouse, cursor, or selection ingress. A mid-stream
+  `compositionend` never reclassifies that stream. Android/WebView owns the
+  composition outcome through the existing literal xterm input path; a fresh
+  post-composition gesture uses the ordinary routes.
 - Local scrolling leaves armed Ctrl/Alt unchanged. If xterm emits terminal
   input, the existing input reducer consumes the modifiers without applying
   them to unproven data, exactly as it does for other xterm-generated input.
 
-The scoped screen rule is `touch-action: none`; delete the current global
-`body { touch-action: pan-y; }` claim. Pointer capture and `touch-action`
-follow the [Pointer Events contract](https://www.w3.org/TR/pointerevents3/).
+The scoped screen rule remains `touch-action: none`; the page owns the trusted
+TouchEvent stream synchronously as defined by the selection-copy contract.
 
 ### Accessibility
 
@@ -148,8 +156,8 @@ terminal keys.
 ## Architecture and API design
 
 ```text
-trusted touch PointerEvent ----\
-                                > page-private TerminalTouchScroll
+trusted touch TouchEvent ------\
+                                > page-private TerminalTouchInteraction
 native accessibility action --/             |
                                               v
                            xterm handleWheelInput(deltaLines, x, y)
@@ -166,16 +174,18 @@ native accessibility action --/             |
 `terminal.js` owns one private lifecycle handle:
 
 ```text
-createTerminalTouchScroll({ terminal, screen }) ->
-  { cancel(), scroll(direction), dispose() }
+createTerminalTouchInteraction({ terminal, screen, longPressMilliseconds }) ->
+  { cancel(), clearSelection(), scroll(direction), dispose() }
 
 direction = Backward | Forward
-state = Idle | Pending | Dragging
+touch-scroll state = Idle | Composing | Pending | Scrolling
 ```
 
 The state is page-memory only. `scroll(direction)` is the accessibility entry:
 it cancels direct-touch state, then calls the same private line-wheel sender.
-Touch calls that sender on animation frames.
+Touch calls that sender on animation frames. `clearSelection()` and the
+selection-owned states are defined by
+[`terminal-selection-copy.md`](terminal-selection-copy.md).
 
 The pinned xterm fork adds one public semantic ingress and one internal route
 owner:
@@ -210,10 +220,10 @@ Scroll          = {"kind":"Scroll","direction":"Backward|Forward"}
 ResetInputState = {"kind":"ResetInputState"}
 ```
 
-The native/page protocol remains version `1` because its two packaged ends ship
-atomically. Unknown, missing, extra, or differently cased fields fail closed.
-There is no new page-to-native message, public HTTP/WSS schema, DTO, setting,
-persistence, gateway operation, or tmux command.
+The two packaged ends still ship atomically. The current protocol is exact
+version `2`; selection-copy owns its generation-correlated additions. Unknown,
+missing, extra, or differently cased fields fail closed. There is no public
+HTTP/WSS schema, DTO, setting, persistence, gateway operation, or tmux command.
 
 `LockedTerminalWebView` should consolidate its repeated Focus/Accessory/
 ResetInputState/Scroll message-port send boilerplate into one private exact
@@ -223,7 +233,8 @@ command API or production test seam.
 
 ## Hard cut and final state
 
-- One Pointer Events implementation; no parallel Touch Events, Kotlin gesture
+- One TouchEvent implementation owns tap, scroll, and selection; no parallel
+  Pointer Events, pointer capture, compatibility-tail path, Kotlin gesture
   detector, feature flag, legacy branch, fallback, or compatibility decoder.
 - `ResetInputState` and `resetInputState()` replace `ResetModifiers` and
   `resetModifiers()` outright; no alias or dual decoder remains.
@@ -255,12 +266,11 @@ command API or production test seam.
 - Delete obsolete `pan-y`, gesture experiments, imports, comments, and tests in
   the same change. Add no source-text test for their absence.
 
-Before production edits, the first real-WebView red must prove that a trusted
-drag in SGR mouse mode emits no compatibility button/motion report before its
-first wheel report. Separate mouse-off cases prove a below-slop tap still
-focuses and long press still selects. If Chromium's event order cannot satisfy
-all three, stop and reopen gesture arbitration; do not ship a partial
-pointerdown workaround.
+The historical real-WebView red proved that the shipped PointerEvent owner
+could suppress compatibility button/motion reports before its first wheel
+report. The selection-copy feasibility red later proved that Chromium withholds
+its move/up after long-press promotion; that evidence forced the current
+TouchEvent hard cut. The old route must not return.
 
 The exact S22/WebView proof established that a constructed line-mode wheel
 event exposes `deltaY == wheelDeltaY == -2`; xterm's copied VS Code normalizer
@@ -276,7 +286,7 @@ cannot appear on the actually focused virtual node.
 | Owner | Paths | Proof |
 | --- | --- | --- |
 | Root integrator | `docs/architecture.md`, `docs/roadmap.md`, `docs/terminal-key-deck.md`, this document, `scripts/build-terminal-xterm`, `scripts/check-terminal-assets`, static-only composition in `scripts/test` | Scope, authority, and reproducible-generation policy |
-| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir-wheel.patch`, `android/terminal.lock`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, new `android/app/src/main/res/values/terminal_touch_scroll.xml`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
+| Android terminal-boundary builder | `android/xterm-6.0.0-skidbladnir.patch`, `android/terminal.lock`, generated fork-suffixed xterm JavaScript under `android/app/src/main/assets/terminal/vendor/`, `android/app/src/main/assets/terminal/index.html`, `terminal.js`, `terminal.css`, `android/app/src/main/res/values/terminal_touch_scroll.xml`, `android/app/src/main/java/dev/niels/skidbladnir/LockedTerminalWebView.kt`, the exact `resetInputState` call-site rename in `android/app/src/main/java/dev/niels/skidbladnir/SkidbladnirController.kt`, and `android/app/src/androidTest/java/dev/niels/skidbladnir/TerminalInstrumentedTest.kt` | Owns the patch regression and every product behavioral red and green |
 | Read-only verifier | none | Diff, residue, dependency, and gate review |
 
 The runtime slice cannot split further without duplicating the gesture owner or
@@ -293,7 +303,7 @@ fixed control fixtures:
 | --- | --- |
 | Trusted touch -> xterm wheel | First prove feasibility: an SGR `1003` + `1006` drag yields wheel only—no touch-derived compatibility button, motion, click, or context-menu report through its tail—while separate mouse-off cases prove a `4 CSS px` below-slop move-and-tap retains native WebView and xterm textarea focus, long press selects, and a script-created pointer is rejected. Then parameterize the three xterm routes: a scrollback-capable normal buffer changes numeric accessibility-row position by the exact line delta away from bounds, stays fixed when pushed outward at top/bottom, and always emits no `Input`; an alternate buffer emits exactly one application-cursor sequence per API call; mouse mode takes precedence over real normal-buffer scrollback and emits exactly one SGR wheel report at the latched start cell without local position change. |
 | Native action -> page command | Through `UiAutomation`, focus two distinct Chromium virtual terminal rows in turn and prove exactly two app-resource-id actions with the exact labels transfer to only the currently focused source while live and enabled; invoke their discovered ids and map backward/forward once through all three routes at the exact center cell. One stock Chromium action retains its semantic outcome, unavailable returns false, PgUp/PgDn stay raw, and missing/extra/wrong-type/wrong-case/unknown-direction forms of both new commands plus invalid-then-valid input fail closed. Availability changes refresh the subtree without a scroll event. |
-| Input-state lifecycle -> containment | Pre-claim cancellation emits zero; real `ACTION_CANCEL` after claim retains prior output but emits no more. Cover horizontal-first, reversal, second pointer, active selection, the maximum in-screen jump followed by a tiny move, pointer-up flush, disabled fresh touch, active composition during drag, background/focus loss, rotation, page failure with queued Scroll, pending-gesture disposal, and recreation followed by a successful fresh gesture. Initial pre-ready disable still reaches Ready without sending or queuing reset or becoming unavailable. Armed modifiers survive local scroll; cursor/mouse input publishes Off/Off first without modified bytes. Focus, InputConnection, IME/composition, page/WebView/horizontal position, and `80 x 5` geometry remain unchanged. |
+| Input-state lifecycle -> containment | Pre-claim cancellation emits zero; real `ACTION_CANCEL` after claim retains prior output but emits no more. Cover horizontal-first, reversal, second pointer, active selection, the maximum in-screen jump followed by a tiny move, pointer-up flush, disabled fresh touch, composition-first whole-stream arbitration followed by a successful fresh drag, background/focus loss, rotation, page failure with queued Scroll, pending-gesture disposal, and recreation followed by a successful fresh gesture. Initial pre-ready disable still reaches Ready without sending or queuing reset or becoming unavailable. Armed modifiers survive local scroll; cursor/mouse input publishes Off/Off first without modified bytes. Focus, InputConnection, literal composition output, page/WebView/horizontal position, and `80 x 5` geometry remain unchanged. |
 
 Assertions expose only user-visible numeric accessibility position/state and
 content-safe protocol equality. Failure messages name case, route, direction,
@@ -400,21 +410,23 @@ re-proves these owners. Every unapproved device/tmux/live-host boundary is
    call; a normal-buffer boundary never becomes cursor input.
 2. Gesture arbitration, cancellation, amplification bound, accessibility
    actions, modifier behavior, and lifecycle match this contract.
-3. Terminal focus, selection, IME, composition, paste, color, geometry,
+3. A touch beginning during active composition is wholly composition-owned and
+   has zero terminal-gesture effect; its fresh successor routes normally.
+   Terminal focus, selection, literal IME output, paste, color, geometry,
    horizontal containment, transport, and attachment lifecycle do not regress.
 4. Codex and Claude remain opaque. No content, transcript, provider, gateway,
    tmux, persistence, or product/network API capability is added.
-5. Only the final Pointer Events owner, exact internal `Scroll` and
-   `ResetInputState` commands, one reviewed xterm source patch, and its
-   reproducibly generated fork artifact remain.
+5. Only the final TouchEvent owner, exact internal version-2 commands, one
+   generic reviewed xterm source patch, and its reproducibly generated fork
+   artifact remain.
 
 ## Non-goals and explicit trade-offs
 
 No history before attach or across reconnects; no durable, canonical,
 searchable, or provider transcript; no Skíðblaðnir-owned tmux copy-mode
 command or guarantee;
-`capture-pane`; replay; retention changes; mouse-policy changes; provider
-detection; scroll setting; scrollbar-drag fix; pinch zoom; stylus gesture;
+`capture-pane`; replay; retention changes; non-selection mouse-policy changes;
+provider detection; scroll setting; scrollbar-drag fix; pinch zoom; stylus gesture;
 kinetic fling; new visual chrome; telemetry; xterm version upgrade; or terminal-content
 logging. Existing opaque tmux mouse bindings may enter shared copy mode.
 

@@ -6,9 +6,11 @@ Status: accepted implementation target after the 2026-08-25 scope reset, the
 refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
 accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
 dashboard-return-continuity target, and the 2026-08-31 working-directory
-chooser target, plus the accepted 2026-09-01 terminal touch-scroll target and
-the accepted 2026-09-04 host-installer/operator hard cut. The terminal-activity
-and touch-scroll changes are merged; exact `v0.2.27` publication, historical
+chooser target, plus the accepted 2026-09-01 terminal touch-scroll target, the
+accepted 2026-09-04 host-installer/operator hard cut, the accepted 2026-09-04
+phone-local terminal selection-copy target, and the accepted 2026-09-06
+terminal input-intent arbitration correction. The terminal-activity and
+touch-scroll changes are merged; exact `v0.2.27` publication, historical
 three-host deployment/doctor evidence, and the complete 60-test release-bound
 S22+ platform gate are green. The touch-scroll final targeted mutation rerun,
 final-candidate hands-on journey, and live tmux/Claude Code journey were
@@ -20,8 +22,13 @@ are recorded separately. Historical convergence/doctor evidence does not prove
 the new ownership boundary. Cross-repository host-only pin agreement, host
 apply, reboot, outage/recovery, product, second-phone, Linux isolated tmux, S22+
 hands-on, and provider-live acceptance remain `NOT_RUN` for this cut. The
-rejected 2026-08-28 agent-interaction-state
-candidate and its evidence prove no active target.
+selection-copy source and its input-intent correction have recorded behavioral
+reds, a `171`-test xterm green, routine verification, focused signed
+same-version S22+ greens, and a complete `38`-owner candidate matrix green with
+pairing preserved and the exact public APK restored. Hands-on, release-bound
+platform, publication, and deployment acceptance for that source remain
+`NOT_RUN`. The rejected 2026-08-28 agent-interaction-state candidate and its
+evidence prove no active target.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -69,9 +76,10 @@ paired Devbox, MacBook, and Arch host in one collection, with an honest
 machine, optional exact agent identity, and recent terminal activity;
 create on an explicit machine and directory using only that host's allowlisted
 profiles; attach the same stock TUI that host's laptop sees; type, paste, and
-dictate through Gboard; detach without stopping anything; and kill an exact
-machine-bound confirmed session. One unavailable machine does not block or
-authorize action against the other.
+dictate through Gboard; select rendered terminal text and explicitly copy it to
+that phone's Android clipboard; detach without stopping anything; and kill an
+exact machine-bound confirmed session. One unavailable machine does not block
+or authorize action against the other.
 
 ## 2. Fixed contract
 
@@ -759,7 +767,9 @@ enum values are defects, with no protocol branch or compatibility state.
   collapsing the TUI into a narrow responsive layout. The
   [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
   input surface: `Esc / - Home ↑ End PgUp` over
-  `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` and Android Back own phone detach.
+  `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` always owns phone detach. Android Back
+  dismisses active native terminal selection first and otherwise owns phone
+  detach.
   Ctrl and Alt are independent visible one-shot modifiers; the page publishes
   their state atomically, consumes both on the next input, and resets both at
   lifecycle boundaries. Proven keys use xterm-compatible Ctrl/Alt encoding;
@@ -770,17 +780,38 @@ enum values are defects, with no protocol branch or compatibility state.
   horizontal overflow state below the `356dp` normal-font fit or when large
   text requires it. Gboard Enter sends `0x0d`. Paste strips ESC
   and C0 except newline/tab before bracketed paste. Gboard owns typing,
-  clipboard, and dictation; dictation stays editable and never auto-sends. IME
-  composition and non-composition Gboard input stay inside the terminal edge;
-  both the page and native WebView enforce zero horizontal viewport movement.
-  A primary one-finger vertical drag over the xterm screen becomes a normalized
-  xterm line-wheel input; xterm alone routes it to exact local scrollback,
-  cursor fallback, or negotiated mouse reporting. Two truthful Android
-  accessibility wheel actions enter the same route. Physical DOM wheels and
+  clipboard reads/paste UI, and dictation; dictation stays editable and never
+  auto-sends. The app owns only the explicit terminal-selection clipboard
+  write. IME composition and non-composition Gboard input stay inside the
+  terminal edge; both the page and native WebView enforce zero horizontal
+  viewport movement.
+  One prevented, trusted DOM TouchEvent stream owns terminal tap, scroll, and
+  selection on the API-36 client. A primary one-finger vertical drag over the
+  xterm screen becomes a normalized xterm line-wheel input; xterm alone routes
+  it to exact local scrollback, cursor fallback, or negotiated mouse reporting.
+  A completed sub-threshold tap becomes a semantic xterm primary tap; xterm's
+  active mouse protocol alone decides whether press/release input exists. Two
+  truthful Android accessibility wheel actions enter the same route. Physical DOM wheels and
   semantic line-wheel input share one xterm-owned router. There is no
   transcript, mode detector, application-side router, synthetic wheel-event
   injection, or tmux scroll command. The closed implementation and proof
   boundary is [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
+  If IME composition is active when an otherwise eligible touch begins and no
+  released selection already owns the interaction, the page latches that
+  complete touch stream as composition-owned. It consumes the stream without
+  tap, scroll, mouse, cursor, selection, modifier, or viewport effects and does
+  not reclassify it when composition ends. Android/WebView alone decides the
+  composition outcome through xterm's existing literal input path; the next
+  fresh gesture resumes ordinary terminal routing.
+  A single-contact long press instead claims phone-local selection even under
+  negotiated mouse reporting; hold-drag extends through xterm's own selection
+  owner. Release snapshots at most `256 KiB` of well-formed UTF-8 text into one
+  transient native floating action mode. Its explicit `Copy` writes that exact
+  snapshot once to Android's primary plain-text clipboard and clears it. The
+  path emits no terminal input and has no WSS, tmux, provider, transcript,
+  browser-clipboard, persistence, or clipboard-read capability. The closed
+  implementation and proof boundary is
+  [`terminal-selection-copy.md`](terminal-selection-copy.md).
 - The terminal header always names machine and session; its middle identity
   block is the literal Rename control and retains separate presence state. At
   most one active phone terminal exists, and its connection owns one exact
@@ -798,8 +829,9 @@ enum values are defects, with no protocol branch or compatibility state.
   ornament, motion, and terminal theme; roadmap D1–D4 remain unimplemented and
   do not describe the current source. The key deck has stable row-major
   traversal and spoken Ctrl/Alt state; terminal scroll exposes reviewed custom
-  accessibility actions. Accessibility beyond those reviewed surfaces remains
-  best-effort.
+  accessibility actions. Copy is accessible after a trusted touch selection;
+  end-to-end screen-reader selection construction is not claimed.
+  Accessibility beyond those reviewed surfaces remains best-effort.
 
 ## 7. Security
 
@@ -831,6 +863,11 @@ enum values are defects, with no protocol branch or compatibility state.
   transcript paths, origins, bearers, account data, or other credentials.
   The machine handle may appear in protocol diagnostics; it is opaque and
   non-secret.
+- Terminal selection and clipboard text, previews, and hashes remain transient
+  and never enter logs, analytics, saved state, crash context, or evidence.
+  Production never reads the Android clipboard. Explicit manual copies use the
+  Android system preview and remote-device rendering hint; those are not
+  secrecy or device-locality guarantees.
 - YOLO agents share their host UID; containment requires a separate UID/VM and
   is explicitly out of scope.
 
@@ -883,6 +920,11 @@ Verification follows an 80/20 boundary shape:
   absence of pressure rails in `All`, the selected machine's compact pressure
   rail and local details disclosure, terminal behavior, and visible
   stale-action admission;
+- a separately approved API-36 terminal selection-copy component matrix owns
+  trusted touch selection with mouse reporting off/on, native contextual Back
+  ordering, exact bounded Unicode snapshot transfer, the real Android primary
+  clip, composition-first touch arbitration and fresh-gesture recovery,
+  lifecycle clearing, and zero terminal/network/tmux/provider traffic;
 - one approved physical S22+ product journey owns the real scanner,
   three-host federation/routing, per-machine pressure disclosure,
   process recreation, machine-local outage/recovery, and preserved pairings
@@ -1002,8 +1044,9 @@ single normalized wheel owner; a scrollback-capable buffer attempts exact
 phone-local line movement even at its bounds, a buffer with no scrollback
 capability emits only xterm's cursor sequence, and negotiated mouse tracking
 emits only xterm's mouse report. Gesture arbitration, direction, bounded
-amplification, cancellation, selection/focus/IME coexistence, and
-outer viewport containment match [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
+amplification, cancellation, selection/focus/IME coexistence,
+composition-first whole-stream ownership, and outer viewport containment match
+[`terminal-touch-scroll.md`](terminal-touch-scroll.md).
 The hard cut leaves no transcript, application-side `scrollLines`, mode branch,
 escape encoder, synthetic wheel event, tmux command, fallback, or compatibility
 path. The sole dependency delta is one source-pinned, digest-locked,
@@ -1016,6 +1059,23 @@ lock metadata and executable development dependency advisories. It audits the
 complete executable build lock with no severity or development-dependency
 omission. Another build platform requires its own explicit pin and
 identical-output proof.
+
+Terminal selection-copy acceptance additionally requires: trusted long-press
+and hold-drag select the intended xterm cells with mouse reporting off or on;
+the native floating `Copy` action is discoverable and invocable after touch
+selection; the phone's real primary plain-text clip then equals the immutable
+release snapshot once and selection clears. Back first clears selection and
+then retains detach through a selected-only view-resolved overlay-priority
+callback; no key or Activity/Compose-specific interception exists. Empty,
+oversize, malformed, cancelled, dismissed,
+backgrounded, disabled, rotated, unavailable, and disposed paths never write;
+selection and copy emit no terminal input, WSS, network, tmux, or provider
+traffic. The hard cut leaves one generic source-pinned xterm patch/artifact,
+one prevented TouchEvent owner, one native selection/clipboard owner, exact
+generation-correlated version-2 packaged messages, no DOM/browser clipboard
+writer, and no compatibility or fallback path. The full contract and owner
+proofs are
+[`terminal-selection-copy.md`](terminal-selection-copy.md).
 
 Distribution acceptance additionally requires: the public release has the
 five owned immutable assets and one signer; `dev-server` pins and applies the

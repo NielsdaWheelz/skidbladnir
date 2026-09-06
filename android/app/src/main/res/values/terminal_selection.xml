@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="terminal_selection_copy_action" type="id" />
+    <string name="terminal_selection_copy">Copy</string>
+    <string name="terminal_selection_clip_label">Terminal selection</string>
+    <string name="terminal_selection_too_large">Selection is too large to copy.</string>
+    <string name="terminal_selection_copy_failed">Couldn’t copy selection.</string>
+</resources>

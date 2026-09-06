@@ -1,15 +1,21 @@
 package dev.niels.skidbladnir
 
+import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.ActionMode
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.PixelCopy
@@ -20,10 +26,12 @@ import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.OnBackPressedCallback
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -32,9 +40,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebViewCompat
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
@@ -61,7 +71,26 @@ private val BOTH_ARMED = TerminalModifiers(TerminalModifierPhase.Armed, Terminal
 
 private const val TERMINAL_WHEEL_BACKWARD = "Terminal wheel backward"
 private const val TERMINAL_WHEEL_FORWARD = "Terminal wheel forward"
+private const val TERMINAL_SELECTION_COPY = "Copy"
+private const val TERMINAL_SELECTION_TOO_LARGE = "Selection is too large to copy."
 private const val ACCESSIBILITY_STABILITY_MILLIS = 1_250L
+
+private enum class TerminalSelectionMouseMode(val control: String) {
+    Off("\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l"),
+    Sgr("\u001b[?1003h\u001b[?1006h"),
+}
+
+private enum class TerminalSelectionLifecycleBoundary {
+    PrimaryTap,
+    SecondPointer,
+    TouchCancel,
+    Disable,
+    Background,
+    Rotation,
+    PageFailure,
+    Disposal,
+    Recreation,
+}
 
 private enum class TouchWheelDirection(
     val fingerRows: Float,
@@ -154,6 +183,19 @@ private data class TerminalContainmentState(
 )
 
 private data class TerminalAccessibilityAction(val id: Int, val label: String)
+
+private sealed interface PreservedClipboard {
+    data object KnownEmpty : PreservedClipboard
+
+    data class KnownClip(val snapshot: ClipData) : PreservedClipboard
+}
+
+private data class SgrMouseReport(
+    val button: Int,
+    val column: Int,
+    val row: Int,
+    val release: Boolean,
+)
 
 private data class TerminalAccessibilityActionOccurrence(
     val node: AccessibilityNodeInfo,
@@ -751,6 +793,25 @@ class TerminalInstrumentedTest {
             )
             clearTerminalEvents()
 
+            injectBelowSlopTap(webView, geometry, start, "touch-mouse-tap")
+            assertEvent(
+                TerminalTestEvent.Input(
+                    "\u001b[<0;${startColumn + 1};${startRow + 1}M".toByteArray(),
+                ),
+                "touch-mouse-tap-press",
+            )
+            assertEvent(
+                TerminalTestEvent.Input(
+                    "\u001b[<0;${startColumn + 1};${startRow + 1}m".toByteArray(),
+                ),
+                "touch-mouse-tap-release",
+            )
+            assertNull(
+                "case=touch-mouse-tap route=event expectedCount=2 index=2",
+                pollEvent(),
+            )
+            awaitNoTerminalSelection(webView, "touch-mouse-tap-selection")
+
             applyControlFixture(page, "\u001b[?1003l\u001b[?1006l", "touch-mouse-disable")
             val tapPosition = awaitAccessiblePosition(webView, "touch-tap-position-before")
             val tapSetSize = accessibleSetSize(webView, "touch-tap-set-size")
@@ -821,37 +882,65 @@ class TerminalInstrumentedTest {
                 awaitAccessiblePosition(webView, "touch-local-top-outward-position"),
             )
 
-            evaluateSafely(
-                webView,
-                """
+            assertEquals(
+                "case=script-touch route=containment dispatch-not-consumed",
+                "false",
+                evaluateSafely(
+                    webView,
+                    """
                 (function () {
                     var screen = document.querySelector('.xterm-screen');
                     var bounds = screen.getBoundingClientRect();
-                    var options = {
-                        bubbles: true,
-                        cancelable: true,
-                        composed: true,
-                        pointerId: 91,
-                        pointerType: 'touch',
-                        isPrimary: true,
-                        clientX: bounds.left + bounds.width / 2,
-                        clientY: bounds.top + bounds.height / 2
-                    };
-                    screen.dispatchEvent(new PointerEvent('pointerdown', options));
-                    options.clientY -= bounds.height / 3;
-                    screen.dispatchEvent(new PointerEvent('pointermove', options));
-                    screen.dispatchEvent(new PointerEvent('pointerup', options));
+                    screen.dataset.untrustedTouchLeaks = '0';
+                    screen.addEventListener('touchstart', function () {
+                        screen.dataset.untrustedTouchLeaks =
+                            String(Number(screen.dataset.untrustedTouchLeaks) + 1);
+                    });
+                    function touch(y) {
+                        return new Touch({
+                            identifier: 91,
+                            target: screen,
+                            clientX: bounds.left + bounds.width / 2,
+                            clientY: y
+                        });
+                    }
+                    var startTouch = touch(bounds.top + bounds.height / 2);
+                    var movedTouch = touch(bounds.top + bounds.height / 3);
+                    screen.dispatchEvent(new TouchEvent('touchstart', {
+                        bubbles: true, cancelable: true, composed: true,
+                        touches: [startTouch], targetTouches: [startTouch],
+                        changedTouches: [startTouch]
+                    }));
+                    screen.dispatchEvent(new TouchEvent('touchmove', {
+                        bubbles: true, cancelable: true, composed: true,
+                        touches: [movedTouch], targetTouches: [movedTouch],
+                        changedTouches: [movedTouch]
+                    }));
+                    return screen.dispatchEvent(new TouchEvent('touchend', {
+                        bubbles: true, cancelable: true, composed: true,
+                        touches: [], targetTouches: [], changedTouches: [movedTouch]
+                    }));
                 }())
-                """.trimIndent(),
-                "script-pointer",
+                    """.trimIndent(),
+                    "script-touch",
+                ),
             )
             SystemClock.sleep(250)
             assertEquals(
-                "case=script-pointer route=local position",
+                "case=script-touch route=local position",
                 top,
-                awaitAccessiblePosition(webView, "script-pointer-position"),
+                awaitAccessiblePosition(webView, "script-touch-position"),
             )
-            assertNoInput("script-pointer", "none", TouchWheelDirection.Forward)
+            assertNoInput("script-touch", "none", TouchWheelDirection.Forward)
+            assertEquals(
+                "case=script-touch route=containment lower-listener-count",
+                "0",
+                evaluateSafely(
+                    webView,
+                    "document.querySelector('.xterm-screen').dataset.untrustedTouchLeaks",
+                    "script-touch-leak-count",
+                ),
+            )
 
             applyControlFixture(page, "\u001b[?1049h\u001b[?1h", "touch-alternate")
             for (direction in TouchWheelDirection.entries) {
@@ -903,6 +992,714 @@ class TerminalInstrumentedTest {
                 "touch-selection-retained",
             )
             assertNoInput("touch-selection", "blocked", TouchWheelDirection.Forward)
+        }
+    }
+
+    @Test
+    fun trustedTouchSelectionCopiesExactPhoneLocalClipboardWithMouseOff() {
+        trustedTouchSelectionCopyJourney(TerminalSelectionMouseMode.Off)
+    }
+
+    @Test
+    fun trustedTouchSelectionCopiesExactPhoneLocalClipboardWithSgrMouse() {
+        trustedTouchSelectionCopyJourney(TerminalSelectionMouseMode.Sgr)
+    }
+
+    private fun trustedTouchSelectionCopyJourney(mouseMode: TerminalSelectionMouseMode) {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-copy-${mouseMode.name.lowercase()}"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            val selectedText = "phone local selection"
+            val start = geometry.cell(0, row)
+            val end = geometry.cell(selectedText.lastIndex, row)
+            val fallbackBackCount = AtomicInteger()
+            focusTerminal(scenario, webView)
+            withRestoredClipboard(scenario) { clipboard ->
+                applyControlFixture(
+                    page,
+                    "\u001bc" + "\r\n".repeat(row) + selectedText + mouseMode.control,
+                    "$caseId-fixture",
+                )
+                setClipboardBaseline(clipboard)
+
+                injectTap(webView, start, "$caseId-prethreshold-tap")
+                awaitNoTerminalSelection(webView, "$caseId-prethreshold-selection")
+                awaitNoSelectionCopyAction("$caseId-prethreshold-action")
+                assertPrethresholdTapInput(mouseMode, 0, row, "$caseId-prethreshold-tap")
+                clearTerminalEvents()
+
+                onUi(scenario) { activity ->
+                    activity.onBackPressedDispatcher.addCallback(
+                        activity,
+                        object : OnBackPressedCallback(true) {
+                            override fun handleOnBackPressed() {
+                                fallbackBackCount.incrementAndGet()
+                            }
+                        },
+                    )
+                }
+
+                injectSelectionHoldDrag(webView, start, end, "$caseId-back-selection")
+                awaitNativeXtermSelection(webView, "$caseId-back-selection-visible")
+                val backCopy = awaitSelectionCopyAction("$caseId-back-action")
+                assertFloatingSelectionCopyWindow(scenario, webView, backCopy, "$caseId-back-window")
+                sendSystemBack()
+                awaitNoSelectionCopyAction("$caseId-back-dismissed-action")
+                awaitNoTerminalSelection(webView, "$caseId-back-dismissed-selection")
+                assertEquals("case=$caseId route=back-owned", 0, fallbackBackCount.get())
+                sendSystemBack()
+                awaitCounter(fallbackBackCount, 1, "$caseId-back-fallback")
+                assertSelectionEmittedNoInput("$caseId-back")
+
+                injectSelectionHoldDragWithDistinctEnd(
+                    webView,
+                    start,
+                    geometry.cell(selectedText.lastIndex - 1, row),
+                    end,
+                    "$caseId-copy-selection",
+                )
+                awaitNativeXtermSelection(webView, "$caseId-copy-selection-visible")
+                val beforeRedraw = awaitSelectionCopyAction("$caseId-copy-action-before-redraw")
+                assertFloatingSelectionCopyWindow(
+                    scenario,
+                    webView,
+                    beforeRedraw,
+                    "$caseId-copy-window-before-redraw",
+                )
+                applyControlFixture(
+                    page,
+                    "\rdisplay changed cells",
+                    "$caseId-release-snapshot",
+                )
+                awaitBooleanState(
+                    webView,
+                    "document.querySelector('.xterm-rows').textContent.includes('display changed cells')",
+                    "$caseId-release-snapshot-rendered",
+                )
+                awaitNativeXtermSelection(webView, "$caseId-release-snapshot-selection")
+                val copyAction = awaitSelectionCopyAction("$caseId-copy-action-after-redraw")
+                assertFloatingSelectionCopyWindow(
+                    scenario,
+                    webView,
+                    copyAction,
+                    "$caseId-copy-window-after-redraw",
+                )
+                assertClipboardBaseline(clipboard, "$caseId-before-copy")
+                InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
+                val activationAction = awaitSelectionCopyAction("$caseId-copy-action-activation")
+                injectSelectionCopyAction(webView, activationAction, "$caseId-copy-activation")
+                awaitExactSelectionClipboard(clipboard, selectedText, "$caseId-clipboard")
+                awaitNoSelectionCopyAction("$caseId-copy-cleared-action")
+                awaitNoTerminalSelection(webView, "$caseId-copy-cleared-selection")
+                assertSelectionEmittedNoInput("$caseId-copy")
+            }
+        }
+    }
+
+    @Test
+    fun selectionClipboardAcceptsExactUtf8ByteLimit() {
+        val limit = 262_144
+        val cases = listOf(
+            "ascii" to "a".repeat(limit),
+            "multibyte" to "é".repeat(limit / 2),
+        )
+        for ((phase, selectedText) in cases) {
+            assertEquals(
+                "case=selection-limit-$phase route=fixture byte-count",
+                limit,
+                selectedText.toByteArray(Charsets.UTF_8).size,
+            )
+            TerminalTestProbe.reset()
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                val caseId = "selection-limit-$phase"
+                val webView = awaitTerminal(scenario)
+                val page = requireNotNull(TerminalTestProbe.page)
+                val geometry = terminalTouchGeometry(scenario, webView)
+                val row = geometry.rows / 2
+                focusTerminal(scenario, webView)
+                withRestoredClipboard(scenario) { clipboard ->
+                    applyControlFixture(
+                        page,
+                        "\u001bc" + "\r\n".repeat(row) + "seed",
+                        "$caseId-fixture",
+                    )
+                    setClipboardBaseline(clipboard)
+                    replaceNextPageMessage(
+                        webView,
+                        "SelectionAvailable",
+                        JSONObject()
+                            .put("kind", "SelectionAvailable")
+                            .put("anchorX", 0.5)
+                            .put("anchorY", 0.5)
+                            .put("text", selectedText)
+                            .toString(),
+                    )
+                    clearTerminalEvents()
+                    injectSelectionHoldDrag(
+                        webView,
+                        geometry.cell(0, row),
+                        geometry.cell(3, row),
+                        "$caseId-selection",
+                    )
+                    val copyAction = awaitSelectionCopyAction("$caseId-action")
+                    assertClipboardBaseline(clipboard, "$caseId-before-copy")
+                    injectSelectionCopyAction(webView, copyAction, "$caseId-activation")
+                    awaitExactSelectionClipboard(clipboard, selectedText, "$caseId-clipboard")
+                    awaitNoSelectionCopyAction("$caseId-cleared-action")
+                    awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
+                    assertSelectionEmittedNoInput(caseId)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun selectionLifecycleClearsWithoutClipboardOrTerminalInput() {
+        for (boundary in TerminalSelectionLifecycleBoundary.entries) {
+            TerminalTestProbe.reset()
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                val caseId = "selection-lifecycle-${boundary.name.lowercase()}"
+                var webView = awaitTerminal(scenario)
+                var page = requireNotNull(TerminalTestProbe.page)
+                val originalRequestedOrientation = if (boundary == TerminalSelectionLifecycleBoundary.Rotation) {
+                    onUi(scenario) { activity ->
+                        val original = activity.requestedOrientation
+                        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        original
+                    }.also {
+                        awaitValue(webView, "window.innerHeight > window.innerWidth", "true")
+                        assertEquals(
+                            "case=$caseId route=lifecycle orientation-normalized",
+                            Configuration.ORIENTATION_PORTRAIT,
+                            onUi(scenario) { activity -> activity.resources.configuration.orientation },
+                        )
+                    }
+                } else {
+                    null
+                }
+                val geometry = terminalTouchGeometry(scenario, webView)
+                val row = geometry.rows / 2
+                val start = geometry.cell(0, row)
+                val end = geometry.cell(3, row)
+                focusTerminal(scenario, webView)
+                withRestoredClipboard(scenario) { clipboard ->
+                    applyControlFixture(
+                        page,
+                        "\u001bc" + "\r\n".repeat(row) + "seed",
+                        "$caseId-fixture",
+                    )
+                    setClipboardBaseline(clipboard)
+                    clearTerminalEvents()
+
+                    if (boundary == TerminalSelectionLifecycleBoundary.SecondPointer ||
+                        boundary == TerminalSelectionLifecycleBoundary.TouchCancel ||
+                        boundary == TerminalSelectionLifecycleBoundary.Disable ||
+                        boundary == TerminalSelectionLifecycleBoundary.Background ||
+                        boundary == TerminalSelectionLifecycleBoundary.Rotation
+                    ) {
+                        NativeTouchStream(webView, caseId).use { stream ->
+                            stream.down(start)
+                            SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
+                            awaitNativeXtermSelection(webView, "$caseId-active")
+                            when (boundary) {
+                                TerminalSelectionLifecycleBoundary.SecondPointer -> {
+                                    val second = geometry.cell(4, minOf(row + 1, geometry.rows - 1))
+                                    stream.secondDown(start, second)
+                                    stream.secondUp(start, second)
+                                    stream.up(start)
+                                }
+                                TerminalSelectionLifecycleBoundary.TouchCancel -> stream.cancel(start)
+                                TerminalSelectionLifecycleBoundary.Disable -> {
+                                    onUi(scenario) { webView.isEnabled = false }
+                                    awaitNoTerminalSelection(webView, "$caseId-disabled-selection")
+                                    onUi(scenario) { webView.isEnabled = true }
+                                    awaitResumedActivityWindowFocus(scenario, "$caseId-reenabled")
+                                    stream.move(end)
+                                    stream.up(end)
+                                }
+                                TerminalSelectionLifecycleBoundary.Background -> {
+                                    scenario.moveToState(Lifecycle.State.CREATED)
+                                    assertFalse(
+                                        "case=$caseId route=lifecycle created-window-focus",
+                                        onUi(scenario) { webView.hasWindowFocus() },
+                                    )
+                                    awaitNoTerminalSelection(webView, "$caseId-created-selection")
+                                    scenario.moveToState(Lifecycle.State.RESUMED)
+                                    awaitResumedActivityWindowFocus(scenario, "$caseId-resumed")
+                                    stream.move(end)
+                                    stream.up(end)
+                                }
+                                TerminalSelectionLifecycleBoundary.Rotation -> {
+                                    onUi(scenario) {
+                                        it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                    }
+                                    awaitValue(webView, "window.innerWidth > window.innerHeight", "true")
+                                    assertEquals(
+                                        "case=$caseId route=lifecycle orientation-toggled",
+                                        Configuration.ORIENTATION_LANDSCAPE,
+                                        onUi(scenario) { activity ->
+                                            activity.resources.configuration.orientation
+                                        },
+                                    )
+                                    awaitNoTerminalSelection(webView, "$caseId-landscape-selection")
+                                    onUi(scenario) {
+                                        it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    }
+                                    awaitValue(webView, "window.innerHeight > window.innerWidth", "true")
+                                    assertEquals(
+                                        "case=$caseId route=lifecycle orientation-returned",
+                                        Configuration.ORIENTATION_PORTRAIT,
+                                        onUi(scenario) { activity ->
+                                            activity.resources.configuration.orientation
+                                        },
+                                    )
+                                    onUi(scenario) {
+                                        it.requestedOrientation = requireNotNull(originalRequestedOrientation)
+                                    }
+                                    assertEquals(
+                                        "case=$caseId route=lifecycle orientation-restored",
+                                        originalRequestedOrientation,
+                                        onUi(scenario) { it.requestedOrientation },
+                                    )
+                                    stream.move(end)
+                                    stream.up(end)
+                                }
+                                else -> error("released selection boundary reached active branch")
+                            }
+                        }
+                    } else {
+                        injectSelectionHoldDrag(webView, start, end, "$caseId-selection")
+                        awaitNativeXtermSelection(webView, "$caseId-selection-visible")
+                        awaitSelectionCopyAction("$caseId-action")
+                        assertClipboardBaseline(clipboard, "$caseId-selected")
+                        when (boundary) {
+                            TerminalSelectionLifecycleBoundary.PrimaryTap ->
+                                injectBelowSlopTap(
+                                    webView,
+                                    geometry,
+                                    geometry.cell(6, row),
+                                    "$caseId-boundary",
+                                )
+                            TerminalSelectionLifecycleBoundary.PageFailure -> {
+                                postRawNativeMessage(scenario, webView, "not-json")
+                                assertTrue(
+                                    "case=$caseId route=lifecycle unavailable=false",
+                                    TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                                )
+                            }
+                            TerminalSelectionLifecycleBoundary.Disposal ->
+                                onUi(scenario) { (webView as LockedTerminalWebView).dispose() }
+                            TerminalSelectionLifecycleBoundary.Recreation -> {
+                                val priorInput = TerminalTestProbe.input
+                                TerminalTestProbe.reset()
+                                scenario.recreate()
+                                webView = awaitTerminal(scenario)
+                                page = requireNotNull(TerminalTestProbe.page)
+                                assertNull(
+                                    "case=$caseId route=terminal-input prior-owner-count>0",
+                                    priorInput.poll(350, TimeUnit.MILLISECONDS),
+                                )
+                            }
+                            TerminalSelectionLifecycleBoundary.SecondPointer,
+                            TerminalSelectionLifecycleBoundary.TouchCancel,
+                            TerminalSelectionLifecycleBoundary.Disable,
+                            TerminalSelectionLifecycleBoundary.Background,
+                            TerminalSelectionLifecycleBoundary.Rotation,
+                            -> error("active selection boundary reached released branch")
+                        }
+                    }
+
+                    awaitNoSelectionCopyAction("$caseId-cleared-action")
+                    if (boundary != TerminalSelectionLifecycleBoundary.Disposal) {
+                        awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
+                    }
+                    assertSelectionAndCopyRemainAbsent(
+                        if (boundary == TerminalSelectionLifecycleBoundary.Disposal) null else webView,
+                        "$caseId-stable-absence",
+                    )
+                    assertClipboardBaseline(clipboard, "$caseId-cleared-clipboard")
+                    assertSelectionEmittedNoInput(caseId)
+
+                    if (boundary != TerminalSelectionLifecycleBoundary.PageFailure &&
+                        boundary != TerminalSelectionLifecycleBoundary.Disposal
+                    ) {
+                        awaitResumedActivityWindowFocus(scenario, "$caseId-fresh-resumed")
+                        val freshGeometry = terminalTouchGeometry(
+                            scenario,
+                            webView,
+                            if (boundary == TerminalSelectionLifecycleBoundary.Recreation) {
+                                null
+                            } else {
+                                geometry.columns to geometry.rows
+                            },
+                        )
+                        val freshRow = freshGeometry.rows / 2
+                        applyControlFixture(
+                            page,
+                            "\u001bc" + "\r\n".repeat(freshRow) + "seed",
+                            "$caseId-fresh-fixture",
+                        )
+                        focusTerminal(scenario, webView)
+                        clearTerminalEvents()
+                        injectSelectionHoldDrag(
+                            webView,
+                            freshGeometry.cell(0, freshRow),
+                            freshGeometry.cell(3, freshRow),
+                            "$caseId-fresh-selection",
+                        )
+                        awaitNativeXtermSelection(webView, "$caseId-fresh-visible")
+                        awaitSelectionCopyAction("$caseId-fresh-action")
+                        assertEquals(
+                            "case=$caseId route=protocol fresh-unavailable-count",
+                            1L,
+                            TerminalTestProbe.unavailable.count,
+                        )
+                        injectBelowSlopTap(
+                            webView,
+                            freshGeometry,
+                            freshGeometry.cell(6, freshRow),
+                            "$caseId-fresh-clear",
+                        )
+                        awaitNoSelectionCopyAction("$caseId-fresh-cleared-action")
+                        awaitNoTerminalSelection(webView, "$caseId-fresh-cleared-selection")
+                        assertSelectionEmittedNoInput("$caseId-fresh")
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun backgroundSelectionClearAcknowledgementIsGenerationBounded() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-clear-generation-background"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            focusTerminal(scenario, webView)
+            applyControlFixture(
+                page,
+                "\u001bc" + "\r\n".repeat(row) + "seed",
+                "$caseId-fixture",
+            )
+            injectSelectionHoldDrag(
+                webView,
+                geometry.cell(0, row),
+                geometry.cell(3, row),
+                "$caseId-selection",
+            )
+            awaitNativeXtermSelection(webView, "$caseId-selection-visible")
+            awaitSelectionCopyAction("$caseId-action")
+            val firstGeneration = terminalSelectionGeneration(scenario, webView, "$caseId-first")
+            clearTerminalEvents()
+
+            scenario.moveToState(Lifecycle.State.CREATED)
+            awaitNoTerminalSelection(webView, "$caseId-background-selection")
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            awaitResumedActivityWindowFocus(scenario, "$caseId-resumed")
+            awaitNoSelectionCopyAction("$caseId-cleared-action")
+            assertSelectionAndCopyRemainAbsent(webView, "$caseId-stable-absence")
+            assertEquals(
+                "case=$caseId route=protocol unavailable-count",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+            postRawNativeMessage(
+                scenario,
+                webView,
+                JSONObject()
+                    .put("kind", "ClearSelection")
+                    .put("generation", firstGeneration)
+                    .toString(),
+            )
+            SystemClock.sleep(350)
+            assertEquals(
+                "case=$caseId route=protocol duplicate-clear-unavailable-count",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+
+            val resumedGeometry = terminalTouchGeometry(
+                scenario,
+                webView,
+                geometry.columns to geometry.rows,
+            )
+            val resumedRow = resumedGeometry.rows / 2
+            injectSelectionHoldDrag(
+                webView,
+                resumedGeometry.cell(0, resumedRow),
+                resumedGeometry.cell(3, resumedRow),
+                "$caseId-fresh-selection",
+            )
+            awaitNativeXtermSelection(webView, "$caseId-fresh-selection-visible")
+            awaitSelectionCopyAction("$caseId-fresh-action")
+            val secondGeneration = terminalSelectionGeneration(scenario, webView, "$caseId-second")
+            assertEquals(
+                "case=$caseId route=protocol generation-monotonic",
+                firstGeneration.toLong() + 1,
+                secondGeneration.toLong(),
+            )
+            postRawNativeMessage(
+                scenario,
+                webView,
+                JSONObject()
+                    .put("kind", "ClearSelection")
+                    .put("generation", firstGeneration)
+                    .toString(),
+            )
+            SystemClock.sleep(350)
+            awaitNativeXtermSelection(webView, "$caseId-stale-clear-selection")
+            awaitSelectionCopyAction("$caseId-stale-clear-action")
+            assertEquals(
+                "case=$caseId route=protocol fresh-unavailable-count",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+            injectBelowSlopTap(
+                webView,
+                resumedGeometry,
+                resumedGeometry.cell(6, resumedRow),
+                "$caseId-fresh-clear",
+            )
+            awaitNoSelectionCopyAction("$caseId-fresh-cleared-action")
+            awaitNoTerminalSelection(webView, "$caseId-fresh-cleared-selection")
+            assertSelectionEmittedNoInput(caseId)
+        }
+    }
+
+    @Test
+    fun releasedSelectionCancellationSuppressesRemainingPrimaryTail() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-released-cancel-tail"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            val first = geometry.cell(5, row)
+            val second = geometry.cell(6, minOf(row + 1, geometry.rows - 1))
+            focusTerminal(scenario, webView)
+            applyControlFixture(
+                page,
+                "\u001bc" + "\r\n".repeat(row) + "seed" + TerminalSelectionMouseMode.Sgr.control,
+                "$caseId-fixture",
+            )
+            injectSelectionHoldDrag(
+                webView,
+                geometry.cell(0, row),
+                geometry.cell(3, row),
+                "$caseId-selection",
+            )
+            awaitNativeXtermSelection(webView, "$caseId-selection-visible")
+            awaitSelectionCopyAction("$caseId-action")
+            clearTerminalEvents()
+
+            NativeTouchStream(webView, caseId, primaryPointerId = 17).use { stream ->
+                stream.down(first)
+                stream.secondDown(first, second)
+                stream.secondUp(first, second)
+                stream.up(first)
+            }
+
+            awaitNoSelectionCopyAction("$caseId-cleared-action")
+            awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
+            assertEquals(
+                "case=$caseId route=protocol unavailable-count",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+            assertSelectionEmittedNoInput(caseId)
+            injectSelectionHoldDrag(
+                webView,
+                geometry.cell(0, row),
+                geometry.cell(3, row),
+                "$caseId-fresh",
+                primaryPointerId = 21,
+            )
+            awaitNativeXtermSelection(webView, "$caseId-fresh-selection")
+            awaitSelectionCopyAction("$caseId-fresh-action")
+            injectBelowSlopTap(webView, geometry, first, "$caseId-fresh-clear")
+            awaitNoTerminalSelection(webView, "$caseId-fresh-cleared-selection")
+            awaitNoSelectionCopyAction("$caseId-fresh-cleared-action")
+        }
+    }
+
+    @Test
+    fun accessibilityScrollClearsActiveSelectionAndDrainsTouchTail() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-accessibility-scroll"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            val start = geometry.cell(0, row)
+            val end = geometry.cell(3, row)
+            focusTerminal(scenario, webView)
+            applyControlFixture(
+                page,
+                "\u001bc" + "\r\n".repeat(row) + "seed" + TerminalSelectionMouseMode.Sgr.control,
+                "$caseId-fixture",
+            )
+            val node = awaitFocusedTerminalRowNode(caseId)
+            val action = requireNotNull(
+                terminalWheelActions(node).singleOrNull {
+                    it.label == TERMINAL_WHEEL_FORWARD
+                },
+            )
+            clearTerminalEvents()
+
+            NativeTouchStream(webView, caseId, primaryPointerId = 23).use { stream ->
+                stream.down(start)
+                SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
+                awaitNativeXtermSelection(webView, "$caseId-active")
+                assertTrue(
+                    "case=$caseId route=accessibility node-stale",
+                    node.refresh(),
+                )
+                assertTrue(
+                    "case=$caseId route=accessibility action-rejected",
+                    node.performAction(action.id),
+                )
+                awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
+                stream.move(end)
+                stream.up(end)
+            }
+
+            awaitNoSelectionCopyAction("$caseId-cleared-action")
+            assertEquals(
+                "case=$caseId route=protocol unavailable-count",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+            assertSelectionEmittedNoInput(caseId)
+
+            focusTerminal(scenario, webView)
+            injectSelectionHoldDrag(
+                webView,
+                start,
+                end,
+                "$caseId-fresh-selection",
+                primaryPointerId = 25,
+            )
+            awaitNativeXtermSelection(webView, "$caseId-fresh-visible")
+            awaitSelectionCopyAction("$caseId-fresh-action")
+            injectBelowSlopTap(webView, geometry, geometry.cell(6, row), "$caseId-fresh-clear")
+            awaitNoTerminalSelection(webView, "$caseId-fresh-cleared-selection")
+            awaitNoSelectionCopyAction("$caseId-fresh-cleared-action")
+            assertSelectionEmittedNoInput("$caseId-fresh")
+        }
+    }
+
+    @Test
+    fun availabilityRevocationPrecedesQueuedCopyAction() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-revocation-before-copy"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            focusTerminal(scenario, webView)
+            withRestoredClipboard(scenario) { clipboard ->
+                applyControlFixture(
+                    page,
+                    "\u001bc" + "\r\n".repeat(row) + "seed",
+                    "$caseId-fixture",
+                )
+                setClipboardBaseline(clipboard)
+                injectSelectionHoldDrag(
+                    webView,
+                    geometry.cell(0, row),
+                    geometry.cell(3, row),
+                    "$caseId-selection",
+                )
+                awaitSelectionCopyAction("$caseId-action")
+                // A public ActionMode tap cannot establish this ordering: its input delivery may
+                // race the main-thread unavailable callback. Queue the framework's real callback
+                // itself so the output-lock commit is proven to occur before the clipboard gate;
+                // no fake callback, clipboard, or production test seam participates.
+                val invokeCopyAction = onUi(scenario) {
+                    val controllerField = LockedTerminalWebView::class.java
+                        .getDeclaredField("selectionController")
+                        .apply { isAccessible = true }
+                    val controller = controllerField.get(webView)
+                    val callback = controller.javaClass.getDeclaredField("actionModeCallback")
+                        .apply { isAccessible = true }
+                        .get(controller) as ActionMode.Callback
+                    val state = controller.javaClass.getDeclaredField("state")
+                        .apply { isAccessible = true }
+                        .get(controller)
+                    val mode = state.javaClass.getDeclaredField("actionMode")
+                        .apply { isAccessible = true }
+                        .get(state) as ActionMode
+                    val item = mode.menu.findItem(R.id.terminal_selection_copy_action)
+                    val invocation: () -> Boolean = {
+                        callback.onActionItemClicked(mode, item)
+                    }
+                    invocation
+                }
+                val mainEntered = CountDownLatch(1)
+                val releaseMain = CountDownLatch(1)
+                webView.post {
+                    mainEntered.countDown()
+                    releaseMain.await(5, TimeUnit.SECONDS)
+                }
+                assertTrue(
+                    "case=$caseId route=ordering main-blocked=false",
+                    mainEntered.await(5, TimeUnit.SECONDS),
+                )
+                val copyFinished = CountDownLatch(1)
+                val copyResult = AtomicInteger(-1)
+                try {
+                    assertTrue(
+                        "case=$caseId route=ordering action-queued=false",
+                        webView.post {
+                            copyResult.set(if (invokeCopyAction()) 1 else 0)
+                            copyFinished.countDown()
+                        },
+                    )
+                    page.write(ByteArray(1024 * 1024 + 1))
+                    val unavailableCommitted = run {
+                        val monitorField = LockedTerminalWebView::class.java
+                            .getDeclaredField("outputMonitor")
+                            .apply { isAccessible = true }
+                        val unavailableField = LockedTerminalWebView::class.java
+                            .getDeclaredField("unavailable")
+                            .apply { isAccessible = true }
+                        val monitor = requireNotNull(monitorField.get(webView))
+                        synchronized(monitor) { unavailableField.getBoolean(webView) }
+                    }
+                    assertTrue(
+                        "case=$caseId route=ordering unavailable-not-committed",
+                        unavailableCommitted,
+                    )
+                } finally {
+                    releaseMain.countDown()
+                }
+                assertTrue(
+                    "case=$caseId route=ordering copy-callback-timeout",
+                    copyFinished.await(5, TimeUnit.SECONDS),
+                )
+                assertTrue(
+                    "case=$caseId route=protocol unavailable=false",
+                    TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                )
+                assertClipboardBaseline(clipboard, "$caseId-clipboard")
+                assertEquals(
+                    "case=$caseId route=ordering copy-result",
+                    1,
+                    copyResult.get(),
+                )
+                awaitNoSelectionCopyAction("$caseId-action-cleared")
+                assertSelectionEmittedNoInput(caseId)
+            }
         }
     }
 
@@ -1938,14 +2735,16 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun activeCompositionSurvivesTrustedTouchScrollAndPreservesContainment() {
+    fun activeCompositionArbitratesTrustedTouchBeforeFreshScroll() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
             val page = requireNotNull(TerminalTestProbe.page)
             val geometry = terminalTouchGeometry(scenario, webView)
             applyControlFixture(
                 page,
-                "\u001b[?1049l\u001b[?1l" + "\r\n".repeat(geometry.rows * 5),
+                "\u001b[?1049l\u001b[?1l" +
+                    TerminalSelectionMouseMode.Sgr.control +
+                    "\r\n".repeat(geometry.rows * 5),
                 "composition-local",
             )
             val compositionBefore = awaitStableAccessiblePosition(
@@ -1953,14 +2752,26 @@ class TerminalInstrumentedTest {
                 "composition-local-before",
             ) { it > 2 }
             focusTerminal(scenario, webView)
+            val compositionText = "active composition"
+            val compositionBytes = compositionText.toByteArray()
             val compositionStarted = withTerminalInputConnection(scenario, webView) { connection ->
-                connection.setComposingText("active composition", 1)
+                connection.setComposingText(compositionText, 1)
             }
             assertTrue("case=composition-local route=ime start", compositionStarted)
             awaitBooleanState(
                 webView,
                 "document.querySelector('.composition-view').classList.contains('active')",
                 "composition-active-before",
+            )
+            assertNoInput(
+                "composition-baseline",
+                "ime",
+                TouchWheelDirection.Backward,
+            )
+            awaitBooleanState(
+                webView,
+                "document.querySelector('.composition-view').classList.contains('active')",
+                "composition-active-after-baseline",
             )
             val compositionGeometry = terminalTouchGeometry(
                 scenario,
@@ -1980,24 +2791,28 @@ class TerminalInstrumentedTest {
                 TouchWheelDirection.Backward,
                 "composition-local",
             )
-            val compositionAfter = awaitAccessiblePosition(webView, "composition-local-after") {
-                it < compositionBefore
-            }
-            assertTrue(
-                "case=composition-local route=local displacement",
-                compositionAfter < compositionBefore,
+            assertAccessiblePositionRemains(
+                webView,
+                "composition-local-after",
+                compositionBefore,
+            )
+            assertOnlyInput(
+                "composition-local",
+                "ime",
+                TouchWheelDirection.Backward,
+                compositionBytes,
             )
             awaitBooleanState(
                 webView,
-                "document.querySelector('.composition-view').classList.contains('active')",
-                "composition-active-after",
+                "!document.querySelector('.composition-view').classList.contains('active')",
+                "composition-inactive-after",
             )
+            assertSelectionAndCopyRemainAbsent(webView, "composition-local")
             awaitBooleanState(
                 webView,
                 "document.activeElement === document.querySelector('.xterm-helper-textarea')",
                 "composition-focus-after",
             )
-            assertNoInput("composition-local", "local", TouchWheelDirection.Backward)
             assertEquals(
                 "case=composition-local route=containment page",
                 containmentBefore,
@@ -2017,6 +2832,36 @@ class TerminalInstrumentedTest {
                 connection.finishComposingText()
             }
             assertTrue("case=composition-local route=ime finish", compositionFinished)
+            assertNoInput(
+                "composition-finished",
+                "ime",
+                TouchWheelDirection.Backward,
+            )
+
+            applyControlFixture(
+                page,
+                TerminalSelectionMouseMode.Off.control,
+                "composition-fresh-local",
+            )
+            injectDrag(
+                webView,
+                compositionGeometry,
+                compositionStart,
+                TouchWheelDirection.Backward,
+                "composition-fresh-scroll",
+            )
+            val freshPosition = awaitAccessiblePosition(webView, "composition-fresh-scroll-after") {
+                it < compositionBefore
+            }
+            assertTrue(
+                "case=composition-fresh-scroll route=local displacement",
+                freshPosition < compositionBefore,
+            )
+            assertNoInput(
+                "composition-fresh-scroll",
+                "local",
+                TouchWheelDirection.Backward,
+            )
         }
     }
 
@@ -2287,15 +3132,21 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun exactPageProtocolRejectsUnsupportedExtraMalformedAndUnknownModifierStates() {
-        for ((index, payload) in listOf(
+    fun exactPageProtocolRejectsMalformedAndOutOfOrderSelectionMessages() {
+        val payloads = listOf(
             """{"kind":"ControlState","state":"Armed"}""",
             """{"kind":"ModifierState","control":"Armed","alt":"Off","extra":true}""",
             """{"kind":"ModifierState","control":1,"alt":"Off"}""",
             """{"kind":"ModifierState","control":"Locked","alt":"Off"}""",
             """{"kind":"ModifierState","control":"Armed"}""",
+            """{"kind":"SelectionAvailable","anchorX":0.5,"anchorY":0.5,"text":"x"}""",
+            """{"kind":"SelectionStarted","generation":1}""",
+            """{"kind":"SelectionStarted","generation":"01"}""",
+            """{"kind":"SelectionStarted","generation":"9007199254740992"}""",
+            """{"kind":"SelectionStarted","generation":"1","extra":true}""",
             """{"kind":"Unknown"}""",
-        ).withIndex()) {
+        )
+        for ((index, payload) in payloads.withIndex()) {
             TerminalTestProbe.reset()
             ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
                 val webView = awaitTerminal(scenario)
@@ -2310,27 +3161,255 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun pagePortHandshakeIsExactVersionOne() {
-        val payload = """{"kind":"PagePort","version":1,"extra":true}"""
-        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
-            val webView = awaitTerminal(scenario)
-            postRawHandshake(webView, payload)
-            assertTrue(
-                "case=handshake-invalid route=protocol expectedCount=1 index=0",
-                TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
-            )
+    fun selectionGenerationRejectsReplayDecreaseAndSkip() {
+        data class Case(val phase: String, val acceptedSelections: Int, val invalid: (Long) -> Long)
+        val cases = listOf(
+            Case("replay", 1) { last -> last },
+            Case("decrease", 2) { last -> last - 1 },
+            Case("skip", 1) { last -> last + 2 },
+        )
+        for (case in cases) {
+            TerminalTestProbe.reset()
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                val caseId = "selection-generation-${case.phase}"
+                val webView = awaitTerminal(scenario)
+                val page = requireNotNull(TerminalTestProbe.page)
+                val geometry = terminalTouchGeometry(scenario, webView)
+                val row = geometry.rows / 2
+                focusTerminal(scenario, webView)
+                applyControlFixture(
+                    page,
+                    "\u001bc" + "\r\n".repeat(row) + "seed",
+                    "$caseId-fixture",
+                )
+                var lastGeneration = 0L
+                repeat(case.acceptedSelections) { index ->
+                    injectSelectionHoldDrag(
+                        webView,
+                        geometry.cell(0, row),
+                        geometry.cell(3, row),
+                        "$caseId-selection-$index",
+                    )
+                    awaitSelectionCopyAction("$caseId-action-$index")
+                    val generation = terminalSelectionGeneration(
+                        scenario,
+                        webView,
+                        "$caseId-generation-$index",
+                    ).toLong()
+                    assertEquals(
+                        "case=$caseId route=protocol accepted-successor index=$index",
+                        lastGeneration + 1,
+                        generation,
+                    )
+                    lastGeneration = generation
+                    injectBelowSlopTap(
+                        webView,
+                        geometry,
+                        geometry.cell(6, row),
+                        "$caseId-clear-$index",
+                    )
+                    awaitNoTerminalSelection(webView, "$caseId-cleared-selection-$index")
+                    awaitNoSelectionCopyAction("$caseId-cleared-action-$index")
+                }
+                replaceNextModifierState(
+                    webView,
+                    JSONObject()
+                        .put("kind", "SelectionStarted")
+                        .put("generation", case.invalid(lastGeneration).toString())
+                        .toString(),
+                )
+                clearTerminalEvents()
+                postAccessory(scenario, webView, "Control")
+                assertTrue(
+                    "case=$caseId route=protocol unavailable=false",
+                    TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                )
+                awaitNoSelectionCopyAction("$caseId-action")
+                awaitNoTerminalSelection(webView, "$caseId-selection")
+                assertSelectionEmittedNoInput(caseId)
+            }
         }
     }
 
     @Test
-    fun missingRequiredDomReportsFailureWhenTheHostPortArrives() {
+    fun selectionDecoderRejectsInvalidSnapshotAfterSelectionStarted() {
+        val cases = listOf(
+            "wrong-shape" to
+                """{"kind":"SelectionAvailable","anchorX":0.5,"anchorY":0.5}""",
+            "oversize" to JSONObject()
+                .put("kind", "SelectionAvailable")
+                .put("anchorX", 0.5)
+                .put("anchorY", 0.5)
+                .put("text", "a".repeat(262_145))
+                .toString(),
+            "invalid-scalar" to
+                "{\"kind\":\"SelectionAvailable\",\"anchorX\":0.5," +
+                "\"anchorY\":0.5,\"text\":\"\\uD800\"}",
+        )
+        for ((phase, replacement) in cases) {
+            TerminalTestProbe.reset()
+            ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                val caseId = "selection-decoder-$phase"
+                val webView = awaitTerminal(scenario)
+                val page = requireNotNull(TerminalTestProbe.page)
+                val geometry = terminalTouchGeometry(scenario, webView)
+                val row = geometry.rows / 2
+                focusTerminal(scenario, webView)
+                withRestoredClipboard(scenario) { clipboard ->
+                    applyControlFixture(
+                        page,
+                        "\u001bc" + "\r\n".repeat(row) + "seed",
+                        "$caseId-fixture",
+                    )
+                    setClipboardBaseline(clipboard)
+                    replaceNextPageMessage(webView, "SelectionAvailable", replacement)
+                    clearTerminalEvents()
+                    injectSelectionHoldDrag(
+                        webView,
+                        geometry.cell(0, row),
+                        geometry.cell(3, row),
+                        "$caseId-selection",
+                    )
+                    assertTrue(
+                        "case=$caseId route=protocol unavailable=false",
+                        TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                    )
+                    awaitNoSelectionCopyAction("$caseId-action")
+                    assertClipboardBaseline(clipboard, "$caseId-clipboard")
+                    assertSelectionEmittedNoInput(caseId)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun selectionTooLargeRejectionClearsAndShowsFailureWithoutClipboardWrite() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-rejected-too-large"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            focusTerminal(scenario, webView)
+            withRestoredClipboard(scenario) { clipboard ->
+                applyControlFixture(
+                    page,
+                    "\u001bc" + "\r\n".repeat(row) + "seed",
+                    "$caseId-fixture",
+                )
+                setClipboardBaseline(clipboard)
+                replaceNextPageMessage(
+                    webView,
+                    "SelectionAvailable",
+                    "{\"kind\":\"SelectionCopyRejected\",\"reason\":\"TooLarge\"}",
+                )
+                clearTerminalEvents()
+                assertSingleTooLargeToast("$caseId-feedback") {
+                    injectSelectionHoldDrag(
+                        webView,
+                        geometry.cell(0, row),
+                        geometry.cell(3, row),
+                        "$caseId-selection",
+                    )
+                }
+                assertEquals(
+                    "case=$caseId route=protocol unavailable-count",
+                    1L,
+                    TerminalTestProbe.unavailable.count,
+                )
+                awaitNoSelectionCopyAction("$caseId-action")
+                awaitNoTerminalSelection(webView, "$caseId-selection-cleared")
+                assertClipboardBaseline(clipboard, "$caseId-clipboard")
+                assertSelectionEmittedNoInput(caseId)
+            }
+        }
+    }
+
+    @Test
+    fun duplicateSelectionSnapshotFailsClosed() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "selection-duplicate"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            focusTerminal(scenario, webView)
+            withRestoredClipboard(scenario) { clipboard ->
+                applyControlFixture(
+                    page,
+                    "\u001bc" + "\r\n".repeat(row) + "seed",
+                    "$caseId-fixture",
+                )
+                setClipboardBaseline(clipboard)
+                injectSelectionHoldDrag(
+                    webView,
+                    geometry.cell(0, row),
+                    geometry.cell(3, row),
+                    "$caseId-selection",
+                )
+                awaitSelectionCopyAction("$caseId-action")
+                val generation = terminalSelectionGeneration(scenario, webView, caseId)
+                replaceNextModifierState(
+                    webView,
+                    JSONObject()
+                        .put("kind", "SelectionAvailable")
+                        .put("generation", generation)
+                        .put("anchorX", 0.5)
+                        .put("anchorY", 0.5)
+                        .put("text", "x")
+                        .toString(),
+                )
+                clearTerminalEvents()
+                postAccessory(scenario, webView, "Control")
+                assertTrue(
+                    "case=$caseId route=protocol unavailable=false",
+                    TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
+                )
+                awaitNoSelectionCopyAction("$caseId-cleared-action")
+                assertClipboardBaseline(clipboard, "$caseId-clipboard")
+                assertSelectionEmittedNoInput(caseId)
+            }
+        }
+    }
+
+    @Test
+    fun pagePortHandshakeIsExactVersionTwo() {
+        assertEquals(
+            "case=handshake-v2 route=page valid",
+            "{\"kind\":\"PageFailure\"}",
+            missingDomHandshake(
+                """{"kind":"PagePort","version":2,"longPressMilliseconds":500}""",
+                "handshake-v2",
+            ),
+        )
+        for ((index, payload) in listOf(
+            """{"kind":"PagePort","version":1}""",
+            """{"kind":"PagePort","version":2}""",
+            """{"kind":"PagePort","version":2,"longPressMilliseconds":0}""",
+            """{"kind":"PagePort","version":2,"longPressMilliseconds":1.5}""",
+            """{"kind":"PagePort","version":2,"longPressMilliseconds":"500"}""",
+            """{"kind":"PagePort","version":2,"longPressMilliseconds":500,"extra":true}""",
+        ).withIndex()) {
+            assertNull(
+                "case=handshake-invalid-$index route=page expectedCount=0 index=0",
+                missingDomHandshake(payload, "handshake-invalid-$index"),
+            )
+        }
+    }
+
+    private fun missingDomHandshake(payload: String, caseId: String): String? {
+        TerminalTestProbe.reset()
         val loaded = CountDownLatch(1)
         val messages = LinkedBlockingQueue<String>()
+        var nativePort: WebMessagePortCompat? = null
         val terminalSource = InstrumentationRegistry.getInstrumentation()
             .targetContext.assets.open("terminal/terminal.js").bufferedReader().use { it.readText() }
 
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = onUi(scenario) { activity ->
+                (findWebView(activity.window.decorView) as? LockedTerminalWebView)?.dispose()
                 WebView(activity).also { view ->
                     view.settings.javaScriptEnabled = true
                     view.webViewClient = object : WebViewClient() {
@@ -2348,27 +3427,92 @@ class TerminalInstrumentedTest {
                     )
                 }
             }
-            assertTrue("malformed terminal fixture did not load", loaded.await(5, TimeUnit.SECONDS))
-            evaluate(webView, terminalSource)
-            onUi(scenario) {
-                val ports = WebViewCompat.createWebMessageChannel(webView)
-                ports[0].setWebMessageCallback(
-                    Handler(Looper.getMainLooper()),
-                    object : WebMessagePortCompat.WebMessageCallbackCompat() {
-                        override fun onMessage(port: WebMessagePortCompat, message: WebMessageCompat?) {
-                            message?.data?.let(messages::add)
-                        }
-                    },
+            var primaryFailure: Throwable? = null
+            var result: String? = null
+            try {
+                assertTrue(
+                    "case=$caseId route=page load-timeout",
+                    loaded.await(5, TimeUnit.SECONDS),
                 )
-                WebViewCompat.postWebMessage(
-                    webView,
-                    WebMessageCompat("{\"kind\":\"PagePort\",\"version\":1}", arrayOf(ports[1])),
-                    "https://appassets.androidplatform.net".toUri(),
-                )
+                evaluate(webView, terminalSource)
+                onUi(scenario) {
+                    val ports = WebViewCompat.createWebMessageChannel(webView)
+                    nativePort = ports[0]
+                    ports[0].setWebMessageCallback(
+                        Handler(Looper.getMainLooper()),
+                        object : WebMessagePortCompat.WebMessageCallbackCompat() {
+                            override fun onMessage(
+                                port: WebMessagePortCompat,
+                                message: WebMessageCompat?,
+                            ) {
+                                message?.data?.let(messages::add)
+                            }
+                        },
+                    )
+                    WebViewCompat.postWebMessage(
+                        webView,
+                        WebMessageCompat(payload, arrayOf(ports[1])),
+                        "https://appassets.androidplatform.net".toUri(),
+                    )
+                }
+                result = messages.poll(1, TimeUnit.SECONDS)
+            } catch (failure: Throwable) {
+                primaryFailure = failure
             }
-            assertEquals(
-                "{\"kind\":\"PageFailure\"}",
-                messages.poll(5, TimeUnit.SECONDS),
+            val cleanupFailures = mutableListOf<Throwable>()
+            runCatching {
+                onUi(scenario) {
+                    nativePort?.close()
+                    Unit
+                }
+            }.exceptionOrNull()?.let(cleanupFailures::add)
+            runCatching {
+                onUi(scenario) {
+                    val webViewCleanupFailures = mutableListOf<Throwable>()
+                    try {
+                        runCatching(webView::stopLoading)
+                            .exceptionOrNull()
+                            ?.let(webViewCleanupFailures::add)
+                        runCatching {
+                            (webView.parent as? ViewGroup)?.removeView(webView)
+                        }.exceptionOrNull()?.let(webViewCleanupFailures::add)
+                        runCatching(webView::removeAllViews)
+                            .exceptionOrNull()
+                            ?.let(webViewCleanupFailures::add)
+                    } finally {
+                        runCatching(webView::destroy)
+                            .exceptionOrNull()
+                            ?.let(webViewCleanupFailures::add)
+                    }
+                    webViewCleanupFailures.firstOrNull()?.let { firstFailure ->
+                        webViewCleanupFailures.drop(1).forEach(firstFailure::addSuppressed)
+                        throw firstFailure
+                    }
+                    Unit
+                }
+            }.exceptionOrNull()?.let(cleanupFailures::add)
+            val failure = primaryFailure
+            if (failure != null) {
+                cleanupFailures.forEach(failure::addSuppressed)
+                throw failure
+            }
+            cleanupFailures.firstOrNull()?.let { cleanupFailure ->
+                cleanupFailures.drop(1).forEach(cleanupFailure::addSuppressed)
+                throw cleanupFailure
+            }
+            return result
+        }
+    }
+
+    @Test
+    fun duplicatePagePortFailsClosed() {
+        val payload = """{"kind":"PagePort","version":2,"longPressMilliseconds":500}"""
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
+            postRawHandshake(webView, payload)
+            assertTrue(
+                "case=handshake-duplicate route=protocol expectedCount=1 index=0",
+                TerminalTestProbe.unavailable.await(5, TimeUnit.SECONDS),
             )
         }
     }
@@ -2743,6 +3887,338 @@ class TerminalInstrumentedTest {
         TerminalTestProbe.events.clear()
     }
 
+    private fun assertSelectionEmittedNoInput(caseId: String) {
+        val actual = TerminalTestProbe.input.poll(350, TimeUnit.MILLISECONDS)
+        assertNull(
+            "case=$caseId route=terminal-input expectedCount=0 actualLength=${actual?.size ?: 0}",
+            actual,
+        )
+    }
+
+    private fun assertPrethresholdTapInput(
+        mouseMode: TerminalSelectionMouseMode,
+        column: Int,
+        row: Int,
+        caseId: String,
+    ) {
+        if (mouseMode == TerminalSelectionMouseMode.Off) {
+            assertSelectionEmittedNoInput(caseId)
+            return
+        }
+        val wire = ByteArrayOutputStream()
+        var chunkCount = 0
+        var bounded = true
+        var chunk = TerminalTestProbe.input.poll(5, TimeUnit.SECONDS)
+        while (chunk != null) {
+            chunkCount += 1
+            if (chunkCount > 16 || wire.size() + chunk.size > 512) {
+                bounded = false
+                break
+            }
+            wire.write(chunk)
+            chunk = TerminalTestProbe.input.poll(350, TimeUnit.MILLISECONDS)
+        }
+
+        val reports = if (bounded) parseSgrMouseReports(wire.toByteArray()) else null
+        val expectedColumn = column + 1
+        val expectedRow = row + 1
+        val coordinateMismatchCount = reports?.count {
+            it.column != expectedColumn || it.row != expectedRow
+        } ?: -1
+        val pressIndices = reports?.indices?.filter {
+            reports[it].button == 0 && !reports[it].release
+        }.orEmpty()
+        val releaseIndices = reports?.indices?.filter {
+            reports[it].button == 0 && reports[it].release
+        }.orEmpty()
+        val pressIndex = pressIndices.singleOrNull()
+        val releaseIndex = releaseIndices.singleOrNull()
+        val validHoverPrefix = pressIndex != null && reports != null &&
+            reports.take(pressIndex).all { it.button == 35 && !it.release }
+        val validOrder = pressIndex != null && releaseIndex != null && reports != null &&
+            releaseIndex == pressIndex + 1 && releaseIndex == reports.lastIndex
+        assertTrue(
+            "case=$caseId route=mouse-report chunks=$chunkCount length=${wire.size()} " +
+                "bounded=$bounded parsed=${reports?.size ?: -1} " +
+                "coordinateMismatches=$coordinateMismatchCount presses=${pressIndices.size} " +
+                "releases=${releaseIndices.size} hoverPrefix=$validHoverPrefix order=$validOrder",
+            bounded &&
+                chunk == null &&
+                reports != null &&
+                reports.size >= 2 &&
+                coordinateMismatchCount == 0 &&
+                validHoverPrefix &&
+                validOrder,
+        )
+    }
+
+    private fun parseSgrMouseReports(wire: ByteArray): List<SgrMouseReport>? {
+        var index = 0
+        val reports = mutableListOf<SgrMouseReport>()
+
+        fun readUnsignedInteger(delimiter: Int): Int? {
+            if (index >= wire.size || wire[index].toInt() !in '0'.code..'9'.code) return null
+            var value = 0
+            while (index < wire.size && wire[index].toInt() in '0'.code..'9'.code) {
+                val digit = wire[index].toInt() - '0'.code
+                if (value > (Int.MAX_VALUE - digit) / 10) return null
+                value = value * 10 + digit
+                index += 1
+            }
+            if (index >= wire.size || wire[index].toInt() != delimiter) return null
+            index += 1
+            return value
+        }
+
+        while (index < wire.size) {
+            if (
+                index + 3 > wire.size ||
+                wire[index].toInt() != 0x1b ||
+                wire[index + 1].toInt() != '['.code ||
+                wire[index + 2].toInt() != '<'.code
+            ) {
+                return null
+            }
+            index += 3
+            val button = readUnsignedInteger(';'.code) ?: return null
+            val column = readUnsignedInteger(';'.code) ?: return null
+            if (index >= wire.size || wire[index].toInt() !in '0'.code..'9'.code) return null
+            var row = 0
+            while (index < wire.size && wire[index].toInt() in '0'.code..'9'.code) {
+                val digit = wire[index].toInt() - '0'.code
+                if (row > (Int.MAX_VALUE - digit) / 10) return null
+                row = row * 10 + digit
+                index += 1
+            }
+            if (index >= wire.size) return null
+            val suffix = wire[index].toInt()
+            if (suffix != 'M'.code && suffix != 'm'.code) return null
+            index += 1
+            if (column <= 0 || row <= 0) return null
+            reports += SgrMouseReport(
+                button = button,
+                column = column,
+                row = row,
+                release = suffix == 'm'.code,
+            )
+        }
+        return reports.takeIf { it.isNotEmpty() }
+    }
+
+    private fun setClipboardBaseline(clipboard: ClipboardManager) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText("Terminal selection test baseline", "not selected text"),
+            )
+        }
+    }
+
+    private fun withRestoredClipboard(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        block: (ClipboardManager) -> Unit,
+    ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val clipboard = instrumentation.targetContext.getSystemService(ClipboardManager::class.java)
+        awaitResumedActivityWindowFocus(scenario, "clipboard-preservation-capture")
+        val preserved = onUi(scenario) { activity ->
+            assertTrue(
+                "case=clipboard-preservation-capture route=lifecycle foreground=false",
+                activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                    activity.hasWindowFocus(),
+            )
+            val hadBefore = clipboard.hasPrimaryClip()
+            val snapshot = clipboard.primaryClip?.let(::ClipData)
+            val hadAfter = clipboard.hasPrimaryClip()
+            assertTrue(
+                "case=clipboard-preservation-capture route=clipboard stable=false",
+                hadBefore == hadAfter && hadBefore == (snapshot != null),
+            )
+            if (snapshot == null) {
+                PreservedClipboard.KnownEmpty
+            } else {
+                PreservedClipboard.KnownClip(snapshot)
+            }
+        }
+        var primaryFailure: Throwable? = null
+        try {
+            block(clipboard)
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+        }
+        val restorationFailure = runCatching {
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            awaitResumedActivityWindowFocus(scenario, "clipboard-preservation-restore")
+            // Re-setting the prior payload is best-effort: Android cannot restore
+            // its timestamp, source attribution, classifier state, URI grants,
+            // synchronization state, or any system UI already shown by this test.
+            onUi(scenario) { activity ->
+                assertTrue(
+                    "case=clipboard-preservation-restore route=lifecycle foreground=false",
+                    activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                        activity.hasWindowFocus(),
+                )
+                when (preserved) {
+                    PreservedClipboard.KnownEmpty -> clipboard.clearPrimaryClip()
+                    is PreservedClipboard.KnownClip ->
+                        clipboard.setPrimaryClip(ClipData(preserved.snapshot))
+                }
+                val hadBefore = clipboard.hasPrimaryClip()
+                val restored = clipboard.primaryClip?.let(::ClipData)
+                val hadAfter = clipboard.hasPrimaryClip()
+                val expectedPresent = preserved is PreservedClipboard.KnownClip
+                assertTrue(
+                    "case=clipboard-preservation-restore route=clipboard stable=false",
+                    hadBefore == hadAfter &&
+                        hadBefore == (restored != null) &&
+                        hadBefore == expectedPresent,
+                )
+            }
+        }.exceptionOrNull()
+        val failure = primaryFailure
+        if (failure != null) {
+            restorationFailure?.let { failure.addSuppressed(it) }
+            throw failure
+        }
+        restorationFailure?.let { throw it }
+    }
+
+    private fun awaitResumedActivityWindowFocus(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        caseId: String,
+    ) {
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            val foreground = onUi(scenario) { activity ->
+                activity.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                    activity.hasWindowFocus()
+            }
+            if (foreground) return
+            Thread.sleep(50)
+        }
+        throw AssertionError("case=$caseId route=lifecycle foreground=false")
+    }
+
+    private fun assertClipboardBaseline(clipboard: ClipboardManager, caseId: String) {
+        var unchanged = false
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val clip = clipboard.primaryClip
+            unchanged = clip != null &&
+                clip.itemCount == 1 &&
+                clip.getItemAt(0).text == "not selected text"
+        }
+        assertTrue("case=$caseId route=clipboard baseline=false", unchanged)
+    }
+
+    private fun awaitExactSelectionClipboard(
+        clipboard: ClipboardManager,
+        expectedText: String,
+        caseId: String,
+    ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            var exact = false
+            instrumentation.runOnMainSync {
+                val clip = clipboard.primaryClip
+                val description = clip?.description
+                exact = clip != null &&
+                    description != null &&
+                    clip.itemCount == 1 &&
+                    clip.getItemAt(0).text == expectedText &&
+                    description.label?.toString() == "Terminal selection" &&
+                    description.mimeTypeCount == 1 &&
+                    description.getMimeType(0) == ClipDescription.MIMETYPE_TEXT_PLAIN &&
+                    description.extras?.containsKey(ClipDescription.EXTRA_IS_REMOTE_DEVICE) == true &&
+                    description.extras?.getBoolean(ClipDescription.EXTRA_IS_REMOTE_DEVICE) == true &&
+                    description.extras?.containsKey(ClipDescription.EXTRA_IS_SENSITIVE) != true
+            }
+            if (exact) return
+            Thread.sleep(50)
+        }
+        throw AssertionError("case=$caseId route=clipboard exact=false")
+    }
+
+    private fun awaitCounter(counter: AtomicInteger, expected: Int, caseId: String) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (counter.get() == expected) return
+            Thread.sleep(50)
+        }
+        throw AssertionError(
+            "case=$caseId route=platform-counter expected=$expected actual=${counter.get()}",
+        )
+    }
+
+    private fun sendSystemBack() {
+        assertTrue(
+            "case=system-back route=accessibility action-rejected",
+            InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(
+                AccessibilityService.GLOBAL_ACTION_BACK,
+            ),
+        )
+    }
+
+    private fun injectSelectionCopyAction(
+        webView: WebView,
+        action: AccessibilityNodeInfo,
+        caseId: String,
+    ) {
+        assertTrue("case=$caseId route=action-mode phase=stale", action.refresh())
+        val bounds = Rect()
+        action.getBoundsInScreen(bounds)
+        assertFalse("case=$caseId route=action-mode phase=empty-bounds", bounds.isEmpty)
+        val displayId = requireNotNull(webView.display) {
+            "case=$caseId route=action-mode phase=display-missing"
+        }.displayId
+        val point = TouchPoint(bounds.exactCenterX(), bounds.exactCenterY())
+        val downTime = SystemClock.uptimeMillis()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+
+        fun inject(actionCode: Int, eventTime: Long, phase: String) {
+            val properties = arrayOf(MotionEvent.PointerProperties().apply {
+                id = 0
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            })
+            val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+                x = point.x
+                y = point.y
+                pressure = 1f
+                size = 1f
+            })
+            val event = requireNotNull(MotionEvent.obtain(
+                downTime,
+                eventTime,
+                actionCode,
+                1,
+                properties,
+                coordinates,
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_TOUCHSCREEN,
+                displayId,
+                0,
+                MotionEvent.CLASSIFICATION_NONE,
+            )) { "case=$caseId route=action-mode phase=$phase-create" }
+            try {
+                assertTrue(
+                    "case=$caseId route=action-mode phase=$phase-rejected",
+                    automation.injectInputEvent(event, true),
+                )
+            } finally {
+                event.recycle()
+            }
+        }
+
+        inject(MotionEvent.ACTION_DOWN, downTime, "down")
+        SystemClock.sleep(16)
+        inject(MotionEvent.ACTION_UP, maxOf(SystemClock.uptimeMillis(), downTime + 1), "up")
+    }
+
     private fun assertOnlyInput(
         caseId: String,
         route: String,
@@ -2881,7 +4357,7 @@ class TerminalInstrumentedTest {
                         scriptDecodedBodySize: -1
                     };
                     var script = Array.from(document.scripts).find(function (node) {
-                        return node.src.indexOf('xterm-6.0.0-skidbladnir-wheel.js') >= 0;
+                        return node.src.indexOf('xterm-6.0.0-skidbladnir.js') >= 0;
                     });
                     var resource = script ? performance.getEntriesByName(script.src).slice(-1)[0] : null;
                     if (resource) {
@@ -3033,11 +4509,7 @@ class TerminalInstrumentedTest {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         var lastValue = -1
         while (System.nanoTime() < deadline) {
-            val value = evaluateSafely(
-                webView,
-                "Number(document.querySelector('.xterm-accessibility-tree [aria-posinset]')?.getAttribute('aria-posinset') || '-1')",
-                caseId,
-            ).toIntOrNull() ?: -1
+            val value = accessiblePosition(webView, caseId)
             lastValue = value
             if (predicate(value)) return value
             Thread.sleep(50)
@@ -3058,12 +4530,7 @@ class TerminalInstrumentedTest {
         var stableSince = System.nanoTime()
         var lastValue = -1
         while (System.nanoTime() < deadline) {
-            lastValue = evaluateSafely(
-                webView,
-                "Number(document.querySelector('.xterm-accessibility-tree [aria-posinset]')" +
-                    "?.getAttribute('aria-posinset') || '-1')",
-                caseId,
-            ).toIntOrNull() ?: -1
+            lastValue = accessiblePosition(webView, caseId)
             when {
                 !predicate(lastValue) -> stableSince = System.nanoTime()
                 previous != lastValue -> stableSince = System.nanoTime()
@@ -3077,6 +4544,33 @@ class TerminalInstrumentedTest {
             "case=$caseId route=local stable-numeric-position lastValue=$lastValue",
         )
     }
+
+    private fun assertAccessiblePositionRemains(
+        webView: WebView,
+        caseId: String,
+        expected: Int,
+    ) {
+        val deadline = System.nanoTime() +
+            TimeUnit.MILLISECONDS.toNanos(ACCESSIBILITY_STABILITY_MILLIS)
+        var sample = 0
+        while (System.nanoTime() < deadline) {
+            assertEquals(
+                "case=$caseId route=local stable-numeric-position sample=$sample",
+                expected,
+                accessiblePosition(webView, caseId),
+            )
+            sample += 1
+            Thread.sleep(50)
+        }
+    }
+
+    private fun accessiblePosition(webView: WebView, caseId: String): Int =
+        evaluateSafely(
+            webView,
+            "Number(document.querySelector('.xterm-accessibility-tree [aria-posinset]')" +
+                "?.getAttribute('aria-posinset') || '-1')",
+            caseId,
+        ).toIntOrNull() ?: -1
 
     private fun accessibleSetSize(webView: WebView, caseId: String): Int =
         evaluateSafely(
@@ -3092,6 +4586,75 @@ class TerminalInstrumentedTest {
                 "window.getSelection().isCollapsed",
             caseId,
         )
+    }
+
+    private fun awaitNativeXtermSelection(
+        webView: WebView,
+        caseId: String,
+        diagnostics: (() -> String)? = null,
+    ) {
+        awaitBooleanState(
+            webView,
+            "document.querySelector('.xterm-selection').childElementCount > 0 && " +
+                "window.getSelection().isCollapsed",
+            caseId,
+            diagnostics,
+        )
+    }
+
+    private fun terminalSelectionGeneration(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ): String {
+        val generation = onUi(scenario) {
+            val controllerField = LockedTerminalWebView::class.java
+                .getDeclaredField("selectionController")
+                .apply { isAccessible = true }
+            val controller = controllerField.get(webView)
+            val stateField = controller.javaClass.getDeclaredField("state")
+                .apply { isAccessible = true }
+            val state = stateField.get(controller)
+            runCatching {
+                state.javaClass.getDeclaredField("generation")
+                    .apply { isAccessible = true }
+                    .get(state) as? String
+            }.getOrNull().orEmpty()
+        }
+        assertTrue("case=$caseId route=protocol generation-missing", generation.isNotEmpty())
+        assertTrue(
+            "case=$caseId route=protocol generation-noncanonical",
+            generation.matches(Regex("[1-9][0-9]*")) &&
+                generation.toLongOrNull() in 1..9_007_199_254_740_991L,
+        )
+        return generation
+    }
+
+    private fun assertSelectionAndCopyRemainAbsent(webView: WebView?, caseId: String) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        repeat(5) { sample ->
+            Thread.sleep(75)
+            automation.clearCache()
+            val actions = selectionCopyActions()
+            assertNotNull("case=$caseId route=action-mode sample=$sample roots=missing", actions)
+            assertEquals(
+                "case=$caseId route=action-mode sample=$sample count",
+                0,
+                actions?.size,
+            )
+            if (webView != null) {
+                assertEquals(
+                    "case=$caseId route=webview sample=$sample selection-present",
+                    "true",
+                    evaluateSafely(
+                        webView,
+                        "document.querySelector('.xterm-selection').childElementCount === 0 && " +
+                            "window.getSelection().isCollapsed",
+                        "$caseId-$sample",
+                    ),
+                )
+            }
+        }
     }
 
     private fun terminalContainmentState(webView: WebView, caseId: String): TerminalContainmentState {
@@ -3640,6 +5203,175 @@ class TerminalInstrumentedTest {
         return labels
     }
 
+    private fun selectionCopyActions(): List<AccessibilityNodeInfo>? {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val windows = instrumentation.uiAutomation.windows
+        val rootedWindows = windows.mapNotNull { window -> window.root?.let { window to it } }
+        if (rootedWindows.isEmpty()) return null
+        val activityWindowIds = rootedWindows.mapNotNullTo(mutableSetOf()) { (window, root) ->
+            val queue = ArrayDeque<AccessibilityNodeInfo>()
+            queue.add(root)
+            var containsWebView = false
+            while (queue.isNotEmpty()) {
+                val node = queue.removeFirst()
+                containsWebView = containsWebView || node.className?.toString() == WebView::class.java.name
+                for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
+            }
+            window.id.takeIf { containsWebView }
+        }
+        val actions = mutableListOf<AccessibilityNodeInfo>()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        rootedWindows.filter { (window, _) ->
+            window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                window.id !in activityWindowIds
+        }.forEach { (_, root) -> queue.addLast(root) }
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.isVisibleToUser &&
+                node.isEnabled &&
+                node.isClickable &&
+                (node.text?.toString() == TERMINAL_SELECTION_COPY ||
+                    node.contentDescription?.toString() == TERMINAL_SELECTION_COPY) &&
+                node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+            ) {
+                actions.add(node)
+            }
+            for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
+        }
+        return actions
+    }
+
+    private fun awaitSelectionCopyAction(
+        caseId: String,
+        diagnostics: (() -> String)? = null,
+    ): AccessibilityNodeInfo {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        var observedCount = -1
+        while (System.nanoTime() < deadline) {
+            automation.clearCache()
+            val actions = selectionCopyActions()
+            if (actions != null) {
+                observedCount = actions.size
+                if (actions.size == 1) return actions.single()
+            }
+            Thread.sleep(50)
+        }
+        val diagnostic = diagnostics?.invoke()?.let { " $it" }.orEmpty()
+        throw AssertionError(
+            "case=$caseId route=action-mode expectedCount=1 actualCount=$observedCount$diagnostic",
+        )
+    }
+
+    private fun awaitNoSelectionCopyAction(caseId: String) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        var observedCount = -1
+        while (System.nanoTime() < deadline) {
+            automation.clearCache()
+            val actions = selectionCopyActions()
+            if (actions != null) {
+                observedCount = actions.size
+                if (actions.isEmpty()) return
+            }
+            Thread.sleep(50)
+        }
+        throw AssertionError(
+            "case=$caseId route=action-mode expectedCount=0 actualCount=$observedCount",
+        )
+    }
+
+    private fun assertFloatingSelectionCopyWindow(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        copyAction: AccessibilityNodeInfo,
+        caseId: String,
+    ) {
+        val activityWindowId = onUi(scenario) { webView.createAccessibilityNodeInfo().windowId }
+        assertTrue("case=$caseId route=window activity-id", activityWindowId >= 0)
+        assertTrue("case=$caseId route=window popup-id", copyAction.windowId >= 0)
+        assertTrue(
+            "case=$caseId route=window separate=false",
+            copyAction.windowId != activityWindowId,
+        )
+        val popup = InstrumentationRegistry.getInstrumentation().uiAutomation.windows
+            .singleOrNull { it.id == copyAction.windowId }
+        assertNotNull("case=$caseId route=window popup-missing", popup)
+        assertEquals(
+            "case=$caseId route=window popup-type",
+            AccessibilityWindowInfo.TYPE_APPLICATION,
+            requireNotNull(popup).type,
+        )
+        val root = popup.root
+        assertNotNull("case=$caseId route=window popup-root-missing", root)
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(requireNotNull(root))
+        var containsCopyAction = false
+        var containsWebView = false
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            containsCopyAction = containsCopyAction ||
+                (node.windowId == copyAction.windowId &&
+                    (node.text?.toString() == TERMINAL_SELECTION_COPY ||
+                        node.contentDescription?.toString() == TERMINAL_SELECTION_COPY) &&
+                    node.isVisibleToUser &&
+                    node.isEnabled &&
+                    node.isClickable)
+            containsWebView = containsWebView || node.className?.toString() == WebView::class.java.name
+            for (index in 0 until node.childCount) node.getChild(index)?.let(queue::addLast)
+        }
+        assertTrue("case=$caseId route=window popup-action-missing", containsCopyAction)
+        assertFalse("case=$caseId route=window popup-contains-webview", containsWebView)
+    }
+
+    private fun assertSingleTooLargeToast(caseId: String, trigger: () -> Unit) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val targetPackage = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        val matchingCount = AtomicInteger()
+        val candidateCount = AtomicInteger()
+        val firstMatch = CountDownLatch(1)
+        automation.setOnAccessibilityEventListener { event ->
+            val isCandidate = event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED &&
+                event.className?.toString() == "android.widget.Toast" &&
+                event.packageName?.toString() == targetPackage
+            if (isCandidate) {
+                candidateCount.incrementAndGet()
+                val hasExactText = event.text.size == 1 &&
+                    event.text.single().toString() == TERMINAL_SELECTION_TOO_LARGE
+                val hasNoParcelableData = event.parcelableData == null
+                if (hasExactText && hasNoParcelableData) {
+                    matchingCount.incrementAndGet()
+                    firstMatch.countDown()
+                }
+            }
+        }
+        try {
+            trigger()
+            assertTrue(
+                "case=$caseId route=toast first-match=false candidates=${candidateCount.get()}",
+                firstMatch.await(5, TimeUnit.SECONDS),
+            )
+            assertEquals(
+                "case=$caseId route=toast matching-count",
+                1,
+                matchingCount.get(),
+            )
+            Thread.sleep(350)
+            assertEquals(
+                "case=$caseId route=toast delayed-matching-count",
+                1,
+                matchingCount.get(),
+            )
+            assertEquals(
+                "case=$caseId route=toast candidate-count",
+                1,
+                candidateCount.get(),
+            )
+        } finally {
+            automation.setOnAccessibilityEventListener(null)
+        }
+    }
+
     private fun assertNoTerminalWheelActionLabels(caseId: String) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         while (System.nanoTime() < deadline) {
@@ -3715,6 +5447,13 @@ class TerminalInstrumentedTest {
         }
     }
 
+    private fun injectTap(webView: WebView, point: TouchPoint, caseId: String) {
+        NativeTouchStream(webView, caseId).use { stream ->
+            stream.down(point)
+            stream.up(point)
+        }
+    }
+
     private fun injectDrag(
         webView: WebView,
         geometry: TerminalTouchGeometry,
@@ -3769,6 +5508,36 @@ class TerminalInstrumentedTest {
             stream.down(point)
             SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
             stream.up(point)
+        }
+    }
+
+    private fun injectSelectionHoldDrag(
+        webView: WebView,
+        start: TouchPoint,
+        end: TouchPoint,
+        caseId: String,
+        primaryPointerId: Int = 0,
+    ) {
+        NativeTouchStream(webView, caseId, primaryPointerId).use { stream ->
+            stream.down(start)
+            SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
+            stream.move(end)
+            stream.up(end)
+        }
+    }
+
+    private fun injectSelectionHoldDragWithDistinctEnd(
+        webView: WebView,
+        start: TouchPoint,
+        penultimate: TouchPoint,
+        end: TouchPoint,
+        caseId: String,
+    ) {
+        NativeTouchStream(webView, caseId).use { stream ->
+            stream.down(start)
+            SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
+            stream.move(penultimate)
+            stream.up(end)
         }
     }
 
@@ -3975,6 +5744,14 @@ class TerminalInstrumentedTest {
     }
 
     private fun replaceNextModifierState(webView: WebView, replacement: String) {
+        replaceNextPageMessage(webView, "ModifierState", replacement)
+    }
+
+    private fun replaceNextPageMessage(
+        webView: WebView,
+        kind: String,
+        replacement: String,
+    ) {
         evaluate(
             webView,
             """
@@ -3982,9 +5759,14 @@ class TerminalInstrumentedTest {
                 var original = MessagePort.prototype.postMessage;
                 MessagePort.prototype.postMessage = function (value) {
                     var payload = JSON.parse(value);
-                    if (payload.kind === 'ModifierState') {
+                    if (payload.kind === ${JSONObject.quote(kind)}) {
                         MessagePort.prototype.postMessage = original;
-                        return original.call(this, ${JSONObject.quote(replacement)});
+                        var replaced = JSON.parse(${JSONObject.quote(replacement)});
+                        if (Object.prototype.hasOwnProperty.call(payload, 'generation') &&
+                            !Object.prototype.hasOwnProperty.call(replaced, 'generation')) {
+                            replaced.generation = payload.generation;
+                        }
+                        return original.call(this, JSON.stringify(replaced));
                     }
                     return original.apply(this, arguments);
                 };
