@@ -64,6 +64,12 @@ The hard cut and suite-scaled platform-budget correction are merged. Exact
 and the complete 60-test release-bound S22+ platform gate are green with
 pairing unchanged and the exact public APK restored. Product, second-phone,
 and reboot-persistence acceptance remain `NOT_RUN`.
+The 2026-09-04 phone-local selection-copy source and accepted 2026-09-06
+input-intent correction are implemented. Their behavioral reds, `171`-test
+xterm proof, focused and complete `38`-owner signed same-version S22+ candidate
+matrix, and routine verification are green with pairing preserved and the exact
+public APK restored. Hands-on, release-bound platform, publication, and
+deployment acceptance remain `NOT_RUN`.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -116,6 +122,8 @@ S1 tmux control plane
  -> v0 dashboard return-continuity delta
  -> v0 working-directory chooser delta
  -> v0 terminal touch-scroll delta
+ -> v0 phone-local terminal selection-copy delta
+ -> v0 terminal input-intent arbitration correction
 ```
 
 ## S1 — tmux control plane
@@ -887,6 +895,57 @@ remain `NOT_RUN`.
 Scope, files, acceptance, and non-overlapping ownership are closed in
 [`terminal-touch-scroll.md`](terminal-touch-scroll.md).
 
+## v0 phone-local terminal selection copy — reviewed target
+
+Outcome: long-press and hold-drag select xterm cells even under TUI mouse
+reporting. One native floating `Copy` action writes the immutable release
+snapshot to that phone's Android clipboard, then clears selection. The path is
+local presentation only: zero terminal input and no WSS, tmux, provider,
+transcript, browser-clipboard, persistence, or clipboard-read capability.
+
+Hard cut: replace the physically non-viable PointerEvent path with one prevented
+trusted TouchEvent owner for tap, scroll, and selection; generalize the pinned
+xterm wheel patch with atomic semantic tap/selection ingress; add one exact,
+generation-correlated version-2 packaged protocol and one native
+selection/clipboard controller with a selected-only view-resolved
+overlay-priority Back owner;
+delete pointer capture, compatibility mouse/context-menu state, pass-through
+long press, wheel-only artifact names, DOM copy, and every legacy, fallback, or
+duplicate writer.
+
+Red: one executing source-level xterm selection matrix plus one approved real
+API-36 locked-WebView/ActionMode/ClipboardManager matrix, each owned by the
+single Android terminal builder. No production behavior begins until the
+current-turn device approval exists and the unchanged-packaged-runtime device
+red is observed; otherwise it is `NOT_RUN`. Routine verification and
+reproducible xterm generation are structural; no tmux/live/provider gate
+applies. Scope, files, acceptance, and the 80/20 cut are closed in
+[`terminal-selection-copy.md`](terminal-selection-copy.md).
+
+## v0 terminal input-intent arbitration correction — source implemented
+
+Outcome: a touch beginning during active IME composition has exactly one
+meaning. The page consumes that complete touch stream without tap, scroll,
+mouse, cursor, selection, modifier, or viewport effects; Android/WebView alone
+owns composition finalization, and a fresh successor gesture routes normally.
+
+Hard cut: add one `Composing` variant to the existing page-owned TouchEvent
+machine and replace the superseded composition-survives-scroll expectation. No
+new bridge, protocol field, timer, content buffer, forced IME finish, xterm
+patch, native controller, setting, fallback, or compatibility path exists.
+
+Red: one real locked-WebView/InputConnection proof owns exact literal
+composition completion, zero touch-gesture effect, containment, and fresh-drag
+recovery. The unchanged packaged runtime failed that behavioral assertion on
+the approved S22+ before production changed.
+
+Acceptance: the focused owner and existing mouse-off/SGR selection-copy plus
+right-edge IME containment proofs pass on a signed same-version candidate. The
+complete `38`-owner candidate matrix and routine verification close the joined
+source and are green.
+Tmux, integration, live, provider, product, and publication boundaries are
+unchanged and do not run.
+
 ## Status
 
 | Slice | Status |
@@ -925,4 +984,6 @@ Scope, files, acceptance, and non-overlapping ownership are closed in
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase; rebased complete 54-test release-bound platform green with pairing preserved and exact release restored; hands-on acceptance `NOT_RUN` |
 | v0 working-directory chooser delta | Production hard cut implemented with all four owner reds; rebased routine verification and approved Darwin/Linux isolated-tmux gates green; pre-rebase signed same-version 55-test S22+ candidate green with exact release restoration and unchanged pairing but not proof of the rebased source; governed platform and hands-on gates `NOT_RUN` |
 | v0 terminal touch-scroll delta | Implemented, released, and deployed; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, routine verification, exact `v0.2.27` publication, three-host acceptance/doctor, and the complete 60-test release-bound S22+ platform gate are green with pairing unchanged and the exact public APK restored; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; product, second-phone, and reboot persistence `NOT_RUN` |
+| v0 phone-local terminal selection-copy delta | Source implemented. Behavioral xterm and unchanged-runtime API-36 reds are recorded; the reproducible xterm matrix is green at 171/171, routine verification is green, and focused plus complete 38-owner signed same-version S22+ selection/copy, exact-protocol, generation, Back, lifecycle, size, accessibility, liveness, and intent-arbitration owners are green with exact v0.2.27 restoration and pairing preservation. Hands-on selection/accessibility, release-bound platform, publication, and deployment remain `NOT_RUN`. |
+| v0 terminal input-intent arbitration correction | Source implemented; unchanged-runtime S22+ red, focused signed same-version owner/collateral greens, complete 38-owner candidate matrix, and routine verification are green with exact v0.2.27 restoration and pairing preservation. Hands-on, release-bound platform, publication, and deployment remain `NOT_RUN`. |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

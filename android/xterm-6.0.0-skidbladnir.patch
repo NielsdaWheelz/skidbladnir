@@ -4531,19 +4531,21 @@ index a62b2b85..db759da3 100644
      "source-map-support": "^0.5.20",
      "ts-loader": "^9.3.1",
 diff --git a/src/browser/CoreBrowserTerminal.ts b/src/browser/CoreBrowserTerminal.ts
-index 38ad467a..1c9d06a1 100644
+index 38ad467a..4f8a5cd7 100644
 --- a/src/browser/CoreBrowserTerminal.ts
 +++ b/src/browser/CoreBrowserTerminal.ts
-@@ -21,7 +21,7 @@
+@@ -21,8 +21,8 @@
   *   http://linux.die.net/man/7/urxvt
   */
 
 -import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker } from '@xterm/xterm';
-+import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, IWheelInput } from '@xterm/xterm';
- import { copyHandler, handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from 'browser/Clipboard';
+-import { copyHandler, handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from 'browser/Clipboard';
++import { IDecoration, IDecorationOptions, IDisposable, ILinkProvider, IMarker, ISelectionInput, ITapInput, IWheelInput } from '@xterm/xterm';
++import { handlePasteEvent, moveTextAreaUnderMouseCursor, paste, rightClickHandler } from 'browser/Clipboard';
  import * as Strings from 'browser/LocalizableStrings';
  import { OscLinkProvider } from 'browser/OscLinkProvider';
-@@ -59,6 +59,19 @@ import { Emitter, Event } from 'vs/base/common/event';
+ import { CharacterJoinerHandler, CustomKeyEventHandler, CustomWheelEventHandler, IBrowser, IBufferRange, ICompositionHelper, ILinkifier2, ITerminal } from 'browser/Types';
+@@ -59,6 +59,10 @@ import { Emitter, Event } from 'vs/base/common/event';
  import { addDisposableListener } from 'vs/base/browser/dom';
  import { MutableDisposable, toDisposable } from 'vs/base/common/lifecycle';
 
@@ -4551,34 +4553,26 @@ index 38ad467a..1c9d06a1 100644
 +  | { source: 'dom', event: WheelEvent }
 +  | { source: 'semantic', input: IWheelInput };
 +
-+type MouseEventWithSourceCapabilities = MouseEvent & {
-+  readonly sourceCapabilities?: { readonly firesTouchEvents?: boolean };
-+};
-+
-+function shouldSelectWordFromContextMenu(event: MouseEvent, configuredValue: boolean): boolean {
-+  return configuredValue ||
-+    (event as MouseEventWithSourceCapabilities).sourceCapabilities?.firesTouchEvents === true;
-+}
-+
  export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
    public textarea: HTMLTextAreaElement | undefined;
    public element: HTMLElement | undefined;
-@@ -348,12 +361,12 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
-       // Firefox doesn't appear to fire the contextmenu event on right click
-       this._register(addDisposableListener(this.element!, 'mousedown', (event: MouseEvent) => {
-         if (event.button === 2) {
--          rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, this.options.rightClickSelectsWord);
-+          rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, shouldSelectWordFromContextMenu(event, this.options.rightClickSelectsWord));
-         }
-       }));
-     } else {
-       this._register(addDisposableListener(this.element!, 'contextmenu', (event: MouseEvent) => {
--        rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, this.options.rightClickSelectsWord);
-+        rightClickHandler(event, this.textarea!, this.screenElement!, this._selectionService!, shouldSelectWordFromContextMenu(event, this.options.rightClickSelectsWord));
-       }));
-     }
+@@ -330,15 +334,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+   private _initGlobal(): void {
+     this._bindKeys();
 
-@@ -509,7 +522,12 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+-    // Bind clipboard functionality
+-    this._register(addDisposableListener(this.element!, 'copy', (event: ClipboardEvent) => {
+-      // If mouse events are active it means the selection manager is disabled and
+-      // copy should be handled by the host program.
+-      if (!this.hasSelection()) {
+-        return;
+-      }
+-      copyHandler(event, this._selectionService!);
+-    }));
+     const pasteHandlerWrapper = (event: ClipboardEvent): void => handlePasteEvent(event, this.textarea!, this.coreService, this.optionsService);
+     this._register(addDisposableListener(this.textarea!, 'paste', pasteHandlerWrapper));
+     this._register(addDisposableListener(this.element!, 'paste', pasteHandlerWrapper));
+@@ -509,7 +504,12 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      this._register(this.onBlur(() => this._renderService!.handleBlur()));
      this._register(this.onFocus(() => this._renderService!.handleFocus()));
 
@@ -4592,7 +4586,7 @@ index 38ad467a..1c9d06a1 100644
      this._register(this._viewport.onRequestScrollLines(e => {
        super.scrollLines(e, false);
        this.refresh(0, this.rows - 1);
-@@ -604,7 +622,7 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -604,7 +604,7 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
      const el = this.element!;
 
      // send event to CoreMouseService
@@ -4601,7 +4595,7 @@ index 38ad467a..1c9d06a1 100644
        // get mouse coordinates
        const pos = self._mouseService!.getMouseReportCoords(ev, self.screenElement!);
        if (!pos) {
-@@ -638,25 +656,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -638,25 +638,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
            action = CoreMouseAction.DOWN;
            but = ev.button < 3 ? ev.button : CoreMouseButton.NONE;
            break;
@@ -4627,7 +4621,7 @@ index 38ad467a..1c9d06a1 100644
          default:
            // dont handle other event types by accident
            return false;
-@@ -689,9 +688,8 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -689,9 +670,8 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
       * Note: 'mousedown' currently is "always on" and not managed
       * by onProtocolChange.
       */
@@ -4638,7 +4632,7 @@ index 38ad467a..1c9d06a1 100644
        mousedrag: null,
        mousemove: null
      };
-@@ -707,10 +705,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -707,10 +687,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
          }
          return this.cancel(ev);
        },
@@ -4649,7 +4643,7 @@ index 38ad467a..1c9d06a1 100644
        mousedrag: (ev: MouseEvent) => {
          // deal only with move while a button is held
          if (ev.buttons) {
-@@ -748,14 +742,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -748,14 +724,6 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
          requestedEvents.mousemove = eventListeners.mousemove;
        }
 
@@ -4664,7 +4658,7 @@ index 38ad467a..1c9d06a1 100644
        if (!(events & CoreMouseEventType.UP)) {
          this._document!.removeEventListener('mouseup', requestedEvents.mouseup!);
          requestedEvents.mouseup = null;
-@@ -803,43 +789,100 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
+@@ -803,43 +771,133 @@ export class CoreBrowserTerminal extends CoreTerminal implements ITerminal {
        return this.cancel(ev);
      }));
 
@@ -4672,13 +4666,46 @@ index 38ad467a..1c9d06a1 100644
 -      // do nothing, if app side handles wheel itself
 -      if (requestedEvents.wheel) return;
 +  }
-+
-+  public handleWheelInput(input: IWheelInput): void {
-+    this._routeWheelInput({ source: 'semantic', input });
-+  }
 
 -      if (this._customWheelEventHandler && this._customWheelEventHandler(ev) === false) {
 -        return false;
++  public handleWheelInput(input: IWheelInput): void {
++    this._routeWheelInput({ source: 'semantic', input });
++  }
++
++  public handleTapInput(input: ITapInput): void {
++    const pos = this._mouseService!.getMouseReportCoords(input, this.screenElement!);
++    if (!pos) {
++      return;
++    }
++    this.coreMouseService.triggerMouseEvent({
++      col: pos.col,
++      row: pos.row,
++      x: pos.x,
++      y: pos.y,
++      button: CoreMouseButton.LEFT,
++      action: CoreMouseAction.DOWN,
++      ctrl: false,
++      alt: false,
++      shift: false
++    });
++    this.coreMouseService.triggerMouseEvent({
++      col: pos.col,
++      row: pos.row,
++      x: pos.x,
++      y: pos.y,
++      button: CoreMouseButton.LEFT,
++      action: CoreMouseAction.UP,
++      ctrl: false,
++      alt: false,
++      shift: false
++    });
++  }
++
++  public handleSelectionInput(input: ISelectionInput): void {
++    this._selectionService!.handleSelectionInput(input);
++  }
++
 +  private _routeWheelInput(input: WheelRouteInput): void {
 +    const isDom = input.source === 'dom';
 +
@@ -4766,7 +4793,8 @@ index 38ad467a..1c9d06a1 100644
 +      }
 +      if (input.event.deltaY === 0) {
 +        return;
-+      }
+       }
+-    }, { passive: false }));
 +      const lines = this.coreMouseService.consumeWheelEvent(
 +        input.event,
 +        this._renderService?.dimensions?.device?.cell?.height,
@@ -4774,8 +4802,7 @@ index 38ad467a..1c9d06a1 100644
 +      );
 +      if (lines === 0) {
 +        return;
-       }
--    }, { passive: false }));
++      }
 +    }
 +
 +    const pos = this._mouseService!.getMouseReportCoords(wheelInput, this.screenElement!);
@@ -4898,7 +4925,7 @@ index be5ac614..408d614c 100644
      describe('scrollLines', () => {
        let startYDisp: number;
 diff --git a/src/browser/TestUtils.test.ts b/src/browser/TestUtils.test.ts
-index cf878cbc..4a223491 100644
+index cf878cbc..4e2865ba 100644
 --- a/src/browser/TestUtils.test.ts
 +++ b/src/browser/TestUtils.test.ts
 @@ -3,7 +3,7 @@
@@ -4906,21 +4933,27 @@ index cf878cbc..4a223491 100644
   */
 
 -import { IDisposable, IMarker, ILinkProvider, IDecorationOptions, IDecoration } from '@xterm/xterm';
-+import { IDisposable, IMarker, ILinkProvider, IDecorationOptions, IDecoration, IWheelInput } from '@xterm/xterm';
++import { IDisposable, IMarker, ILinkProvider, IDecorationOptions, IDecoration, ISelectionInput, ITapInput, IWheelInput } from '@xterm/xterm';
  import { ICharacterJoinerService, ICharSizeService, ICoreBrowserService, IMouseService, IRenderService, ISelectionService, IThemeService } from 'browser/services/Services';
  import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
  import { IColorSet, ITerminal, ILinkifier2, IBrowser, IViewport, ICompositionHelper, CharacterJoinerHandler, IBufferRange, ReadonlyColorSet, IBufferElementProvider } from 'browser/Types';
-@@ -93,6 +93,9 @@ export class MockTerminal implements ITerminal {
+@@ -93,6 +93,15 @@ export class MockTerminal implements ITerminal {
    public attachCustomWheelEventHandler(customWheelEventHandler: (event: WheelEvent) => boolean): void {
      throw new Error('Method not implemented.');
    }
 +  public handleWheelInput(input: IWheelInput): void {
 +    throw new Error('Method not implemented.');
 +  }
++  public handleTapInput(input: ITapInput): void {
++    throw new Error('Method not implemented.');
++  }
++  public handleSelectionInput(input: ISelectionInput): void {
++    throw new Error('Method not implemented.');
++  }
    public registerCsiHandler(id: IFunctionIdentifier, callback: (params: IParams) => boolean | Promise<boolean>): IDisposable {
      throw new Error('Method not implemented.');
    }
-@@ -311,7 +314,7 @@ export class MockViewport implements IViewport {
+@@ -311,7 +320,7 @@ export class MockViewport implements IViewport {
    public handleThemeChange(colors: IColorSet): void {
      throw new Error('Method not implemented.');
    }
@@ -4929,7 +4962,7 @@ index cf878cbc..4a223491 100644
      throw new Error('Method not implemented.');
    }
    public handleTouchStart(ev: TouchEvent): void {
-@@ -383,7 +386,7 @@ export class MockMouseService implements IMouseService {
+@@ -383,7 +392,7 @@ export class MockMouseService implements IMouseService {
      throw new Error('Not implemented');
    }
 
@@ -4938,6 +4971,16 @@ index cf878cbc..4a223491 100644
      throw new Error('Not implemented');
    }
  }
+@@ -504,6 +513,9 @@ export class MockSelectionService implements ISelectionService {
+   public handleMouseDown(event: MouseEvent): void {
+     throw new Error('Method not implemented.');
+   }
++  public handleSelectionInput(input: ISelectionInput): void {
++    throw new Error('Method not implemented.');
++  }
+   public isCellInSelection(x: number, y: number): boolean {
+     return false;
+   }
 diff --git a/src/browser/Types.ts b/src/browser/Types.ts
 index 10e60411..054e1215 100644
 --- a/src/browser/Types.ts
@@ -5034,17 +5077,17 @@ index 1a9f2225..017ac322 100644
        this._latestYDisp = line;
 diff --git a/src/browser/public/Terminal.test.ts b/src/browser/public/Terminal.test.ts
 new file mode 100644
-index 00000000..0e2d7a9f
+index 00000000..8ac86697
 --- /dev/null
 +++ b/src/browser/public/Terminal.test.ts
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,799 @@
 +/**
 + * Copyright (c) 2026 The xterm.js authors. All rights reserved.
 + * @license MIT
 + */
 +
 +import { Terminal } from 'browser/public/Terminal';
-+import { ITerminalInitOnlyOptions, ITerminalOptions, IWheelInput } from '@xterm/xterm';
++import { ISelectionInput, ITapInput, ITerminalInitOnlyOptions, ITerminalOptions, IWheelInput } from '@xterm/xterm';
 +import { assert } from 'chai';
 +import jsdom = require('jsdom');
 +
@@ -5119,6 +5162,114 @@ index 00000000..0e2d7a9f
 +        }
 +      }
 +    });
++  }
++
++  function installSelectionLayout(term: Terminal): void {
++    const screen = term.element!.querySelector('.xterm-screen') as HTMLElement;
++    screen.style.padding = '0px';
++    screen.getBoundingClientRect = () => ({
++      x: 0,
++      y: 0,
++      left: 0,
++      top: 0,
++      right: term.cols * 10,
++      bottom: term.rows * 20,
++      width: term.cols * 10,
++      height: term.rows * 20,
++      toJSON: () => ({})
++    });
++  }
++
++  function selectionPoint(
++    kind: 'StartWord' | 'Extend' | 'End',
++    column: number,
++    row: number,
++    xFraction: number = 0.5,
++    yFraction: number = 0.5
++  ): ISelectionInput {
++    return {
++      kind,
++      clientX: (column + xFraction) * 10,
++      clientY: (row + yFraction) * 20
++    };
++  }
++
++  function tapPoint(
++    column: number,
++    row: number,
++    xFraction: number = 0.5,
++    yFraction: number = 0.5
++  ): ITapInput {
++    return {
++      clientX: (column + xFraction) * 10,
++      clientY: (row + yFraction) * 20
++    };
++  }
++
++  function assertTapInputAccepted(term: Terminal, input: ITapInput, caseId: string): void {
++    let accepted = true;
++    try {
++      term.handleTapInput(input);
++    } catch {
++      accepted = false;
++    }
++    assert.isTrue(accepted, `case=${caseId} route=semantic`);
++  }
++
++  function assertSelectionInputAccepted(term: Terminal, input: ISelectionInput, caseId: string): void {
++    let accepted = true;
++    try {
++      term.handleSelectionInput(input);
++    } catch {
++      accepted = false;
++    }
++    assert.isTrue(accepted, `case=${caseId} route=semantic`);
++  }
++
++  function assertSelectionStep(
++    term: Terminal,
++    input: ISelectionInput,
++    expectedSelection: string,
++    caseId: string
++  ): void {
++    assertSelectionInputAccepted(term, input, caseId);
++    assert.isTrue(term.getSelection() === expectedSelection, `case=${caseId} route=selection`);
++  }
++
++  async function waitForRepeatedViewportMovement(
++    term: Terminal,
++    dom: jsdom.JSDOM,
++    initial: number,
++    direction: -1 | 1,
++    caseId: string
++  ): Promise<number> {
++    let previous = initial;
++    let movementCount = 0;
++    for (let attempt = 0; attempt < 40; attempt++) {
++      await new Promise(resolve => dom.window.setTimeout(resolve, 25));
++      const current = term.buffer.active.viewportY;
++      if (current !== previous) {
++        assert.equal(Math.sign(current - previous), direction, `case=${caseId} route=direction`);
++        movementCount++;
++        previous = current;
++        if (movementCount >= 2) {
++          return current;
++        }
++      }
++    }
++    assert.fail(`case=${caseId} route=timer movementCount=${movementCount}`);
++  }
++
++  async function assertViewportStable(
++    term: Terminal,
++    dom: jsdom.JSDOM,
++    expected: number,
++    caseId: string
++  ): Promise<void> {
++    for (let sample = 0; sample < 5; sample++) {
++      await new Promise(resolve => dom.window.setTimeout(resolve, 30));
++      assert.equal(term.buffer.active.viewportY, expected, `case=${caseId} route=timer sample=${sample}`);
++    }
 +  }
 +
 +  it('should reject wheel input before open and after disposal', async () => {
@@ -5196,7 +5347,7 @@ index 00000000..0e2d7a9f
 +    });
 +  });
 +
-+  it('should select a word only for a touch-derived context menu', async () => {
++  it('should never select a word for a touch-derived context menu', async () => {
 +    await withDomTerminal(async (term, dom) => {
 +      installTerminalLayout(dom);
 +      openTerminal(term, dom);
@@ -5226,8 +5377,7 @@ index 00000000..0e2d7a9f
 +      assert.isTrue((touchEvent as MouseEvent & { sourceCapabilities: { firesTouchEvents: boolean } }).sourceCapabilities.firesTouchEvents);
 +      screen.dispatchEvent(touchEvent);
 +
-+      assert.equal(term.getSelection(), 'alpha');
-+      term.clearSelection();
++      assert.equal(term.getSelection(), '');
 +
 +      const physicalEvent = new dom.window.MouseEvent('contextmenu', {
 +        bubbles: true,
@@ -5263,9 +5413,475 @@ index 00000000..0e2d7a9f
 +    });
 +  });
 +
++  describe('handleTapInput', () => {
++    it('should preserve focus and selection with mouse off and route each negotiated mouse protocol', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const outside = dom.window.document.createElement('button');
++        dom.window.document.body.appendChild(outside);
++        outside.focus();
++        const data: string[] = [];
++        const binary: string[] = [];
++        term.onData(value => data.push(value));
++        term.onBinary(value => binary.push(value));
++        await new Promise<void>(resolve => term.write('seed', resolve));
++        term.select(0, 0, 1);
++        assert.isTrue(term.hasSelection(), 'case=tap-mouse-off route=selection-setup');
++
++        assertTapInputAccepted(term, tapPoint(2, 1), 'tap-mouse-off');
++        assert.isTrue(dom.window.document.activeElement === outside, 'case=tap-mouse-off route=focus');
++        assert.isTrue(term.hasSelection(), 'case=tap-mouse-off route=selection');
++        assert.equal(data.length, 0, 'case=tap-mouse-off route=data');
++        assert.equal(binary.length, 0, 'case=tap-mouse-off route=binary');
++        term.clearSelection();
++
++        await new Promise<void>(resolve => term.write('\x1b[?9h', resolve));
++        assertTapInputAccepted(term, tapPoint(2, 1), 'tap-x10');
++        assert.equal(binary.length, 1, 'case=tap-x10 route=count');
++        assert.isTrue(binary[0] === '\x1b[M #"', 'case=tap-x10 route=protocol');
++        assert.equal(data.length, 0, 'case=tap-x10 route=data');
++
++        binary.length = 0;
++        await new Promise<void>(resolve => term.write('\x1b[?9l\x1b[?1000h', resolve));
++        assertTapInputAccepted(term, tapPoint(2, 1), 'tap-vt200');
++        assert.equal(binary.length, 2, 'case=tap-vt200 route=count');
++        assert.isTrue(
++          binary[0] === '\x1b[M #"' && binary[1] === '\x1b[M##"',
++          'case=tap-vt200 route=protocol'
++        );
++        assert.equal(data.length, 0, 'case=tap-vt200 route=data');
++
++        binary.length = 0;
++        await new Promise<void>(resolve => term.write('\x1b[?1006h', resolve));
++        for (const fraction of [0.25, 0.75]) {
++          data.length = 0;
++          const phase = fraction === 0.25 ? 'quarter' : 'three-quarter';
++          assertTapInputAccepted(term, tapPoint(2, 1, fraction, fraction), `tap-sgr-${phase}`);
++          assert.equal(data.length, 2, `case=tap-sgr-${phase} route=count`);
++          assert.isTrue(
++            data[0] === '\x1b[<0;3;2M' && data[1] === '\x1b[<0;3;2m',
++            `case=tap-sgr-${phase} route=protocol`
++          );
++        }
++        assert.equal(binary.length, 0, 'case=tap-sgr route=binary');
++
++        data.length = 0;
++        await new Promise<void>(resolve => term.write('\x1b[?1016h', resolve));
++        assertTapInputAccepted(term, tapPoint(2, 1, 0.25, 0.25), 'tap-sgr-pixels');
++        assert.equal(data.length, 2, 'case=tap-sgr-pixels route=count');
++        assert.isTrue(
++          data[0] === '\x1b[<0;22;25M' && data[1] === '\x1b[<0;22;25m',
++          'case=tap-sgr-pixels route=protocol'
++        );
++      }, { cols: 8, rows: 4, scrollback: 20 });
++    });
++
++    it('should reject every invalid shape and terminal lifecycle use', async () => {
++      await withDomTerminal(async (term, dom) => {
++        const valid = tapPoint(1, 1);
++        assert.throws(() => term.handleTapInput(valid), Error, undefined, 'case=tap-invalid-pre-open');
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++
++        const invalidScalars: unknown[] = [null, '1', true, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
++        const invalidInputs: unknown[] = [null, [], {}, { clientX: 5 }, { clientY: 10 }, { clientX: 5, clientY: 10, extra: true }];
++        for (const value of invalidScalars) {
++          invalidInputs.push(
++            { clientX: value, clientY: 10 },
++            { clientX: 5, clientY: value }
++          );
++        }
++        for (const [index, input] of invalidInputs.entries()) {
++          assert.throws(
++            () => term.handleTapInput(input as ITapInput),
++            Error,
++            undefined,
++            `case=tap-invalid-shape-${index}`
++          );
++        }
++
++        term.dispose();
++        assert.throws(() => term.handleTapInput(valid), Error, undefined, 'case=tap-invalid-disposed');
++      });
++    });
++  });
++
++  describe('handleSelectionInput', () => {
++    it('should expose each StartWord, Extend and End selection over wrapped Unicode under SGR tracking', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        const fixture = 'a 界 éz';
++        await new Promise<void>(resolve => term.write(`${fixture}\x1b[?1003h\x1b[?1006h`, resolve));
++        const cases = [
++          {
++            phase: 'forward',
++            steps: [
++              [selectionPoint('StartWord', 0, 0), 'a', 'start'],
++              [selectionPoint('Extend', 3, 0), 'a 界', 'extend'],
++              [selectionPoint('End', 0, 1), fixture, 'end']
++            ] as const
++          },
++          {
++            phase: 'reverse',
++            steps: [
++              [selectionPoint('StartWord', 0, 1), 'éz', 'start'],
++              [selectionPoint('Extend', 3, 0), '界 éz', 'extend'],
++              [selectionPoint('End', 0, 0), fixture, 'end']
++            ] as const
++          }
++        ];
++
++        for (const testCase of cases) {
++          for (const [input, expected, step] of testCase.steps) {
++            assertSelectionStep(term, input, expected, `selection-unicode-${testCase.phase}-${step}`);
++            assert.equal(data.length, 0, `case=selection-unicode-${testCase.phase}-${step} route=data`);
++          }
++          term.clearSelection();
++        }
++      }, { cols: 6, rows: 3, scrollback: 20 });
++    });
++
++    it('should give StartWord ownership to wide, continuation, combining and wrapped cells', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write('a 界 éz\x1b[?1003h\x1b[?1006h', resolve));
++        const cases = [
++          { phase: 'wide-leading', column: 2, row: 0, expected: '界' },
++          { phase: 'wide-continuation', column: 3, row: 0, expected: '界' },
++          { phase: 'combining', column: 5, row: 0, expected: 'éz' },
++          { phase: 'wrapped-continuation', column: 0, row: 1, expected: 'éz' }
++        ];
++
++        for (const testCase of cases) {
++          assertSelectionStep(
++            term,
++            selectionPoint('StartWord', testCase.column, testCase.row),
++            testCase.expected,
++            `selection-cell-owner-${testCase.phase}-start`
++          );
++          assertSelectionStep(
++            term,
++            selectionPoint('End', testCase.column, testCase.row),
++            testCase.expected,
++            `selection-cell-owner-${testCase.phase}-end`
++          );
++          assert.equal(data.length, 0, `case=selection-cell-owner-${testCase.phase} route=data`);
++          term.clearSelection();
++        }
++      }, { cols: 6, rows: 3, scrollback: 20 });
++    });
++
++    it('should select exactly one cell when StartWord begins on whitespace', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write('a  b\x1b[?1003h\x1b[?1006h', resolve));
++
++        assertSelectionStep(
++          term,
++          selectionPoint('StartWord', 1, 0),
++          ' ',
++          'selection-whitespace-start'
++        );
++        assertSelectionStep(term, selectionPoint('End', 1, 0), ' ', 'selection-whitespace-end');
++        assert.equal(data.length, 0, 'case=selection-whitespace route=data');
++      }, { cols: 8, rows: 3, scrollback: 20 });
++    });
++
++    it('should treat quarter and three-quarter coordinates as the same inclusive touched cell', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write('ab cd', resolve));
++
++        for (const fraction of [0.25, 0.75]) {
++          const phase = fraction === 0.25 ? 'quarter' : 'three-quarter';
++          assertSelectionStep(
++            term,
++            selectionPoint('StartWord', 0, 0, fraction, fraction),
++            'ab',
++            `selection-within-cell-${phase}-start`
++          );
++          assertSelectionStep(
++            term,
++            selectionPoint('Extend', 3, 0, fraction, fraction),
++            'ab c',
++            `selection-within-cell-${phase}-extend`
++          );
++          assertSelectionStep(
++            term,
++            selectionPoint('End', 4, 0, fraction, fraction),
++            'ab cd',
++            `selection-within-cell-${phase}-end`
++          );
++          assert.equal(data.length, 0, `case=selection-within-cell-${phase} route=data`);
++          term.clearSelection();
++
++          assertSelectionStep(
++            term,
++            selectionPoint('StartWord', 3, 0, fraction, fraction),
++            'cd',
++            `selection-within-cell-${phase}-reverse-start`
++          );
++          assertSelectionStep(
++            term,
++            selectionPoint('Extend', 1, 0, fraction, fraction),
++            'b cd',
++            `selection-within-cell-${phase}-reverse-extend`
++          );
++          assertSelectionStep(
++            term,
++            selectionPoint('End', 1, 0, fraction, fraction),
++            'b cd',
++            `selection-within-cell-${phase}-reverse-end`
++          );
++          assert.equal(data.length, 0, `case=selection-within-cell-${phase}-reverse route=data`);
++          term.clearSelection();
++        }
++      }, { cols: 8, rows: 3, scrollback: 20 });
++    });
++
++    it('should reconcile an inclusive final End cell without an intermediate Extend', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write('ab cdef', resolve));
++
++        assertSelectionStep(term, selectionPoint('StartWord', 0, 0), 'ab', 'selection-final-start');
++        assertSelectionStep(term, selectionPoint('End', 5, 0), 'ab cde', 'selection-final-end');
++        assert.equal(data.length, 0, 'case=selection-final route=data');
++      }, { cols: 8, rows: 3, scrollback: 20 });
++    });
++
++    it('should auto-scroll repeatedly in both directions and stop outside on End or Cancel', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write(`${'line\r\n'.repeat(30)}\x1b[?1003h\x1b[?1006h`, resolve));
++        assert.isAbove(term.buffer.active.baseY, 8, 'case=selection-edge phase=fixture-position');
++
++        for (const direction of [-1, 1] as const) {
++          const phase = direction < 0 ? 'above' : 'below';
++          const outside = {
++            clientX: 15,
++            clientY: direction < 0 ? -20 : term.rows * 20 + 20
++          };
++          const resetViewport = (): void => direction < 0 ? term.scrollToBottom() : term.scrollToTop();
++
++          resetViewport();
++          const initial = term.buffer.active.viewportY;
++          assertSelectionInputAccepted(
++            term,
++            selectionPoint('StartWord', 1, 1),
++            `selection-edge-${phase}-end-start`
++          );
++          assert.isTrue(term.hasSelection(), `case=selection-edge-${phase}-end-start route=selection`);
++          assertSelectionInputAccepted(
++            term,
++            { kind: 'Extend', ...outside },
++            `selection-edge-${phase}-end-extend`
++          );
++          assert.isTrue(term.hasSelection(), `case=selection-edge-${phase}-end-extend route=selection`);
++          assert.equal(term.buffer.active.viewportY, initial, `case=selection-edge-${phase}-end route=synchronous`);
++          const moved = await waitForRepeatedViewportMovement(
++            term,
++            dom,
++            initial,
++            direction,
++            `selection-edge-${phase}-end`
++          );
++          assert.notEqual(moved, initial, `case=selection-edge-${phase}-end route=repeated-movement`);
++          assertSelectionInputAccepted(
++            term,
++            { kind: 'End', ...outside },
++            `selection-edge-${phase}-end-final`
++          );
++          const stoppedAt = term.buffer.active.viewportY;
++          assert.isTrue(term.hasSelection(), `case=selection-edge-${phase}-end-final route=selection`);
++          await assertViewportStable(term, dom, stoppedAt, `selection-edge-${phase}-end-stable`);
++          assert.equal(data.length, 0, `case=selection-edge-${phase}-end route=data`);
++          term.clearSelection();
++
++          resetViewport();
++          const cancelInitial = term.buffer.active.viewportY;
++          assertSelectionInputAccepted(
++            term,
++            selectionPoint('StartWord', 1, 1),
++            `selection-edge-${phase}-cancel-start`
++          );
++          assert.isTrue(term.hasSelection(), `case=selection-edge-${phase}-cancel-start route=selection`);
++          assertSelectionInputAccepted(
++            term,
++            { kind: 'Extend', ...outside },
++            `selection-edge-${phase}-cancel-extend`
++          );
++          assert.isTrue(term.hasSelection(), `case=selection-edge-${phase}-cancel-extend route=selection`);
++          assert.equal(
++            term.buffer.active.viewportY,
++            cancelInitial,
++            `case=selection-edge-${phase}-cancel route=synchronous`
++          );
++          const cancelMoved = await waitForRepeatedViewportMovement(
++            term,
++            dom,
++            cancelInitial,
++            direction,
++            `selection-edge-${phase}-cancel`
++          );
++          assert.notEqual(
++            cancelMoved,
++            cancelInitial,
++            `case=selection-edge-${phase}-cancel route=repeated-movement`
++          );
++          assertSelectionInputAccepted(term, { kind: 'Cancel' }, `selection-edge-${phase}-cancel-final`);
++          const cancelStoppedAt = term.buffer.active.viewportY;
++          assert.isFalse(term.hasSelection(), `case=selection-edge-${phase}-cancel-final route=selection`);
++          await assertViewportStable(term, dom, cancelStoppedAt, `selection-edge-${phase}-cancel-stable`);
++          assert.equal(data.length, 0, `case=selection-edge-${phase}-cancel route=data`);
++        }
++      }, { cols: 8, rows: 4, scrollback: 100 });
++    });
++
++    it('should tear down an active semantic drag when buffer trim fully evicts its selection', async () => {
++      await withDomTerminal(async (term, dom) => {
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        const data: string[] = [];
++        term.onData(value => data.push(value));
++        await new Promise<void>(resolve => term.write(`${'seed\r\n'.repeat(12)}`, resolve));
++        term.scrollToBottom();
++
++        assertSelectionInputAccepted(term, selectionPoint('StartWord', 1, 1), 'selection-trim-start');
++        assertSelectionInputAccepted(
++          term,
++          { kind: 'Extend', clientX: 15, clientY: -20 },
++          'selection-trim-extend'
++        );
++        assert.isTrue(term.hasSelection(), 'case=selection-trim-extend route=selection');
++
++        await new Promise<void>(resolve => term.write(`${'replacement\r\n'.repeat(20)}`, resolve));
++        assert.isFalse(term.hasSelection(), 'case=selection-trim-evicted route=selection');
++        const stoppedAt = term.buffer.active.viewportY;
++        await assertViewportStable(term, dom, stoppedAt, 'selection-trim-stable');
++
++        assertSelectionInputAccepted(term, selectionPoint('StartWord', 1, 1), 'selection-trim-restart');
++        assertSelectionInputAccepted(term, { kind: 'Cancel' }, 'selection-trim-restart-cancel');
++        assert.equal(data.length, 0, 'case=selection-trim route=data');
++      }, { cols: 8, rows: 4, scrollback: 8 });
++    });
++
++    it('should reject every invalid shape, sequence and terminal lifecycle use', async () => {
++      await withDomTerminal(async (term, dom) => {
++        const start = selectionPoint('StartWord', 1, 0);
++        const assertRejected = (input: ISelectionInput, caseId: string): void => {
++          assert.throws(() => term.handleSelectionInput(input), Error, undefined, `case=${caseId}`);
++        };
++        assertRejected(start, 'selection-invalid-pre-open');
++        installTerminalLayout(dom);
++        openTerminal(term, dom);
++        installSelectionLayout(term);
++        await new Promise<void>(resolve => term.write('alpha beta', resolve));
++
++        const coordinateKinds = ['StartWord', 'Extend', 'End'] as const;
++        const invalidScalars: unknown[] = [null, '1', true, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
++        const invalidInputs: unknown[] = [null, {}, { kind: 'Unknown' }, { kind: 'startword', clientX: 5, clientY: 10 }];
++        for (const kind of coordinateKinds) {
++          invalidInputs.push(
++            { kind, clientY: 10 },
++            { kind, clientX: 5 },
++            { kind, clientX: 5, clientY: 10, extra: true },
++            { kind: kind.toLowerCase(), clientX: 5, clientY: 10 }
++          );
++          for (const value of invalidScalars) {
++            invalidInputs.push(
++              { kind, clientX: value, clientY: 10 },
++              { kind, clientX: 5, clientY: value }
++            );
++          }
++        }
++        invalidInputs.push(
++          { kind: 'Cancel', extra: true },
++          { kind: 'cancel' },
++          { kind: 'Cancel', clientX: 5 },
++          { kind: 'Cancel', clientY: 10 },
++          { kind: 'Cancel', clientX: 5, clientY: 10 }
++        );
++        for (const [index, input] of invalidInputs.entries()) {
++          assertRejected(input as ISelectionInput, `selection-invalid-shape-${index}`);
++        }
++
++        for (const [index, input] of [
++          selectionPoint('Extend', 1, 0),
++          selectionPoint('End', 1, 0),
++          { kind: 'Cancel' } as ISelectionInput
++        ].entries()) {
++          assertRejected(input, `selection-invalid-idle-${index}`);
++        }
++
++        assertSelectionStep(term, start, 'alpha', 'selection-invalid-second-start-setup');
++        assertRejected(start, 'selection-invalid-second-start');
++        assertSelectionInputAccepted(term, { kind: 'Cancel' }, 'selection-invalid-second-start-cleanup');
++        assert.isFalse(term.hasSelection(), 'case=selection-invalid-second-start-cleanup route=selection');
++
++        for (const [index, input] of [
++          selectionPoint('Extend', 1, 0),
++          selectionPoint('End', 1, 0),
++          { kind: 'Cancel' } as ISelectionInput
++        ].entries()) {
++          assertSelectionStep(term, start, 'alpha', `selection-invalid-after-end-${index}-start`);
++          assertSelectionStep(
++            term,
++            selectionPoint('End', 4, 0),
++            'alpha',
++            `selection-invalid-after-end-${index}-end`
++          );
++          assertRejected(input, `selection-invalid-after-end-${index}`);
++        }
++
++        for (const [index, input] of [
++          selectionPoint('Extend', 1, 0),
++          selectionPoint('End', 1, 0),
++          { kind: 'Cancel' } as ISelectionInput
++        ].entries()) {
++          assertSelectionStep(term, start, 'alpha', `selection-invalid-after-cancel-${index}-start`);
++          assertSelectionInputAccepted(term, { kind: 'Cancel' }, `selection-invalid-after-cancel-${index}-cancel`);
++          assert.isFalse(term.hasSelection(), `case=selection-invalid-after-cancel-${index}-cancel route=selection`);
++          assertRejected(input, `selection-invalid-after-cancel-${index}`);
++        }
++
++        term.dispose();
++        assertRejected(start, 'selection-invalid-disposed');
++      }, { cols: 12, rows: 3, scrollback: 20 });
++    });
++  });
++
 +});
 diff --git a/src/browser/public/Terminal.ts b/src/browser/public/Terminal.ts
-index f6ec55d2..e4dcdc8e 100644
+index f6ec55d2..769e235a 100644
 --- a/src/browser/public/Terminal.ts
 +++ b/src/browser/public/Terminal.ts
 @@ -12,7 +12,7 @@ import { AddonManager } from 'common/public/AddonManager';
@@ -5273,11 +5889,11 @@ index f6ec55d2..e4dcdc8e 100644
  import { ParserApi } from 'common/public/ParserApi';
  import { UnicodeApi } from 'common/public/UnicodeApi';
 -import { IBufferNamespace as IBufferNamespaceApi, IDecoration, IDecorationOptions, IDisposable, ILinkProvider, ILocalizableStrings, IMarker, IModes, IParser, ITerminalAddon, Terminal as ITerminalApi, ITerminalInitOnlyOptions, IUnicodeHandling } from '@xterm/xterm';
-+import { IBufferNamespace as IBufferNamespaceApi, IDecoration, IDecorationOptions, IDisposable, ILinkProvider, ILocalizableStrings, IMarker, IModes, IParser, ITerminalAddon, Terminal as ITerminalApi, ITerminalInitOnlyOptions, IUnicodeHandling, IWheelInput } from '@xterm/xterm';
++import { IBufferNamespace as IBufferNamespaceApi, IDecoration, IDecorationOptions, IDisposable, ILinkProvider, ILocalizableStrings, IMarker, IModes, IParser, ISelectionInput, ITapInput, ITerminalAddon, Terminal as ITerminalApi, ITerminalInitOnlyOptions, IUnicodeHandling, IWheelInput } from '@xterm/xterm';
  import type { Event } from 'vs/base/common/event';
 
  /**
-@@ -157,6 +157,13 @@ export class Terminal extends Disposable implements ITerminalApi {
+@@ -157,6 +157,75 @@ export class Terminal extends Disposable implements ITerminalApi {
    public attachCustomWheelEventHandler(customWheelEventHandler: (event: WheelEvent) => boolean): void {
      this._core.attachCustomWheelEventHandler(customWheelEventHandler);
    }
@@ -5288,10 +5904,72 @@ index f6ec55d2..e4dcdc8e 100644
 +    }
 +    this._core.handleWheelInput(input);
 +  }
++  public handleTapInput(input: ITapInput): void {
++    this._verifyTapInput(input);
++    if (!this.element || this._store.isDisposed) {
++      throw new Error('Terminal must be open to handle tap input');
++    }
++    this._core.handleTapInput(input);
++  }
++  public handleSelectionInput(input: ISelectionInput): void {
++    this._verifySelectionInput(input);
++    if (!this.element || this._store.isDisposed) {
++      throw new Error('Terminal must be open to handle selection input');
++    }
++    this._core.handleSelectionInput(input);
++  }
++
++  private _verifyTapInput(input: ITapInput): void {
++    const value = input as unknown;
++    if (!value || typeof value !== 'object' || Array.isArray(value)) {
++      throw new Error('Invalid tap input');
++    }
++    const record = value as Record<string, unknown>;
++    if (
++      Object.keys(record).length !== 2 ||
++      !Object.prototype.hasOwnProperty.call(record, 'clientX') ||
++      !Object.prototype.hasOwnProperty.call(record, 'clientY') ||
++      typeof record.clientX !== 'number' ||
++      !Number.isFinite(record.clientX) ||
++      typeof record.clientY !== 'number' ||
++      !Number.isFinite(record.clientY)
++    ) {
++      throw new Error('Invalid tap input');
++    }
++  }
++
++  private _verifySelectionInput(input: ISelectionInput): void {
++    const value = input as unknown;
++    if (!value || typeof value !== 'object' || Array.isArray(value)) {
++      throw new Error('Invalid selection input');
++    }
++    const record = value as Record<string, unknown>;
++    if (!Object.prototype.hasOwnProperty.call(record, 'kind')) {
++      throw new Error('Invalid selection input');
++    }
++    if (record.kind === 'Cancel') {
++      if (Object.keys(record).length !== 1) {
++        throw new Error('Invalid selection input');
++      }
++      return;
++    }
++    if (
++      (record.kind !== 'StartWord' && record.kind !== 'Extend' && record.kind !== 'End') ||
++      Object.keys(record).length !== 3 ||
++      !Object.prototype.hasOwnProperty.call(record, 'clientX') ||
++      !Object.prototype.hasOwnProperty.call(record, 'clientY') ||
++      typeof record.clientX !== 'number' ||
++      !Number.isFinite(record.clientX) ||
++      typeof record.clientY !== 'number' ||
++      !Number.isFinite(record.clientY)
++    ) {
++      throw new Error('Invalid selection input');
++    }
++  }
    public registerLinkProvider(linkProvider: ILinkProvider): IDisposable {
      return this._core.registerLinkProvider(linkProvider);
    }
-@@ -265,6 +272,19 @@ export class Terminal extends Disposable implements ITerminalApi {
+@@ -265,6 +334,19 @@ export class Terminal extends Disposable implements ITerminalApi {
      }
    }
 
@@ -5324,11 +6002,192 @@ index 664d845e..9b576525 100644
      const coords = getCoordsRelativeToElement(window, event, element);
      if (!this._charSizeService.hasValidSize) {
        return undefined;
+diff --git a/src/browser/services/SelectionService.ts b/src/browser/services/SelectionService.ts
+index 39d666de..a50f3db5 100644
+--- a/src/browser/services/SelectionService.ts
++++ b/src/browser/services/SelectionService.ts
+@@ -11,6 +11,7 @@ import { ISelectionRedrawRequestEvent, ISelectionRequestScrollLinesEvent } from
+ import { ICoreBrowserService, IMouseService, IRenderService, ISelectionService } from 'browser/services/Services';
+ import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
+ import * as Browser from 'common/Platform';
++import { ISelectionInput } from '@xterm/xterm';
+ import { IBufferLine, IDisposable } from 'common/Types';
+ import { getRangeLength } from 'common/buffer/BufferRange';
+ import { CellData } from 'common/buffer/CellData';
+@@ -90,6 +91,7 @@ export class SelectionService extends Disposable implements ISelectionService {
+    * scrolls the viewport when necessary.
+    */
+   private _dragScrollIntervalTimer: number | undefined;
++  private _semanticSelectionActive: boolean = false;
+
+   /**
+    * The animation frame ID used for refreshing the selection.
+@@ -171,7 +173,9 @@ export class SelectionService extends Disposable implements ISelectionService {
+    * are enabled.
+    */
+   public disable(): void {
+-    this.clearSelection();
++    if (!this._semanticSelectionActive) {
++      this.clearSelection();
++    }
+     this._enabled = false;
+   }
+
+@@ -265,8 +269,8 @@ export class SelectionService extends Disposable implements ISelectionService {
+    * Clears the current terminal selection.
+    */
+   public clearSelection(): void {
++    this._stopSemanticSelection();
+     this._model.clearSelection();
+-    this._removeMouseDownListeners();
+     this.refresh();
+     this._onSelectionChange.fire();
+   }
+@@ -386,7 +390,7 @@ export class SelectionService extends Disposable implements ISelectionService {
+   private _handleTrim(amount: number): void {
+     const needsRefresh = this._model.handleTrim(amount);
+     if (needsRefresh) {
+-      this.refresh();
++      this.clearSelection();
+     }
+   }
+
+@@ -412,9 +416,11 @@ export class SelectionService extends Disposable implements ISelectionService {
+   /**
+    * Gets the amount the viewport should be scrolled based on how far out of the
+    * terminal the mouse is.
+-   * @param event The mouse event.
++   * @param event The client-coordinate input.
++   * @param event.clientX The horizontal client coordinate.
++   * @param event.clientY The vertical client coordinate.
+    */
+-  private _getMouseEventScrollAmount(event: MouseEvent): number {
++  private _getMouseEventScrollAmount(event: { clientX: number, clientY: number }): number {
+     let offset = getCoordsRelativeToElement(this._coreBrowserService.window, event, this._screenElement)[1];
+     const terminalHeight = this._renderService.dimensions.css.canvas.height;
+     if (offset >= 0 && offset <= terminalHeight) {
+@@ -491,6 +497,108 @@ export class SelectionService extends Disposable implements ISelectionService {
+     this.refresh(true);
+   }
+
++  public handleSelectionInput(input: ISelectionInput): void {
++    switch (input.kind) {
++      case 'StartWord': {
++        if (this._semanticSelectionActive) {
++          throw new Error('Selection input sequence is invalid');
++        }
++        this.clearSelection();
++        const coords = this._getSemanticBufferCoords(input);
++        const line = this._bufferService.buffer.lines.get(coords[1]);
++        if (!line) {
++          throw new Error('Selection input coordinates are invalid');
++        }
++        const cell = line.loadCell(coords[0], this._workCell);
++        if (cell.getWidth() > 0 && cell.getChars().trim() === '') {
++          this._model.selectionStart = coords;
++          this._model.selectionStartLength = 1;
++        } else {
++          this._selectWordAt(coords, true);
++          if (!this._model.selectionStart) {
++            throw new Error('Selection input coordinates are invalid');
++          }
++        }
++        this._model.selectionEnd = undefined;
++        this._model.isSelectAllActive = false;
++        this._activeSelectionMode = SelectionMode.NORMAL;
++        this._semanticSelectionActive = true;
++        this._dragScrollAmount = 0;
++        this._dragScrollIntervalTimer = this._coreBrowserService.window.setInterval(
++          () => this._dragScroll(),
++          DRAG_SCROLL_INTERVAL
++        );
++        this.refresh();
++        this._fireEventIfSelectionChanged();
++        return;
++      }
++      case 'Extend':
++        this._requireSemanticSelection();
++        this._extendSemanticSelection(input);
++        return;
++      case 'End':
++        this._requireSemanticSelection();
++        this._extendSemanticSelection(input);
++        this._stopSemanticSelection();
++        this._fireEventIfSelectionChanged();
++        return;
++      case 'Cancel':
++        this._requireSemanticSelection();
++        this.clearSelection();
++        return;
++    }
++  }
++
++  private _requireSemanticSelection(): void {
++    if (!this._semanticSelectionActive) {
++      throw new Error('Selection input sequence is invalid');
++    }
++  }
++
++  private _stopSemanticSelection(): void {
++    this._semanticSelectionActive = false;
++    this._dragScrollAmount = 0;
++    this._removeMouseDownListeners();
++  }
++
++  private _getSemanticBufferCoords(input: Exclude<ISelectionInput, { kind: 'Cancel' }>): [number, number] {
++    const coords = this._mouseService.getCoords(
++      input,
++      this._screenElement,
++      this._bufferService.cols,
++      this._bufferService.rows,
++      false
++    );
++    if (!coords) {
++      throw new Error('Selection input coordinates are invalid');
++    }
++    return [Math.min(coords[0] - 1, this._bufferService.cols - 1), coords[1] - 1 + this._bufferService.buffer.ydisp];
++  }
++
++  private _extendSemanticSelection(input: Exclude<ISelectionInput, { kind: 'StartWord' | 'Cancel' }>): void {
++    const coords = this._getSemanticBufferCoords(input);
++    const line = this._bufferService.buffer.lines.get(coords[1]);
++    const start = this._model.selectionStart;
++    if (!line || !start) {
++      throw new Error('Selection input coordinates are invalid');
++    }
++    while (coords[0] > 0 && line.hasWidth(coords[0]) === 0) {
++      coords[0]--;
++    }
++    const reversed = coords[1] < start[1] || (coords[1] === start[1] && coords[0] < start[0]);
++    this._model.selectionEnd = reversed ? coords : [
++      Math.min(this._bufferService.cols, coords[0] + Math.max(1, line.getWidth(coords[0]))),
++      coords[1]
++    ];
++    this._dragScrollAmount = this._getMouseEventScrollAmount(input);
++    if (this._dragScrollAmount > 0) {
++      this._model.selectionEnd[0] = this._bufferService.cols;
++    } else if (this._dragScrollAmount < 0) {
++      this._model.selectionEnd[0] = 0;
++    }
++    this.refresh();
++  }
++
+   /**
+    * Adds listeners when mousedown is triggered.
+    */
 diff --git a/src/browser/services/Services.ts b/src/browser/services/Services.ts
-index 19a8fcbc..ca2f3e24 100644
+index 19a8fcbc..5747be16 100644
 --- a/src/browser/services/Services.ts
 +++ b/src/browser/services/Services.ts
-@@ -54,7 +54,7 @@ export interface IMouseService {
+@@ -8,6 +8,7 @@ import { IColorSet, ILink, ReadonlyColorSet } from 'browser/Types';
+ import { ISelectionRedrawRequestEvent as ISelectionRequestRedrawEvent, ISelectionRequestScrollLinesEvent } from 'browser/selection/Types';
+ import { createDecorator } from 'common/services/ServiceRegistry';
+ import { AllColorIndex, IDisposable } from 'common/Types';
++import type { ISelectionInput } from '@xterm/xterm';
+ import type { Event } from 'vs/base/common/event';
+
+ export const ICharSizeService = createDecorator<ICharSizeService>('CharSizeService');
+@@ -54,7 +55,7 @@ export interface IMouseService {
    serviceBrand: undefined;
 
    getCoords(event: {clientX: number, clientY: number}, element: HTMLElement, colCount: number, rowCount: number, isSelection?: boolean): [number, number] | undefined;
@@ -5337,6 +6196,14 @@ index 19a8fcbc..ca2f3e24 100644
  }
 
  export const IRenderService = createDecorator<IRenderService>('RenderService');
+@@ -118,6 +119,7 @@ export interface ISelectionService {
+   shouldForceSelection(event: MouseEvent): boolean;
+   refresh(isLinuxMouseSelection?: boolean): void;
+   handleMouseDown(event: MouseEvent): void;
++  handleSelectionInput(input: ISelectionInput): void;
+   isCellInSelection(x: number, y: number): boolean;
+ }
+
 diff --git a/src/common/TestUtils.test.ts b/src/common/TestUtils.test.ts
 index 70ff8fe6..1f7e9c61 100644
 --- a/src/common/TestUtils.test.ts
@@ -5377,7 +6244,7 @@ index a2847f1b..4ce163e8 100644
    areMouseEventsActive: boolean;
    addProtocol(name: string, protocol: ICoreMouseProtocol): void;
 diff --git a/test/playwright/TestUtils.ts b/test/playwright/TestUtils.ts
-index 271b0393..baf2742e 100644
+index 271b0393..046d7544 100644
 --- a/test/playwright/TestUtils.ts
 +++ b/test/playwright/TestUtils.ts
 @@ -10,7 +10,7 @@ import type { IRenderService } from 'browser/services/Services';
@@ -5385,7 +6252,7 @@ index 271b0393..baf2742e 100644
  import * as playwright from '@playwright/test';
  import { PageFunction } from 'playwright-core/types/structs';
 -import { IBuffer, IBufferCell, IBufferLine, IBufferNamespace, IBufferRange, IDecoration, IDecorationOptions, IModes, ITerminalInitOnlyOptions, ITerminalOptions, Terminal } from '@xterm/xterm';
-+import { IBuffer, IBufferCell, IBufferLine, IBufferNamespace, IBufferRange, IDecoration, IDecorationOptions, IModes, ITerminalInitOnlyOptions, ITerminalOptions, IWheelInput, Terminal } from '@xterm/xterm';
++import { IBuffer, IBufferCell, IBufferLine, IBufferNamespace, IBufferRange, IDecoration, IDecorationOptions, IModes, ISelectionInput, ITapInput, ITerminalInitOnlyOptions, ITerminalOptions, IWheelInput, Terminal } from '@xterm/xterm';
 
  export interface ITestContext {
    browser: Browser;
@@ -5394,23 +6261,25 @@ index 271b0393..baf2742e 100644
 
  type TerminalProxyAsyncPropOverrides = 'cols' | 'rows' | 'modes';
 -type TerminalProxyAsyncMethodOverrides = 'hasSelection' | 'getSelection' | 'getSelectionPosition' | 'registerMarker' | 'registerDecoration';
-+type TerminalProxyAsyncMethodOverrides = 'hasSelection' | 'getSelection' | 'getSelectionPosition' | 'registerMarker' | 'registerDecoration' | 'handleWheelInput';
++type TerminalProxyAsyncMethodOverrides = 'hasSelection' | 'getSelection' | 'getSelectionPosition' | 'registerMarker' | 'registerDecoration' | 'handleWheelInput' | 'handleTapInput' | 'handleSelectionInput';
  type TerminalProxyCustomOverrides = 'buffer' | (
    // The below are not implemented yet
    'element' |
-@@ -265,6 +265,7 @@ export class TerminalProxy implements ITerminalProxyCustomMethods, PlaywrightApi
+@@ -265,6 +265,9 @@ export class TerminalProxy implements ITerminalProxyCustomMethods, PlaywrightApi
    public async scrollPages(pageCount: number): Promise<void> { return this._page.evaluate(([term, pageCount]) => term.scrollPages(pageCount), [await this.getHandle(), pageCount] as const); }
    public async scrollToLine(line: number): Promise<void> { return this._page.evaluate(([term, line]) => term.scrollToLine(line), [await this.getHandle(), line] as const); }
    public async scrollLines(amount: number): Promise<void> { return this._page.evaluate(([term, amount]) => term.scrollLines(amount), [await this.getHandle(), amount] as const); }
 +  public async handleWheelInput(input: IWheelInput): Promise<void> { return this._page.evaluate(([term, input]) => term.handleWheelInput(input), [await this.getHandle(), input] as const); }
++  public async handleTapInput(input: ITapInput): Promise<void> { return this._page.evaluate(([term, input]) => term.handleTapInput(input), [await this.getHandle(), input] as const); }
++  public async handleSelectionInput(input: ISelectionInput): Promise<void> { return this._page.evaluate(([term, input]) => term.handleSelectionInput(input), [await this.getHandle(), input] as const); }
    public async write(data: string | Uint8Array): Promise<void> {
      return this._page.evaluate(([term, data]) => {
        return new Promise(r => term.write(typeof data === 'string' ? data : new Uint8Array(data), r));
 diff --git a/typings/xterm.d.ts b/typings/xterm.d.ts
-index 457f1612..d757a55f 100644
+index 457f1612..490c7865 100644
 --- a/typings/xterm.d.ts
 +++ b/typings/xterm.d.ts
-@@ -807,6 +807,21 @@ declare module '@xterm/xterm' {
+@@ -807,6 +807,40 @@ declare module '@xterm/xterm' {
      setWinLines?: boolean;
    }
 
@@ -5429,10 +6298,29 @@ index 457f1612..d757a55f 100644
 +    shiftKey: boolean;
 +  }
 +
++  /**
++   * A semantic primary tap expressed in browser client pixels.
++   */
++  export interface ITapInput {
++    /** The horizontal client coordinate in CSS pixels. */
++    clientX: number;
++    /** The vertical client coordinate in CSS pixels. */
++    clientY: number;
++  }
++
++  /**
++   * A semantic terminal selection input expressed in browser client pixels.
++   */
++  export type ISelectionInput =
++    | { kind: 'StartWord', clientX: number, clientY: number }
++    | { kind: 'Extend', clientX: number, clientY: number }
++    | { kind: 'End', clientX: number, clientY: number }
++    | { kind: 'Cancel' };
++
    /**
     * The class that represents an xterm.js terminal.
     */
-@@ -1093,6 +1108,15 @@ declare module '@xterm/xterm' {
+@@ -1093,6 +1127,27 @@ declare module '@xterm/xterm' {
       */
      attachCustomWheelEventHandler(customWheelEventHandler: (event: WheelEvent) => boolean): void;
 
@@ -5444,6 +6332,18 @@ index 457f1612..d757a55f 100644
 +     * the client coordinates must be finite numbers.
 +     */
 +    handleWheelInput(input: IWheelInput): void;
++
++    /**
++     * Routes one semantic primary press/release through the active terminal
++     * mouse protocol. Focus remains caller-owned.
++     */
++    handleTapInput(input: ITapInput): void;
++
++    /**
++     * Routes one semantic selection step through the terminal's selection
++     * owner. The terminal must be open and the input sequence must be valid.
++     */
++    handleSelectionInput(input: ISelectionInput): void;
 +
      /**
       * Registers a link provider, allowing a custom parser to be used to match

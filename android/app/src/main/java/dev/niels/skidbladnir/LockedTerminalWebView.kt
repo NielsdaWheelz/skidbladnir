@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -35,6 +36,8 @@ private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
 private const val TERMINAL_URL = "https://$LOCAL_ASSET_HOST/assets/terminal/index.html"
 private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024L
 private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
+private const val MAXIMUM_SELECTION_BYTES = 256 * 1024
+private const val MAXIMUM_SAFE_JAVASCRIPT_INTEGER = 9_007_199_254_740_991L
 
 // The gateway's published geometry bounds; the page's glyph scaling guarantees
 // at least 80 columns, so geometry outside these bounds is a page defect.
@@ -65,6 +68,7 @@ private sealed interface TerminalPageCommand {
     data class Accessory(val accessory: TerminalAccessory) : TerminalPageCommand
     data object ResetInputState : TerminalPageCommand
     data class Scroll(val direction: TerminalScrollDirection) : TerminalPageCommand
+    data class ClearSelection(val generation: String) : TerminalPageCommand
 }
 
 internal interface TerminalPage {
@@ -126,6 +130,15 @@ internal class LockedTerminalWebView(
         .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
         .build()
     private val main = Handler(Looper.getMainLooper())
+    private val selectionController = TerminalSelectionController(
+        view = this,
+        sendClearSelection = { generation ->
+            sendPageCommand(TerminalPageCommand.ClearSelection(generation))
+            Unit
+        },
+        isPageLiveAuthoritatively = ::pageIsLive,
+        isInteractionAuthorized = ::selectionInteractionAuthorized,
+    )
     private var pagePort: WebMessagePortCompat? = null
     private var disposed = false
     private var unavailable = false
@@ -232,6 +245,7 @@ internal class LockedTerminalWebView(
     }
 
     override fun resetInputState() {
+        selectionController.resetForLiveLifecycle()
         sendPageCommand(TerminalPageCommand.ResetInputState)
     }
 
@@ -239,7 +253,7 @@ internal class LockedTerminalWebView(
         val changed = enabled != isEnabled
         if (changed && !enabled) {
             cancelActiveTouch()
-            if (pageIsLive()) sendPageCommand(TerminalPageCommand.ResetInputState)
+            if (pageIsLive()) resetInputState()
         }
         super.setEnabled(enabled)
         if (changed) refreshAccessibilityActionAvailability()
@@ -297,10 +311,15 @@ internal class LockedTerminalWebView(
         }
     }
 
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        selectionController.contentRectChanged()
+    }
+
     fun dispose() {
         main.removeCallbacks(pageReadinessDeadline)
         cancelActiveTouch()
-        if (pageIsLive()) sendPageCommand(TerminalPageCommand.ResetInputState)
+        selectionController.pageFailedOrDisposed()
         synchronized(outputMonitor) {
             if (disposed) return
             disposed = true
@@ -479,7 +498,72 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
-                        "PageFailure" -> markUnavailable()
+                        "SelectionStarted" -> if (
+                            objectValue.hasExactKeys("kind", "generation")
+                        ) {
+                            val generation = objectValue.selectionGeneration("generation")
+                            if (generation == null || !selectionController.selectionStarted(generation)) {
+                                markUnavailable()
+                            }
+                        } else {
+                            markUnavailable()
+                        }
+                        "SelectionAvailable" -> if (
+                            objectValue.hasExactKeys(
+                                "kind",
+                                "generation",
+                                "anchorX",
+                                "anchorY",
+                                "text",
+                            )
+                        ) {
+                            val generation = objectValue.selectionGeneration("generation")
+                            val anchorX = objectValue.doubleField("anchorX")
+                            val anchorY = objectValue.doubleField("anchorY")
+                            val text = objectValue.stringField("text")
+                            if (generation == null || anchorX == null || anchorY == null ||
+                                !anchorX.isFinite() || !anchorY.isFinite() ||
+                                anchorX !in 0.0..1.0 || anchorY !in 0.0..1.0 ||
+                                text.isNullOrEmpty() ||
+                                text.utf8ByteCountWithin(MAXIMUM_SELECTION_BYTES) == null ||
+                                !selectionController.selectionAvailable(
+                                    generation,
+                                    text,
+                                    anchorX,
+                                    anchorY,
+                                )
+                            ) {
+                                markUnavailable()
+                            }
+                        } else {
+                            markUnavailable()
+                        }
+                        "SelectionCopyRejected" -> if (
+                            objectValue.hasExactKeys("kind", "generation", "reason") &&
+                            objectValue.stringField("reason") == "TooLarge" &&
+                            objectValue.selectionGeneration("generation")?.let(
+                                selectionController::selectionCopyRejected,
+                            ) == true
+                        ) {
+                            Unit
+                        } else {
+                            markUnavailable()
+                        }
+                        "SelectionCleared" -> if (
+                            objectValue.hasExactKeys("kind", "generation") &&
+                            objectValue.selectionGeneration("generation")?.let(
+                                selectionController::selectionCleared,
+                            ) == true
+                        ) {
+                            Unit
+                        } else {
+                            markUnavailable()
+                        }
+                        "PageFailure" -> if (objectValue.hasExactKeys("kind")) {
+                            markUnavailable()
+                        } else {
+                            markUnavailable()
+                        }
                         else -> markUnavailable()
                     }
                 }
@@ -488,7 +572,14 @@ internal class LockedTerminalWebView(
         pagePort = nativePort
         WebViewCompat.postWebMessage(
             view,
-            WebMessageCompat("{\"kind\":\"PagePort\",\"version\":1}", arrayOf(ports[1])),
+            WebMessageCompat(
+                JSONObject()
+                    .put("kind", "PagePort")
+                    .put("version", 2)
+                    .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
+                    .toString(),
+                arrayOf(ports[1]),
+            ),
             "https://$LOCAL_ASSET_HOST".toUri(),
         )
     }
@@ -550,6 +641,11 @@ internal class LockedTerminalWebView(
         pageReady && !disposed && !unavailable
     }
 
+    private fun selectionInteractionAuthorized(): Boolean {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        return pageIsLive() && isEnabled && isAttachedToWindow && hasWindowFocus()
+    }
+
     private fun TerminalPageCommand.toPayload(): String = when (this) {
         TerminalPageCommand.Focus -> "{\"kind\":\"Focus\"}"
         is TerminalPageCommand.Accessory -> JSONObject()
@@ -560,6 +656,10 @@ internal class LockedTerminalWebView(
         is TerminalPageCommand.Scroll -> JSONObject()
             .put("kind", "Scroll")
             .put("direction", direction.name)
+            .toString()
+        is TerminalPageCommand.ClearSelection -> JSONObject()
+            .put("kind", "ClearSelection")
+            .put("generation", generation)
             .toString()
     }
 
@@ -726,12 +826,19 @@ internal class LockedTerminalWebView(
                 true
             }
         }
-        if (shouldReport) main.post(::reportUnavailable)
+        if (shouldReport) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                reportUnavailable()
+            } else {
+                main.post(::reportUnavailable)
+            }
+        }
     }
 
     private fun reportUnavailable() {
-        refreshAccessibilityActionAvailability()
         if (disposed) return
+        selectionController.pageFailedOrDisposed()
+        refreshAccessibilityActionAvailability()
         pagePort?.close()
         pagePort = null
         listener.onUnavailable()
@@ -753,10 +860,21 @@ internal class LockedTerminalWebView(
 
     private fun JSONObject.stringField(name: String): String? = opt(name) as? String
 
+    private fun JSONObject.selectionGeneration(name: String): String? {
+        val value = stringField(name) ?: return null
+        if (!value.matches(Regex("[1-9][0-9]*"))) return null
+        val numeric = value.toLongOrNull() ?: return null
+        return value.takeIf {
+            numeric in 1..MAXIMUM_SAFE_JAVASCRIPT_INTEGER && numeric.toString() == value
+        }
+    }
+
     private fun JSONObject.modifierPhase(name: String): TerminalModifierPhase? =
         stringField(name)?.let { value -> TerminalModifierPhase.entries.singleOrNull { it.name == value } }
 
     private fun JSONObject.intField(name: String): Int? = opt(name) as? Int
+
+    private fun JSONObject.doubleField(name: String): Double? = (opt(name) as? Number)?.toDouble()
 
     private fun WebResourceRequest.isTerminalAsset(): Boolean =
         url.scheme == "https" && url.host == LOCAL_ASSET_HOST && url.path?.startsWith("/assets/terminal/") == true

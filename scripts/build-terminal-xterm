@@ -28,7 +28,7 @@ OUTPUT_PATH = (
     / "assets"
     / "terminal"
     / "vendor"
-    / "xterm-6.0.0-skidbladnir-wheel.js"
+    / "xterm-6.0.0-skidbladnir.js"
 )
 
 

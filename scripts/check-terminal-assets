@@ -74,7 +74,7 @@ def check_xterm_build(lock: dict[str, object], files: dict[str, object]) -> None
     if (
         patch_relative.is_absolute()
         or ".." in patch_relative.parts
-        or patch_relative != Path("android/xterm-6.0.0-skidbladnir-wheel.patch")
+        or patch_relative != Path("android/xterm-6.0.0-skidbladnir.patch")
         or not patch_path.is_file()
         or patch_path.is_symlink()
     ):
@@ -100,7 +100,7 @@ def check_xterm_build(lock: dict[str, object], files: dict[str, object]) -> None
     ]
     expected_output = (
         "android/app/src/main/assets/terminal/vendor/"
-        "xterm-6.0.0-skidbladnir-wheel.js"
+        "xterm-6.0.0-skidbladnir.js"
     )
     if xterm_outputs != [expected_output]:
         raise ValueError("terminal lock must own only the fork-suffixed xterm JavaScript")
