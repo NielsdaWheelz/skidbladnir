@@ -221,9 +221,10 @@ ResetInputState = {"kind":"ResetInputState"}
 ```
 
 The two packaged ends still ship atomically. The current protocol is exact
-version `2`; selection-copy owns its generation-correlated additions. Unknown,
-missing, extra, or differently cased fields fail closed. There is no public
-HTTP/WSS schema, DTO, setting, persistence, gateway operation, or tmux command.
+version `3`; selection-copy owns its generation-correlated additions and the
+tap-to-IME correction owns its content-free intent. Unknown, missing, extra, or
+differently cased fields fail closed. There is no public HTTP/WSS schema, DTO,
+setting, persistence, gateway operation, or tmux command.
 
 `LockedTerminalWebView` should consolidate its repeated Focus/Accessory/
 ResetInputState/Scroll message-port send boilerplate into one private exact
@@ -416,7 +417,7 @@ re-proves these owners. Every unapproved device/tmux/live-host boundary is
    horizontal containment, transport, and attachment lifecycle do not regress.
 4. Codex and Claude remain opaque. No content, transcript, provider, gateway,
    tmux, persistence, or product/network API capability is added.
-5. Only the final TouchEvent owner, exact internal version-2 commands, one
+5. Only the final TouchEvent owner, exact internal version-3 commands, one
    generic reviewed xterm source patch, and its reproducibly generated fork
    artifact remain.
 

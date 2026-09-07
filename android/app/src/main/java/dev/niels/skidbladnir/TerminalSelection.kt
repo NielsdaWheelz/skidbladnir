@@ -218,6 +218,11 @@ internal class TerminalSelectionController(
         (state as? TerminalSelectionState.Selected)?.actionMode?.invalidateContentRect()
     }
 
+    fun permitsTerminalTapIme(): Boolean {
+        requireMainThread()
+        return pageIsLive && state == TerminalSelectionState.Idle
+    }
+
     fun pageFailedOrDisposed() {
         requireMainThread()
         if (!pageIsLive) return

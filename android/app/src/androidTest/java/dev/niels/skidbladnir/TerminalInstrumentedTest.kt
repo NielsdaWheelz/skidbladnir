@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
+import android.view.WindowInsets
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -74,6 +75,7 @@ private const val TERMINAL_WHEEL_FORWARD = "Terminal wheel forward"
 private const val TERMINAL_SELECTION_COPY = "Copy"
 private const val TERMINAL_SELECTION_TOO_LARGE = "Selection is too large to copy."
 private const val ACCESSIBILITY_STABILITY_MILLIS = 1_250L
+private const val IME_STABILITY_MILLIS = 1_000L
 
 private enum class TerminalSelectionMouseMode(val control: String) {
     Off("\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l"),
@@ -727,6 +729,143 @@ class TerminalInstrumentedTest {
             // so every sample published across page load must already conform.
             val size = awaitSettledSizeWithAllSamplesConforming()
             assertTrue("terminal published an out-of-range size: $size", size.first in 80..240 && size.second in 5..120)
+        }
+    }
+
+    @Test
+    fun unfocusedTrustedTerminalTapShowsTheSoftwareKeyboard() {
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val webView = awaitTerminal(scenario)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val tap = geometry.cell(minOf(7, geometry.columns - 1), geometry.rows / 2)
+            unfocusTerminal(scenario, webView, "terminal-drag-before")
+            awaitNoTerminalSelection(webView, "terminal-tap-selection-before")
+
+            try {
+                clearTerminalEvents()
+                injectDrag(
+                    webView,
+                    geometry,
+                    tap,
+                    TouchWheelDirection.Forward,
+                    "terminal-drag-ime",
+                )
+                assertTerminalImeRemainsHidden(scenario, webView, "terminal-drag-ime")
+                awaitNoTerminalSelection(webView, "terminal-drag-selection-after")
+                assertNoInput("terminal-drag", "local", TouchWheelDirection.Forward)
+
+                unfocusTerminal(scenario, webView, "terminal-tap-before")
+                val origin = onUi(scenario) { webView.x to webView.y }
+                clearTerminalEvents()
+                injectBelowSlopTap(webView, geometry, tap, "terminal-tap-ime")
+
+                awaitTerminalIme(
+                    scenario,
+                    webView,
+                    visible = true,
+                    caseId = "terminal-tap-ime",
+                )
+                awaitNativeWebViewFocus(scenario, webView, "terminal-tap-native-focus-after")
+                awaitBooleanState(
+                    webView,
+                    "document.activeElement === document.querySelector('.xterm-helper-textarea')",
+                    "terminal-tap-textarea-focus-after",
+                )
+                assertEquals(
+                    "case=terminal-tap route=native webview-origin",
+                    origin,
+                    onUi(scenario) { webView.x to webView.y },
+                )
+                awaitNoTerminalSelection(webView, "terminal-tap-selection-after")
+                assertNoInput("terminal-tap", "local", TouchWheelDirection.Forward)
+                assertEquals(
+                    "case=terminal-tap route=page live",
+                    1L,
+                    TerminalTestProbe.unavailable.count,
+                )
+            } finally {
+                hideTerminalIme(scenario, webView, "terminal-tap-cleanup")
+            }
+        }
+    }
+
+    @Test
+    fun imeRequestRequiresAnIdleEnabledTerminal() {
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "ime-authorization-selection"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            val geometry = terminalTouchGeometry(scenario, webView)
+            val row = geometry.rows / 2
+            focusTerminal(scenario, webView)
+            applyControlFixture(
+                page,
+                "\u001bc" + "\r\n".repeat(row) + "seed",
+                "$caseId-fixture",
+            )
+            injectSelectionHoldDrag(
+                webView,
+                geometry.cell(0, row),
+                geometry.cell(3, row),
+                "$caseId-selection",
+            )
+            awaitSelectionCopyAction("$caseId-selection-action")
+            awaitNativeXtermSelection(webView, "$caseId-selection-range")
+            hideTerminalIme(scenario, webView, "$caseId-before")
+            replaceNextPageMessage(
+                webView,
+                "OutputApplied",
+                """{"kind":"ImeRequested"}""",
+            )
+            clearTerminalEvents()
+
+            page.write("\r\nx".toByteArray())
+
+            assertTerminalImeRemainsHidden(scenario, webView, "$caseId-ime")
+            awaitSelectionCopyAction("$caseId-action-after")
+            awaitNativeXtermSelection(webView, "$caseId-range-after")
+            assertEquals(
+                "case=$caseId route=selection page-live",
+                1L,
+                TerminalTestProbe.unavailable.count,
+            )
+            assertNull(
+                "case=$caseId route=selection terminal-event",
+                pollEvent(),
+            )
+        }
+
+        TerminalTestProbe.reset()
+        ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            val caseId = "ime-authorization-disabled"
+            val webView = awaitTerminal(scenario)
+            val page = requireNotNull(TerminalTestProbe.page)
+            unfocusTerminal(scenario, webView, "$caseId-before")
+            onUi(scenario) { webView.isEnabled = false }
+            replaceNextPageMessage(
+                webView,
+                "OutputApplied",
+                """{"kind":"ImeRequested"}""",
+            )
+            clearTerminalEvents()
+            try {
+                page.write("x".toByteArray())
+
+                assertTerminalImeRemainsHidden(scenario, webView, "$caseId-ime")
+                assertEquals(
+                    "case=$caseId route=disabled page-live",
+                    1L,
+                    TerminalTestProbe.unavailable.count,
+                )
+                assertNull(
+                    "case=$caseId route=disabled terminal-event",
+                    pollEvent(),
+                )
+            } finally {
+                onUi(scenario) { webView.isEnabled = true }
+                hideTerminalIme(scenario, webView, "$caseId-cleanup")
+            }
         }
     }
 
@@ -3139,6 +3278,7 @@ class TerminalInstrumentedTest {
             """{"kind":"ModifierState","control":1,"alt":"Off"}""",
             """{"kind":"ModifierState","control":"Locked","alt":"Off"}""",
             """{"kind":"ModifierState","control":"Armed"}""",
+            """{"kind":"ImeRequested","extra":true}""",
             """{"kind":"SelectionAvailable","anchorX":0.5,"anchorY":0.5,"text":"x"}""",
             """{"kind":"SelectionStarted","generation":1}""",
             """{"kind":"SelectionStarted","generation":"01"}""",
@@ -3375,22 +3515,23 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun pagePortHandshakeIsExactVersionTwo() {
+    fun pagePortHandshakeIsExactVersionThree() {
         assertEquals(
-            "case=handshake-v2 route=page valid",
+            "case=handshake-v3 route=page valid",
             "{\"kind\":\"PageFailure\"}",
             missingDomHandshake(
-                """{"kind":"PagePort","version":2,"longPressMilliseconds":500}""",
-                "handshake-v2",
+                """{"kind":"PagePort","version":3,"longPressMilliseconds":500}""",
+                "handshake-v3",
             ),
         )
         for ((index, payload) in listOf(
             """{"kind":"PagePort","version":1}""",
-            """{"kind":"PagePort","version":2}""",
-            """{"kind":"PagePort","version":2,"longPressMilliseconds":0}""",
-            """{"kind":"PagePort","version":2,"longPressMilliseconds":1.5}""",
-            """{"kind":"PagePort","version":2,"longPressMilliseconds":"500"}""",
-            """{"kind":"PagePort","version":2,"longPressMilliseconds":500,"extra":true}""",
+            """{"kind":"PagePort","version":2,"longPressMilliseconds":500}""",
+            """{"kind":"PagePort","version":3}""",
+            """{"kind":"PagePort","version":3,"longPressMilliseconds":0}""",
+            """{"kind":"PagePort","version":3,"longPressMilliseconds":1.5}""",
+            """{"kind":"PagePort","version":3,"longPressMilliseconds":"500"}""",
+            """{"kind":"PagePort","version":3,"longPressMilliseconds":500,"extra":true}""",
         ).withIndex()) {
             assertNull(
                 "case=handshake-invalid-$index route=page expectedCount=0 index=0",
@@ -3506,7 +3647,7 @@ class TerminalInstrumentedTest {
 
     @Test
     fun duplicatePagePortFailsClosed() {
-        val payload = """{"kind":"PagePort","version":2,"longPressMilliseconds":500}"""
+        val payload = """{"kind":"PagePort","version":3,"longPressMilliseconds":500}"""
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
             postRawHandshake(webView, payload)
@@ -5695,6 +5836,106 @@ class TerminalInstrumentedTest {
             Thread.sleep(50)
         }
         throw AssertionError("case=$caseId route=native focus=false")
+    }
+
+    private fun awaitNativeWebViewWithoutFocus(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (!onUi(scenario) { webView.hasFocus() }) return
+            Thread.sleep(50)
+        }
+        throw AssertionError("case=$caseId route=native focus=true")
+    }
+
+    private fun unfocusTerminal(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ) {
+        assertEquals(
+            "case=$caseId route=webview textarea-blur",
+            "true",
+            evaluateSafely(
+                webView,
+                "(document.querySelector('.xterm-helper-textarea').blur(), true)",
+                "$caseId-textarea-blur",
+            ),
+        )
+        onUi(scenario) { webView.clearFocus() }
+        hideTerminalIme(scenario, webView, caseId)
+        awaitNativeWebViewWithoutFocus(scenario, webView, "$caseId-native-focus")
+        awaitBooleanState(
+            webView,
+            "document.activeElement !== document.querySelector('.xterm-helper-textarea')",
+            "$caseId-textarea-focus",
+        )
+    }
+
+    private fun hideTerminalIme(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ) {
+        onUi(scenario) {
+            requireNotNull(webView.windowInsetsController) {
+                "case=$caseId route=native insets-controller=missing"
+            }.hide(WindowInsets.Type.ime())
+        }
+        awaitTerminalIme(scenario, webView, visible = false, caseId = caseId)
+    }
+
+    private fun awaitTerminalIme(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        visible: Boolean,
+        caseId: String,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        var lastState: Pair<Boolean?, Int?> = null to null
+        while (System.nanoTime() < deadline) {
+            lastState = onUi(scenario) {
+                val insets = webView.rootWindowInsets
+                insets?.isVisible(WindowInsets.Type.ime()) to
+                    insets?.getInsets(WindowInsets.Type.ime())?.bottom
+            }
+            val hasExpectedState = lastState.first == visible &&
+                (!visible || requireNotNull(lastState.second) > 0)
+            if (hasExpectedState) return
+            Thread.sleep(50)
+        }
+        throw AssertionError(
+            "case=$caseId route=native expectedImeVisible=$visible " +
+                "actualImeVisible=${lastState.first} actualImeBottom=${lastState.second}",
+        )
+    }
+
+    private fun assertTerminalImeRemainsHidden(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(IME_STABILITY_MILLIS)
+        var observedInsets = false
+        while (System.nanoTime() < deadline) {
+            val state = onUi(scenario) {
+                val insets = webView.rootWindowInsets
+                insets?.isVisible(WindowInsets.Type.ime()) to
+                    insets?.getInsets(WindowInsets.Type.ime())?.bottom
+            }
+            if (state.first != null) observedInsets = true
+            if (state.first == true || (state.second ?: 0) > 0) {
+                throw AssertionError(
+                    "case=$caseId route=native expectedImeVisible=false " +
+                        "actualImeVisible=${state.first} actualImeBottom=${state.second}",
+                )
+            }
+            Thread.sleep(50)
+        }
+        assertTrue("case=$caseId route=native root-insets=missing", observedInsets)
     }
 
     private fun withTerminalInputConnection(

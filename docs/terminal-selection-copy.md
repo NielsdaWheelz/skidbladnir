@@ -11,8 +11,15 @@ long-press promotion while native MotionEvents and DOM TouchEvents continue;
 the reviewed gesture owner is therefore hard-cut to TouchEvents below. The
 complete `38`-test signed same-version candidate matrix is green after the
 intent-arbitration correction; the hands-on pass remains `NOT_RUN`. After every
-completed or aborted device transaction the exact pinned release was restored,
-the test package was absent, and the production app was stopped.
+completed or aborted device transaction the exact pinned release was restored
+and the test package was absent; the latest correction runs relaunched the
+production app. Immutable `v0.2.28` was then published and installed, where
+hands-on use exposed that an
+unfocused terminal tap no longer summoned Gboard. The 2026-09-07 correction has
+an executed unchanged-runtime API-36 red, a focused `5/5` signed same-version
+green covering tap intent and the exact protocol, and green routine
+verification. Its complete candidate, release-bound platform, `v0.2.29`
+publication/deployment, and hands-on acceptance remain unclaimed.
 [`architecture.md`](architecture.md) owns the product delta and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the
 implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md);
@@ -34,6 +41,11 @@ the phone's real primary plain-text clip equal the exact release snapshot
 before success cleanup. No success is claimed early. No terminal input, WSS
 frame, tmux command, provider behavior, host clipboard, or network request
 participates.
+
+An unfocused, below-slop primary tap is also guaranteed to acquire the native
+WebView and xterm helper focus and request the phone IME. An unfocused drag
+does not request it. This restores terminal input acquisition without creating
+a second native gesture classifier.
 
 This is one phone-local presentation capability. Android, Gboard, or an OS
 cross-device service may retain or synchronize the resulting system clip; that
@@ -70,10 +82,13 @@ change.
   gesture resumes normal arbitration.
 - Before long-press expiry, the existing vertical-drag routing remains
   authoritative. Movement beyond slop cancels the timer. A below-slop release
-  focuses the terminal and submits one semantic primary tap to xterm; xterm's
-  negotiated mouse protocol remains the sole authority for resulting terminal
-  input. An accessibility-wheel action during any selection generation clears
-  that selection and emits no wheel or terminal input.
+  focuses the terminal, submits one semantic primary tap to xterm, then emits
+  one content-free `ImeRequested` intent. Native exact-decodes that intent and,
+  only while the page is live, visible, enabled, attached, window-focused, and
+  selection-idle, acquires WebView focus and requests `WindowInsets.Type.ime()`.
+  xterm's negotiated mouse protocol remains the sole authority for resulting
+  terminal input. An accessibility-wheel action during any selection
+  generation clears that selection and emits no wheel or terminal input.
 - Track the sole `Touch.identifier` and resolve every move and final coordinate
   from the matching touch, including `changedTouches` on end. Never index
   `touches[0]`. A second contact cancels and drains all touches before a new
@@ -254,10 +269,10 @@ deck, Gboard paste path, gateway, WSS, PTY, and tmux remain unchanged.
 
 ## Exact packaged-page API
 
-The hard-cut handshake accepts only version `2`:
+The hard-cut handshake accepts only version `3`:
 
 ```json
-{"kind":"PagePort","version":2,"longPressMilliseconds":500}
+{"kind":"PagePort","version":3,"longPressMilliseconds":500}
 ```
 
 The numeric values above are examples; native supplies the current validated
@@ -270,6 +285,7 @@ platform values. Native to page:
 Page to native:
 
 ```json
+{"kind":"ImeRequested"}
 {"kind":"SelectionStarted","generation":"7"}
 {"kind":"SelectionAvailable","generation":"7","anchorX":0.50,"anchorY":0.50,"text":"..."}
 {"kind":"SelectionCleared","generation":"7"}
@@ -281,10 +297,10 @@ clamps them only when producing the view-local content rectangle. All objects
 reject missing, extra, differently cased, wrongly typed, noncanonical,
 non-finite, or unknown fields/values. A generation is the canonical decimal
 rendering of an integer in `1..9007199254740991`: no sign, leading zero,
-exponent, fraction, or numeric JSON value is accepted. Version `1`, DOM `copy`,
-`navigator.clipboard`, and unordered or unsolicited selection snapshots have
-no decoder or fallback. The protocol is internal to one APK and has no
-negotiation path.
+exponent, fraction, or numeric JSON value is accepted. Versions `1` and `2`,
+DOM `copy`, `navigator.clipboard`, and unordered or unsolicited selection
+snapshots have no decoder or fallback. The protocol is internal to one APK and
+has no negotiation path.
 
 ## Hard cut and cleanup
 
@@ -385,7 +401,7 @@ selected-only view-scoped overlay callback clears selection/action without
 invoking that fallback, and the next Back reaches the existing handler.
 
 **Green:** implement only the contracted xterm tap/selection ingress, unified
-TouchEvent owner, version-2 exact messages, native controller, resources, and
+TouchEvent owner, version-3 exact messages, native controller, resources, and
 canonical ClipboardManager write. No tmux or live terminal is needed.
 
 **Refactor:** leave one gesture machine, one selection state machine, one
@@ -407,10 +423,12 @@ payload-cap branches directly.
    Android's action-mode, haptic, and clipboard services participate.
 4. A touch beginning during active composition is wholly composition-owned and
    has zero terminal-gesture effect; any platform composition completion stays
-   literal and exact, and the next fresh gesture routes normally. Tap, wheel,
+   literal and exact, and the next fresh gesture routes normally. An unfocused
+   drag does not summon the IME; the next eligible tap does, with native and
+   helper focus retained and zero mouse-off input or selection. Wheel,
    touch-scroll, paste, modifier, geometry, reconnect, background, rotation,
    and unavailable behavior retain their existing contracts.
-5. Only the generic pinned xterm patch/artifact and exact version-2 packaged
+5. Only the generic pinned xterm patch/artifact and exact version-3 packaged
    protocol remain; stale names, PointerEvent selection/scroll ownership, and
    old/alternate copy paths are absent.
 

@@ -11,7 +11,7 @@ delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 The 2026-08-27 public-fleet hard cut is implemented and public. The
 host-installer/operator hard cut makes `dev-server` the machine-local installer
 and moves fixed-fleet behavior here to `scripts/fleet`. The complete upstream
-pin names exact `v0.2.27`; its owner red, hermetic green, and routine proof are
+pin names exact `v0.2.28`; its owner red, hermetic green, and routine proof are
 recorded. Cross-repository host-only pin agreement, machine-local apply, reboot,
 outage/recovery, the governed release-bound platform gate, product, and the
 named second-phone gate remain `NOT_RUN`. Retired convergence/doctor evidence
@@ -70,6 +70,13 @@ xterm proof, focused and complete `38`-owner signed same-version S22+ candidate
 matrix, and routine verification are green with pairing preserved and the exact
 public APK restored. Hands-on, release-bound platform, publication, and
 deployment acceptance remain `NOT_RUN`.
+Immutable `v0.2.28` was subsequently published, pinned, verified across all
+three gateways, and installed on the S22+. Hands-on use exposed an unfocused
+terminal tap-to-IME regression. The accepted 2026-09-07 correction has an
+executed unchanged-runtime S22+ red, a focused `5/5` signed same-version green,
+routine verification, preserved pairing, and exact release restoration.
+Complete candidate, release-bound platform, `v0.2.29` publication/deployment,
+and correction hands-on acceptance remain unclaimed.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -906,7 +913,7 @@ transcript, browser-clipboard, persistence, or clipboard-read capability.
 Hard cut: replace the physically non-viable PointerEvent path with one prevented
 trusted TouchEvent owner for tap, scroll, and selection; generalize the pinned
 xterm wheel patch with atomic semantic tap/selection ingress; add one exact,
-generation-correlated version-2 packaged protocol and one native
+generation-correlated version-3 packaged protocol and one native
 selection/clipboard controller with a selected-only view-resolved
 overlay-priority Back owner;
 delete pointer capture, compatibility mouse/context-menu state, pass-through
@@ -946,6 +953,27 @@ source and are green.
 Tmux, integration, live, provider, product, and publication boundaries are
 unchanged and do not run.
 
+## v0 terminal tap-to-IME correction — source implemented
+
+Outcome: the first eligible tap on an unfocused live terminal acquires native
+and helper focus and shows Gboard; an unfocused drag remains keyboard-free.
+
+Hard cut: after the page-owned gesture machine classifies and applies one
+semantic tap, emit exact content-free `ImeRequested`. The native locked WebView
+alone authorizes lifecycle and selection state, requests focus, and shows
+`WindowInsets.Type.ime()`. Bump the packaged page contract to exact version 3;
+version 2 has no decoder or fallback. No native gesture detector, raw
+`ACTION_UP` rule, timer, retry, `InputMethodManager`, blur/refocus, synthetic
+click, xterm change, or provider/tmux path exists.
+
+Red/acceptance: on the approved API-36 S22+, unchanged `v0.2.28` kept IME
+insets hidden after the real trusted tap. The signed same-version candidate
+passed the focused tap/drag, authorization, and strict-protocol matrix `5/5`;
+pairing was
+preserved, exact `v0.2.28` restored, and routine verification is green.
+Complete candidate, release-bound platform, hands-on, publication, and
+deployment remain unclaimed.
+
 ## Status
 
 | Slice | Status |
@@ -984,6 +1012,7 @@ unchanged and do not run.
 | v0 dashboard return-continuity delta | Source implemented; boundary-owner and review-corrective reds recorded; routine verification green; focused and 56-test production-signed S22+ candidates green before the terminal-activity rebase; rebased complete 54-test release-bound platform green with pairing preserved and exact release restored; hands-on acceptance `NOT_RUN` |
 | v0 working-directory chooser delta | Production hard cut implemented with all four owner reds; rebased routine verification and approved Darwin/Linux isolated-tmux gates green; pre-rebase signed same-version 55-test S22+ candidate green with exact release restoration and unchanged pairing but not proof of the rebased source; governed platform and hands-on gates `NOT_RUN` |
 | v0 terminal touch-scroll delta | Implemented, released, and deployed; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, routine verification, exact `v0.2.27` publication, three-host acceptance/doctor, and the complete 60-test release-bound S22+ platform gate are green with pairing unchanged and the exact public APK restored; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; product, second-phone, and reboot persistence `NOT_RUN` |
-| v0 phone-local terminal selection-copy delta | Source implemented. Behavioral xterm and unchanged-runtime API-36 reds are recorded; the reproducible xterm matrix is green at 171/171, routine verification is green, and focused plus complete 38-owner signed same-version S22+ selection/copy, exact-protocol, generation, Back, lifecycle, size, accessibility, liveness, and intent-arbitration owners are green with exact v0.2.27 restoration and pairing preservation. Hands-on selection/accessibility, release-bound platform, publication, and deployment remain `NOT_RUN`. |
-| v0 terminal input-intent arbitration correction | Source implemented; unchanged-runtime S22+ red, focused signed same-version owner/collateral greens, complete 38-owner candidate matrix, and routine verification are green with exact v0.2.27 restoration and pairing preservation. Hands-on, release-bound platform, publication, and deployment remain `NOT_RUN`. |
+| v0 phone-local terminal selection-copy delta | Implemented and published in immutable `v0.2.28`. Behavioral xterm and unchanged-runtime API-36 reds, reproducible xterm 171/171, routine verification, focused and complete 38-owner signed same-version S22+ candidate, both release pins, three-gateway verification, and S22+ installation are recorded. Hands-on selection/accessibility was not completed before the tap-to-IME regression was found; its release-bound platform run timed out and is not green. |
+| v0 terminal input-intent arbitration correction | Implemented and published in immutable `v0.2.28`; unchanged-runtime S22+ red, focused owner/collateral greens, complete 38-owner candidate, routine verification, release pins, three-gateway verification, and S22+ installation are recorded. Hands-on remains incomplete and exposed the subsequent tap-to-IME correction. |
+| v0 terminal tap-to-IME correction | Source implemented; unchanged-runtime `v0.2.28` S22+ red, focused signed same-version tap/drag, authorization, and strict-v3 protocol green `5/5`, routine verification green, pairing preserved, exact release restored. Complete candidate, release-bound platform, hands-on, `v0.2.29` publication, and deployment remain unclaimed. |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |
