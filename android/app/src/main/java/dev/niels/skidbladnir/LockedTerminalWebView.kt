@@ -12,6 +12,7 @@ import android.util.Base64
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeProvider
@@ -498,6 +499,11 @@ internal class LockedTerminalWebView(
                         } else {
                             markUnavailable()
                         }
+                        "ImeRequested" -> if (objectValue.hasExactKeys("kind")) {
+                            requestTerminalIme()
+                        } else {
+                            markUnavailable()
+                        }
                         "SelectionStarted" -> if (
                             objectValue.hasExactKeys("kind", "generation")
                         ) {
@@ -575,7 +581,7 @@ internal class LockedTerminalWebView(
             WebMessageCompat(
                 JSONObject()
                     .put("kind", "PagePort")
-                    .put("version", 2)
+                    .put("version", 3)
                     .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
                     .toString(),
                 arrayOf(ports[1]),
@@ -645,6 +651,17 @@ internal class LockedTerminalWebView(
         check(Looper.myLooper() == Looper.getMainLooper())
         return pageIsLive() && isEnabled && isAttachedToWindow && hasWindowFocus()
     }
+
+    private fun requestTerminalIme() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (!terminalImeRequestAuthorized()) return
+        if (!requestFocus() || !hasFocus() || !terminalImeRequestAuthorized()) return
+        windowInsetsController?.show(WindowInsets.Type.ime())
+    }
+
+    private fun terminalImeRequestAuthorized(): Boolean =
+        pageIsLive() && isEnabled && isAttachedToWindow && hasWindowFocus() && isShown &&
+            selectionController.permitsTerminalTapIme()
 
     private fun TerminalPageCommand.toPayload(): String = when (this) {
         TerminalPageCommand.Focus -> "{\"kind\":\"Focus\"}"

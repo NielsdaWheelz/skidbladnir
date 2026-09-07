@@ -785,7 +785,9 @@
                     ownerTerminal.handleTapInput({ clientX: touch.clientX, clientY: touch.clientY });
                 } catch (error) {
                     failPage();
+                    return;
                 }
+                send({ kind: "ImeRequested" });
                 return;
             }
             if (active.state === "PendingSelected") {
@@ -1135,7 +1137,7 @@
         var handshake = parseObject(event.data);
         var validHandshake = event.ports && event.ports.length === 1 &&
             handshake && exactObject(handshake, ["kind", "version", "longPressMilliseconds"]) &&
-            handshake.kind === "PagePort" && handshake.version === 2 &&
+            handshake.kind === "PagePort" && handshake.version === 3 &&
             typeof handshake.longPressMilliseconds === "number" &&
             Number.isFinite(handshake.longPressMilliseconds) &&
             Number.isInteger(handshake.longPressMilliseconds) &&

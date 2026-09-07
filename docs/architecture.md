@@ -8,8 +8,9 @@ accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
 dashboard-return-continuity target, and the 2026-08-31 working-directory
 chooser target, plus the accepted 2026-09-01 terminal touch-scroll target, the
 accepted 2026-09-04 host-installer/operator hard cut, the accepted 2026-09-04
-phone-local terminal selection-copy target, and the accepted 2026-09-06
-terminal input-intent arbitration correction. The terminal-activity and
+phone-local terminal selection-copy target, the accepted 2026-09-06 terminal
+input-intent arbitration correction, and the accepted 2026-09-07 terminal
+tap-to-IME correction. The terminal-activity and
 touch-scroll changes are merged; exact `v0.2.27` publication, historical
 three-host deployment/doctor evidence, and the complete 60-test release-bound
 S22+ platform gate are green. The touch-scroll final targeted mutation rerun,
@@ -17,18 +18,20 @@ final-candidate hands-on journey, and live tmux/Claude Code journey were
 explicitly waived for shipment on 2026-09-04, not passed. The
 host-installer/operator cut makes `dev-server` the machine-local installer and
 this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
-complete upstream pin names exact `v0.2.27`. Its owner red and hermetic green
+complete upstream pin names exact `v0.2.28`. Its owner red and hermetic green
 are recorded separately. Historical convergence/doctor evidence does not prove
 the new ownership boundary. Cross-repository host-only pin agreement, host
 apply, reboot, outage/recovery, product, second-phone, Linux isolated tmux, S22+
 hands-on, and provider-live acceptance remain `NOT_RUN` for this cut. The
-selection-copy source and its input-intent correction have recorded behavioral
-reds, a `171`-test xterm green, routine verification, focused signed
-same-version S22+ greens, and a complete `38`-owner candidate matrix green with
-pairing preserved and the exact public APK restored. Hands-on, release-bound
-platform, publication, and deployment acceptance for that source remain
-`NOT_RUN`. The rejected 2026-08-28 agent-interaction-state candidate and its
-evidence prove no active target.
+selection-copy source and its input-intent correction were published as
+immutable `v0.2.28`, pinned across both repositories, verified on all three
+gateways, and installed on the S22+. Hands-on use then exposed the unfocused
+tap-to-IME regression. Its correction has an executed unchanged-runtime S22+
+red, a focused `5/5` signed same-version green, routine verification, preserved
+pairing, and exact `v0.2.28` restoration. Complete candidate, release-bound
+platform, `v0.2.29` publication/deployment, and correction hands-on acceptance
+remain unclaimed. The rejected 2026-08-28 agent-interaction-state candidate and
+its evidence prove no active target.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
@@ -1070,11 +1073,14 @@ callback; no key or Activity/Compose-specific interception exists. Empty,
 oversize, malformed, cancelled, dismissed,
 backgrounded, disabled, rotated, unavailable, and disposed paths never write;
 selection and copy emit no terminal input, WSS, network, tmux, or provider
-traffic. The hard cut leaves one generic source-pinned xterm patch/artifact,
-one prevented TouchEvent owner, one native selection/clipboard owner, exact
-generation-correlated version-2 packaged messages, no DOM/browser clipboard
-writer, and no compatibility or fallback path. The full contract and owner
-proofs are
+traffic. An unfocused below-slop tap emits one content-free intent after xterm's
+semantic tap succeeds; native lifecycle/selection authorization then acquires
+WebView focus and requests the Android IME through `WindowInsets`. An unfocused
+drag emits no such intent. The hard cut leaves one generic source-pinned xterm
+patch/artifact, one prevented TouchEvent owner, one native
+selection/clipboard/IME-presentation boundary, exact generation-correlated
+version-3 packaged messages, no DOM/browser clipboard writer, and no
+compatibility or fallback path. The full contract and owner proofs are
 [`terminal-selection-copy.md`](terminal-selection-copy.md).
 
 Distribution acceptance additionally requires: the public release has the
