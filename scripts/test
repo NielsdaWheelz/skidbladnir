@@ -468,15 +468,22 @@ android_platform_helper_self_test() (
   local fixture source_checkout dev_checkout release_apk companion_apk
   local source_sha apk_digest signer_digest values
   local cleanup_status snapshot_probe snapshot_probe_dir
-  local current_suite_timeout grown_suite_timeout
-  current_suite_timeout="$(android_instrumentation_timeout_for_tests 60)"
-  grown_suite_timeout="$(android_instrumentation_timeout_for_tests 61)"
-  if [[ "$current_suite_timeout" -lt 180 ||
-    "$grown_suite_timeout" -le "$current_suite_timeout" ]]; then
-    printf 'Android instrumentation timeout does not scale with the complete suite\n' >&2
+  local minimum_timeout regression_timeout current_timeout maximum_timeout
+  minimum_timeout="$(android_instrumentation_timeout_for_tests 1)"
+  regression_timeout="$(android_instrumentation_timeout_for_tests 60)"
+  current_timeout="$(android_instrumentation_timeout_for_tests 74)"
+  maximum_timeout="$(android_instrumentation_timeout_for_tests 140)"
+  if [[ "$minimum_timeout" != 66 ||
+    "$regression_timeout" != 420 ||
+    "$current_timeout" != 504 ||
+    "$maximum_timeout" != 900 ]]; then
+    printf 'Android instrumentation timeout policy does not match its bounded contract\n' >&2
     return 1
   fi
   if android_instrumentation_timeout_for_tests 0 >/dev/null 2>&1 ||
+    android_instrumentation_timeout_for_tests 01 >/dev/null 2>&1 ||
+    android_instrumentation_timeout_for_tests 141 >/dev/null 2>&1 ||
+    android_instrumentation_timeout_for_tests 999999999999999999999999999999 >/dev/null 2>&1 ||
     android_instrumentation_timeout_for_tests invalid >/dev/null 2>&1; then
     printf 'Android instrumentation timeout accepted an invalid test count\n' >&2
     return 1
@@ -1050,8 +1057,9 @@ verify_installed_android_signer() {
   rm -f "$installed_apk"
 }
 
-android_instrumentation_base_timeout_seconds=30
-android_instrumentation_per_test_timeout_seconds=3
+android_instrumentation_base_timeout_seconds=60
+android_instrumentation_per_test_timeout_seconds=6
+android_instrumentation_max_timeout_seconds=900
 android_preflight_timeout_seconds=20
 android_apk_pull_overhead_seconds=30
 android_apk_pull_minimum_rate_bytes_per_second=262144
@@ -1061,11 +1069,15 @@ android_process_reap_timeout_seconds=2
 
 android_instrumentation_timeout_for_tests() {
   local test_count="${1:-}"
-  [[ "$#" -eq 1 && "$test_count" =~ ^[1-9][0-9]*$ ]] || return 1
-  printf '%s\n' "$((
+  local timeout_seconds
+  [[ "$#" -eq 1 && "$test_count" =~ ^[1-9][0-9]*$ &&
+    "${#test_count}" -le 3 ]] || return 1
+  timeout_seconds="$((
     android_instrumentation_base_timeout_seconds +
       android_instrumentation_per_test_timeout_seconds * 10#$test_count
   ))"
+  [[ "$timeout_seconds" -le "$android_instrumentation_max_timeout_seconds" ]] || return 1
+  printf '%s\n' "$timeout_seconds"
 }
 
 bounded_runner_source="$(sed -n '/^# BOUNDED_RUNNER_BEGIN$/,/^# BOUNDED_RUNNER_END$/p' "$0" | sed '1d;$d')"
