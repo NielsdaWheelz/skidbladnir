@@ -140,10 +140,12 @@ print)
     printf '    state = waiting\n'
     ;;
   inactive)
+    printf 'Bad request.\n' >&2
     printf 'Could not find service "dev.niels.skidbladnir" in domain for user gui: %s\n' "$(id -u)" >&2
     exit 113
     ;;
   inactive-extra)
+    printf 'Bad request.\n' >&2
     printf 'Could not find service "dev.niels.skidbladnir" in domain for user gui: %s\n' "$(id -u)" >&2
     printf 'launchd transport unavailable\n' >&2
     exit 113
