@@ -20,7 +20,9 @@ an executed unchanged-runtime API-36 red, a focused `5/5` signed same-version
 green covering tap intent and the exact protocol, and green routine
 verification. Its complete `75/75` signed same-version candidate and hands-on
 IME acceptance are green. Immutable `v0.2.29` is published and upstream-pinned;
-its release-bound platform and cross-repository deployment remain unclaimed.
+cross-repository deployment and its release-bound `OK (75 tests)` platform gate
+are green, with the exact public APK restored. The physical product gate failed
+and remains unclaimed.
 [`architecture.md`](architecture.md) owns the product delta and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the
 implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md);
