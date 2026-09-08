@@ -33,6 +33,7 @@ import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -696,6 +697,52 @@ class TerminalInstrumentedTest {
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             automation.serviceInfo = serviceInfo
         }
+    }
+
+    @Test
+    fun testActivityDisposesOwnedWebViewsBeforeReplacementAndDestroy() {
+        val initialUnavailable = TerminalTestProbe.unavailable
+        val replacementProbe = TerminalProbe()
+        val finalProbe = TerminalProbe()
+        val scenario = ActivityScenario.launch(TerminalTestActivity::class.java)
+        try {
+            awaitTerminal(scenario)
+            onUi(scenario) { activity ->
+                activity.setContentView(createTestTerminal(activity, replacementProbe))
+            }
+            assertTrue(
+                "case=test-owner-replacement route=lifecycle ready=false",
+                replacementProbe.ready.await(5, TimeUnit.SECONDS),
+            )
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertEquals(
+                "case=test-owner-webview-replacement route=lifecycle unavailable=false",
+                1L,
+                initialUnavailable.count,
+            )
+            onUi(scenario) { activity -> activity.setContent {} }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertEquals(
+                "case=test-owner-compose-replacement route=lifecycle unavailable=false",
+                1L,
+                replacementProbe.unavailable.count,
+            )
+            onUi(scenario) { activity ->
+                activity.setContentView(createTestTerminal(activity, finalProbe))
+            }
+            assertTrue(
+                "case=test-owner-final route=lifecycle ready=false",
+                finalProbe.ready.await(5, TimeUnit.SECONDS),
+            )
+        } finally {
+            scenario.close()
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        assertEquals(
+            "case=test-owner-destroy route=lifecycle unavailable=false",
+            1L,
+            finalProbe.unavailable.count,
+        )
     }
 
     @Test
@@ -1686,11 +1733,9 @@ class TerminalInstrumentedTest {
                 "\u001bc" + "\r\n".repeat(row) + "seed" + TerminalSelectionMouseMode.Sgr.control,
                 "$caseId-fixture",
             )
-            val node = awaitFocusedTerminalRowNode(caseId)
-            val action = requireNotNull(
-                terminalWheelActions(node).singleOrNull {
-                    it.label == TERMINAL_WHEEL_FORWARD
-                },
+            val rowKey = requireTerminalRowKey(
+                awaitFocusedTerminalRowNode(caseId, requireFocusAction = true),
+                "$caseId-initial",
             )
             clearTerminalEvents()
 
@@ -1698,13 +1743,18 @@ class TerminalInstrumentedTest {
                 stream.down(start)
                 SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
                 awaitNativeXtermSelection(webView, "$caseId-active")
-                assertTrue(
-                    "case=$caseId route=accessibility node-stale",
-                    node.refresh(),
+                val currentNode = awaitSingleFocusedTerminalRow(
+                    rowKey,
+                    "$caseId-current",
+                )
+                val currentAction = requireNotNull(
+                    terminalWheelActions(currentNode).singleOrNull {
+                        it.label == TERMINAL_WHEEL_FORWARD
+                    },
                 )
                 assertTrue(
                     "case=$caseId route=accessibility action-rejected",
-                    node.performAction(action.id),
+                    currentNode.performAction(currentAction.id),
                 )
                 awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
                 stream.move(end)
