@@ -82,7 +82,7 @@ internal fun createTestTerminal(
 )
 
 internal class TerminalTestActivity : ComponentActivity() {
-    private var ownedWebView: WebView? = null
+    private var ownedContentView: View? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,37 +90,59 @@ internal class TerminalTestActivity : ComponentActivity() {
     }
 
     override fun setContentView(view: View?) {
-        require(view is WebView) { "TerminalTestActivity content must be a WebView" }
-        disposeOwnedWebView()
-        ownedWebView = view
+        val contentView = requireNotNull(view) { "TerminalTestActivity content is required" }
+        replaceOwnedContentView(contentView) { super.setContentView(contentView) }
+    }
+
+    override fun setContentView(view: View?, params: ViewGroup.LayoutParams?) {
+        val contentView = requireNotNull(view) { "TerminalTestActivity content is required" }
+        val contentParams = requireNotNull(params) { "TerminalTestActivity layout parameters are required" }
+        replaceOwnedContentView(contentView) {
+            super.setContentView(contentView, contentParams)
+        }
+    }
+
+    override fun setContentView(layoutResID: Int) {
+        error("TerminalTestActivity supports code-owned content only")
+    }
+
+    override fun addContentView(view: View?, params: ViewGroup.LayoutParams?) {
+        error("TerminalTestActivity supports one owned content root")
+    }
+
+    private inline fun replaceOwnedContentView(view: View, install: () -> Unit) {
+        disposeOwnedContentView()
+        ownedContentView = view
         try {
-            super.setContentView(view)
+            install()
         } catch (failure: Throwable) {
-            ownedWebView = null
-            disposeWebView(view)
+            ownedContentView = null
+            disposeContentView(view)
             throw failure
         }
     }
 
     override fun onDestroy() {
-        disposeOwnedWebView()
+        disposeOwnedContentView()
         super.onDestroy()
     }
 
-    private fun disposeOwnedWebView() {
-        val view = ownedWebView ?: return
-        ownedWebView = null
-        disposeWebView(view)
+    private fun disposeOwnedContentView() {
+        val view = ownedContentView ?: return
+        ownedContentView = null
+        disposeContentView(view)
     }
 
-    private fun disposeWebView(view: WebView) {
+    private fun disposeContentView(view: View) {
         if (view is LockedTerminalWebView) {
             view.dispose()
             return
         }
-        view.stopLoading()
+        if (view is WebView) view.stopLoading()
         (view.parent as? ViewGroup)?.removeView(view)
-        view.removeAllViews()
-        view.destroy()
+        if (view is WebView) {
+            view.removeAllViews()
+            view.destroy()
+        }
     }
 }
