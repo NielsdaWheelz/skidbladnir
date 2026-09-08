@@ -251,7 +251,8 @@ service_state() {
       fi
     else
       bytes="$(LC_ALL=C printf '%s' "$output" | wc -c | tr -d '[:space:]')"
-      expected="Could not find service \"dev.niels.skidbladnir\" in domain for user gui: $(id -u)"
+      expected="Bad request.
+Could not find service \"dev.niels.skidbladnir\" in domain for user gui: $(id -u)"
       [[ "$bytes" =~ ^[1-9][0-9]*$ && "$bytes" -le 4096 &&
         "$output" == "$expected" ]] ||
         return 1
