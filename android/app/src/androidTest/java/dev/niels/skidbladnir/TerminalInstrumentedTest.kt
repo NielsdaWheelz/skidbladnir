@@ -1717,11 +1717,9 @@ class TerminalInstrumentedTest {
                 "\u001bc" + "\r\n".repeat(row) + "seed" + TerminalSelectionMouseMode.Sgr.control,
                 "$caseId-fixture",
             )
-            val node = awaitFocusedTerminalRowNode(caseId)
-            val action = requireNotNull(
-                terminalWheelActions(node).singleOrNull {
-                    it.label == TERMINAL_WHEEL_FORWARD
-                },
+            val rowKey = requireTerminalRowKey(
+                awaitFocusedTerminalRowNode(caseId, requireFocusAction = true),
+                "$caseId-initial",
             )
             clearTerminalEvents()
 
@@ -1729,13 +1727,18 @@ class TerminalInstrumentedTest {
                 stream.down(start)
                 SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250)
                 awaitNativeXtermSelection(webView, "$caseId-active")
-                assertTrue(
-                    "case=$caseId route=accessibility node-stale",
-                    node.refresh(),
+                val currentNode = awaitSingleFocusedTerminalRow(
+                    rowKey,
+                    "$caseId-current",
+                )
+                val currentAction = requireNotNull(
+                    terminalWheelActions(currentNode).singleOrNull {
+                        it.label == TERMINAL_WHEEL_FORWARD
+                    },
                 )
                 assertTrue(
                     "case=$caseId route=accessibility action-rejected",
-                    node.performAction(action.id),
+                    currentNode.performAction(currentAction.id),
                 )
                 awaitNoTerminalSelection(webView, "$caseId-cleared-selection")
                 stream.move(end)
