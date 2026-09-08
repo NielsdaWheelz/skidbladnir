@@ -492,8 +492,40 @@ local) target=macbook ;;
 arch) target=arch ;;
 *) exit 64 ;;
 esac
-if [[ -e "$FLEET_TEST_ROOT/second-apply-mutates" ]]; then
+if [[ -e "$FLEET_TEST_ROOT/oversized-apply-results" ]]; then
+  if [[ -e "$FLEET_TEST_ROOT/oversized-apply-drained" ]]; then
+    printf 'UP TO DATE  %s\n' "$target"
+  else
+    record=0
+    while ((record < 257)); do
+      printf 'UPDATED  fixture.result: %d\n' "$record"
+      record=$((record + 1))
+    done
+    : >"$FLEET_TEST_ROOT/oversized-apply-drained"
+  fi
+elif [[ -e "$FLEET_TEST_ROOT/malformed-first-summary" ]]; then
+  printf 'DEFERRED  reboot: reboot to activate kernel or boot-time changes\n'
+  if [[ -e "$FLEET_TEST_ROOT/malformed-first-summary-observed" ]]; then
+    printf 'DEFERRED  %s: 1 deferral(s); durable state installed\n' "$target"
+  else
+    printf 'DEFERRED  %s: hidden noncanonical deferral\n' "$target"
+    printf 'DEFERRED  %s: 1 deferral(s); durable state installed\n' "$target"
+    : >"$FLEET_TEST_ROOT/malformed-first-summary-observed"
+  fi
+elif [[ -e "$FLEET_TEST_ROOT/second-apply-changes-deferral" ]]; then
+  if [[ -e "$FLEET_TEST_ROOT/first-deferral-observed" ]]; then
+    printf 'DEFERRED  reboot: reboot reason changed between applies\n'
+  else
+    : >"$FLEET_TEST_ROOT/first-deferral-observed"
+    printf 'DEFERRED  reboot: reboot to activate kernel or boot-time changes\n'
+  fi
+  printf 'DEFERRED  %s: 1 deferral(s); durable state installed\n' "$target"
+elif [[ -e "$FLEET_TEST_ROOT/second-apply-mutates" ]]; then
   printf 'RESTARTED  skid.runtime: injected drift\n'
+elif [[ "$target" == arch ]]; then
+  printf 'DEFERRED  desktop session: log out and back in to activate session changes\n'
+  printf 'DEFERRED  reboot: reboot to activate kernel or boot-time changes\n'
+  printf 'DEFERRED  arch: 2 deferral(s); durable state installed\n'
 else
   printf 'UP TO DATE  %s\n' "$target"
 fi
@@ -503,7 +535,12 @@ cat >"$checkout/devbox" <<'EOF'
 set -euo pipefail
 [[ "${1:-}" == apply && $# -eq 1 ]]
 printf 'apply devbox devbox apply\n' >>"$FLEET_TEST_LOG"
-printf 'UP TO DATE  devbox\n'
+printf 'DEFERRED  system.reboot: reboot-required is present\n'
+if [[ "$(grep -c '^apply devbox devbox apply$' "$FLEET_TEST_LOG")" == 1 ]]; then
+  printf 'UPDATED  devbox: 1 durable change(s), 0 activation(s), 1 deferral(s)\n'
+else
+  printf 'DEFERRED  devbox: 1 deferral(s); durable state installed\n'
+fi
 EOF
 install -d -m 0700 "$checkout/assets/skidbladnir" "$arch_home/src/personal"
 cat >"$checkout/assets/skidbladnir/release-pin.json" <<'EOF'
@@ -773,6 +810,13 @@ capture "$fleet" invite
 
 : >"$log_file"
 export SKIDBLADNIR_DEV_SERVER_CHECKOUT="$checkout"
+apply_tmp="$test_root/apply-tmp"
+install -d -m 0700 "$apply_tmp"
+export TMPDIR="$apply_tmp"
+assert_no_apply_evidence() {
+  [[ -z "$(find "$apply_tmp" -mindepth 1 -maxdepth 1 -print -quit)" ]] ||
+    fail 'fleet acceptance leaked apply result evidence'
+}
 capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
 [[ "$status" == 64 && ! -s "$log_file" ]] ||
   fail 'host acceptance ran without its exact environment capability'
@@ -782,13 +826,44 @@ capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconc
   fail 'macbook host acceptance failed'
 [[ "$(grep -c '^apply local workstation apply$' "$log_file")" == 2 ]] ||
   fail 'macbook host acceptance did not use workstation apply exactly twice'
+assert_no_apply_evidence
 
 : >"$log_file"
 touch "$test_root/second-apply-mutates"
 capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
-[[ "$status" != 0 && "$output" == *'second apply was not an exact no-op'* ]] ||
+[[ "$status" != 0 && "$output" == *'second apply was not quiescent'* ]] ||
   fail 'host acceptance accepted a second apply that activated a consumer'
 /bin/unlink "$test_root/second-apply-mutates"
+assert_no_apply_evidence
+
+: >"$log_file"
+touch "$test_root/second-apply-changes-deferral"
+capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
+[[ "$status" != 0 && "$output" == *'second apply was not quiescent'* ]] ||
+  fail 'host acceptance accepted a changed second-apply deferral'
+/bin/unlink "$test_root/second-apply-changes-deferral"
+/bin/unlink "$test_root/first-deferral-observed"
+assert_no_apply_evidence
+
+: >"$log_file"
+touch "$test_root/malformed-first-summary"
+capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
+[[ "$status" != 0 && "$output" == *'second apply was not quiescent'* ]] ||
+  fail 'host acceptance erased a malformed host-prefixed deferral'
+/bin/unlink "$test_root/malformed-first-summary"
+/bin/unlink "$test_root/malformed-first-summary-observed"
+assert_no_apply_evidence
+
+: >"$log_file"
+touch "$test_root/oversized-apply-results"
+capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
+[[ "$status" != 0 && -e "$test_root/oversized-apply-drained" &&
+  "$output" == *'apply result evidence exceeded 256 records or 65536 bytes'* &&
+  "$(grep -c '^apply local workstation apply$' "$log_file")" == 1 ]] ||
+  fail 'host acceptance did not drain and reject oversized apply result evidence'
+/bin/unlink "$test_root/oversized-apply-results"
+/bin/unlink "$test_root/oversized-apply-drained"
+assert_no_apply_evidence
 
 : >"$log_file"
 capture "$fleet" accept-host devbox --allow-host-apply --allow-inventory-reconciliation
@@ -800,6 +875,7 @@ capture "$fleet" accept-host arch --allow-host-apply --allow-inventory-reconcili
 [[ "$status" == 0 && "$(grep -c '^apply arch workstation apply$' "$log_file")" == 2 &&
   "$(grep -c '^ssh nnandal@arch tty=request$' "$log_file")" == 1 ]] ||
   fail 'arch host acceptance did not use the fixed remote workstation apply exactly twice'
+assert_no_apply_evidence
 
 touch "$test_root/mutate-local-credential"
 capture "$fleet" accept-host macbook --allow-host-apply --allow-inventory-reconciliation
