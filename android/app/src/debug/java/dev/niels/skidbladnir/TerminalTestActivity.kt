@@ -2,6 +2,9 @@ package dev.niels.skidbladnir
 
 import android.content.Context
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
@@ -79,8 +82,45 @@ internal fun createTestTerminal(
 )
 
 internal class TerminalTestActivity : ComponentActivity() {
+    private var ownedWebView: WebView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(TerminalTestProbe.createTerminal(this))
+    }
+
+    override fun setContentView(view: View?) {
+        require(view is WebView) { "TerminalTestActivity content must be a WebView" }
+        disposeOwnedWebView()
+        ownedWebView = view
+        try {
+            super.setContentView(view)
+        } catch (failure: Throwable) {
+            ownedWebView = null
+            disposeWebView(view)
+            throw failure
+        }
+    }
+
+    override fun onDestroy() {
+        disposeOwnedWebView()
+        super.onDestroy()
+    }
+
+    private fun disposeOwnedWebView() {
+        val view = ownedWebView ?: return
+        ownedWebView = null
+        disposeWebView(view)
+    }
+
+    private fun disposeWebView(view: WebView) {
+        if (view is LockedTerminalWebView) {
+            view.dispose()
+            return
+        }
+        view.stopLoading()
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.removeAllViews()
+        view.destroy()
     }
 }
