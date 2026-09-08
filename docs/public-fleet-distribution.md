@@ -176,6 +176,14 @@ retains only a bounded, content-free result stream while all apply output is
 drained. This strict equality deliberately turns transient deferral changes
 into an explicit rerun instead of guessing that two pending states are equal.
 
+Darwin gateway outage validates durable installer intent before one
+`launchctl bootout`, then reconciles only the strict absent-service result on a
+self-bounded 30-second schedule. Transitional or unrecognized launchd output
+is never accepted as inactivity; exhaustion fails closed for convergent
+recovery. Polling is required because ordinary `bootout` may return before
+removal is observable and launchd exposes no completion signal with an
+operator-owned bound.
+
 Tailscale authentication is a one-time human boundary per host and phone.
 On macOS, App Store installation and upgrades are also human-owned boundaries;
 apply may verify and start that exact app but never install or replace it.

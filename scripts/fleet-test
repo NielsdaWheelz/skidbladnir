@@ -69,6 +69,16 @@ fi
 exec /bin/date "$@"
 EOF
 
+cat >"$fake_bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == 0.25 && $# -eq 1 ]]
+printf 'sleep 0.25\n' >>"$FLEET_TEST_LOG"
+if [[ -e "$HOME/bootout-transient-once" ]]; then
+  printf 'inactive\n' >"$HOME/service.state"
+fi
+EOF
+
 cat >"$fake_bin/cat" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -133,6 +143,11 @@ print)
     printf 'Could not find service "dev.niels.skidbladnir" in domain for user gui: %s\n' "$(id -u)" >&2
     exit 113
     ;;
+  inactive-extra)
+    printf 'Could not find service "dev.niels.skidbladnir" in domain for user gui: %s\n' "$(id -u)" >&2
+    printf 'launchd transport unavailable\n' >&2
+    exit 113
+    ;;
   transitional)
     printf '    path = %s/Library/LaunchAgents/dev.niels.skidbladnir.plist\n' "$HOME"
     printf '    state = spawning\n'
@@ -142,7 +157,12 @@ print)
   ;;
 bootout)
   [[ "${2:-}" == "gui/$(id -u)/dev.niels.skidbladnir" && $# -eq 2 ]]
-  printf 'inactive\n' >"$HOME/service.state"
+  if [[ -e "$HOME/bootout-transient-once" ||
+    -e "$HOME/bootout-never-settles" ]]; then
+    printf 'transitional\n' >"$HOME/service.state"
+  else
+    printf 'inactive\n' >"$HOME/service.state"
+  fi
   printf 'launchctl bootout\n' >>"$FLEET_TEST_LOG"
   ;;
 bootstrap)
@@ -907,6 +927,11 @@ capture "$fleet" outage macbook --allow-service-lifecycle
   "$(<"$local_home/service.state")" == active && ! -s "$log_file" ]] ||
   fail 'macbook outage treated an observation error as inactivity'
 /bin/unlink "$local_home/service-observation-error"
+printf 'inactive-extra\n' >"$local_home/service.state"
+capture "$fleet" outage macbook --allow-service-lifecycle
+[[ "$status" != 0 && "$output" == *'service state could not be observed'* &&
+  "$(<"$local_home/service.state")" == inactive-extra && ! -s "$log_file" ]] ||
+  fail 'macbook outage treated a decorated missing-service diagnostic as inactivity'
 printf 'transitional\n' >"$local_home/service.state"
 capture "$fleet" outage macbook --allow-service-lifecycle
 [[ "$status" != 0 && "$output" == *'service state could not be observed'* &&
@@ -936,6 +961,32 @@ capture "$fleet" recover macbook --allow-service-lifecycle
   fail 'macbook outage/recovery used an unexpected lifecycle boundary'
 ! grep -Eiq 'tmux|tailscale' "$log_file" ||
   fail 'outage/recovery touched tmux or Tailscale'
+
+: >"$log_file"
+touch "$local_home/bootout-transient-once"
+capture "$fleet" outage macbook --allow-service-lifecycle
+[[ "$status" == 0 && "$(<"$local_home/service.state")" == inactive &&
+  "$(grep -c '^launchctl bootout$' "$log_file")" == 1 &&
+  "$(grep -c '^sleep 0.25$' "$log_file")" == 1 ]] ||
+  fail 'macbook outage did not reconcile a transient launchd removal state'
+/bin/unlink "$local_home/bootout-transient-once"
+capture "$fleet" recover macbook --allow-service-lifecycle
+[[ "$status" == 0 && "$(<"$local_home/service.state")" == active ]] ||
+  fail 'macbook recovery did not restore the gateway after transient removal'
+
+: >"$log_file"
+touch "$local_home/bootout-never-settles"
+capture "$fleet" outage macbook --allow-service-lifecycle
+[[ "$status" != 0 && "$output" == *'did not become observably inactive after outage'* &&
+  "$(<"$local_home/service.state")" == transitional &&
+  "$(grep -c '^launchctl bootout$' "$log_file")" == 1 &&
+  "$(grep -c '^sleep 0.25$' "$log_file")" == 120 ]] ||
+  fail 'macbook outage did not bound a persistent launchd removal state'
+/bin/unlink "$local_home/bootout-never-settles"
+printf 'inactive\n' >"$local_home/service.state"
+capture "$fleet" recover macbook --allow-service-lifecycle
+[[ "$status" == 0 && "$(<"$local_home/service.state")" == active ]] ||
+  fail 'macbook recovery did not restore the gateway after bounded exhaustion'
 
 : >"$log_file"
 linux_definition="$devbox_home/.config/systemd/user/skidbladnir.service"

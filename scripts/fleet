@@ -2,6 +2,8 @@
 set -euo pipefail
 umask 077
 macos_tailscale_app='/Applications/Tailscale.app'
+darwin_service_inactive_attempts=121
+darwin_service_inactive_delay_seconds=0.25
 
 die() {
   printf 'error: %s\n' "$1" >&2
@@ -232,7 +234,7 @@ candidate_checkout_commit() {
 
 service_state() {
   local platform="$1"
-  local output bytes
+  local output bytes expected
   case "$platform" in
   Darwin)
     if output="$(launchctl print "gui/$(id -u)/dev.niels.skidbladnir" 2>&1)"; then
@@ -249,8 +251,9 @@ service_state() {
       fi
     else
       bytes="$(LC_ALL=C printf '%s' "$output" | wc -c | tr -d '[:space:]')"
+      expected="Could not find service \"dev.niels.skidbladnir\" in domain for user gui: $(id -u)"
       [[ "$bytes" =~ ^[1-9][0-9]*$ && "$bytes" -le 4096 &&
-        "$(grep -Fc 'Could not find service "dev.niels.skidbladnir" in domain for user gui:' <<<"$output")" == 1 ]] ||
+        "$output" == "$expected" ]] ||
         return 1
       printf 'inactive\n'
     fi
@@ -271,6 +274,21 @@ service_state() {
     ;;
   *) return 64 ;;
   esac
+}
+
+wait_for_darwin_service_inactive() {
+  local attempt state=''
+  # justify-polling: launchctl bootout can return before removal is observable,
+  # and launchd exposes no completion signal with an operator-owned bound. One
+  # immediate probe plus 120 quarter-second intervals bounds reconciliation at 30s.
+  for ((attempt = 1; attempt <= darwin_service_inactive_attempts; attempt++)); do
+    if state="$(service_state Darwin)" && [[ "$state" == inactive ]]; then
+      return 0
+    fi
+    ((attempt < darwin_service_inactive_attempts)) || break
+    sleep "$darwin_service_inactive_delay_seconds" || return
+  done
+  return 1
 }
 
 service_definition_is_current() {
@@ -782,9 +800,8 @@ change_service() {
     if [[ "$state" == running || "$state" == loaded ]]; then
       launchctl bootout "gui/$(id -u)/dev.niels.skidbladnir"
     fi
-    state="$(service_state Darwin)" ||
-      die 'MacBook gateway service state could not be observed after outage'
-    [[ "$state" == inactive ]] || die 'MacBook gateway remained loaded after outage'
+    wait_for_darwin_service_inactive ||
+      die 'MacBook gateway did not become observably inactive after outage'
     ;;
   recover:Darwin)
     if [[ "$state" == inactive ]]; then

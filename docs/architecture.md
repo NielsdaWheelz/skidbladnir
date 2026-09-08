@@ -608,7 +608,9 @@ history item is `current`.
   stream-bounds every response before aggregation. Outage/recovery validates
   the installed launcher and service definition against the installer's
   durable `skid.unit.sha256` intent, plus the exact loaded service path, before
-  any lifecycle mutation.
+  any lifecycle mutation. Darwin outage then reconciles `launchctl bootout` to
+  the strict absent-service fact on one self-bounded 30-second schedule;
+  transitional or unrecognized launchd output is never inactivity.
   Arch apply acceptance opens one SSH TTY for normal operator sudo, validates
   the exact clean remote candidate before and after two applies, and requires
   the second apply to be quiescent. If the first apply reports no deferral
