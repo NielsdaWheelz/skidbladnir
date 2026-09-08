@@ -1,6 +1,6 @@
 # v0 phone-local terminal selection copy
 
-Status: source implemented. The original xterm and unchanged-runtime API-36
+Status: implemented and published. The original xterm and unchanged-runtime API-36
 reds are complete, the source xterm matrix is green at `171` tests, routine
 verification is green, and focused signed same-version API-36 owner proofs are
 green across selection/copy, exact protocol, generation ordering, Back,
@@ -18,8 +18,9 @@ hands-on use exposed that an
 unfocused terminal tap no longer summoned Gboard. The 2026-09-07 correction has
 an executed unchanged-runtime API-36 red, a focused `5/5` signed same-version
 green covering tap intent and the exact protocol, and green routine
-verification. Its complete candidate, release-bound platform, `v0.2.29`
-publication/deployment, and hands-on acceptance remain unclaimed.
+verification. Its complete `75/75` signed same-version candidate and hands-on
+IME acceptance are green. Immutable `v0.2.29` is published and upstream-pinned;
+its release-bound platform and cross-repository deployment remain unclaimed.
 [`architecture.md`](architecture.md) owns the product delta and acceptance;
 [`roadmap.md`](roadmap.md) owns delivery order. This document owns the
 implementation boundary. Testing follows [`rules/testing.md`](rules/testing.md);
