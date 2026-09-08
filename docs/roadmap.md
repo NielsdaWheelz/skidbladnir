@@ -11,7 +11,7 @@ delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 The 2026-08-27 public-fleet hard cut is implemented and public. The
 host-installer/operator hard cut makes `dev-server` the machine-local installer
 and moves fixed-fleet behavior here to `scripts/fleet`. The complete upstream
-pin names exact `v0.2.28`; its owner red, hermetic green, and routine proof are
+pin names exact `v0.2.29`; its owner red, hermetic green, and routine proof are
 recorded. Cross-repository host-only pin agreement, machine-local apply, reboot,
 outage/recovery, the governed release-bound platform gate, product, and the
 named second-phone gate remain `NOT_RUN`. Retired convergence/doctor evidence
@@ -74,9 +74,10 @@ Immutable `v0.2.28` was subsequently published, pinned, verified across all
 three gateways, and installed on the S22+. Hands-on use exposed an unfocused
 terminal tap-to-IME regression. The accepted 2026-09-07 correction has an
 executed unchanged-runtime S22+ red, a focused `5/5` signed same-version green,
-routine verification, preserved pairing, and exact release restoration.
-Complete candidate, release-bound platform, `v0.2.29` publication/deployment,
-and correction hands-on acceptance remain unclaimed.
+routine verification, preserved pairing, exact release restoration, a complete
+`75/75` signed candidate, and hands-on IME acceptance. Immutable `v0.2.29` is
+published and upstream-pinned. The release-bound platform and cross-repository
+deployment remain unclaimed.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -1014,5 +1015,5 @@ deployment remain unclaimed.
 | v0 terminal touch-scroll delta | Implemented, released, and deployed; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, routine verification, exact `v0.2.27` publication, three-host acceptance/doctor, and the complete 60-test release-bound S22+ platform gate are green with pairing unchanged and the exact public APK restored; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; product, second-phone, and reboot persistence `NOT_RUN` |
 | v0 phone-local terminal selection-copy delta | Implemented and published in immutable `v0.2.28`. Behavioral xterm and unchanged-runtime API-36 reds, reproducible xterm 171/171, routine verification, focused and complete 38-owner signed same-version S22+ candidate, both release pins, three-gateway verification, and S22+ installation are recorded. Hands-on selection/accessibility was not completed before the tap-to-IME regression was found; its release-bound platform run timed out and is not green. |
 | v0 terminal input-intent arbitration correction | Implemented and published in immutable `v0.2.28`; unchanged-runtime S22+ red, focused owner/collateral greens, complete 38-owner candidate, routine verification, release pins, three-gateway verification, and S22+ installation are recorded. Hands-on remains incomplete and exposed the subsequent tap-to-IME correction. |
-| v0 terminal tap-to-IME correction | Source implemented; unchanged-runtime `v0.2.28` S22+ red, focused signed same-version tap/drag, authorization, and strict-v3 protocol green `5/5`, routine verification green, pairing preserved, exact release restored. Complete candidate, release-bound platform, hands-on, `v0.2.29` publication, and deployment remain unclaimed. |
+| v0 terminal tap-to-IME correction | Implemented and published in immutable `v0.2.29`; unchanged-runtime `v0.2.28` S22+ red, focused signed same-version tap/drag, authorization, and strict-v3 protocol green `5/5`, complete `75/75` signed candidate, routine verification, pairing preservation, exact release restoration, and hands-on IME acceptance are green. Release-bound platform and cross-repository deployment remain unclaimed. |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

@@ -18,7 +18,7 @@ final-candidate hands-on journey, and live tmux/Claude Code journey were
 explicitly waived for shipment on 2026-09-04, not passed. The
 host-installer/operator cut makes `dev-server` the machine-local installer and
 this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
-complete upstream pin names exact `v0.2.28`. Its owner red and hermetic green
+complete upstream pin names exact `v0.2.29`. Its owner red and hermetic green
 are recorded separately. Historical convergence/doctor evidence does not prove
 the new ownership boundary. Cross-repository host-only pin agreement, host
 apply, reboot, outage/recovery, product, second-phone, Linux isolated tmux, S22+
@@ -28,10 +28,11 @@ immutable `v0.2.28`, pinned across both repositories, verified on all three
 gateways, and installed on the S22+. Hands-on use then exposed the unfocused
 tap-to-IME regression. Its correction has an executed unchanged-runtime S22+
 red, a focused `5/5` signed same-version green, routine verification, preserved
-pairing, and exact `v0.2.28` restoration. Complete candidate, release-bound
-platform, `v0.2.29` publication/deployment, and correction hands-on acceptance
-remain unclaimed. The rejected 2026-08-28 agent-interaction-state candidate and
-its evidence prove no active target.
+pairing, exact `v0.2.28` restoration, a complete `75/75` signed candidate, and
+hands-on IME acceptance. Immutable `v0.2.29` is published and upstream-pinned.
+The release-bound platform and cross-repository deployment remain unclaimed.
+The rejected 2026-08-28 agent-interaction-state candidate and its evidence
+prove no active target.
 
 This document supersedes the audited-orchestration architecture (git history
 through `6f2d697`). That design was internally consistent and is preserved in
