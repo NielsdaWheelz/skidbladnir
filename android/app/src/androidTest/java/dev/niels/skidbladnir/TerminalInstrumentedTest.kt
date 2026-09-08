@@ -699,6 +699,37 @@ class TerminalInstrumentedTest {
     }
 
     @Test
+    fun testActivityDisposesOwnedWebViewsBeforeReplacementAndDestroy() {
+        val initialUnavailable = TerminalTestProbe.unavailable
+        val replacementProbe = TerminalProbe()
+        val scenario = ActivityScenario.launch(TerminalTestActivity::class.java)
+        try {
+            awaitTerminal(scenario)
+            onUi(scenario) { activity ->
+                activity.setContentView(createTestTerminal(activity, replacementProbe))
+            }
+            assertTrue(
+                "case=test-owner-replacement route=lifecycle ready=false",
+                replacementProbe.ready.await(5, TimeUnit.SECONDS),
+            )
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertEquals(
+                "case=test-owner-replacement route=lifecycle unavailable=true",
+                1L,
+                initialUnavailable.count,
+            )
+        } finally {
+            scenario.close()
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        assertEquals(
+            "case=test-owner-destroy route=lifecycle unavailable=true",
+            1L,
+            replacementProbe.unavailable.count,
+        )
+    }
+
+    @Test
     fun productionTerminalLoadsOnlyPackagedAssets() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
