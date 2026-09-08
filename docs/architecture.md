@@ -611,9 +611,16 @@ history item is `current`.
   any lifecycle mutation.
   Arch apply acceptance opens one SSH TTY for normal operator sudo, validates
   the exact clean remote candidate before and after two applies, and requires
-  the second apply to be an exact no-op. The streamed internal host protocol
-  exposes no apply action. Trade-off: Arch acceptance is deliberately
-  interactive rather than granting the user/agent account unattended root.
+  the second apply to be quiescent. If the first apply reports no deferral
+  facts, the second result is exactly `UP TO DATE`; otherwise it repeats those
+  exact ordered facts followed by the canonical deferral-only host summary.
+  Any mutation, activation, action, error, or changed deferral fails
+  acceptance. Result evidence is content-free and bounded while apply output is
+  drained to completion. The streamed internal host protocol exposes no apply
+  action. Trade-off: Arch acceptance is
+  deliberately interactive rather than granting the user/agent account
+  unattended root, and transiently changing deferrals require a clean rerun
+  rather than being guessed equivalent.
   Machine-local installers own no fleet command or acceptance fallback.
 - Host apply atomically initializes and then preserves
   `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The

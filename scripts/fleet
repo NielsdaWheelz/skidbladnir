@@ -627,21 +627,134 @@ verify_reboot() (
   printf 'PASS  fleet.reboot %s reboot persistence preserved release, credentials, and gateway intent\n' "$label"
 )
 
-apply_and_require_noop() {
+capture_apply_result_lines() {
+  local result_file="$1"
+  local had_errexit=0
+  local -a statuses
+  shift
+  : >"$result_file" || return
+  [[ $- == *e* ]] && had_errexit=1
+  set +e
+  "$@" | LC_ALL=C awk \
+    -v max_bytes=65536 \
+    -v max_records=256 \
+    -v result_file="$result_file" '
+    /^(INSTALLED|UPDATED|CHANGED|STARTED|RELOADED|RESTARTED|DEFERRED|ACTION|UP TO DATE|ERROR)  / {
+      record_bytes = length($0) + 1
+      if (records < max_records && bytes + record_bytes <= max_bytes) {
+        print > result_file
+        records++
+        bytes += record_bytes
+      } else {
+        overflow = 1
+      }
+    }
+    {
+      print
+      fflush()
+    }
+    END {
+      close(result_file)
+      if (overflow) {
+        exit 65
+      }
+    }
+  '
+  statuses=("${PIPESTATUS[@]}")
+  ((had_errexit == 0)) || set -e
+  ((statuses[0] == 0)) || return "${statuses[0]}"
+  case "${statuses[1]}" in
+  0) return 0 ;;
+  65)
+    printf 'error: apply result evidence exceeded 256 records or 65536 bytes\n' >&2
+    return 1
+    ;;
+  *)
+    printf 'error: apply result evidence capture failed\n' >&2
+    return 1
+    ;;
+  esac
+}
+
+second_apply_is_quiescent() {
+  local first_results="$1"
+  local second_results="$2"
+  local target="$3"
+  local deferral_count expected first_deferrals second
+  [[ -f "$first_results" && ! -L "$first_results" &&
+    -f "$second_results" && ! -L "$second_results" ]] || return 1
+  first_deferrals="$(LC_ALL=C awk -v target="$target" '
+    BEGIN {
+      summary_prefix = "DEFERRED  " target ": "
+    }
+    {
+      if (summary_seen) {
+        invalid = 1
+      }
+      if ($0 !~ /^DEFERRED  /) {
+        next
+      }
+      if (index($0, summary_prefix) == 1) {
+        summary = substr($0, length(summary_prefix) + 1)
+        if (summary_seen || summary !~ /^[1-9][0-9]* deferral\(s\); durable state installed$/) {
+          invalid = 1
+          next
+        }
+        split(summary, fields, " ")
+        summary_count = fields[1] + 0
+        summary_seen = 1
+        next
+      }
+      print
+      facts++
+    }
+    END {
+      if (invalid || (summary_seen && summary_count != facts)) {
+        exit 65
+      }
+    }
+  ' "$first_results")" || return
+  second="$(cat "$second_results")" || return
+  if [[ -z "$first_deferrals" ]]; then
+    [[ "$second" == "UP TO DATE  $target" ]]
+  else
+    deferral_count="$(printf '%s\n' "$first_deferrals" | awk 'END { print NR }')" || return
+    expected="$(printf '%s\nDEFERRED  %s: %s deferral(s); durable state installed' \
+      "$first_deferrals" "$target" "$deferral_count")" || return
+    [[ "$second" == "$expected" ]]
+  fi
+}
+
+apply_and_require_quiescent() (
   local entrypoint="$1"
   local target="$2"
-  local second result_lines
-  "$entrypoint" apply
-  second="$("$entrypoint" apply)" || {
-    printf '%s\n' "$second"
-    die "$target second apply failed"
+  local scratch first_results second_results
+  scratch="$(mktemp -d "${TMPDIR:-/tmp}/skidbladnir-fleet-apply.XXXXXX")" ||
+    die "$target apply evidence directory could not be created"
+  case "$scratch" in
+  "${TMPDIR:-/tmp}"/skidbladnir-fleet-apply.*) ;;
+  *) die "$target apply evidence directory is invalid" ;;
+  esac
+  # shellcheck disable=SC2317,SC2329 # Invoked indirectly by the EXIT trap below.
+  cleanup_apply_evidence() {
+    local status=$?
+    trap - EXIT HUP INT TERM
+    /bin/rm -R -- "$scratch" || status=1
+    exit "$status"
   }
-  printf '%s\n' "$second"
-  result_lines="$(printf '%s\n' "$second" | grep -E \
-    '^(INSTALLED|UPDATED|CHANGED|STARTED|RELOADED|RESTARTED|DEFERRED|ACTION|UP TO DATE|ERROR)  ' || true)"
-  [[ "$result_lines" == "UP TO DATE  $target" ]] ||
-    die "$target second apply was not an exact no-op"
-}
+  trap cleanup_apply_evidence EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  first_results="$scratch/first-results"
+  second_results="$scratch/second-results"
+  capture_apply_result_lines "$first_results" "$entrypoint" apply ||
+    die "$target first apply failed"
+  capture_apply_result_lines "$second_results" "$entrypoint" apply ||
+    die "$target second apply failed"
+  second_apply_is_quiescent "$first_results" "$second_results" "$target" ||
+    die "$target second apply was not quiescent"
+)
 
 verified_release_from_evidence() {
   local evidence="$1"
@@ -800,7 +913,9 @@ apply_arch_twice_interactively() {
   local script encoded remote_command
   [[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]] || return 64
   require_command base64
-  script="$(cat <<'EOF'
+  script="$({
+    declare -f capture_apply_result_lines second_apply_is_quiescent apply_and_require_quiescent
+    cat <<'EOF'
 set -euo pipefail
 expected_commit="$1"
 checkout="$HOME/src/personal/dev-server"
@@ -819,16 +934,7 @@ actual_commit="$(git -C "$checkout" rev-parse --verify 'HEAD^{commit}' 2>/dev/nu
 status="$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)" ||
   die 'could not inspect the arch dev-server checkout'
 [[ -z "$status" ]] || die 'arch dev-server checkout must be clean for acceptance'
-"$workstation" apply
-second="$("$workstation" apply)" || {
-  printf '%s\n' "$second"
-  die 'arch second apply failed'
-}
-printf '%s\n' "$second"
-result_lines="$(printf '%s\n' "$second" | grep -E \
-  '^(INSTALLED|UPDATED|CHANGED|STARTED|RELOADED|RESTARTED|DEFERRED|ACTION|UP TO DATE|ERROR)  ' || true)"
-[[ "$result_lines" == 'UP TO DATE  arch' ]] ||
-  die 'arch second apply was not an exact no-op'
+apply_and_require_quiescent "$workstation" arch
 actual_commit="$(git -C "$checkout" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" ||
   die 'arch dev-server checkout changed during acceptance'
 [[ "$actual_commit" == "$expected_commit" ]] ||
@@ -837,7 +943,7 @@ status="$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)" ||
   die 'could not inspect the arch dev-server checkout after apply'
 [[ -z "$status" ]] || die 'arch dev-server checkout changed during acceptance'
 EOF
-)"
+  })"
   encoded="$(printf '%s' "$script" | base64 | tr -d '\r\n')" ||
     die 'could not encode the fixed Arch acceptance command'
   [[ "$encoded" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] ||
@@ -1026,13 +1132,13 @@ accept_host() {
   case "$label" in
   macbook)
     before="$(host_snapshot Darwin macbook)" || die 'macbook acceptance precondition failed'
-    apply_and_require_noop "$dev_server_checkout/workstation" macbook
+    apply_and_require_quiescent "$dev_server_checkout/workstation" macbook
     evidence="$(verify_host Darwin macbook)" || die 'macbook gateway verification failed after apply'
     after="$(host_snapshot Darwin macbook)" || die 'macbook acceptance postcondition failed'
     ;;
   devbox)
     before="$(remote_host snapshot devbox)" || die 'devbox acceptance precondition failed'
-    apply_and_require_noop "$dev_server_checkout/devbox" devbox
+    apply_and_require_quiescent "$dev_server_checkout/devbox" devbox
     evidence="$(remote_host verify devbox)" || die 'devbox gateway verification failed after apply'
     after="$(remote_host snapshot devbox)" || die 'devbox acceptance postcondition failed'
     ;;

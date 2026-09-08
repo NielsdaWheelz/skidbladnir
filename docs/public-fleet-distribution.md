@@ -167,6 +167,15 @@ Machine-local apply:
    one summary. Upstream `scripts/fleet verify` separately proves functional
    health for the fixed three-host fleet.
 
+Fleet apply acceptance requires an immediately repeated apply to be quiescent.
+With no first-apply deferral facts, its complete result is exactly `UP TO DATE`
+for the host. Otherwise it repeats those exact ordered facts followed by the
+canonical deferral-only host summary. A mutation, activation, action, error, or
+added, removed, reordered, or rewritten deferral fails acceptance. Evidence
+retains only a bounded, content-free result stream while all apply output is
+drained. This strict equality deliberately turns transient deferral changes
+into an explicit rerun instead of guessing that two pending states are equal.
+
 Tailscale authentication is a one-time human boundary per host and phone.
 On macOS, App Store installation and upgrades are also human-owned boundaries;
 apply may verify and start that exact app but never install or replace it.
