@@ -12,9 +12,13 @@ The 2026-08-27 public-fleet hard cut is implemented and public. The
 host-installer/operator hard cut makes `dev-server` the machine-local installer
 and moves fixed-fleet behavior here to `scripts/fleet`. The complete upstream
 pin names exact `v0.2.29`; its owner red, hermetic green, and routine proof are
-recorded. Cross-repository host-only pin agreement, machine-local apply, reboot,
-outage/recovery, the governed release-bound platform gate, product, and the
-named second-phone gate remain `NOT_RUN`. Retired convergence/doctor evidence
+recorded. Cross-repository host-pin agreement and MacBook, Devbox, and Arch
+apply acceptance are green. The live one-host outage fencing/recovery journey
+is green with the exact tmux lifetime sets preserved, and the release-bound
+S22+ platform gate is green at `OK (75 tests)` with the exact public APK
+restored. Reboot and the named second-phone gate remain `NOT_RUN`. The physical
+product gate failed and remains unclaimed: installed exact `v0.2.29` is no
+longer a byte-distinct newer candidate. Retired convergence/doctor evidence
 does not prove this boundary.
 The 2026-08-28 agent-identity projection hard-cut source is implemented in
 Skíðblaðnir and `dev-server`, both routine verification suites are green, and
@@ -76,8 +80,11 @@ terminal tap-to-IME regression. The accepted 2026-09-07 correction has an
 executed unchanged-runtime S22+ red, a focused `5/5` signed same-version green,
 routine verification, preserved pairing, exact release restoration, a complete
 `75/75` signed candidate, and hands-on IME acceptance. Immutable `v0.2.29` is
-published and upstream-pinned. The release-bound platform and cross-repository
-deployment remain unclaimed.
+published and upstream-pinned. Cross-repository three-host acceptance and
+deployment, live one-host outage/recovery with exact tmux lifetime preservation,
+and the release-bound `OK (75 tests)` platform gate with exact public APK
+restoration are green. The failed physical product gate remains unclaimed and
+cannot admit installed exact `v0.2.29` as a byte-distinct newer candidate.
 Supersedes the P0–P7 roadmap (git history through `6f2d697`); the
 `codex/p1-managed-agent` branch and its worktree implement the superseded
 architecture and are abandoned, not merged.
@@ -970,10 +977,11 @@ click, xterm change, or provider/tmux path exists.
 Red/acceptance: on the approved API-36 S22+, unchanged `v0.2.28` kept IME
 insets hidden after the real trusted tap. The signed same-version candidate
 passed the focused tap/drag, authorization, and strict-protocol matrix `5/5`;
-pairing was
-preserved, exact `v0.2.28` restored, and routine verification is green.
-Complete candidate, release-bound platform, hands-on, publication, and
-deployment remain unclaimed.
+pairing was preserved, exact `v0.2.28` restored, and routine verification is
+green. The complete `75/75` signed candidate, hands-on IME check, immutable
+`v0.2.29` publication, cross-repository deployment, and release-bound
+`OK (75 tests)` platform gate are green; the latter restored the exact public
+APK. The failed physical product gate remains unclaimed.
 
 ## Status
 
@@ -999,8 +1007,8 @@ deployment remain unclaimed.
 | v0 design delta D8 — the Hlíðskjálf mark | Source implemented; the legibility proofs observed red on the shipped geometry then green, drift gate and routine verification (27 gates) green; instrumented suite green on the physical S22+ (39 tests; sole failure is the MacBook-owned provisioning fixture, plus two provisioned-machine skips); hands-on 18dp glance `NOT_RUN` |
 | v0 design delta D5 — the Forge seal | Implemented over D6/D8; routine verification and the instrumented S22+ suite green; the journey's placement assertions ride the MacBook-owned product gate and stay `NOT_RUN` from the Linux devbox, as does the hands-on mark/lit-cold glance |
 | v0 dashboard pull-to-refresh delta | Integrated over D5/D6/D8; red observed and merged-tree routine verification green; feature-tree signed 36-test S22+ platform gate green on 2026-08-27 and current complete 54-test release-bound platform green; hands-on native threshold/resistance/viewport checks `NOT_RUN` |
-| v0 public-fleet distribution and Connect hard cut | Implemented and public; exact-SHA hosted CI, immutable `v0.2.24` release/pin, three-host convergence, fleet doctor, and complete 54-test release-bound S22+ platform green; product and second-phone gates `NOT_RUN` |
-| v0 host-installer/operator boundary hard cut | Skíðblaðnir source implemented: `scripts/fleet` owns fleet workflows; owner red, hermetic green, and routine proof recorded; cross-repository host-only pin agreement plus all host, reboot, outage/recovery, product, and device boundaries `NOT_RUN` |
+| v0 public-fleet distribution and Connect hard cut | Implemented and public; exact-SHA hosted CI, immutable `v0.2.29` release/pins, three-host acceptance/deployment, live one-host outage/recovery with exact tmux lifetimes preserved, and complete 75-test release-bound S22+ platform green with the exact public APK restored; reboot and second-phone `NOT_RUN`; failed product gate unclaimed |
+| v0 host-installer/operator boundary hard cut | Skíðblaðnir `scripts/fleet` owns fleet workflows; owner red, hermetic green, routine proof, exact `v0.2.29` cross-repository pins, three-host apply acceptance, live one-host outage/recovery, and release-bound platform green; reboot and second-phone `NOT_RUN`; failed product gate unclaimed |
 | v0 design delta D9 — detach chrome | Implemented; focused S22+ red observed; routine verification, the exact 47-test S22+ platform gate, and the hands-on header glance green |
 | v0 dashboard card hierarchy delta | Implemented and verified; routine verification, the 47-test physical S22+ platform gate, and hands-on synthetic-fixture visual/accessibility acceptance green on 2026-08-27 |
 | v0 machine-pressure rail delta | Flat typographic-row hard cut implemented with its prior focused/device acceptance green; All-filter density follow-up implemented with its pure red/green, routine verification, signed same-version S22+ component placement, and complete 54-test release-bound platform green. Product and hands-on acceptance remain `NOT_RUN`. |
@@ -1015,5 +1023,5 @@ deployment remain unclaimed.
 | v0 terminal touch-scroll delta | Implemented, released, and deployed; unchanged-source owner reds, rejected synthetic-wheel feasibility, final five-owner and complete 60-test signed same-version S22+ candidate greens, reproducible xterm build, routine verification, exact `v0.2.27` publication, three-host acceptance/doctor, and the complete 60-test release-bound S22+ platform gate are green with pairing unchanged and the exact public APK restored; final targeted mutation rerun, final-candidate hands-on, and live tmux/Claude Code journeys explicitly waived for shipment on 2026-09-04, not passed; product, second-phone, and reboot persistence `NOT_RUN` |
 | v0 phone-local terminal selection-copy delta | Implemented and published in immutable `v0.2.28`. Behavioral xterm and unchanged-runtime API-36 reds, reproducible xterm 171/171, routine verification, focused and complete 38-owner signed same-version S22+ candidate, both release pins, three-gateway verification, and S22+ installation are recorded. Hands-on selection/accessibility was not completed before the tap-to-IME regression was found; its release-bound platform run timed out and is not green. |
 | v0 terminal input-intent arbitration correction | Implemented and published in immutable `v0.2.28`; unchanged-runtime S22+ red, focused owner/collateral greens, complete 38-owner candidate, routine verification, release pins, three-gateway verification, and S22+ installation are recorded. Hands-on remains incomplete and exposed the subsequent tap-to-IME correction. |
-| v0 terminal tap-to-IME correction | Implemented and published in immutable `v0.2.29`; unchanged-runtime `v0.2.28` S22+ red, focused signed same-version tap/drag, authorization, and strict-v3 protocol green `5/5`, complete `75/75` signed candidate, routine verification, pairing preservation, exact release restoration, and hands-on IME acceptance are green. Release-bound platform and cross-repository deployment remain unclaimed. |
+| v0 terminal tap-to-IME correction | Implemented and published in immutable `v0.2.29`; unchanged-runtime `v0.2.28` S22+ red, focused signed same-version tap/drag, authorization, and strict-v3 protocol green `5/5`, complete `75/75` signed candidate, routine verification, pairing preservation, exact release restoration, hands-on IME acceptance, cross-repository deployment, and release-bound `OK (75 tests)` platform are green. The failed physical product gate remains unclaimed. |
 | Push or semantic agent state | Not scheduled; requires a new architecture decision |

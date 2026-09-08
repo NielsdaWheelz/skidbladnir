@@ -20,9 +20,12 @@ host-installer/operator cut makes `dev-server` the machine-local installer and
 this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
 complete upstream pin names exact `v0.2.29`. Its owner red and hermetic green
 are recorded separately. Historical convergence/doctor evidence does not prove
-the new ownership boundary. Cross-repository host-only pin agreement, host
-apply, reboot, outage/recovery, product, second-phone, Linux isolated tmux, S22+
+the new ownership boundary. Cross-repository host-pin agreement, all three host
+applies, and live one-host outage/recovery are green with exact tmux lifetime
+sets preserved. Reboot, second-phone, Linux isolated tmux, broader S22+
 hands-on, and provider-live acceptance remain `NOT_RUN` for this cut. The
+physical product gate failed and remains unclaimed because installed exact
+`v0.2.29` cannot re-enter its byte-distinct-newer update boundary. The
 selection-copy source and its input-intent correction were published as
 immutable `v0.2.28`, pinned across both repositories, verified on all three
 gateways, and installed on the S22+. Hands-on use then exposed the unfocused
@@ -30,7 +33,8 @@ tap-to-IME regression. Its correction has an executed unchanged-runtime S22+
 red, a focused `5/5` signed same-version green, routine verification, preserved
 pairing, exact `v0.2.28` restoration, a complete `75/75` signed candidate, and
 hands-on IME acceptance. Immutable `v0.2.29` is published and upstream-pinned.
-The release-bound platform and cross-repository deployment remain unclaimed.
+Cross-repository deployment and the release-bound S22+ platform gate are green
+at `OK (75 tests)`, with the exact public APK restored.
 The rejected 2026-08-28 agent-interaction-state candidate and its evidence
 prove no active target.
 

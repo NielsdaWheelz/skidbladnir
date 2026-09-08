@@ -2,10 +2,13 @@
 
 Status: accepted contract with the Skíðblaðnir side of the
 host-installer/operator hard cut implemented. The complete upstream pin names
-exact `v0.2.27`; its owner red, hermetic green, and routine proof are recorded.
-Cross-repository host-only pin agreement, machine-local apply, reboot,
-outage/recovery, the governed release-bound platform gate, the physical product
-journey, and the named second-phone gate remain `NOT_RUN`. Retired
+exact `v0.2.29`; its owner red, hermetic green, and routine proof are recorded.
+Cross-repository host-pin agreement, MacBook/Devbox/Arch apply acceptance, and
+live one-host outage/recovery are green with exact tmux lifetime preservation.
+The release-bound S22+ platform gate is green at `OK (75 tests)` with the exact
+public APK restored. Reboot and the named second-phone gate remain `NOT_RUN`.
+The physical product journey failed and remains unclaimed because installed
+exact `v0.2.29` cannot satisfy its byte-distinct-newer update admission. Retired
 convergence/doctor evidence does not prove this boundary.
 [architecture.md](architecture.md) owns the resulting product contract and
 [roadmap.md](roadmap.md) owns delivery order; this document owns the slice's
