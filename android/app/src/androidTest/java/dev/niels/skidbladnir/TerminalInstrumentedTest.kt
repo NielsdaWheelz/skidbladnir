@@ -33,6 +33,7 @@ import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.setContent
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -702,6 +703,7 @@ class TerminalInstrumentedTest {
     fun testActivityDisposesOwnedWebViewsBeforeReplacementAndDestroy() {
         val initialUnavailable = TerminalTestProbe.unavailable
         val replacementProbe = TerminalProbe()
+        val finalProbe = TerminalProbe()
         val scenario = ActivityScenario.launch(TerminalTestActivity::class.java)
         try {
             awaitTerminal(scenario)
@@ -714,18 +716,32 @@ class TerminalInstrumentedTest {
             )
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             assertEquals(
-                "case=test-owner-replacement route=lifecycle unavailable=true",
+                "case=test-owner-webview-replacement route=lifecycle unavailable=false",
                 1L,
                 initialUnavailable.count,
+            )
+            onUi(scenario) { activity -> activity.setContent {} }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            assertEquals(
+                "case=test-owner-compose-replacement route=lifecycle unavailable=false",
+                1L,
+                replacementProbe.unavailable.count,
+            )
+            onUi(scenario) { activity ->
+                activity.setContentView(createTestTerminal(activity, finalProbe))
+            }
+            assertTrue(
+                "case=test-owner-final route=lifecycle ready=false",
+                finalProbe.ready.await(5, TimeUnit.SECONDS),
             )
         } finally {
             scenario.close()
         }
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         assertEquals(
-            "case=test-owner-destroy route=lifecycle unavailable=true",
+            "case=test-owner-destroy route=lifecycle unavailable=false",
             1L,
-            replacementProbe.unavailable.count,
+            finalProbe.unavailable.count,
         )
     }
 
