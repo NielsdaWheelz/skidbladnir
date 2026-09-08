@@ -471,11 +471,11 @@ android_platform_helper_self_test() (
   local minimum_timeout regression_timeout current_timeout maximum_timeout
   minimum_timeout="$(android_instrumentation_timeout_for_tests 1)"
   regression_timeout="$(android_instrumentation_timeout_for_tests 60)"
-  current_timeout="$(android_instrumentation_timeout_for_tests 74)"
+  current_timeout="$(android_instrumentation_timeout_for_tests 75)"
   maximum_timeout="$(android_instrumentation_timeout_for_tests 140)"
   if [[ "$minimum_timeout" != 66 ||
     "$regression_timeout" != 420 ||
-    "$current_timeout" != 504 ||
+    "$current_timeout" != 510 ||
     "$maximum_timeout" != 900 ]]; then
     printf 'Android instrumentation timeout policy does not match its bounded contract\n' >&2
     return 1
