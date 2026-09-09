@@ -2,9 +2,9 @@
 
 The 2026-09-08 [readable terminal sizing](terminal-readable-sizing.md) target
 replaces the 80-column/protected-desktop sizing contract with chosen phone text
-size and tmux latest-client sizing. Its implementation landed 2026-09-08 with
-routine verification green; its runtime acceptance is `NOT_RUN`, and historical
-evidence below does not prove this target.
+size and tmux latest-client sizing. Its implementation landed 2026-09-08 and is
+published in immutable `v0.2.30`; its runtime acceptance is `NOT_RUN`, and
+historical evidence below does not prove this target.
 
 Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
@@ -24,7 +24,7 @@ final-candidate hands-on journey, and live tmux/Claude Code journey were
 explicitly waived for shipment on 2026-09-04, not passed. The
 host-installer/operator cut makes `dev-server` the machine-local installer and
 this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
-complete upstream pin names exact `v0.2.29`. Its owner red and hermetic green
+complete upstream pin names exact `v0.2.30`. Its owner red and hermetic green
 are recorded separately. Historical convergence/doctor evidence does not prove
 the new ownership boundary. Cross-repository host-pin agreement, all three host
 applies, and live one-host outage/recovery are green with exact tmux lifetime

@@ -11,7 +11,7 @@ delta's named Codex hook-digest and hands-on terminal/Gboard checks remain
 The 2026-08-27 public-fleet hard cut is implemented and public. The
 host-installer/operator hard cut makes `dev-server` the machine-local installer
 and moves fixed-fleet behavior here to `scripts/fleet`. The complete upstream
-pin names exact `v0.2.29`; its owner red, hermetic green, and routine proof are
+pin names exact `v0.2.30`; its owner red, hermetic green, and routine proof are
 recorded. Cross-repository host-pin agreement and MacBook, Devbox, and Arch
 apply acceptance are green. The live one-host outage fencing/recovery journey
 is green with the exact tmux lifetime sets preserved, and the release-bound
@@ -1001,7 +1001,8 @@ Implementation and the observable unit-tier reds/greens landed 2026-09-08 on
 branch `terminal-readable-sizing` with `./scripts/test verify` green; the
 owner runtime proofs (isolated gateway+tmux integration, live, Android
 platform matrix, hands-on S22+ journey, designer readability review) are
-`NOT_RUN` pending explicit approval.
+`NOT_RUN` pending explicit approval. Immutable `v0.2.30` is published and
+upstream-pinned; cross-repository deployment remains unclaimed.
 Publication/deployment are separate scope. This target supersedes conflicting
 historical S2/S3, theme, key-deck, and page-version statements;
 historical results remain historical.
@@ -1010,7 +1011,7 @@ historical results remain historical.
 
 | Slice | Status |
 | --- | --- |
-| v0 readable terminal sizing | Implemented 2026-09-08 (`terminal-readable-sizing`); `./scripts/test verify` green; owner runtime proofs and hands-on acceptance `NOT_RUN` |
+| v0 readable terminal sizing | Implemented 2026-09-08 and published in immutable `v0.2.30` (upstream-pinned); `./scripts/test verify` green; owner runtime proofs, cross-repository deployment, and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |

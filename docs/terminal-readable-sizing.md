@@ -1,8 +1,8 @@
 # Readable terminal sizing
 
-Status: implemented 2026-09-08 on branch `terminal-readable-sizing` (paired
-dev-server branch `codex/terminal-readable-sizing` makes `window-size latest`
-explicit). Routine verification (`./scripts/test verify`) is green and the
+Status: implemented 2026-09-08 (merged with its paired dev-server change that
+makes `window-size latest` explicit) and published in immutable `v0.2.30`,
+upstream-pinned. Routine verification (`./scripts/test verify`) is green and the
 deletion set is gone from production code. The owner runtime proofs are
 `NOT_RUN`: the isolated gateway+tmux integration scenario, the live fixture,
 the Android instrumentation matrix (`platform`), the hands-on S22+ journey,
