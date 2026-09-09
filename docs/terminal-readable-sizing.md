@@ -3,7 +3,10 @@
 Status: implemented 2026-09-08 (merged with its paired dev-server change that
 makes `window-size latest` explicit) and published in immutable `v0.2.30`,
 upstream-pinned. Routine verification (`./scripts/test verify`) is green and the
-deletion set is gone from production code. The owner runtime proofs are
+deletion set is gone from production code. The `published-release` gate is
+green; the MacBook and devbox hosts run `v0.2.30` after identity-preserving
+fleet applies and the phone runs `v0.2.30`; the arch host awaits its
+interactive apply. The owner runtime proofs are
 `NOT_RUN`: the isolated gateway+tmux integration scenario, the live fixture,
 the Android instrumentation matrix (`platform`), the hands-on S22+ journey,
 and the designer readability review all await explicit approval. `NOT_RUN`
