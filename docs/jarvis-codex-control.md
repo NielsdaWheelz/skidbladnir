@@ -4,6 +4,15 @@ Approved target, amended 2026-09-09. Implementation is complete on the isolated
 feature branches; live acceptance remains `NOT_RUN`. Repository names below
 identify sibling checkouts, not new packages.
 
+Host-deployment extension approved 2026-09-09: `dev-server/SPEC.md` now owns
+shared App Server installation/start on MacBook and Arch as well as Devbox.
+This supersedes the original Devbox-only installer/PATH/Forge restrictions
+below, not Jarvis's devbox-local control scope. All hosts use the same exact
+Codex pin and three local account services; no remote Jarvis control is added.
+Manual clients may explicitly request native `--yolo`; Jarvis's terminal
+launch policy remains workspace-write/on-request. Server handshakes are not
+the live worker/tmux/phone acceptance defined here.
+
 ## Goal and scope
 
 From ordinary Jarvis conversation, start and control Codex workers on the
