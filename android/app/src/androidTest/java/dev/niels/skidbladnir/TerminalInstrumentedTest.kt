@@ -15,6 +15,7 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.ActionMode
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -47,6 +48,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.math.ceil
+import kotlin.math.floor
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
@@ -77,6 +80,10 @@ private const val TERMINAL_SELECTION_COPY = "Copy"
 private const val TERMINAL_SELECTION_TOO_LARGE = "Selection is too large to copy."
 private const val ACCESSIBILITY_STABILITY_MILLIS = 1_250L
 private const val IME_STABILITY_MILLIS = 1_000L
+private const val TOO_SMALL_HEIGHT_PX = 4
+// A system text scale well clear of 1.0, so the recomputed font cannot coincide
+// with the unscaled conversion.
+private const val SCALED_FONT_SCALE = 1.5f
 
 private enum class TerminalSelectionMouseMode(val control: String) {
     Off("\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l"),
@@ -772,10 +779,6 @@ class TerminalInstrumentedTest {
             assertEquals(listOf(false, false, true, false, false), settings)
             assertEquals(100, onUi(scenario) { webView.settings.textZoom })
             assertFalse(onUi(scenario) { webView.isHorizontalScrollBarEnabled })
-            // Geometry reaches native only once the vendored font has settled,
-            // so every sample published across page load must already conform.
-            val size = awaitSettledSizeWithAllSamplesConforming()
-            assertTrue("terminal published an out-of-range size: $size", size.first in 80..240 && size.second in 5..120)
         }
     }
 
@@ -2826,7 +2829,7 @@ class TerminalInstrumentedTest {
             assertEquals("case=recreation-fresh route=containment webview-y", 0, onUi(scenario) { webView.scrollY })
             assertTrue(
                 "case=recreation-fresh route=geometry",
-                geometry.columns >= 80 && geometry.rows >= 5,
+                geometry.columns >= 20 && geometry.rows >= 5,
             )
         }
     }
@@ -3306,6 +3309,10 @@ class TerminalInstrumentedTest {
             """{"kind":"Accessory","key":"Control","extra":true}""",
             """{"kind":"Accessory","key":1}""",
             """{"kind":"Accessory","key":"Meta"}""",
+            """{"kind":"FontSize"}""",
+            """{"kind":"FontSize","fontSizeCssPx":"16"}""",
+            """{"kind":"FontSize","fontSizeCssPx":0}""",
+            """{"kind":"FontSize","fontSizeCssPx":16,"extra":true}""",
             """{"kind":"Unknown"}""",
         ).withIndex()) {
             TerminalTestProbe.reset()
@@ -3321,7 +3328,7 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun exactPageProtocolRejectsMalformedAndOutOfOrderSelectionMessages() {
+    fun exactPageProtocolRejectsMalformedOutOfBoundsAndOutOfOrderMessages() {
         val payloads = listOf(
             """{"kind":"ControlState","state":"Armed"}""",
             """{"kind":"ModifierState","control":"Armed","alt":"Off","extra":true}""",
@@ -3329,6 +3336,12 @@ class TerminalInstrumentedTest {
             """{"kind":"ModifierState","control":"Locked","alt":"Off"}""",
             """{"kind":"ModifierState","control":"Armed"}""",
             """{"kind":"ImeRequested","extra":true}""",
+            """{"kind":"ViewportTooSmall","extra":true}""",
+            """{"kind":"Resize","columns":"40","rows":18}""",
+            """{"kind":"Resize","columns":19,"rows":18}""",
+            """{"kind":"Resize","columns":241,"rows":18}""",
+            """{"kind":"Resize","columns":40,"rows":4}""",
+            """{"kind":"Resize","columns":40,"rows":121}""",
             """{"kind":"SelectionAvailable","anchorX":0.5,"anchorY":0.5,"text":"x"}""",
             """{"kind":"SelectionStarted","generation":1}""",
             """{"kind":"SelectionStarted","generation":"01"}""",
@@ -3565,23 +3578,27 @@ class TerminalInstrumentedTest {
     }
 
     @Test
-    fun pagePortHandshakeIsExactVersionThree() {
+    fun pagePortHandshakeIsExactVersionFour() {
         assertEquals(
-            "case=handshake-v3 route=page valid",
+            "case=handshake-v4 route=page valid",
             "{\"kind\":\"PageFailure\"}",
             missingDomHandshake(
-                """{"kind":"PagePort","version":3,"longPressMilliseconds":500}""",
-                "handshake-v3",
+                """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":16}""",
+                "handshake-v4",
             ),
         )
         for ((index, payload) in listOf(
-            """{"kind":"PagePort","version":1}""",
-            """{"kind":"PagePort","version":2,"longPressMilliseconds":500}""",
-            """{"kind":"PagePort","version":3}""",
-            """{"kind":"PagePort","version":3,"longPressMilliseconds":0}""",
-            """{"kind":"PagePort","version":3,"longPressMilliseconds":1.5}""",
-            """{"kind":"PagePort","version":3,"longPressMilliseconds":"500"}""",
-            """{"kind":"PagePort","version":3,"longPressMilliseconds":500,"extra":true}""",
+            """{"kind":"PagePort","version":5,"longPressMilliseconds":500,"fontSizeCssPx":16}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":0,"fontSizeCssPx":16}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":1.5,"fontSizeCssPx":16}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":"500","fontSizeCssPx":16}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":0}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":-16}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":"16"}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":null}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":1e999}""",
+            """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":16,"extra":true}""",
         ).withIndex()) {
             assertNull(
                 "case=handshake-invalid-$index route=page expectedCount=0 index=0",
@@ -3697,7 +3714,7 @@ class TerminalInstrumentedTest {
 
     @Test
     fun duplicatePagePortFailsClosed() {
-        val payload = """{"kind":"PagePort","version":3,"longPressMilliseconds":500}"""
+        val payload = """{"kind":"PagePort","version":4,"longPressMilliseconds":500,"fontSizeCssPx":16}"""
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
             postRawHandshake(webView, payload)
@@ -3857,45 +3874,311 @@ class TerminalInstrumentedTest {
         }
     }
 
+    // The one production-layout sizing matrix: whole cells at the saved nominal
+    // size, page-driven font changes, keyboard/rotation refits, and the
+    // too-small episode with its recovery.
     @Test
-    fun portraitScaleReturnsAndModifiersResetAfterAFullRotation() {
+    fun readableSizingFitsWholeCellsAtTheSavedNominalSize() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
-            val initialSize = requireNotNull(TerminalTestProbe.sizes.poll(5, TimeUnit.SECONDS))
-            val initialScreenWidth = evaluate(
-                webView,
-                "document.querySelector('.xterm-screen').getBoundingClientRect().width",
-            ).toDouble()
-            TerminalTestProbe.sizes.clear()
+            val page = requireNotNull(TerminalTestProbe.page)
+            val metrics = onUi(scenario) { webView.resources.displayMetrics }
+            fun cssPx(nominalSp: Int): Double =
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, nominalSp.toFloat(), metrics)
+                    .toDouble() / metrics.density
 
-            armModifiers(scenario, webView, BOTH_ARMED)
-            onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-            awaitValue(webView, "window.innerWidth > window.innerHeight", "true")
-            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF))
+            val initial = awaitLatestTerminalSize("sizing-default")
+            assertFalse(
+                "case=sizing-default route=ordering resize-before-ready",
+                TerminalTestProbe.resizedBeforeReady,
+            )
+            assertFittedGrid(webView, initial, cssPx(16), "sizing-default")
+            assertLastCellsRender(scenario, webView, page, initial, "sizing-default")
+
+            clearTerminalEvents()
+            val smaller = refitAtTextSize(webView, page, 12, cssPx(12), "sizing-12")
+            assertTrue(
+                "case=sizing-12 route=geometry initial=$initial smaller=$smaller",
+                smaller.first > initial.first && smaller.second > initial.second,
+            )
+            val larger = refitAtTextSize(webView, page, 24, cssPx(24), "sizing-24")
+            assertTrue(
+                "case=sizing-24 route=geometry initial=$initial larger=$larger",
+                larger.first < initial.first && larger.second < initial.second,
+            )
+            assertEquals(
+                "case=sizing-reset route=geometry",
+                initial,
+                refitAtTextSize(webView, page, 16, cssPx(16), "sizing-reset"),
+            )
             assertNull(
-                "orientation reset emitted terminal input",
+                "case=sizing-font route=input expectedCount=0 index=0",
                 TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS),
             )
-            val landscapeSize = awaitSettledSizeWithAllSamplesConforming()
-            assertTrue("landscape terminal dropped below 80 columns: $landscapeSize", landscapeSize.first >= 80)
-            TerminalTestProbe.sizes.clear()
+            assertNull("case=sizing-font route=event expectedCount=0 index=0", pollEvent())
 
+            armModifiers(scenario, webView, BOTH_ARMED)
+            TerminalTestProbe.sizes.clear()
+            onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+            awaitValue(webView, "window.innerWidth > window.innerHeight", "true")
+            assertEvent(TerminalTestEvent.Modifiers(OFF_OFF), "sizing-rotation")
+            assertNull(
+                "case=sizing-rotation route=input expectedCount=0 index=0",
+                TerminalTestProbe.input.poll(250, TimeUnit.MILLISECONDS),
+            )
+            assertFittedGrid(webView, awaitLatestTerminalSize("sizing-landscape"), cssPx(16), "sizing-landscape")
+            TerminalTestProbe.sizes.clear()
             onUi(scenario) { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
             awaitValue(webView, "window.innerHeight > window.innerWidth", "true")
-            val finalSize = awaitSettledSizeWithAllSamplesConforming()
-            val finalScreenWidth = evaluate(
-                webView,
-                "document.querySelector('.xterm-screen').getBoundingClientRect().width",
-            ).toDouble()
+            assertEquals("case=sizing-portrait route=geometry", initial, awaitLatestTerminalSize("sizing-portrait"))
 
-            assertEquals(
-                "portrait cell scale drifted after rotation",
-                initialScreenWidth / initialSize.first,
-                finalScreenWidth / finalSize.first,
-                0.2,
+            TerminalTestProbe.sizes.clear()
+            focusTerminal(scenario, webView)
+            onUi(scenario) { requireNotNull(webView.windowInsetsController).show(WindowInsets.Type.ime()) }
+            awaitTerminalIme(scenario, webView, visible = true, caseId = "sizing-ime")
+            val withIme = awaitLatestTerminalSize("sizing-ime")
+            assertFittedGrid(webView, withIme, cssPx(16), "sizing-ime")
+            assertTrue(
+                "case=sizing-ime route=geometry initial=$initial withIme=$withIme",
+                withIme.first == initial.first && withIme.second < initial.second,
             )
-            assertEquals(0, onUi(scenario) { webView.scrollX })
+            TerminalTestProbe.sizes.clear()
+            hideTerminalIme(scenario, webView, "sizing-ime-hidden")
+            assertEquals("case=sizing-ime-hidden route=geometry", initial, awaitLatestTerminalSize("sizing-ime-hidden"))
+
+            // The page's own too-small contract; TerminalScreen owns gating user ingress
+            // behind it, and TerminalChromeInstrumentedTest owns that proof.
+            val screenBefore = terminalScreenSize(webView, "sizing-too-small-before")
+            TerminalTestProbe.sizes.clear()
+            clearTerminalEvents()
+            onUi(scenario) {
+                webView.layoutParams = webView.layoutParams.apply { height = TOO_SMALL_HEIGHT_PX }
+            }
+            assertNotNull(
+                "case=sizing-too-small route=geometry expectedCount=1 index=0",
+                TerminalTestProbe.viewportTooSmall.poll(5, TimeUnit.SECONDS),
+            )
+            assertNull(
+                "case=sizing-too-small route=geometry resize expectedCount=0 index=0",
+                TerminalTestProbe.sizes.poll(250, TimeUnit.MILLISECONDS),
+            )
+            assertEquals(
+                "case=sizing-too-small route=geometry screen",
+                screenBefore,
+                terminalScreenSize(webView, "sizing-too-small"),
+            )
+            clearTerminalEvents()
+            page.write("\u001b[c".toByteArray())
+            val reply = TerminalTestProbe.input.poll(5, TimeUnit.SECONDS)
+            assertTrue(
+                "case=sizing-too-small route=input reply expectedLength=7 actualLength=${reply?.size ?: -1}",
+                reply != null && reply.contentEquals("\u001b[?1;2c".toByteArray()),
+            )
+            onUi(scenario) {
+                webView.layoutParams = webView.layoutParams.apply { height = ViewGroup.LayoutParams.MATCH_PARENT }
+            }
+            assertEquals(
+                "case=sizing-recovery route=geometry",
+                initial,
+                TerminalTestProbe.sizes.poll(5, TimeUnit.SECONDS),
+            )
+            assertNull(
+                "case=sizing-recovery route=geometry too-small expectedCount=1 index=1",
+                TerminalTestProbe.viewportTooSmall.poll(250, TimeUnit.MILLISECONDS),
+            )
         }
+
+        // The same nominal size under a larger system text scale: the page font is
+        // recomputed from the configuration in force, never from a fixed CSS number.
+        val scaledFonts = listOf("sizing-constructed" to 1f, "sizing-font-scale" to SCALED_FONT_SCALE)
+            .map { (caseId, fontScale) ->
+                TerminalTestProbe.reset()
+                val probe = TerminalProbe()
+                ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+                    val webView = onUi(scenario) { activity ->
+                        val configuration = Configuration(activity.resources.configuration)
+                            .apply { this.fontScale = fontScale }
+                        createTestTerminal(
+                            activity.createConfigurationContext(configuration),
+                            probe,
+                            nominalTextSizeSp = 20,
+                        ).also(activity::setContentView)
+                    }
+                    assertTrue("case=$caseId route=lifecycle ready", probe.ready.await(5, TimeUnit.SECONDS))
+                    val metrics = onUi(scenario) { webView.resources.displayMetrics }
+                    val fontSizeCssPx =
+                        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 20f, metrics).toDouble() / metrics.density
+                    awaitTerminalFontSize(webView, fontSizeCssPx, caseId)
+                    fontSizeCssPx
+                }
+            }
+        // Fixture precondition, not a product claim: the scaled configuration must
+        // actually change the SP conversion for the two page-font assertions above to differ.
+        check(scaledFonts[1] > scaledFonts[0]) {
+            "case=sizing-font-scale route=fixture unscaled=${scaledFonts[0]} scaled=${scaledFonts[1]}"
+        }
+    }
+
+    private fun refitAtTextSize(
+        webView: WebView,
+        page: TerminalPage,
+        nominalSp: Int,
+        expectedFontSizeCssPx: Double,
+        caseId: String,
+    ): Pair<Int, Int> {
+        TerminalTestProbe.sizes.clear()
+        page.setTextSize(nominalSp)
+        val size = awaitLatestTerminalSize(caseId)
+        assertFittedGrid(webView, size, expectedFontSizeCssPx, caseId)
+        return size
+    }
+
+    private fun assertFittedGrid(
+        webView: WebView,
+        size: Pair<Int, Int>,
+        expectedFontSizeCssPx: Double,
+        caseId: String,
+    ) {
+        val layout = JSONObject(
+            evaluateSafely(
+                webView,
+                """
+                (function () {
+                    var host = document.getElementById('terminal');
+                    var hostBounds = host.getBoundingClientRect();
+                    var screen = document.querySelector('.xterm-screen').getBoundingClientRect();
+                    var rows = document.querySelector('.xterm-rows');
+                    return JSON.stringify({
+                        hostRight: hostBounds.right,
+                        hostBottom: hostBounds.bottom,
+                        screenRight: screen.right,
+                        screenBottom: screen.bottom,
+                        screenWidth: screen.width,
+                        screenHeight: screen.height,
+                        fontSize: parseFloat(getComputedStyle(rows).fontSize),
+                        rowCount: rows.children.length
+                    });
+                }())
+                """.trimIndent(),
+                caseId,
+            ),
+        )
+        val cellWidth = layout.getDouble("screenWidth") / size.first
+        val cellHeight = layout.getDouble("screenHeight") / size.second
+        assertEquals(
+            "case=$caseId route=font fontSizeCssPx",
+            expectedFontSizeCssPx,
+            layout.getDouble("fontSize"),
+            0.05,
+        )
+        assertEquals("case=$caseId route=geometry rendered-rows", size.second, layout.getInt("rowCount"))
+        assertTrue(
+            "case=$caseId route=geometry screen-inside-host screen=${layout.getDouble("screenRight")}x" +
+                "${layout.getDouble("screenBottom")} host=${layout.getDouble("hostRight")}x${layout.getDouble("hostBottom")}",
+            layout.getDouble("screenRight") <= layout.getDouble("hostRight") + 0.5 &&
+                layout.getDouble("screenBottom") <= layout.getDouble("hostBottom") + 0.5,
+        )
+    }
+
+    // A bold full block at the top-right cell and a bold wide glyph across the
+    // last two cells of the last row must paint inside the WebView's pixels.
+    private fun assertLastCellsRender(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        page: TerminalPage,
+        size: Pair<Int, Int>,
+        caseId: String,
+    ) {
+        val (columns, rows) = size
+        applyControlFixture(
+            page,
+            "\u001b[2J\u001b[1;${columns}H\u001b[1m\u2588\u001b[0m" +
+                "\u001b[$rows;${columns - 1}H\u001b[1m\u5168\u001b[0m",
+            caseId,
+        )
+        awaitVisualState(webView)
+        val screen = JSONObject(
+            evaluateSafely(
+                webView,
+                """
+                (function () {
+                    var screen = document.querySelector('.xterm-screen').getBoundingClientRect();
+                    return JSON.stringify({
+                        left: screen.left,
+                        top: screen.top,
+                        width: screen.width,
+                        height: screen.height,
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight
+                    });
+                }())
+                """.trimIndent(),
+                caseId,
+            ),
+        )
+        val bitmap = copyWebView(scenario, webView)
+        val scaleX = bitmap.width / screen.getDouble("viewportWidth")
+        val scaleY = bitmap.height / screen.getDouble("viewportHeight")
+        val cellWidth = screen.getDouble("width") / columns * scaleX
+        val cellHeight = screen.getDouble("height") / rows * scaleY
+        val top = screen.getDouble("top") * scaleY
+        val lastColumnLeft = screen.getDouble("left") * scaleX + (columns - 1) * cellWidth
+        val lastRowTop = top + (rows - 1) * cellHeight
+        assertTrue(
+            "case=$caseId route=render last-cell-inside bitmap=${bitmap.width}x${bitmap.height} " +
+                "right=${lastColumnLeft + cellWidth} bottom=${lastRowTop + cellHeight}",
+            lastColumnLeft + cellWidth <= bitmap.width + 0.5 && lastRowTop + cellHeight <= bitmap.height + 0.5,
+        )
+        assertTrue(
+            "case=$caseId route=render top-right-edge",
+            bitmap.hasBrightPixel(lastColumnLeft + cellWidth * 0.75, top, lastColumnLeft + cellWidth, top + cellHeight),
+        )
+        assertTrue(
+            "case=$caseId route=render bottom-right-half",
+            bitmap.hasBrightPixel(lastColumnLeft, lastRowTop, lastColumnLeft + cellWidth, lastRowTop + cellHeight),
+        )
+        assertTrue(
+            "case=$caseId route=render bottom-edge",
+            bitmap.hasBrightPixel(
+                lastColumnLeft - cellWidth,
+                lastRowTop + cellHeight * 0.5,
+                lastColumnLeft + cellWidth,
+                lastRowTop + cellHeight,
+            ),
+        )
+    }
+
+    private fun Bitmap.hasBrightPixel(left: Double, top: Double, right: Double, bottom: Double): Boolean {
+        for (y in floor(top).toInt().coerceAtLeast(0) until ceil(bottom).toInt().coerceAtMost(height)) {
+            for (x in floor(left).toInt().coerceAtLeast(0) until ceil(right).toInt().coerceAtMost(width)) {
+                val pixel = getPixel(x, y)
+                if (Color.red(pixel) > 0x80 && Color.green(pixel) > 0x80 && Color.blue(pixel) > 0x80) return true
+            }
+        }
+        return false
+    }
+
+    private fun terminalScreenSize(webView: WebView, caseId: String): String = evaluateSafely(
+        webView,
+        """
+        (function () {
+            var screen = document.querySelector('.xterm-screen').getBoundingClientRect();
+            return screen.width + 'x' + screen.height;
+        }())
+        """.trimIndent(),
+        caseId,
+    )
+
+    private fun awaitTerminalFontSize(webView: WebView, expectedCssPx: Double, caseId: String) {
+        val expression = "parseFloat(getComputedStyle(document.querySelector('.xterm-rows')).fontSize)"
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        var actual = Double.NaN
+        while (System.nanoTime() < deadline) {
+            actual = evaluateSafely(webView, expression, caseId).toDouble()
+            if (kotlin.math.abs(actual - expectedCssPx) <= 0.05) return
+            Thread.sleep(50)
+        }
+        throw AssertionError("case=$caseId route=font expected=$expectedCssPx actual=$actual")
     }
 
     @Test
@@ -4046,14 +4329,14 @@ class TerminalInstrumentedTest {
     }
 
     private fun awaitLatestTerminalSize(caseId: String): Pair<Int, Int> {
-        var latest = awaitTerminalSize { it.first in 80..240 && it.second in 5..120 }
+        var latest = awaitTerminalSize { it.first in 20..240 && it.second in 5..120 }
         val hardDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         var quietDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250)
         while (System.nanoTime() < hardDeadline && System.nanoTime() < quietDeadline) {
             val sample = TerminalTestProbe.sizes.poll(50, TimeUnit.MILLISECONDS) ?: continue
             assertTrue(
                 "case=$caseId route=geometry sample-range",
-                sample.first in 80..240 && sample.second in 5..120,
+                sample.first in 20..240 && sample.second in 5..120,
             )
             latest = sample
             quietDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250)
@@ -6119,20 +6402,6 @@ class TerminalInstrumentedTest {
             if (predicate(size)) return size
         }
         throw AssertionError("terminal did not publish the required size")
-    }
-
-    // Every published sample resizes the shared PTY, so a single transitional
-    // sample below 80 columns is already the regression, not noise to skip.
-    private fun awaitSettledSizeWithAllSamplesConforming(): Pair<Int, Int> {
-        var latest = awaitTerminalSize { true }
-        assertTrue("terminal published below 80 columns: $latest", latest.first >= 80)
-        val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
-        while (System.nanoTime() < settleDeadline) {
-            val size = TerminalTestProbe.sizes.poll(100, TimeUnit.MILLISECONDS) ?: continue
-            assertTrue("terminal published below 80 columns: $size", size.first >= 80)
-            latest = size
-        }
-        return latest
     }
 
     private fun awaitVisualState(webView: WebView) {

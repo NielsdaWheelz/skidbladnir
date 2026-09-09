@@ -49,6 +49,8 @@ internal sealed interface SkidbladnirUiState {
         val target: SessionTarget,
         val attempt: Int,
         val connection: TerminalUiStatus,
+        val viewport: TerminalViewport,
+        val textSize: TerminalTextSizeState,
         val kill: KillState?,
         val rename: RenameState? = null,
     ) : Workspace
@@ -125,8 +127,15 @@ internal sealed interface TerminalUiStatus {
     data object Preparing : TerminalUiStatus
     data object Verifying : TerminalUiStatus
     data object Connecting : TerminalUiStatus
-    data class Connected(val attachedClients: Int, val geometry: TerminalGeometry) : TerminalUiStatus
+    data class Connected(val attachedClients: Int) : TerminalUiStatus
     data class ReconnectRequired(val message: String) : TerminalUiStatus
+}
+
+/** The page's last fitted grid, retained independently of the connection. */
+internal sealed interface TerminalViewport {
+    data object Pending : TerminalViewport
+    data class Fitted(val columns: Int, val rows: Int) : TerminalViewport
+    data object TooSmall : TerminalViewport
 }
 
 internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: TerminalUiStatus): Boolean =
@@ -134,6 +143,31 @@ internal fun terminalActionAdmissible(machineCanMutate: Boolean, connection: Ter
         is TerminalUiStatus.Connected, is TerminalUiStatus.ReconnectRequired -> true
         TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> false
     }
+
+/** User ingress (touch, focus, typing, accessories) needs both an attachment and a fitted grid. */
+internal fun terminalInputAdmissible(connection: TerminalUiStatus, viewport: TerminalViewport): Boolean =
+    connection is TerminalUiStatus.Connected && viewport is TerminalViewport.Fitted
+
+/** The page exists and is still attachable, so its font and recovery surfaces are live. */
+internal fun terminalPageLive(connection: TerminalUiStatus): Boolean = when (connection) {
+    TerminalUiStatus.Connecting, is TerminalUiStatus.Connected -> true
+    TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, is TerminalUiStatus.ReconnectRequired -> false
+}
+
+/** One admission for the sheet's three controls and for the write they order: page live, no write in flight, a real step in range. */
+internal fun terminalTextSizeStepAdmissible(
+    textSize: TerminalTextSizeState.Ready,
+    connection: TerminalUiStatus,
+    nominalSp: Int,
+): Boolean = terminalPageLive(connection) && textSize.write != TerminalTextSizeWrite.Pending &&
+    nominalSp != textSize.nominalSp && nominalSp in TERMINAL_TEXT_SIZE_RANGE_SP
+
+/** The sheet shows only over a live page, so a lost attachment closes it. */
+internal fun terminalTextSizeSheet(
+    textSize: TerminalTextSizeState,
+    connection: TerminalUiStatus,
+): TerminalTextSizeState.Ready? =
+    (textSize as? TerminalTextSizeState.Ready)?.takeIf { it.sheetOpen && terminalPageLive(connection) }
 
 internal data class ForgeCarry(val forge: ForgeState?, val recovery: ForgeRecovery?)
 internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
@@ -585,6 +619,7 @@ internal class SkidbladnirController(
         Thread(task, "skidbladnir-machine-store").apply { isDaemon = true }
     }
     private val store = MachineStore(context.applicationContext, storage)
+    private val textSizeStore = TerminalTextSizeStore(context)
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
     private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
@@ -737,6 +772,7 @@ internal class SkidbladnirController(
         stopForBackground()
         pendingFleetScan = null
         pendingFleetPersistence = null
+        textSizeStore.close()
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
@@ -1211,13 +1247,17 @@ internal class SkidbladnirController(
 
     private fun enterTerminal(machine: MachineState, target: SessionTarget) {
         leaveTerminal()
+        val attempt = nextTerminalAttempt++
         state = SkidbladnirUiState.Terminal(
             machine = machine,
             target = target,
-            attempt = nextTerminalAttempt++,
+            attempt = attempt,
             connection = TerminalUiStatus.Preparing,
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = null,
         )
+        readTextSize(attempt)
     }
 
     private fun enterCreatedTerminal(target: SessionTarget, requiredMutationFence: Long) {
@@ -1229,9 +1269,43 @@ internal class SkidbladnirController(
             target = target,
             attempt = attempt,
             connection = TerminalUiStatus.Verifying,
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = null,
         )
         createdTerminalAdmission = CreatedTerminalAdmission(attempt, requiredMutationFence)
+        readTextSize(attempt)
+    }
+
+    /** The saved size is loaded before the page exists; the page is created only once it is Ready. */
+    private fun readTextSize(attempt: Int) {
+        textSizeStore.read(
+            onReady = { nominalSp ->
+                updateTextSize(
+                    attempt,
+                    TerminalTextSizeState.Ready(nominalSp, TerminalTextSizeWrite.Idle, sheetOpen = false),
+                )
+            },
+            onUnavailable = { updateTextSize(attempt, TerminalTextSizeState.Unavailable) },
+        )
+    }
+
+    private fun updateTextSize(attempt: Int, textSize: TerminalTextSizeState) {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.attempt != attempt) return
+        state = current.copy(textSize = textSize)
+    }
+
+    /** A write outlives the sheet, so the committed value is folded into whatever it is showing. */
+    private fun updateReadyTextSize(
+        attempt: Int,
+        transform: (TerminalTextSizeState.Ready) -> TerminalTextSizeState.Ready,
+    ): Boolean {
+        val current = state as? SkidbladnirUiState.Terminal ?: return false
+        if (current.attempt != attempt) return false
+        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return false
+        state = current.copy(textSize = transform(textSize))
+        return true
     }
 
     fun terminalPageReady(attempt: Int, page: TerminalPage) {
@@ -1260,37 +1334,67 @@ internal class SkidbladnirController(
         }
         terminalPage = page
         state = current.copy(connection = TerminalUiStatus.Connecting)
+        connectTerminalIfReady()
+    }
+
+    // WSS starts only with page Ready and a fitted grid, whichever lands last; the
+    // connection carries that grid, so it is the first client frame the gateway sees.
+    private fun connectTerminalIfReady() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.connection != TerminalUiStatus.Connecting || terminalConnection != null) return
+        val viewport = current.viewport as? TerminalViewport.Fitted ?: return
+        // justify-defect: terminalPageReady stores the page and admits Connecting only with a live
+        // pairing, and every credential change leaves the terminal before it lands.
+        val page = checkNotNull(terminalPage)
+        val credential = checkNotNull(credentials[current.target.machineHandle])
+        val attempt = current.attempt
         val owner = Any()
         terminalOwner = owner
-        val connection = TerminalConnection(client, credential, current.target, page, object : TerminalConnectionObserver {
-            override fun onPresence(attachedClients: Int, geometry: TerminalGeometry) {
-                main.post {
-                    val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                    if (terminal.attempt == attempt && terminalOwner === owner) {
-                        state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients, geometry))
+        val connection = TerminalConnection(
+            client,
+            credential,
+            current.target,
+            viewport,
+            page,
+            object : TerminalConnectionObserver {
+                override fun onPresence(attachedClients: Int) {
+                    main.post {
+                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
+                        if (terminal.attempt == attempt && terminalOwner === owner) {
+                            state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
+                        }
                     }
                 }
-            }
-            override fun onFailure(code: ApiErrorCode) {
-                main.post {
-                    val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
-                    if (terminal.attempt != attempt || terminalOwner !== owner) return@post
-                    if (terminalAccessLoss(code) != null) {
-                        acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(code))
-                        return@post
+                override fun onFailure(code: ApiErrorCode) {
+                    main.post {
+                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
+                        if (terminal.attempt != attempt || terminalOwner !== owner) return@post
+                        if (terminalAccessLoss(code) != null) {
+                            acceptAccessFailure(credential.machine.handle, GatewayFailure.Api(code))
+                            return@post
+                        }
+                        leaveTerminal()
+                        state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
                     }
-                    leaveTerminal()
-                    state = terminal.copy(connection = TerminalUiStatus.ReconnectRequired(apiErrorMessage(code)))
                 }
-            }
-        })
+            },
+        )
         terminalConnection = connection
         connection.start()
     }
 
     fun resizeTerminal(attempt: Int, columns: Int, rows: Int) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.attempt == attempt) terminalConnection?.resize(columns, rows)
+        if (current.attempt != attempt) return
+        state = current.copy(viewport = TerminalViewport.Fitted(columns, rows))
+        val connection = terminalConnection
+        if (connection == null) connectTerminalIfReady() else connection.resize(columns, rows)
+    }
+
+    /** Output and automatic replies keep flowing; only user ingress waits for recovery. */
+    fun viewportTooSmall(attempt: Int) {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.attempt == attempt) state = current.copy(viewport = TerminalViewport.TooSmall)
     }
     fun terminalPageFailed(attempt: Int) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
@@ -1307,12 +1411,63 @@ internal class SkidbladnirController(
     }
     fun sendTerminalAccessory(attempt: Int, accessory: TerminalAccessory) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.attempt == attempt && current.connection is TerminalUiStatus.Connected) terminalPage?.sendAccessory(accessory)
+        if (current.attempt == attempt && terminalInputAdmissible(current.connection, current.viewport)) {
+            terminalPage?.sendAccessory(accessory)
+        }
+    }
+
+    fun openTextSize() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.rename != null || current.kill != null || terminalTextSizeSheet(current.textSize, current.connection) != null) return
+        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return
+        if (!terminalPageLive(current.connection)) return
+        terminalPage?.resetInputState()
+        // A failed write is reported for that write only, so a new sheet session opens clean.
+        val write = if (textSize.write == TerminalTextSizeWrite.Failed) TerminalTextSizeWrite.Idle else textSize.write
+        state = current.copy(textSize = textSize.copy(write = write, sheetOpen = true))
+    }
+
+    fun dismissTextSize() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        val textSize = terminalTextSizeSheet(current.textSize, current.connection) ?: return
+        state = current.copy(textSize = textSize.copy(sheetOpen = false))
+    }
+
+    fun decreaseTextSize() = writeTextSize { it - 1 }
+
+    fun increaseTextSize() = writeTextSize { it + 1 }
+
+    fun resetTextSize() = writeTextSize { TERMINAL_TEXT_SIZE_DEFAULT_SP }
+
+    fun retryTextSizeRead() {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        if (current.textSize != TerminalTextSizeState.Unavailable) return
+        state = current.copy(textSize = TerminalTextSizeState.Reading)
+        readTextSize(current.attempt)
+    }
+
+    // Only committed state is displayed and applied; a failed write keeps the prior value.
+    private fun writeTextSize(next: (committedSp: Int) -> Int) {
+        val current = state as? SkidbladnirUiState.Terminal ?: return
+        val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return
+        val nominalSp = next(textSize.nominalSp)
+        if (!terminalTextSizeStepAdmissible(textSize, current.connection, nominalSp)) return
+        val attempt = current.attempt
+        state = current.copy(textSize = textSize.copy(write = TerminalTextSizeWrite.Pending))
+        textSizeStore.write(
+            nominalSp,
+            onCommitted = {
+                if (updateReadyTextSize(attempt) { it.copy(nominalSp = nominalSp, write = TerminalTextSizeWrite.Idle) }) {
+                    terminalPage?.setTextSize(nominalSp)
+                }
+            },
+            onFailed = { updateReadyTextSize(attempt) { it.copy(write = TerminalTextSizeWrite.Failed) } },
+        )
     }
 
     fun openRename() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.rename != null || current.kill != null ||
+        if (current.rename != null || current.kill != null || terminalTextSizeSheet(current.textSize, current.connection) != null ||
             !terminalActionAdmissible(current.machine.canMutate, current.connection)
         ) return
         terminalPage?.resetInputState()
@@ -1393,7 +1548,14 @@ internal class SkidbladnirController(
         }
         leaveTerminal()
         val attempt = nextTerminalAttempt++
-        state = current.copy(attempt = attempt, connection = TerminalUiStatus.Verifying, kill = null)
+        state = current.copy(
+            attempt = attempt,
+            connection = TerminalUiStatus.Verifying,
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
+            kill = null,
+        )
+        readTextSize(attempt)
         val activeGeneration = generation
         runtime.inventoryOperation.submitRead {
             val result = client.listSessions(credential)
@@ -1437,7 +1599,9 @@ internal class SkidbladnirController(
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
-                if (current.rename == null && terminalActionAdmissible(machine.canMutate, current.connection)) {
+                if (current.rename == null && terminalTextSizeSheet(current.textSize, current.connection) == null &&
+                    terminalActionAdmissible(machine.canMutate, current.connection)
+                ) {
                     terminalPage?.resetInputState()
                     current.copy(kill = kill)
                 } else {

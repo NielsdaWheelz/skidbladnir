@@ -29,6 +29,13 @@ type KillInput struct {
 	IdentityToken string
 }
 
+type OpenTerminalInput struct {
+	TmuxID        string
+	IdentityToken string
+	Columns       int
+	Rows          int
+}
+
 type RenameInput struct {
 	TmuxID        string
 	TmuxName      string

@@ -307,6 +307,8 @@ class MultiMachineUiInstrumentedTest {
                                                 target = target,
                                                 attempt = 1,
                                                 connection = TerminalUiStatus.Verifying,
+                                                viewport = TerminalViewport.Pending,
+                                                textSize = TerminalTextSizeState.Reading,
                                                 kill = null,
                                                 rename = null,
                                             )
@@ -1885,7 +1887,9 @@ class MultiMachineUiInstrumentedTest {
             machine = stale,
             target = target,
             attempt = 1,
-            connection = TerminalUiStatus.Connected(1, TerminalGeometry.Owner),
+            connection = TerminalUiStatus.Connected(1),
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = KillState(machine, target, pending = false),
         )
 

@@ -1056,13 +1056,11 @@ internal fun sessionActivityContent(activity: SessionActivity, fresh: Boolean): 
     return SessionActivityContent(label, spoken)
 }
 
-internal enum class TerminalGeometry { Owner, Constrained }
 internal sealed interface TerminalServerEvent {
-    data class Hello(val attachedClients: Int, val geometry: TerminalGeometry) : TerminalServerEvent
-    data class Presence(val attachedClients: Int, val geometry: TerminalGeometry) : TerminalServerEvent
+    data class Hello(val attachedClients: Int) : TerminalServerEvent
+    data class Presence(val attachedClients: Int) : TerminalServerEvent
     data class Error(val code: ApiErrorCode) : TerminalServerEvent
 }
-@Serializable private data class TerminalPresencePayload(val kind: String, val attachedClients: Int, val geometry: TerminalGeometry)
 @Serializable private data class TerminalErrorPayload(val code: String, val message: String)
 @Serializable private data class TerminalErrorEnvelope(val kind: String, val error: TerminalErrorPayload)
 @Serializable private data class TerminalResize(val kind: String, val columns: Int, val rows: Int)
@@ -1072,11 +1070,10 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
     val objectValue = strictJsonObject(encoded)
     when (val kind = objectValue.requiredString("kind")) {
         "Hello", "Presence" -> {
-            objectValue.requireExactKeys(setOf("kind", "attachedClients", "geometry"))
-            val payload = productJson.decodeFromJsonElement<TerminalPresencePayload>(objectValue)
-            if (payload.attachedClients < 1) throw SerializationException("terminal has no attached clients")
-            if (kind == "Hello") TerminalServerEvent.Hello(payload.attachedClients, payload.geometry)
-            else TerminalServerEvent.Presence(payload.attachedClients, payload.geometry)
+            objectValue.requireExactKeys(setOf("kind", "attachedClients"))
+            val attachedClients = objectValue.requiredPositiveInt("attachedClients")
+            if (kind == "Hello") TerminalServerEvent.Hello(attachedClients)
+            else TerminalServerEvent.Presence(attachedClients)
         }
         "Error" -> {
             objectValue.requireExactKeys(setOf("kind", "error"))
@@ -1093,8 +1090,15 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
     }
 }
 
+// One geometry bound: the page publishes only fitted whole-cell grids inside it
+// (and ViewportTooSmall below it), and the resize transport carries nothing else.
+internal val TERMINAL_COLUMNS_RANGE = 20..240
+internal val TERMINAL_ROWS_RANGE = 5..120
+
 internal fun encodeTerminalResize(columns: Int, rows: Int): String {
-    if (columns !in 20..240 || rows !in 5..120) throw IllegalArgumentException("terminal geometry out of bounds")
+    if (columns !in TERMINAL_COLUMNS_RANGE || rows !in TERMINAL_ROWS_RANGE) {
+        throw IllegalArgumentException("terminal geometry out of bounds")
+    }
     return productJson.encodeToString(TerminalResize("Resize", columns, rows))
 }
 internal fun encodeTerminalDetach(): String = productJson.encodeToString(TerminalDetach("Detach"))
@@ -1105,6 +1109,14 @@ private fun JsonObject.requiredString(key: String): String {
     val member = this[key]
     if (member !is JsonPrimitive || !member.isString) throw SerializationException("missing or non-string $key")
     return member.content
+}
+
+// kotlinx's tree decoder coerces quoted digits into numbers; presence counts stay JSON numbers.
+private fun JsonObject.requiredPositiveInt(key: String): Int {
+    val member = this[key]
+    if (member !is JsonPrimitive || member.isString) throw SerializationException("missing or non-number $key")
+    return member.content.toIntOrNull()?.takeIf { it >= 1 }
+        ?: throw SerializationException("$key is not a positive integer")
 }
 
 private fun JsonObject.requiredObject(key: String): JsonObject =

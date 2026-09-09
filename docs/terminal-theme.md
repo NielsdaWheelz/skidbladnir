@@ -1,5 +1,9 @@
 # Design delta D1: terminal theme
 
+The [readable-sizing target](terminal-readable-sizing.md) supersedes this
+document's 80-column policy/proofs; its font-load, color, and font-family
+contracts remain. Historical evidence below does not prove the new sizing.
+
 Status: implemented 2026-08-26; routine verification green on the
 federated tree; the 33-test instrumented suite green on the physical S22+
 (devbox debug-signed run — the signed deviceDebug platform gate is

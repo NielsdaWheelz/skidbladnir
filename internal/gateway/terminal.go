@@ -16,15 +16,16 @@ import (
 )
 
 const (
-	sessionIdentityHeader      = "Skidbladnir-Session-Identity"
-	terminalPresenceInterval   = 2 * time.Second
-	terminalLivenessInterval   = 10 * time.Second
-	terminalLivenessTimeout    = 5 * time.Second
-	terminalObservationTimeout = 3 * time.Second
-	terminalWriteTimeout       = 5 * time.Second
-	terminalFinalFrameTimeout  = 5 * time.Second
-	terminalShutdownTimeout    = 8 * time.Second
-	terminalPTYReadBufferBytes = 32 * 1024
+	sessionIdentityHeader        = "Skidbladnir-Session-Identity"
+	terminalPresenceInterval     = 2 * time.Second
+	terminalLivenessInterval     = 10 * time.Second
+	terminalLivenessTimeout      = 5 * time.Second
+	terminalObservationTimeout   = 3 * time.Second
+	terminalInitialResizeTimeout = 5 * time.Second
+	terminalWriteTimeout         = 5 * time.Second
+	terminalFinalFrameTimeout    = 5 * time.Second
+	terminalShutdownTimeout      = 8 * time.Second
+	terminalPTYReadBufferBytes   = 32 * 1024
 )
 
 type liveTerminal struct {
@@ -86,7 +87,14 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	completionErr := error(nil)
 	defer func() { gateway.unregisterLiveTerminal(registration, completionErr) }()
 
-	attachment, err := gateway.sessions.OpenTerminal(terminalContext, id, identityToken)
+	initial, opened := readInitialTerminalResize(terminalContext, connection)
+	if !opened {
+		return
+	}
+
+	attachment, err := gateway.sessions.OpenTerminal(terminalContext, sessions.OpenTerminalInput{
+		TmuxID: id, IdentityToken: identityToken, Columns: initial.Columns, Rows: initial.Rows,
+	})
 	if err != nil {
 		if errors.Is(err, sessions.ErrTerminalCleanupFailed) {
 			completionErr = errors.New("terminal startup cleanup failed")
@@ -120,12 +128,12 @@ func (gateway *Gateway) runTerminal(
 		workers.Wait()
 	}()
 
-	presence, err := observeTerminalPresence(runtimeContext, attachment)
+	attachedClients, err := observeAttachedClients(runtimeContext, attachment)
 	if err != nil {
 		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorReconnectRequired)
 		return
 	}
-	hello, err := terminal.EncodeHello(presence.AttachedClients, terminalGeometry(presence))
+	hello, err := terminal.EncodeHello(attachedClients)
 	if err != nil {
 		writeTerminalErrorAndClose(runtimeContext, connection, terminal.ErrorInternal)
 		return
@@ -156,7 +164,7 @@ func (gateway *Gateway) runTerminal(
 	}()
 	go func() {
 		defer workers.Done()
-		workerResults <- gateway.monitorTerminal(runtimeContext, authorization, attachment, queue, presence)
+		workerResults <- gateway.monitorTerminal(runtimeContext, authorization, attachment, queue, attachedClients)
 	}()
 
 	select {
@@ -297,14 +305,14 @@ func (gateway *Gateway) monitorTerminal(
 	authorization string,
 	attachment *sessions.TerminalAttachment,
 	queue *terminal.OutboundQueue,
-	initial sessions.TerminalPresence,
+	initialAttachedClients int,
 ) terminalEnd {
 	// justify-polling: tmux and the bearer file expose neither client-topology
 	// nor rotation notifications; two seconds bounds handoff and revocation lag
 	// without coupling terminal bytes to inventory polling.
 	ticker := time.NewTicker(terminalPresenceInterval)
 	defer ticker.Stop()
-	previous := initial
+	previous := initialAttachedClients
 	for {
 		select {
 		case <-ctx.Done():
@@ -318,14 +326,14 @@ func (gateway *Gateway) monitorTerminal(
 		if !valid {
 			return terminalReconnect
 		}
-		observed, err := observeTerminalPresence(ctx, attachment)
+		observed, err := observeAttachedClients(ctx, attachment)
 		if err != nil {
 			return terminalReconnect
 		}
 		if observed == previous {
 			continue
 		}
-		payload, err := terminal.EncodePresence(observed.AttachedClients, terminalGeometry(observed))
+		payload, err := terminal.EncodePresence(observed)
 		if err != nil {
 			return terminalInternalFailure
 		}
@@ -336,10 +344,10 @@ func (gateway *Gateway) monitorTerminal(
 	}
 }
 
-func observeTerminalPresence(ctx context.Context, attachment *sessions.TerminalAttachment) (sessions.TerminalPresence, error) {
+func observeAttachedClients(ctx context.Context, attachment *sessions.TerminalAttachment) (int, error) {
 	observationContext, cancel := context.WithTimeout(ctx, terminalObservationTimeout)
 	defer cancel()
-	return attachment.Presence(observationContext)
+	return attachment.AttachedClients(observationContext)
 }
 
 func writeTerminalInput(destination io.Writer, payload []byte) error {
@@ -371,11 +379,58 @@ func readTerminalMessage(ctx context.Context, connection *websocket.Conn) (webso
 	return messageType, payload, false, nil
 }
 
-func terminalGeometry(presence sessions.TerminalPresence) terminal.Geometry {
-	if presence.OwnsGeometry {
-		return terminal.GeometryOwner
+// The mandatory first client frame decides the PTY dimensions, so it is read
+// before any terminal resource exists and every outcome other than a valid
+// Resize ends the connection here. The gate owns its budget with a timer:
+// bounding the read with a deadline context makes the WebSocket library close
+// the transport underneath the refusal frame this gate owes the phone.
+func readInitialTerminalResize(ctx context.Context, connection *websocket.Conn) (terminal.ResizeFrame, bool) {
+	type firstFrame struct {
+		messageType websocket.MessageType
+		payload     []byte
+		oversized   bool
+		err         error
 	}
-	return terminal.GeometryConstrained
+	frames := make(chan firstFrame, 1)
+	go func() {
+		messageType, payload, oversized, err := readTerminalMessage(ctx, connection)
+		frames <- firstFrame{messageType: messageType, payload: payload, oversized: oversized, err: err}
+	}()
+	budget := time.NewTimer(terminalInitialResizeTimeout)
+	defer budget.Stop()
+	var first firstFrame
+	select {
+	case <-budget.C:
+		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
+		return terminal.ResizeFrame{}, false
+	case first = <-frames:
+	}
+	if first.err != nil {
+		_ = connection.CloseNow() // justify-ignore-error: a peer that closed before its first frame owns no terminal resources and must not wait for a handshake.
+		return terminal.ResizeFrame{}, false
+	}
+	if first.oversized {
+		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorRequestTooLarge)
+		return terminal.ResizeFrame{}, false
+	}
+	if first.messageType != websocket.MessageText {
+		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
+		return terminal.ResizeFrame{}, false
+	}
+	frame, err := terminal.ParseClientText(first.payload)
+	if err != nil {
+		writeTerminalErrorAndClose(ctx, connection, terminal.ErrorInvalidRequest)
+		return terminal.ResizeFrame{}, false
+	}
+	switch frame := frame.(type) {
+	case terminal.ResizeFrame:
+		return frame, true
+	case terminal.DetachFrame:
+		_ = connection.CloseNow() // justify-ignore-error: an initial Detach owns no terminal resources and must not wait for a handshake.
+		return terminal.ResizeFrame{}, false
+	default:
+		panic("unknown terminal client frame") // justify-defect: ParseClientText returns only Resize or Detach.
+	}
 }
 
 func terminalErrorForEnd(ending terminalEnd) (terminal.ErrorCode, bool) {
@@ -403,9 +458,9 @@ func terminalCodeForSessionError(err error) terminal.ErrorCode {
 	switch sessionError.Code {
 	case sessions.ErrorSessionNotFound, sessions.ErrorSessionIdentityMismatch:
 		return terminal.ErrorReconnectRequired
-	case sessions.ErrorWorkingDirectoryInvalid, sessions.ErrorWorkingDirectoryUnavailable,
-		sessions.ErrorProfileUnknown, sessions.ErrorSessionNameInvalid, sessions.ErrorObjectiveInvalid,
-		sessions.ErrorSessionNameConflict:
+	case sessions.ErrorWorkingDirectoryInvalid,
+		sessions.ErrorWorkingDirectoryUnavailable, sessions.ErrorProfileUnknown,
+		sessions.ErrorSessionNameInvalid, sessions.ErrorObjectiveInvalid, sessions.ErrorSessionNameConflict:
 		return terminal.ErrorInternal
 	default:
 		return terminal.ErrorInternal

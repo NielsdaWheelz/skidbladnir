@@ -17,16 +17,16 @@ func TestServerTextFramesHaveClosedWireShapes(t *testing.T) {
 		{
 			name: "hello",
 			encode: func() ([]byte, error) {
-				return terminal.EncodeHello(2, terminal.GeometryConstrained)
+				return terminal.EncodeHello(2)
 			},
-			want: `{"kind":"Hello","attachedClients":2,"geometry":"Constrained"}`,
+			want: `{"kind":"Hello","attachedClients":2}`,
 		},
 		{
 			name: "presence",
 			encode: func() ([]byte, error) {
-				return terminal.EncodePresence(1, terminal.GeometryOwner)
+				return terminal.EncodePresence(1)
 			},
-			want: `{"kind":"Presence","attachedClients":1,"geometry":"Owner"}`,
+			want: `{"kind":"Presence","attachedClients":1}`,
 		},
 		{
 			name: "reconnect required",
@@ -70,7 +70,7 @@ func TestClientTextFramesDecodeOnlyResizeAndDetach(t *testing.T) {
 
 func TestClientTextFramesRejectEveryOtherShape(t *testing.T) {
 	invalid := []string{
-		`{"kind":"Hello","attachedClients":1,"geometry":"Owner"}`,
+		`{"kind":"Hello","attachedClients":1}`,
 		`{"kind":"Resize","columns":19,"rows":40}`,
 		`{"kind":"Resize","columns":120,"rows":121}`,
 		`{"kind":"Resize","columns":120,"rows":40,"extra":true}`,
@@ -102,11 +102,8 @@ func TestTerminalFrameBoundIsExact(t *testing.T) {
 	}
 }
 
-func TestPresenceRejectsImpossibleContent(t *testing.T) {
-	if _, err := terminal.EncodeHello(0, terminal.GeometryOwner); !errors.Is(err, terminal.ErrInvalidFrame) {
+func TestPresenceRejectsAnImpossibleClientCount(t *testing.T) {
+	if _, err := terminal.EncodeHello(0); !errors.Is(err, terminal.ErrInvalidFrame) {
 		t.Fatalf("expected zero-client Hello to fail; got %v", err)
-	}
-	if _, err := terminal.EncodePresence(1, terminal.Geometry("Other")); !errors.Is(err, terminal.ErrInvalidFrame) {
-		t.Fatalf("expected unknown geometry to fail; got %v", err)
 	}
 }

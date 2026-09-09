@@ -13,7 +13,7 @@ private const val MAXIMUM_TERMINAL_FRAME_BYTES = 64 * 1024
 private const val MAXIMUM_TERMINAL_QUEUE_BYTES = 1024 * 1024L
 
 internal interface TerminalConnectionObserver {
-    fun onPresence(attachedClients: Int, geometry: TerminalGeometry)
+    fun onPresence(attachedClients: Int)
     fun onFailure(code: ApiErrorCode)
 }
 
@@ -26,6 +26,7 @@ internal class TerminalConnection(
     private val client: GatewayClient,
     private val credential: MachineCredential,
     private val target: SessionTarget,
+    initialViewport: TerminalViewport.Fitted,
     private val page: TerminalPage,
     private val observer: TerminalConnectionObserver,
 ) : WebSocketListener() {
@@ -39,6 +40,13 @@ internal class TerminalConnection(
     private var pendingResize: PendingResize? = null
     private var resizeDrainScheduled = false
     private val resizeDrain = Runnable(::drainResize)
+
+    // The gateway creates no shadow or PTY until a valid Resize arrives, so a
+    // connection cannot exist without its measured geometry already queued as the
+    // first client frame the open-time flush will send.
+    init {
+        resize(initialViewport.columns, initialViewport.rows)
+    }
 
     fun start() {
         synchronized(monitor) {
@@ -74,13 +82,13 @@ internal class TerminalConnection(
                 // justify-defect: the gateway owns the closed terminal event sequence.
                 if (connected) throw ProtocolDecodeException("terminal sent Hello more than once")
                 connected = true
-                observer.onPresence(event.attachedClients, event.geometry)
+                observer.onPresence(event.attachedClients)
             }
             is TerminalServerEvent.Presence -> synchronized(monitor) {
                 if (stopped.get()) return
                 // justify-defect: the gateway owns the closed terminal event sequence.
                 if (!connected) throw ProtocolDecodeException("terminal sent Presence before Hello")
-                observer.onPresence(event.attachedClients, event.geometry)
+                observer.onPresence(event.attachedClients)
             }
             is TerminalServerEvent.Error -> fail(event.code)
         }

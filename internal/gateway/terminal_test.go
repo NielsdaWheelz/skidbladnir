@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -225,4 +226,134 @@ func (writer *oneByteWriter) Write(contents []byte) (int, error) {
 	}
 	writer.contents = append(writer.contents, contents[0])
 	return 1, nil
+}
+
+func TestInitialTerminalResizeGatesTheFirstClientFrame(t *testing.T) {
+	type gateOutcome struct {
+		frame  terminal.ResizeFrame
+		opened bool
+	}
+	outcomes := make(chan gateOutcome, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		connection, err := websocket.Accept(writer, request, nil)
+		if err != nil {
+			t.Errorf("accept first-frame test connection: %v", err)
+			return
+		}
+		defer connection.CloseNow()
+		connection.SetReadLimit(-1)
+		frame, opened := readInitialTerminalResize(request.Context(), connection)
+		outcomes <- gateOutcome{frame: frame, opened: opened}
+	}))
+	defer server.Close()
+
+	tests := []struct {
+		name           string
+		send           func(*websocket.Conn) error
+		frame          terminal.ResizeFrame
+		opened         bool
+		code           terminal.ErrorCode
+		waitsForBudget bool
+	}{
+		{
+			name: "valid resize",
+			send: func(connection *websocket.Conn) error {
+				return connection.Write(context.Background(), websocket.MessageText, []byte(`{"kind":"Resize","columns":60,"rows":20}`))
+			},
+			frame:  terminal.ResizeFrame{Columns: 60, Rows: 20},
+			opened: true,
+		},
+		{
+			name: "initial detach",
+			send: func(connection *websocket.Conn) error {
+				return connection.Write(context.Background(), websocket.MessageText, []byte(`{"kind":"Detach"}`))
+			},
+		},
+		{
+			name: "unknown text frame",
+			send: func(connection *websocket.Conn) error {
+				return connection.Write(context.Background(), websocket.MessageText, []byte(`{"kind":"Hello","attachedClients":1}`))
+			},
+			code: terminal.ErrorInvalidRequest,
+		},
+		{
+			name: "binary first frame",
+			send: func(connection *websocket.Conn) error {
+				return connection.Write(context.Background(), websocket.MessageBinary, []byte("\r"))
+			},
+			code: terminal.ErrorInvalidRequest,
+		},
+		{
+			name: "oversized first frame",
+			send: func(connection *websocket.Conn) error {
+				return connection.Write(context.Background(), websocket.MessageText, bytes.Repeat([]byte{'x'}, terminal.MaximumFrameBytes+1))
+			},
+			code: terminal.ErrorRequestTooLarge,
+		},
+		{
+			name:           "no frame before the gate budget",
+			send:           func(*websocket.Conn) error { return nil },
+			code:           terminal.ErrorInvalidRequest,
+			waitsForBudget: true,
+		},
+		{
+			name: "peer closed first",
+			send: func(connection *websocket.Conn) error { return connection.CloseNow() },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dialContext, cancelDial := context.WithTimeout(context.Background(), terminalInitialResizeTimeout)
+			defer cancelDial()
+			connection, _, err := websocket.Dial(dialContext, "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+			if err != nil {
+				t.Fatalf("dial first-frame test server: %v", err)
+			}
+			defer connection.CloseNow()
+			started := time.Now()
+			if err := test.send(connection); err != nil {
+				t.Fatalf("send first frame: %v", err)
+			}
+			select {
+			case outcome := <-outcomes:
+				if outcome.opened != test.opened || outcome.frame != test.frame {
+					t.Fatalf("first frame gate = (%+v,%t), want (%+v,%t)", outcome.frame, outcome.opened, test.frame, test.opened)
+				}
+			case <-time.After(2 * terminalInitialResizeTimeout):
+				t.Fatal("first frame gate never returned")
+			}
+			if test.waitsForBudget {
+				if elapsed := time.Since(started); elapsed < terminalInitialResizeTimeout {
+					t.Fatalf("stalled first frame refused before its budget: elapsed_ms=%d budget_ms=%d",
+						elapsed.Milliseconds(), terminalInitialResizeTimeout.Milliseconds())
+				}
+			}
+			if test.opened {
+				return
+			}
+			readContext, cancelRead := context.WithTimeout(context.Background(), terminalInitialResizeTimeout)
+			defer cancelRead()
+			messageType, payload, err := connection.Read(readContext)
+			if test.code == "" {
+				if err == nil {
+					t.Fatalf("refused first frame answered with a frame instead of a clean close: type=%v payload_bytes=%d",
+						messageType, len(payload))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("refused first frame delivered no frame: want_code=%s", test.code)
+			}
+			var refusal struct {
+				Kind  string `json:"kind"`
+				Error struct {
+					Code terminal.ErrorCode `json:"code"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(payload, &refusal) != nil || refusal.Kind != "Error" || refusal.Error.Code != test.code {
+				t.Fatalf("first-frame refusal mismatch: kind=%s code=%s want_code=%s payload_bytes=%d",
+					refusal.Kind, refusal.Error.Code, test.code, len(payload))
+			}
+		})
+	}
 }

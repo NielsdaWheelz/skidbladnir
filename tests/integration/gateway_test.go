@@ -153,7 +153,8 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 		bearer,
 		target.IdentityToken,
 	)
-	requireTerminalPresence(t, connection, "Hello", 1, "Owner")
+	sendInitialTerminalResize(t, connection, 80, 24)
+	requireTerminalHello(t, connection, 1)
 	terminalReader := startRenameTerminalReader(t, connection)
 
 	response := request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "", "")

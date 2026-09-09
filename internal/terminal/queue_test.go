@@ -16,7 +16,7 @@ func TestOutboundQueuePreservesFramesAndOwnsTheirBytes(t *testing.T) {
 		t.Fatalf("enqueue binary frame: %v", err)
 	}
 	binary[0] = 'X'
-	if err := queue.EnqueueText([]byte(`{"kind":"Presence","attachedClients":1,"geometry":"Owner"}`)); err != nil {
+	if err := queue.EnqueueText([]byte("queued text frame")); err != nil {
 		t.Fatalf("enqueue text frame: %v", err)
 	}
 
@@ -31,7 +31,7 @@ func TestOutboundQueuePreservesFramesAndOwnsTheirBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read text frame: %v", err)
 	}
-	if second.Kind != terminal.OutboundText || string(second.Payload) != `{"kind":"Presence","attachedClients":1,"geometry":"Owner"}` {
+	if second.Kind != terminal.OutboundText || string(second.Payload) != "queued text frame" {
 		t.Fatalf("unexpected second frame: kind=%v payload=%q", second.Kind, second.Payload)
 	}
 }

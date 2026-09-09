@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -39,13 +40,6 @@ private const val MAXIMUM_PAGE_OUTPUT_BYTES = 1024 * 1024L
 private const val MAXIMUM_PAGE_INPUT_BYTES = 1024 * 1024
 private const val MAXIMUM_SELECTION_BYTES = 256 * 1024
 private const val MAXIMUM_SAFE_JAVASCRIPT_INTEGER = 9_007_199_254_740_991L
-
-// The gateway's published geometry bounds; the page's glyph scaling guarantees
-// at least 80 columns, so geometry outside these bounds is a page defect.
-private const val MINIMUM_COLUMNS = 20
-private const val MAXIMUM_COLUMNS = 240
-private const val MINIMUM_ROWS = 5
-private const val MAXIMUM_ROWS = 120
 private const val TERMINAL_PAGE_READY_TIMEOUT_MILLIS = 10_000L
 
 private data class PendingPageOutput(
@@ -70,6 +64,7 @@ private sealed interface TerminalPageCommand {
     data object ResetInputState : TerminalPageCommand
     data class Scroll(val direction: TerminalScrollDirection) : TerminalPageCommand
     data class ClearSelection(val generation: String) : TerminalPageCommand
+    data class FontSize(val fontSizeCssPx: Double) : TerminalPageCommand
 }
 
 internal interface TerminalPage {
@@ -77,6 +72,7 @@ internal interface TerminalPage {
     fun focus()
     fun sendAccessory(accessory: TerminalAccessory)
     fun resetInputState()
+    fun setTextSize(nominalSp: Int)
 }
 
 internal enum class TerminalAccessory {
@@ -110,6 +106,7 @@ internal interface TerminalPageListener {
     fun onReady(page: TerminalPage)
     fun onInput(bytes: ByteArray)
     fun onResize(columns: Int, rows: Int)
+    fun onViewportTooSmall()
     fun onModifiersChanged(modifiers: TerminalModifiers)
     fun onUnavailable()
 }
@@ -122,6 +119,7 @@ internal interface TerminalPageListener {
 )
 internal class LockedTerminalWebView(
     context: Context,
+    nominalTextSizeSp: Int,
     private val listener: TerminalPageListener,
     private val initialUrl: String = TERMINAL_URL,
     readinessTimeoutMillis: Long = TERMINAL_PAGE_READY_TIMEOUT_MILLIS,
@@ -145,6 +143,7 @@ internal class LockedTerminalWebView(
     private var unavailable = false
     private var pageReady = false
     private var orientation = resources.configuration.orientation
+    private var textSizeSp = nominalTextSizeSp
     private val pageReadinessDeadline = Runnable(::markUnavailable)
     private val outputMonitor = Any()
     private val pendingOutput = ArrayDeque<PendingPageOutput>()
@@ -248,6 +247,19 @@ internal class LockedTerminalWebView(
     override fun resetInputState() {
         selectionController.resetForLiveLifecycle()
         sendPageCommand(TerminalPageCommand.ResetInputState)
+    }
+
+    override fun setTextSize(nominalSp: Int) {
+        textSizeSp = nominalSp
+        sendPageCommand(TerminalPageCommand.FontSize(fontSizeCssPx()))
+    }
+
+    // Android text scaling is applied exactly once, here; the page keeps
+    // textZoom at 100 and zoom disabled, so CSS px map 1:1 onto dp.
+    private fun fontSizeCssPx(): Double {
+        val metrics = resources.displayMetrics
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, textSizeSp.toFloat(), metrics)
+            .toDouble() / metrics.density
     }
 
     override fun setEnabled(enabled: Boolean) {
@@ -472,13 +484,18 @@ internal class LockedTerminalWebView(
                             val columns = objectValue.intField("columns")
                             val rows = objectValue.intField("rows")
                             if (columns == null || rows == null ||
-                                columns !in MINIMUM_COLUMNS..MAXIMUM_COLUMNS ||
-                                rows !in MINIMUM_ROWS..MAXIMUM_ROWS
+                                columns !in TERMINAL_COLUMNS_RANGE ||
+                                rows !in TERMINAL_ROWS_RANGE
                             ) {
                                 markUnavailable()
                             } else {
                                 listener.onResize(columns, rows)
                             }
+                        } else {
+                            markUnavailable()
+                        }
+                        "ViewportTooSmall" -> if (objectValue.hasExactKeys("kind")) {
+                            listener.onViewportTooSmall()
                         } else {
                             markUnavailable()
                         }
@@ -581,8 +598,9 @@ internal class LockedTerminalWebView(
             WebMessageCompat(
                 JSONObject()
                     .put("kind", "PagePort")
-                    .put("version", 3)
+                    .put("version", 4)
                     .put("longPressMilliseconds", ViewConfiguration.getLongPressTimeout())
+                    .put("fontSizeCssPx", fontSizeCssPx())
                     .toString(),
                 arrayOf(ports[1]),
             ),
@@ -640,8 +658,14 @@ internal class LockedTerminalWebView(
         }
     }
 
-    private fun pageCommandAllowed(command: TerminalPageCommand): Boolean =
-        pageIsLive() && (command !is TerminalPageCommand.Scroll || isEnabled)
+    // The view's own focus and accessibility handling drive Focus and Scroll, so
+    // they wait on the enabled view; every other command has an owner upstream.
+    private fun pageCommandAllowed(command: TerminalPageCommand): Boolean = pageIsLive() && when (command) {
+        TerminalPageCommand.Focus, is TerminalPageCommand.Scroll -> isEnabled
+        is TerminalPageCommand.Accessory, TerminalPageCommand.ResetInputState,
+        is TerminalPageCommand.ClearSelection, is TerminalPageCommand.FontSize,
+        -> true
+    }
 
     private fun pageIsLive(): Boolean = synchronized(outputMonitor) {
         pageReady && !disposed && !unavailable
@@ -677,6 +701,10 @@ internal class LockedTerminalWebView(
         is TerminalPageCommand.ClearSelection -> JSONObject()
             .put("kind", "ClearSelection")
             .put("generation", generation)
+            .toString()
+        is TerminalPageCommand.FontSize -> JSONObject()
+            .put("kind", "FontSize")
+            .put("fontSizeCssPx", fontSizeCssPx)
             .toString()
     }
 

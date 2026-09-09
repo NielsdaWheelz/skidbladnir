@@ -12,11 +12,14 @@
     var compositionActive = false;
     var maximumInputBytes = 1024 * 1024;
     var maximumSelectionBytes = 256 * 1024;
-    var minimumColumns = 80;
-    var minimumFontSize = 6;
-    var maximumFontSize = 14;
+    // The gateway's Resize bounds; the page fits down to them and never up.
+    var minimumColumns = 20;
+    var maximumColumns = 240;
+    var minimumRows = 5;
+    var maximumRows = 120;
     var lastPublishedColumns = 0;
     var lastPublishedRows = 0;
+    var viewportTooSmallPublished = false;
     var terminal = null;
     var terminalTouchInteraction = null;
 
@@ -42,7 +45,6 @@
     terminal = new window.Terminal({
         cursorBlink: true,
         fontFamily: '"JetBrains Mono", monospace',
-        fontSize: 14,
         minimumContrastRatio: 3,
         rows: 8,
         scrollback: 1000,
@@ -206,29 +208,27 @@
         return sanitized;
     }
 
+    // Whole cells at the native-chosen font, capped downward at the gateway
+    // maximum and never clamped upward. Below the gateway minimum xterm keeps
+    // its last valid grid and native hears ViewportTooSmall once per episode;
+    // recovery republishes Resize even when the grid is unchanged.
     function resizeTerminal() {
         fitScheduled = false;
-        if (terminalHost.clientWidth === 0 || terminalHost.clientHeight === 0) return;
-        var dimensions = fitAddon.proposeDimensions();
-        if (!dimensions) return;
-        var currentFontSize = terminal.options.fontSize;
-        var targetFontSize = Math.max(
-            minimumFontSize,
-            Math.min(maximumFontSize, currentFontSize * dimensions.cols / minimumColumns)
-        );
-        targetFontSize = Math.floor(targetFontSize * 100) / 100;
-        if (dimensions.cols < minimumColumns && targetFontSize >= currentFontSize - 0.01) {
-            targetFontSize = Math.max(minimumFontSize, currentFontSize - 0.1);
-        }
-        if (Math.abs(targetFontSize - currentFontSize) >= 0.05) {
-            terminal.options.fontSize = targetFontSize;
-            scheduleFit();
+        var dimensions = terminalHost.clientWidth > 0 && terminalHost.clientHeight > 0 ?
+            fitAddon.proposeDimensions() : undefined;
+        if (!dimensions || dimensions.cols < minimumColumns || dimensions.rows < minimumRows) {
+            if (fontsSettled && pagePort && !viewportTooSmallPublished) {
+                viewportTooSmallPublished = true;
+                send({ kind: "ViewportTooSmall" });
+            }
             return;
         }
-        var columns = Math.max(20, Math.min(240, dimensions.cols));
-        var rows = Math.max(5, Math.min(120, dimensions.rows));
+        var columns = Math.min(maximumColumns, dimensions.cols);
+        var rows = Math.min(maximumRows, dimensions.rows);
         if (terminal.cols !== columns || terminal.rows !== rows) terminal.resize(columns, rows);
-        if (fontsSettled && pagePort && (columns !== lastPublishedColumns || rows !== lastPublishedRows)) {
+        if (!fontsSettled || !pagePort) return;
+        if (viewportTooSmallPublished || columns !== lastPublishedColumns || rows !== lastPublishedRows) {
+            viewportTooSmallPublished = false;
             lastPublishedColumns = columns;
             lastPublishedRows = rows;
             send({ kind: "Resize", columns: columns, rows: rows });
@@ -239,6 +239,10 @@
         if (fitScheduled) return;
         fitScheduled = true;
         window.requestAnimationFrame(resizeTerminal);
+    }
+
+    function isFontSizeCssPx(value) {
+        return typeof value === "number" && Number.isFinite(value) && value > 0;
     }
 
     function exactObject(value, expectedKeys) {
@@ -1014,9 +1018,9 @@
         scheduleFit();
     }
 
-    // Geometry stays local until the vendored faces settle, so the 80-column
-    // guarantee is measured in the real font; a rejected load degrades to
-    // monospace rather than withholding geometry.
+    // Geometry stays local until the vendored faces settle, so the grid is
+    // measured in the real font; a rejected load degrades to monospace rather
+    // than withholding geometry.
     Promise.all([
         document.fonts.load('14px "JetBrains Mono"'),
         document.fonts.load('bold 14px "JetBrains Mono"')
@@ -1118,6 +1122,12 @@
             resetInputState();
             return;
         }
+        if (payload.kind === "FontSize" && exactObject(payload, ["kind", "fontSizeCssPx"]) &&
+            isFontSizeCssPx(payload.fontSizeCssPx)) {
+            terminal.options.fontSize = payload.fontSizeCssPx;
+            scheduleFit();
+            return;
+        }
         if (payload.kind === "Scroll" && exactObject(payload, ["kind", "direction"]) &&
             (payload.direction === "Backward" || payload.direction === "Forward")) {
             clearProvenKey();
@@ -1136,12 +1146,14 @@
     function acceptPagePort(event) {
         var handshake = parseObject(event.data);
         var validHandshake = event.ports && event.ports.length === 1 &&
-            handshake && exactObject(handshake, ["kind", "version", "longPressMilliseconds"]) &&
-            handshake.kind === "PagePort" && handshake.version === 3 &&
+            handshake &&
+            exactObject(handshake, ["kind", "version", "longPressMilliseconds", "fontSizeCssPx"]) &&
+            handshake.kind === "PagePort" && handshake.version === 4 &&
             typeof handshake.longPressMilliseconds === "number" &&
             Number.isFinite(handshake.longPressMilliseconds) &&
             Number.isInteger(handshake.longPressMilliseconds) &&
-            handshake.longPressMilliseconds > 0;
+            handshake.longPressMilliseconds > 0 &&
+            isFontSizeCssPx(handshake.fontSizeCssPx);
         if (!validHandshake) {
             failPage();
             return;
@@ -1156,6 +1168,7 @@
             pagePort = null;
             return;
         }
+        terminal.options.fontSize = handshake.fontSizeCssPx;
         terminalTouchInteraction = createTerminalTouchInteraction({
             terminal: terminal,
             screen: screen,

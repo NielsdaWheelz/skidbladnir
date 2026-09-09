@@ -1,21 +1,29 @@
 package dev.niels.skidbladnir
 
+import android.view.WindowInsets as PlatformWindowInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -25,7 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -44,6 +56,8 @@ internal fun TerminalScreen(
             ),
         )
     }
+    val inputAdmissible = terminalInputAdmissible(state.connection, state.viewport)
+    val recovering = terminalPageLive(state.connection) && state.viewport == TerminalViewport.TooSmall
 
     Column(
         modifier = Modifier
@@ -60,7 +74,10 @@ internal fun TerminalScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            DetachButton(
+            HeaderChip(
+                label = "Detach",
+                spokenName = null,
+                enabled = true,
                 onClick = onDetach,
             )
             TerminalRenameControl(
@@ -72,6 +89,14 @@ internal fun TerminalScreen(
                 onClick = controller::openRename,
                 modifier = Modifier.weight(1f).testTag(terminalStatusTag(state.connection)),
             )
+            HeaderChip(
+                label = "Aa",
+                spokenName = "Terminal text size",
+                enabled = state.textSize is TerminalTextSizeState.Ready &&
+                    terminalPageLive(state.connection),
+                onClick = controller::openTextSize,
+                modifier = Modifier.testTag("terminal-text-size"),
+            )
             KillButton(
                 machineLabel = state.machine.machine.label,
                 target = state.target,
@@ -81,68 +106,96 @@ internal fun TerminalScreen(
             )
         }
 
+        // The recovery overlay sits over the terminal area and the key deck
+        // together, so it never changes the WebView's measured bounds and its
+        // controls stay reachable even at zero terminal height.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            if (state.connection != TerminalUiStatus.Verifying) key(state.attempt) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        LockedTerminalWebView(
-                            context = context,
-                            listener = object : TerminalPageListener {
-                                override fun onReady(page: TerminalPage) {
-                                    controller.terminalPageReady(state.attempt, page)
-                                }
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                ) {
+                    val textSize = state.textSize
+                    if (state.connection != TerminalUiStatus.Verifying && textSize is TerminalTextSizeState.Ready) {
+                        key(state.attempt) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize().testTag("terminal-page"),
+                                factory = { context ->
+                                    LockedTerminalWebView(
+                                        context = context,
+                                        nominalTextSizeSp = textSize.nominalSp,
+                                        listener = object : TerminalPageListener {
+                                            override fun onReady(page: TerminalPage) {
+                                                controller.terminalPageReady(state.attempt, page)
+                                            }
 
-                                override fun onInput(bytes: ByteArray) {
-                                    controller.sendTerminal(state.attempt, bytes)
-                                }
+                                            override fun onInput(bytes: ByteArray) {
+                                                controller.sendTerminal(state.attempt, bytes)
+                                            }
 
-                                override fun onResize(columns: Int, rows: Int) {
-                                    controller.resizeTerminal(state.attempt, columns, rows)
-                                }
+                                            override fun onResize(columns: Int, rows: Int) {
+                                                controller.resizeTerminal(state.attempt, columns, rows)
+                                            }
 
-                                override fun onModifiersChanged(newModifiers: TerminalModifiers) {
-                                    modifiers = newModifiers
-                                }
+                                            override fun onViewportTooSmall() {
+                                                controller.viewportTooSmall(state.attempt)
+                                            }
 
-                                override fun onUnavailable() {
-                                    controller.terminalPageFailed(state.attempt)
-                                }
-                            },
+                                            override fun onModifiersChanged(newModifiers: TerminalModifiers) {
+                                                modifiers = newModifiers
+                                            }
+
+                                            override fun onUnavailable() {
+                                                controller.terminalPageFailed(state.attempt)
+                                            }
+                                        },
+                                    )
+                                },
+                                update = { view ->
+                                    view.isEnabled = inputAdmissible
+                                    if (!view.isEnabled) view.clearFocus()
+                                },
+                                onRelease = LockedTerminalWebView::dispose,
+                            )
+                        }
+                    }
+
+                    // A failed preference read blocks initialization until Retry succeeds.
+                    if (textSize == TerminalTextSizeState.Unavailable &&
+                        state.connection !is TerminalUiStatus.ReconnectRequired
+                    ) {
+                        TextSizeUnavailable(onRetry = controller::retryTextSizeRead)
+                    } else when (val connection = state.connection) {
+                        TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.machine.label.text} and session lifetime…")
+                        TerminalUiStatus.Preparing -> TerminalWaiting("Preparing terminal…")
+                        TerminalUiStatus.Connecting -> if (!recovering) TerminalWaiting("Connecting…")
+                        is TerminalUiStatus.Connected -> Unit
+                        is TerminalUiStatus.ReconnectRequired -> ReconnectPanel(
+                            machineLabel = state.machine.machine.label,
+                            message = connection.message,
+                            actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
+                            onReattach = controller::reattachTerminal,
+                            onSessions = onDetach,
                         )
-                    },
-                    update = { view ->
-                        view.isEnabled = state.connection is TerminalUiStatus.Connected
-                        if (!view.isEnabled) view.clearFocus()
-                    },
-                    onRelease = LockedTerminalWebView::dispose,
+                    }
+                }
+
+                TerminalKeyDeck(
+                    modifiers = modifiers,
+                    enabled = inputAdmissible,
+                    onAccessory = { controller.sendTerminalAccessory(state.attempt, it) },
                 )
             }
 
-            when (val connection = state.connection) {
-                TerminalUiStatus.Verifying -> TerminalWaiting("Verifying ${state.machine.machine.label.text} and session lifetime…")
-                TerminalUiStatus.Preparing -> TerminalWaiting("Preparing terminal…")
-                TerminalUiStatus.Connecting -> TerminalWaiting("Connecting…")
-                is TerminalUiStatus.Connected -> Unit
-                is TerminalUiStatus.ReconnectRequired -> ReconnectPanel(
-                    machineLabel = state.machine.machine.label,
-                    message = connection.message,
-                    actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                    onReattach = controller::reattachTerminal,
-                    onSessions = onDetach,
-                )
+            if (recovering) {
+                TerminalTooSmall(onTextSize = controller::openTextSize)
             }
         }
-
-        TerminalKeyDeck(
-            modifiers = modifiers,
-            enabled = state.connection is TerminalUiStatus.Connected,
-            onAccessory = { controller.sendTerminalAccessory(state.attempt, it) },
-        )
     }
 
     state.kill?.let { kill ->
@@ -163,6 +216,136 @@ internal fun TerminalScreen(
             onDismiss = controller::dismissRename,
             onSubmit = controller::submitRename,
         )
+    }
+    terminalTextSizeSheet(state.textSize, state.connection)?.let { textSize ->
+        TerminalTextSizeSheet(
+            textSize = textSize,
+            connection = state.connection,
+            onDecrease = controller::decreaseTextSize,
+            onIncrease = controller::increaseTextSize,
+            onReset = controller::resetTextSize,
+            onDismiss = controller::dismissTextSize,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalTextSizeSheet(
+    textSize: TerminalTextSizeState.Ready,
+    connection: TerminalUiStatus,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = NidavellirShapes.Sheet,
+        containerColor = DeepSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "Text size",
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = NidavellirType.Display,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDecrease,
+                    enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp - 1),
+                    shape = NidavellirShapes.Chip,
+                    modifier = Modifier.semantics { contentDescription = "Decrease terminal text size" },
+                ) {
+                    Text("−")
+                }
+                Text(
+                    text = textSize.nominalSp.toString(),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontFamily = NidavellirType.Data,
+                    modifier = Modifier.semantics { contentDescription = "Terminal text size, ${textSize.nominalSp}" },
+                )
+                OutlinedButton(
+                    onClick = onIncrease,
+                    enabled = terminalTextSizeStepAdmissible(textSize, connection, textSize.nominalSp + 1),
+                    shape = NidavellirShapes.Chip,
+                    modifier = Modifier.semantics { contentDescription = "Increase terminal text size" },
+                ) {
+                    Text("+")
+                }
+            }
+            OutlinedButton(
+                onClick = onReset,
+                enabled = terminalTextSizeStepAdmissible(textSize, connection, TERMINAL_TEXT_SIZE_DEFAULT_SP),
+                shape = NidavellirShapes.Chip,
+            ) {
+                Text("Reset to $TERMINAL_TEXT_SIZE_DEFAULT_SP")
+            }
+            if (textSize.write == TerminalTextSizeWrite.Failed) {
+                Text("Text size could not be saved.", color = noticeToneColor(NoticeTone.Failure))
+            }
+            Text("Saved on this phone. Android’s text-size setting also applies.", color = Muted)
+            Text("Screen size is shared with other attached terminals.", color = Muted)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(onClick = onDismiss, shape = NidavellirShapes.Chip) {
+                    Text("Done")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TextSizeUnavailable(onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        NoticePanel(tone = NoticeTone.Failure, body = "Text size unavailable.") {
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
+    }
+}
+
+@Composable
+private fun TerminalTooSmall(onTextSize: () -> Unit) {
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    // The terminal IME is raised by the WebView through the window's insets
+    // controller, never by a Compose text-input session, so it is hidden there.
+    val view = LocalView.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ink.copy(alpha = 0.96f))
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 12.dp),
+    ) {
+        NoticePanel(
+            tone = NoticeTone.Armed,
+            title = "Terminal needs more room",
+            body = "Hide the keyboard, reduce text size, or make the app window larger.",
+        ) {
+            if (imeVisible) {
+                TextButton(
+                    onClick = { view.windowInsetsController?.hide(PlatformWindowInsets.Type.ime()) },
+                ) { Text("Hide keyboard") }
+            }
+            TextButton(onClick = onTextSize) { Text("Text size") }
+        }
     }
 }
 
@@ -244,7 +427,7 @@ private fun terminalPresence(state: SkidbladnirUiState.Terminal): String = when 
     is TerminalUiStatus.ReconnectRequired -> "Input frozen"
     is TerminalUiStatus.Connected -> {
         val clients = connection.attachedClients
-        "$clients ${if (clients == 1) "client" else "clients"} · ${connection.geometry.name.uppercase()}"
+        "$clients ${if (clients == 1) "client" else "clients"}"
     }
 }
 

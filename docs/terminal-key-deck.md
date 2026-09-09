@@ -1,5 +1,9 @@
 # Terminal key deck
 
+The [readable-sizing target](terminal-readable-sizing.md) supersedes the
+80-column viewport requirement and earlier packaged-page versions. Key/deck
+behavior remains; historical evidence below does not prove the new sizing.
+
 Status: implemented 2026-08-28. Both owner proofs were observed red; routine
 verification and the signed same-version 54-test S22+ candidate suite are green
 on the joined source tree. The current complete 54-test release-bound platform

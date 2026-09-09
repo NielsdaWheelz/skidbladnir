@@ -60,29 +60,43 @@ internal fun NoticePanel(
     }
 }
 
+// The one header chip: DeepSurface ground, accent hairline, angular indication,
+// and the 48dp floor on the inner Box for the reason KillButton records below.
+// Hand-rolling this per call site is how the header grew two owners for one
+// treatment. `spokenName` is null wherever the visible label is already the
+// control's name, and carries it where the label is a glyph.
 @Composable
-internal fun DetachButton(
+internal fun HeaderChip(
+    label: String,
+    spokenName: String?,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val accent = if (enabled) Gold else Muted
     Surface(
         color = DeepSurface,
-        border = BorderStroke(1.dp, Gold.copy(alpha = 0.40f)),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.40f)),
         shape = NidavellirShapes.Chip,
-        modifier = modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = AngularIndication(NidavellirShapes.Chip),
-            role = Role.Button,
-            onClick = onClick,
-        ),
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = AngularIndication(NidavellirShapes.Chip),
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) {
+                spokenName?.let { contentDescription = it }
+            },
     ) {
         Box(
             modifier = Modifier.minimumInteractiveComponentSize().padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "Detach",
-                color = Gold,
+                text = label,
+                color = accent,
                 style = MaterialTheme.typography.labelLarge,
             )
         }
