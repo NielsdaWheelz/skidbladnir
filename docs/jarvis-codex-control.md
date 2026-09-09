@@ -9,9 +9,17 @@ shared App Server installation/start on MacBook and Arch as well as Devbox.
 This supersedes the original Devbox-only installer/PATH/Forge restrictions
 below, not Jarvis's devbox-local control scope. All hosts use the same exact
 Codex pin and three local account services; no remote Jarvis control is added.
-Manual clients may explicitly request native `--yolo`; Jarvis's terminal
-launch policy remains workspace-write/on-request. Server handshakes are not
-the live worker/tmux/phone acceptance defined here.
+
+Human-CLI correction approved 2026-09-09: human commands are transparent account
+selectors, not Jarvis launch requests. Native 0.153.4 automatically discovers
+each supervised service through its default account socket path. Native
+exceptions remain: incompatible startup overrides or an unavailable server can
+use embedded execution; noninteractive/admin commands retain native behavior.
+There is no always-shared human guarantee, argument allowlist, forced policy or
+work-root restriction. Jarvis's explicit shared transport and closed terminal
+launcher remain unchanged. `dev-server/SPEC.md` owns exact routing, discovery,
+environment/config/resume limitations and installer proofs. Server handshakes
+are not the live worker/tmux/phone acceptance defined here.
 
 ## Goal and scope
 
@@ -20,9 +28,11 @@ devserver using Personal, Work, or Work2 subscriptions. Each worker started by
 Jarvis opens automatically in tmux and is discoverable/attachable in unchanged
 Skid.
 
-- Exactly one shared App Server per configured account home. Personal contains
+- Exactly one supervised App Server per configured account home. Personal contains
   Jarvis cognition, other personal `llm-calling` sessions, and manual/worker
-  threads. Work and Work2 contain their respective manual/worker threads.
+  threads that use native shared attachment. Work and Work2 contain their
+  respective shared manual/worker threads. Human native exceptions above do
+  not relax Jarvis's shared-only boundary.
 - Jarvis's coordinator uses Personal; its host tools can target all three.
   Account selection is explicit and never falls back or changes another login.
 - “Worker” means a top-level Jarvis launch action. Native Codex child threads
@@ -77,17 +87,19 @@ Jarvis service (jarvis UID; existing kernel, policy and actions)
    its exit/restart must not kill that server, including first launch. Use host
    `/tmp`, clear `TMUX`, `TMUX_PANE`, `TMUX_TMPDIR`, and give the per-request
    service `KillMode=process`, following the existing Skid service precedent.
-5. **Manual devserver commands share the same services.** One profile-aware
-   launcher owns `codex`, `codex-work`, and `codex-work2` routing. The upstream
-   binary remains an explicit backend/admin dependency, not a supported private
-   runtime alternative. Devbox PATH and Forge's deployment-owned command row
-   select the shared client. MacBook/Arch and Claude launchers are unchanged.
+5. **Human commands preserve native behavior on all three hosts.** The existing
+   profile generator produces thin Bash `exec` wrappers for `codex`, `codex-work`
+   and `codex-work2`. They select the declared account and forward all arguments;
+   the native CLI owns transport selection. Devbox PATH and Forge select these
+   commands. Jarvis never invokes them: its closed launcher still selects exact
+   remote endpoint, safe policy, permitted cwd and clean environment itself.
+   Claude launchers are unchanged.
 
 Shared servers are a shared OS/environment/version/failure boundary, not
 per-thread security isolation. Preserve Jarvis's per-thread read-only,
 no-network, disabled-native-tool posture and strict inspected stream; replace
-and requalify its old private-process containment claim. Ordinary workers use
-host-fixed workspace-write policy and native human approval for escalation;
+and requalify its old private-process containment claim. Jarvis-created workers use
+explicit workspace-write policy and native human approval for escalation;
 no unattended bypass. Jarvis never answers worker approvals. Its control
 connection unsubscribes from each new worker before dispatch. In the intended
 single-user flow the stock TUI is the only responding subscriber, but Codex
@@ -212,7 +224,7 @@ deployment docs. Explicitly supersede Jarvis's no-delegation/private-Codex
 assumptions; do not silently weaken them. Skid's opaque-terminal contract stays
 binding. This document is the cross-repo plan, not an override of unrelated rules.
 
-- Hard-cut managed Codex to shared attachment; remove private App Server spawn,
+- Hard-cut `llm-calling` Codex to shared attachment; remove private App Server spawn,
   server-killing cleanup, client-side Codex-home enrollment and their unused
   configuration/tests. Retain primitives still used by Claude or API providers.
 - Adapt existing `AgentRuntime`, session discovery, credential verification,
@@ -222,13 +234,12 @@ binding. This document is the cross-repo plan, not an override of unrelated rule
   authority descriptors and session compatibility fingerprint. No new tables,
   kernel fork, job framework or shadow command ledger.
 - Reuse `dev-server`'s AI installer, profile deployment and shell machinery.
-  Its current `ai_codex_candidate` resolves npm `latest`: hard-cut that existing
-  owner to the reviewed exact pin on Devbox. Do not install latest and then
-  overwrite it from a second installer. Other hosts retain their current policy.
-  Devbox-only asset selection must be quiescent on a second apply; do not write
-  common assets and overwrite them later. Install the logical personal launcher
-  before the raw binary in devbox PATH. Change the Devbox Personal Forge command
-  row; preserve both Claude rows and every MacBook/Arch row.
+  Hard-cut that existing owner to the reviewed exact pin on all three hosts.
+  Do not install latest and then overwrite it from a second installer. Generate
+  each host's human wrappers from the authoritative account declaration; remove
+  the restrictive `tui` path and duplicated wrapper asset. A second apply must
+  be quiescent. Install the logical personal launcher before the raw binary in
+  PATH. Change the Devbox Personal Forge command row; preserve both Claude rows.
 - Pin one qualified server/TUI version across all three services and consumers.
   Qualification starts with locally observed CLI `0.153.4`; older `0.144.4`
   containment evidence does not qualify it. Record exact package/digests before
@@ -324,6 +335,8 @@ Trade-offs accepted: shared account failure/trust/version boundaries; manual
 reconciliation instead of a worker ledger/relaunch; no proactive completion
 guarantee; terminal-only Skid Kill; optional Skid identity omission; and a pinned
 experimental upstream dependency, not vendor-supported production infrastructure.
+Human native CLI fidelity takes precedence over forcing every invocation onto
+the shared server; Jarvis retains the stricter independent contract.
 The real-stack journey cannot be replaced by more unit tests.
 
 Protocol evidence: official [App Server](https://learn.chatgpt.com/docs/app-server)
