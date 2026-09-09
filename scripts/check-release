@@ -417,7 +417,7 @@ validate_release_source "$repo_dir" "$sha" || {
 }
 
 expected_assets=$'SHA256SUMS\nandroid-signing-cert.sha256\nskidbladnir-android.apk\nskidbladnir-darwin-arm64.tar.gz\nskidbladnir-linux-amd64.tar.gz'
-observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort)"
+observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {} \; | LC_ALL=C sort)"
 [[ "$observed_assets" == "$expected_assets" ]] || {
   printf 'Release directory does not contain the exact five owned assets\n' >&2
   exit 1
@@ -440,7 +440,7 @@ awk '
   printf 'SHA256SUMS is not the strict four-asset manifest\n' >&2
   exit 1
 }
-observed_checksum_names="$(awk '{ print $2 }' "$release_dir/SHA256SUMS" | sort)"
+observed_checksum_names="$(awk '{ print $2 }' "$release_dir/SHA256SUMS" | LC_ALL=C sort)"
 [[ "$observed_checksum_names" == "$expected_checksum_names" ]] || {
   printf 'SHA256SUMS does not name each non-checksum asset exactly once\n' >&2
   exit 1
