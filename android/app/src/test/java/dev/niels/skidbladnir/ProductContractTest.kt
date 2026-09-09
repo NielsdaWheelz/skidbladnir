@@ -400,7 +400,7 @@ class ProductContractTest {
 
     @Test
     fun `terminal actions require both fresh machine state and settled attachment`() {
-        val connected = TerminalUiStatus.Connected(1, TerminalGeometry.Owner)
+        val connected = TerminalUiStatus.Connected(1)
         assertFalse(terminalActionAdmissible(machineCanMutate = false, connected))
         assertFalse(terminalActionAdmissible(machineCanMutate = true, TerminalUiStatus.Preparing))
         assertFalse(terminalActionAdmissible(machineCanMutate = true, TerminalUiStatus.Verifying))
@@ -417,12 +417,12 @@ class ProductContractTest {
     @Test
     fun `terminal protocol accepts only the fixed server variants`() {
         assertEquals(
-            TerminalServerEvent.Hello(2, TerminalGeometry.Constrained),
-            decodeTerminalServerEvent("""{"kind":"Hello","attachedClients":2,"geometry":"Constrained"}"""),
+            TerminalServerEvent.Hello(2),
+            decodeTerminalServerEvent("""{"kind":"Hello","attachedClients":2}"""),
         )
         assertEquals(
-            TerminalServerEvent.Presence(1, TerminalGeometry.Owner),
-            decodeTerminalServerEvent("""{"kind":"Presence","attachedClients":1,"geometry":"Owner"}"""),
+            TerminalServerEvent.Presence(1),
+            decodeTerminalServerEvent("""{"kind":"Presence","attachedClients":1}"""),
         )
         assertEquals(
             TerminalServerEvent.Error(ApiErrorCode.ReconnectRequired),
@@ -430,7 +430,7 @@ class ProductContractTest {
                 """{"kind":"Error","error":{"code":"ReconnectRequired","message":"Reconnect required."}}""",
             ),
         )
-        assertEquals("{\"kind\":\"Resize\",\"columns\":80,\"rows\":24}", encodeTerminalResize(80, 24))
+        assertEquals("{\"kind\":\"Resize\",\"columns\":40,\"rows\":18}", encodeTerminalResize(40, 18))
         assertEquals("{\"kind\":\"Detach\"}", encodeTerminalDetach())
     }
 
@@ -495,10 +495,14 @@ class ProductContractTest {
                 """.trimIndent(),
             )
         }
-        assertThrows(ProtocolDecodeException::class.java) {
-            decodeTerminalServerEvent(
-                """{"kind":"Presence","attachedClients":1,"geometry":"Owner","extra":true}""",
-            )
+        listOf(
+            """{"kind":"Hello","attachedClients":"2"}""",
+            """{"kind":"Hello","attachedClients":0}""",
+            """{"kind":"Hello","attachedClients":2,"extra":true}""",
+        ).forEach { encoded ->
+            assertThrows("accepted $encoded", ProtocolDecodeException::class.java) {
+                decodeTerminalServerEvent(encoded)
+            }
         }
         assertThrows(ProtocolDecodeException::class.java) {
             decodeTerminalServerEvent(

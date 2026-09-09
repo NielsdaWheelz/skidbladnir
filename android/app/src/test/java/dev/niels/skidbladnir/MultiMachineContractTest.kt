@@ -505,6 +505,8 @@ class MultiMachineContractTest {
             target = target,
             attempt = 1,
             connection = TerminalUiStatus.Verifying,
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = null,
         )
 
@@ -554,6 +556,76 @@ class MultiMachineContractTest {
     }
 
     @Test
+    fun `terminal input and text-size mutation wait for the fitted grid and page readiness`() {
+        val fitted = TerminalViewport.Fitted(40, 18)
+        val connected = TerminalUiStatus.Connected(1)
+        val reconnect = TerminalUiStatus.ReconnectRequired("Devbox: reconnect required.")
+        assertTrue(
+            "case=input-fitted connection=Connected(1) viewport=Fitted(40,18)",
+            terminalInputAdmissible(connected, fitted),
+        )
+        assertFalse(
+            "case=input-too-small connection=Connected(1) viewport=TooSmall",
+            terminalInputAdmissible(connected, TerminalViewport.TooSmall),
+        )
+        assertFalse(
+            "case=input-unfitted connection=Connected(1) viewport=Pending",
+            terminalInputAdmissible(connected, TerminalViewport.Pending),
+        )
+        assertFalse(
+            "case=input-unattached connection=Connecting viewport=Fitted(40,18)",
+            terminalInputAdmissible(TerminalUiStatus.Connecting, fitted),
+        )
+
+        val idle = TerminalTextSizeState.Ready(16, TerminalTextSizeWrite.Idle, sheetOpen = true)
+
+        // The sheet's three controls and the write they order share one admission.
+        assertTrue("case=step-down nominalSp=16 next=15", terminalTextSizeStepAdmissible(idle, connected, 15))
+        assertTrue(
+            "case=step-connecting-before-attach nominalSp=16 next=15",
+            terminalTextSizeStepAdmissible(idle, TerminalUiStatus.Connecting, 15),
+        )
+        assertTrue(
+            "case=step-after-failed write=Failed nominalSp=16 next=15",
+            terminalTextSizeStepAdmissible(idle.copy(write = TerminalTextSizeWrite.Failed), connected, 15),
+        )
+        assertFalse(
+            "case=step-write-in-flight write=Pending nominalSp=16 next=15",
+            terminalTextSizeStepAdmissible(idle.copy(write = TerminalTextSizeWrite.Pending), connected, 15),
+        )
+        assertFalse(
+            "case=step-below-range nominalSp=12 next=11",
+            terminalTextSizeStepAdmissible(idle.copy(nominalSp = 12), connected, 11),
+        )
+        assertFalse(
+            "case=step-above-range nominalSp=24 next=25",
+            terminalTextSizeStepAdmissible(idle.copy(nominalSp = 24), connected, 25),
+        )
+        assertFalse(
+            "case=step-reset-at-default nominalSp=16 next=16",
+            terminalTextSizeStepAdmissible(idle, connected, TERMINAL_TEXT_SIZE_DEFAULT_SP),
+        )
+        assertFalse("case=step-frozen nominalSp=16 next=15", terminalTextSizeStepAdmissible(idle, reconnect, 15))
+
+        // An open sheet never outlives the page it edits, so a lost attachment closes it.
+        assertEquals(
+            "case=sheet-attached connection=Connected(1) sheetOpen=true",
+            16,
+            terminalTextSizeSheet(idle, connected)?.nominalSp,
+        )
+        assertNull("case=sheet-frozen connection=ReconnectRequired sheetOpen=true", terminalTextSizeSheet(idle, reconnect))
+        assertNull(
+            "case=sheet-preparing connection=Preparing sheetOpen=true",
+            terminalTextSizeSheet(idle, TerminalUiStatus.Preparing),
+        )
+        assertNull(
+            "case=sheet-closed connection=Connected(1) sheetOpen=false",
+            terminalTextSizeSheet(idle.copy(sheetOpen = false), connected),
+        )
+        assertNull("case=sheet-unread textSize=Reading", terminalTextSizeSheet(TerminalTextSizeState.Reading, connected))
+    }
+
+    @Test
     fun `failed terminal admission read stales only its machine and fences terminal actions`() {
         val target = SessionTarget(devboxHandle, session())
         val healthy = readyMachine(macBook, session())
@@ -563,6 +635,8 @@ class MultiMachineContractTest {
             target = target,
             attempt = 2,
             connection = TerminalUiStatus.ReconnectRequired("Devbox: reconnect required."),
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = null,
         )
 
@@ -599,6 +673,8 @@ class MultiMachineContractTest {
                 target = target,
                 attempt = 1,
                 connection = TerminalUiStatus.Connecting,
+                viewport = TerminalViewport.Pending,
+                textSize = TerminalTextSizeState.Reading,
                 kill = KillState(devbox, target, pending = true),
             )
             val dashboard = dashboardAfterTerminalAccessLoss(
@@ -917,12 +993,14 @@ class MultiMachineContractTest {
             laneEvents,
         )
 
-        val connection = TerminalUiStatus.Connected(2, TerminalGeometry.Constrained)
+        val connection = TerminalUiStatus.Connected(2)
         val reconcilingTerminal = SkidbladnirUiState.Terminal(
             machine = fresh,
             target = target,
             attempt = 77,
             connection = connection,
+            viewport = TerminalViewport.Pending,
+            textSize = TerminalTextSizeState.Reading,
             kill = null,
             rename = success.state,
         )

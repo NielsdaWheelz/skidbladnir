@@ -16,11 +16,6 @@ const shadowReleaseTimeout = 3 * time.Second
 
 var ErrTerminalCleanupFailed = errors.New("terminal attachment cleanup failed")
 
-type TerminalPresence struct {
-	AttachedClients int
-	OwnsGeometry    bool
-}
-
 type TerminalAttachment struct {
 	manager    *Manager
 	sourceID   string
@@ -35,11 +30,11 @@ func (manager *Manager) ValidateTerminal(ctx context.Context, id, identityToken 
 	return err
 }
 
-func (manager *Manager) OpenTerminal(ctx context.Context, id, identityToken string) (*TerminalAttachment, error) {
+func (manager *Manager) OpenTerminal(ctx context.Context, input OpenTerminalInput) (*TerminalAttachment, error) {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
-	server, name, err := manager.terminalIdentity(ctx, id, identityToken)
+	server, name, err := manager.terminalIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +43,15 @@ func (manager *Manager) OpenTerminal(ctx context.Context, id, identityToken stri
 		return nil, err
 	}
 	runtime, err := manager.tmux.StartAttachment(ctx, tmuxclient.AttachmentSpec{
-		SourceID: id, SourceName: name, ShadowName: shadowName, Server: server,
+		SourceID: input.TmuxID, SourceName: name, ShadowName: shadowName,
+		Columns: input.Columns, Rows: input.Rows, Server: server,
 	})
+	// The creation gate created nothing, and an unsupported window is an
+	// operator prerequisite the phone cannot act on, so the unclassified error
+	// reaches the phone as the content-free internal error.
+	if errors.Is(err, tmuxclient.ErrAttachmentWindowSizeUnsupported) {
+		return nil, err
+	}
 	if errors.Is(err, tmuxclient.ErrAttachmentIdentityMismatch) {
 		classified := error(newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it."))
 		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
@@ -58,7 +60,7 @@ func (manager *Manager) OpenTerminal(ctx context.Context, id, identityToken stri
 		return nil, classified
 	}
 	if err != nil {
-		classified := manager.classifyMissingSession(ctx, id, err)
+		classified := manager.classifyMissingSession(ctx, input.TmuxID, err)
 		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
 			classified = errors.Join(classified, ErrTerminalCleanupFailed)
 		}
@@ -68,7 +70,7 @@ func (manager *Manager) OpenTerminal(ctx context.Context, id, identityToken stri
 		panic("phone shadow name collision") // justify-defect: 128-bit names are unique within one manager lifetime.
 	}
 	manager.activeShadows[shadowName] = struct{}{}
-	return &TerminalAttachment{manager: manager, sourceID: id, shadowName: shadowName, runtime: runtime}, nil
+	return &TerminalAttachment{manager: manager, sourceID: input.TmuxID, shadowName: shadowName, runtime: runtime}, nil
 }
 
 func (attachment *TerminalAttachment) SourceID() string { return attachment.sourceID }
@@ -85,12 +87,8 @@ func (attachment *TerminalAttachment) Resize(columns, rows int) error {
 	return attachment.runtime.Resize(columns, rows)
 }
 
-func (attachment *TerminalAttachment) Presence(ctx context.Context) (TerminalPresence, error) {
-	presence, err := attachment.runtime.Presence(ctx)
-	if err != nil {
-		return TerminalPresence{}, err
-	}
-	return TerminalPresence{AttachedClients: presence.AttachedClients, OwnsGeometry: presence.OwnsGeometry}, nil
+func (attachment *TerminalAttachment) AttachedClients(ctx context.Context) (int, error) {
+	return attachment.runtime.AttachedClients(ctx)
 }
 
 func (attachment *TerminalAttachment) ClosePTY() error {

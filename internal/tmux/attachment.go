@@ -17,8 +17,8 @@ import (
 
 const (
 	phoneShadowMarker           = "phone-shadow"
-	attachmentColumns           = 80
-	attachmentRows              = 24
+	windowSizeUnsupportedMarker = "SKIDBLADNIR_WINDOW_SIZE_UNSUPPORTED_V1"
+	windowSizeLatestCondition   = "#{==:#{window-size},latest}"
 	attachmentControlLimit      = 5 * time.Second
 	attachmentReadyLimit        = 5 * time.Second
 	attachmentReadyPollInterval = 25 * time.Millisecond
@@ -33,6 +33,7 @@ var (
 	windowIDPattern                     = regexp.MustCompile(`^@[0-9]+$`)
 	ErrAttachmentIdentityMismatch       = errors.New("tmux attachment identity changed")
 	ErrAttachmentCleanupFailed          = errors.New("tmux attachment startup cleanup failed")
+	ErrAttachmentWindowSizeUnsupported  = errors.New("tmux source window does not use window-size latest")
 	errAttachmentCleanupIncomplete      = errors.New("tmux attachment cleanup is incomplete")
 	errAttachmentCleanupReadbackInvalid = errors.New("tmux attachment cleanup readback is invalid")
 )
@@ -41,12 +42,9 @@ type AttachmentSpec struct {
 	SourceID   string
 	SourceName string
 	ShadowName string
+	Columns    int
+	Rows       int
 	Server     ServerIdentity
-}
-
-type Presence struct {
-	AttachedClients int
-	OwnsGeometry    bool
 }
 
 type phoneShadowRecord struct {
@@ -87,7 +85,7 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 	}
 	shadowID, sourceWindowID, err := parseAttachmentCreationOutput(output)
 	if err != nil {
-		if errors.Is(err, ErrAttachmentIdentityMismatch) {
+		if errors.Is(err, ErrAttachmentIdentityMismatch) || errors.Is(err, ErrAttachmentWindowSizeUnsupported) {
 			return nil, err
 		}
 		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
@@ -104,7 +102,9 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 	}
 	command := client.commandWithStderr(ctx, nil, nil, clientArguments[0], clientArguments[1:]...)
 	command.Env = attachmentEnvironment(command.Env)
-	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: attachmentColumns, Rows: attachmentRows})
+	// The terminal protocol bounds every accepted Resize to 20..240 columns and
+	// 5..120 rows, so this narrowing to the Winsize fields cannot truncate.
+	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(spec.Columns), Rows: uint16(spec.Rows)})
 	if err != nil {
 		return nil, attachmentStartFailure(fmt.Errorf("start tmux phone client: %w", err), reconcileAttachmentShadow(client, spec))
 	}
@@ -142,9 +142,6 @@ func (attachment *Attachment) Write(contents []byte) (int, error) {
 }
 
 func (attachment *Attachment) Resize(columns, rows int) error {
-	if columns <= 0 || columns > 65535 || rows <= 0 || rows > 65535 {
-		return errors.New("terminal geometry is invalid")
-	}
 	// The resize ioctl uses the raw descriptor, so it must never race ClosePTY
 	// into a number the kernel has already reissued to an unrelated file.
 	attachment.ptyMutex.Lock()
@@ -155,17 +152,17 @@ func (attachment *Attachment) Resize(columns, rows int) error {
 	return pty.Setsize(attachment.pty, &pty.Winsize{Cols: uint16(columns), Rows: uint16(rows)})
 }
 
-func (attachment *Attachment) Presence(ctx context.Context) (Presence, error) {
+func (attachment *Attachment) AttachedClients(ctx context.Context) (int, error) {
 	output, err := attachment.client.Output(ctx, "read-phone-presence", "display-message", "-p", "-t", attachment.shadowID,
 		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_name}|#{@skid_internal}|#{session_group_attached}|#{session_attached}")
 	if err != nil {
-		return Presence{}, err
+		return 0, err
 	}
 	fields := strings.Split(output, "|")
 	if len(fields) != 8 || fields[0] != attachment.spec.Server.Epoch || fields[1] != attachment.spec.Server.PID ||
 		fields[2] != attachment.spec.Server.StartTime || fields[3] != attachment.shadowID ||
 		fields[4] != attachment.spec.ShadowName || fields[5] != phoneShadowMarker {
-		return Presence{}, ErrAttachmentIdentityMismatch
+		return 0, ErrAttachmentIdentityMismatch
 	}
 	attachedText := fields[6]
 	if attachedText == "" {
@@ -173,9 +170,9 @@ func (attachment *Attachment) Presence(ctx context.Context) (Presence, error) {
 	}
 	attached, err := strconv.Atoi(attachedText)
 	if err != nil || attached < 1 {
-		return Presence{}, errors.New("tmux attachment returned an invalid client count")
+		return 0, errors.New("tmux attachment returned an invalid client count")
 	}
-	return Presence{AttachedClients: attached, OwnsGeometry: attached == 1}, nil
+	return attached, nil
 }
 
 func (attachment *Attachment) ClosePTY() error {
@@ -284,7 +281,7 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
 		return nil, errors.New("tmux attachment identity is invalid")
 	}
-	condition := mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server)
+	identity := mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server)
 	shadowSessionTarget := "=" + spec.ShadowName
 	shadowPaneTarget := shadowSessionTarget + ":"
 	success := strings.Join([]string{
@@ -293,15 +290,27 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 		"display-message -p -t '" + shadowPaneTarget + "' '#{session_id}'",
 		"display-message -p -t '" + spec.SourceID + "' '#{window_id}'",
 	}, " ; ")
+	// "#{window-size}" resolves the option by name for the if-shell target's
+	// window, falling back to the global window option, so the gate reads the
+	// initial source window's effective policy without changing it. The failure
+	// branch re-reads the policy alone to tell an unsupported window apart from
+	// a changed target; it embeds no session name, so an arbitrary tmux name
+	// can never reach a quoted command string.
 	return []string{
-		"if-shell", "-F", "-t", spec.SourceID, condition, success,
-		"display-message -p -l '" + identityMismatchMarker + "'",
+		"if-shell", "-F", "-t", spec.SourceID,
+		"#{&&:" + identity + "," + windowSizeLatestCondition + "}", success,
+		"if-shell -F -t '" + spec.SourceID + "' '" + windowSizeLatestCondition + "' " +
+			"\"display-message -p -l '" + identityMismatchMarker + "'\" " +
+			"\"display-message -p -l '" + windowSizeUnsupportedMarker + "'\"",
 	}, nil
 }
 
 func parseAttachmentCreationOutput(output string) (string, string, error) {
-	if output == identityMismatchMarker {
+	switch output {
+	case identityMismatchMarker:
 		return "", "", ErrAttachmentIdentityMismatch
+	case windowSizeUnsupportedMarker:
+		return "", "", ErrAttachmentWindowSizeUnsupported
 	}
 	shadowID, sourceWindowID, separated := strings.Cut(output, "\n")
 	if !separated || !sessionIDPattern.MatchString(shadowID) || !windowIDPattern.MatchString(sourceWindowID) {
@@ -342,7 +351,7 @@ func attachmentClientArguments(shadowID string) ([]string, error) {
 	if !sessionIDPattern.MatchString(shadowID) {
 		return nil, errors.New("tmux attachment client identity is invalid")
 	}
-	return []string{"-T", "RGB", "attach-session", "-E", "-f", "active-pane,ignore-size", "-t", shadowID}, nil
+	return []string{"-T", "RGB", "attach-session", "-E", "-f", "active-pane", "-t", shadowID}, nil
 }
 
 func parseAttachmentStartupObservation(output string, spec AttachmentSpec, shadowID string) (int, error) {

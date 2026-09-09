@@ -1,5 +1,9 @@
 # v0 phone-local terminal selection copy
 
+The [readable-sizing target](terminal-readable-sizing.md) supersedes the
+version-3 handshake with version 4 and adds font/viewport messages. Selection
+semantics remain; historical evidence below does not prove the new protocol.
+
 Status: implemented and published. The original xterm and unchanged-runtime API-36
 reds are complete, the source xterm matrix is green at `171` tests, routine
 verification is green, and focused signed same-version API-36 owner proofs are

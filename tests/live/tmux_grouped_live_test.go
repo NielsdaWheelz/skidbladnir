@@ -93,12 +93,8 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 	shadowBefore := panesBefore[server.shadow]
 	assertSamePaneSet(t, rootBefore, shadowBefore, "group creation")
 
-	laptop := startTmuxBehaviorClient(t, server, server.root, "", 120, 40)
-	phone := startTmuxBehaviorClient(t, server, server.shadow, "active-pane,ignore-size", 80, 24)
-
-	assertClientShape(t, server, server.root, "", "120x40")
-	assertClientShape(t, server, server.shadow, "active-pane,ignore-size", "80x24")
-	assertWindowSize(t, server, "120x40", "unflagged laptop takes geometry")
+	laptop := startTmuxBehaviorClient(t, server, server.root, "")
+	phone := startTmuxBehaviorClient(t, server, server.shadow, "active-pane")
 
 	server.selectPane(t, server.root, 0)
 	waitForCapture(t, server, "FRAME=A BUFFER=seed-A", server.root+":0.0")
@@ -122,13 +118,8 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 
 	server.detachClient(t, server.clientFor(t, server.root))
 	waitForClientCount(t, server, server.root, 0)
-	assertWindowSize(t, server, "80x24", "sole ignore-size client")
-	assertClientShape(t, server, server.shadow, "active-pane,ignore-size", "80x24")
 
-	laptopAfterDetach := startTmuxBehaviorClient(t, server, server.root, "", 120, 40)
-	assertClientShape(t, server, server.root, "", "120x40")
-	assertWindowSize(t, server, "120x40", "new unflagged laptop retakes geometry")
-	assertClientShape(t, server, server.shadow, "active-pane,ignore-size", "80x24")
+	laptopAfterDetach := startTmuxBehaviorClient(t, server, server.root, "")
 
 	shadowPaneAfter := server.panes(t)[server.shadow]
 	assertSamePaneSet(t, rootBefore, shadowPaneAfter, "before non-last kill")
@@ -143,7 +134,7 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 	laptopAfterDetach.send(t, "\x02o")
 	assertWindowActivePane(t, server, 0)
 
-	fresh := startTmuxBehaviorClient(t, server, server.root, "active-pane,ignore-size", 80, 24)
+	fresh := startTmuxBehaviorClient(t, server, server.root, "active-pane")
 	fresh.waitForOutput(t, "FRAME=A")
 	waitForCapture(t, server, "FRAME=A\nTOKEN=LAPTOP-A2", server.root+":0.0")
 
@@ -183,6 +174,8 @@ func (s *tmuxBehaviorServer) start(t *testing.T, cwd, logA, logB string) {
 	t.Helper()
 	s.run(t, "new-session", "-d", "-s", s.root, "-x", "120", "-y", "40", "-c", cwd, fixtureCommand(logA, "A"))
 	s.captureIdentity(t)
+	// The server runs with -f /dev/null, so the deployment prerequisite the
+	// production attachment gate requires is set explicitly for this fixture.
 	s.run(t, "set-option", "-g", "window-size", "latest")
 	s.run(t, "set-option", "-g", "status", "off")
 	s.run(t, "split-window", "-t", s.root+":0", "-h", fixtureCommand(logB, "B"))
@@ -204,12 +197,12 @@ done`
 	return "exec /bin/sh -c " + shellQuote(script) + " fixture " + shellQuote(logPath) + " " + shellQuote(frame)
 }
 
-func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, flags string, cols, rows int) *tmuxBehaviorClient {
+func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, flags string) *tmuxBehaviorClient {
 	t.Helper()
 	if err := validateRegisteredLiveSocket(server.socket); err != nil {
 		t.Fatal(err)
 	}
-	attach := fmt.Sprintf("stty cols %d rows %d; exec env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session", cols, rows, shellQuote(liveTmuxPath), shellQuote(server.socket))
+	attach := fmt.Sprintf("stty cols 120 rows 40; exec env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session", shellQuote(liveTmuxPath), shellQuote(server.socket))
 	if flags != "" {
 		attach += " -f " + shellQuote(flags)
 	}
@@ -499,45 +492,6 @@ func assertSamePaneSet(t *testing.T, want, got []tmuxBehaviorPane, context strin
 		if want[i] != got[i] {
 			t.Fatalf("%s: pane identity changed at index %d: want=%+v got=%+v", context, i, want[i], got[i])
 		}
-	}
-}
-
-func assertClientShape(t *testing.T, server *tmuxBehaviorServer, session, requiredFlags, requiredSize string) {
-	t.Helper()
-	out := server.run(t, "list-clients", "-F", "#{session_name}\t#{client_flags}\t#{client_width}x#{client_height}")
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		fields := strings.Split(line, "\t")
-		if len(fields) == 3 && fields[0] == session {
-			flags := strings.Split(fields[1], ",")
-			for _, required := range strings.Split(requiredFlags, ",") {
-				if required == "" || containsString(flags, required) {
-					continue
-				}
-				t.Fatalf("client %s shape mismatch: got flags=%q size=%q want flags containing %q size=%q", session, fields[1], fields[2], requiredFlags, requiredSize)
-			}
-			if fields[2] != requiredSize {
-				t.Fatalf("client %s shape mismatch: got flags=%q size=%q want flags containing %q size=%q", session, fields[1], fields[2], requiredFlags, requiredSize)
-			}
-			return
-		}
-	}
-	t.Fatalf("no client shape for session %s", session)
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-func assertWindowSize(t *testing.T, server *tmuxBehaviorServer, want, context string) {
-	t.Helper()
-	out := strings.TrimSpace(server.run(t, "display-message", "-t", server.root+":0", "-p", "#{window_width}x#{window_height}"))
-	if out != want {
-		t.Fatalf("%s: window size %s, want %s", context, out, want)
 	}
 }
 

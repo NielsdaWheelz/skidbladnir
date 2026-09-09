@@ -22,7 +22,10 @@ internal class TerminalProbe {
     var page: TerminalPage? = null
     val input = LinkedBlockingQueue<ByteArray>()
     val sizes = LinkedBlockingQueue<Pair<Int, Int>>()
+    val viewportTooSmall = LinkedBlockingQueue<Unit>()
     val events = LinkedBlockingQueue<TerminalTestEvent>()
+    @Volatile
+    var resizedBeforeReady = false
 
     fun listener(): TerminalPageListener = object : TerminalPageListener {
         override fun onReady(page: TerminalPage) {
@@ -37,7 +40,12 @@ internal class TerminalProbe {
         }
 
         override fun onResize(columns: Int, rows: Int) {
+            if (ready.count != 0L) resizedBeforeReady = true
             sizes.add(columns to rows)
+        }
+
+        override fun onViewportTooSmall() {
+            viewportTooSmall.add(Unit)
         }
 
         override fun onModifiersChanged(modifiers: TerminalModifiers) {
@@ -59,7 +67,9 @@ internal object TerminalTestProbe {
     val page: TerminalPage? get() = active.page
     val input: LinkedBlockingQueue<ByteArray> get() = active.input
     val sizes: LinkedBlockingQueue<Pair<Int, Int>> get() = active.sizes
+    val viewportTooSmall: LinkedBlockingQueue<Unit> get() = active.viewportTooSmall
     val events: LinkedBlockingQueue<TerminalTestEvent> get() = active.events
+    val resizedBeforeReady: Boolean get() = active.resizedBeforeReady
 
     @Synchronized
     fun reset() {
@@ -74,8 +84,10 @@ internal fun createTestTerminal(
     probe: TerminalProbe,
     initialUrl: String = "https://appassets.androidplatform.net/assets/terminal/index.html",
     readinessTimeoutMillis: Long = 10_000L,
+    nominalTextSizeSp: Int = TERMINAL_TEXT_SIZE_DEFAULT_SP,
 ): LockedTerminalWebView = LockedTerminalWebView(
     context = context,
+    nominalTextSizeSp = nominalTextSizeSp,
     listener = probe.listener(),
     initialUrl = initialUrl,
     readinessTimeoutMillis = readinessTimeoutMillis,

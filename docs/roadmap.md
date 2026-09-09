@@ -983,10 +983,34 @@ green. The complete `75/75` signed candidate, hands-on IME check, immutable
 `OK (75 tests)` platform gate are green; the latter restored the exact public
 APK. The failed physical product gate remains unclaimed.
 
+## v0 readable terminal sizing — implemented, runtime acceptance `NOT_RUN`
+
+Outcome: one saved readable phone text size drives the fitting grid; the phone
+participates in tmux's latest-client sizing. Desktop input can restore desktop
+dimensions. Full visible cells replace the 80-column acceptance criterion.
+
+Delivery: root closes the scope/contracts in
+[terminal-readable-sizing.md](terminal-readable-sizing.md); host/transport and
+Android builders independently observe their owner reds, implement, then join
+for routine verification and the named real-boundary/hands-on proofs. The
+product/content designer owns literal copy and readability review; the verifier
+is read-only. Hard-delete protected-desktop sizing, ownership classifications,
+guessed startup dimensions, automatic font shrinking, and old page decoding.
+
+Implementation and the observable unit-tier reds/greens landed 2026-09-08 on
+branch `terminal-readable-sizing` with `./scripts/test verify` green; the
+owner runtime proofs (isolated gateway+tmux integration, live, Android
+platform matrix, hands-on S22+ journey, designer readability review) are
+`NOT_RUN` pending explicit approval.
+Publication/deployment are separate scope. This target supersedes conflicting
+historical S2/S3, theme, key-deck, and page-version statements;
+historical results remain historical.
+
 ## Status
 
 | Slice | Status |
 | --- | --- |
+| v0 readable terminal sizing | Implemented 2026-09-08 (`terminal-readable-sizing`); `./scripts/test verify` green; owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |

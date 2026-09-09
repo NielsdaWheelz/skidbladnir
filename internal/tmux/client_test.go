@@ -138,20 +138,23 @@ func TestCharacterAssignmentUsesOneNarrowConditionalCommand(t *testing.T) {
 
 func TestAttachmentCreationUsesOneIdentityGateBeforeEveryMutation(t *testing.T) {
 	server := ServerIdentity{Epoch: "v1-0123456789abcdef0123456789abcdef", PID: "1234", StartTime: "1720000000"}
-	arguments, err := attachmentCommandArguments(AttachmentSpec{
+	valid := AttachmentSpec{
 		SourceID:   "$7",
 		SourceName: "laptop",
 		ShadowName: "skid-phone-00112233445566778899aabbccddeeff",
+		Columns:    60,
+		Rows:       20,
 		Server:     server,
-	})
+	}
+	arguments, err := attachmentCommandArguments(valid)
 	if err != nil {
 		t.Fatalf("build attachment command: %v", err)
 	}
 	want := []string{
 		"if-shell", "-F", "-t", "$7",
-		"#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},laptop}}}}}",
+		"#{&&:#{&&:#{==:#{@skid_server_epoch},v1-0123456789abcdef0123456789abcdef},#{&&:#{==:#{pid},1234},#{&&:#{==:#{start_time},1720000000},#{&&:#{==:#{session_id},$7},#{==:#{session_name},laptop}}}}},#{==:#{window-size},latest}}",
 		"new-session -d -E -t '$7' -s 'skid-phone-00112233445566778899aabbccddeeff' ; set-option -t '=skid-phone-00112233445566778899aabbccddeeff:' -- @skid_internal phone-shadow ; display-message -p -t '=skid-phone-00112233445566778899aabbccddeeff:' '#{session_id}' ; display-message -p -t '$7' '#{window_id}'",
-		"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'",
+		"if-shell -F -t '$7' '#{==:#{window-size},latest}' \"display-message -p -l 'SKIDBLADNIR_IDENTITY_MISMATCH_V1'\" \"display-message -p -l 'SKIDBLADNIR_WINDOW_SIZE_UNSUPPORTED_V1'\"",
 	}
 	if !slices.Equal(arguments, want) {
 		t.Fatalf("attachment arguments\nwant: %q\n got: %q", want, arguments)
@@ -163,7 +166,7 @@ func TestAttachmentClientTargetsOnlyTheCapturedShadowID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build attachment client command: %v", err)
 	}
-	want := []string{"-T", "RGB", "attach-session", "-E", "-f", "active-pane,ignore-size", "-t", "$11"}
+	want := []string{"-T", "RGB", "attach-session", "-E", "-f", "active-pane", "-t", "$11"}
 	if !slices.Equal(arguments, want) {
 		t.Fatalf("attachment client arguments = %q, want %q", arguments, want)
 	}
@@ -242,6 +245,9 @@ func TestAttachmentControlOutputDistinguishesCreationAndReadinessFailures(t *tes
 	}
 	if _, _, err := parseAttachmentCreationOutput(identityMismatchMarker); !errors.Is(err, ErrAttachmentIdentityMismatch) {
 		t.Fatalf("identity-mismatch creation output = %v", err)
+	}
+	if _, _, err := parseAttachmentCreationOutput(windowSizeUnsupportedMarker); !errors.Is(err, ErrAttachmentWindowSizeUnsupported) {
+		t.Fatalf("unsupported window-size creation output = %v", err)
 	}
 	for _, malformed := range []string{"not-a-session", "$11", "$11\nnot-a-window", "$11\n@3\nextra"} {
 		if _, _, err := parseAttachmentCreationOutput(malformed); err == nil || errors.Is(err, ErrAttachmentIdentityMismatch) {

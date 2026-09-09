@@ -20,13 +20,6 @@ var (
 	ErrFrameTooLarge = errors.New("terminal frame exceeds 64 KiB")
 )
 
-type Geometry string
-
-const (
-	GeometryOwner       Geometry = "Owner"
-	GeometryConstrained Geometry = "Constrained"
-)
-
 type ErrorCode string
 
 const (
@@ -51,12 +44,12 @@ type DetachFrame struct{}
 
 func (DetachFrame) isClientFrame() {}
 
-func EncodeHello(attachedClients int, geometry Geometry) ([]byte, error) {
-	return encodePresence("Hello", attachedClients, geometry)
+func EncodeHello(attachedClients int) ([]byte, error) {
+	return encodePresence("Hello", attachedClients)
 }
 
-func EncodePresence(attachedClients int, geometry Geometry) ([]byte, error) {
-	return encodePresence("Presence", attachedClients, geometry)
+func EncodePresence(attachedClients int) ([]byte, error) {
+	return encodePresence("Presence", attachedClients)
 }
 
 func EncodeError(code ErrorCode) ([]byte, error) {
@@ -131,15 +124,14 @@ func ValidateClientBinary(contents []byte) error {
 	return nil
 }
 
-func encodePresence(kind string, attachedClients int, geometry Geometry) ([]byte, error) {
-	if attachedClients < 1 || (geometry != GeometryOwner && geometry != GeometryConstrained) {
+func encodePresence(kind string, attachedClients int) ([]byte, error) {
+	if attachedClients < 1 {
 		return nil, ErrInvalidFrame
 	}
 	return json.Marshal(struct {
-		Kind            string   `json:"kind"`
-		AttachedClients int      `json:"attachedClients"`
-		Geometry        Geometry `json:"geometry"`
-	}{Kind: kind, AttachedClients: attachedClients, Geometry: geometry})
+		Kind            string `json:"kind"`
+		AttachedClients int    `json:"attachedClients"`
+	}{Kind: kind, AttachedClients: attachedClients})
 }
 
 func decodeExact(encoded []byte, destination any) bool {

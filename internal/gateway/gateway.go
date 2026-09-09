@@ -39,7 +39,7 @@ type sessionManager interface {
 	ValidateKill(context.Context, sessions.KillInput) error
 	Kill(context.Context, sessions.KillInput) error
 	ValidateTerminal(context.Context, string, string) error
-	OpenTerminal(context.Context, string, string) (*sessions.TerminalAttachment, error)
+	OpenTerminal(context.Context, sessions.OpenTerminalInput) (*sessions.TerminalAttachment, error)
 }
 
 type Config struct {

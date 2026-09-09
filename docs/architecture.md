@@ -1,5 +1,11 @@
 # Skíðblaðnir v0: product and architecture
 
+The 2026-09-08 [readable terminal sizing](terminal-readable-sizing.md) target
+replaces the 80-column/protected-desktop sizing contract with chosen phone text
+size and tmux latest-client sizing. Its implementation landed 2026-09-08 with
+routine verification green; its runtime acceptance is `NOT_RUN`, and historical
+evidence below does not prove this target.
+
 Status: accepted implementation target after the 2026-08-25 scope reset, the
 2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
 2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
@@ -102,7 +108,7 @@ or authorize action against the other.
 | Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Every host exposes closed `personal \| work \| work2 \| claude-personal \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
-| State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings plus one system-managed, task-scoped, content-free Dashboard return capsule and keeps inventory snapshots in memory |
+| State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
 | Client | Kotlin/Compose multi-machine dashboard; source-pinned, reproducibly built xterm.js terminal fork |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
@@ -193,8 +199,9 @@ latest stable release exposed by their managed package channel:
 
 - A stock TUI uses the normal terminal buffer and is shareable by tmux
   clients. Grouped sessions share panes/processes while clients keep
-  independent current-window context; `active-pane` and `ignore-size` are
-  required for phone attachment.
+  independent current-window context; `active-pane` remains required for phone
+  attachment. The readable-sizing target replaces the historical `ignore-size`
+  policy; its shared-size handoff requires new acceptance.
 - **Pane-steal hazard:** every pane-level targeting form (`switch-client` with
   a pane target, pane-targeted attach, `select-pane`) mutates the window's
   shared active pane and drags an unflagged laptop client with it. Targeting
@@ -207,7 +214,7 @@ latest stable release exposed by their managed package channel:
 - S22+ WebView/xterm.js/Gboard: ANSI, Unicode, IME composition, editable
   dictation, clipboard, automatic DA/DSR/CPR replies, resize, rotation. Field
   acceptance additionally requires rendered color, a stable zero-horizontal-
-  scroll viewport, and at least 80 displayed columns.
+  scroll viewport, chosen readable text size, and fully visible fitted cells.
 - SIGKILL of a TUI emits nothing; only tmux/process facts are reliable
   liveness evidence. (This is why v0 trusts tmux, not agent self-reporting,
   for aliveness.)
@@ -451,13 +458,20 @@ machine:
 - Opening a card routes by its full `(machineHandle, session)` target, starts
   no second process, and never detaches that machine's laptop.
 - The gateway creates an ephemeral session grouped with the target, attaches
-  one gateway-owned phone PTY as a client with `active-pane` and
-  `ignore-size`, and targets **session/window-level only**. The grouped session
+  one gateway-owned phone PTY as a client with `active-pane`, and targets
+  **session/window-level only**. The grouped session
   opens on the target's current window and active pane; later phone navigation
   is ordinary key input through the phone PTY, never a pane-targeted tmux
   command. Never mutate another client's selection.
-- With an unflagged laptop client present, phone resize changes only its own
-  viewport (`CONSTRAINED`); alone, the phone owns sizing (`OWNER`).
+- Supported windows use effective `window-size latest`, owned by tmux and
+  deployment/operator configuration. Both clients participate in sizing;
+  ordinary tmux activity determines handoff. The gateway validates the initial
+  window's policy without changing it. Client count conveys presence only;
+  `Owner`/`Constrained` classifications do not exist.
+- The first validated phone Resize precedes PTY/shadow creation and determines
+  initial dimensions. There is no guessed startup grid. The exact startup,
+  failure, and local viewport contracts are in
+  [readable terminal sizing](terminal-readable-sizing.md).
 - Both devices share process, screen, draft, and turn.
 - A session is an internal phone shadow only when both its reserved random
   `skid-phone-<32 lowercase hex>` name and `@skid_internal=phone-shadow` marker
@@ -687,7 +701,9 @@ supported pressure input is modeled as `UNKNOWN`; only unmodeled defects become
 the content-free `InternalError`. DTOs are a strict hard cut: unknown keys or
 enum values are defects, with no protocol branch or compatibility state.
 
-- WSS: text frames `Hello | Presence | Resize | Detach | Error`; binary
+- WSS: text frames `Hello | Presence | Resize | Detach | Error`; Hello/Presence
+  contain only kind and attached-client count. The first client Resize gates
+  attachment creation. Binary
   frames are PTY bytes both ways. One WSS owns one PTY/client/shadow and
   tears all three down on any close, subject to the last-link guard. No byte
   replay or gateway scrollback; slow clients disconnect and reattach fresh.
@@ -779,10 +795,14 @@ enum values are defects, with no protocol branch or compatibility state.
   required for ANSI rendering, while scripts remain bundle-only and every
   exfiltration-capable resource class remains denied.
   The tmux phone client explicitly advertises its RGB capability; xterm owns a
-  deterministic ANSI palette. The renderer preserves at least 80 columns in
-  portrait by adapting glyph scale before publishing PTY geometry, rather than
-  collapsing the TUI into a narrow responsive layout. The
-  [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
+  deterministic ANSI palette. The renderer fits whole cells at the phone's
+  saved nominal text size (`16sp` default, `12..24sp`, step `1sp`), applying
+  Android text scaling once. Keyboard/rotation refit the grid without rewriting
+  that preference. An insufficient viewport blocks user input with explicit
+  recovery controls while preserving output and automatic terminal replies.
+  [Readable terminal sizing](terminal-readable-sizing.md) owns the preference,
+  exact version-4 packaged-page protocol, initial geometry, content, and proofs.
+  The [terminal key deck](terminal-key-deck.md) is one stable aligned `2 x 7`
   input surface: `Esc / - Home ↑ End PgUp` over
   `Tab Ctrl Alt ← ↓ → PgDn`. Top `Detach` always owns phone detach. Android Back
   dismisses active native terminal selection first and otherwise owns phone
@@ -953,11 +973,12 @@ Verification follows an 80/20 boundary shape:
 - one separately approved named second-phone gate installs the same public APK
   and connects with a fresh QR; until the device is named it is `NOT_RUN`.
 
-The terminal/identity proofs additionally cover unchanged laptop geometry and
-focus, last-link detach, bounded backpressure, exact foreground process
-lifetime, inherited nested-Codex rejection, Gboard/IME/dictation, stable
-80-column rotation geometry, true color, the reviewed key-deck inputs and
-atomic one-shot Ctrl/Alt lifecycle, and reconnect without replay. The
+The terminal/identity proofs additionally cover latest-client shared sizing and
+unchanged independent focus, last-link detach, bounded backpressure, exact
+foreground process lifetime, inherited nested-Codex rejection,
+Gboard/IME/dictation, stable text size with fully fitted rotation geometry,
+true color, the reviewed key-deck inputs and atomic one-shot Ctrl/Alt lifecycle,
+and reconnect without replay. The
 retired proof-ledger/acceptance matrix does not return. Existing
 `evidence/live/` records remain historical platform evidence.
 
@@ -1009,8 +1030,9 @@ card remains machine-named to accessibility; one host outage leaves the
 other fresh and actionable while only the failed snapshot becomes stale and
 non-mutating; origin/handle or bearer failure cannot cross machines; each
 Forge uses only local profiles/paths; laptop and phone share one pane/PID/draft
-with laptop geometry and focus unchanged; detach leaves work alive; kill ends
-only the exact unambiguously last machine-local lifetime; stale identities and
+with tmux latest-client geometry and independent focus preserved; detach leaves
+work alive; kill ends only the exact unambiguously last machine-local lifetime;
+stale identities and
 ordinary groups mutate nothing; every fresh card exposes exactly one required
 `Active | Quiet` value from the current window's built-in activity timestamp;
 `ACTIVE` and `QUIET` are distinguishable without color and are spoken only as
