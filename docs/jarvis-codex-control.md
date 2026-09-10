@@ -1,8 +1,8 @@
 # Jarvis: shared local Codex control
 
-Approved target, amended 2026-09-09. Implementation is complete on the isolated
-feature branches; live acceptance remains `NOT_RUN`. Repository names below
-identify sibling checkouts, not new packages.
+Approved target, amended 2026-09-09. Feature implementation is on isolated
+branches; corrective review and live acceptance remain incomplete (`NOT_RUN`).
+Repository names below identify sibling checkouts, not new packages.
 
 Host-deployment extension approved 2026-09-09: `dev-server/SPEC.md` now owns
 shared App Server installation/start on MacBook and Arch as well as Devbox.
@@ -304,6 +304,12 @@ target the same isolated `-L` socket through the existing real-tmux test runner,
 not production default tmux. No simulated internal launcher/gateway. Phone
 acceptance is separately arranged; it cannot silently retarget production
 pairings or substitute for this isolated proof.
+
+The launcher and gateway run as the development UID; the qualifier calls the
+launcher as Jarvis and uses the real test gateway for terminal observation and
+exact-lifetime cleanup. Identical `-L` names under different UIDs are different
+sockets. Fixture credentials/configuration stay separate from production;
+Jarvis gains no production gateway, sudo, or tmux access from this test setup.
 
 1. Jarvis resolves an existing permitted cwd before native creation, then starts
    one worker; exact native thread, initial turn and ordinary tmux
