@@ -14,8 +14,8 @@ the older four-table baseline, not the no-worker-ledger rule.
 Host-deployment extension approved 2026-09-09: `dev-server/SPEC.md` now owns
 shared App Server installation/start on MacBook and Arch as well as Devbox.
 This supersedes the original Devbox-only installer/PATH/Forge restrictions
-below, not Jarvis's devbox-local control scope. All hosts use the same exact
-Codex pin and three local account services; no remote Jarvis control is added.
+below, not Jarvis's devbox-local control scope. All hosts use the same stable
+Codex channel and three local account services; no remote Jarvis control is added.
 
 Human-CLI correction approved 2026-09-09: human commands are transparent account
 selectors, not Jarvis launch requests. Native 0.153.4 automatically discovers
@@ -27,6 +27,21 @@ work-root restriction. Jarvis's explicit shared transport and closed terminal
 launcher remain unchanged. `dev-server/SPEC.md` owns exact routing, discovery,
 environment/config/resume limitations and installer proofs. Server handshakes
 are not the live worker/tmux/phone acceptance defined here.
+
+Latest-stable amendment approved 2026-09-09: the existing host install/update
+workflow resolves and installs npm's stable `latest` Codex once per explicit
+apply. No launch-time network lookup or updater is added. Remove native version
+equality gates from host, runtime and Jarvis; retain strict protocol/authority
+validation and normal library Git pins/lockfiles. The closed host mapping is
+schema 2 with operational fields only, without `version` or `package`; reject
+schema 1 rather than retain a compatibility reader. This supersedes the former
+native-pin policy and Jarvis ADR 0041 through ADR 0042. Version-specific
+source findings are historical evidence, not guaranteed future behavior.
+Version-only apply leaves healthy servers running; planned restart can interrupt
+active turns and normal crash recovery may load the update. The first
+schema/helper cutover requires a coordinated restart and drained incompatible
+Jarvis actions. Upstream breakage
+and prompt operator repair are accepted; private fallback is not.
 
 ## Goal and scope
 
@@ -70,7 +85,7 @@ Jarvis service (jarvis UID; existing kernel, policy and actions)
 1. **`dev-server` owns host deployment.** Three supervised App Servers run as
    the development user with separate existing account homes and sockets. One
    root-owned profile configuration supplies exact endpoint, account-home,
-   binary/pin, empty non-secret cognition cwd and permitted work-root mappings.
+   binary, empty non-secret cognition cwd and permitted work-root mappings.
    Jarvis consumes its non-secret
    client view; it does not maintain a second independently authored mapping.
    Bind locally; socket permissions grant only the intended local clients.
@@ -158,11 +173,11 @@ ReadCoverage = Complete | Bounded{reason}
   approval policy apply; worker output supplies no new authority. Reject generic
   worker controls targeting live Jarvis-internal cognition handles. The reusable
   library does not hardcode Jarvis's three-profile enumeration.
-- Submit exposes Codex 0.153.4's atomic start-or-steer operation and returns the
+- Submit exposes the native atomic start-or-steer operation and returns the
   accepted TurnTarget; it does not claim idle-only admission. Steer retains the
   exact expected turn handle. No operation introduces an implicit host queue.
   Strict idle-only NewTurn is deferred until upstream exposes atomic admission.
-- Interrupt uses the pinned native exact-turn precheck and observes the resulting
+- Interrupt uses the native exact-turn precheck and observes the resulting
   turn outcome, not merely receipt of an RPC acknowledgement. Natural completion
   racing the interrupt is reported as Finished or Stale; the operation is never
   retried and never knowingly redirects to an observed successor.
@@ -172,7 +187,7 @@ ReadCoverage = Complete | Bounded{reason}
   mutation outcome. A legitimate response that cannot fit the output bound is
   an explicit `output_limit`/`NotSent` error; list never drops rows behind a
   native cursor. Persistent profile unavailability is intentionally modeled;
-  protocol/pin/configuration mismatch remains a defect, not a fallback result.
+  protocol/configuration mismatch remains a defect, not a fallback result.
 - Central bounds: 32 KiB prompt, 64 KiB control request/response, 50 threads per
   page, 4,096-byte cwd, existing 1–64-character tmux-name grammar. Reuse
   `llm-tools` tool deadlines/budgets; add no unbounded transcript or event queue.
@@ -251,16 +266,15 @@ binding. This document is the cross-repo plan, not an override of unrelated rule
   combined schema-v3 application revision and literal exact dependency pins;
   remove predecessor session-normalization exceptions.
 - Reuse `dev-server`'s AI installer, profile deployment and shell machinery.
-  Hard-cut that existing owner to the reviewed exact pin on all three hosts.
-  Do not install latest and then overwrite it from a second installer. Generate
+  Use that single existing owner for latest stable on all three hosts. Generate
   each host's human wrappers from the authoritative account declaration; remove
   the restrictive `tui` path and duplicated wrapper asset. A second apply must
   be quiescent. Install the logical personal launcher before the raw binary in
   PATH. Change the Devbox Personal Forge command row; preserve both Claude rows.
-- Pin one qualified server/TUI version across all three services and consumers.
-  Qualification starts with locally observed CLI `0.153.4`; older `0.144.4`
-  containment evidence does not qualify it. Record exact package/digests before
-  implementation. No version range, compatibility reader, private fallback or
+- Native version observations are diagnostic, never admission gates. Use normal
+  npm installation/integrity checks, not a second pin/pack verifier. Historical
+  `0.153.4` source inspection and older `0.144.4` containment evidence do not
+  qualify unseen versions. No compatibility reader, private fallback or
   automatic account substitution. Preserve native history and credentials;
   drain incompatible Jarvis actions and live private sessions explicitly before
   activation. Never kill existing sessions as installer cleanup.
@@ -279,7 +293,7 @@ verifiers write neither tests nor production files.
 | --- | --- | --- |
 | Runtime builder | `llm-calling/src/provider_runtime/agent_runtime/` excluding root-owned exports; corresponding existing `tests/test_agent_{codex_app_server,codex_control,runtime,sessions,auth}.py` | Public runtime over an external protocol-boundary fixture: routing, approval policy, conflicts, unknown outcomes, disconnect-only cleanup. Pure tables only for codecs/validation. |
 | Jarvis builder | New `src/jarvis/codex_tools.py`, `codex_control.py`; existing settings/kernel/definitions, read/write composition, dispatch/policy/gate/actions; `deploy/`; corresponding tests | Real dispatch/action APIs and PostgreSQL: authority, BilledOnce settlement/restart and no duplicate effects. Launch-prefix cases use the real helper in the approved Linux tier, not a routine mock. |
-| Host builder | New `dev-server/assets/codex/` except root-owned profile pin, and `ansible/roles/codex_shared/`; existing AI-tool/shell/workspace-asset roles, `lib/ai-tools.sh`, `lib/dotfiles.sh`, selected router/zshenv assets, Devbox host config; focused installer/launcher tests | Linux platform: peer UID, profiles, safe argv, isolated first tmux creation surviving helper exit, manual/Forge routing and second-apply quiescence. |
+| Host builder | New `dev-server/assets/codex/` except root-owned profile declaration, and `ansible/roles/codex_shared/`; existing AI-tool/shell/workspace-asset roles, `lib/ai-tools.sh`, `lib/dotfiles.sh`, selected router/zshenv assets, Devbox host config; focused installer/launcher tests | Linux platform: peer UID, profiles, safe argv, isolated first tmux creation surviving helper exit, manual/Forge routing and second-apply quiescence. |
 | Root integrator | Contract docs and exact reserved files below | One real-stack journey, dependency agreement and final hard-cut review. |
 
 The helper owns two closed tagged operations: prompt-free `ResolveCwd` before
@@ -295,12 +309,12 @@ src/provider_runtime/agent_runtime/__init__.py}`;
 no bundled Codex SDK or provider fork); and
 `jarvis/{pyproject.toml,uv.lock,src/jarvis/service.py,src/jarvis/cli.py,
 src/jarvis/session-compatibility.json,scripts/verify,
-scripts/qualify_codex_control.py}`. New profile pin and qualification script
+scripts/qualify_codex_control.py}`. New profile declaration and qualification script
 are implementation deliverables. All documentation is root-owned.
 
-Order: root freezes contracts and pinned-surface proof → runtime and host work
+Order: root freezes contracts and observed-surface proof → runtime and host work
 in parallel → Jarvis composition → integrated green → adversarial cleanup.
-Pinned 0.153.4 source/schema inspection must prove control unsubscription,
+Historical 0.153.4 source/schema inspection established control unsubscription,
 thread-scoped approval routing, pending-request replay, native start-or-steer,
 exact-steer checking and interrupt classification. The real-stack gate then
 proves the accepted asynchronous stock-TUI journey. Builders must request root
@@ -356,8 +370,11 @@ no prompts, transcripts, native account data, tokens or terminal captures.
 
 Trade-offs accepted: shared account failure/trust/version boundaries; manual
 reconciliation instead of a worker ledger/relaunch; no proactive completion
-guarantee; terminal-only Skid Kill; optional Skid identity omission; and a pinned
+guarantee; terminal-only Skid Kill; optional Skid identity omission; and a floating
 experimental upstream dependency, not vendor-supported production infrastructure.
+Latest stable reduces pin maintenance but accepts availability/protocol breakage
+and CLI/server skew until explicitly restarted. Strict authority and uncertainty
+checks are not relaxed to restore availability.
 Human native CLI fidelity takes precedence over forcing every invocation onto
 the shared server; Jarvis retains the stricter independent contract.
 The real-stack journey cannot be replaced by more unit tests.
@@ -373,7 +390,7 @@ explicitly resolve incompatible work, not reinterpret it under new authority.
 Protocol evidence: official [App Server](https://learn.chatgpt.com/docs/app-server)
 documents Unix sockets, remote TUI attachment, native thread/turn operations and
 experimental support status; [CLI reference](https://learn.chatgpt.com/docs/developer-commands)
-documents remote resume. Pinned 0.153.4 source establishes that resume subscribes
+documents remote resume. Historical 0.153.4 source establishes that resume subscribes
 the requesting client, approvals fan out to current thread subscribers, the
 first response wins, and pending requests replay to later subscribers. It does
 not expose cross-client TUI readiness or an approval-owner lease; the amended
