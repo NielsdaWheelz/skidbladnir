@@ -4,6 +4,13 @@ Approved target, amended 2026-09-09. Feature implementation is on isolated
 branches; corrective review and live acceptance remain incomplete (`NOT_RUN`).
 Repository names below identify sibling checkouts, not new packages.
 
+Current-main integration approved 2026-09-09: preserve the runtime's generation
+catalogs and tagged authenticated Codex selection; preserve the kernel's
+generation/paid-decision protocols; preserve Jarvis ADR 0040's six-table
+durability, owner-bound transactions, and CPython >=3.12.13,<3.13 floor.
+Jarvis ADR 0041 owns worker control. This amendment supersedes references to
+the older four-table baseline, not the no-worker-ledger rule.
+
 Host-deployment extension approved 2026-09-09: `dev-server/SPEC.md` now owns
 shared App Server installation/start on MacBook and Arch as well as Devbox.
 This supersedes the original Devbox-only installer/PATH/Forge restrictions
@@ -38,7 +45,7 @@ Skid.
 - “Worker” means a top-level Jarvis launch action. Native Codex child threads
   and internal recaller/rememberer/gate calls do not each open a terminal.
 - Codex owns native history and runtime state; tmux owns terminal existence.
-  Jarvis keeps its existing messages/actions, not a worker table, copied
+  Jarvis keeps its six existing application tables, not a worker table, copied
   transcript store, ownership map, or persisted inventory.
 - No Skid source/API/Android changes. Existing Kill remains terminal-only;
   provider-aware Stop is a separate PR. Optional runtime identity may be absent;
@@ -78,6 +85,11 @@ Jarvis service (jarvis UID; existing kernel, policy and actions)
    family through existing `llm-tools` bindings, grants, dispatch and actions.
    Its kernel remains serial; workers execute independently. Native worker
    events never enter the coordinator's structured-step decoder.
+   Discover the exact cognition model/reasoning catalog selection through that
+   same configured shared runtime. Preserve catalog revision and row fingerprint
+   in definitions. Existing model-decision journals and durable Read positions
+   keep their original replay/uncertainty authority; worker Writes still use
+   the original BilledOnce action, never a replacement action after replay.
 4. **One host-owned terminal launcher crosses the UID boundary.** A local
    socket-activated helper runs as the development user, authenticates kernel
    peer credentials, and accepts only the closed launch request below. No sudo
@@ -231,8 +243,13 @@ binding. This document is the cross-repo plan, not an override of unrelated rule
   JSON-RPC routing and policy translation. No duplicate worker SDK/client,
   protocol codegen, native-store parser or alternate inference path.
 - Extend existing Jarvis tool composition, action settlement/recovery,
-  authority descriptors and session compatibility fingerprint. No new tables,
+  authority descriptors and session compatibility fingerprint. No Codex-control
+  tables beyond the accepted six-table Jarvis baseline,
   kernel fork, job framework or shadow command ledger.
+  Preserve main's exact generation/catalog contracts, migration 0004,
+  owner-bound transactions, original paid-decision and Read recovery. Use a
+  combined schema-v3 application revision and literal exact dependency pins;
+  remove predecessor session-normalization exceptions.
 - Reuse `dev-server`'s AI installer, profile deployment and shell machinery.
   Hard-cut that existing owner to the reviewed exact pin on all three hosts.
   Do not install latest and then overwrite it from a second installer. Generate
@@ -344,6 +361,14 @@ experimental upstream dependency, not vendor-supported production infrastructure
 Human native CLI fidelity takes precedence over forcing every invocation onto
 the shared server; Jarvis retains the stricter independent contract.
 The real-stack journey cannot be replaced by more unit tests.
+
+Integration trade-off: shared transport removes the runtime's private-child
+`child_tmpdir` setting. Server environment/TMPDIR remains host-owned; supported
+per-thread sandbox exclusions remain. Older cognition sessions cold-bootstrap
+after the combined dependency/definition cut, while canonical messages, memory,
+actions, paid decisions and Read records remain intact. Recoverable records
+whose frozen contracts no longer match fail closed; activation must drain or
+explicitly resolve incompatible work, not reinterpret it under new authority.
 
 Protocol evidence: official [App Server](https://learn.chatgpt.com/docs/app-server)
 documents Unix sockets, remote TUI attachment, native thread/turn operations and
