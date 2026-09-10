@@ -119,7 +119,8 @@ Jarvis service (jarvis UID; existing kernel, policy and actions)
    and `codex-work2`. They select the declared account and forward all arguments;
    the native CLI owns transport selection. Devbox PATH and Forge select these
    commands. Jarvis never invokes them: its closed launcher still selects exact
-   remote endpoint, safe policy, permitted cwd and clean environment itself.
+   remote endpoint, permitted cwd and clean environment itself. Native thread
+   creation owns worker policy; remote TUI resume retains that saved policy.
    Claude launchers are unchanged.
 
 Shared servers are a shared OS/environment/version/failure boundary, not
@@ -127,7 +128,10 @@ per-thread security isolation. Preserve Jarvis's per-thread read-only,
 no-network, disabled-native-tool posture and strict inspected stream; replace
 and requalify its old private-process containment claim. Jarvis-created workers use
 explicit workspace-write policy and native human approval for escalation;
-no unattended bypass. Jarvis never answers worker approvals. Its control
+no unattended bypass. Creation sets on-request approval, user review and disabled
+network access. The helper supplies no permission overrides on remote resume:
+Codex 0.154 rejects them and restores the saved server policy instead. No
+human-wrapper change or new launcher field is needed. Jarvis never answers worker approvals. Its control
 connection unsubscribes from each new worker before dispatch. In the intended
 single-user flow the stock TUI is the only responding subscriber, but Codex
 0.153.4 provides no exclusive approval-owner lease; other trusted clients must
