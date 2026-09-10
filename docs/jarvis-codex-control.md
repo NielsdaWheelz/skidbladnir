@@ -1,7 +1,7 @@
 # Jarvis: shared local Codex control
 
-Approved target, amended 2026-09-09. Current-main integration and corrective
-source review are complete on isolated branches; live acceptance is `NOT_RUN`.
+Approved target, amended 2026-09-09. Implementation and routine proofs are
+merged; live acceptance remains incomplete.
 Repository names below identify sibling checkouts, not new packages.
 
 Current-main integration approved 2026-09-09: preserve the runtime's generation
