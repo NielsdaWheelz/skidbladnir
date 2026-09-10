@@ -1,7 +1,7 @@
 # Jarvis: shared local Codex control
 
-Approved target, amended 2026-09-09. Feature implementation is on isolated
-branches; corrective review and live acceptance remain incomplete (`NOT_RUN`).
+Approved target, amended 2026-09-09. Current-main integration and corrective
+source review are complete on isolated branches; live acceptance is `NOT_RUN`.
 Repository names below identify sibling checkouts, not new packages.
 
 Current-main integration approved 2026-09-09: preserve the runtime's generation
@@ -277,7 +277,7 @@ verifiers write neither tests nor production files.
 
 | Owner | Exclusive implementation paths (relative to named repo) | Owning proof |
 | --- | --- | --- |
-| Runtime builder | `llm-calling/src/provider_runtime/agent_runtime/` excluding root-owned exports; corresponding existing `tests/test_agent_{codex_app_server,codex_sdk,runtime,sessions,auth}.py` and focused control tests | Public runtime over an external protocol-boundary fixture: routing, approval policy, conflicts, unknown outcomes, disconnect-only cleanup. Pure tables only for codecs/validation. |
+| Runtime builder | `llm-calling/src/provider_runtime/agent_runtime/` excluding root-owned exports; corresponding existing `tests/test_agent_{codex_app_server,codex_control,runtime,sessions,auth}.py` | Public runtime over an external protocol-boundary fixture: routing, approval policy, conflicts, unknown outcomes, disconnect-only cleanup. Pure tables only for codecs/validation. |
 | Jarvis builder | New `src/jarvis/codex_tools.py`, `codex_control.py`; existing settings/kernel/definitions, read/write composition, dispatch/policy/gate/actions; `deploy/`; corresponding tests | Real dispatch/action APIs and PostgreSQL: authority, BilledOnce settlement/restart and no duplicate effects. Launch-prefix cases use the real helper in the approved Linux tier, not a routine mock. |
 | Host builder | New `dev-server/assets/codex/` except root-owned profile pin, and `ansible/roles/codex_shared/`; existing AI-tool/shell/workspace-asset roles, `lib/ai-tools.sh`, `lib/dotfiles.sh`, selected router/zshenv assets, Devbox host config; focused installer/launcher tests | Linux platform: peer UID, profiles, safe argv, isolated first tmux creation surviving helper exit, manual/Forge routing and second-apply quiescence. |
 | Root integrator | Contract docs and exact reserved files below | One real-stack journey, dependency agreement and final hard-cut review. |
@@ -291,8 +291,8 @@ Root alone owns `dev-server/{ansible/playbooks/apply.yml,
 ansible/group_vars/devbox.yml,lib/common.sh,test,assets/codex/profiles.json}`;
 `llm-calling/{pyproject.toml,uv.lock,src/provider_runtime/__init__.py,
 src/provider_runtime/agent_runtime/__init__.py}`;
-`llm-agent-kernel/{pyproject.toml,uv.lock}` (its independent `0.144.4` SDK pin
-must change; no provider fork); and
+`llm-agent-kernel/{pyproject.toml,uv.lock}` (native binaries are host-owned;
+no bundled Codex SDK or provider fork); and
 `jarvis/{pyproject.toml,uv.lock,src/jarvis/service.py,src/jarvis/cli.py,
 src/jarvis/session-compatibility.json,scripts/verify,
 scripts/qualify_codex_control.py}`. New profile pin and qualification script
