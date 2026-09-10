@@ -220,6 +220,14 @@ silently delete a created thread, close an uncertain terminal, or replay the
 complete sequence. Process creation, PID, sleeps and terminal-text parsing do
 not upgrade the result to TUI readiness. Do not add a proxy or custom TUI.
 
+A thread-only prefix records an observed native creation, not guaranteed durable
+history. A newly created idle thread may remain unmaterialized until its first
+user message; idle unloading may discard it. Missing history never proves
+zero dispatch or authorizes a replacement launch. The no-prompt failure check
+observes the exact native creation receipt and zero input frames through an
+isolated qualification-only relay; production transport and the stock TUI are
+unchanged. No retention override or artificial prompt is added for testing.
+
 Reuse Jarvis's `action` record for authorization and command outcome, not worker
 ownership. Codex Writes use existing `ReplayPolicy.BilledOnce`, one handler
 entry with separately bounded stage I/O, and explicit outcome reconciliation;
