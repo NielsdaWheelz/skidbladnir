@@ -1002,9 +1002,11 @@ branch `terminal-readable-sizing` with `./scripts/test verify` green; the
 owner runtime proofs (isolated gateway+tmux integration, live, Android
 platform matrix, hands-on S22+ journey, designer readability review) are
 `NOT_RUN` pending explicit approval. Immutable `v0.2.30` is published and
-upstream-pinned; the `published-release` gate is green; the MacBook and devbox
-hosts and the phone run `v0.2.30`; the arch host's interactive apply is
-pending.
+upstream-pinned; the `published-release` gate is green; all three hosts and
+the phone run `v0.2.30` (arch applied 2026-09-10); `scripts/fleet verify` is
+red since dev-server began naming generations by runtime identity (2026-09-09)
+while the fleet operator reads the artifact digest from that name, a contract
+break that is separate scope.
 Publication/deployment are separate scope. This target supersedes conflicting
 historical S2/S3, theme, key-deck, and page-version statements;
 historical results remain historical.
@@ -1013,7 +1015,7 @@ historical results remain historical.
 
 | Slice | Status |
 | --- | --- |
-| v0 readable terminal sizing | Implemented 2026-09-08 and published in immutable `v0.2.30` (upstream-pinned); `./scripts/test verify` and `published-release` green; MacBook, devbox, and phone deployed, arch apply pending; owner runtime proofs and hands-on acceptance `NOT_RUN` |
+| v0 readable terminal sizing | Implemented 2026-09-08 and published in immutable `v0.2.30` (upstream-pinned); `./scripts/test verify` and `published-release` green; three hosts and the phone deployed (arch 2026-09-10); `scripts/fleet verify` red on all hosts since the 2026-09-09 dev-server generation-name change (separate scope); owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
