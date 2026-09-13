@@ -325,6 +325,11 @@ phone, all-host deployment, and retirement. no broad refactor or cleanup slice.
 ship gateway, phone, cli and the pinned helper together under existing release
 rules; add no old/new contract compatibility branch.
 
+fleet release agreement compares version, source commit and platform. runtime
+integrity separately compares installed files with the installer's active digest;
+the generation suffix is that runtime digest, not the downloaded archive digest.
+the installer continues to verify the archive against the published release pin.
+
 the helper installation uses a private uv 0.11.28 bootstrap, python 3.12.13,
 and its pinned source's frozen `claude-sdk` environment. this adds an initial
 download and retained per-revision disk space. jarvis's unchanged cognition

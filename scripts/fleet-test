@@ -476,7 +476,7 @@ for host_home in "$local_home" "$devbox_home" "$arch_home"; do
   jq -cn --arg platform "$release_platform" \
     '{platform:$platform,sourceSha:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"v1.2.3"}' \
     >"$generation/release.json"
-  printf '{}\n' >"$generation/host-config.json"
+  printf '{"fixtureHost":"%s"}\n' "$(basename "$host_home")" >"$generation/host-config.json"
   chmod 0755 "$generation/skidbladnir"
   chmod 0755 "$host_home/.local/bin/skidbladnir-launch"
   chmod 0644 "$generation/characters.json" "$generation/release.json"
@@ -489,6 +489,11 @@ for host_home in "$local_home" "$devbox_home" "$arch_home"; do
       printf '%s\0%s\n' "$name" "$(fixture_sha256 "$generation/$name")"
     done
   } | fixture_sha256_stream)"
+  admitted_generation="$host_home/.local/share/skidbladnir/releases/v1.2.3-$runtime_identity"
+  mv "$generation" "$admitted_generation"
+  generation="$admitted_generation"
+  /bin/unlink "$host_home/.local/share/skidbladnir/current"
+  ln -s "releases/v1.2.3-$runtime_identity" "$host_home/.local/share/skidbladnir/current"
   printf '%s\n' "$runtime_identity" >"$host_home/.local/state/dev-server/active/skid.runtime.sha256"
   chmod 0600 "$host_home/.local/state/dev-server/active/skid.runtime.sha256"
   if [[ "$(basename "$host_home")" == local ]]; then
@@ -735,21 +740,14 @@ capture "$fleet" verify
 [[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
   fail 'verify accepted a fleet that was uniformly stale against the declared release'
 
-jq '.artifacts["darwin-arm64"].sha256 = ("c" * 64)' \
+# Archive checksums belong to admission, not the cross-host release identity.
+# The installed runtime stamp still binds each host's exact, distinct bytes.
+jq '.artifacts["darwin-arm64"].sha256 = ("c" * 64) | .artifacts["linux-amd64"].sha256 = ("d" * 64)' \
   "$pin_valid" >"$pin"
 git -C "$pin_checkout" add assets/skidbladnir/release-pin.json
-git -C "$pin_checkout" commit -qm 'Darwin artifact fixture'
+git -C "$pin_checkout" commit -qm 'archive identity is separate fixture'
 capture "$fleet" verify
-[[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
-  fail 'verify accepted a mismatched Darwin host artifact digest'
-
-jq '.artifacts["linux-amd64"].sha256 = ("c" * 64)' \
-  "$pin_valid" >"$pin"
-git -C "$pin_checkout" add assets/skidbladnir/release-pin.json
-git -C "$pin_checkout" commit -qm 'Linux artifact fixture'
-capture "$fleet" verify
-[[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
-  fail 'verify accepted a mismatched Linux host artifact digest'
+[[ "$status" == 0 ]] || fail 'fleet confused archive admission with release agreement'
 export SKIDBLADNIR_DEV_SERVER_CHECKOUT="$checkout"
 
 touch "$local_home/oversized-pressure"

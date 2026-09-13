@@ -117,7 +117,7 @@ authenticated_get() (
 release_identity_digest() {
   local platform="$1"
   local share="$HOME/.local/share/skidbladnir"
-  local relative generation artifact platform_key manifest manifest_bytes values
+  local relative generation runtime_identity platform_key manifest manifest_bytes values
   local version source binary_identity
   case "$platform" in
   Darwin) platform_key=darwin-arm64 ;;
@@ -128,7 +128,7 @@ release_identity_digest() {
   relative="$(readlink "$share/current")" || return
   [[ "$relative" =~ ^releases/(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))-([0-9a-f]{64})$ ]] ||
     return 1
-  artifact="${BASH_REMATCH[5]}"
+  runtime_identity="${BASH_REMATCH[5]}"
   generation="$share/$relative"
   manifest="$generation/release.json"
   [[ -d "$generation" && ! -L "$generation" &&
@@ -145,11 +145,11 @@ release_identity_digest() {
     then [.version, .sourceSha] | @tsv else error("invalid release manifest") end
   ' "$manifest" 2>/dev/null)" || return
   IFS=$'\t' read -r version source <<<"$values"
-  [[ "$relative" == "releases/$version-$artifact" ]] || return 1
+  [[ "$relative" == "releases/$version-$runtime_identity" ]] || return 1
   binary_identity="$("$generation/skidbladnir" version 2>/dev/null)" || return
   [[ "$binary_identity" == "$version $source" ]] || return 1
-  printf 'skidbladnir-fleet-release-v2\0%s\0%s\0%s\0%s' \
-    "$version" "$source" "$platform_key" "$artifact" | sha256_stream
+  printf 'skidbladnir-fleet-release-v3\0%s\0%s\0%s' \
+    "$version" "$source" "$platform_key" | sha256_stream
 }
 
 active_runtime_is_current() {
@@ -183,7 +183,7 @@ candidate_release_digest() {
   local checkout="$1"
   local pin="$checkout/assets/skidbladnir/release-pin.json"
   local platform="$2"
-  local platform_key value bytes identity version source artifact
+  local platform_key value bytes identity version source
   case "$platform" in
   Darwin) platform_key=darwin-arm64 ;;
   Linux) platform_key=linux-amd64 ;;
@@ -212,12 +212,12 @@ candidate_release_digest() {
       (.artifacts | type == "object" and keys == ["darwin-arm64", "linux-amd64"] and
         (."darwin-arm64" | exact_artifact("darwin-arm64"; $version)) and
         (."linux-amd64" | exact_artifact("linux-amd64"; $version)))
-    then [.version, .sourceSha, .artifacts[$platform].sha256] | @tsv
+    then [.version, .sourceSha] | @tsv
     else error("invalid release pin") end
   ' 2>/dev/null)" || die 'dev-server release pin schema is invalid'
-  IFS=$'\t' read -r version source artifact <<<"$identity"
-  printf 'skidbladnir-fleet-release-v2\0%s\0%s\0%s\0%s' \
-    "$version" "$source" "$platform_key" "$artifact" | sha256_stream
+  IFS=$'\t' read -r version source <<<"$identity"
+  printf 'skidbladnir-fleet-release-v3\0%s\0%s\0%s' \
+    "$version" "$source" "$platform_key" | sha256_stream
 }
 
 candidate_checkout_commit() {
@@ -1071,7 +1071,7 @@ fleet_evidence() {
     die 'fixed-fleet Linux release identities differ'
   [[ "$local_runtime" == "$expected_darwin_release" &&
     "$devbox_runtime" == "$expected_linux_release" ]] ||
-    die 'fixed-fleet active artifacts do not match the dev-server release pin'
+    die 'fixed-fleet release identities do not match the dev-server release pin'
   [[ "$local_handle" != "$devbox_handle" && "$local_handle" != "$arch_handle" &&
     "$devbox_handle" != "$arch_handle" ]] || die 'fixed-fleet machine handles are not unique'
   [[ "$local_origin" != "$devbox_origin" && "$local_origin" != "$arch_origin" &&

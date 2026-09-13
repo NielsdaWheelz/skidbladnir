@@ -24,6 +24,11 @@ func TestAgentControlRetainsHistoryDeliversOnceAndRejectsChangedPane(t *testing.
 	if err != nil {
 		t.Fatal("python3 is required for the isolated terminal fixture")
 	}
+	// Homebrew's Python launcher replaces argv[0] when entering its framework.
+	pythonArgv0, err := exec.Command(python, "-c", "import sys; print(sys.orig_argv[0])").Output()
+	if err != nil {
+		t.Fatal("observe the Python fixture's runtime argument zero")
+	}
 	script := filepath.Join(fixture.root, "terminal-agent.py")
 	received := filepath.Join(fixture.root, "received")
 	if err := os.WriteFile(script, []byte(`import os, sys, tty
@@ -46,7 +51,7 @@ with open(sys.argv[1], "wb", buffering=0) as output:
 			Key: "personal", Label: "Codex · Personal", Provider: agentruntime.ProviderCodex,
 			Command: python, Arguments: []string{script, received},
 			Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: fixture.profileHomes["personal"]}},
-			ForegroundSignatures: []agentruntime.ForegroundSignature{{Argument0: python, Argument1: script}},
+			ForegroundSignatures: []agentruntime.ForegroundSignature{{Argument0: strings.TrimSuffix(string(pythonArgv0), "\n"), Argument1: script}},
 		}},
 	})
 	if err != nil {
@@ -96,7 +101,9 @@ with open(sys.argv[1], "wb", buffering=0) as output:
 		}
 		if len(actual) >= len(expected) {
 			if !bytes.Equal(actual, expected) {
-				t.Fatal("terminal send changed, duplicated, or split its bracketed input")
+				t.Fatalf("terminal send changed, duplicated, or split its bracketed input: bytes=%d want=%d lf=%d want=%d cr=%d want=%d",
+					len(actual), len(expected), bytes.Count(actual, []byte{'\n'}), bytes.Count(expected, []byte{'\n'}),
+					bytes.Count(actual, []byte{'\r'}), bytes.Count(expected, []byte{'\r'}))
 			}
 			break
 		}

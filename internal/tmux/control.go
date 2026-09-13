@@ -68,7 +68,7 @@ func (client Client) Paste(ctx context.Context, pane, text string) error {
 	if err := load.Run(); err != nil {
 		return errors.New("load agent input failed")
 	}
-	err := client.Run(ctx, "paste-agent-input", "paste-buffer", "-p", "-d", "-b", name, "-t", pane, ";", "send-keys", "-t", pane, "Enter")
+	err := client.Run(ctx, "paste-agent-input", "paste-buffer", "-p", "-r", "-d", "-b", name, "-t", pane, ";", "send-keys", "-t", pane, "Enter")
 	return err
 }
 
