@@ -62,3 +62,55 @@ func TestDetectorRecognizesConfiguredCodexFooterOnlyAtCurrentPrompt(t *testing.T
 		})
 	}
 }
+
+func TestDetectorRecognizesClaudePermissionFooterAtCurrentPrompt(t *testing.T) {
+	footer := "⏵⏵ auto mode on (shift+tab to cycle) · ← 0 agents"
+	for _, test := range []struct{ name, text, want string }{
+		{"auto", "❯\n" + footer, "idle"},
+		{"draft", "❯ explain this\n" + footer, "idle"},
+		{"plan", "❯\n⏸ plan mode on (shift+tab to cycle)", "idle"},
+		{"manual", "❯\n⏸ manual mode on (shift+tab to cycle)", "idle"},
+		{"accept edits", "❯\n⏵⏵ accept edits on (shift+tab to cycle) · ← 1 agent", "idle"},
+		{"bypass", "❯\n⏵⏵ bypass permissions on (shift+tab to cycle) · ← 99+ agents", "idle"},
+		{"dont ask", "❯\n⏵⏵ don't ask on (shift+tab to cycle)", "idle"},
+		{"working wins", "✻ Considering… (esc to interrupt)\n❯\n" + footer, "working"},
+		{"no prompt", footer, "unknown"},
+		{"wrong prompt", "›\n" + footer, "unknown"},
+		{"quoted", "❯\n> " + footer, "unknown"},
+		{"prose", "❯\npermissions can change with shift+tab", "unknown"},
+		{"old footer", footer + "\n❯\nmore text", "unknown"},
+		{"incomplete footer", "❯\n⏵⏵ auto mode on (shift+tab to", "unknown"},
+		{"unrecognized suffix", "❯\n" + footer + " waiting for input", "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Detect(agentruntime.ProviderClaude, test.text); got.State != test.want {
+				t.Fatalf("fixture state=%s want=%s", got.State, test.want)
+			}
+		})
+	}
+	if got := Detect(agentruntime.ProviderCodex, "›\n"+footer); got.State != "unknown" {
+		t.Fatal("Claude permission footer established Codex state")
+	}
+}
+
+func TestDetectorRecognizesClaudeFolderTrustOnlyWithClosedChoicesAndFooter(t *testing.T) {
+	choices := "❯ No, exit\n  Yes, I trust this folder"
+	footer := "Enter to confirm · Esc to cancel"
+	for _, test := range []struct{ name, text, want string }{
+		{"cancel selected", choices + "\n" + footer, "blocked"},
+		{"trust selected", "No, exit\n❯ Yes, I trust this folder\n" + footer, "blocked"},
+		{"unselected choices", "No, exit\nYes, I trust this folder\n" + footer, "unknown"},
+		{"missing footer", choices, "unknown"},
+		{"one choice", "❯ No, exit\n" + footer, "unknown"},
+		{"quoted choices", "> " + choices + "\n" + footer, "unknown"},
+		{"prose footer", choices + "\nEnter to confirm the documentation says Esc to cancel", "unknown"},
+		{"old footer", choices + "\n" + footer + "\nmore text", "unknown"},
+		{"stale idle footer", choices + "\n⏵⏵ auto mode on (shift+tab to cycle)", "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Detect(agentruntime.ProviderClaude, test.text); got.State != test.want {
+				t.Fatalf("fixture state=%s want=%s", got.State, test.want)
+			}
+		})
+	}
+}
