@@ -697,7 +697,7 @@ exec "$tmux_real" "$@"
 	if err != nil {
 		t.Fatalf("create sessions manager: %v", err)
 	}
-	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "laptop", "-c", testRoot, sleepPath, "300").CombinedOutput(); err != nil {
+	if output, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "new-session", "-d", "-s", "laptop", "-c", testRoot, "--", claudeAgentCommand).CombinedOutput(); err != nil {
 		t.Fatalf("create laptop tmux session: output_bytes=%d", len(output))
 	}
 	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
@@ -779,7 +779,7 @@ exec "$tmux_real" "$@"
 		}
 	}
 	laptopAgent := laptopCard.Agent
-	if laptopAgent == nil || laptopAgent.Provider != "Codex" || laptopAgent.PID <= 0 ||
+	if laptopAgent == nil || laptopAgent.Provider != "Claude" || laptopAgent.PID <= 0 ||
 		laptopAgent.Profile != "" || laptopAgent.ProviderSession != nil {
 		t.Fatalf("unhooked laptop agent projection is not exact and presence-only: agent=%+v", laptopAgent)
 	}
@@ -794,10 +794,10 @@ exec "$tmux_real" "$@"
 	}
 	laptopPID := laptopAgent.PID
 	registration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
-		Provider:      agentruntime.ProviderCodex,
+		Provider:      agentruntime.ProviderClaude,
 		PID:           processinfo.PID(laptopPID),
 		StartIdentity: processStartIdentity(laptopPID),
-	}, "work", "gateway-http-session")
+	}, "claude-work", "gateway-http-session")
 	if err != nil {
 		t.Fatalf("encode exact laptop registration: %v", err)
 	}
@@ -822,8 +822,8 @@ exec "$tmux_real" "$@"
 	registeredLaptop := findSession(t, inventory, "laptop")
 	registeredCard := decodeSessionCard(t, registeredLaptop)
 	registeredAgent := registeredCard.Agent
-	if registeredAgent == nil || registeredAgent.Provider != "Codex" || registeredAgent.PID != laptopPID ||
-		registeredAgent.Profile != "work" || registeredAgent.ProviderSession == nil ||
+	if registeredAgent == nil || registeredAgent.Provider != "Claude" || registeredAgent.PID != laptopPID ||
+		registeredAgent.Profile != "claude-work" || registeredAgent.ProviderSession == nil ||
 		registeredAgent.ProviderSession.ID != "gateway-http-session" {
 		t.Fatalf("registered laptop agent projection is incomplete: agent=%+v", registeredAgent)
 	}
@@ -833,7 +833,7 @@ exec "$tmux_real" "$@"
 		}
 	}
 	if registeredAgent.ProviderSession.Name != "" {
-		t.Fatal("registered Codex laptop session emitted a provider name")
+		t.Fatal("unnamed Claude laptop session emitted a provider name")
 	}
 	server.Close()
 	reconstructedManager, err := sessions.New(managerConfig)
@@ -855,7 +855,10 @@ exec "$tmux_real" "$@"
 	assertStatus(t, response, http.StatusOK)
 	inventory = decodeObject(t, response)
 	reconstructedLaptop := findSession(t, inventory, "laptop")
-	decodeSessionCard(t, reconstructedLaptop)
+	reconstructedCard := decodeSessionCard(t, reconstructedLaptop)
+	if !reflect.DeepEqual(reconstructedCard.Agent, registeredAgent) {
+		t.Fatal("gateway reconstruction changed process-bound native identity")
+	}
 	if reconstructedLaptop["tmuxId"] != laptopID || reconstructedLaptop["identityToken"] != laptopToken ||
 		!reflect.DeepEqual(reconstructedLaptop["character"], laptopCharacter) {
 		t.Fatalf(
@@ -965,6 +968,10 @@ exec "$tmux_real" "$@"
 	findSession(t, inventory, "gateway-test")
 	findSession(t, inventory, "laptop")
 	zuluAgent := findSession(t, inventory, "zulu-agent")
+	if agent := decodeSessionCard(t, zuluAgent).Agent; agent == nil || agent.Provider != "Codex" ||
+		agent.PID <= 0 || agent.Profile != "" || agent.ProviderSession != nil {
+		t.Fatal("Codex terminal identity is not presence-only")
+	}
 	aardvarkNoAgent := findSession(t, inventory, "aardvark-no-agent")
 	for _, card := range inventory["sessions"].([]any) {
 		decodeSessionCard(t, card.(map[string]any))
