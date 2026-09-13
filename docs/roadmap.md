@@ -26,18 +26,34 @@ trust entries. configured credentials and normal
 provider onboarding are required; local codex login status alone does not prove
 the running shared server can use an account.
 
-phone enrollment/authentication is retained for all three hosts. the full v0.3.0
-phone gate ran 76 tests with three failures; corrected fixtures pass the focused
-three-case rerun, with pairing preserved and the exact published apk restored.
-full patch-release phone acceptance, phone interaction, the remaining profile
-routes, and genuine jarvis owner ingress remain pending.
+phone enrollment/authentication is retained for all three hosts. the v0.3.0
+journey verifies same-target attach/detach/reattach, exact real-gboard input and
+reply, interrupt's written/unconfirmed result, and stop confirmation/cancel.
+confirmed stop removed the reserved terminal and original provider process;
+unrelated targets survived. its compound result toast was not captured. two
+synthetic adb hardware-input probes duplicated input; the mechanism is unresolved.
+claude native history was correctly bound and current; actual gboard touch input
+passed.
+the full v0.3.0 phone gate ran 76 tests with three failures; corrected fixtures
+pass the focused three-case rerun, with pairing preserved and the exact published
+apk restored. full patch-release phone acceptance remains pending.
+
+eight of fifteen host/profile reply paths are verified. remaining authentication/
+onboarding: macbook claude-personal; devbox claude-personal; all five arch profiles.
+the remaining directed reply routes and genuine jarvis owner ingress remain
+pending. v0.3.1 publication is blocked by missing exact-main ci during the
+[2026-09-13 github incident](https://www.githubstatus.com/incidents/0rn90wk115q9).
+git main contains the reviewed patch tree, but the pull-request api still reports
+it open; no further merge or release is inferred from that inconsistent state.
 
 shared codex executes identity hooks outside tmux. native codex binding remains
 an unmet requirement. the proposed full-id footer was withdrawn: the actual phone
 terminal is 35 columns wide and cannot display its 36-character uuid. no full-id
-footer change was implemented. a different binding or an explicit v1 scope
-amendment is required. narrow terminal detector fixes do not establish
-native identity, and clipped or unrecognized footers correctly remain unknown.
+footer change was implemented. an osc-title prefix can identify a unique loaded
+thread but cannot prove it is the tui's current selection; that alternative was
+also rejected. a different binding or an explicit v1 scope amendment is required.
+narrow terminal detector fixes do not establish native identity, and clipped or
+unrecognized footers correctly remain unknown.
 existing claude account roots remain unchanged; no account state is copied to
 complete onboarding. search, stable placement, separate attention, and richer
 history retrieval remain deferred.
