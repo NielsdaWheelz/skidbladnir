@@ -1,6 +1,7 @@
 # agent control
 
 2026-09-12 · accepted v1 implementation target; 2026-09-13 terminal-codex/profile amendment.
+implemented and deployed in v0.3.1; [acceptance and limitations](roadmap.md).
 product scope follows the user's reviewed decisions; this document fixes the
 engineering contract. the existing jarvis → native codex → tmux → phone
 flow is manually confirmed by the user. that is baseline evidence, not evidence

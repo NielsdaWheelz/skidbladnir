@@ -1,8 +1,8 @@
 # Skíðblaðnir v0: product and architecture
 
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
-scoped upgrade now being implemented. its explicit v1 deltas supersede conflicting v0 restrictions
-when implementing that target; runtime acceptance is recorded separately.
+scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
+for that target; runtime acceptance is recorded in the [roadmap](roadmap.md).
 unrelated terminal/platform rules and historical evidence retain their meaning.
 the 2026-09-13 amendment keeps codex terminal-only and claude-work as the sole
 claude launch profile; native codex binding is deferred.
@@ -916,7 +916,7 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder (deliberately not in v0)
 
-the [agent-control target](agent-control.md) is the accepted upgrade being implemented
+the [agent-control target](agent-control.md) is the accepted upgrade shipped in v0.3.1
 for semantic status, provider reads, and cross-agent interaction. it owns its
 scope and acceptance criteria; opaque-agent and activity-only rules describe v0,
 not that target. push, unread-result attention, provenance, copied provider
