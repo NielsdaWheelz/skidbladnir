@@ -949,7 +949,8 @@ exec %s "$@"
 	})
 
 	t.Run("inventory preserves existing terminal options", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "inventory-shell", "-c", fixture.project, "--", "/bin/sh")
+		// An explicit name prevents tmux's asynchronous automatic rename from changing the snapshot.
+		fixture.tmux(t, "new-session", "-d", "-s", "inventory-shell", "-n", "inventory-window", "-c", fixture.project, "--", "/bin/sh")
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatal("list generic shell")
