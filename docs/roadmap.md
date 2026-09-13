@@ -6,8 +6,8 @@ host control, common cli, jarvis, phone, and installation source are implemented
 in isolated `agent-control-v1` worktrees. skid's complete routine verification and
 race checks pass; jarvis passes all 842 linux/postgres tests; the native library
 passes 1021 linux tests and 18 exact-python helper boundary tests. the isolated
-darwin tmux gate passes after fixing literal multiline paste and provider fixtures.
-real provider, linux tmux, fleet, and phone acceptance remain `NOT_RUN`; publication
+darwin and linux tmux gates pass after fixing literal multiline paste and provider fixtures.
+real provider, fleet, and phone acceptance remain `NOT_RUN`; publication
 and rollout are in progress without restarting existing agent sessions.
 search, stable placement,
 separate attention and richer history retrieval remain deferred.

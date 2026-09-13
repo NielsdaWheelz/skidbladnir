@@ -196,7 +196,7 @@ candidate_release_digest() {
     die 'dev-server release pin is not bounded'
   value="$(cat "$pin")" || die 'could not read the dev-server release pin'
   json_is_single_and_duplicate_free "$value" || die 'dev-server release pin JSON is invalid'
-  identity="$(printf '%s' "$value" | jq -er --arg platform "$platform_key" '
+  identity="$(printf '%s' "$value" | jq -er '
     def canonical_version:
       type == "string" and test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$");
     def exact_artifact($name; $version):
@@ -1046,9 +1046,9 @@ fleet_evidence() {
   local expected_linux_release="$2"
   local local_result='' devbox_result='' arch_result=''
   local identity_separator=$'\t'
-  local local_handle local_platform local_runtime local_origin
-  local devbox_handle devbox_platform devbox_runtime devbox_origin
-  local arch_handle arch_platform arch_runtime arch_origin
+  local local_handle local_platform local_release local_origin
+  local devbox_handle devbox_platform devbox_release devbox_origin
+  local arch_handle arch_platform arch_release arch_origin
   local failures=0
   local_result="$(verify_host Darwin macbook)" || failures=$((failures + 1))
   devbox_result="$(remote_host verify devbox)" || failures=$((failures + 1))
@@ -1062,15 +1062,15 @@ fleet_evidence() {
     "$devbox_result" =~ ^mh-[0-9a-f]{32}${identity_separator}Linux${identity_separator}[0-9a-f]{64}${identity_separator}https://[a-z0-9.-]+:8443/$ &&
     "$arch_result" =~ ^mh-[0-9a-f]{32}${identity_separator}Linux${identity_separator}[0-9a-f]{64}${identity_separator}https://[a-z0-9.-]+:8443/$ ]] ||
     die 'fixed-fleet verification returned invalid host identity'
-  IFS=$'\t' read -r local_handle local_platform local_runtime local_origin <<<"$local_result"
-  IFS=$'\t' read -r devbox_handle devbox_platform devbox_runtime devbox_origin <<<"$devbox_result"
-  IFS=$'\t' read -r arch_handle arch_platform arch_runtime arch_origin <<<"$arch_result"
+  IFS=$'\t' read -r local_handle local_platform local_release local_origin <<<"$local_result"
+  IFS=$'\t' read -r devbox_handle devbox_platform devbox_release devbox_origin <<<"$devbox_result"
+  IFS=$'\t' read -r arch_handle arch_platform arch_release arch_origin <<<"$arch_result"
   [[ "$local_platform" == Darwin && "$devbox_platform" == Linux && "$arch_platform" == Linux ]] ||
     die 'fixed-fleet verification returned invalid platforms'
-  [[ "$devbox_runtime" == "$arch_runtime" ]] ||
+  [[ "$devbox_release" == "$arch_release" ]] ||
     die 'fixed-fleet Linux release identities differ'
-  [[ "$local_runtime" == "$expected_darwin_release" &&
-    "$devbox_runtime" == "$expected_linux_release" ]] ||
+  [[ "$local_release" == "$expected_darwin_release" &&
+    "$devbox_release" == "$expected_linux_release" ]] ||
     die 'fixed-fleet release identities do not match the dev-server release pin'
   [[ "$local_handle" != "$devbox_handle" && "$local_handle" != "$arch_handle" &&
     "$devbox_handle" != "$arch_handle" ]] || die 'fixed-fleet machine handles are not unique'
