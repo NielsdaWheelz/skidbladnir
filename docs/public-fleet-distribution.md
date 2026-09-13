@@ -1,7 +1,8 @@
 # Public Fleet Distribution And Connect
 
-Status: accepted contract with the Skíðblaðnir side of the
-host-installer/operator hard cut implemented. The complete upstream pin names
+historical v0.2.29 acceptance follows; current release and rollout status live
+in [the roadmap](roadmap.md). this remains the accepted contract with the
+Skíðblaðnir side of the host-installer/operator hard cut implemented. The complete upstream pin names
 exact `v0.2.29`; its owner red, hermetic green, and routine proof are recorded.
 Cross-repository host-pin agreement, MacBook/Devbox/Arch apply acceptance, and
 live one-host outage/recovery are green with exact tmux lifetime preservation.
@@ -479,7 +480,7 @@ The capability is complete only when:
    only for the exact installed identities.
 6. Dashboard, terminal routing, create, and kill remain bound to the selected
    immutable machine. One gateway outage cannot block or retarget another.
-7. All five declared Codex/Claude profiles are supplied from each host config;
+7. All four declared Codex/Claude profiles are supplied from each host config;
    tmux remains the sole session/lifetime truth.
 8. No coordinator, public ingress, secret in source/release/logs/argv, legacy
    provisioning path, default host profile, compatibility fallback, or partial

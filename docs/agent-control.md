@@ -343,7 +343,8 @@ consolidate only replaced paths:
 - update tests that explicitly forbid semantic status. do not resurrect retired
   hook/lifecycle machinery to satisfy historical tests.
 
-required coupled rollout: drain old non-terminal jarvis worker actions and stop
+initial coupled rollout (completed for v0.3.0; retained as the cutover contract):
+drain old non-terminal jarvis worker actions and stop
 jarvis; publish/pin and install gateway/cli/helper/phone together; run
 `scripts/fleet provision-clients`; activate the new jarvis with its schema-3
 cognition config and explicit cli/config paths; then retire the old installed
@@ -359,7 +360,8 @@ sudo systemctl daemon-reload
 sudo rmdir /run/jarvis-codex-launcher
 ```
 
-run these only during the approved cutover; shared codex services keep running.
+these launcher-retirement commands already ran during the approved initial
+cutover; do not repeat them for patch releases. shared codex services keep running.
 the installed cli/jarvis/phone journey needs explicit approval for newly created,
 named test sessions on default tmux servers: the isolated `-L` gate alone does
 not authorize it. cover all twelve host/profile cases across the six directed
