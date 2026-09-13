@@ -1,16 +1,26 @@
 # Skíðblaðnir v0 roadmap
 
-accepted target being implemented: [agent control](agent-control.md), with
-exclusive delivery boundaries and dependencies specified there. native operations,
-host control, common cli, jarvis, phone, and installation source are implemented
-in isolated `agent-control-v1` worktrees. skid's complete routine verification and
-race checks pass; jarvis passes all 842 linux/postgres tests; the native library
-passes 1021 linux tests and 18 exact-python helper boundary tests. the isolated
-darwin and linux tmux gates pass after fixing literal multiline paste and provider fixtures.
-real provider, fleet, and phone acceptance remain `NOT_RUN`; publication
-and rollout are in progress without restarting existing agent sessions.
-search, stable placement,
-separate attention and richer history retrieval remain deferred.
+accepted target: [agent control](agent-control.md). v0.3.0 is published and
+installed on all three gateways and the phone. host installation preserved
+credentials, tmux/pane lifetimes, and observed provider processes. private cli
+peers are provisioned on all hosts and for jarvis; jarvis is active and its old
+worker launcher is retired. no busy shared codex service was restarted.
+
+routine and isolated darwin/linux tmux checks pass. claude work has live native
+working/idle and bounded history evidence, including text older than the viewport.
+phone enrollment/authentication is retained for all three hosts. the full phone
+gate ran 76 tests with three failures; corrected test fixtures pass the focused
+three-case rerun, with pairing preserved and the exact published apk restored.
+full patch-release phone acceptance, the complete profile/route matrix,
+agent coordination, jarvis owner ingress, and phone controls remain pending.
+
+live qualification exposed provider footer variants; their narrow detector fixes
+are implemented and tested. shared codex executes identity hooks outside tmux;
+a replacement identity mechanism requires an accepted contract amendment.
+existing configured claude account roots remain unchanged; incomplete provider
+onboarding/authentication is not repaired by moving or copying account state.
+search, stable placement, separate attention, and richer history retrieval remain
+deferred.
 
 Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
 implemented. The 2026-08-26 multi-machine hard cut is also implemented and
