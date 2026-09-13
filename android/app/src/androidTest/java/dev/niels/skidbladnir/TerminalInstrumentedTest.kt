@@ -3729,9 +3729,10 @@ class TerminalInstrumentedTest {
     fun trueColorEscapeSequenceProducesColoredPixels() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
+            // Keep each swatch within the phone grid; wrapping changes DOM span boundaries.
             TerminalTestProbe.page?.write(
-                ("\u001b[31mINDEXED RED\u001b[0m " +
-                    "\u001b[38;2;97;175;239mTRUECOLOR BLUE\u001b[0m " +
+                ("\u001b[31mINDEXED RED\u001b[0m\r\n" +
+                    "\u001b[38;2;97;175;239mTRUECOLOR BLUE\u001b[0m\r\n" +
                     "\u001b[48;2;97;175;239m BACKGROUND BLUE \u001b[0m").toByteArray(),
             )
             awaitValue(
@@ -3774,10 +3775,11 @@ class TerminalInstrumentedTest {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
             val webView = awaitTerminal(scenario)
             focusTerminal(scenario, webView)
+            // Separate swatches from wrapping and from the focused cursor's cell.
             requireNotNull(TerminalTestProbe.page).write(
-                ("\u001b[93mBRIGHT YELLOW\u001b[0m " +
-                    "\u001b[38;5;244mGRAYSCALE 244\u001b[0m " +
-                    "\u001b[38;5;21mCUBE 21\u001b[0m").toByteArray(),
+                ("\u001b[93mBRIGHT YELLOW\u001b[0m\r\n" +
+                    "\u001b[38;5;244mGRAYSCALE 244\u001b[0m\r\n" +
+                    "\u001b[38;5;21mCUBE 21\u001b[0m ").toByteArray(),
             )
             // The focused block cursor blinks, so poll until its lit phase.
             // Cube 21 keeps the library default #0000ff, which is 2.3:1 on Ink
@@ -3880,6 +3882,17 @@ class TerminalInstrumentedTest {
     @Test
     fun readableSizingFitsWholeCellsAtTheSavedNominalSize() {
         ActivityScenario.launch(TerminalTestActivity::class.java).use { scenario ->
+            // Match TerminalScreen's systemBarsPadding/imePadding; the bare activity
+            // otherwise places the last rows behind Android's navigation bar.
+            scenario.onActivity { activity ->
+                val content = activity.findViewById<View>(android.R.id.content)
+                content.setOnApplyWindowInsetsListener { view, insets ->
+                    val edges = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
+                    view.setPadding(edges.left, edges.top, edges.right, edges.bottom)
+                    insets
+                }
+                content.requestApplyInsets()
+            }
             val webView = awaitTerminal(scenario)
             val page = requireNotNull(TerminalTestProbe.page)
             val metrics = onUi(scenario) { webView.resources.displayMetrics }
@@ -4096,6 +4109,19 @@ class TerminalInstrumentedTest {
                 "\u001b[$rows;${columns - 1}H\u001b[1m\u5168\u001b[0m",
             caseId,
         )
+        // The control reply acknowledges parsing, before xterm's scheduled DOM render.
+        awaitBooleanState(
+            webView,
+            """
+            (function () {
+                var rows = document.querySelector('.xterm-rows').children;
+                return rows.length === $rows && rows[0].textContent.endsWith('\u2588') &&
+                    rows[$rows - 1].textContent.endsWith('\u5168');
+            }())
+            """.trimIndent(),
+            "$caseId-glyphs",
+        )
+        awaitAnimationFrame(webView, "$caseId-painted")
         awaitVisualState(webView)
         val screen = JSONObject(
             evaluateSafely(
