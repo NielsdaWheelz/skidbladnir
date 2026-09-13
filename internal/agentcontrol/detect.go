@@ -11,6 +11,7 @@ var (
 	workingChrome  = regexp.MustCompile(`^[•◦✻✽✶✳✢·] .+\([^\n]*esc to interrupt[^\n]*\)$`)
 	selectedChoice = regexp.MustCompile(`^[❯›] [1-9][0-9]*[.)] .+$`)
 	idleFooter     = regexp.MustCompile(`^\? for shortcuts(?:\s+[0-9]+% context left)?$`)
+	codexFooter    = regexp.MustCompile(`^gpt-[a-z0-9][a-z0-9._-]*(?: (?:none|minimal|low|medium|high|xhigh))?(?: fast)?(?: · (?:~(?:/[^\n]*)?|/[^\n]*))? · context [0-9]+% used(?: · (?:5h|weekly) [0-9]+% left)*$`)
 )
 
 // Detect uses anchored current interface chrome. Arbitrary titles and quoted
@@ -34,6 +35,9 @@ func Detect(provider agentruntime.Provider, text string) agentruntime.Status {
 		case agentruntime.ProviderClaude:
 			prompt = prompt || line == "❯" || strings.HasPrefix(line, "❯ ")
 		}
+	}
+	if provider == agentruntime.ProviderCodex {
+		footer = footer || codexFooter.MatchString(strings.ToLower(strings.TrimSpace(lines[len(lines)-1])))
 	}
 	if choice && dialogFooter {
 		return agentruntime.Status{State: "blocked", Source: "terminal", Reason: "dialog"}

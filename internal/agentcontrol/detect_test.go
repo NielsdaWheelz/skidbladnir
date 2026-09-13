@@ -26,3 +26,36 @@ func TestDetectorRequiresCurrentChromeInsteadOfQuotedInstructions(t *testing.T) 
 		}
 	}
 }
+
+func TestDetectorRecognizesConfiguredCodexFooterOnlyAtCurrentPrompt(t *testing.T) {
+	footer := "gpt-5.6-sol xhigh · ~/project · Context 12% used · weekly 83% left"
+	for _, test := range []struct {
+		name, text, want string
+		provider         agentruntime.Provider
+	}{
+		{"configured ready", "›\n\n" + footer + "\n", "idle", agentruntime.ProviderCodex},
+		{"draft", "› explain this\n" + footer, "idle", agentruntime.ProviderCodex},
+		{"no reasoning", "›\ngpt-5.4 · /tmp/project · Context 0% used · weekly 100% left", "idle", agentruntime.ProviderCodex},
+		{"fast mode", "›\ngpt-5.6-sol xhigh Fast · ~ · Context 2% used · weekly 70% left", "idle", agentruntime.ProviderCodex},
+		{"no quota", "›\ngpt-5.6-sol xhigh · ~/project · Context 12% used", "idle", agentruntime.ProviderCodex},
+		{"model and context", "›\ngpt-5.4 high · Context 12% used", "idle", agentruntime.ProviderCodex},
+		{"five hour quota", "›\ngpt-5.4 high · /work · Context 12% used · 5h 56% left", "idle", agentruntime.ProviderCodex},
+		{"both quotas", "›\ngpt-5.4 high · Context 12% used · 5h 56% left · weekly 83% left", "idle", agentruntime.ProviderCodex},
+		{"working wins", "• Working (4s • esc to interrupt)\n›\n" + footer, "working", agentruntime.ProviderCodex},
+		{"dialog wins", "› 1. Yes, proceed\nPress enter to confirm or esc to cancel\n" + footer, "blocked", agentruntime.ProviderCodex},
+		{"no prompt", footer, "unknown", agentruntime.ProviderCodex},
+		{"quoted footer", "›\nThe footer says \"" + footer + "\".", "unknown", agentruntime.ProviderCodex},
+		{"quoted block", "›\n> " + footer, "unknown", agentruntime.ProviderCodex},
+		{"prose directory", "›\ngpt-5.6-sol xhigh · directory example · Context 12% used · weekly 83% left", "unknown", agentruntime.ProviderCodex},
+		{"old footer", footer + "\n›\nmore tutorial text", "unknown", agentruntime.ProviderCodex},
+		{"prompt only", "›", "unknown", agentruntime.ProviderCodex},
+		{"missing context", "›\ngpt-5.6-sol xhigh · ~/project · weekly 83% left", "unknown", agentruntime.ProviderCodex},
+		{"wrong provider", "❯\n" + footer, "unknown", agentruntime.ProviderClaude},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Detect(test.provider, test.text); got.State != test.want {
+				t.Fatalf("fixture state=%s want=%s", got.State, test.want)
+			}
+		})
+	}
+}
