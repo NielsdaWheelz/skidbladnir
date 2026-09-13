@@ -2,8 +2,8 @@
 
 accepted target: [agent control](agent-control.md). immutable v0.3.1 is published
 at `ac1b2079af4a5db35509a7ed0607eea77448bb85`, pinned across both repositories,
-and installed on all three gateways and clis, including jarvis's executable copy.
-the phone still runs v0.3.0. the published-release and fleet verification gates
+and installed on all three gateways and clis, including jarvis's executable copy,
+and the phone. the published-release and fleet verification gates
 pass. the installer recognizes the fleet-owned `client.json`; upgrade preserved
 its bytes/mode, pairing files, observed tmux/agent identities, and all nine shared
 codex server lifetimes. only skid gateways restarted for this patch.
@@ -48,20 +48,23 @@ synthetic adb hardware-input probes expanded or altered input; the mechanism is
 unresolved.
 claude native history was correctly bound and current; actual gboard touch input
 passed.
-the full v0.3.0 phone gate passed 73 of 76 tests; corrected fixtures pass the
-focused three-case rerun, with pairing preserved and the exact published apk
-restored. the full 76-test v0.3.1 gate is `NOT_RUN`: adb no longer sees the phone.
+the full v0.3.0 phone gate passed 73 of 76 tests; corrected fixtures passed the
+focused three-case rerun. the complete release-bound v0.3.1 platform gate now
+passes 76/76 with no failures or skips. ordinary update and instrumentation
+preserved encrypted pairing; the exact public apk was restored, the test package
+removed, and all three enrolled hosts authenticated afterward. the actual gboard
+and same-target journey above remains v0.3.0 evidence; production android source
+and build configuration are unchanged between these releases.
 
 all twelve host/profile reply paths are verified on v0.3.0. the 2026-09-13 owner
 amendment removes claude-personal; only claude-work is required. arch personal,
 work/work2 and claude-work reply through remote cli controls. earlier task-owned
-fixtures were removed, preserving the observed pre-existing targets; the two
-subsequent jarvis acceptance workers remain for the pending owner probe.
+fixtures were removed, preserving the observed pre-existing targets.
 the genuine jarvis owner request initially parked before a provider turn or
 agent action. one controlled recovery restarted only jarvis and preserved shared
 servers. the request then created both remote terminals and delivered one codex
 send, but its keys request failed before cli dispatch and an interrupt was denied
-by the write check. neither assembled reply, interruption, nor stop was verified.
+by the write check. that request did not verify either reply, interruption, or stop.
 the request exhausted its input budget: 620262 reported tokens against 600000,
 after 13 main turns. the original cognition exception and keys pre-action failure
 cause were not retained; the interrupt denial alone does not establish a defect.
@@ -69,8 +72,25 @@ jarvis diagnostics PR14 is deployed at `1dbeee354f54ba7bbaab0670c7b888e0ad1ec1ce
 pre-action failures now distinguish policy denial from unavailable write checks,
 with content-free stage/outcome/exception-class logs. exact-tree canonical linux
 verification passed; hosted ci could not start because of account billing.
-the pending genuine owner probe will test keys/read and capture any new failure.
-the patch does not itself prove that keys works; jarvis acceptance remains incomplete.
+subsequent genuine owner probes verified keys/read, claude trust-dialog handling,
+one claude send and its assembled reply, and the original codex reply without
+resending its prompt. both exact targets received one interrupt and one stop;
+each stop reported terminal closed and provider halt unconfirmed. jarvis preserved
+that partial result and delivered its reports without replay. both reserved
+terminals are absent; all three unrelated sessions and agent targets survived.
+combined with the ordinary-agent coordinator journey, these probes close v1
+capability acceptance across separate requests, not one uninterrupted orchestration.
+
+jarvis's unchanged 600000-input-token budget remains an operational limit. the
+claude completion probe used 609017 tokens in eight main turns and stopped before
+interrupt dispatch; a separate owner request completed cleanup. the inspected
+reported totals count input once, including cached input. three inspected owner
+requests on the retained native thread republish the same 125865-byte, 24-tool
+contract table; repeated context reduces the tool steps that fit. sustained
+orchestration is not qualified.
+fix contract repetition at the kernel/tools boundary in a separate scope, with
+plan-revision, reconstruction, and native-compaction proofs. neither suppress
+contracts in jarvis nor silently raise its budget during this rollout.
 
 the owner's latest decision defers native codex for v1, superseding the proposed
 full-id footer. terminal state/history/control remain; claude retains native
