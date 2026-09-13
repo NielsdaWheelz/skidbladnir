@@ -103,6 +103,11 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return 0
 		}
+		// Without a pane there is no projection to publish. Input admission and
+		// draining still precede this no-op; host tooling is irrelevant to it.
+		if os.Getenv("TMUX_PANE") == "" {
+			return 0
+		}
 		config, configErr := loadRuntimeHostConfig(ctx, *hostConfigPath, platform.Current().Kind)
 		if configErr != nil {
 			// A host-configuration defect is the deployment's to fix, not the

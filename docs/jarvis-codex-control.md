@@ -1,5 +1,12 @@
 # Jarvis: shared local Codex control
 
+the accepted [agent-control target](agent-control.md) supersedes this document's
+worker routing, tools, launcher, and worker permission rules. workers now use
+direct peer `agent.*` controls; codex uses terminal state/history/control, and
+claude-work adds native state/history/stop. shared codex supervision and jarvis
+cognition remain governed by their existing owners. the text below records the
+earlier shared-codex design and its unaffected runtime decisions.
+
 Approved target, amended 2026-09-09. Implementation and routine proofs are
 merged; live acceptance remains incomplete.
 Repository names below identify sibling checkouts, not new packages.

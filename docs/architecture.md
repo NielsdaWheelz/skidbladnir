@@ -4,6 +4,8 @@ the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
 scoped upgrade now being implemented. its explicit v1 deltas supersede conflicting v0 restrictions
 when implementing that target; runtime acceptance is recorded separately.
 unrelated terminal/platform rules and historical evidence retain their meaning.
+the 2026-09-13 amendment keeps codex terminal-only and claude-work as the sole
+claude launch profile; native codex binding is deferred.
 
 The 2026-09-08 [readable terminal sizing](terminal-readable-sizing.md) target
 replaces the 80-column/protected-desktop sizing contract with chosen phone text
@@ -111,7 +113,7 @@ or authorize action against the other.
 | Network | One pinned Tailscale Serve TLS `:8443` origin per machine; Funnel/public ingress forbidden |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
-| Profiles | Every host exposes closed `personal \| work \| work2 \| claude-personal \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
+| Profiles | Every host exposes closed `personal \| work \| work2 \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
 | Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
@@ -127,7 +129,6 @@ Profile mapping is one ordered, closed, host-local gateway-config table:
 | `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | none | native executable basename `codex`; or `node` with exact configured argv[1] |
 | `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | none | same |
 | `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | none | same |
-| `claude-personal` / `Claude · Personal` | `Claude` | all | `<home>/.local/bin/claude` | `CLAUDE_CONFIG_DIR=<home>/.claude` | none | exact configured Claude argv[0] |
 | `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | none | exact configured Claude argv[0] |
 
 Adding a launch profile is adding one host-local row — a config change, not a
@@ -583,7 +584,7 @@ history item is `current`.
   gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
-  an exact tmux path, an advisory `testedVersion`, and the five
+  an exact tmux path, an advisory `testedVersion`, and the four
   closed profile rows. Every row has exactly one `Codex | Claude` provider and
   exactly one absolute provider-home environment value: `CODEX_HOME` for Codex
   or `CLAUDE_CONFIG_DIR` for Claude. Provider-home values are unique within a

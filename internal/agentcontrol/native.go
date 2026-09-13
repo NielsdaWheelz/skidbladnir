@@ -19,14 +19,12 @@ import (
 type nativeTarget struct {
 	SessionID string `json:"sessionId,omitempty"`
 	PID       int    `json:"pid,omitempty"`
-	TurnID    string `json:"turnId,omitempty"`
 }
 
 type nativeRequest struct {
 	Operation  string                  `json:"operation"`
 	Provider   agentruntime.Provider   `json:"provider"`
 	ProfileKey agentruntime.ProfileKey `json:"profileKey"`
-	Endpoint   string                  `json:"endpoint,omitempty"`
 	Targets    []nativeTarget          `json:"targets"`
 	Input      any                     `json:"input,omitempty"`
 }
@@ -46,7 +44,6 @@ type nativeInspection struct {
 	Status            agentruntime.Status  `json:"status"`
 	Methods           agentruntime.Methods `json:"methods"`
 	SessionID         string               `json:"sessionId,omitempty"`
-	TurnID            string               `json:"turnId,omitempty"`
 	TerminalOwnsAgent bool                 `json:"terminalOwnsAgent,omitempty"`
 }
 
@@ -60,7 +57,7 @@ func (buffer *outputBuffer) Write(contents []byte) (int, error) {
 }
 
 func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) *nativeFailure {
-	encoded, err := json.Marshal(nativeRequest{Operation: operation, Provider: profile.Provider, ProfileKey: profile.Key, Endpoint: profile.NativeEndpoint, Targets: targets, Input: input})
+	encoded, err := json.Marshal(nativeRequest{Operation: operation, Provider: profile.Provider, ProfileKey: profile.Key, Targets: targets, Input: input})
 	if err != nil {
 		return &nativeFailure{Code: "rejected", Dispatch: "not_sent"}
 	}

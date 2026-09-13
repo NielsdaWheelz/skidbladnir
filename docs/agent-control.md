@@ -1,6 +1,6 @@
 # agent control
 
-2026-09-12 · accepted v1 implementation target.
+2026-09-12 · accepted v1 implementation target; 2026-09-13 terminal-codex/profile amendment.
 product scope follows the user's reviewed decisions; this document fixes the
 engineering contract. the existing jarvis → native codex → tmux → phone
 flow is manually confirmed by the user. that is baseline evidence, not evidence
@@ -18,8 +18,9 @@ session type, ownership relationship, or permission class.
   mandatory launcher. other panes/windows and agents outside tmux are excluded.
 - every configured computer exposes the same local host interface and can call
   every peer directly. no gateway proxy, devbox hub, or tailscale discovery.
-- acceptance hosts: macbook, arch, devbox; existing configured codex/claude
-  profiles. the cli accepts explicit additional peers. phone enrollment remains
+- acceptance hosts: macbook, arch, devbox; codex `personal/work/work2` and
+  `claude-work` only. remove the unused claude-personal launch row; do not delete
+  account data or stop existing sessions. the cli accepts explicit additional peers. phone enrollment remains
   the existing three hosts; a fourth-host installer/product flow is deferred.
 - phone: existing collection and stock terminal, new status labels and interrupt/
   stop actions. existing terminal input handles conversation and dialogs.
@@ -48,11 +49,12 @@ phone ---------------------------> configured peer's https gateway
    `sessions` never imports it. handlers only decode/map/call.
 2. **llm-calling owns native provider protocols.** install one `provider-runtime-control`
    command: one json request on stdin, one json result on stdout, then exit.
-   no daemon or supervisor. it imports the existing codex control client and a
-   narrow claude status/history reader. prompts never appear in command arguments.
+   no daemon or supervisor. skid invokes its narrow claude status/history/stop
+   operations. existing codex library consumers remain independent. prompts never
+   appear in command arguments.
 3. **dev-server owns installation.** add the command's absolute path to host
-   configuration as `nativeControlPath`; add generated `nativeEndpoint` to codex profile rows,
-   sourced from the existing shared-service mapping. reuse profile environments;
+   configuration as `nativeControlPath`. codex rows contain no native endpoint;
+   its shared service remains an independent runtime owner. reuse profile environments;
    no second authored profile/account table.
    set a selected profile's environment before starting/importing its helper.
 4. **the cli owns fleet routing.** one reusable go client calls the same gateway
@@ -90,6 +92,14 @@ the target is assembled from existing inventory fields: `machine.handle`,
 `session.{tmuxId,identityToken}`, and
 `session.agent.{paneId,pid,startIdentity}`. no duplicate target object is stored.
 
+2026-09-13 scope amendment: codex uses terminal state, history, text, keys,
+interrupt, and stop only. native codex binding/state/history/control is deferred;
+no footer/config/process-environment addition is required. do not project old
+codex hook profile/thread identity or dispatch native operations from it. claude
+retains its existing process-bound identity and native status/history/stop.
+accepted cost: codex can report unknown on unfamiliar chrome; retained terminal
+history can be incomplete, and a sent interrupt key does not prove cancellation.
+
 revalidate the tmux lifetime, pane, and foreground process before a command. if
 the current pane/process changed, return stale; do not target its replacement.
 reuse existing session mutation checks. no leases, ownership graph, durable
@@ -97,18 +107,15 @@ receipts, or protection against a hostile same-user process.
 
 state selection is independent of send/read selection:
 
-- codex: native active flags distinguish work from approval/user-input waits;
-  use known latest native turn outcomes for done/failed/stopped. idle alone means
-  ready, never successful work.
-  `notLoaded` retains native history but selects terminal send/interrupt and
-  terminal-derived status: the configured server does not own its execution.
+- codex: terminal chrome only. working, explicit dialogs, and recognized idle
+  prompts are inferred observations; unfamiliar or clipped chrome is unknown.
 - claude: `claude agents --json --all`, once per selected profile; match observed
   pid and available native session id. map busy/waiting/idle and background state.
 - otherwise: a small checked-in detector per provider examines the live bottom
   screen/title. recognize explicit working/blocker/idle chrome; unmatched means
   unknown. start with explicit rules, no configurable rule language, smoothing
   state machine, remote manifest updater, or hook lifecycle tracking.
-- done is native turn completion, never herdr-style unread state. terminal
+- done is a native claude completion, never herdr-style unread state. terminal
   detectors report idle instead. unknown and host-unreachable remain distinct.
 
 collect tmux identity under the existing manager lock, then release it before
@@ -122,9 +129,9 @@ other control operations to ten seconds. stop reserves two seconds for closing.
 client timeout is fifteen seconds, matching the phone. slow work returns partial
 or unknown; cancelling a helper never implies cancelling its provider turn.
 
-choose a method before a write. unsupported/unavailable native capability can
-select terminal control before dispatch. an attempted native write with an
-uncertain result must never trigger a second terminal write.
+text and interrupt always use terminal control. native stop and terminal closure
+remain separate outcomes; an uncertain write is never replayed. reads may fall
+back from unavailable claude history before returning bounded terminal coverage.
 
 ## capability and api contract
 
@@ -137,7 +144,7 @@ are observations, not promises that survive process replacement.
 `POST /v1/sessions` remains creation. `objective` remains card metadata; it is
 not an initial prompt. creation returns a terminal, not provider readiness.
 poll for an addressable agent; terminal automatic send also requires recognized
-idle/working chrome. native send uses native admission. no combined transaction.
+idle/working chrome. no combined transaction.
 
 new route: `POST /v1/sessions/{tmuxId}/agent/{operation}`. body contains the
 target's `identityToken`, `paneId`, `pid`, `startIdentity`, plus operation inputs:
@@ -145,18 +152,17 @@ target's `identityToken`, `paneId`, `pid`, `startIdentity`, plus operation input
 | operation | additional input | success/result |
 |---|---|---|
 | read | `mode: auto \| terminal`, `maxBytes` (default 16384, max 32768) | `{text, source, scope, truncated}` |
-| send | `text`, `mode: auto \| terminal` (default auto) | `{method, outcome, turnId?}` |
+| send | `text`, `mode: auto \| terminal` (default auto) | `{method, outcome}` |
 | keys | `keys`: 1–16 logical keys | `{method: terminal, outcome}` |
-| interrupt | none | `{method, outcome, turnId?}` |
+| interrupt | none | `{method, outcome}` |
 | stop | none | `{agent, terminal}` as defined below |
 
 read source is native/terminal; scope is `recent_messages | latest_turn |
 terminal_history | visible`. a bounded/partial source is explicit even when
 the returned text itself needed no truncation. no pagination/session store in v1.
 
-write outcome is `accepted | written | interrupted | finished | unknown`.
-accepted means native acceptance; written means terminal input delivery only.
-reuse native turn identifiers when returned. invalid input, missing/stale targets,
+write outcome is `written | unknown`.
+written means terminal input delivery only. invalid input, missing/stale targets,
 blocked automatic submission, and unavailable methods use explicit api failures
 before dispatch. after a possible effect preserve unknown or partial outcomes.
 transport loss after dispatch is unknown, never a successful empty result or an
@@ -174,14 +180,12 @@ known dialog or unclassified terminal; explicit terminal send can address either
 peer agents may answer dialogs, including permissions, under existing host-user
 authority. there is no additional human-only worker approval policy.
 
-interrupt: codex uses one exact native turn cancellation when available;
-otherwise send the provider's interrupt key and report written. never claim that
-a sent key proves cancellation. no implicit wait, retry, or queued follow-up.
+interrupt: send the provider's interrupt key once and report written. never claim
+that a sent key proves cancellation. no implicit wait, retry, or queued follow-up.
 
 stop: validate the full target; attempt one provider-specific halt, then close
-the exact tmux session using existing kill. codex interrupts its observed turn;
-a matched claude
-background job uses native stop; ordinary claude ends with its terminal.
+the exact tmux session using existing kill. codex receives its interrupt key once;
+a matched claude background job uses native stop; ordinary claude ends with its terminal.
 return `{agent: stopped | interrupted | idle | unconfirmed,
 terminal: closed | unconfirmed, reason?: stale | unavailable}`. ordinary claude
 reports stopped only after native confirmation or observed foreground-process exit.
@@ -202,31 +206,24 @@ available and retains its narrower meaning.
 native command request:
 
 ```text
-{operation, provider, profileKey, endpoint?, targets, input?}
-native target = {sessionId?, pid?, turnId?}
+{operation, provider: Claude, profileKey, targets, input?}
+native target = {sessionId?, pid?}
 ```
 
-operations: `inspect/read/send/interrupt/stop`. codex requires endpoint and native
-session id; claude forbids endpoint and inspect can match pid. inspect batches
-one profile; other operations require one target. operation inputs reuse the
+skid invokes only `inspect/read/stop`, always for claude. inspect can match pid
+and batches one profile; read/stop require one target. operation inputs reuse the
 public fields, excluding mode. stdout uses the cli result/error envelope: inspect
-returns input-ordered per-target status/error; read/send/interrupt return their
-public result; stop returns only native halt outcome. gateway adds terminal
-closure. errors distinguish unsupported, unavailable, stale, rejected, unknown;
-an entire helper failure degrades that profile. no fleet bearer or skid import.
-for codex interrupt/stop, absent `turnId` means the host observed no turn; a
-subsequent turn is stale, never newly selected for cancellation. claude inspect
-may return internal `terminalOwnsAgent: true` only for an interactive row matched
-to the exact supplied pid. this transient fact is not added to public inventory.
+returns input-ordered per-target status/error; read returns its public result;
+stop returns only native halt outcome. gateway adds terminal closure. errors
+distinguish unsupported, unavailable, stale, rejected, unknown; an entire helper
+failure degrades that profile. no fleet bearer or skid import.
+claude inspect may return internal `terminalOwnsAgent: true` only for an interactive
+row matched to the exact supplied pid. this transient fact is not public inventory.
 
-- **codex:** reuse pinned `CodexControl.list/read/prompt/interrupt` and its
-  observe-only transport. existing read retrieves the latest answer with bounded
-  coverage, not arbitrary history. first reuse it; extend the same module to
-  collect bounded recent text items if its api permits. no duplicate json-rpc in go.
 - **claude:** use the sdk's persisted-message reader, with the profile environment
-  set before import. qualify it against two separate profile roots. do not weaken
+  set before import. qualify claude-work on all three hosts. do not weaken
   the existing isolated-cognition adapter or invoke resume/query to read. native
-  send is not a blocker: terminal paste/keys are the v1 implementation.
+  send is not used: terminal paste/keys are the v1 implementation.
   the sdk currently loads a saved file before slicing messages: output and
   elapsed time are bounded, but transient helper memory scales with transcript
   size. retain the public reader rather than copying its transcript parser.
@@ -308,7 +305,7 @@ one behavior-focused failing proof before implementation; reviewers write no cod
 
 | slice | exclusive paths / responsibility | dependency |
 |---|---|---|
-| a · native operations | llm-calling `src/provider_runtime/agent_runtime/{codex_control,codex_app_server,native_control_cli}.py`, new claude reader, matching tests | pinned baseline |
+| a · native operations | llm-calling `native_control_cli.py`, claude reader, matching tests; preserve independent codex clients | pinned baseline |
 | b · host | skid `internal/{agentcontrol,sessions,tmux,agentruntime,gateway,logging,hostconfig}/`, matching tests; api/state/terminal dispatch | a contract; terminal work independent |
 | c · common cli | skid new `internal/{fleetclient,agentcli}/`, matching tests | b wire contract |
 | d · jarvis | jarvis `src/jarvis/` worker tool/control composition, settings and callers, matching tests/qualification scripts; preserve unrelated cognition | c |
@@ -320,7 +317,7 @@ root-owned dev-server manifests are `assets/codex/profiles.json` and
 `assets/skidbladnir/{host-config-*.json,release-pin.json}`; slice f excludes them.
 other slices hand root changes for root-owned files; they never edit those paths.
 
-first establish one codex and claude control path through host+cli; then jarvis,
+first establish terminal codex and native/terminal claude through host+cli; then jarvis,
 phone, all-host deployment, and retirement. no broad refactor or cleanup slice.
 ship gateway, phone, cli and the pinned helper together under existing release
 rules; add no old/new contract compatibility branch.
@@ -365,7 +362,7 @@ sudo rmdir /run/jarvis-codex-launcher
 run these only during the approved cutover; shared codex services keep running.
 the installed cli/jarvis/phone journey needs explicit approval for newly created,
 named test sessions on default tmux servers: the isolated `-L` gate alone does
-not authorize it. cover all fifteen host/profile cases across the six directed
+not authorize it. cover all twelve host/profile cases across the six directed
 routes; repeat detailed state/dialog/interrupt/stop cases only on representative
 codex and claude sessions. finish with macbook↔arch during a devbox gateway
 outage and phone controls on the same targets. use existing release, fleet,
@@ -376,13 +373,13 @@ integration and platform commands, preserving their boundary-specific opt-ins.
 | gate | observable result |
 |---|---|
 | discovery/addressing | manually launched codex/claude appears without enrollment; changed pane/process yields stale, never controls the replacement; one agent per session |
-| native/terminal status | working, input/approval wait, idle/completion, interruption and unavailable observations map correctly; unrecognized screen is unknown; quoted approval prose alone is not blocked |
+| native/terminal status | working, input/approval wait, idle/completion, interruption and unavailable observations map correctly; unrecognized screen is unknown; quoted approval prose alone is not blocked; codex methods remain terminal even if old native identity is present |
 | interaction | an agent lists/reads/sends/keys/starts/interrupts/stops another; coordinator sessions are ordinary targets; multiline input arrives intact once |
 | output | native fixture/history retrieves text older than the viewport; unavailable native reader falls back with honest coverage; encoded output is bounded; no resume or copied store |
 | fleet | from each acceptance computer control both other hosts; both providers and all existing profiles covered; macbook↔arch works with devbox unavailable; extra cli peer passes config/client tests |
 | jarvis | jarvis controls a codex and claude session on remote hosts; either session can itself use the common cli to manage another; no new task/role model |
 | failure/stop | lost send response is unknown without replay; terminal fallback is never a second write; stop reports native halt and terminal closure separately; unrelated sessions survive |
-| phone | three-host enrollment retained; statuses refresh through existing polling; attach/input/detach and interrupt/stop reach the same native session |
+| phone | three-host enrollment retained; statuses refresh through existing polling; attach/input/detach and interrupt/stop reach the same agent target |
 | installation | all three hosts get the same runtime interface; existing pairings/accounts/tmux lifetimes survive installation; obsolete launcher has no remaining callers |
 
 use routine hermetic tests for mappings, bounded history/input and fake transport

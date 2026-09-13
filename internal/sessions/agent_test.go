@@ -9,19 +9,20 @@ import (
 func TestAgentIdentityProjectionRemainsOptionalAndProcessBound(t *testing.T) {
 	profiles := []agentruntime.Profile{{
 		Key:      "work",
-		Label:    "Codex · Work",
-		Provider: agentruntime.ProviderCodex,
+		Label:    "Claude · Work",
+		Provider: agentruntime.ProviderClaude,
 		ForegroundSignatures: []agentruntime.ForegroundSignature{{
-			ExecutableBase: "codex",
+			Argument0: "/opt/skid/bin/claude",
 		}},
 	}}
 	observed := processinfo.Observation{
 		PID:           4312,
 		StartIdentity: "991827",
-		Executable:    "/opt/skid/bin/codex",
+		Executable:    "/opt/skid/bin/claude",
+		Argv:          []string{"/opt/skid/bin/claude"},
 	}
 	registration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
-		Provider:      agentruntime.ProviderCodex,
+		Provider:      agentruntime.ProviderClaude,
 		PID:           observed.PID,
 		StartIdentity: observed.StartIdentity,
 	}, "work", "thr_123")
@@ -30,13 +31,13 @@ func TestAgentIdentityProjectionRemainsOptionalAndProcessBound(t *testing.T) {
 	}
 
 	agent := deriveAgent(profiles, observed, registration)
-	if agent == nil || agent.Provider != agentruntime.ProviderCodex || agent.PID != observed.PID ||
+	if agent == nil || agent.Provider != agentruntime.ProviderClaude || agent.PID != observed.PID ||
 		agent.Profile != "work" || agent.ProviderSession == nil || agent.ProviderSession.ID() != "thr_123" {
 		t.Fatalf("exact process-bound agent identity = %+v", agent)
 	}
 
 	stale, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
-		Provider: agentruntime.ProviderCodex, PID: observed.PID, StartIdentity: "991826",
+		Provider: agentruntime.ProviderClaude, PID: observed.PID, StartIdentity: "991826",
 	}, "work", "thr_stale")
 	if err != nil {
 		t.Fatalf("encode stale runtime registration: %v", err)

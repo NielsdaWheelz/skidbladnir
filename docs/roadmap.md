@@ -1,26 +1,63 @@
 # Skíðblaðnir v0 roadmap
 
 accepted target: [agent control](agent-control.md). v0.3.0 is published and
-installed on all three gateways and the phone. host installation preserved
-credentials, tmux/pane lifetimes, and observed provider processes. private cli
-peers are provisioned on all hosts and for jarvis; jarvis is active and its old
-worker launcher is retired. no busy shared codex service was restarted.
+installed on all three gateways and the phone. installation preserved existing
+pairings, accounts, and tmux/provider lifetimes. private cli peers are provisioned
+on all hosts and for jarvis; jarvis is active and its old worker launcher is retired.
+no busy shared codex server was restarted. one subsequently verified unused arch
+personal server was restarted for auth diagnosis; its account remained unavailable,
+and the other server and tmux lifetimes survived.
 
-routine and isolated darwin/linux tmux checks pass. claude work has live native
-working/idle and bounded history evidence, including text older than the viewport.
-phone enrollment/authentication is retained for all three hosts. the full phone
-gate ran 76 tests with three failures; corrected test fixtures pass the focused
-three-case rerun, with pairing preserved and the exact published apk restored.
-full patch-release phone acceptance, the complete profile/route matrix,
-agent coordination, jarvis owner ingress, and phone controls remain pending.
+routine and isolated darwin/linux tmux checks pass. live claude work evidence
+covers native working/idle, blocked/input, observed busy-turn interruption,
+bounded history older than the viewport, and an ordinary coordinator controlling
+another agent through all seven common operations. terminal input delivery and
+observed cancellation remain separate results; codex terminal closure did not
+establish provider halt.
 
-live qualification exposed provider footer variants; their narrow detector fixes
-are implemented and tested. shared codex executes identity hooks outside tmux;
-a replacement identity mechanism requires an accepted contract amendment.
-existing configured claude account roots remain unchanged; incomplete provider
-onboarding/authentication is not repaired by moving or copying account state.
-search, stable placement, separate attention, and richer history retrieval remain
-deferred.
+all six directed cli list routes pass. devbox gateway outage/recovery preserved
+all fourteen pre-existing tmux sessions and twelve detected agent targets;
+arch controlled a replying macbook agent while devbox was unavailable. reciprocal
+reply during the outage remains incomplete. devbox codex personal,
+work, and work2 have verified terminal replies, as do macbook work/work2 when
+controlled from devbox. arch also controls a replying devbox claude-work agent
+with native status/history. normal provider startup may retain accepted folder
+trust entries. configured credentials and normal
+provider onboarding are required; local codex login status alone does not prove
+the running shared server can use an account.
+
+phone enrollment/authentication is retained for all three hosts. the v0.3.0
+journey verifies same-target attach/detach/reattach, exact real-gboard input and
+reply, interrupt's written/unconfirmed result, and stop confirmation/cancel.
+confirmed stop removed the reserved terminal and original provider process;
+unrelated targets survived. its compound result toast was not captured. two
+synthetic adb hardware-input probes expanded or altered input; the mechanism is
+unresolved.
+claude native history was correctly bound and current; actual gboard touch input
+passed.
+the full v0.3.0 phone gate ran 76 tests with three failures; corrected fixtures
+pass the focused three-case rerun, with pairing preserved and the exact published
+apk restored. full patch-release phone acceptance remains pending.
+
+all twelve host/profile reply paths are verified. the 2026-09-13 owner
+amendment removes claude-personal; only claude-work is required. arch personal,
+work/work2 and claude-work reply through remote cli controls. all task-owned
+fixtures were removed, preserving the observed pre-existing targets.
+the genuine jarvis owner request initially parked before a provider turn or
+agent action. one controlled recovery restarted only jarvis and preserved shared
+servers. the request then created both remote terminals and delivered one codex
+send, but its keys request failed before cli dispatch and an interrupt was denied
+by the write check. jarvis acceptance remains incomplete; the original cognition
+exception was not retained. full patch-release phone acceptance remains pending.
+
+the owner's latest decision defers native codex for v1, superseding the proposed
+full-id footer. terminal state/history/control remain; claude retains native
+state/history. footer and process-environment additions were reverted before
+rollout. unfamiliar codex chrome remains unknown and terminal history is partial.
+
+existing claude account roots remain unchanged; no account state is copied to
+complete onboarding. search, stable placement, separate attention, and richer
+history retrieval remain deferred.
 
 Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
 implemented. The 2026-08-26 multi-machine hard cut is also implemented and

@@ -744,7 +744,7 @@ exec %s "$@"
 		}
 	})
 
-	t.Run("foreground registration is exact and lifetime-bound", func(t *testing.T) {
+	t.Run("Codex foreground signature ignores native registration", func(t *testing.T) {
 		fixture.tmux(t, "new-session", "-d", "-s", "owned-node", "-c", fixture.project, "--", fixture.nodePath, fixture.nodeScript)
 		fixture.tmux(t, "new-session", "-d", "-s", "plain-node", "-c", fixture.project, "--", fixture.nodePath, "-e", "setInterval(() => {}, 300000)")
 
@@ -788,15 +788,59 @@ exec %s "$@"
 		}
 		registered := requireSessionID(t, listed, owned.TmuxID)
 		registeredAgent := requireAgentProjection(t, registered)
-		if registeredAgent.Agent.Profile != "personal" || registeredAgent.Agent.ProviderSession == nil ||
-			registeredAgent.Agent.ProviderSession.ID() != "codex-owned-node" || registeredAgent.Agent.ProviderSession.Name() != "" {
-			t.Fatalf("valid foreground registration did not project: %+v", registeredAgent.Agent)
+		if registeredAgent.Agent.Provider != agentruntime.ProviderCodex || registeredAgent.Agent.PID != processinfo.PID(panePID) ||
+			registeredAgent.Agent.PaneID != paneID || registeredAgent.Agent.StartIdentity != startIdentity ||
+			registeredAgent.Agent.Profile != "" || registeredAgent.Agent.ProviderSession != nil ||
+			registeredAgent.Agent.Methods != (agentruntime.Methods{Read: "terminal", Send: "terminal", Interrupt: "terminal"}) {
+			t.Fatal("legacy Codex registration changed terminal-only identity")
 		}
 		if afterList := sessionNonCharacterSnapshot(t, fixture, owned.TmuxID); afterList != beforeList {
 			t.Fatalf("identity projection mutated tmux inventory:\nbefore=%q\n after=%q", beforeList, afterList)
 		}
+		if persisted := fixture.tmux(t, "show-options", "-pqv", "-t", paneID, agentruntime.PaneOption); persisted != registration {
+			t.Fatal("inventory rewrote ignored Codex registration")
+		}
+	})
 
-		const renamed = "owned-node-renamed"
+	t.Run("foreground registration is exact and lifetime-bound", func(t *testing.T) {
+		profile, found := fixture.manager.Profile("claude-work")
+		if !found {
+			t.Fatal("resolve Claude fixture profile")
+		}
+		fixture.tmux(t, "new-session", "-d", "-s", "owned-claude", "-c", fixture.project,
+			"-e", "CLAUDE_CONFIG_DIR="+fixture.profileHomes["claude-work"], "--", profile.Command)
+		owned := fixture.waitForAgent(t, ctx, "owned-claude")
+		ownedAgent := requireAgentProjection(t, owned).Agent
+		paneID := fixture.tmux(t, "display-message", "-p", "-t", owned.TmuxID, "#{pane_id}")
+		panePID, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", owned.TmuxID, "#{pane_pid}"))
+		startIdentity := processStartIdentity(panePID)
+		if err != nil || startIdentity == "" || ownedAgent.PID != processinfo.PID(panePID) ||
+			ownedAgent.Provider != agentruntime.ProviderClaude || ownedAgent.Profile != "" || ownedAgent.ProviderSession != nil {
+			t.Fatal("unregistered Claude foreground is not exact")
+		}
+		registration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
+			Provider: agentruntime.ProviderClaude, PID: processinfo.PID(panePID), StartIdentity: startIdentity,
+		}, "claude-work", "claude-owned-session")
+		if err != nil {
+			t.Fatalf("encode exact foreground registration: %v", err)
+		}
+		fixture.tmux(t, "set-option", "-p", "-t", paneID, "--", agentruntime.PaneOption, registration)
+		beforeList := sessionNonCharacterSnapshot(t, fixture, owned.TmuxID)
+		listed, err := fixture.manager.List(ctx)
+		if err != nil {
+			t.Fatal("list exact registered foreground")
+		}
+		registered := requireSessionID(t, listed, owned.TmuxID)
+		registeredAgent := requireAgentProjection(t, registered)
+		if registeredAgent.Agent.Profile != "claude-work" || registeredAgent.Agent.ProviderSession == nil ||
+			registeredAgent.Agent.ProviderSession.ID() != "claude-owned-session" || registeredAgent.Agent.ProviderSession.Name() != "" {
+			t.Fatal("valid Claude registration did not project")
+		}
+		if afterList := sessionNonCharacterSnapshot(t, fixture, owned.TmuxID); afterList != beforeList {
+			t.Fatal("identity projection mutated tmux inventory")
+		}
+
+		const renamed = "owned-claude-renamed"
 		fixture.tmux(t, "rename-session", "-t", owned.TmuxID, renamed)
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
@@ -804,13 +848,13 @@ exec %s "$@"
 		}
 		registered = requireSessionID(t, listed, owned.TmuxID)
 		registeredAgent = requireAgentProjection(t, registered)
-		if registered.TmuxName != renamed || registeredAgent.Agent.Profile != "personal" ||
-			registeredAgent.Agent.ProviderSession == nil || registeredAgent.Agent.ProviderSession.ID() != "codex-owned-node" {
+		if registered.TmuxName != renamed || registeredAgent.Agent.Profile != "claude-work" ||
+			registeredAgent.Agent.ProviderSession == nil || registeredAgent.Agent.ProviderSession.ID() != "claude-owned-session" {
 			t.Fatalf("tmux rename changed provider-owned identity: %+v", registered)
 		}
 
 		oldPID := registeredAgent.Agent.PID
-		fixture.tmux(t, "respawn-pane", "-k", "-t", paneID, "--", fixture.nodePath, fixture.nodeScript)
+		fixture.tmux(t, "respawn-pane", "-k", "-t", paneID, "--", profile.Command)
 		deadline := time.Now().Add(tmuxConvergenceTimeout)
 		var replacement sessions.Session
 		for {
@@ -832,7 +876,7 @@ exec %s "$@"
 			time.Sleep(tmuxConvergencePollInterval)
 		}
 		replacementAgent := requireAgentProjection(t, replacement)
-		if replacement.TmuxName != renamed || replacement.LaunchProfile != "" || replacementAgent.Agent.Provider != agentruntime.ProviderCodex ||
+		if replacement.TmuxName != renamed || replacement.LaunchProfile != "" || replacementAgent.Agent.Provider != agentruntime.ProviderClaude ||
 			replacementAgent.Agent.Profile != "" || replacementAgent.Agent.ProviderSession != nil {
 			t.Fatalf("stale registration survived process replacement: %+v", replacement)
 		}
@@ -842,6 +886,10 @@ exec %s "$@"
 	})
 
 	t.Run("optional agent identity follows the current window active pane", func(t *testing.T) {
+		profile, found := fixture.manager.Profile("claude-work")
+		if !found {
+			t.Fatal("resolve Claude fixture profile")
+		}
 		otherDirectory := filepath.Join(fixture.root, "agent anchor other pane")
 		if err := os.Mkdir(otherDirectory, 0o700); err != nil {
 			t.Fatal("create agent-anchor pane cwd")
@@ -852,7 +900,10 @@ exec %s "$@"
 		if err != nil || activePanePID <= 0 {
 			t.Fatalf("parse active agent-anchor pane pid: valid=%t", err == nil && activePanePID > 0)
 		}
-		inactivePane := fixture.tmux(t, "split-window", "-d", "-P", "-F", "#{pane_id}", "-t", "agent-anchor:0", "-c", otherDirectory, "--", sleepPath, "300")
+		inactivePane := fixture.tmux(t, "split-window", "-d", "-P", "-F", "#{pane_id}", "-t", "agent-anchor:0", "-c", otherDirectory,
+			"-e", "CLAUDE_CONFIG_DIR="+fixture.profileHomes["claude-work"], "--", profile.Command)
+		fixture.tmux(t, "select-pane", "-t", inactivePane)
+		fixture.waitForAgent(t, ctx, "agent-anchor")
 		inactivePanePID, err := strconv.Atoi(fixture.tmux(t, "display-message", "-p", "-t", inactivePane, "#{pane_pid}"))
 		if err != nil || inactivePanePID <= 0 {
 			t.Fatalf("parse inactive agent-anchor pane pid: valid=%t", err == nil && inactivePanePID > 0)
@@ -862,15 +913,14 @@ exec %s "$@"
 			t.Fatal("capture inactive agent-anchor process identity")
 		}
 		inactiveRegistration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
-			Provider:      agentruntime.ProviderCodex,
+			Provider:      agentruntime.ProviderClaude,
 			PID:           processinfo.PID(inactivePanePID),
 			StartIdentity: inactiveStartIdentity,
-		}, "work", "inactive-pane-session")
+		}, "claude-work", "inactive-pane-session")
 		if err != nil {
 			t.Fatalf("encode inactive agent-anchor registration: %v", err)
 		}
 		fixture.tmux(t, "set-option", "-p", "-t", inactivePane, "--", agentruntime.PaneOption, inactiveRegistration)
-		fixture.tmux(t, "select-pane", "-t", inactivePane)
 
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
@@ -878,8 +928,8 @@ exec %s "$@"
 		}
 		inactive := requireSessionNamed(t, listed, "agent-anchor")
 		inactiveAgent := requireAgentProjection(t, inactive).Agent
-		if inactive.CWD != otherDirectory || inactiveAgent.Provider != agentruntime.ProviderCodex ||
-			inactiveAgent.PID != processinfo.PID(inactivePanePID) || inactiveAgent.Profile != "work" ||
+		if inactive.CWD != otherDirectory || inactiveAgent.Provider != agentruntime.ProviderClaude ||
+			inactiveAgent.PID != processinfo.PID(inactivePanePID) || inactiveAgent.Profile != "claude-work" ||
 			inactiveAgent.ProviderSession == nil || inactiveAgent.ProviderSession.ID() != "inactive-pane-session" ||
 			inactiveAgent.ProviderSession.Name() != "" {
 			t.Fatalf("inactive agent-anchor projection is not exact: session=%+v agent=%+v", inactive, inactiveAgent)
@@ -899,7 +949,8 @@ exec %s "$@"
 	})
 
 	t.Run("inventory preserves existing terminal options", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "inventory-shell", "-c", fixture.project, "--", "/bin/sh")
+		// An explicit name prevents tmux's asynchronous automatic rename from changing the snapshot.
+		fixture.tmux(t, "new-session", "-d", "-s", "inventory-shell", "-n", "inventory-window", "-c", fixture.project, "--", "/bin/sh")
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
 			t.Fatal("list generic shell")
@@ -1264,6 +1315,10 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	if err := os.MkdirAll(project, 0o700); err != nil {
 		t.Fatal("create lifetime-token fixture")
 	}
+	agentCommand := filepath.Join(root, "claude-fixture")
+	if err := os.WriteFile(agentCommand, []byte("#!/bin/sh\nwhile IFS= read -r line; do :; done\n"), 0o700); err != nil {
+		t.Fatal("write lifetime-token agent fixture")
+	}
 	cataloguePath := filepath.Join(root, "catalogue.json")
 	if err := os.WriteFile(cataloguePath, []byte(`[
   {"key":"norse.modsognir","displayName":"Móðsognir"},
@@ -1282,13 +1337,12 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		Workdir:       newWorkdirFixture(t, home),
 		CataloguePath: cataloguePath,
 		Profiles: []agentruntime.Profile{{
-			Key:                  "personal",
-			Label:                "Personal",
-			Provider:             agentruntime.ProviderCodex,
-			Command:              sleepPath,
-			Environment:          []agentruntime.EnvironmentVariable{{Name: "CODEX_HOME", Value: filepath.Join(home, ".codex-personal")}},
-			ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: "sleep"}},
-			Arguments:            []string{"300"},
+			Key:                  "claude-work",
+			Label:                "Claude · Work",
+			Provider:             agentruntime.ProviderClaude,
+			Command:              agentCommand,
+			Environment:          []agentruntime.EnvironmentVariable{{Name: "CLAUDE_CONFIG_DIR", Value: filepath.Join(home, ".claude-work")}},
+			ForegroundSignatures: []agentruntime.ForegroundSignature{{Argument0: "/bin/sh", Argument1: agentCommand}},
 		}},
 	})
 	if err != nil {
@@ -1310,7 +1364,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		}
 	})
 
-	firstObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalTmuxName: "epoch-reuse"})
+	firstObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "claude-work", OptionalTmuxName: "epoch-reuse"})
 	if err != nil {
 		t.Fatal("create first lifetime fixture")
 	}
@@ -1334,10 +1388,10 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		t.Fatal("capture first runtime process identity")
 	}
 	firstRegistration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{
-		Provider:      agentruntime.ProviderCodex,
+		Provider:      agentruntime.ProviderClaude,
 		PID:           processinfo.PID(firstPanePID),
 		StartIdentity: firstStartIdentity,
-	}, "personal", "first-server-session")
+	}, "claude-work", "first-server-session")
 	if err != nil {
 		t.Fatalf("encode first runtime registration: %v", err)
 	}
@@ -1350,17 +1404,17 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	}
 	registeredFirst := requireSessionID(t, firstInventory, first.TmuxID)
 	registeredFirstAgent := requireAgentProjection(t, registeredFirst)
-	if registeredFirstAgent.Agent.Provider != agentruntime.ProviderCodex ||
+	if registeredFirstAgent.Agent.Provider != agentruntime.ProviderClaude ||
 		registeredFirstAgent.Agent.PID != processinfo.PID(firstPanePID) ||
-		registeredFirstAgent.Agent.Profile != "personal" ||
+		registeredFirstAgent.Agent.Profile != "claude-work" ||
 		registeredFirstAgent.Agent.ProviderSession == nil ||
 		registeredFirstAgent.Agent.ProviderSession.ID() != "first-server-session" ||
-		registeredFirstAgent.Agent.ProviderSession.Name() != "" {
+		registeredFirstAgent.Agent.ProviderSession.Name() != first.TmuxName {
 		t.Fatalf(
 			"first runtime registration was not exact: provider_match=%t pid_match=%t profile_match=%t session_present=%t",
-			registeredFirstAgent.Agent.Provider == agentruntime.ProviderCodex,
+			registeredFirstAgent.Agent.Provider == agentruntime.ProviderClaude,
 			registeredFirstAgent.Agent.PID == processinfo.PID(firstPanePID),
-			registeredFirstAgent.Agent.Profile == "personal",
+			registeredFirstAgent.Agent.Profile == "claude-work",
 			registeredFirstAgent.Agent.ProviderSession != nil,
 		)
 	}
@@ -1376,7 +1430,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	}
 	cleanup = nil
 
-	secondObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "personal", OptionalTmuxName: first.TmuxName})
+	secondObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "claude-work", OptionalTmuxName: first.TmuxName})
 	if err != nil {
 		t.Fatal("recreate lifetime fixture")
 	}
@@ -1396,13 +1450,14 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	}
 	recreated := requireSessionID(t, recreatedInventory, second.TmuxID)
 	recreatedAgent := requireAgentProjection(t, recreated)
-	if recreatedAgent.Agent.Provider != agentruntime.ProviderCodex ||
-		recreatedAgent.Agent.Profile != "" || recreatedAgent.Agent.ProviderSession != nil {
+	if recreatedAgent.Agent.Provider != agentruntime.ProviderClaude || recreatedAgent.Agent.Profile != "" ||
+		recreatedAgent.Agent.ProviderSession == nil || recreatedAgent.Agent.ProviderSession.ID() != "" ||
+		recreatedAgent.Agent.ProviderSession.Name() != second.TmuxName {
 		t.Fatalf(
-			"recreated runtime inherited prior registration facts: provider_match=%t profile_absent=%t session_absent=%t",
-			recreatedAgent.Agent.Provider == agentruntime.ProviderCodex,
+			"recreated runtime inherited prior registration facts: provider_match=%t profile_absent=%t session_present=%t",
+			recreatedAgent.Agent.Provider == agentruntime.ProviderClaude,
 			recreatedAgent.Agent.Profile == "",
-			recreatedAgent.Agent.ProviderSession == nil,
+			recreatedAgent.Agent.ProviderSession != nil,
 		)
 	}
 	firstIdentityFields := strings.Split(first.IdentityToken, ".")

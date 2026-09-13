@@ -23,17 +23,6 @@ func (service *Service) Send(parent context.Context, target sessions.AgentTarget
 		return WriteResult{}, err
 	}
 	if mode != "terminal" {
-		profile, native, inspected, ok := service.inspect(ctx, session)
-		if ok && inspected.Methods.Send == "native" {
-			if _, err := service.sessions.ResolveAgent(ctx, target); err != nil {
-				return WriteResult{}, err
-			}
-			var result WriteResult
-			failure := service.native(ctx, profile, "send", []nativeTarget{native}, struct {
-				Text string `json:"text"`
-			}{text}, &result)
-			return nativeWriteResult(result, failure, "accepted")
-		}
 		capture, err := service.sessions.CaptureAgent(ctx, target, 8192)
 		if err != nil {
 			return WriteResult{}, err
@@ -62,40 +51,7 @@ func (service *Service) Interrupt(parent context.Context, target sessions.AgentT
 	if err != nil {
 		return WriteResult{}, err
 	}
-	profile, native, inspected, ok := service.inspect(ctx, session)
-	if ok && inspected.Methods.Interrupt == "native" {
-		if _, err := service.sessions.ResolveAgent(ctx, target); err != nil {
-			return WriteResult{}, err
-		}
-		var result WriteResult
-		failure := service.native(ctx, profile, "interrupt", []nativeTarget{native}, nil, &result)
-		return nativeWriteResult(result, failure, "interrupted", "finished")
-	}
 	return terminalWriteResult(service.sessions.AgentKeys(ctx, target, []string{interruptKey(session.Agent.Provider)}))
-}
-
-func nativeWriteResult(result WriteResult, failure *nativeFailure, allowed ...string) (WriteResult, error) {
-	if failure != nil {
-		if failure.Dispatch == "not_sent" {
-			switch failure.Code {
-			case "stale":
-				return WriteResult{}, sessions.ErrAgentTargetStale
-			case "rejected":
-				return WriteResult{}, ErrBlocked
-			case "unsupported", "unavailable":
-				return WriteResult{}, ErrUnavailable
-			}
-		}
-		return WriteResult{Method: "native", Outcome: "unknown"}, nil
-	}
-	if result.Method == "native" {
-		for _, outcome := range allowed {
-			if result.Outcome == outcome {
-				return result, nil
-			}
-		}
-	}
-	return WriteResult{Method: "native", Outcome: "unknown"}, nil
 }
 
 func terminalWriteResult(err error) (WriteResult, error) {
@@ -123,8 +79,7 @@ func (service *Service) Stop(parent context.Context, target sessions.AgentTarget
 	result := StopResult{Agent: "unconfirmed", Terminal: "unconfirmed"}
 	haltContext, cancelHalt := context.WithDeadline(ctx, time.Now().Add(8*time.Second))
 	profile, native, inspected, ok := service.inspect(haltContext, session)
-	nativeHalt := ok && (session.Agent.Provider != agentruntime.ProviderCodex || inspected.Methods.Interrupt == "native")
-	if nativeHalt {
+	if ok {
 		if _, err := service.sessions.ResolveAgent(haltContext, target); err != nil {
 			cancelHalt()
 			return StopResult{}, err
@@ -140,7 +95,7 @@ func (service *Service) Stop(parent context.Context, target sessions.AgentTarget
 			}
 		}
 	}
-	if !nativeHalt && session.Agent.Provider == agentruntime.ProviderCodex {
+	if session.Agent.Provider == agentruntime.ProviderCodex {
 		// A terminal key is a halt attempt, never confirmation of cancellation.
 		_ = service.sessions.AgentKeys(haltContext, target, []string{interruptKey(session.Agent.Provider)}) // justify-ignore-error: stop reports the halt unconfirmed and still attempts its separately reported terminal closure.
 	}

@@ -346,3 +346,120 @@ func TestProviderLivePaneScanReturnsLaterValidCandidateAndFailsClosed(t *testing
 		})
 	}
 }
+
+func TestProviderLiveProjectionRequiresEachProvidersAcceptedIdentity(t *testing.T) {
+	facts, err := agentruntime.NewProviderSessionFacts("fixture-session", "fixture-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range []agentruntime.Provider{agentruntime.ProviderCodex, agentruntime.ProviderClaude} {
+		for _, managed := range []bool{false, true} {
+			expected := providerLiveExpectation{tmuxName: "fixture", provider: provider, runtimeProfile: "work"}
+			if managed {
+				expected.launchProfile = "work"
+			}
+			agent := agentruntime.AgentRuntime{Provider: provider, PID: 4312, StartIdentity: "991827", PaneID: "%1"}
+			if provider == agentruntime.ProviderClaude {
+				agent.Profile, agent.ProviderSession = "work", facts
+				expected.providerSessionName = "fixture-agent"
+			}
+			for _, test := range []struct {
+				name   string
+				change func(*sessions.Session)
+				want   bool
+			}{
+				{"complete", func(*sessions.Session) {}, true},
+				{"missing tmux identity", func(s *sessions.Session) { s.TmuxID = "" }, false},
+				{"missing lifetime", func(s *sessions.Session) { s.IdentityToken = "" }, false},
+				{"missing process", func(s *sessions.Session) { s.Agent.PID = 0 }, false},
+				{"missing process start", func(s *sessions.Session) { s.Agent.StartIdentity = "" }, false},
+				{"missing pane", func(s *sessions.Session) { s.Agent.PaneID = "" }, false},
+				{"wrong provider", func(s *sessions.Session) { s.Agent.Provider = "other" }, false},
+				{"wrong launch profile", func(s *sessions.Session) { s.LaunchProfile = "other" }, false},
+				{"wrong runtime profile", func(s *sessions.Session) { s.Agent.Profile = "other" }, false},
+				{"opposite native contract", func(s *sessions.Session) {
+					if provider == agentruntime.ProviderCodex {
+						s.Agent.ProviderSession = facts
+					} else {
+						s.Agent.ProviderSession = nil
+					}
+				}, false},
+			} {
+				t.Run(string(provider)+"/"+strconv.FormatBool(managed)+"/"+test.name, func(t *testing.T) {
+					current := agent
+					session := sessions.Session{TmuxID: "$1", TmuxName: "fixture", IdentityToken: "fixture-lifetime", LaunchProfile: expected.launchProfile, Agent: &current}
+					test.change(&session)
+					summary := summarizeProviderLiveProjection([]sessions.Session{session}, expected)
+					if got := providerLiveProjectionComplete(summary); got != test.want {
+						t.Fatalf("projection complete=%t want=%t summary=%+v", got, test.want, summary)
+					}
+				})
+			}
+		}
+	}
+}
+
+type providerLiveExpectation struct {
+	tmuxName            string
+	provider            agentruntime.Provider
+	runtimeProfile      agentruntime.ProfileKey
+	launchProfile       agentruntime.ProfileKey
+	providerSessionName string
+}
+
+type providerLiveProjectionSummary struct {
+	sessionPresent         bool
+	agentPresent           bool
+	providerMatches        bool
+	pidPresent             bool
+	targetPresent          bool
+	nativeIdentityMatches  bool
+	runtimeProfileMatches  bool
+	providerSessionPresent bool
+	providerSessionID      bool
+	providerSessionName    bool
+	launchProfileMatches   bool
+}
+
+func summarizeProviderLiveProjection(
+	listed []sessions.Session,
+	expectation providerLiveExpectation,
+) providerLiveProjectionSummary {
+	for _, session := range listed {
+		if session.TmuxName != expectation.tmuxName {
+			continue
+		}
+		summary := providerLiveProjectionSummary{
+			sessionPresent:       true,
+			launchProfileMatches: session.LaunchProfile == expectation.launchProfile,
+		}
+		if session.Agent == nil {
+			return summary
+		}
+		summary.agentPresent = true
+		summary.providerMatches = session.Agent.Provider == expectation.provider
+		summary.pidPresent = session.Agent.PID > 0
+		summary.targetPresent = session.TmuxID != "" && session.IdentityToken != "" &&
+			session.Agent.PaneID != "" && session.Agent.StartIdentity != ""
+		summary.runtimeProfileMatches = session.Agent.Profile == expectation.runtimeProfile
+		if session.Agent.ProviderSession != nil {
+			summary.providerSessionPresent = true
+			summary.providerSessionID = session.Agent.ProviderSession.ID() != ""
+			summary.providerSessionName = session.Agent.ProviderSession.Name() == expectation.providerSessionName
+		}
+		switch expectation.provider {
+		case agentruntime.ProviderCodex:
+			summary.nativeIdentityMatches = session.Agent.Profile == "" && session.Agent.ProviderSession == nil
+		case agentruntime.ProviderClaude:
+			summary.nativeIdentityMatches = summary.runtimeProfileMatches && summary.providerSessionPresent &&
+				summary.providerSessionID && summary.providerSessionName
+		}
+		return summary
+	}
+	return providerLiveProjectionSummary{}
+}
+
+func providerLiveProjectionComplete(summary providerLiveProjectionSummary) bool {
+	return summary.sessionPresent && summary.agentPresent && summary.providerMatches && summary.pidPresent &&
+		summary.targetPresent && summary.nativeIdentityMatches && summary.launchProfileMatches
+}

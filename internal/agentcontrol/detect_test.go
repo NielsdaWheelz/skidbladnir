@@ -63,6 +63,42 @@ func TestDetectorRecognizesConfiguredCodexFooterOnlyAtCurrentPrompt(t *testing.T
 	}
 }
 
+func TestDetectorRecognizesCodexAgentFooterWithoutContext(t *testing.T) {
+	footer := "gpt-5.6-sol xhigh · ~ · ← for agents"
+	for _, test := range []struct{ name, text, want string }{
+		{"ready home", "›\n\n" + footer, "idle"},
+		{"project directory", "›\ngpt-5.6-sol high · ~/project · ← for agents", "idle"},
+		{"absolute directory", "›\ngpt-5.4 medium · /work/project · ← for agents", "idle"},
+		{"fast mode", "›\ngpt-5.6-sol xhigh Fast · ~ · ← for agents", "idle"},
+		{"working wins", "• Working (4s • esc to interrupt)\n›\n" + footer, "working"},
+		{"dialog wins", "› 1. Yes, proceed\nPress enter to confirm or esc to cancel\n" + footer, "blocked"},
+		{"no prompt", footer, "unknown"},
+		{"wrong prompt", "❯\n" + footer, "unknown"},
+		{"quoted footer", "›\n> " + footer, "unknown"},
+		{"footer in prose", "›\nThe footer says " + footer, "unknown"},
+		{"historical footer", footer + "\n›\nmore text", "unknown"},
+		{"missing reasoning", "›\ngpt-5.6-sol · ~ · ← for agents", "unknown"},
+		{"unknown reasoning", "›\ngpt-5.6-sol extreme · ~ · ← for agents", "unknown"},
+		{"missing directory", "›\ngpt-5.6-sol xhigh · ← for agents", "unknown"},
+		{"relative directory", "›\ngpt-5.6-sol xhigh · project · ← for agents", "unknown"},
+		{"missing hint", "›\ngpt-5.6-sol xhigh · ~", "unknown"},
+		{"partial hint", "›\ngpt-5.6-sol xhigh · ~ · ← for agen…", "unknown"},
+		{"clipped directory", "›\ngpt-5.6-sol xhigh · ~/proj… · ← for agents", "unknown"},
+		{"extra thread name", "›\ngpt-5.6-sol xhigh · ~/project · ordinary thread · ← for agents", "unknown"},
+		{"unknown suffix", "›\n" + footer + " waiting for input", "unknown"},
+		{"wrapped hint", "›\ngpt-5.6-sol xhigh · ~ · ← for\nagents", "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Detect(agentruntime.ProviderCodex, test.text); got.State != test.want {
+				t.Fatalf("fixture state=%s want=%s", got.State, test.want)
+			}
+		})
+	}
+	if got := Detect(agentruntime.ProviderClaude, "❯\n"+footer); got.State != "unknown" {
+		t.Fatal("Codex agent footer established Claude state")
+	}
+}
+
 func TestDetectorRecognizesClaudePermissionFooterAtCurrentPrompt(t *testing.T) {
 	footer := "⏵⏵ auto mode on (shift+tab to cycle) · ← 0 agents"
 	for _, test := range []struct{ name, text, want string }{

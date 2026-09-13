@@ -65,7 +65,6 @@ type EnvironmentVariable struct {
 }
 
 type Profile struct {
-	NativeEndpoint       string
 	Key                  ProfileKey
 	Label                string
 	Provider             Provider

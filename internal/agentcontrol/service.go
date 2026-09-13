@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	ErrUnavailable  = errors.New("agent method unavailable")
 	ErrBlocked      = errors.New("agent requires deliberate terminal input")
 	ErrInvalidInput = errors.New("invalid agent input")
 )
@@ -41,7 +40,6 @@ type ReadResult struct {
 type WriteResult struct {
 	Method  string `json:"method"`
 	Outcome string `json:"outcome"`
-	TurnID  string `json:"turnId,omitempty"`
 }
 
 type StopResult struct {
@@ -103,9 +101,6 @@ func (service *Service) Enrich(parent context.Context, inventory *sessions.Inven
 		if inspected := nativeResults[i]; inspected != nil {
 			session.Agent.Status = inspected.Status
 			session.Agent.Methods = inspected.Methods
-			if inspected.Status.Source == "unavailable" && terminalResults[i].Valid() {
-				session.Agent.Status = terminalResults[i]
-			}
 		} else if terminalResults[i].Valid() {
 			session.Agent.Status = terminalResults[i]
 		}
@@ -113,12 +108,13 @@ func (service *Service) Enrich(parent context.Context, inventory *sessions.Inven
 }
 
 func validInspection(value nativeInspection) bool {
-	return value.Status.Valid() && (value.Status.Source == "native" || value.Status.Source == "unavailable" && value.Status.State == "unknown") && value.Methods.Valid()
+	return value.Status.Valid() && value.Status.Source == "native" && value.Methods.Valid() &&
+		value.Methods.Send == "terminal" && value.Methods.Interrupt == "terminal"
 }
 
 func (service *Service) nativeIdentity(session sessions.Session) (agentruntime.Profile, nativeTarget, bool) {
 	agent := session.Agent
-	if agent == nil {
+	if agent == nil || agent.Provider != agentruntime.ProviderClaude {
 		return agentruntime.Profile{}, nativeTarget{}, false
 	}
 	profile, found := service.sessions.Profile(agent.Profile)
@@ -128,9 +124,6 @@ func (service *Service) nativeIdentity(session sessions.Session) (agentruntime.P
 	target := nativeTarget{PID: int(agent.PID)}
 	if agent.ProviderSession != nil {
 		target.SessionID = agent.ProviderSession.ID()
-	}
-	if agent.Provider == agentruntime.ProviderCodex && (target.SessionID == "" || profile.NativeEndpoint == "") {
-		return profile, target, false
 	}
 	return profile, target, true
 }
@@ -153,7 +146,6 @@ func (service *Service) inspect(ctx context.Context, session sessions.Session) (
 	if inspected.SessionID != "" {
 		target.SessionID = inspected.SessionID
 	}
-	target.TurnID = inspected.TurnID
 	return profile, target, inspected, true
 }
 
