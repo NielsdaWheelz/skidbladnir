@@ -31,7 +31,8 @@ journey verifies same-target attach/detach/reattach, exact real-gboard input and
 reply, interrupt's written/unconfirmed result, and stop confirmation/cancel.
 confirmed stop removed the reserved terminal and original provider process;
 unrelated targets survived. its compound result toast was not captured. two
-synthetic adb hardware-input probes duplicated input; the mechanism is unresolved.
+synthetic adb hardware-input probes expanded or altered input; the mechanism is
+unresolved.
 claude native history was correctly bound and current; actual gboard touch input
 passed.
 the full v0.3.0 phone gate ran 76 tests with three failures; corrected fixtures
