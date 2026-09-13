@@ -32,8 +32,9 @@ type controlFixtureState struct {
 	Registration  string
 	Exists        bool
 	NativeMode    string
+	NativeCalls   int
 	NativeStops   int
-	NativeSends   int
+	TerminalReady bool
 	Pastes        int
 	LastKey       string
 	LiteralInput  bool
@@ -71,11 +72,9 @@ func newControlHarness(t *testing.T, nativeMode string) controlHarness {
 	}
 	provider := agentruntime.ProviderCodex
 	homeVariable := "CODEX_HOME"
-	endpoint := "unix:///fixture/socket"
 	if strings.HasPrefix(nativeMode, "claude-") {
 		provider = agentruntime.ProviderClaude
 		homeVariable = "CLAUDE_CONFIG_DIR"
-		endpoint = ""
 	}
 	registration, err := agentruntime.EncodeRegistration(agentruntime.Foreground{Provider: provider, PID: observed.PID, StartIdentity: observed.StartIdentity}, "unit", "fixture-thread")
 	if err != nil {
@@ -102,7 +101,7 @@ func newControlHarness(t *testing.T, nativeMode string) controlHarness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager, err := sessions.New(sessions.Config{TmuxPath: paths["tmux"], CataloguePath: cataloguePath, Workdir: directories, Profiles: []agentruntime.Profile{{Key: "unit", Label: "Unit", Provider: provider, Command: executable, NativeEndpoint: endpoint, Environment: []agentruntime.EnvironmentVariable{{Name: homeVariable, Value: root}}, ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: filepath.Base(executable)}}}}})
+	manager, err := sessions.New(sessions.Config{TmuxPath: paths["tmux"], CataloguePath: cataloguePath, Workdir: directories, Profiles: []agentruntime.Profile{{Key: "unit", Label: "Unit", Provider: provider, Command: executable, Environment: []agentruntime.EnvironmentVariable{{Name: homeVariable, Value: root}}, ForegroundSignatures: []agentruntime.ForegroundSignature{{ExecutableBase: filepath.Base(executable)}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,36 +158,102 @@ func (harness controlHarness) call(t *testing.T, operation string, fields map[st
 	return response
 }
 
-func TestAgentControlNativeAdmissionAndUnknownNeverPaste(t *testing.T) {
-	for _, mode := range []string{"blocked", "unknown"} {
-		t.Run(mode, func(t *testing.T) {
-			harness := newControlHarness(t, mode)
-			response := harness.call(t, "send", map[string]any{"text": "fixture"})
-			if response.Code != http.StatusOK {
-				t.Fatalf("native admission status=%d, want 200", response.Code)
-			}
-			var result agentcontrol.WriteResult
-			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			want := "accepted"
-			if mode == "unknown" {
-				want = "unknown"
-			}
-			if result.Method != "native" || result.Outcome != want {
-				t.Fatal("native outcome was not preserved")
-			}
-			state := harness.state(t)
-			if state.NativeSends != 1 || state.Pastes != 0 {
-				t.Fatal("native submission was suppressed or replayed through terminal")
-			}
-		})
+func TestAgentControlCodexIgnoresNativeIdentityDuringEnrichment(t *testing.T) {
+	harness := newControlHarness(t, "ready")
+	inventory, err := harness.gateway.sessions.List(context.Background())
+	if err != nil {
+		t.Fatal("observe fixture inventory")
+	}
+	// Even stale identity supplied by an upstream projection cannot reopen the
+	// native Codex control path after its terminal-only scope cut.
+	agent := inventory.Sessions[0].Agent
+	agent.Profile = "unit"
+	agent.ProviderSession, err = agentruntime.NewProviderSessionFacts("fixture-thread", "")
+	if err != nil {
+		t.Fatal("construct prior native identity fixture")
+	}
+	harness.gateway.agents.Enrich(context.Background(), &inventory)
+	if harness.state(t).NativeCalls != 0 || agent.Status.Source != "terminal" || agent.Methods.Read != "terminal" {
+		t.Fatal("Codex native identity reopened native control during enrichment")
+	}
+}
+
+func TestAgentControlCodexUsesTerminalForEveryOperation(t *testing.T) {
+	harness := newControlHarness(t, "codex")
+	state := harness.state(t)
+	state.TerminalReady = true
+	writeControlState(t, harness.statePath, state)
+	response := httptest.NewRecorder()
+	harness.gateway.ServeHTTP(response, harness.request(http.MethodGet, "/v1/sessions", ""))
+	var inventory sessionsResponseDTO
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &inventory) != nil || len(inventory.Sessions) != 1 {
+		t.Fatal("Codex terminal inventory failed")
+	}
+	agent := inventory.Sessions[0].Agent
+	if agent.Status.State != "idle" || agent.Status.Source != "terminal" || agent.Methods != (agentruntime.Methods{Read: "terminal", Send: "terminal", Interrupt: "terminal"}) {
+		t.Fatal("Codex inventory advertised native state or control")
+	}
+	response = harness.call(t, "read", map[string]any{})
+	var read agentcontrol.ReadResult
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &read) != nil || read.Source != "terminal" || read.Scope != "visible" || read.Text == "" {
+		t.Fatal("Codex auto read did not report its actual terminal coverage")
+	}
+	for _, operation := range []struct {
+		name   string
+		fields map[string]any
+	}{
+		{"send", map[string]any{"text": "fixture"}},
+		{"keys", map[string]any{"keys": []string{"left"}}},
+		{"interrupt", map[string]any{}},
+	} {
+		response = harness.call(t, operation.name, operation.fields)
+		var result agentcontrol.WriteResult
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Method != "terminal" || result.Outcome != "written" {
+			t.Fatal("Codex terminal write did not preserve delivery outcome")
+		}
+	}
+	response = harness.call(t, "stop", map[string]any{})
+	var stop agentcontrol.StopResult
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &stop) != nil || stop.Agent != "unconfirmed" || stop.Terminal != "closed" {
+		t.Fatal("Codex terminal closure overstated provider halt")
+	}
+	state = harness.state(t)
+	if state.NativeCalls != 0 || state.Pastes != 1 || state.LastKey != "Escape" || state.Exists {
+		t.Fatal("Codex invoked native control, replayed input, or missed exact terminal close")
+	}
+}
+
+func TestAgentControlClaudeSendAndInterruptAreTerminal(t *testing.T) {
+	harness := newControlHarness(t, "claude-ready")
+	state := harness.state(t)
+	state.TerminalReady = true
+	writeControlState(t, harness.statePath, state)
+	for _, operation := range []struct {
+		name   string
+		fields map[string]any
+	}{
+		{"send", map[string]any{"text": "fixture"}},
+		{"interrupt", map[string]any{}},
+	} {
+		response := harness.call(t, operation.name, operation.fields)
+		var result agentcontrol.WriteResult
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Method != "terminal" || result.Outcome != "written" {
+			t.Fatal("Claude terminal write did not preserve delivery outcome")
+		}
+	}
+	state = harness.state(t)
+	if state.NativeCalls != 0 || state.Pastes != 1 || state.LastKey != "C-c" {
+		t.Fatal("Claude write dispatched an unsupported native operation or wrong key")
 	}
 }
 
 func TestAgentControlExplicitDialogTextAndStaleTarget(t *testing.T) {
-	harness := newControlHarness(t, "unavailable")
-	response := harness.call(t, "send", map[string]any{"mode": "terminal", "text": "first\nsecond; $(literal)"})
+	harness := newControlHarness(t, "codex")
+	response := harness.call(t, "send", map[string]any{"text": "fixture"})
+	if response.Code != http.StatusConflict || harness.state(t).Pastes != 0 {
+		t.Fatal("automatic terminal send bypassed a current dialog")
+	}
+	response = harness.call(t, "send", map[string]any{"mode": "terminal", "text": "first\nsecond; $(literal)"})
 	if response.Code != http.StatusOK {
 		t.Fatalf("deliberate terminal send status=%d", response.Code)
 	}
@@ -208,7 +273,7 @@ func TestAgentControlExplicitDialogTextAndStaleTarget(t *testing.T) {
 }
 
 func TestAgentControlCodexTerminalInterruptUsesEscape(t *testing.T) {
-	harness := newControlHarness(t, "unavailable")
+	harness := newControlHarness(t, "codex")
 	response := harness.call(t, "interrupt", map[string]any{})
 	if response.Code != http.StatusOK || harness.state(t).LastKey != "Escape" {
 		t.Fatal("codex interruption did not use its native terminal interrupt key")
@@ -217,7 +282,7 @@ func TestAgentControlCodexTerminalInterruptUsesEscape(t *testing.T) {
 
 func TestAgentControlUnavailableStatusAndHistoryRetainTerminalFallback(t *testing.T) {
 	t.Run("inspection timeout", func(t *testing.T) {
-		harness := newControlHarness(t, "inspect-stall")
+		harness := newControlHarness(t, "claude-inspect-stall")
 		response := httptest.NewRecorder()
 		harness.gateway.ServeHTTP(response, harness.request(http.MethodGet, "/v1/sessions", ""))
 		if response.Code != http.StatusOK {
@@ -232,7 +297,7 @@ func TestAgentControlUnavailableStatusAndHistoryRetainTerminalFallback(t *testin
 		}
 	})
 	t.Run("read timeout", func(t *testing.T) {
-		harness := newControlHarness(t, "read-stall")
+		harness := newControlHarness(t, "claude-read-stall")
 		response := harness.call(t, "read", map[string]any{})
 		if response.Code != http.StatusOK {
 			t.Fatalf("read status=%d", response.Code)
@@ -246,7 +311,7 @@ func TestAgentControlUnavailableStatusAndHistoryRetainTerminalFallback(t *testin
 		}
 	})
 	t.Run("native older output", func(t *testing.T) {
-		harness := newControlHarness(t, "ready")
+		harness := newControlHarness(t, "claude-ready")
 		response := harness.call(t, "read", map[string]any{})
 		var result agentcontrol.ReadResult
 		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Source != "native" || result.Scope != "recent_messages" {
@@ -256,7 +321,7 @@ func TestAgentControlUnavailableStatusAndHistoryRetainTerminalFallback(t *testin
 }
 
 func TestAgentControlStopPreservesHaltAndClosureOutcomes(t *testing.T) {
-	for _, mode := range []string{"unavailable", "stop-replaced"} {
+	for _, mode := range []string{"codex", "claude-stop-replaced"} {
 		t.Run(mode, func(t *testing.T) {
 			harness := newControlHarness(t, mode)
 			response := harness.call(t, "stop", map[string]any{})
@@ -265,41 +330,38 @@ func TestAgentControlStopPreservesHaltAndClosureOutcomes(t *testing.T) {
 				t.Fatalf("stop status=%d", response.Code)
 			}
 			state := harness.state(t)
-			if mode == "unavailable" {
+			if mode == "codex" {
 				if result.Agent != "unconfirmed" || result.Terminal != "closed" || state.Exists || state.LastKey != "Escape" {
-					t.Fatal("fallback stop lost its attempt or overstated cancellation")
+					t.Fatal("terminal stop lost its attempt or overstated cancellation")
 				}
-			} else if result.Agent != "interrupted" || result.Terminal != "unconfirmed" || result.Reason != "stale" || !state.Exists {
+			} else if result.Agent != "stopped" || result.Terminal != "unconfirmed" || result.Reason != "stale" || !state.Exists {
 				t.Fatal("partial stop discarded native outcome or closed replacement pane")
 			}
 		})
 	}
 }
 
-func TestAgentControlHistorySurvivesUnloadedNativeSession(t *testing.T) {
-	harness := newControlHarness(t, "not-loaded")
+func TestAgentControlClaudeNativeStateDoesNotAuthorizeDialogSubmission(t *testing.T) {
+	harness := newControlHarness(t, "claude-ready")
 	response := httptest.NewRecorder()
 	harness.gateway.ServeHTTP(response, harness.request(http.MethodGet, "/v1/sessions", ""))
 	var inventory sessionsResponseDTO
-	if err := json.Unmarshal(response.Body.Bytes(), &inventory); err != nil {
-		t.Fatal(err)
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &inventory) != nil || len(inventory.Sessions) != 1 {
+		t.Fatal("Claude native inventory failed")
 	}
 	agent := inventory.Sessions[0].Agent
-	if agent.Methods.Read != "native" || agent.Methods.Send != "terminal" || agent.Status.Source != "terminal" {
-		t.Fatal("unloaded native session lost independent history or terminal status")
+	if agent.Status.State != "idle" || agent.Status.Source != "native" || agent.Methods.Read != "native" || agent.Methods.Send != "terminal" || agent.Methods.Interrupt != "terminal" {
+		t.Fatal("Claude lost independent native state and terminal write capabilities")
 	}
-	response = harness.call(t, "read", map[string]any{})
-	var result agentcontrol.ReadResult
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Source != "native" {
-		t.Fatal("readable unloaded history fell back to terminal")
+	calls := harness.state(t).NativeCalls
+	response = harness.call(t, "send", map[string]any{"text": "fixture"})
+	if response.Code != http.StatusConflict || harness.state(t).Pastes != 0 || harness.state(t).NativeCalls != calls {
+		t.Fatal("native idle bypassed a current terminal dialog")
 	}
 }
 
 func TestAgentControlStopRevalidatesAfterPhoneDetach(t *testing.T) {
-	harness := newControlHarness(t, "idle")
+	harness := newControlHarness(t, "claude-background")
 	ctx, cancel := context.WithCancel(context.Background())
 	key, _ := harness.gateway.registerLiveTerminal("$1", cancel)
 	go func() {
@@ -314,7 +376,7 @@ func TestAgentControlStopRevalidatesAfterPhoneDetach(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.Agent != "interrupted" || result.Terminal != "unconfirmed" || result.Reason != "stale" || !harness.state(t).Exists {
+	if result.Agent != "stopped" || result.Terminal != "unconfirmed" || result.Reason != "stale" || !harness.state(t).Exists {
 		t.Fatal("stop killed a replacement pane appearing during phone detach")
 	}
 }
@@ -323,7 +385,8 @@ func TestAgentControlFailedLoadCleansOnlyItsBuffer(t *testing.T) {
 	harness := newControlHarness(t, "load-lost")
 	response := harness.call(t, "send", map[string]any{"mode": "terminal", "text": "fixture"})
 	state := harness.state(t)
-	if response.Code != http.StatusOK || state.Pastes != 0 || state.BufferName == "" || state.DeletedBuffer != state.BufferName {
+	var result agentcontrol.WriteResult
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Method != "terminal" || result.Outcome != "unknown" || state.Pastes != 0 || state.BufferName == "" || state.DeletedBuffer != state.BufferName {
 		t.Fatal("lost load acknowledgement left its unique input buffer")
 	}
 }
@@ -348,16 +411,29 @@ func TestAgentControlClaudeExitRequiresObservedTerminalOwnership(t *testing.T) {
 	}
 }
 
-func TestAgentControlUnloadedCodexStopsThroughTerminal(t *testing.T) {
-	harness := newControlHarness(t, "not-loaded")
+func TestAgentControlUnknownNativeStopIsNotReplayed(t *testing.T) {
+	harness := newControlHarness(t, "claude-stop-unknown")
 	response := harness.call(t, "stop", map[string]any{})
 	var result agentcontrol.StopResult
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil {
+		t.Fatal("uncertain native halt lost its compound stop response")
 	}
 	state := harness.state(t)
-	if result.Agent != "unconfirmed" || result.Terminal != "closed" || state.NativeStops != 0 || state.LastKey != "Escape" {
-		t.Fatal("unloaded Codex stop claimed or dispatched a native halt")
+	if result.Agent != "unconfirmed" || result.Terminal != "closed" || state.NativeStops != 1 || state.LastKey != "" {
+		t.Fatal("uncertain native stop was overstated or replayed as terminal interruption")
+	}
+}
+
+func TestAgentControlLostTerminalWriteIsNotReplayed(t *testing.T) {
+	harness := newControlHarness(t, "paste-lost")
+	response := harness.call(t, "send", map[string]any{"mode": "terminal", "text": "fixture"})
+	var result agentcontrol.WriteResult
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Method != "terminal" || result.Outcome != "unknown" {
+		t.Fatal("lost terminal write acknowledgement was reported as success")
+	}
+	state := harness.state(t)
+	if state.Pastes != 1 || state.NativeCalls != 0 || state.DeletedBuffer != state.BufferName {
+		t.Fatal("uncertain terminal write was replayed or left its owned buffer")
 	}
 }
 
@@ -387,63 +463,49 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 		}
 	}
 	if mode == "native" {
+		state.NativeCalls++
+		write()
 		var request struct {
 			Operation string `json:"operation"`
+			Provider  string `json:"provider"`
 		}
 		if json.NewDecoder(os.Stdin).Decode(&request) != nil {
 			os.Exit(63)
 		}
-		if state.NativeMode == "unavailable" {
-			fmt.Print(`{"ok":false,"error":{"code":"unavailable","dispatch":"not_sent"}}`)
+		if request.Provider != "Claude" {
+			fmt.Print(`{"ok":false,"error":{"code":"unsupported","dispatch":"not_sent"}}`)
 			os.Exit(1)
 		}
 		switch request.Operation {
 		case "inspect":
-			if strings.HasPrefix(state.NativeMode, "claude-") {
-				fmt.Printf(`{"ok":true,"result":[{"ok":true,"result":{"status":{"state":"idle","source":"native"},"methods":{"read":"native","send":"terminal","interrupt":"terminal"},"sessionId":"fixture-thread","terminalOwnsAgent":%t}}]}`, state.NativeMode == "claude-interactive")
-				os.Exit(0)
-			}
-			if state.NativeMode == "not-loaded" {
-				fmt.Print(`{"ok":true,"result":[{"ok":true,"result":{"status":{"state":"unknown","source":"unavailable","reason":"provider_unavailable"},"methods":{"read":"native","send":"terminal","interrupt":"terminal"},"sessionId":"fixture-thread"}}]}`)
-				os.Exit(0)
-			}
-			if state.NativeMode == "inspect-stall" {
+			if state.NativeMode == "claude-inspect-stall" {
 				time.Sleep(12 * time.Second)
 			}
-			status := "idle"
-			if state.NativeMode == "blocked" {
-				status = "blocked"
-			}
-			fmt.Printf(`{"ok":true,"result":[{"ok":true,"result":{"status":{"state":%q,"source":"native"},"methods":{"read":"native","send":"native","interrupt":"native"},"sessionId":"fixture-thread","turnId":"fixture-turn"}}]}`, status)
-		case "send":
-			state.NativeSends++
-			write()
-			if state.NativeMode == "unknown" {
-				fmt.Print("lost acknowledgement")
-				os.Exit(1)
-			}
-			fmt.Print(`{"ok":true,"result":{"method":"native","outcome":"accepted","turnId":"new-turn"}}`)
+			fmt.Printf(`{"ok":true,"result":[{"ok":true,"result":{"status":{"state":"idle","source":"native"},"methods":{"read":"native","send":"terminal","interrupt":"terminal"},"sessionId":"fixture-thread","terminalOwnsAgent":%t}}]}`, state.NativeMode == "claude-interactive")
 		case "read":
-			if state.NativeMode == "read-stall" {
+			if state.NativeMode == "claude-read-stall" {
 				time.Sleep(12 * time.Second)
 			}
 			fmt.Print(`{"ok":true,"result":{"text":"older than viewport","source":"native","scope":"recent_messages","truncated":false}}`)
 		case "stop":
 			state.NativeStops++
 			write()
-			if strings.HasPrefix(state.NativeMode, "claude-") {
-				child, _ := os.FindProcess(state.PID)
-				_ = child.Kill()
-				state.Exists = false
-				write()
-				fmt.Print(`{"ok":true,"result":{"agent":"unconfirmed"}}`)
-				os.Exit(0)
-			}
-			if state.NativeMode == "stop-replaced" {
+			switch state.NativeMode {
+			case "claude-interactive":
+				fmt.Print(`{"ok":false,"error":{"code":"unsupported","dispatch":"not_sent"}}`)
+				os.Exit(1)
+			case "claude-stop-replaced":
 				state.PaneID = "%2"
 				write()
+				fmt.Print(`{"ok":true,"result":{"agent":"stopped"}}`)
+			case "claude-background":
+				fmt.Print(`{"ok":true,"result":{"agent":"stopped"}}`)
+			case "claude-stop-unknown":
+				fmt.Print("lost acknowledgement")
+				os.Exit(1)
+			default:
+				fmt.Print(`{"ok":true,"result":{"agent":"unconfirmed"}}`)
 			}
-			fmt.Print(`{"ok":true,"result":{"agent":"interrupted"}}`)
 		default:
 			fmt.Print(`{"ok":false,"error":{"code":"unsupported","dispatch":"not_sent"}}`)
 			os.Exit(1)
@@ -506,7 +568,15 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 			os.Exit(66)
 		}
 	case "capture-pane":
-		fmt.Println("❯ 1. Yes\n  2. No\nEnter to select · Esc to cancel")
+		if state.TerminalReady {
+			if strings.HasPrefix(state.NativeMode, "claude-") {
+				fmt.Println("❯\n? for shortcuts")
+			} else {
+				fmt.Println("›\n? for shortcuts")
+			}
+		} else {
+			fmt.Println("❯ 1. Yes\n  2. No\nEnter to select · Esc to cancel")
+		}
 	case "load-buffer":
 		input, _ := io.ReadAll(os.Stdin)
 		state.BufferName = args[2]
@@ -518,6 +588,9 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 	case "paste-buffer":
 		state.Pastes++
 		write()
+		if state.NativeMode == "paste-lost" {
+			os.Exit(1)
+		}
 	case "send-keys":
 		state.LastKey = last
 		write()
@@ -526,6 +599,8 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 		write()
 	case "if-shell":
 		if strings.Contains(strings.Join(args, " "), "kill-session -t '$1'") {
+			child, _ := os.FindProcess(state.PID)
+			_ = child.Kill()
 			state.Exists = false
 			write()
 		} else {

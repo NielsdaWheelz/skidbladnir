@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +23,6 @@ var expectedProfiles = [...]struct {
 	{key: "personal", provider: agentruntime.ProviderCodex},
 	{key: "work", provider: agentruntime.ProviderCodex},
 	{key: "work2", provider: agentruntime.ProviderCodex},
-	{key: "claude-personal", provider: agentruntime.ProviderClaude},
 	{key: "claude-work", provider: agentruntime.ProviderClaude},
 }
 
@@ -128,7 +126,6 @@ type tmuxDTO struct {
 }
 
 type profileDTO struct {
-	NativeEndpoint       stringField               `json:"nativeEndpoint"`
 	Key                  stringField               `json:"key"`
 	Label                stringField               `json:"label"`
 	Provider             stringField               `json:"provider"`
@@ -195,14 +192,6 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		if provider != expected.provider {
 			return nil, fmt.Errorf("host config profile %s must use provider %s", candidate.Key.value, expected.provider)
 		}
-		if provider == agentruntime.ProviderCodex {
-			endpoint, err := url.Parse(candidate.NativeEndpoint.value)
-			if err != nil || endpoint.Scheme != "unix" || endpoint.Host != "" || !validAbsolutePath(endpoint.Path) || endpoint.RawQuery != "" || endpoint.Fragment != "" {
-				return nil, errors.New("codex profile native endpoint must be an absolute unix socket")
-			}
-		} else if candidate.NativeEndpoint.present {
-			return nil, errors.New("claude profile cannot declare a native endpoint")
-		}
 		environment, err := mapEnvironment(*candidate.Environment)
 		if err != nil {
 			return nil, err
@@ -223,7 +212,6 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 			arguments[argumentIndex] = argument.value
 		}
 		profiles[index] = agentruntime.Profile{
-			NativeEndpoint:       candidate.NativeEndpoint.value,
 			Key:                  agentruntime.ProfileKey(candidate.Key.value),
 			Label:                candidate.Label.value,
 			Provider:             provider,

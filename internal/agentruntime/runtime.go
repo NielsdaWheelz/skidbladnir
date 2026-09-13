@@ -190,13 +190,12 @@ func Project(profiles []Profile, observation processinfo.Observation, encodedReg
 		return AgentRuntime{}, false
 	}
 	agent := AgentRuntime{Provider: foreground.Provider, PID: foreground.PID, StartIdentity: foreground.StartIdentity, Status: Status{State: "unknown", Source: "unavailable", Reason: "unrecognized"}, Methods: Methods{Read: "terminal", Send: "terminal", Interrupt: "terminal"}}
-	providerSessionID := ""
-	if registration, valid := acceptRegistration(profiles, foreground, encodedRegistration); valid {
-		agent.Profile = registration.profile
-		providerSessionID = registration.providerSessionID
-	}
-	providerSessionName := ""
+	providerSessionID, providerSessionName := "", ""
 	if foreground.Provider == ProviderClaude {
+		if registration, valid := acceptRegistration(profiles, foreground, encodedRegistration); valid {
+			agent.Profile = registration.profile
+			providerSessionID = registration.providerSessionID
+		}
 		providerSessionName = claudeName(observation.Argv)
 	}
 	if providerSessionID != "" || providerSessionName != "" {

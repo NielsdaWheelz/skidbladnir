@@ -66,8 +66,7 @@ func TestVersionReportsExactReleaseIdentity(t *testing.T) {
 func TestAgentHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("TMUX_PANE", "")
-	tmuxPath := writeTmuxVersion(t, "tmux test")
-	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	hostConfigPath := filepath.Join(t.TempDir(), "missing.json")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -79,18 +78,43 @@ func TestAgentHookDoesNotRequireAHomeDirectory(t *testing.T) {
 	}
 }
 
-func TestAgentHookAllowsTmuxVersionDrift(t *testing.T) {
+func TestAgentHookWithoutAPaneDoesNotProbeTmux(t *testing.T) {
 	t.Setenv("TMUX_PANE", "")
-	tmuxPath := writeTmuxVersion(t, "tmux changed")
-	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux expected")
+	probePath := filepath.Join(t.TempDir(), "probe")
+	t.Setenv("SKID_TEST_TMUX_PROBE", probePath)
+	tmuxPath := filepath.Join(t.TempDir(), "tmux")
+	if err := os.WriteFile(tmuxPath, []byte("#!/bin/sh\nprintf probe > \"$SKID_TEST_TMUX_PROBE\"\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hostConfigPath := writeHostConfig(t, tmuxPath, "tmux test")
+	input := commandInput(t, `{"session_id":"thr_123"}`)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"}, commandInput(t, `{"session_id":"thr_123"}`), &stdout, &stderr); exitCode != 0 {
+	if exitCode := run([]string{"agent-hook", "--host-config=" + hostConfigPath, "Codex", "SessionStart"}, input, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("agent-hook exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
+	if remaining, err := io.ReadAll(input); err != nil || len(remaining) != 0 {
+		t.Fatalf("no-pane hook did not drain admitted provider input: remaining=%d err=%v", len(remaining), err)
+	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
-		t.Fatalf("agent-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
+		t.Errorf("agent-hook output = (%q, %q), want quiet success", stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(probePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("no-pane hook invoked configured tmux: %v", err)
+	}
+}
+
+func TestRuntimeHostConfigAllowsTmuxVersionDrift(t *testing.T) {
+	for _, version := range []string{"tmux changed", "not a tmux version"} {
+		t.Run(version, func(t *testing.T) {
+			tmuxPath := writeTmuxVersion(t, version)
+			hostConfigPath := writeHostConfig(t, tmuxPath, "tmux expected")
+			_, err := loadRuntimeHostConfig(context.Background(), hostConfigPath, platform.Current().Kind)
+			if admitted := err == nil; admitted != (version == "tmux changed") {
+				t.Fatalf("runtime config admission = %t for observed version %q", admitted, version)
+			}
+		})
 	}
 }
 
@@ -191,6 +215,7 @@ func TestAgentHookRejectsAnUnconfiguredPairIndependentlyOfHostConfig(t *testing.
 }
 
 func TestAgentHookDrainsFiniteProviderInputWhenHostConfigFails(t *testing.T) {
+	t.Setenv("TMUX_PANE", "%7")
 	input, provider, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -303,6 +328,7 @@ func TestAgentHookTotalDeadlineBoundsBlockingProviderInput(t *testing.T) {
 }
 
 func TestAgentHookRejectsANonRegularHostConfigWithoutOutlivingItsDeadline(t *testing.T) {
+	t.Setenv("TMUX_PANE", "%7")
 	configPath := filepath.Join(t.TempDir(), "host-config.fifo")
 	if err := syscall.Mkfifo(configPath, 0o600); err != nil {
 		t.Fatal(err)
@@ -477,10 +503,9 @@ func writeHostConfig(t *testing.T, tmuxPath, tmuxTestedVersion string) string {
   "nativeControlPath": "/usr/local/bin/provider-runtime-control",
 	  "tmux": {"path": %q, "testedVersion": %q},
   "profiles": [
-    {"nativeEndpoint":"unix:///run/codex-personal/app-server.sock","key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"nativeEndpoint":"unix:///run/codex-work/app-server.sock","key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"nativeEndpoint":"unix:///run/codex-work2/app-server.sock","key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]},
+    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
     {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]}
   ]
 }`, platform.Current().Kind, tmuxPath, tmuxTestedVersion)

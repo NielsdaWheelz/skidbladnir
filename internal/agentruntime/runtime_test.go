@@ -7,30 +7,46 @@ import (
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
+func TestCodexDoesNotProjectNativeHookIdentity(t *testing.T) {
+	profiles := testProfiles()
+	observed := processinfo.Observation{
+		PID: 4312, StartIdentity: "991827", Executable: "/usr/bin/codex",
+		Argv: []string{"codex"},
+	}
+	encoded, err := EncodeRegistration(Foreground{Provider: ProviderCodex, PID: observed.PID, StartIdentity: observed.StartIdentity}, "work", "019a0000-0000-7000-8000-000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, found := Project(profiles, observed, encoded)
+	if !found || agent.ProviderSession != nil || agent.Profile != "" {
+		t.Fatal("terminal codex exposed an unverified native hook identity")
+	}
+}
+
 func TestProjectBindsRegistrationToTheExactForegroundLifetime(t *testing.T) {
 	profiles, err := ValidateProfiles(testProfiles())
 	if err != nil {
 		t.Fatalf("validate profile fixture: %v", err)
 	}
 	process := processinfo.Observation{
-		PID: 4312, StartIdentity: "991827", Executable: "/home/niels/.local/share/codex/codex",
-		Argv: []string{"codex"},
+		PID: 4312, StartIdentity: "991827", Executable: "/home/niels/.local/share/claude/versions/2.1.236",
+		Argv: []string{"/home/niels/.local/bin/claude"},
 	}
 	foreground, found := ClassifyForeground(profiles, process)
-	if !found || foreground.Provider != ProviderCodex || foreground.PID != process.PID {
+	if !found || foreground.Provider != ProviderClaude || foreground.PID != process.PID {
 		t.Fatalf("classified foreground = %+v, found=%t", foreground, found)
 	}
-	registration, err := EncodeRegistration(foreground, "work", "019abcXYZ")
+	registration, err := EncodeRegistration(foreground, "claude-work", "019abcXYZ")
 	if err != nil {
 		t.Fatalf("encode registration: %v", err)
 	}
-	const want = "v1:4312:991827:Codex:work:MDE5YWJjWFla"
+	const want = "v1:4312:991827:Claude:claude-work:MDE5YWJjWFla"
 	if registration != want {
 		t.Fatalf("registration = %q, want %q", registration, want)
 	}
 
 	agent, found := Project(profiles, process, registration)
-	if !found || agent.Provider != ProviderCodex || agent.PID != process.PID || agent.Profile != "work" || agent.ProviderSession == nil {
+	if !found || agent.Provider != ProviderClaude || agent.PID != process.PID || agent.Profile != "claude-work" || agent.ProviderSession == nil {
 		t.Fatalf("projected agent = %+v, found=%t", agent, found)
 	}
 	if agent.ProviderSession.ID() != "019abcXYZ" || agent.ProviderSession.Name() != "" {
@@ -40,15 +56,15 @@ func TestProjectBindsRegistrationToTheExactForegroundLifetime(t *testing.T) {
 	invalid := map[string]string{
 		"reused pid":         strings.Replace(registration, ":991827:", ":991828:", 1),
 		"other pid":          strings.Replace(registration, ":4312:", ":4313:", 1),
-		"other provider":     strings.Replace(registration, ":Codex:", ":Claude:", 1),
-		"unknown profile":    strings.Replace(registration, ":work:", ":other:", 1),
+		"other provider":     strings.Replace(registration, ":Claude:", ":Codex:", 1),
+		"unknown profile":    strings.Replace(registration, ":claude-work:", ":other:", 1),
 		"padded session id":  registration + "=",
 		"invalid session id": strings.Replace(registration, "MDE5YWJjWFla", "IA", 1),
 	}
 	for name, value := range invalid {
 		t.Run(name, func(t *testing.T) {
 			projected, found := Project(profiles, process, value)
-			if !found || projected.Provider != ProviderCodex || projected.PID != process.PID {
+			if !found || projected.Provider != ProviderClaude || projected.PID != process.PID {
 				t.Fatalf("invalid registration changed process-derived agent: %+v found=%t", projected, found)
 			}
 			if projected.Profile != "" || projected.ProviderSession != nil {
@@ -64,13 +80,13 @@ func TestProjectRejectsOversizedRegistration(t *testing.T) {
 		t.Fatalf("validate profile fixture: %v", err)
 	}
 	process := processinfo.Observation{
-		PID: 4312, StartIdentity: "991827", Executable: "/home/niels/.local/share/codex/codex",
-		Argv: []string{"codex"},
+		PID: 4312, StartIdentity: "991827", Executable: "/home/niels/.local/share/claude/versions/2.1.236",
+		Argv: []string{"/home/niels/.local/bin/claude"},
 	}
-	registration := "v1:4312:991827:Codex:work:" + strings.Repeat("QUFB", 1024)
+	registration := "v1:4312:991827:Claude:claude-work:" + strings.Repeat("QUFB", 1024)
 
 	projected, found := Project(profiles, process, registration)
-	if !found || projected.Provider != ProviderCodex || projected.PID != process.PID {
+	if !found || projected.Provider != ProviderClaude || projected.PID != process.PID {
 		t.Fatalf("oversized registration changed process-derived agent: %+v found=%t", projected, found)
 	}
 	if projected.Profile != "" || projected.ProviderSession != nil {

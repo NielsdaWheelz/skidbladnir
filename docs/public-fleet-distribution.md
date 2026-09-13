@@ -220,10 +220,10 @@ missing/broken/noncanonical configured tmux prevents startup. `testedVersion`
 records the last acceptance target; a different canonical installed version
 does not block apply, gateway startup, the agent-hook adapter, or fleet
 verification. Profiles reuse `agentruntime.Profile` validation. Every
-host config declares exactly `personal`, `work`, `work2`, `claude-personal`, and
-`claude-work`. Personal rows use plain upstream commands; work rows use only
-their explicit account wrapper. Every row has an empty argument list, so no
-unattended permission bypass enters a gateway launch. Platform adapters
+host config declares exactly `personal`, `work`, `work2`, and `claude-work` under
+the accepted [agent-control target](agent-control.md). provider commands and
+explicit account wrappers come from the host config. claude arguments load its
+identity plugin; no unattended permission bypass enters a gateway launch. Platform adapters
 retain only native observation/process/pressure behavior; they no longer choose
 paths, runtime versions, commands, or profiles.
 

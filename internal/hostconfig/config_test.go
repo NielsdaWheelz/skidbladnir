@@ -20,7 +20,7 @@ func TestParseAcceptsTheClosedDeploymentHostConfig(t *testing.T) {
 	if config.Tmux.Path != "/usr/bin/tmux" {
 		t.Fatalf("tmux path = %q, want deployment path", config.Tmux.Path)
 	}
-	wantKeys := []string{"personal", "work", "work2", "claude-personal", "claude-work"}
+	wantKeys := []string{"personal", "work", "work2", "claude-work"}
 	if len(config.Profiles) != len(wantKeys) {
 		t.Fatalf("profile count = %d, want %d", len(config.Profiles), len(wantKeys))
 	}
@@ -82,7 +82,7 @@ func TestParseAcceptsDeploymentOwnedDevboxArchAndMacBookPaths(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse %s deployment fixture: %v", test.name, err)
 			}
-			if config.Platform != test.runtime || len(config.Profiles) != 5 {
+			if config.Platform != test.runtime || len(config.Profiles) != 4 {
 				t.Fatalf("%s config = platform %q, profiles %d", test.name, config.Platform, len(config.Profiles))
 			}
 		})
@@ -103,6 +103,7 @@ func TestParseRejectsEveryNoncanonicalHostConfigShape(t *testing.T) {
 		{name: "legacy tmux version member", encoded: strings.Replace(validLinuxConfig, `"testedVersion":"tmux 3.4"`, `"version":"tmux 3.4"`, 1), runtime: platform.KindLinux},
 		{name: "retired Codex entrypoint", encoded: strings.Replace(validLinuxConfig, `"platform":"Linux",`, `"platform":"Linux","codexNodeEntrypoint":"/home/niels/.local/bin/codex",`, 1), runtime: platform.KindLinux},
 		{name: "profile order changed", encoded: strings.Replace(validLinuxConfig, `"key":"personal"`, `"key":"work"`, 1), runtime: platform.KindLinux},
+		{name: "retired Claude personal profile", encoded: strings.Replace(validLinuxConfig, `"key":"claude-work"`, `"key":"claude-personal"`, 1), runtime: platform.KindLinux},
 		{name: "missing provider", encoded: strings.Replace(validLinuxConfig, `,"provider":"Codex"`, ``, 1), runtime: platform.KindLinux},
 		{name: "unknown provider", encoded: strings.Replace(validLinuxConfig, `"provider":"Codex"`, `"provider":"OpenAI"`, 1), runtime: platform.KindLinux},
 		{name: "unknown profile member", encoded: strings.Replace(validLinuxConfig, `"key":"personal"`, `"key":"personal","fallback":true`, 1), runtime: platform.KindLinux},
@@ -131,7 +132,7 @@ func TestParseRequiresOneUniqueAbsoluteProviderHomePerProfile(t *testing.T) {
 		},
 		{
 			name:    "Claude declares Codex home",
-			encoded: strings.Replace(validLinuxConfig, `{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}`, `{"name":"CODEX_HOME","value":"/home/niels/.claude-personal"}`, 1),
+			encoded: strings.Replace(validLinuxConfig, `{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}`, `{"name":"CODEX_HOME","value":"/home/niels/.claude-work"}`, 1),
 		},
 		{
 			name:    "relative provider home",
@@ -168,13 +169,13 @@ func TestParseRejectsAProfileProviderSwapOutsideTheClosedTable(t *testing.T) {
 		1,
 	)
 	swapped = strings.Replace(swapped,
-		`"label":"Claude · Personal","provider":"Claude"`,
-		`"label":"Claude · Personal","provider":"Codex"`,
+		`"label":"Claude · Work","provider":"Claude"`,
+		`"label":"Claude · Work","provider":"Codex"`,
 		1,
 	)
 	swapped = strings.Replace(swapped,
-		`{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}`,
-		`{"name":"CODEX_HOME","value":"/home/niels/.claude-personal"}`,
+		`{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}`,
+		`{"name":"CODEX_HOME","value":"/home/niels/.claude-work"}`,
 		1,
 	)
 	swapped = strings.Replace(swapped,
@@ -206,10 +207,9 @@ const validLinuxConfig = `{
   "platform":"Linux",
   "tmux":{"path":"/usr/bin/tmux","testedVersion":"tmux 3.4"},
   "profiles":[
-    {"key":"personal","label":"Codex · Personal","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
-    {"key":"work","label":"Codex · Work","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
-    {"key":"work2","label":"Codex · Work 2","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
-    {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":["--permission-mode","auto"]},
+    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
+    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
+    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
     {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":["--permission-mode","auto"]}
   ]
 }`

@@ -169,8 +169,6 @@ func writeAgentError(writer http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sessions.ErrAgentTargetStale):
 		writeError(writer, errorAgentTargetStale)
-	case errors.Is(err, agentcontrol.ErrUnavailable):
-		writeError(writer, errorAgentUnavailable)
 	case errors.Is(err, agentcontrol.ErrBlocked):
 		writeError(writer, errorAgentBlocked)
 	case errors.Is(err, agentcontrol.ErrInvalidInput):

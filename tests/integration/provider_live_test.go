@@ -114,26 +114,6 @@ type providerLiveDispatchSentinel struct {
 	serveErr   error
 }
 
-type providerLiveExpectation struct {
-	tmuxName            string
-	provider            agentruntime.Provider
-	runtimeProfile      agentruntime.ProfileKey
-	launchProfile       agentruntime.ProfileKey
-	providerSessionName string
-}
-
-type providerLiveProjectionSummary struct {
-	sessionPresent         bool
-	agentPresent           bool
-	providerMatches        bool
-	pidPresent             bool
-	runtimeProfileMatches  bool
-	providerSessionPresent bool
-	providerSessionID      bool
-	providerSessionName    bool
-	launchProfileMatches   bool
-}
-
 type providerLiveFakeObservation struct {
 	arguments   []string
 	stdin       []byte
@@ -1387,13 +1367,13 @@ func providerLivePlanForHost(t *testing.T, profiles []agentruntime.Profile) prov
 		return providerLivePlan{
 			managedProfile:    requireProviderLiveProfile(t, profiles, "personal", agentruntime.ProviderCodex),
 			managedTmuxName:   "provider-live-managed-codex",
-			laptopProfile:     requireProviderLiveProfile(t, profiles, "claude-personal", agentruntime.ProviderClaude),
+			laptopProfile:     requireProviderLiveProfile(t, profiles, "claude-work", agentruntime.ProviderClaude),
 			laptopTmuxName:    "provider-live-laptop-claude",
 			laptopSessionName: "provider-live-explicit-claude",
 		}
 	case platform.KindDarwin:
 		return providerLivePlan{
-			managedProfile:  requireProviderLiveProfile(t, profiles, "claude-personal", agentruntime.ProviderClaude),
+			managedProfile:  requireProviderLiveProfile(t, profiles, "claude-work", agentruntime.ProviderClaude),
 			managedTmuxName: "provider-live-managed-claude",
 			laptopProfile:   requireProviderLiveProfile(t, profiles, "personal", agentruntime.ProviderCodex),
 			laptopTmuxName:  "provider-live-laptop-codex",
@@ -1474,12 +1454,14 @@ func waitForProviderLiveProjections(
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			t.Fatalf(
-				"provider-live projection did not converge: list_ok=%t managed={session:%t agent:%t provider:%t pid:%t runtime_profile:%t provider_session:%t session_id:%t session_name:%t launch_profile:%t} laptop={session:%t agent:%t provider:%t pid:%t runtime_profile:%t provider_session:%t session_id:%t session_name:%t launch_profile:%t}",
+				"provider-live projection did not converge: list_ok=%t managed={session:%t agent:%t provider:%t pid:%t target:%t native_contract:%t runtime_profile:%t provider_session:%t session_id:%t session_name:%t launch_profile:%t} laptop={session:%t agent:%t provider:%t pid:%t target:%t native_contract:%t runtime_profile:%t provider_session:%t session_id:%t session_name:%t launch_profile:%t}",
 				listOK,
 				last[0].sessionPresent, last[0].agentPresent, last[0].providerMatches, last[0].pidPresent,
+				last[0].targetPresent, last[0].nativeIdentityMatches,
 				last[0].runtimeProfileMatches, last[0].providerSessionPresent, last[0].providerSessionID,
 				last[0].providerSessionName, last[0].launchProfileMatches,
 				last[1].sessionPresent, last[1].agentPresent, last[1].providerMatches, last[1].pidPresent,
+				last[1].targetPresent, last[1].nativeIdentityMatches,
 				last[1].runtimeProfileMatches, last[1].providerSessionPresent, last[1].providerSessionID,
 				last[1].providerSessionName, last[1].launchProfileMatches,
 			)
@@ -1510,41 +1492,6 @@ func waitForProviderLiveProjections(
 		}
 		time.Sleep(providerLivePollInterval)
 	}
-}
-
-func summarizeProviderLiveProjection(
-	listed []sessions.Session,
-	expectation providerLiveExpectation,
-) providerLiveProjectionSummary {
-	for _, session := range listed {
-		if session.TmuxName != expectation.tmuxName {
-			continue
-		}
-		summary := providerLiveProjectionSummary{
-			sessionPresent:       true,
-			launchProfileMatches: session.LaunchProfile == expectation.launchProfile,
-		}
-		if session.Agent == nil {
-			return summary
-		}
-		summary.agentPresent = true
-		summary.providerMatches = session.Agent.Provider == expectation.provider
-		summary.pidPresent = session.Agent.PID > 0
-		summary.runtimeProfileMatches = session.Agent.Profile == expectation.runtimeProfile
-		if session.Agent.ProviderSession != nil {
-			summary.providerSessionPresent = true
-			summary.providerSessionID = session.Agent.ProviderSession.ID() != ""
-			summary.providerSessionName = session.Agent.ProviderSession.Name() == expectation.providerSessionName
-		}
-		return summary
-	}
-	return providerLiveProjectionSummary{}
-}
-
-func providerLiveProjectionComplete(summary providerLiveProjectionSummary) bool {
-	return summary.sessionPresent && summary.agentPresent && summary.providerMatches && summary.pidPresent &&
-		summary.runtimeProfileMatches && summary.providerSessionPresent && summary.providerSessionID &&
-		summary.providerSessionName && summary.launchProfileMatches
 }
 
 func captureProviderLiveProcessGroups(

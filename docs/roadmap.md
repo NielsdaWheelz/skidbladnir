@@ -18,7 +18,7 @@ establish provider halt.
 all six directed cli list routes pass. devbox gateway outage/recovery preserved
 all fourteen pre-existing tmux sessions and twelve detected agent targets;
 arch controlled a replying macbook agent while devbox was unavailable. reciprocal
-reply and the complete profile matrix remain incomplete. devbox codex personal,
+reply during the outage remains incomplete. devbox codex personal,
 work, and work2 have verified terminal replies, as do macbook work/work2 when
 controlled from devbox. arch also controls a replying devbox claude-work agent
 with native status/history. normal provider startup may retain accepted folder
@@ -39,22 +39,19 @@ the full v0.3.0 phone gate ran 76 tests with three failures; corrected fixtures
 pass the focused three-case rerun, with pairing preserved and the exact published
 apk restored. full patch-release phone acceptance remains pending.
 
-eight of fifteen host/profile reply paths are verified. remaining authentication/
-onboarding: macbook claude-personal; devbox claude-personal; all five arch profiles.
-the remaining directed reply routes and genuine jarvis owner ingress remain
-pending. v0.3.1 publication is blocked by missing exact-main ci during the
-[2026-09-13 github incident](https://www.githubstatus.com/incidents/0rn90wk115q9).
-git main contains the reviewed patch tree, but the pull-request api still reports
-it open; no further merge or release is inferred from that inconsistent state.
+all twelve host/profile reply paths are verified. the 2026-09-13 owner
+amendment removes claude-personal; only claude-work is required. arch personal,
+work/work2 and claude-work reply through remote cli controls. all task-owned
+fixtures were removed, preserving the observed pre-existing targets.
+the genuine jarvis owner request arrived
+but was parked before a provider turn or agent action; cognition configuration
+diagnosis is in progress. full patch-release phone acceptance remains pending.
 
-shared codex executes identity hooks outside tmux. native codex binding remains
-an unmet requirement. the proposed full-id footer was withdrawn: the actual phone
-terminal is 35 columns wide and cannot display its 36-character uuid. no full-id
-footer change was implemented. an osc-title prefix can identify a unique loaded
-thread but cannot prove it is the tui's current selection; that alternative was
-also rejected. a different binding or an explicit v1 scope amendment is required.
-narrow terminal detector fixes do not establish native identity, and clipped or
-unrecognized footers correctly remain unknown.
+the owner's latest decision defers native codex for v1, superseding the proposed
+full-id footer. terminal state/history/control remain; claude retains native
+state/history. footer and process-environment additions were reverted before
+rollout. unfamiliar codex chrome remains unknown and terminal history is partial.
+
 existing claude account roots remain unchanged; no account state is copied to
 complete onboarding. search, stable placement, separate attention, and richer
 history retrieval remain deferred.
