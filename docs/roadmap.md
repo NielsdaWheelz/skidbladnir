@@ -43,9 +43,12 @@ all twelve host/profile reply paths are verified. the 2026-09-13 owner
 amendment removes claude-personal; only claude-work is required. arch personal,
 work/work2 and claude-work reply through remote cli controls. all task-owned
 fixtures were removed, preserving the observed pre-existing targets.
-the genuine jarvis owner request arrived
-but was parked before a provider turn or agent action; cognition configuration
-diagnosis is in progress. full patch-release phone acceptance remains pending.
+the genuine jarvis owner request initially parked before a provider turn or
+agent action. one controlled recovery restarted only jarvis and preserved shared
+servers. the request then created both remote terminals and delivered one codex
+send, but its keys request failed before cli dispatch and an interrupt was denied
+by the write check. jarvis acceptance remains incomplete; the original cognition
+exception was not retained. full patch-release phone acceptance remains pending.
 
 the owner's latest decision defers native codex for v1, superseding the proposed
 full-id footer. terminal state/history/control remain; claude retains native
