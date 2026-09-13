@@ -130,7 +130,8 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 				home = variable.Value
 			}
 		}
-		if home == "" || !filepath.IsAbs(home) {
+		_, explicitHome := environmentNames[homeName]
+		if !filepath.IsAbs(home) && (profile.Provider != ProviderClaude || explicitHome) {
 			return nil, fmt.Errorf("profile %s provider home must be absolute", profile.Key)
 		}
 		if _, found := homes[profile.Provider][home]; found {
@@ -195,17 +196,22 @@ func MatchProfileEnvironment(profiles []Profile, provider Provider, lookup func(
 		return "", false
 	}
 	home, found := lookup(homeName)
-	if !found {
-		return "", false
-	}
 	for _, profile := range profiles {
 		if profile.Provider != provider {
 			continue
 		}
+		explicitHome := false
 		for _, variable := range profile.Environment {
-			if variable.Name == homeName && variable.Value == home {
+			if variable.Name != homeName {
+				continue
+			}
+			explicitHome = true
+			if found && variable.Value == home {
 				return profile.Key, true
 			}
+		}
+		if provider == ProviderClaude && !found && !explicitHome {
+			return profile.Key, true
 		}
 	}
 	return "", false
