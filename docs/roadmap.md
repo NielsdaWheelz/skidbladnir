@@ -1,24 +1,37 @@
 # Skíðblaðnir v0 roadmap
 
-accepted target: [agent control](agent-control.md). v0.3.0 is published and
-installed on all three gateways and the phone. installation preserved existing
-pairings, accounts, and tmux/provider lifetimes. private cli peers are provisioned
-on all hosts and for jarvis; jarvis is active and its old worker launcher is retired.
-no busy shared codex server was restarted. one subsequently verified unused arch
-personal server was restarted for auth diagnosis; its account remained unavailable,
-and the other server and tmux lifetimes survived.
+accepted target: [agent control](agent-control.md). immutable v0.3.1 is published
+at `ac1b2079af4a5db35509a7ed0607eea77448bb85`, pinned across both repositories,
+and installed on all three gateways and clis, including jarvis's executable copy.
+the phone still runs v0.3.0. the published-release and fleet verification gates
+pass. the installer recognizes the fleet-owned `client.json`; upgrade preserved
+its bytes/mode, pairing files, observed tmux/agent identities, and all nine shared
+codex server lifetimes. only skid gateways restarted for this patch.
+private cli peers are provisioned on all hosts and for jarvis; jarvis is active
+and its old worker launcher is retired.
+the shared-service helper's unused endpoint command is removed in source but
+remains in its installed bundle until provider-service maintenance: replacing
+that coupled bundle would restart active providers. the gateway does not call
+that command. no busy shared codex server was restarted. during earlier v0.3.0
+auth diagnosis, one verified unused arch personal server was restarted; its account
+remained unavailable, and the other server and tmux lifetimes survived.
 
-routine and isolated darwin/linux tmux checks pass. live claude work evidence
-covers native working/idle, blocked/input, observed busy-turn interruption,
+v0.3.1 routine and isolated darwin/linux tmux checks pass. v0.3.0 live claude work
+evidence covers native working/idle, blocked/input, observed busy-turn interruption,
 bounded history older than the viewport, and an ordinary coordinator controlling
 another agent through all seven common operations. terminal input delivery and
 observed cancellation remain separate results; codex terminal closure did not
 establish provider halt.
 
-all six directed cli list routes pass. devbox gateway outage/recovery preserved
-all fourteen pre-existing tmux sessions and twelve detected agent targets;
+on v0.3.0, all six directed cli list routes passed. devbox gateway outage/recovery
+preserved all fourteen pre-existing tmux sessions and twelve detected agent targets;
 arch controlled a replying macbook agent while devbox was unavailable. reciprocal
-reply during the outage remains incomplete. devbox codex personal,
+reply is now verified on v0.3.1: macbook controlled a replying arch personal codex
+while devbox's gateway was unavailable, then used keys/interrupt/stop on that
+exact fixture. the terminal closed; provider halt remained unconfirmed. recovery
+succeeded, the fixture was removed, and all twelve pre-existing sessions and nine
+detected agent targets survived. the reverse-direction reply evidence remains
+v0.3.0. devbox codex personal,
 work, and work2 have verified terminal replies, as do macbook work/work2 when
 controlled from devbox. arch also controls a replying devbox claude-work agent
 with native status/history. normal provider startup may retain accepted folder
@@ -35,20 +48,29 @@ synthetic adb hardware-input probes expanded or altered input; the mechanism is
 unresolved.
 claude native history was correctly bound and current; actual gboard touch input
 passed.
-the full v0.3.0 phone gate ran 76 tests with three failures; corrected fixtures
-pass the focused three-case rerun, with pairing preserved and the exact published
-apk restored. full patch-release phone acceptance remains pending.
+the full v0.3.0 phone gate passed 73 of 76 tests; corrected fixtures pass the
+focused three-case rerun, with pairing preserved and the exact published apk
+restored. the full 76-test v0.3.1 gate is `NOT_RUN`: adb no longer sees the phone.
 
-all twelve host/profile reply paths are verified. the 2026-09-13 owner
+all twelve host/profile reply paths are verified on v0.3.0. the 2026-09-13 owner
 amendment removes claude-personal; only claude-work is required. arch personal,
-work/work2 and claude-work reply through remote cli controls. all task-owned
-fixtures were removed, preserving the observed pre-existing targets.
+work/work2 and claude-work reply through remote cli controls. earlier task-owned
+fixtures were removed, preserving the observed pre-existing targets; the two
+subsequent jarvis acceptance workers remain for the pending owner probe.
 the genuine jarvis owner request initially parked before a provider turn or
 agent action. one controlled recovery restarted only jarvis and preserved shared
 servers. the request then created both remote terminals and delivered one codex
 send, but its keys request failed before cli dispatch and an interrupt was denied
-by the write check. jarvis acceptance remains incomplete; the original cognition
-exception was not retained. full patch-release phone acceptance remains pending.
+by the write check. neither assembled reply, interruption, nor stop was verified.
+the request exhausted its input budget: 620262 reported tokens against 600000,
+after 13 main turns. the original cognition exception and keys pre-action failure
+cause were not retained; the interrupt denial alone does not establish a defect.
+jarvis diagnostics PR14 is deployed at `1dbeee354f54ba7bbaab0670c7b888e0ad1ec1ce`:
+pre-action failures now distinguish policy denial from unavailable write checks,
+with content-free stage/outcome/exception-class logs. exact-tree canonical linux
+verification passed; hosted ci could not start because of account billing.
+the pending genuine owner probe will test keys/read and capture any new failure.
+the patch does not itself prove that keys works; jarvis acceptance remains incomplete.
 
 the owner's latest decision defers native codex for v1, superseding the proposed
 full-id footer. terminal state/history/control remain; claude retains native
@@ -1062,10 +1084,11 @@ owner runtime proofs (isolated gateway+tmux integration, live, Android
 platform matrix, hands-on S22+ journey, designer readability review) are
 `NOT_RUN` pending explicit approval. Immutable `v0.2.30` is published and
 upstream-pinned; the `published-release` gate is green; all three hosts and
-the phone run `v0.2.30` (arch applied 2026-09-10); `scripts/fleet verify` is
-red since dev-server began naming generations by runtime identity (2026-09-09)
+the phone ran `v0.2.30` (arch applied 2026-09-10); `scripts/fleet verify` was
+red after dev-server began naming generations by runtime identity (2026-09-09)
 while the fleet operator reads the artifact digest from that name, a contract
-break that is separate scope.
+break subsequently fixed by agent control. this paragraph records the historical
+2026-09-10 snapshot; current rollout status is at the top of this document.
 Publication/deployment are separate scope. This target supersedes conflicting
 historical S2/S3, theme, key-deck, and page-version statements;
 historical results remain historical.
@@ -1074,7 +1097,7 @@ historical results remain historical.
 
 | Slice | Status |
 | --- | --- |
-| v0 readable terminal sizing | Implemented 2026-09-08 and published in immutable `v0.2.30` (upstream-pinned); `./scripts/test verify` and `published-release` green; three hosts and the phone deployed (arch 2026-09-10); `scripts/fleet verify` red on all hosts since the 2026-09-09 dev-server generation-name change (separate scope); owner runtime proofs and hands-on acceptance `NOT_RUN` |
+| v0 readable terminal sizing | Historical 2026-09-10 snapshot: implemented 2026-09-08 and published in immutable `v0.2.30`; routine and publication checks green; three hosts and the phone deployed; fleet generation-digest mismatch subsequently fixed by agent control; this slice's owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
 | S3 Android dashboard | Implemented; 9-test S22+ platform gate green, including viewport/geometry/rendered color; renewed hands-on Gboard/dictation proof `NOT_RUN` |
