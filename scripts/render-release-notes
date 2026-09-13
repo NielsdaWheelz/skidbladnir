@@ -88,11 +88,12 @@ render_notes() {
     "| \`android-signing-cert.sha256\` | \`$signer_asset_digest\` |" \
     "| \`SHA256SUMS\` | \`$checksums_digest\` |" "" \
     '## Known limits' "" \
-    'Android 16/API 36, Linux amd64, and Darwin arm64 only. The topology is fixed' \
-    'to one tailnet, three owner-managed hosts, five configured profiles, and two' \
-    'trusted phones. There is no app store, automatic update, downgrade, mixed-' \
-    'version compatibility, public ingress, fleet discovery, or embedded Tailscale' \
-    'login. GitHub is used for installation and updates, never at runtime.'
+    'Android 16/API 36, Linux amd64, and Darwin arm64 only. Phone enrollment is' \
+    'fixed to three owner-managed hosts in one tailnet and two trusted phones.' \
+    'The CLI supports explicit configurable peers. There are four launch profiles.' \
+    'There is no app store, automatic update, downgrade, mixed-version compatibility,' \
+    'public ingress, fleet discovery, or embedded Tailscale login. GitHub is used' \
+    'for installation and updates, never at runtime.'
 }
 
 # shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
