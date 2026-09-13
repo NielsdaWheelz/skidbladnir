@@ -127,7 +127,7 @@ Profile mapping is one ordered, closed, host-local gateway-config table:
 | `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | none | native executable basename `codex`; or `node` with exact configured argv[1] |
 | `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | none | same |
 | `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | none | same |
-| `claude-personal` / `Claude · Personal` | `Claude` | all | `<home>/.local/bin/claude` | `CLAUDE_CONFIG_DIR=<home>/.claude` | none | exact configured Claude argv[0] |
+| `claude-personal` / `Claude · Personal` | `Claude` | all | `<home>/bin/claude-personal` | `CLAUDE_CONFIG_DIR` absent | none | exact configured Claude argv[0] |
 | `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | none | exact configured Claude argv[0] |
 
 Adding a launch profile is adding one host-local row — a config change, not a
@@ -137,8 +137,10 @@ cwd. The gateway does not gate launch on binary or configuration inspection;
 the agent sees exactly what a laptop launch would see. Deployment owns the
 exact Codex hook files and one local Claude hook plugin, while absent/unloaded
 hooks omit registered identity without blocking launch. Plain personal commands
-remain upstream commands. Explicit work wrappers select only their fixed
-provider home and, for Claude, add the deployment-owned plugin directory; they
+remain upstream commands. The explicit `claude-personal` launch wrapper removes
+`CLAUDE_CONFIG_DIR`; setting it to the apparent default directory changes Claude
+settings and credential namespaces. Work wrappers select their fixed provider
+home; the Claude launch rows add the deployment-owned plugin directory. Wrappers
 never infer from cwd or read or forward hook payloads. Direct raw-provider
 launches bypass that plugin and remain honestly unregistered. A row also owns exact
 foreground-process signatures for honest
@@ -585,10 +587,12 @@ history item is `current`.
   Deployment supplies one strict JSON host config containing expected platform,
   an exact tmux path, an advisory `testedVersion`, and the five
   closed profile rows. Every row has exactly one `Codex | Claude` provider and
-  exactly one absolute provider-home environment value: `CODEX_HOME` for Codex
-  or `CLAUDE_CONFIG_DIR` for Claude. Provider-home values are unique within a
-  provider. Identical foreground-signature rows cannot be shared across
-  providers; a concrete process matching more than one provider is
+  one absolute provider-home environment value: `CODEX_HOME` for Codex or
+  `CLAUDE_CONFIG_DIR` for an explicit Claude root. At most one Claude row instead
+  omits that variable and selects the native default. An empty variable is not
+  an absent variable. Provider-home values, including the absent Claude default,
+  are unique within a provider. Identical foreground-signature rows cannot be
+  shared across providers; a concrete process matching more than one provider is
   unclassified.
   Unknown/null members, relative paths, duplicate keys,
   runtime platform mismatch, or a missing/broken/noncanonical tmux executable

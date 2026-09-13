@@ -55,6 +55,11 @@ phone ---------------------------> configured peer's https gateway
    sourced from the existing shared-service mapping. reuse profile environments;
    no second authored profile/account table.
    set a selected profile's environment before starting/importing its helper.
+   claude personal uses the native default: its row omits `CLAUDE_CONFIG_DIR`,
+   its explicit `claude-personal` wrapper unsets any inherited value, and the
+   helper clears inherited provider roots. setting that variable to `~/.claude`
+   changes native settings/credential lookup. an empty value is not the default;
+   no credential or onboarding-state migration is performed.
 4. **the cli owns fleet routing.** one reusable go client calls the same gateway
    locally/remotely. jarvis invokes this installed cli with structured stdin and
    consumes json; it does not gain another http/provider/tmux implementation.
