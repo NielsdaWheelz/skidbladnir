@@ -82,7 +82,7 @@ class SessionCardInstrumentedTest {
         )
         val text = card.textValues()
         assertTrue("tmux must precede dwarf in traversal order: $text", text.indexOf(TMUX_NAME) < text.indexOf(DWARF_NAME))
-        assertTrue("literal activity disappeared: $text", text.contains("QUIET"))
+        assertTrue("literal activity disappeared: $text", text.contains("IDLE"))
         assertTrue(
             "work identity must lead the quieter persona visually: tmux=$tmux dwarf=$dwarf",
             tmux.top < dwarf.top && tmux.bottom <= dwarf.top,
@@ -115,7 +115,7 @@ class SessionCardInstrumentedTest {
         context.assertContext(FILTERED_CONTEXT, CONTEXT_DESCRIPTION)
         compose.runOnIdle {
             fixture = fixture.copy(
-                agent = AgentRuntime(
+                agent = agentRuntimeFixture(
                     provider = AgentProvider.Claude,
                     pid = 2345,
                     providerSession = ProviderSessionFacts.withId("provider-id", name = "provider-name"),
@@ -148,15 +148,15 @@ class SessionCardInstrumentedTest {
         setCardContent(fixture = { fixture })
         compose.mainClock.advanceTimeByFrame()
 
-        assertActivity("QUIET", QUIET_DESCRIPTION, Muted)
+        assertActivity("IDLE", QUIET_DESCRIPTION, Muted)
         val quietBefore = facet().captureToImage().toPixelMap()
         compose.mainClock.advanceTimeBy(400)
         val quietAfter = facet().captureToImage().toPixelMap()
         assertTrue("Quiet activity facet must be static", quietBefore.samePixels(quietAfter))
 
-        compose.runOnIdle { fixture = fixture.copy(activity = SessionActivity.Active) }
+        compose.runOnIdle { fixture = fixture.copy(state = AgentState.Working) }
         compose.mainClock.advanceTimeByFrame()
-        assertActivity("ACTIVE", ACTIVE_DESCRIPTION, Moss)
+        assertActivity("WORKING", ACTIVE_DESCRIPTION, Moss)
         val activeBefore = facet().captureToImage().toPixelMap()
         compose.mainClock.advanceTimeBy(300)
         val activeQuarterTurn = facet().captureToImage().toPixelMap()
@@ -183,12 +183,12 @@ class SessionCardInstrumentedTest {
         card().assertIsNotEnabled()
         compose.onNodeWithTag(KILL_TAG, useUnmergedTree = true).assertIsNotEnabled()
 
-        compose.runOnIdle { fixture = fixture.copy(activity = SessionActivity.Quiet) }
+        compose.runOnIdle { fixture = fixture.copy(state = AgentState.Idle) }
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithContentDescription(RETAINED_QUIET_DESCRIPTION, useUnmergedTree = true).assertIsDisplayed()
 
         val rendered = card().textValues()
-        for (retired in listOf("WORKING", "READY", "NEEDS YOU", "AGENT OPEN", "NEW RESULT")) {
+        for (retired in listOf("ACTIVE", "QUIET", "READY", "NEEDS YOU", "AGENT OPEN", "NEW RESULT")) {
             assertFalse("retired state label survived: $rendered", rendered.contains(retired))
         }
         compose.onNodeWithContentDescription("New result", useUnmergedTree = true).assertDoesNotExist()
@@ -228,7 +228,7 @@ class SessionCardInstrumentedTest {
         val largeDwarf = compose.onNodeWithText(LONG_DWARF, useUnmergedTree = true).getUnclippedBoundsInRoot()
         val largePortrait = compose.onNodeWithContentDescription("Portrait of $LONG_DWARF", useUnmergedTree = true)
             .getUnclippedBoundsInRoot()
-        val activity = compose.onNodeWithContentDescription(QUIET_DESCRIPTION, useUnmergedTree = true)
+        val activity = compose.onNodeWithContentDescription("terminal", useUnmergedTree = true)
             .getUnclippedBoundsInRoot()
         val largeObjective = objective.getUnclippedBoundsInRoot()
         val largeDirectory = directory.getUnclippedBoundsInRoot()
@@ -311,8 +311,7 @@ class SessionCardInstrumentedTest {
         cwd = cwd,
         activeCommand = "codex",
         attachedClients = 1,
-        activity = activity,
-        agent = agent,
+        agent = agent?.copy(status = AgentStatus(state, AgentMethod.Native)),
     )
 
     private fun CardFixture.machineState(session: TmuxSession): MachineState {
@@ -396,7 +395,7 @@ class SessionCardInstrumentedTest {
         val profileLabel: String,
         val objective: String?,
         val cwd: String,
-        val activity: SessionActivity,
+        val state: AgentState,
         val motionEnabled: Boolean = false,
         val stale: Boolean = false,
     )
@@ -429,10 +428,10 @@ class SessionCardInstrumentedTest {
         const val UNKNOWN_CONTEXT_DESCRIPTION = "Machine Devbox. Profile profile unknown."
         const val PORTRAIT_DESCRIPTION = "Portrait of Durinn"
         const val DIRECTORY_DESCRIPTION = "Directory /src/skidbladnir"
-        const val ACTIVE_DESCRIPTION = "Recent tmux activity at the last check"
-        const val QUIET_DESCRIPTION = "No recent tmux activity at the last check"
-        const val RETAINED_ACTIVE_DESCRIPTION = "Last observed: recent tmux activity"
-        const val RETAINED_QUIET_DESCRIPTION = "Last observed: no recent tmux activity"
+        const val ACTIVE_DESCRIPTION = "working"
+        const val QUIET_DESCRIPTION = "idle"
+        const val RETAINED_ACTIVE_DESCRIPTION = "Last observed: working"
+        const val RETAINED_QUIET_DESCRIPTION = "Last observed: idle"
         const val STALE_MARKER = "STALE · actions disabled"
         const val LONG_TMUX = "skidbladnir-codex-work-12345678901234567890123456789012345678900"
         const val LONG_DWARF = "Alberich of Nibelheim"
@@ -453,7 +452,7 @@ class SessionCardInstrumentedTest {
 
         val WORK_PROFILE = requireNotNull(ProfileKey.parse("work"))
         val PERSONAL_PROFILE = requireNotNull(ProfileKey.parse("personal"))
-        val COMMON_AGENT = AgentRuntime(AgentProvider.Codex, 1234, profile = WORK_PROFILE)
+        val COMMON_AGENT = agentRuntimeFixture(AgentProvider.Codex, 1234, profile = WORK_PROFILE)
         val COMMON_FIXTURE = CardFixture(
             machineLabel = "Devbox",
             tmuxName = TMUX_NAME,
@@ -463,7 +462,7 @@ class SessionCardInstrumentedTest {
             profileLabel = "Codex · Work",
             objective = null,
             cwd = "/src/skidbladnir",
-            activity = SessionActivity.Quiet,
+            state = AgentState.Idle,
         )
         val LONG_FIXTURE = CardFixture(
             machineLabel = LONG_MACHINE,
@@ -474,7 +473,7 @@ class SessionCardInstrumentedTest {
             profileLabel = "Codex · Work",
             objective = LONG_OBJECTIVE,
             cwd = LONG_DIRECTORY,
-            activity = SessionActivity.Quiet,
+            state = AgentState.Idle,
         )
     }
 }

@@ -594,18 +594,21 @@ internal fun KillConfirmation(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val stoppingAgent = state.target.session.agent != null && !state.terminalOnly
+    val verb = if (stoppingAgent) "Stop" else "Kill"
     // No ornament near destructive surfaces (design-language.md §7): the kill
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(killConfirmationTitle(state.machine.label, state.target)) },
+        title = { Text(killConfirmationTitle(state.machine.label, state.target, state.terminalOnly)) },
         text = {
             Text(when {
-                state.pending -> "The exact tmux lifetime on ${state.machine.label.text} is being killed."
+                state.pending -> "$verb is in progress on ${state.machine.label.text}."
                 !actionAdmissible ->
-                    "${state.machine.label.text} inventory is not fresh. Kill is disabled. " +
+                    "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                else -> "This kills only the confirmed tmux lifetime on ${state.machine.label.text}. It cannot be undone."
+                stoppingAgent -> "Interrupt the agent and close this terminal. Detached work may continue."
+                else -> "This closes the terminal. A separately hosted agent may continue."
             })
         },
         confirmButton = {
@@ -619,7 +622,7 @@ internal fun KillConfirmation(
                 shape = NidavellirShapes.Cleft,
                 modifier = Modifier.testTag("kill-confirm"),
             ) {
-                Text(if (state.pending) "Killing on ${state.machine.label.text}…" else "Kill on ${state.machine.label.text}")
+                Text(if (state.pending) "$verb in progress…" else "$verb on ${state.machine.label.text}")
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !state.pending) { Text("Cancel") } },

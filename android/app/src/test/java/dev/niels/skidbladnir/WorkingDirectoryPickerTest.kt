@@ -807,7 +807,7 @@ class WorkingDirectoryPickerTest {
         character = CharacterSummary("skuld", "Skuld"),
         cwd = cwd,
         attachedClients = 0,
-        activity = SessionActivity.Quiet,
+
     )
 
     private fun loadedPicker(listing: DirectoryListing): WorkingDirectoryPickerState =

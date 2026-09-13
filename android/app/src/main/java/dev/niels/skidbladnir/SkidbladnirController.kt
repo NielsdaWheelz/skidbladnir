@@ -53,6 +53,7 @@ internal sealed interface SkidbladnirUiState {
         val textSize: TerminalTextSizeState,
         val kill: KillState?,
         val rename: RenameState? = null,
+        val agentControlPending: Boolean = false,
     ) : Workspace
 }
 
@@ -122,6 +123,7 @@ internal data class KillState(
     val machine: PairedMachine,
     val target: SessionTarget,
     val pending: Boolean,
+    val terminalOnly: Boolean = false,
 )
 internal sealed interface TerminalUiStatus {
     data object Preparing : TerminalUiStatus
@@ -608,6 +610,7 @@ internal class SkidbladnirController(
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
 
+    private val applicationContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val scheduler = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "skidbladnir-poll-ticks").apply { isDaemon = true }
@@ -1593,9 +1596,43 @@ internal class SkidbladnirController(
         verifyVisibleInventory()
     }
 
-    fun requestKill(target: SessionTarget) {
+    fun interruptAgent() {
+        val terminal = state as? SkidbladnirUiState.Terminal ?: return
+        if (terminal.agentControlPending || terminal.kill != null || terminal.rename != null ||
+            !terminalActionAdmissible(terminal.machine.canMutate, terminal.connection)) return
+        val target = terminal.target
+        val agent = target.session.agent ?: return
+        if (agent.methods.interrupt == AgentMethod.Unavailable) return
+        val credential = credentials[target.machineHandle] ?: return
+        val runtime = polling[target.machineHandle] ?: return
+        val activeGeneration = generation
+        state = terminal.copy(agentControlPending = true)
+        runtime.inventoryOperation.submitMutation(onReserved = {}) {
+            val result = client.interruptAgent(credential, target)
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential)) return@post
+                if (result is GatewayResult.Failure && acceptAccessFailure(target.machineHandle, result.failure)) return@post
+                val current = state as? SkidbladnirUiState.Terminal
+                if (current?.attempt == terminal.attempt) state = current.copy(agentControlPending = false)
+                val message = when (result) {
+                    is GatewayResult.Success -> agentInterruptMessage(terminal.machine.machine.label, result.value)
+                    is GatewayResult.Failure -> if (result.failure is GatewayFailure.Api && result.failure.code != ApiErrorCode.InternalError) {
+                        machineError(terminal.machine.machine, result.failure)
+                    } else "${terminal.machine.machine.label.text}: interrupt outcome unknown; refresh before another attempt."
+                }
+                android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+                awaitInventory(target.machineHandle, activeGeneration)
+            }
+        }
+    }
+
+    fun requestKill(target: SessionTarget) = prepareKill(target, terminalOnly = false)
+
+    fun requestTerminalKill(target: SessionTarget) = prepareKill(target, terminalOnly = true)
+
+    private fun prepareKill(target: SessionTarget, terminalOnly: Boolean) {
         val machine = machineStates[target.machineHandle] ?: return
-        val kill = KillState(machine.machine, target, false)
+        val kill = KillState(machine.machine, target, false, terminalOnly)
         state = when (val current = state) {
             is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
@@ -1646,22 +1683,33 @@ internal class SkidbladnirController(
         runtime.inventoryOperation.submitMutation(
             onReserved = { fence -> requireInventoryRefresh(kill.target.machineHandle, fence) },
         ) { _ ->
-            val result = client.killSession(credential, kill.target)
+            val stoppingAgent = kill.target.session.agent != null && !kill.terminalOnly
+            val result = if (stoppingAgent) client.stopAgent(credential, kill.target) else {
+                when (val killed = client.killSession(credential, kill.target)) {
+                    is GatewayResult.Success -> GatewayResult.Success(AgentStopResult("unconfirmed", "closed"))
+                    is GatewayResult.Failure -> killed
+                }
+            }
             main.post {
                 if (!isCredentialActive(activeGeneration, credential)) return@post
                 when (result) {
                     is GatewayResult.Success -> {
                         leaveTerminal()
-                        removeTargetFromSnapshot(kill.target)
+                        if (result.value.terminal == "closed") removeTargetFromSnapshot(kill.target)
                         awaitInventory(kill.target.machineHandle, activeGeneration)
-                        publishDashboard()
+                        val message = if (stoppingAgent) agentStopMessage(kill.machine.label, result.value) else null
+                        val partial = result.value.agent == "unconfirmed" || result.value.terminal == "unconfirmed"
+                        publishDashboard(notice = if (partial) message else null)
+                        if (message != null && !partial) {
+                            android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                     is GatewayResult.Failure -> {
                         if (acceptAccessFailure(kill.target.machineHandle, result.failure)) return@post
                         leaveTerminal()
                         val message = when {
-                            killFailureIsDefinitive(result.failure) -> machineError(kill.machine, result.failure)
-                            else -> "${kill.machine.label.text}: kill outcome unknown. Sessions are refreshing."
+                            killFailureIsDefinitive(result.failure) || stoppingAgent && result.failure is GatewayFailure.Api && result.failure.code != ApiErrorCode.InternalError -> machineError(kill.machine, result.failure)
+                            else -> "${kill.machine.label.text}: stop outcome unknown. Sessions are refreshing."
                         }
                         markInventoryFailed(kill.target.machineHandle, result.failure)
                         awaitInventory(kill.target.machineHandle, activeGeneration)
@@ -1963,7 +2011,15 @@ internal class SkidbladnirController(
         val updated = transform(machine)
         machineStates[handle] = updated
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (terminal.target.machineHandle == handle) state = terminal.copy(machine = updated)
+        if (terminal.target.machineHandle == handle) {
+            val currentSession = (updated.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
+                it.tmuxId == terminal.target.session.tmuxId && it.identityToken == terminal.target.session.identityToken
+            }
+            val target = if (currentSession != null && terminal.kill == null && terminal.rename == null) {
+                terminal.target.copy(session = terminal.target.session.copy(agent = currentSession.agent))
+            } else terminal.target
+            state = terminal.copy(machine = updated, target = target)
+        }
     }
 
     private fun publishDashboardIfVisible() {

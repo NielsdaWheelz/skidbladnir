@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,9 +33,10 @@ type Tmux struct {
 }
 
 type Config struct {
-	Platform platform.Kind
-	Tmux     Tmux
-	Profiles []agentruntime.Profile
+	NativeControlPath string
+	Platform          platform.Kind
+	Tmux              Tmux
+	Profiles          []agentruntime.Profile
 }
 
 type hostConfigFile interface {
@@ -114,9 +116,10 @@ func ValidateTmuxVersion(version string) error {
 }
 
 type configDTO struct {
-	Platform stringField   `json:"platform"`
-	Tmux     *tmuxDTO      `json:"tmux"`
-	Profiles *[]profileDTO `json:"profiles"`
+	NativeControlPath stringField   `json:"nativeControlPath"`
+	Platform          stringField   `json:"platform"`
+	Tmux              *tmuxDTO      `json:"tmux"`
+	Profiles          *[]profileDTO `json:"profiles"`
 }
 
 type tmuxDTO struct {
@@ -125,6 +128,7 @@ type tmuxDTO struct {
 }
 
 type profileDTO struct {
+	NativeEndpoint       stringField               `json:"nativeEndpoint"`
 	Key                  stringField               `json:"key"`
 	Label                stringField               `json:"label"`
 	Provider             stringField               `json:"provider"`
@@ -146,7 +150,7 @@ type foregroundSignatureDTO struct {
 }
 
 func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
-	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil {
+	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
 		return Config{}, errors.New("host config omits a required member")
 	}
 	kind := platform.Kind(wire.Platform.value)
@@ -164,9 +168,10 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		Platform: kind,
-		Tmux:     Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
-		Profiles: profiles,
+		NativeControlPath: wire.NativeControlPath.value,
+		Platform:          kind,
+		Tmux:              Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
+		Profiles:          profiles,
 	}, nil
 }
 
@@ -190,6 +195,14 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		if provider != expected.provider {
 			return nil, fmt.Errorf("host config profile %s must use provider %s", candidate.Key.value, expected.provider)
 		}
+		if provider == agentruntime.ProviderCodex {
+			endpoint, err := url.Parse(candidate.NativeEndpoint.value)
+			if err != nil || endpoint.Scheme != "unix" || endpoint.Host != "" || !validAbsolutePath(endpoint.Path) || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+				return nil, errors.New("codex profile native endpoint must be an absolute unix socket")
+			}
+		} else if candidate.NativeEndpoint.present {
+			return nil, errors.New("claude profile cannot declare a native endpoint")
+		}
 		environment, err := mapEnvironment(*candidate.Environment)
 		if err != nil {
 			return nil, err
@@ -210,6 +223,7 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 			arguments[argumentIndex] = argument.value
 		}
 		profiles[index] = agentruntime.Profile{
+			NativeEndpoint:       candidate.NativeEndpoint.value,
 			Key:                  agentruntime.ProfileKey(candidate.Key.value),
 			Label:                candidate.Label.value,
 			Provider:             provider,

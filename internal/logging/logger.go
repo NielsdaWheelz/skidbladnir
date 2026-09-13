@@ -35,6 +35,7 @@ func (method Method) valid() bool {
 type Route string
 
 const (
+	RouteAgentControl      Route = "/v1/sessions/{tmuxId}/agent/{operation}"
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
@@ -48,7 +49,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
+	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -58,6 +59,10 @@ func (route Route) valid() bool {
 type ErrorCode string
 
 const (
+	ErrorAgentTargetStale            ErrorCode = "AgentTargetStale"
+	ErrorAgentUnavailable            ErrorCode = "AgentUnavailable"
+	ErrorAgentBlocked                ErrorCode = "AgentBlocked"
+	ErrorAgentInputInvalid           ErrorCode = "AgentInputInvalid"
 	ErrorNone                        ErrorCode = ""
 	ErrorUnauthenticated             ErrorCode = "Unauthenticated"
 	ErrorInvalidRequest              ErrorCode = "InvalidRequest"
@@ -80,7 +85,7 @@ const (
 
 func (code ErrorCode) valid() bool {
 	switch code {
-	case ErrorUnauthenticated,
+	case ErrorAgentTargetStale, ErrorAgentUnavailable, ErrorAgentBlocked, ErrorAgentInputInvalid, ErrorUnauthenticated,
 		ErrorInvalidRequest,
 		ErrorRequestTooLarge,
 		ErrorWorkingDirectoryInvalid,

@@ -86,8 +86,8 @@ class TerminalChromeInstrumentedTest {
             character = CharacterSummary("dwarf-9", "Dwarf 9"),
             launchProfile = requireNotNull(ProfileKey.parse("personal")),
             attachedClients = 1,
-            activity = SessionActivity.Active,
-            agent = AgentRuntime(AgentProvider.Codex, pid = 1234),
+
+            agent = agentRuntimeFixture(AgentProvider.Codex, pid = 1234),
         )
         val machine = PairedMachine(
             handle = MachineHandle.parse("mh-0123456789abcdef0123456789abcdef")!!,
@@ -298,18 +298,18 @@ class TerminalChromeInstrumentedTest {
                 textSizeNode.config.getOrNull(SemanticsProperties.Role),
             )
 
-            val killNodes = compose.onAllNodesWithText("Kill").fetchSemanticsNodes()
+            val killNodes = compose.onAllNodesWithText("Agent").fetchSemanticsNodes()
             assertEquals(
-                "the terminal header must retain exactly one visible Kill control beside " +
+                "the terminal header must retain exactly one visible Agent control beside " +
                     "Detach and the machine/session identity; matching semantics nodes=$killNodes",
                 1,
                 killNodes.size,
             )
-            val kill = compose.onNodeWithText("Kill")
+            val kill = compose.onNodeWithText("Agent")
             kill.assertIsDisplayed()
             val killNode = kill.fetchSemanticsNode()
             assertEquals(
-                "the trailing visible Kill label must belong to Role.Button; " +
+                "the trailing visible Agent label must belong to Role.Button; " +
                     "semantics=${killNode.config}",
                 Role.Button,
                 killNode.config.getOrNull(SemanticsProperties.Role),
@@ -659,7 +659,7 @@ class TerminalChromeInstrumentedTest {
             "Detach" to compose.onNodeWithText("Detach"),
             "identity" to compose.onNodeWithContentDescription(identity),
             "Terminal text size" to compose.onNodeWithContentDescription("Terminal text size"),
-            "Kill" to compose.onNodeWithText("Kill"),
+            "Agent" to compose.onNodeWithText("Agent"),
         ).map { (name, node) -> name to node.fetchSemanticsNode().boundsInRoot }
         for ((name, bounds) in controls) {
             assertTrue(
@@ -673,7 +673,7 @@ class TerminalChromeInstrumentedTest {
         }
         val gapsPx = controls.zipWithNext { (_, left), (_, right) -> right.left - left.right }
         assertTrue(
-            "case=$caseId header must remain ordered Detach, identity, Terminal text size, Kill " +
+            "case=$caseId header must remain ordered Detach, identity, Terminal text size, Agent " +
                 "with at least 8dp clear between each semantic bound; headerPx=$controls, " +
                 "gapsPx=$gapsPx, minimumGapPx=$minimumGapPx, density=${compose.density.density}",
             gapsPx.all { it >= minimumGapPx },
@@ -768,7 +768,7 @@ class TerminalChromeInstrumentedTest {
                 "[{\"tmuxId\":\"${'$'}1\",\"tmuxName\":\"text-size\"," +
                     "\"identityToken\":\"synthetic-lifetime\"," +
                     "\"character\":{\"key\":\"alvis\",\"displayName\":\"Alvís\"}," +
-                    "\"launchProfile\":\"personal\",\"attachedClients\":1,\"activity\":\"Quiet\"}]"
+                    "\"launchProfile\":\"personal\",\"attachedClients\":1}]"
             } else {
                 "[]"
             }

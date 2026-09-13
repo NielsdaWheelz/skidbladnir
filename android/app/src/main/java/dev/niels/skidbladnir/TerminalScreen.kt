@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -97,13 +99,37 @@ internal fun TerminalScreen(
                 onClick = controller::openTextSize,
                 modifier = Modifier.testTag("terminal-text-size"),
             )
-            KillButton(
-                machineLabel = state.machine.machine.label,
-                target = state.target,
-                enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                onClick = { controller.requestKill(state.target) },
-                modifier = Modifier.testTag("terminal-kill"),
-            )
+            if (state.target.session.agent != null) {
+                var expanded by remember(state.attempt) { mutableStateOf(false) }
+                Box {
+                    HeaderChip(
+                        label = "Agent", spokenName = "Agent actions",
+                        enabled = !state.agentControlPending && terminalActionAdmissible(state.machine.canMutate, state.connection),
+                        onClick = { expanded = true }, modifier = Modifier.testTag("terminal-agent-actions"),
+                    )
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(text = { Text("Interrupt") }, onClick = {
+                            expanded = false
+                            controller.interruptAgent()
+                        }, enabled = state.target.session.agent.methods.interrupt != AgentMethod.Unavailable)
+                        DropdownMenuItem(text = { Text("Stop") }, onClick = {
+                            expanded = false
+                            controller.requestKill(state.target)
+                        })
+                        DropdownMenuItem(text = { Text("Kill terminal only") }, onClick = {
+                            expanded = false
+                            controller.requestTerminalKill(state.target)
+                        })
+                    }
+                }
+            } else {
+                KillButton(
+                    machineLabel = state.machine.machine.label, target = state.target,
+                    enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
+                    onClick = { controller.requestKill(state.target) },
+                    modifier = Modifier.testTag("terminal-kill"),
+                )
+            }
         }
 
         // The recovery overlay sits over the terminal area and the key deck

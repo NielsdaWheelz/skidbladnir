@@ -22,6 +22,26 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 )
 
+func TestAgentCommandReturnsStructuredFailureWithoutServiceHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"--client-config", filepath.Join(t.TempDir(), "missing.json"), "agent", "list"},
+		commandInput(t, "{}"), &stdout, &stderr,
+	)
+	var result struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code     string `json:"code"`
+			Dispatch string `json:"dispatch"`
+		} `json:"error"`
+	}
+	if code != 1 || json.Unmarshal(stdout.Bytes(), &result) != nil ||
+		result.OK || result.Error.Code == "" || result.Error.Dispatch != "not_sent" || stderr.Len() != 0 {
+		t.Fatalf("agent entry point did not return a structured pre-dispatch failure: exit=%d stdout_bytes=%d stderr_bytes=%d", code, stdout.Len(), stderr.Len())
+	}
+}
+
 func TestVersionReportsExactReleaseIdentity(t *testing.T) {
 	releaseVersion = "v0.2.0"
 	releaseSHA = "0123456789abcdef0123456789abcdef01234567"
@@ -454,11 +474,12 @@ func writeHostConfig(t *testing.T, tmuxPath, tmuxTestedVersion string) string {
 	path := filepath.Join(t.TempDir(), "host.json")
 	encoded := fmt.Sprintf(`{
   "platform": %q,
+  "nativeControlPath": "/usr/local/bin/provider-runtime-control",
 	  "tmux": {"path": %q, "testedVersion": %q},
   "profiles": [
-    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
-    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"nativeEndpoint":"unix:///run/codex-personal/app-server.sock","key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"nativeEndpoint":"unix:///run/codex-work/app-server.sock","key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
+    {"nativeEndpoint":"unix:///run/codex-work2/app-server.sock","key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"}],"arguments":[]},
     {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]},
     {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":[]}
   ]

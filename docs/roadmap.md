@@ -1,5 +1,15 @@
 # Skíðblaðnir v0 roadmap
 
+accepted target being implemented: [agent control](agent-control.md), with
+exclusive delivery boundaries and dependencies specified there. native operations,
+host control, common cli, jarvis, phone, and installation source are implemented
+in isolated `agent-control-v1` worktrees. skid's complete routine verification and
+race checks pass; jarvis passes all 842 linux/postgres tests; the native library
+passes 1021 linux tests and 18 exact-python helper boundary tests. real provider,
+tmux, fleet, and phone acceptance remain `NOT_RUN`; publication and rollout are pending.
+search, stable placement,
+separate attention and richer history retrieval remain deferred.
+
 Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
 implemented. The 2026-08-26 multi-machine hard cut is also implemented and
 accepted: routine verification, isolated Linux and Darwin tmux/API, live

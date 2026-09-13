@@ -378,8 +378,8 @@ class DashboardChromeInstrumentedTest {
         identityToken = "identity-1",
         character = CharacterSummary(key = "durinn", displayName = "Durinn"),
         attachedClients = 1,
-        activity = SessionActivity.Active,
-        agent = AgentRuntime(AgentProvider.Codex, pid = 1234),
+
+        agent = agentRuntimeFixture(AgentProvider.Codex, pid = 1234),
     )
 
     private fun killTarget() = SessionTarget(MACHINE.handle, killSession())
@@ -441,7 +441,7 @@ class DashboardChromeInstrumentedTest {
         val GROUND_MARGIN = 8.dp
         val CORNER_SAMPLE = 3.dp
         const val SESSION_ID = "session-durinn"
-        const val KILL_DESCRIPTION = "Kill ga-durinn on Devbox"
+        const val KILL_DESCRIPTION = "Stop ga-durinn on Devbox"
         const val KILL_GROUND = "kill-ground"
         const val DISABLED_GROUND = "disabled-kill-ground"
         const val ENABLED_KILL = "enabled-kill"

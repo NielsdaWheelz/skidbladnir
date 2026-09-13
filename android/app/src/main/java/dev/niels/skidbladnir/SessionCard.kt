@@ -61,8 +61,8 @@ internal fun SessionCard(
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
-    val activity = sessionActivityContent(session.activity, fresh = machine.canMutate)
-    val tone = sessionActivityColor(session.activity)
+    val status = sessionStatusContent(session.agent?.status, fresh = machine.canMutate)
+    val tone = sessionStatusColor(session.agent?.status?.state)
     val profile = sessionProfileLabel(session, snapshot.inventory.profiles)
     val visibleContext = sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
     Surface(
@@ -88,7 +88,7 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                activity = session.activity,
+                working = session.agent?.status?.state == AgentState.Working,
                 activityTone = tone,
                 animateActivity = machine.canMutate && motionEnabled,
                 activityFacetTag =
@@ -100,7 +100,7 @@ internal fun SessionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 DwarfPortrait(session.character)
-                SessionActivityBay(activity = activity, tone = tone, modifier = Modifier.weight(1f))
+                SessionStatusBay(status = status, tone = tone, modifier = Modifier.weight(1f))
             }
             sessionAvailabilityContent(machine)?.let { availability ->
                 Text(
@@ -201,7 +201,7 @@ internal fun sessionFooterText(machine: MachineLabel, profile: String, showMachi
 private fun SessionIdentityHeader(
     tmuxName: String,
     dwarfName: String,
-    activity: SessionActivity,
+    working: Boolean,
     activityTone: Color,
     animateActivity: Boolean,
     activityFacetTag: String,
@@ -227,21 +227,18 @@ private fun SessionIdentityHeader(
             )
         }
         Spacer(Modifier.width(8.dp))
-        ActivityFacet(activity, activityTone, animateActivity, activityFacetTag)
+        ActivityFacet(working, activityTone, animateActivity, activityFacetTag)
     }
 }
 
 @Composable
 private fun ActivityFacet(
-    activity: SessionActivity,
+    working: Boolean,
     tone: Color,
     animate: Boolean,
     tag: String,
 ) {
-    val active = when (activity) {
-        SessionActivity.Active -> true
-        SessionActivity.Quiet -> false
-    }
+    val active = working
     val modifier = Modifier
         .size(12.dp)
         .clip(NidavellirShapes.Chip)
@@ -279,13 +276,13 @@ private fun ActivityFacet(
 }
 
 @Composable
-private fun SessionActivityBay(activity: SessionActivityContent, tone: Color, modifier: Modifier = Modifier) {
+private fun SessionStatusBay(status: SessionStatusContent, tone: Color, modifier: Modifier = Modifier) {
     Surface(
         color = tone.copy(alpha = 0.18f),
         shape = NidavellirShapes.Chip,
         border = BorderStroke(1.dp, tone),
         modifier = modifier
-            .semantics { contentDescription = activity.accessibilityLabel },
+            .semantics { contentDescription = status.accessibilityLabel },
     ) {
         Box(
             modifier = Modifier
@@ -295,7 +292,7 @@ private fun SessionActivityBay(activity: SessionActivityContent, tone: Color, mo
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
-                text = activity.label,
+                text = status.label,
                 color = tone,
                 style = MaterialTheme.typography.labelLarge,
                 fontFamily = NidavellirType.Data,

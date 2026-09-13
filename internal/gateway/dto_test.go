@@ -22,13 +22,16 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
-func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testing.T) {
+func TestSessionProjectionPublishesAgentControlAndOptionalAgent(t *testing.T) {
 	profiles := testProfileCatalog()
 	providerSession, err := agentruntime.NewProviderSessionFacts("019-runtime", "")
 	if err != nil {
 		t.Fatalf("construct provider session facts: %v", err)
 	}
 	agent := &agentruntime.AgentRuntime{
+		PaneID: "%1", StartIdentity: "123",
+		Status:          agentruntime.Status{State: "idle", Source: "native"},
+		Methods:         agentruntime.Methods{Read: "native", Send: "native", Interrupt: "native"},
 		Provider:        agentruntime.ProviderCodex,
 		PID:             4312,
 		Profile:         "work",
@@ -42,7 +45,6 @@ func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testi
 		LaunchProfile:   "work",
 		Agent:           agent,
 		AttachedClients: 2,
-		Activity:        sessions.SessionActivityActive,
 	}
 	card, err := mapSession(candidate, profiles)
 	if err != nil {
@@ -59,13 +61,15 @@ func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testi
 		},
 		"launchProfile": "work",
 		"agent": map[string]any{
+			"paneId": "%1", "startIdentity": "123",
+			"status":          map[string]any{"state": "idle", "source": "native"},
+			"methods":         map[string]any{"read": "native", "send": "native", "interrupt": "native"},
 			"provider":        "Codex",
 			"pid":             float64(4312),
 			"profile":         "work",
 			"providerSession": map[string]any{"id": "019-runtime"},
 		},
 		"attachedClients": float64(2),
-		"activity":        "Active",
 	}
 	if !maps.EqualFunc(fields, want, encodedValuesEqual) {
 		t.Fatalf("session wire projection = %#v, want exact closed contract %#v", fields, want)
@@ -77,35 +81,10 @@ func TestSessionProjectionPublishesOnlyRequiredActivityAndOptionalAgent(t *testi
 		t.Fatalf("project session without optional agent identity: %v", err)
 	}
 	fields = encodedObject(t, card)
-	if fields["activity"] != "Active" {
-		t.Fatalf("agent absence changed Active activity to %#v", fields["activity"])
-	}
 	if _, present := fields["agent"]; present {
 		t.Fatalf("absent agent identity crossed the wire: %#v", fields["agent"])
 	}
 	candidate.Agent = agent
-	candidate.Activity = sessions.SessionActivityQuiet
-	card, err = mapSession(candidate, profiles)
-	if err != nil {
-		t.Fatalf("project Quiet session with optional agent identity: %v", err)
-	}
-	fields = encodedObject(t, card)
-	if fields["activity"] != "Quiet" || fields["agent"] == nil {
-		t.Fatalf("agent presence changed Quiet activity or disappeared: %#v", fields)
-	}
-	for _, retired := range []string{"status", "signal", "signalAt", "runtime", "interaction", "attention"} {
-		if _, present := fields[retired]; present {
-			t.Fatalf("session wire retained retired field %q", retired)
-		}
-	}
-
-	for _, invalid := range []sessions.SessionActivity{"", "ACTIVE", "Unknown"} {
-		candidate.Activity = invalid
-		if _, err := mapSession(candidate, profiles); err == nil {
-			t.Fatalf("session projection accepted activity %q outside Active | Quiet", invalid)
-		}
-	}
-	candidate.Activity = sessions.SessionActivityActive
 	candidate.LaunchProfile = "other"
 	if _, err := mapSession(candidate, profiles); err == nil {
 		t.Fatal("session projection accepted a launch profile outside the emitted catalog")
@@ -148,7 +127,6 @@ func TestInventoryProjectionUsesItsSingleServiceObservationClock(t *testing.T) {
 			TmuxName:      "observed",
 			IdentityToken: "v1-observed",
 			Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-			Activity:      sessions.SessionActivityActive,
 		}},
 	}
 	projected, err := mapSessionsResponse(
@@ -166,8 +144,8 @@ func TestInventoryProjectionUsesItsSingleServiceObservationClock(t *testing.T) {
 	if envelope["observedAt"] != observedAt.Format(time.RFC3339Nano) {
 		t.Fatalf("inventory observedAt = %#v, want exact service clock", envelope["observedAt"])
 	}
-	if len(projected.Sessions) != 1 || projected.Sessions[0].Activity != "Active" {
-		t.Fatalf("inventory session activity = %+v, want one Active card", projected.Sessions)
+	if len(projected.Sessions) != 1 {
+		t.Fatalf("inventory sessions = %+v, want one terminal", projected.Sessions)
 	}
 
 	inventory.ObservedAt = time.Time{}
@@ -189,7 +167,6 @@ func TestCreateSessionProjectionCarriesTheSameStrictSessionDTO(t *testing.T) {
 			TmuxName:      "created",
 			IdentityToken: "v1-created",
 			Character:     catalog.Character{Key: "norse.durinn", DisplayName: "Durinn"},
-			Activity:      sessions.SessionActivityQuiet,
 		},
 	}
 	projected, err := mapCreateSessionResponse(observed, validProfileProjectionCatalog())
@@ -204,8 +181,8 @@ func TestCreateSessionProjectionCarriesTheSameStrictSessionDTO(t *testing.T) {
 		t.Fatalf("create observedAt = %#v, want exact mapping clock", fields["observedAt"])
 	}
 	sessionFields, ok := fields["session"].(map[string]any)
-	if !ok || sessionFields["activity"] != "Quiet" {
-		t.Fatalf("create session does not carry the strict Quiet DTO: %#v", fields["session"])
+	if !ok {
+		t.Fatalf("create session does not carry the strict DTO: %#v", fields["session"])
 	}
 	for _, retired := range []string{"status", "signal", "signalAt", "runtime", "interaction", "attention"} {
 		if _, present := sessionFields[retired]; present {

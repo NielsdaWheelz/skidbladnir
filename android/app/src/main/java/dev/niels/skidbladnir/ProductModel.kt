@@ -225,19 +225,23 @@ internal data class ProviderSessionFacts private constructor(
 internal data class AgentRuntime(
     val provider: AgentProvider,
     val pid: Long,
+    val paneId: String,
+    val startIdentity: String,
+    val status: AgentStatus,
+    val methods: AgentMethods,
     val profile: ProfileKey? = null,
     val providerSession: ProviderSessionFacts? = null,
 ) {
     init {
         require(pid > 0)
+        require(paneId.matches(Regex("%[0-9]+")))
+        require(startIdentity.isNotEmpty())
         when (provider) {
             AgentProvider.Codex -> require(providerSession?.name == null)
             AgentProvider.Claude -> Unit
         }
     }
 }
-
-internal enum class SessionActivity { Active, Quiet }
 
 internal data class TmuxSession(
     val tmuxId: String,
@@ -249,7 +253,6 @@ internal data class TmuxSession(
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
-    val activity: SessionActivity,
     val agent: AgentRuntime? = null,
 )
 
@@ -284,12 +287,13 @@ private data class WireProviderSessionFacts(
 private data class WireAgentRuntime(
     val provider: AgentProvider,
     val pid: Long,
+    val paneId: String,
+    val startIdentity: String,
+    val status: AgentStatus,
+    val methods: AgentMethods,
     val profile: String? = null,
     val providerSession: WireProviderSessionFacts? = null,
 )
-
-@Serializable
-private enum class WireSessionActivity { Active, Quiet }
 
 @Serializable
 private data class WireTmuxSession(
@@ -302,7 +306,6 @@ private data class WireTmuxSession(
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
-    val activity: WireSessionActivity,
     val agent: WireAgentRuntime? = null,
 )
 
@@ -618,10 +621,10 @@ internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.
  * Single owner of destructive copy: the action label is also the screen-reader description of every
  * kill control, so the spoken description and the dialog title cannot name different sessions.
  */
-internal fun killActionLabel(label: MachineLabel, target: SessionTarget): String =
-    "Kill ${target.session.tmuxName} on ${label.text}"
-internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget): String =
-    killActionLabel(label, target) + "?"
+internal fun killActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
+    "${if (target.session.agent == null || terminalOnly) "Kill" else "Stop"} ${target.session.tmuxName} on ${label.text}"
+internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
+    killActionLabel(label, target, terminalOnly) + "?"
 
 @Serializable private data class CreateSessionRequest(
     val cwd: String,
@@ -936,7 +939,6 @@ internal fun dashboardCardKey(target: SessionTarget): DashboardCardKey {
     })
 }
 
-private data class RankedVisibleSession(val machine: MachineState, val visible: VisibleSession)
 
 internal fun visibleInventoryTargets(
     liveMachineHandles: Collection<MachineHandle>,
@@ -952,42 +954,16 @@ internal fun pressureRailsVisible(scope: DashboardScope): Boolean = when (scope)
 }
 
 internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope): List<VisibleSession> = machines
-    .asSequence()
-    .filter { machine ->
-        when (scope) {
-            DashboardScope.All -> true
-            is DashboardScope.Machine -> machine.machine.handle == scope.handle
-        }
-    }
-    .flatMap { state ->
-        state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().asSequence().map { session ->
-            RankedVisibleSession(
-                state,
-                VisibleSession(state.machine, SessionTarget(state.machine.handle, session)),
-            )
-        }
-    }
-    .sortedWith(
-        compareBy<RankedVisibleSession> { sessionPriority(it.machine, it.visible.target.session) }
-            .thenBy { it.visible.machine.label.text.lowercase(Locale.ROOT) }
-            .thenBy { it.visible.machine.label.text }
-            .thenBy { it.visible.machine.handle.encoded }
-            .thenBy { it.visible.target.session.tmuxName.lowercase(Locale.ROOT) }
-            .thenBy { it.visible.target.session.tmuxName }
-            .thenBy { it.visible.target.session.tmuxId },
-    )
-    .map(RankedVisibleSession::visible)
-    .toList()
-
-// Freshness owns current priority before activity. Retained data stays visible
-// but can never claim the same ordering authority as a fresh host projection.
-internal fun sessionPriority(machine: MachineState, session: TmuxSession): Int = when {
-    !machine.canMutate -> 2
-    else -> when (session.activity) {
-        SessionActivity.Quiet -> 0
-        SessionActivity.Active -> 1
-    }
-}
+    .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
+    .flatMap { state -> state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map {
+        VisibleSession(state.machine, SessionTarget(state.machine.handle, it))
+    } }
+    .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
+        .thenBy { it.machine.label.text }
+        .thenBy { it.machine.handle.encoded }
+        .thenBy { it.target.session.tmuxName.lowercase(Locale.ROOT) }
+        .thenBy { it.target.session.tmuxName }
+        .thenBy { it.target.session.tmuxId })
 
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
@@ -999,6 +975,8 @@ internal enum class ApiErrorCode(val wireName: String) {
     PairingInviteRejected("PairingInviteRejected"),
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
+    AgentTargetStale("AgentTargetStale"), AgentUnavailable("AgentUnavailable"),
+    AgentBlocked("AgentBlocked"), AgentInputInvalid("AgentInputInvalid"),
 }
 
 internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
@@ -1022,38 +1000,23 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Fleet reset is required."
     ApiErrorCode.InternalError -> "Skíðblaðnir could not complete the request."
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
+    ApiErrorCode.AgentTargetStale -> "The agent changed. Refresh and try again."
+    ApiErrorCode.AgentUnavailable -> "That agent method is unavailable."
+    ApiErrorCode.AgentBlocked -> "Inspect the terminal and send a deliberate reply."
+    ApiErrorCode.AgentInputInvalid -> "The agent input is not valid."
 }
 
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
-internal data class SessionActivityContent(
-    val label: String,
-    val accessibilityLabel: String,
-)
+internal data class SessionStatusContent(val label: String, val accessibilityLabel: String)
 
-internal fun sessionActivityContent(activity: SessionActivity, fresh: Boolean): SessionActivityContent {
-    val label: String
-    val spoken: String
-    when (activity) {
-        SessionActivity.Active -> {
-            label = "ACTIVE"
-            spoken = if (fresh) {
-                "Recent tmux activity at the last check"
-            } else {
-                "Last observed: recent tmux activity"
-            }
-        }
-        SessionActivity.Quiet -> {
-            label = "QUIET"
-            spoken = if (fresh) {
-                "No recent tmux activity at the last check"
-            } else {
-                "Last observed: no recent tmux activity"
-            }
-        }
-    }
-    return SessionActivityContent(label, spoken)
+internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean): SessionStatusContent {
+    val state = status?.state?.name?.uppercase() ?: "TERMINAL"
+    val inferred = status?.source == AgentMethod.Terminal
+    val label = state + if (inferred) " · inferred" else ""
+    val spoken = (if (fresh) "" else "Last observed: ") + label.lowercase()
+    return SessionStatusContent(label, spoken)
 }
 
 internal sealed interface TerminalServerEvent {
@@ -1131,6 +1094,7 @@ private fun JsonObject.requireSessionOptionalFields() {
     requireAbsentOrNonNull(setOf("launchProfile", "objective", "cwd", "activeCommand", "agent"))
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireAbsentOrNonNull(setOf("profile", "providerSession"))
+        (agent["status"] as? JsonObject)?.requireAbsentOrNonNull(setOf("reason"))
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
 }
@@ -1156,18 +1120,16 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     cwd = session.cwd,
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,
-    activity = acceptSessionActivity(session.activity),
     agent = session.agent?.let(::acceptAgentRuntime),
 ).also(::acceptSession)
-
-private fun acceptSessionActivity(activity: WireSessionActivity): SessionActivity = when (activity) {
-    WireSessionActivity.Active -> SessionActivity.Active
-    WireSessionActivity.Quiet -> SessionActivity.Quiet
-}
 
 private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentRuntime(
     provider = runtime.provider,
     pid = runtime.pid,
+    paneId = runtime.paneId,
+    startIdentity = runtime.startIdentity,
+    status = runtime.status,
+    methods = runtime.methods,
     profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
     providerSession = runtime.providerSession?.let(::acceptProviderSessionFacts),
 )

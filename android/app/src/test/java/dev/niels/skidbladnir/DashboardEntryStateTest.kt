@@ -354,7 +354,7 @@ class DashboardEntryStateTest {
         identityToken = identityToken,
         character = CharacterSummary("norse.durinn", "Durinn"),
         attachedClients = 0,
-        activity = SessionActivity.Quiet,
+
     )
 
     private companion object {

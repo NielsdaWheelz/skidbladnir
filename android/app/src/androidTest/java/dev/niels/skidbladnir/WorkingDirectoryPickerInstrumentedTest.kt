@@ -688,7 +688,7 @@ class WorkingDirectoryPickerInstrumentedTest {
                     "\"identityToken\":\"synthetic-lifetime\"," +
                     "\"character\":{\"key\":\"alvis\",\"displayName\":\"Alvís\"}," +
                     "\"launchProfile\":\"personal\",\"cwd\":\"$ACTIVE_DIRECTORY\"," +
-                    "\"attachedClients\":0,\"activity\":\"Quiet\"}]"
+                    "\"attachedClients\":0}]"
             } else {
                 "[]"
             }
