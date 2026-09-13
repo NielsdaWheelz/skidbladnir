@@ -1,26 +1,46 @@
 # Skíðblaðnir v0 roadmap
 
 accepted target: [agent control](agent-control.md). v0.3.0 is published and
-installed on all three gateways and the phone. host installation preserved
-credentials, tmux/pane lifetimes, and observed provider processes. private cli
-peers are provisioned on all hosts and for jarvis; jarvis is active and its old
-worker launcher is retired. no busy shared codex service was restarted.
+installed on all three gateways and the phone. installation preserved existing
+pairings, accounts, and tmux/provider lifetimes. private cli peers are provisioned
+on all hosts and for jarvis; jarvis is active and its old worker launcher is retired.
+no busy shared codex server was restarted. one subsequently verified unused arch
+personal server was restarted for auth diagnosis; its account remained unavailable,
+and the other server and tmux lifetimes survived.
 
-routine and isolated darwin/linux tmux checks pass. claude work has live native
-working/idle and bounded history evidence, including text older than the viewport.
-phone enrollment/authentication is retained for all three hosts. the full phone
-gate ran 76 tests with three failures; corrected test fixtures pass the focused
+routine and isolated darwin/linux tmux checks pass. live claude work evidence
+covers native working/idle, blocked/input, observed busy-turn interruption,
+bounded history older than the viewport, and an ordinary coordinator controlling
+another agent through all seven common operations. terminal input delivery and
+observed cancellation remain separate results; codex terminal closure did not
+establish provider halt.
+
+all six directed cli list routes pass. devbox gateway outage/recovery preserved
+all fourteen pre-existing tmux sessions and twelve detected agent targets;
+arch controlled a replying macbook agent while devbox was unavailable. reciprocal
+reply and the complete profile matrix remain incomplete. devbox codex personal,
+work, and work2 have verified terminal replies, as do macbook work/work2 when
+controlled from devbox. arch also controls a replying devbox claude-work agent
+with native status/history. normal provider startup may retain accepted folder
+trust entries. configured credentials and normal
+provider onboarding are required; local codex login status alone does not prove
+the running shared server can use an account.
+
+phone enrollment/authentication is retained for all three hosts. the full v0.3.0
+phone gate ran 76 tests with three failures; corrected fixtures pass the focused
 three-case rerun, with pairing preserved and the exact published apk restored.
-full patch-release phone acceptance, the complete profile/route matrix,
-agent coordination, jarvis owner ingress, and phone controls remain pending.
+full patch-release phone acceptance, phone interaction, the remaining profile
+routes, and genuine jarvis owner ingress remain pending.
 
-live qualification exposed provider footer variants; their narrow detector fixes
-are implemented and tested. shared codex executes identity hooks outside tmux;
-a replacement identity mechanism requires an accepted contract amendment.
-existing configured claude account roots remain unchanged; incomplete provider
-onboarding/authentication is not repaired by moving or copying account state.
-search, stable placement, separate attention, and richer history retrieval remain
-deferred.
+shared codex executes identity hooks outside tmux. native codex binding remains
+an unmet requirement. the proposed full-id footer was withdrawn: the actual phone
+terminal is 35 columns wide and cannot display its 36-character uuid. no full-id
+footer change was implemented. a different binding or an explicit v1 scope
+amendment is required. narrow terminal detector fixes do not establish
+native identity, and clipped or unrecognized footers correctly remain unknown.
+existing claude account roots remain unchanged; no account state is copied to
+complete onboarding. search, stable placement, separate attention, and richer
+history retrieval remain deferred.
 
 Status: scope reset approved 2026-08-25; S1–S3 and the corrective delta are
 implemented. The 2026-08-26 multi-machine hard cut is also implemented and
