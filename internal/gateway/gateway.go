@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
@@ -38,11 +39,14 @@ type sessionManager interface {
 	Rename(context.Context, sessions.RenameInput) error
 	ValidateKill(context.Context, sessions.KillInput) error
 	Kill(context.Context, sessions.KillInput) error
+	AgentTerminalKillInput(context.Context, sessions.AgentTarget) (sessions.KillInput, error)
+	KillAgentTerminal(context.Context, sessions.AgentTarget) error
 	ValidateTerminal(context.Context, string, string) error
 	OpenTerminal(context.Context, sessions.OpenTerminalInput) (*sessions.TerminalAttachment, error)
 }
 
 type Config struct {
+	Agents   *agentcontrol.Service
 	Sessions sessionManager
 	Workdir  *workdir.Service
 	Pressure *pressure.Monitor
@@ -54,6 +58,7 @@ type Config struct {
 }
 
 type Gateway struct {
+	agents   *agentcontrol.Service
 	sessions sessionManager
 	workdir  *workdir.Service
 	pressure *pressure.Monitor
@@ -93,6 +98,7 @@ func New(config Config) *Gateway {
 	}
 	unsupportedMetrics, unsupportedMetricSet := mapUnsupportedMetrics(config.Pressure.Unsupported())
 	return &Gateway{
+		agents:               config.Agents,
 		sessions:             config.Sessions,
 		workdir:              config.Workdir,
 		pressure:             config.Pressure,
@@ -175,6 +181,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	}
 
 	switch {
+	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
+		gateway.agentOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
 		gateway.listSessions(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/sessions":
@@ -406,6 +414,9 @@ func requireEmptyRequest(request *http.Request) bool {
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
 	startedAt := time.Now()
 	inventory, err := gateway.sessions.List(request.Context())
+	if err == nil && gateway.agents != nil {
+		gateway.agents.Enrich(request.Context(), &inventory)
+	}
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
@@ -713,6 +724,8 @@ func requestRoute(path string) logging.Route {
 		return logging.RoutePressure
 	case path == "/v1/directory-listings":
 		return logging.RouteDirectoryListings
+	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
+		return logging.RouteAgentControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):
 		return logging.RouteTerminal
 	case strings.HasPrefix(path, "/v1/sessions/"):

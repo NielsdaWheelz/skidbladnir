@@ -329,7 +329,11 @@ shift || true
 case "$target" in
 dev-server)
   [[ "$config" == "$FLEET_TEST_LOCAL_HOME/.ssh/config.d/dev-server" ]]
-  export HOME="$FLEET_TEST_DEVBOX_HOME" FLEET_TEST_UNAME=Linux
+  export HOME="$FLEET_TEST_DEVBOX_HOME" FLEET_TEST_UNAME=Linux FLEET_TEST_PRINCIPAL=niels
+  ;;
+dev-server-deploy)
+  [[ "$config" == "$FLEET_TEST_LOCAL_HOME/.ssh/config.d/dev-server" ]]
+  export HOME="$FLEET_TEST_DEVBOX_HOME" FLEET_TEST_UNAME=Linux FLEET_TEST_PRINCIPAL=dev-server-deploy
   ;;
 nnandal@arch) export HOME="$FLEET_TEST_ARCH_HOME" FLEET_TEST_UNAME=Linux ;;
 *) exit 64 ;;
@@ -342,6 +346,15 @@ if [[ $# -eq 1 ]]; then
   exec bash -c "$1"
 fi
 exec "$@"
+EOF
+
+cat >"$fake_bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${FLEET_TEST_PRINCIPAL:-}" == dev-server-deploy ]] || exit 77
+[[ "${1:-}" != -n ]] || shift
+[[ "$1 $2 $3 $4 $5 $6 $7" == 'install -o jarvis -g jarvis -m 0600' && "$9" == /etc/jarvis/agent-client.json ]]
+install -m 0600 "$8" "$HOME/jarvis-agent-client.json"
 EOF
 
 chmod 0700 "$fake_bin"/*
@@ -463,7 +476,7 @@ for host_home in "$local_home" "$devbox_home" "$arch_home"; do
   jq -cn --arg platform "$release_platform" \
     '{platform:$platform,sourceSha:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"v1.2.3"}' \
     >"$generation/release.json"
-  printf '{}\n' >"$generation/host-config.json"
+  printf '{"fixtureHost":"%s"}\n' "$(basename "$host_home")" >"$generation/host-config.json"
   chmod 0755 "$generation/skidbladnir"
   chmod 0755 "$host_home/.local/bin/skidbladnir-launch"
   chmod 0644 "$generation/characters.json" "$generation/release.json"
@@ -476,6 +489,11 @@ for host_home in "$local_home" "$devbox_home" "$arch_home"; do
       printf '%s\0%s\n' "$name" "$(fixture_sha256 "$generation/$name")"
     done
   } | fixture_sha256_stream)"
+  admitted_generation="$host_home/.local/share/skidbladnir/releases/v1.2.3-$runtime_identity"
+  mv "$generation" "$admitted_generation"
+  generation="$admitted_generation"
+  /bin/unlink "$host_home/.local/share/skidbladnir/current"
+  ln -s "releases/v1.2.3-$runtime_identity" "$host_home/.local/share/skidbladnir/current"
   printf '%s\n' "$runtime_identity" >"$host_home/.local/state/dev-server/active/skid.runtime.sha256"
   chmod 0600 "$host_home/.local/state/dev-server/active/skid.runtime.sha256"
   if [[ "$(basename "$host_home")" == local ]]; then
@@ -626,6 +644,17 @@ capture "$fleet" verify
 [[ "$(grep -c '^curl .* pressure$' "$log_file")" == 3 ]] ||
   fail 'verify did not inspect exactly three authenticated pressure endpoints'
 
+capture "$fleet" provision-clients
+[[ "$status" == 0 ]] || fail "fleet client provisioning failed: status=$status"
+for host_home in "$local_home" "$devbox_home" "$arch_home"; do
+  path="$host_home/.config/skidbladnir/client.json"
+  [[ -f "$path" && "$(stat -f '%Lp' "$path")" == 600 ]] || fail 'peer config is absent or not private'
+  jq -e '.peers | length == 3' "$path" >/dev/null || fail 'peer config lost a host'
+  cmp -s "$path" "$local_home/.config/skidbladnir/client.json" || fail 'hosts received different peers'
+done
+cmp -s "$devbox_home/jarvis-agent-client.json" "$local_home/.config/skidbladnir/client.json" || fail 'Jarvis did not receive the same peer config'
+[[ "$output" != *"$(cat "$local_home/.config/skidbladnir/bearer")"* && "$output" != *"$(cat "$devbox_home/.config/skidbladnir/bearer")"* ]] || fail 'provisioning exposed bearer data'
+
 rm "$test_macos_tailscale_app/Contents/_MASReceipt/receipt"
 capture "$fleet" verify
 [[ "$status" != 0 && "$output" == *'macbook private Tailscale Serve mapping is invalid or unavailable'* ]] ||
@@ -711,21 +740,14 @@ capture "$fleet" verify
 [[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
   fail 'verify accepted a fleet that was uniformly stale against the declared release'
 
-jq '.artifacts["darwin-arm64"].sha256 = ("c" * 64)' \
+# Archive checksums belong to admission, not the cross-host release identity.
+# The installed runtime stamp still binds each host's exact, distinct bytes.
+jq '.artifacts["darwin-arm64"].sha256 = ("c" * 64) | .artifacts["linux-amd64"].sha256 = ("d" * 64)' \
   "$pin_valid" >"$pin"
 git -C "$pin_checkout" add assets/skidbladnir/release-pin.json
-git -C "$pin_checkout" commit -qm 'Darwin artifact fixture'
+git -C "$pin_checkout" commit -qm 'archive identity is separate fixture'
 capture "$fleet" verify
-[[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
-  fail 'verify accepted a mismatched Darwin host artifact digest'
-
-jq '.artifacts["linux-amd64"].sha256 = ("c" * 64)' \
-  "$pin_valid" >"$pin"
-git -C "$pin_checkout" add assets/skidbladnir/release-pin.json
-git -C "$pin_checkout" commit -qm 'Linux artifact fixture'
-capture "$fleet" verify
-[[ "$status" != 0 && "$output" == *'do not match the dev-server release pin'* ]] ||
-  fail 'verify accepted a mismatched Linux host artifact digest'
+[[ "$status" == 0 ]] || fail 'fleet confused archive admission with release agreement'
 export SKIDBLADNIR_DEV_SERVER_CHECKOUT="$checkout"
 
 touch "$local_home/oversized-pressure"
@@ -895,7 +917,7 @@ capture "$fleet" accept-host devbox --allow-host-apply --allow-inventory-reconci
 : >"$log_file"
 capture "$fleet" accept-host arch --allow-host-apply --allow-inventory-reconciliation
 [[ "$status" == 0 && "$(grep -c '^apply arch workstation apply$' "$log_file")" == 2 &&
-  "$(grep -c '^ssh nnandal@arch tty=request$' "$log_file")" == 1 ]] ||
+"$(grep -c '^ssh nnandal@arch tty=request$' "$log_file")" == 1 ]] ||
   fail 'arch host acceptance did not use the fixed remote workstation apply exactly twice'
 assert_no_apply_evidence
 
@@ -942,8 +964,8 @@ capture "$fleet" outage macbook --allow-service-lifecycle
 printf 'loaded\n' >"$local_home/service.state"
 capture "$fleet" recover macbook --allow-service-lifecycle
 [[ "$status" == 0 && "$(<"$local_home/service.state")" == active &&
-  "$(grep -c '^launchctl kickstart$' "$log_file")" == 1 &&
-  "$(grep -c '^launchctl bootstrap$' "$log_file" || true)" == 0 ]] ||
+"$(grep -c '^launchctl kickstart$' "$log_file")" == 1 &&
+"$(grep -c '^launchctl bootstrap$' "$log_file" || true)" == 0 ]] ||
   fail 'macbook recovery bootstrapped an already loaded gateway'
 capture "$fleet" outage macbook --allow-service-lifecycle
 [[ "$status" == 0 && "$(<"$local_home/service.state")" == inactive ]] ||
@@ -958,8 +980,8 @@ capture "$fleet" recover macbook --allow-service-lifecycle
 [[ "$status" == 0 && "$(<"$local_home/service.state")" == active ]] ||
   fail 'repeated macbook recovery was not convergent'
 [[ "$(grep -c '^launchctl bootout$' "$log_file")" == 1 &&
-  "$(grep -c '^launchctl bootstrap$' "$log_file")" == 1 &&
-  "$(grep -c '^launchctl kickstart$' "$log_file")" == 1 ]] ||
+"$(grep -c '^launchctl bootstrap$' "$log_file")" == 1 &&
+"$(grep -c '^launchctl kickstart$' "$log_file")" == 1 ]] ||
   fail 'macbook outage/recovery used an unexpected lifecycle boundary'
 ! grep -Eiq 'tmux|tailscale' "$log_file" ||
   fail 'outage/recovery touched tmux or Tailscale'
@@ -968,8 +990,8 @@ capture "$fleet" recover macbook --allow-service-lifecycle
 touch "$local_home/bootout-transient-once"
 capture "$fleet" outage macbook --allow-service-lifecycle
 [[ "$status" == 0 && "$(<"$local_home/service.state")" == inactive &&
-  "$(grep -c '^launchctl bootout$' "$log_file")" == 1 &&
-  "$(grep -c '^sleep 0.25$' "$log_file")" == 1 ]] ||
+"$(grep -c '^launchctl bootout$' "$log_file")" == 1 &&
+"$(grep -c '^sleep 0.25$' "$log_file")" == 1 ]] ||
   fail 'macbook outage did not reconcile a transient launchd removal state'
 /bin/unlink "$local_home/bootout-transient-once"
 capture "$fleet" recover macbook --allow-service-lifecycle
@@ -992,7 +1014,7 @@ capture "$fleet" recover macbook --allow-service-lifecycle
 
 : >"$log_file"
 linux_definition="$devbox_home/.config/systemd/user/skidbladnir.service"
-cp "$linux_definition" "$devbox_home/service-definition.valid"
+cp -p "$linux_definition" "$devbox_home/service-definition.valid"
 printf '# drift\n' >>"$linux_definition"
 capture "$fleet" outage devbox --allow-service-lifecycle
 if [[ "$status" == 0 || "$output" != *'does not match durable installer intent'* ||

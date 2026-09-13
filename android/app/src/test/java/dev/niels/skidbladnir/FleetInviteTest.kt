@@ -176,7 +176,7 @@ class FleetInviteTest {
     @Test
     fun `gateway response rejects malformed UTF-8 before protocol decoding`() {
         val prefix = "{\"machine\":{\"handle\":\"mh-0123456789abcdef0123456789abcdef\",\"platform\":\"Linux\"},\"observedAt\":\"2026-08-25T12:00:00Z\",\"profiles\":[],\"sessions\":[{\"tmuxId\":\"\$1\",\"tmuxName\":\""
-        val suffix = "\",\"identityToken\":\"token\",\"character\":{\"key\":\"one\",\"displayName\":\"One\"},\"attachedClients\":0,\"activity\":\"Quiet\"}]}"
+        val suffix = "\",\"identityToken\":\"token\",\"character\":{\"key\":\"one\",\"displayName\":\"One\"},\"attachedClients\":0}]}"
         val malformed = prefix.encodeToByteArray() + byteArrayOf(0xff.toByte()) + suffix.encodeToByteArray()
         val response = Response.Builder()
             .request(Request.Builder().url("https://gateway.example.ts.net:8443/v1/sessions").build())

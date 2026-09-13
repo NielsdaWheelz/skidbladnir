@@ -14,8 +14,10 @@ completion notifier may emit BEL as terminal-local presentation, but it stores
 no state and has no privileged product meaning. The architecture's §8 upgrade
 ladder governs everything else.
 
-Implement only the reviewed v0 target and its red/green proof shape. A new
-capability requires an explicit scope and acceptance-criterion change.
+for the accepted agent-control upgrade, read [its spec](docs/agent-control.md)
+and apply only its explicit v1 deltas to the v0 target. unrelated v0 requirements
+and the red/green proof shape remain. a new capability requires an explicit scope
+and acceptance-criterion change.
 
 Unconditional guardrails, regardless of assignment:
 

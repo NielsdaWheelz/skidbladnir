@@ -117,7 +117,7 @@ authenticated_get() (
 release_identity_digest() {
   local platform="$1"
   local share="$HOME/.local/share/skidbladnir"
-  local relative generation artifact platform_key manifest manifest_bytes values
+  local relative generation runtime_identity platform_key manifest manifest_bytes values
   local version source binary_identity
   case "$platform" in
   Darwin) platform_key=darwin-arm64 ;;
@@ -128,7 +128,7 @@ release_identity_digest() {
   relative="$(readlink "$share/current")" || return
   [[ "$relative" =~ ^releases/(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))-([0-9a-f]{64})$ ]] ||
     return 1
-  artifact="${BASH_REMATCH[5]}"
+  runtime_identity="${BASH_REMATCH[5]}"
   generation="$share/$relative"
   manifest="$generation/release.json"
   [[ -d "$generation" && ! -L "$generation" &&
@@ -145,11 +145,11 @@ release_identity_digest() {
     then [.version, .sourceSha] | @tsv else error("invalid release manifest") end
   ' "$manifest" 2>/dev/null)" || return
   IFS=$'\t' read -r version source <<<"$values"
-  [[ "$relative" == "releases/$version-$artifact" ]] || return 1
+  [[ "$relative" == "releases/$version-$runtime_identity" ]] || return 1
   binary_identity="$("$generation/skidbladnir" version 2>/dev/null)" || return
   [[ "$binary_identity" == "$version $source" ]] || return 1
-  printf 'skidbladnir-fleet-release-v2\0%s\0%s\0%s\0%s' \
-    "$version" "$source" "$platform_key" "$artifact" | sha256_stream
+  printf 'skidbladnir-fleet-release-v3\0%s\0%s\0%s' \
+    "$version" "$source" "$platform_key" | sha256_stream
 }
 
 active_runtime_is_current() {
@@ -166,9 +166,9 @@ active_runtime_is_current() {
     [[ -f "$generation/$name" && ! -L "$generation/$name" ]] || return 1
   done
   [[ "$(file_mode "$generation/skidbladnir" 2>/dev/null)" == 755 &&
-    "$(file_mode "$generation/characters.json" 2>/dev/null)" == 644 &&
-    "$(file_mode "$generation/release.json" 2>/dev/null)" == 644 &&
-    "$(file_mode "$generation/host-config.json" 2>/dev/null)" == 600 ]] || return 1
+  "$(file_mode "$generation/characters.json" 2>/dev/null)" == 644 &&
+  "$(file_mode "$generation/release.json" 2>/dev/null)" == 644 &&
+  "$(file_mode "$generation/host-config.json" 2>/dev/null)" == 600 ]] || return 1
   expected="$({
     for name in skidbladnir characters.json release.json host-config.json; do
       printf '%s\0%s\n' "$name" "$(sha256_file "$generation/$name")" || return
@@ -183,7 +183,7 @@ candidate_release_digest() {
   local checkout="$1"
   local pin="$checkout/assets/skidbladnir/release-pin.json"
   local platform="$2"
-  local platform_key value bytes identity version source artifact
+  local platform_key value bytes identity version source
   case "$platform" in
   Darwin) platform_key=darwin-arm64 ;;
   Linux) platform_key=linux-amd64 ;;
@@ -196,7 +196,7 @@ candidate_release_digest() {
     die 'dev-server release pin is not bounded'
   value="$(cat "$pin")" || die 'could not read the dev-server release pin'
   json_is_single_and_duplicate_free "$value" || die 'dev-server release pin JSON is invalid'
-  identity="$(printf '%s' "$value" | jq -er --arg platform "$platform_key" '
+  identity="$(printf '%s' "$value" | jq -er '
     def canonical_version:
       type == "string" and test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$");
     def exact_artifact($name; $version):
@@ -212,12 +212,12 @@ candidate_release_digest() {
       (.artifacts | type == "object" and keys == ["darwin-arm64", "linux-amd64"] and
         (."darwin-arm64" | exact_artifact("darwin-arm64"; $version)) and
         (."linux-amd64" | exact_artifact("linux-amd64"; $version)))
-    then [.version, .sourceSha, .artifacts[$platform].sha256] | @tsv
+    then [.version, .sourceSha] | @tsv
     else error("invalid release pin") end
   ' 2>/dev/null)" || die 'dev-server release pin schema is invalid'
-  IFS=$'\t' read -r version source artifact <<<"$identity"
-  printf 'skidbladnir-fleet-release-v2\0%s\0%s\0%s\0%s' \
-    "$version" "$source" "$platform_key" "$artifact" | sha256_stream
+  IFS=$'\t' read -r version source <<<"$identity"
+  printf 'skidbladnir-fleet-release-v3\0%s\0%s\0%s' \
+    "$version" "$source" "$platform_key" | sha256_stream
 }
 
 candidate_checkout_commit() {
@@ -837,6 +837,69 @@ change_service() {
   fi
 }
 
+# The operator transfers this private configuration once; clients then route
+# directly to each peer over HTTPS. Re-run after rotating a host bearer.
+client_peer() (
+  set +x
+  local platform="$1" label="$2" machine origin bearer
+  machine="$(secret_value "$HOME/.config/skidbladnir/machine-handle" '^mh-[0-9a-f]{32}$')" || return
+  bearer="$(secret_value "$HOME/.config/skidbladnir/bearer" '^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$')" || return
+  origin="$(private_serve_origin "$platform")" || return
+  printf '%s\n' "$bearer" | jq -Rn --arg label "$label" --arg machine "$machine" --arg origin "$origin" \
+    '{label:$label,machine:$machine,origin:$origin,bearer:input}'
+)
+
+install_client_config() (
+  set -euo pipefail
+  set +x
+  umask 077
+  local config temporary
+  config="$HOME/.config/skidbladnir"
+  if [[ "$1" == jarvis ]]; then
+    config="${TMPDIR:-/tmp}"
+  else
+    mkdir -p "$config" || return
+  fi
+  temporary="$(mktemp "$config/.client.XXXXXX")" || return
+  trap 'rm -f -- "$temporary"' EXIT
+  cat >"$temporary" || return
+  chmod 0600 "$temporary" || return
+  if [[ "$1" == jarvis ]]; then
+    sudo -n install -o jarvis -g jarvis -m 0600 "$temporary" /etc/jarvis/agent-client.json || return
+  else
+    mv -f -- "$temporary" "$config/client.json"
+  fi
+)
+
+provision_clients() (
+  set +x
+  local evidence temporary command label
+  evidence="$(fleet_evidence "$1" "$2")" || return
+  temporary="$(mktemp "${TMPDIR:-/tmp}/skidbladnir-clients.XXXXXX")" || return
+  trap 'rm -f -- "$temporary"' EXIT
+  {
+    client_peer Darwin macbook || exit 1
+    remote_host client-peer devbox || exit 1
+    remote_host client-peer arch || exit 1
+  } | jq -s '{peers:.}' >"$temporary" || return
+  jq -e --arg evidence "$evidence" '
+    (.peers | length == 3) and
+    ([.peers[] | .machine + "\t" + .origin] | join("\n")) == $evidence
+  ' "$temporary" >/dev/null || return
+  install_client_config user <"$temporary" || return
+  for label in devbox arch; do
+    command="$(declare -f install_client_config)"
+    command+=$'\ninstall_client_config user'
+    printf -v command 'bash -c %q' "$command"
+    fleet_ssh "$label" "$command" <"$temporary" || return
+  done
+  command="$(declare -f install_client_config)"
+  command+=$'\ninstall_client_config jarvis'
+  printf -v command 'bash -c %q' "$command"
+  fleet_ssh devbox-deploy "$command" <"$temporary" || return
+  printf 'PASS  fleet.clients private peer configuration installed on macbook, devbox, arch, and Jarvis\n'
+)
+
 host_main() {
   local action="${1:-}"
   local platform="${2:-}"
@@ -844,6 +907,10 @@ host_main() {
   [[ "${SKIDBLADNIR_FLEET_TRANSPORT:-}" == fleet-host-v1 ]] || return 64
   validate_host_platform "$platform" "$label" || return 64
   case "$action" in
+  client-peer)
+    [[ $# -eq 3 ]] || return 64
+    client_peer "$platform" "$label"
+    ;;
   verify)
     [[ $# -eq 3 ]] || return 64
     verify_host "$platform" "$label"
@@ -874,13 +941,15 @@ fleet_ssh() {
   local label="$1"
   shift
   case "$label" in
-  devbox)
+  devbox | devbox-deploy)
+    local target=dev-server
+    [[ "$label" != devbox-deploy ]] || target=dev-server-deploy
     local config="$HOME/.ssh/config.d/dev-server"
     [[ -f "$config" && ! -L "$config" && -O "$config" &&
       "$(file_mode "$config" 2>/dev/null)" == 600 ]] ||
       die 'managed devbox SSH config is unavailable or not mode 0600'
     ssh -F "$config" -T -o BatchMode=yes -o RequestTTY=no -o ConnectTimeout=10 \
-      -o ConnectionAttempts=1 dev-server "$@"
+      -o ConnectionAttempts=1 "$target" "$@"
     ;;
   arch)
     ssh -T -o BatchMode=yes -o RequestTTY=no -o ConnectTimeout=10 -o ConnectionAttempts=1 \
@@ -901,7 +970,7 @@ remote_host() {
   shift 2
   [[ -f "$fleet_source" && ! -L "$fleet_source" ]] || die 'fleet operator source is unavailable'
   case "$action" in
-  verify | lifetime | snapshot)
+  verify | lifetime | snapshot | client-peer)
     [[ $# -eq 0 ]] || return 64
     fleet_ssh "$label" env SKIDBLADNIR_FLEET_TRANSPORT=fleet-host-v1 \
       bash -s -- _host "$action" Linux "$label" <"$fleet_source"
@@ -977,9 +1046,9 @@ fleet_evidence() {
   local expected_linux_release="$2"
   local local_result='' devbox_result='' arch_result=''
   local identity_separator=$'\t'
-  local local_handle local_platform local_runtime local_origin
-  local devbox_handle devbox_platform devbox_runtime devbox_origin
-  local arch_handle arch_platform arch_runtime arch_origin
+  local local_handle local_platform local_release local_origin
+  local devbox_handle devbox_platform devbox_release devbox_origin
+  local arch_handle arch_platform arch_release arch_origin
   local failures=0
   local_result="$(verify_host Darwin macbook)" || failures=$((failures + 1))
   devbox_result="$(remote_host verify devbox)" || failures=$((failures + 1))
@@ -993,16 +1062,16 @@ fleet_evidence() {
     "$devbox_result" =~ ^mh-[0-9a-f]{32}${identity_separator}Linux${identity_separator}[0-9a-f]{64}${identity_separator}https://[a-z0-9.-]+:8443/$ &&
     "$arch_result" =~ ^mh-[0-9a-f]{32}${identity_separator}Linux${identity_separator}[0-9a-f]{64}${identity_separator}https://[a-z0-9.-]+:8443/$ ]] ||
     die 'fixed-fleet verification returned invalid host identity'
-  IFS=$'\t' read -r local_handle local_platform local_runtime local_origin <<<"$local_result"
-  IFS=$'\t' read -r devbox_handle devbox_platform devbox_runtime devbox_origin <<<"$devbox_result"
-  IFS=$'\t' read -r arch_handle arch_platform arch_runtime arch_origin <<<"$arch_result"
+  IFS=$'\t' read -r local_handle local_platform local_release local_origin <<<"$local_result"
+  IFS=$'\t' read -r devbox_handle devbox_platform devbox_release devbox_origin <<<"$devbox_result"
+  IFS=$'\t' read -r arch_handle arch_platform arch_release arch_origin <<<"$arch_result"
   [[ "$local_platform" == Darwin && "$devbox_platform" == Linux && "$arch_platform" == Linux ]] ||
     die 'fixed-fleet verification returned invalid platforms'
-  [[ "$devbox_runtime" == "$arch_runtime" ]] ||
+  [[ "$devbox_release" == "$arch_release" ]] ||
     die 'fixed-fleet Linux release identities differ'
-  [[ "$local_runtime" == "$expected_darwin_release" &&
-    "$devbox_runtime" == "$expected_linux_release" ]] ||
-    die 'fixed-fleet active artifacts do not match the dev-server release pin'
+  [[ "$local_release" == "$expected_darwin_release" &&
+    "$devbox_release" == "$expected_linux_release" ]] ||
+    die 'fixed-fleet release identities do not match the dev-server release pin'
   [[ "$local_handle" != "$devbox_handle" && "$local_handle" != "$arch_handle" &&
     "$devbox_handle" != "$arch_handle" ]] || die 'fixed-fleet machine handles are not unique'
   [[ "$local_origin" != "$devbox_origin" && "$local_origin" != "$arch_origin" &&
@@ -1189,6 +1258,7 @@ Usage: scripts/fleet <command>
 Commands:
   verify
   invite
+  provision-clients
   reconcile-lifetime-digests
   accept-host <macbook|devbox|arch> --allow-host-apply --allow-inventory-reconciliation
   prepare-reboot <macbook|devbox|arch> --allow-reboot-acceptance
@@ -1196,7 +1266,7 @@ Commands:
   outage <macbook|devbox|arch> --allow-service-lifecycle
   recover <macbook|devbox|arch> --allow-service-lifecycle
 
-verify, invite, and accept-host require SKIDBLADNIR_DEV_SERVER_CHECKOUT naming
+verify, invite, provision-clients, and accept-host require SKIDBLADNIR_DEV_SERVER_CHECKOUT naming
 the exact local dev-server checkout with its release pin tracked and byte-exact
 at HEAD. accept-host also requires the whole candidate checkout to be clean and
 SKIDBLADNIR_ALLOW_HOST_ACCEPTANCE=host-acceptance-v1. Arch accept-host must run
@@ -1240,7 +1310,7 @@ main() {
     usage >&2
     return 64
     ;;
-  verify | invite | reconcile-lifetime-digests)
+  verify | invite | provision-clients | reconcile-lifetime-digests)
     [[ $# -eq 1 ]] || {
       usage >&2
       return 64
@@ -1277,12 +1347,12 @@ main() {
   esac
   [[ "$(uname -s)" == Darwin ]] || die 'scripts/fleet is the MacBook-only fixed-fleet operator'
   case "$command" in
-  invite | accept-host | prepare-reboot | verify-reboot | outage | recover)
+  invite | provision-clients | accept-host | prepare-reboot | verify-reboot | outage | recover)
     acquire_operator_lock || return
     ;;
   esac
   case "$command" in
-  verify)
+  verify | provision-clients)
     require_checkout
     require_command git
     require_command jq
@@ -1291,7 +1361,11 @@ main() {
     expected_darwin_release="$(candidate_release_digest "$dev_server_checkout" Darwin)" || return
     expected_linux_release="$(candidate_release_digest "$dev_server_checkout" Linux)" || return
     fleet_source="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/fleet"
-    verify_fleet "$expected_darwin_release" "$expected_linux_release"
+    if [[ "$command" == provision-clients ]]; then
+      provision_clients "$expected_darwin_release" "$expected_linux_release"
+    else
+      verify_fleet "$expected_darwin_release" "$expected_linux_release"
+    fi
     ;;
   invite)
     require_checkout

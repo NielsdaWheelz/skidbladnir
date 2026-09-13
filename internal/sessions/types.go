@@ -5,6 +5,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -44,6 +45,7 @@ type RenameInput struct {
 }
 
 type Session struct {
+	foreground      *processinfo.Observation
 	TmuxID          string
 	TmuxName        string
 	IdentityToken   string
@@ -54,7 +56,6 @@ type Session struct {
 	CWD             string
 	ActiveCommand   string
 	AttachedClients int
-	Activity        SessionActivity
 }
 
 type Inventory struct {
@@ -66,13 +67,6 @@ type ObservedSession struct {
 	ObservedAt time.Time
 	Session    Session
 }
-
-type SessionActivity string
-
-const (
-	SessionActivityActive SessionActivity = "Active"
-	SessionActivityQuiet  SessionActivity = "Quiet"
-)
 
 // ValidProjectionInstant closes observation clocks at the same four-digit UTC
 // year boundary as Go's RFC3339 JSON encoder.

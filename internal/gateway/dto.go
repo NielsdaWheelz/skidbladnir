@@ -19,10 +19,11 @@ import (
 )
 
 type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Status  int    `json:"-"`
-	logCode logging.ErrorCode
+	Dispatch string `json:"dispatch,omitempty"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Status   int    `json:"-"`
+	logCode  logging.ErrorCode
 }
 
 var (
@@ -62,10 +63,14 @@ type providerSessionDTO struct {
 }
 
 type agentDTO struct {
-	Provider        string              `json:"provider"`
-	PID             int                 `json:"pid"`
-	Profile         string              `json:"profile,omitempty"`
-	ProviderSession *providerSessionDTO `json:"providerSession,omitempty"`
+	PaneID          string               `json:"paneId"`
+	StartIdentity   string               `json:"startIdentity"`
+	Status          agentruntime.Status  `json:"status"`
+	Methods         agentruntime.Methods `json:"methods"`
+	Provider        string               `json:"provider"`
+	PID             int                  `json:"pid"`
+	Profile         string               `json:"profile,omitempty"`
+	ProviderSession *providerSessionDTO  `json:"providerSession,omitempty"`
 }
 
 type sessionDTO struct {
@@ -79,7 +84,6 @@ type sessionDTO struct {
 	CWD             string       `json:"cwd,omitempty"`
 	ActiveCommand   string       `json:"activeCommand,omitempty"`
 	AttachedClients int          `json:"attachedClients"`
-	Activity        string       `json:"activity"`
 }
 
 type machineDTO struct {
@@ -327,10 +331,11 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 	if agent == nil {
 		return nil, nil
 	}
-	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil {
+	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil || agent.PaneID == "" || agent.StartIdentity == "" || !agent.Status.Valid() || !agent.Methods.Valid() {
 		return nil, errors.New("invalid agent runtime")
 	}
 	mapped := &agentDTO{
+		PaneID: agent.PaneID, StartIdentity: string(agent.StartIdentity), Status: agent.Status, Methods: agent.Methods,
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
 		Profile:  string(agent.Profile),
@@ -347,13 +352,6 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	agent, err := mapAgent(session.Agent, profiles)
 	if err != nil {
 		return sessionDTO{}, err
-	}
-	activity := ""
-	switch session.Activity {
-	case sessions.SessionActivityActive, sessions.SessionActivityQuiet:
-		activity = string(session.Activity)
-	default:
-		return sessionDTO{}, errors.New("invalid session activity")
 	}
 	if session.LaunchProfile != "" {
 		matches := 0
@@ -377,7 +375,6 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
-		Activity:        activity,
 	}
 	if card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {

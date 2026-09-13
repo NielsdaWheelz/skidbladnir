@@ -261,10 +261,11 @@ func writeAgentHookHostConfig(t *testing.T, destination, claudeProvider, configu
 	encoded := fmt.Sprintf(`{
   "platform":%q,
   "tmux":{"path":%q,"testedVersion":%q},
+  "nativeControlPath":"/bin/false",
   "profiles":[
-    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/bin/false","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
-    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/bin/false","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
-    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/bin/false","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
+    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/bin/false","nativeEndpoint":"unix:///fixture/personal.sock","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
+    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/bin/false","nativeEndpoint":"unix:///fixture/work.sock","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
+    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/bin/false","nativeEndpoint":"unix:///fixture/work2.sock","environment":[{"name":"CODEX_HOME","value":%q}],"foregroundSignatures":[{"executableBase":"codex-hook-fixture"}],"arguments":[]},
     {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/bin/false","environment":[{"name":"CLAUDE_CONFIG_DIR","value":%q}],"foregroundSignatures":[{"argument0":%q}],"arguments":[]},
     {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":%q,"environment":[{"name":"CLAUDE_CONFIG_DIR","value":%q}],"foregroundSignatures":[{"argument0":%q}],"arguments":[]}
   ]

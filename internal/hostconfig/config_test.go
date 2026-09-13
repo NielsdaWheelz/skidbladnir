@@ -202,12 +202,13 @@ func TestValidateTmuxVersionAcceptsCanonicalUnpinnedVersions(t *testing.T) {
 }
 
 const validLinuxConfig = `{
+  "nativeControlPath":"/home/niels/.local/bin/provider-runtime-control",
   "platform":"Linux",
   "tmux":{"path":"/usr/bin/tmux","testedVersion":"tmux 3.4"},
   "profiles":[
-    {"key":"personal","label":"Codex · Personal","provider":"Codex","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
-    {"key":"work","label":"Codex · Work","provider":"Codex","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
-    {"key":"work2","label":"Codex · Work 2","provider":"Codex","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
+    {"key":"personal","label":"Codex · Personal","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-personal","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-personal"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
+    {"key":"work","label":"Codex · Work","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-work","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
+    {"key":"work2","label":"Codex · Work 2","provider":"Codex","nativeEndpoint":"unix:///home/niels/.codex/control.sock","command":"/home/niels/bin/codex-work2","environment":[{"name":"CODEX_HOME","value":"/home/niels/.codex-work2"}],"foregroundSignatures":[{"executableBase":"codex"},{"executableBase":"node","argument1":"/home/niels/.local/bin/codex"}],"arguments":["--dangerously-bypass-approvals-and-sandbox"]},
     {"key":"claude-personal","label":"Claude · Personal","provider":"Claude","command":"/home/niels/bin/claude-personal","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-personal"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":["--permission-mode","auto"]},
     {"key":"claude-work","label":"Claude · Work","provider":"Claude","command":"/home/niels/bin/claude-work","environment":[{"name":"CLAUDE_CONFIG_DIR","value":"/home/niels/.claude-work"}],"foregroundSignatures":[{"argument0":"/home/niels/.local/bin/claude"}],"arguments":["--permission-mode","auto"]}
   ]

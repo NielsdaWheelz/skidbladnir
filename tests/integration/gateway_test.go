@@ -903,9 +903,6 @@ exec "$tmux_real" "$@"
 		t.Fatal("created card did not preserve the requested name, profile, and objective")
 	}
 	createdCard := decodeSessionCard(t, created)
-	if createdCard.Activity != "Active" {
-		t.Fatalf("newly created current window activity = %q, want Active", createdCard.Activity)
-	}
 	if createdAgent := createdCard.Agent; createdAgent != nil {
 		if createdAgent.Provider != "Claude" || createdAgent.PID <= 0 ||
 			createdAgent.Profile != "" || createdAgent.ProviderSession == nil ||
@@ -1455,23 +1452,15 @@ func assertSessionCardPreservesRenameInvariants(t *testing.T, before, after map[
 	if after["tmuxName"] != wantName {
 		t.Fatal("authoritative inventory did not expose the expected tmux name")
 	}
-	for _, snapshot := range []struct {
-		label string
-		card  map[string]any
-	}{{label: "before", card: before}, {label: "after", card: after}} {
-		if snapshot.card["activity"] != "Active" && snapshot.card["activity"] != "Quiet" {
-			t.Fatalf("%s rename card has invalid fresh activity %#v", snapshot.label, snapshot.card["activity"])
-		}
-	}
 	beforeFacts := make(map[string]any, len(before)-1)
 	afterFacts := make(map[string]any, len(after)-1)
 	for key, value := range before {
-		if key != "tmuxName" && key != "activity" {
+		if key != "tmuxName" {
 			beforeFacts[key] = value
 		}
 	}
 	for key, value := range after {
-		if key != "tmuxName" && key != "activity" {
+		if key != "tmuxName" {
 			afterFacts[key] = value
 		}
 	}
@@ -1614,6 +1603,18 @@ func integrationMachine(t *testing.T) machine.Handle {
 }
 
 type sessionAgentResponse struct {
+	PaneID        string `json:"paneId"`
+	StartIdentity string `json:"startIdentity"`
+	Status        struct {
+		State  string `json:"state"`
+		Source string `json:"source"`
+		Reason string `json:"reason,omitempty"`
+	} `json:"status"`
+	Methods struct {
+		Read      string `json:"read"`
+		Send      string `json:"send"`
+		Interrupt string `json:"interrupt"`
+	} `json:"methods"`
 	Provider        string                   `json:"provider"`
 	PID             int                      `json:"pid"`
 	Profile         string                   `json:"profile,omitempty"`
@@ -1641,7 +1642,6 @@ type sessionCardResponse struct {
 	CWD             string                   `json:"cwd,omitempty"`
 	ActiveCommand   string                   `json:"activeCommand,omitempty"`
 	AttachedClients int                      `json:"attachedClients"`
-	Activity        string                   `json:"activity"`
 }
 
 type createSessionResponse struct {
@@ -1673,7 +1673,7 @@ func decodeSessionCard(t *testing.T, card map[string]any) sessionCardResponse {
 	t.Helper()
 	var decoded sessionCardResponse
 	decodeStrictValue(t, card, &decoded)
-	for _, required := range []string{"tmuxId", "tmuxName", "identityToken", "character", "attachedClients", "activity"} {
+	for _, required := range []string{"tmuxId", "tmuxName", "identityToken", "character", "attachedClients"} {
 		if _, exists := card[required]; !exists {
 			t.Fatalf("session wire payload omitted required field %q", required)
 		}
@@ -1681,9 +1681,6 @@ func decodeSessionCard(t *testing.T, card map[string]any) sessionCardResponse {
 	if decoded.TmuxID == "" || decoded.TmuxName == "" || decoded.IdentityToken == "" ||
 		decoded.Character.Key == "" || decoded.Character.DisplayName == "" || decoded.AttachedClients < 0 {
 		t.Fatalf("session wire payload has incomplete required identity or character: %+v", decoded)
-	}
-	if decoded.Activity != "Active" && decoded.Activity != "Quiet" {
-		t.Fatalf("session wire payload has invalid activity %q", decoded.Activity)
 	}
 	for _, optional := range []string{"launchProfile", "objective", "cwd", "activeCommand"} {
 		if value, exists := card[optional]; exists && value == "" {

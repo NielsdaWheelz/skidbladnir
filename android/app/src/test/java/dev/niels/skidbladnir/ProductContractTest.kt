@@ -10,64 +10,6 @@ import org.junit.Test
 
 class ProductContractTest {
     @Test
-    fun `session activity wire is exact and legacy state is rejected`() {
-        val active = activitySession("${'$'}1", "active", "token-active", "Active")
-        val quietWithAgent = activitySession(
-            "${'$'}2",
-            "quiet",
-            "token-quiet",
-            "Quiet",
-            agent = """{"provider":"Codex","pid":1234}""",
-        )
-
-        val decoded = decodeSessionsResponse(inventoryWithSessions(active, quietWithAgent)).sessions
-        assertEquals(listOf(SessionActivity.Active, SessionActivity.Quiet), decoded.map(TmuxSession::activity))
-        assertNull(decoded[0].agent)
-        assertEquals(AgentRuntime(AgentProvider.Codex, 1234), decoded[1].agent)
-
-        val invalid = listOf(
-            active.replace(",\"activity\":\"Active\"", ""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":null"),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"Working\""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"active\""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"NewResult\""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"activity\":\"Quiet\""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"status\":\"Quiet\""),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"signal\":\"Working\""),
-            active.replace(
-                "\"activity\":\"Active\"",
-                "\"activity\":\"Active\",\"signalAt\":\"2026-08-25T12:00:00Z\"",
-            ),
-            active.replace("\"activity\":\"Active\"", "\"activity\":\"Active\",\"agent\":null"),
-            active.replace(
-                "\"activity\":\"Active\"",
-                "\"activity\":\"Active\",\"runtime\":{\"kind\":\"AgentOpen\"," +
-                    "\"agent\":{\"provider\":\"Codex\",\"pid\":1234}," +
-                    "\"interaction\":{\"kind\":\"Ready\"}}",
-            ),
-            active.replace(
-                "\"activity\":\"Active\"",
-                "\"activity\":\"Active\",\"interaction\":{\"kind\":\"Ready\"}",
-            ),
-            active.replace(
-                "\"activity\":\"Active\"",
-                "\"activity\":\"Active\",\"attention\":{\"kind\":\"NewResult\"}",
-            ),
-            quietWithAgent.replace("\"pid\":1234", "\"pid\":1234,\"interaction\":\"Ready\""),
-        )
-        invalid.forEachIndexed { index, session ->
-            assertThrows("accepted invalid activity session case $index", ProtocolDecodeException::class.java) {
-                decodeSessionsResponse(inventoryWithSessions(session))
-            }
-            assertThrows("create accepted invalid activity session case $index", ProtocolDecodeException::class.java) {
-                decodeCreatedSessionResponse(
-                    """{"observedAt":"2026-08-25T12:00:00Z","session":$session}""",
-                )
-            }
-        }
-    }
-
-    @Test
     fun `machine labels reject every display-unsafe control family at ingress`() {
         assertEquals("Devbox", requireNotNull(MachineLabel.parse("Devbox")).text)
 
@@ -488,8 +430,7 @@ class ProductContractTest {
                     "identityToken":"v1-0123456789abcdef0123456789abcdef.100.200.1",
                     "character":{"key":"norse.durinn","displayName":"Durinn"},
                     "launchProfile":null,
-                    "attachedClients":1,
-                    "activity":"Quiet"
+                    "attachedClients":1
                   }]
                 }
                 """.trimIndent(),
@@ -570,17 +511,16 @@ class ProductContractTest {
         """{"unsupported":["cpuPsiSomeAvg60Percent","ioPsiFullAvg60Percent","memoryAvailablePercent","memoryPsiFullAvg60Percent"],"current":{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm","phase":"Steady","reasons":["Memory"],"signals":{"cpuPercent":{"value":12.5,"state":"Informational"},"normalizedLoad":{"value":0.4,"state":"Normal"},"swapUsedPercent":{"value":0.0,"state":"Informational"},"diskAvailablePercent":{"value":60.0,"state":"Normal"},"memoryPressure":{"value":"Warning","state":"Warm"}},"missing":[]},"history":[{"sampledAt":"2026-08-25T12:00:00Z","level":"Warm"}]}"""
 
     private fun inventorySession(tmuxId: String, tmuxName: String, identityToken: String): String =
-        activitySession(tmuxId, tmuxName, identityToken, "Quiet")
+        namedSession(tmuxId, tmuxName, identityToken)
 
-    private fun activitySession(
+    private fun namedSession(
         tmuxId: String,
         tmuxName: String,
         identityToken: String,
-        activity: String,
         agent: String? = null,
     ): String {
-        val encodedAgent = agent?.let { ",\"agent\":$it" }.orEmpty()
-        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1,"activity":"$activity"$encodedAgent}"""
+        val encodedAgent = agent?.let { ",\"agent\":${agentFixtureJson(it)}" }.orEmpty()
+        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":1$encodedAgent}"""
     }
 
     private fun inventoryWithSessions(vararg sessions: String): String =

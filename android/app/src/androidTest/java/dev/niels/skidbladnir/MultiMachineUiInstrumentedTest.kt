@@ -1862,8 +1862,8 @@ class MultiMachineUiInstrumentedTest {
             identityToken = "v1-0123456789abcdef0123456789abcdef.100.200.1",
             character = CharacterSummary("norse.durinn", "Durinn"),
             attachedClients = 1,
-            activity = SessionActivity.Active,
-            agent = AgentRuntime(AgentProvider.Codex, pid = 1234),
+
+            agent = agentRuntimeFixture(AgentProvider.Codex, pid = 1234),
         )
         val target = SessionTarget(handle, session)
         val stale = MachineState(
@@ -1912,7 +1912,7 @@ class MultiMachineUiInstrumentedTest {
             compose.onNodeWithTag("kill-confirm").assertIsNotEnabled()
             compose.onNodeWithText("Cancel").assertIsEnabled()
             compose.onNodeWithText(
-                "Devbox inventory is not fresh. Kill is disabled. " +
+                "Devbox inventory is not fresh. Stop is disabled. " +
                     "Cancel, return to Dwarves, then pull down to check again.",
             ).assertIsDisplayed()
         }
@@ -1992,8 +1992,8 @@ class MultiMachineUiInstrumentedTest {
         character = CharacterSummary("dwarf-$index", "Dwarf $index"),
         launchProfile = TEST_PROFILE.key,
         attachedClients = 0,
-        activity = SessionActivity.Active,
-        agent = AgentRuntime(AgentProvider.Codex, pid = 1234, profile = TEST_PROFILE.key),
+
+        agent = agentRuntimeFixture(AgentProvider.Codex, pid = 1234, profile = TEST_PROFILE.key),
     )
 
     private fun cardTag(session: TmuxSession) =

@@ -1,5 +1,10 @@
 # Skíðblaðnir v0: product and architecture
 
+the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
+scoped upgrade now being implemented. its explicit v1 deltas supersede conflicting v0 restrictions
+when implementing that target; runtime acceptance is recorded separately.
+unrelated terminal/platform rules and historical evidence retain their meaning.
+
 The 2026-09-08 [readable terminal sizing](terminal-readable-sizing.md) target
 replaces the 80-column/protected-desktop sizing contract with chosen phone text
 size and tmux latest-client sizing. Its implementation landed 2026-09-08 and is
@@ -910,12 +915,11 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder (deliberately not in v0)
 
-No push or semantic agent-state step is scheduled. A useful push notification
-would require an accepted unread-result source; tmux recency alone cannot prove
-one. Provider interaction, next-move ownership, unread results, authenticated
-provenance, exactly-once attention, durable provider-session history, receipts,
-and replay return only through a new architecture decision for a concrete user
-action. Nothing in v0 scaffolds for it.
+the [agent-control target](agent-control.md) is the accepted upgrade being implemented
+for semantic status, provider reads, and cross-agent interaction. it owns its
+scope and acceptance criteria; opaque-agent and activity-only rules describe v0,
+not that target. push, unread-result attention, provenance, copied provider
+history, durable receipts, and replay remain outside the target.
 
 ## 9. Verification
 

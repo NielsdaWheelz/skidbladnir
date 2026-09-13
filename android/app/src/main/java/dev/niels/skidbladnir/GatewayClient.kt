@@ -195,6 +195,23 @@ internal class GatewayClient(
         )
     }
 
+    fun interruptAgent(credential: MachineCredential, target: SessionTarget): GatewayResult<AgentInterruptResult> = executeJson(
+        request = agentRequest(credential, target, "interrupt"), expectedStatus = 200,
+        decode = ::decodeAgentInterruptResult, decodeFailure = ::decodeAgentHttpFailure,
+    )
+
+    fun stopAgent(credential: MachineCredential, target: SessionTarget): GatewayResult<AgentStopResult> = executeJson(
+        request = agentRequest(credential, target, "stop"), expectedStatus = 200,
+        decode = ::decodeAgentStopResult, decodeFailure = ::decodeAgentHttpFailure,
+    )
+
+    internal fun agentRequest(credential: MachineCredential, target: SessionTarget, operation: String): Request {
+        require(target.machineHandle == credential.machine.handle)
+        require(operation == "interrupt" || operation == "stop")
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "agent", operation))
+            .post(encodeAgentControlRequest(target).toRequestBody(jsonMediaType)).build()
+    }
+
     fun killSession(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> {
         require(target.machineHandle == credential.machine.handle)
         return executeBodyless(killRequest(credential, target), ::decodeKillHttpFailure)
@@ -493,7 +510,23 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.SessionGroupedConflict,
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
+    ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentBlocked -> 409
+    ApiErrorCode.AgentUnavailable -> 503
+    ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
     ApiErrorCode.InternalError -> 500
     ApiErrorCode.ReconnectRequired -> throw SerializationException("terminal error has no HTTP status")
+}
+
+@Serializable
+private data class AgentErrorResponse(val code: String, val message: String, val dispatch: String)
+
+internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
+    val value = strictJsonObject(encoded)
+    if ("dispatch" !in value) return@decodeProtocol decodeKillHttpFailure(status, encoded)
+    val error = productJson.decodeFromJsonElement<AgentErrorResponse>(value)
+    val code = parseApiErrorCode(error.code)
+    require(code in setOf(ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid))
+    require(error.dispatch == "not_sent" && status == apiErrorHttpStatus(code) && error.message == apiErrorMessage(code))
+    GatewayFailure.Api(code)
 }

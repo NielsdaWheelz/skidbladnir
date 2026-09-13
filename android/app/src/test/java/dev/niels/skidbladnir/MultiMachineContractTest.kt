@@ -148,20 +148,20 @@ class MultiMachineContractTest {
         val authRequired = machine("mh-00000000000000000000000000000005", "Aardvark")
         val exactAlphaState = readyMachine(
             exactAlpha,
-            activitySession(tmuxId(3), "aardvark", "Active"),
-            activitySession(tmuxId(2), "work", "Quiet"),
-            activitySession(tmuxId(1), "Work", "Quiet"),
-            activitySession(tmuxId(0), "Work", "Quiet"),
+            namedSession(tmuxId(3), "aardvark"),
+            namedSession(tmuxId(2), "work"),
+            namedSession(tmuxId(1), "Work"),
+            namedSession(tmuxId(0), "Work"),
         )
         val laterHandleState = readyMachine(
             laterHandle,
-            activitySession(tmuxId(4), "Work", "Quiet"),
+            namedSession(tmuxId(4), "Work"),
         )
         val caseAlphaState = readyMachine(
             caseAlpha,
-            activitySession(tmuxId(5), "Work", "Quiet"),
+            namedSession(tmuxId(5), "Work"),
         )
-        val freshStale = readyMachine(stale, activitySession(tmuxId(6), "z-retained", "Active"))
+        val freshStale = readyMachine(stale, namedSession(tmuxId(6), "z-retained"))
         val staleState = freshStale.copy(
             inventory = InventoryState.Stale(
                 (freshStale.inventory as InventoryState.Fresh).snapshot,
@@ -170,19 +170,19 @@ class MultiMachineContractTest {
         )
         val authRequiredState = readyMachine(
             authRequired,
-            activitySession(tmuxId(7), "a-retained", "Quiet"),
+            namedSession(tmuxId(7), "a-retained"),
         ).copy(access = MachineAccess.AuthRequired)
 
         assertEquals(
             listOf(
+                "Aardvark/${stale.handle.encoded}/z-retained/${tmuxId(6)}",
+                "Aardvark/${authRequired.handle.encoded}/a-retained/${tmuxId(7)}",
+                "Alpha/${exactAlpha.handle.encoded}/aardvark/${tmuxId(3)}",
                 "Alpha/${exactAlpha.handle.encoded}/Work/${tmuxId(0)}",
                 "Alpha/${exactAlpha.handle.encoded}/Work/${tmuxId(1)}",
                 "Alpha/${exactAlpha.handle.encoded}/work/${tmuxId(2)}",
                 "Alpha/${laterHandle.handle.encoded}/Work/${tmuxId(4)}",
                 "alpha/${caseAlpha.handle.encoded}/Work/${tmuxId(5)}",
-                "Alpha/${exactAlpha.handle.encoded}/aardvark/${tmuxId(3)}",
-                "Aardvark/${stale.handle.encoded}/z-retained/${tmuxId(6)}",
-                "Aardvark/${authRequired.handle.encoded}/a-retained/${tmuxId(7)}",
             ),
             visibleSessions(
                 listOf(authRequiredState, caseAlphaState, staleState, laterHandleState, exactAlphaState),
@@ -859,7 +859,7 @@ class MultiMachineContractTest {
         assertEquals(macBookHandle.encoded, terminal.header("Skidbladnir-Machine"))
         assertTrue(target.session.identityToken == terminal.header("Skidbladnir-Session-Identity"))
         assertEquals(macBookHandle.encoded, kill.header("Skidbladnir-Machine"))
-        assertEquals("Kill ga-durinn on MacBook?", killConfirmationTitle(macBook.label, target))
+        assertEquals("Stop ga-durinn on MacBook?", killConfirmationTitle(macBook.label, target))
 
         val ipv6 = macBook.copy(origin = requireNotNull(MachineOrigin.parse("https://[FD7A:115C:A1E0::1]:8443")))
         val ipv6Request = client.terminalRequest(MachineCredential(ipv6, bearer), target)
@@ -1007,7 +1007,7 @@ class MultiMachineContractTest {
         val authoritative = original.copy(
             tmuxName = "review_ready",
             attachedClients = 2,
-            activity = SessionActivity.Active,
+
         )
         val adopted = reconcileTerminalRename(
             reconcilingTerminal.copy(machine = readyMachine(devbox, authoritative)),
@@ -1172,13 +1172,12 @@ class MultiMachineContractTest {
     private fun inventoryJson(handle: MachineHandle, platform: String): String =
         """{"machine":{"handle":"${handle.encoded}","platform":"$platform"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[]}"""
 
-    private fun activitySession(
+    private fun namedSession(
         tmuxId: String,
         tmuxName: String,
-        activity: String,
     ): TmuxSession {
         val session =
-            """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"token-$tmuxId","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0,"activity":"$activity"}"""
+            """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"token-$tmuxId","character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0}"""
         return decodeSessionsResponse(
             """{"machine":{"handle":"${devboxHandle.encoded}","platform":"Linux"},"observedAt":"2026-08-26T12:00:00Z","profiles":[{"key":"personal","label":"Codex · Personal","provider":"Codex"}],"sessions":[$session]}""",
         ).sessions.single()
@@ -1198,8 +1197,8 @@ class MultiMachineContractTest {
         cwd = "/src/skidbladnir",
         activeCommand = "codex",
         attachedClients = 1,
-        activity = SessionActivity.Quiet,
-        agent = AgentRuntime(AgentProvider.Codex, pid = 1234, profile = personal),
+
+        agent = agentRuntimeFixture(AgentProvider.Codex, pid = 1234, profile = personal),
     )
 
     private fun pressureJson(unsupported: String, metrics: String): String {

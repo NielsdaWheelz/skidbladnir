@@ -128,32 +128,8 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	// One clock for the whole projection, minted only once the snapshot and the
 	// server identity that produced it are both validated.
 	observedAt := time.Now().UTC()
-	projected := make([]inspectedSession, 0, len(observations))
-	reconciled := false
+	sessions := make([]Session, 0, len(observations))
 	for _, observation := range observations {
-		session, projectErr := projectSession(observation, observedAt)
-		if projectErr != nil {
-			present, reconcileErr := manager.classifyRequiredObservationFailure(
-				ctx, observation.session.TmuxID, projectErr,
-			)
-			if reconcileErr != nil {
-				return Inventory{}, reconcileErr
-			}
-			if !present {
-				reconciled = true
-				continue
-			}
-		}
-		observation.session = session
-		projected = append(projected, observation)
-	}
-	if reconciled {
-		if err := manager.requireServerIdentity(ctx, server); err != nil {
-			return Inventory{}, err
-		}
-	}
-	sessions := make([]Session, 0, len(projected))
-	for _, observation := range projected {
 		sessions = append(sessions, manager.enrichSession(ctx, observation))
 	}
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
@@ -275,18 +251,7 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 		return ObservedSession{}, err
 	}
 	observedAt := time.Now().UTC()
-	projected, err := projectSession(session, observedAt)
-	if err != nil {
-		present, reconcileErr := manager.classifyRequiredObservationFailure(ctx, observed.id, err)
-		if reconcileErr != nil {
-			return ObservedSession{}, reconcileErr
-		}
-		if !present {
-			return ObservedSession{}, errors.New("created tmux session is absent from inventory")
-		}
-	}
-	session.session = projected
-	projected = manager.enrichSession(ctx, session)
+	projected := manager.enrichSession(ctx, session)
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return ObservedSession{}, err
 	}
@@ -311,7 +276,10 @@ func mapWorkingDirectoryError(err error) error {
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
+	return manager.kill(ctx, input, nil)
+}
 
+func (manager *Manager) kill(ctx context.Context, input KillInput, target *AgentTarget) error {
 	identity, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	if err != nil {
 		return err
@@ -322,6 +290,11 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	identity, err = manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	if err != nil {
 		return err
+	}
+	if target != nil {
+		if _, err := manager.agentTerminalKillInput(ctx, *target); err != nil {
+			return err
+		}
 	}
 	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.TmuxID, input.TmuxName, identity.server)
 	if err != nil {
@@ -502,28 +475,23 @@ func (manager *Manager) inspectRequired(
 		IdentityToken: identityToken, Character: observed.character,
 	}}
 	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", observed.id,
-		"#{session_id}|#{pane_id}|#{pane_pid}|#{window_activity}|#{session_attached}|#{session_group_attached}")
+		"#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}|#{session_group_attached}")
 	if err != nil {
 		return manager.reconcileFailedInspection(ctx, observed.id, fmt.Errorf("read required tmux card anchor: %w", err))
 	}
 	fields := strings.Split(anchor, "|")
-	if len(fields) != 6 || fields[0] != observed.id {
+	if len(fields) != 5 || fields[0] != observed.id {
 		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
 	}
-	activity, err := parseActivitySecond(fields[3])
-	if err != nil {
-		return manager.reconcileFailedInspection(ctx, observed.id, err)
-	}
-	inspected.activitySecond = activity
 	if !paneIDPattern.MatchString(fields[1]) {
 		return inspected, true, nil
 	}
 	panePID, paneErr := strconv.Atoi(fields[2])
-	attached, attachedErr := strconv.Atoi(fields[4])
+	attached, attachedErr := strconv.Atoi(fields[3])
 	groupAttached := attached
 	var groupErr error
-	if fields[5] != "" {
-		groupAttached, groupErr = strconv.Atoi(fields[5])
+	if fields[4] != "" {
+		groupAttached, groupErr = strconv.Atoi(fields[4])
 	}
 	if paneErr != nil || panePID <= 0 || attachedErr != nil || attached < 0 || groupErr != nil || groupAttached < 0 {
 		return inspected, true, nil
@@ -540,9 +508,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 		return session
 	}
 	session.AttachedClients = inspected.attachedClients
-	// justify-ignore-error: after the required current-window activity is valid,
-	// every remaining field is optional card metadata. A failed read omits only
-	// that field and cannot manufacture or suppress activity.
+	// justify-ignore-error: optional pane metadata does not suppress an ordinary terminal.
 	if cwd, readErr := manager.tmux.Output(ctx, "read-pane-cwd", "display-message", "-p", "-t", inspected.paneID, "#{pane_current_path}"); readErr == nil {
 		session.CWD = cwd
 	}
@@ -565,33 +531,25 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	if observedRegistration, optionErr := manager.paneOption(ctx, inspected.paneID, agentruntime.PaneOption); optionErr == nil {
 		registration = observedRegistration
 	}
-	// justify-ignore-error: process identity is optional card metadata. An exited
-	// process or unstable read omits agent identity without changing the required
-	// activity observation.
+	// justify-ignore-error: an exited or unstable foreground process omits optional agent identity.
 	foreground, observeErr := processinfo.ObserveForeground(inspected.panePID)
 	if observeErr != nil {
 		foreground = processinfo.Observation{}
+	} else {
+		session.foreground = &foreground
 	}
 	session.Agent = deriveAgent(manager.profiles, foreground, registration)
+	if session.Agent != nil {
+		session.Agent.PaneID = inspected.paneID
+	}
 	return session
 }
 
 type inspectedSession struct {
 	session         Session
-	activitySecond  activitySecond
 	paneID          string
 	panePID         processinfo.PID
 	attachedClients int
-}
-
-func projectSession(inspected inspectedSession, observedAt time.Time) (Session, error) {
-	activity, err := deriveActivity(inspected.activitySecond, observedAt)
-	if err != nil {
-		return Session{}, err
-	}
-	projected := inspected.session
-	projected.Activity = activity
-	return projected, nil
 }
 
 func (manager *Manager) reconcileFailedInspection(

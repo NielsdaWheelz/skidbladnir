@@ -20,7 +20,7 @@ class AgentIdentityContractTest {
         )
         assertEquals(workProfile, inventory.sessions[0].launchProfile)
         assertEquals(
-            AgentRuntime(
+            agentRuntimeFixture(
                 provider = AgentProvider.Codex,
                 pid = 1234,
                 profile = workProfile,
@@ -31,7 +31,7 @@ class AgentIdentityContractTest {
         )
         assertEquals(claudeWorkProfile, inventory.sessions[1].launchProfile)
         assertEquals(
-            AgentRuntime(
+            agentRuntimeFixture(
                 provider = AgentProvider.Claude,
                 pid = 2345,
                 profile = claudeWorkProfile,
@@ -40,7 +40,7 @@ class AgentIdentityContractTest {
             inventory.sessions[1].agent,
         )
         assertEquals(
-            AgentRuntime(
+            agentRuntimeFixture(
                 AgentProvider.Claude,
                 3456,
                 providerSession = ProviderSessionFacts.withName("raw-claude"),
@@ -52,7 +52,7 @@ class AgentIdentityContractTest {
         assertNull(inventory.sessions[3].agent)
         assertNull(inventory.sessions[4].launchProfile)
         assertNull(inventory.sessions[4].agent)
-        assertEquals(List(5) { SessionActivity.Quiet }, inventory.sessions.map(TmuxSession::activity))
+
     }
 
     @Test
@@ -163,21 +163,12 @@ class AgentIdentityContractTest {
     }
 
     @Test
-    fun `optional agent identity is orthogonal to activity and profile presentation`() {
-        val activeWithAgent = decodeInventorySession(
-            tmuxSession(activity = "Active", agent = """{"provider":"Codex","pid":1234}"""),
-        )
-        val activeWithoutAgent = decodeInventorySession(tmuxSession(activity = "Active"))
-        val quietWithAgent = decodeInventorySession(
-            tmuxSession(activity = "Quiet", agent = """{"provider":"Codex","pid":1234}"""),
-        )
+    fun `optional agent identity preserves profile presentation`() {
+        val withAgent = decodeInventorySession(tmuxSession(agent = """{"provider":"Codex","pid":1234}"""))
+        val shell = decodeInventorySession(tmuxSession())
         val profiles = listOf(ProfileChoice(workProfile, "Codex · Work", AgentProvider.Codex))
-
-        assertEquals(SessionActivity.Active, activeWithAgent.activity)
-        assertEquals(SessionActivity.Active, activeWithoutAgent.activity)
-        assertEquals(SessionActivity.Quiet, quietWithAgent.activity)
-        assertEquals("Codex · profile unknown", sessionProfileLabel(activeWithAgent, profiles))
-        assertEquals("Codex · Work", sessionProfileLabel(activeWithoutAgent, profiles))
+        assertEquals("Codex · profile unknown", sessionProfileLabel(withAgent, profiles))
+        assertEquals("Codex · Work", sessionProfileLabel(shell, profiles))
     }
 
     @Test
@@ -252,12 +243,11 @@ class AgentIdentityContractTest {
         tmuxName: String = "fixture",
         identityToken: String = "fixture-token",
         launchProfile: String? = "work",
-        activity: String = "Quiet",
         agent: String? = null,
     ): String {
         val launchProfileField = launchProfile?.let { ""","launchProfile":"$it"""" }.orEmpty()
-        val agentField = agent?.let { ",\"agent\":$it" }.orEmpty()
-        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken"$launchProfileField,"character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0,"activity":"$activity"$agentField}"""
+        val agentField = agent?.let { ",\"agent\":${agentFixtureJson(it)}" }.orEmpty()
+        return """{"tmuxId":"$tmuxId","tmuxName":"$tmuxName","identityToken":"$identityToken"$launchProfileField,"character":{"key":"norse.durinn","displayName":"Durinn"},"attachedClients":0$agentField}"""
     }
 
     private companion object {

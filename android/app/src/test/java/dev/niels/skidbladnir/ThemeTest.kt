@@ -6,34 +6,12 @@ import org.junit.Test
 
 class ThemeTest {
     @Test
-    fun `session activity copy is exact and retained values are qualified`() {
-        assertEquals(
-            SessionActivityContent("ACTIVE", "Recent tmux activity at the last check"),
-            sessionActivityContent(SessionActivity.Active, fresh = true),
-        )
-        assertEquals(
-            SessionActivityContent("QUIET", "No recent tmux activity at the last check"),
-            sessionActivityContent(SessionActivity.Quiet, fresh = true),
-        )
-        assertEquals(
-            SessionActivityContent("ACTIVE", "Last observed: recent tmux activity"),
-            sessionActivityContent(SessionActivity.Active, fresh = false),
-        )
-        assertEquals(
-            SessionActivityContent("QUIET", "Last observed: no recent tmux activity"),
-            sessionActivityContent(SessionActivity.Quiet, fresh = false),
-        )
-    }
-
-    @Test
-    fun `session activity tones map to the normative design tokens`() {
-        assertEquals(
-            mapOf(
-                SessionActivity.Active to Moss,
-                SessionActivity.Quiet to Muted,
-            ),
-            SessionActivity.entries.associateWith(::sessionActivityColor),
-        )
+    fun `status distinguishes inferred and retained observations`() {
+        val native = AgentStatus(AgentState.Blocked, AgentMethod.Native)
+        val inferred = AgentStatus(AgentState.Working, AgentMethod.Terminal)
+        assertEquals(SessionStatusContent("BLOCKED", "blocked"), sessionStatusContent(native, true))
+        assertEquals(SessionStatusContent("WORKING · inferred", "Last observed: working · inferred"), sessionStatusContent(inferred, false))
+        assertEquals(SessionStatusContent("TERMINAL", "terminal"), sessionStatusContent(null, true))
     }
 
     @Test

@@ -27,11 +27,10 @@ import (
 )
 
 const (
-	sleepPath                  = "/bin/sleep"
-	yoloFlag                   = "--dangerously-bypass-approvals-and-sandbox"
-	tmuxConvergenceTimeout     = 5 * time.Second
-	activityConvergenceTimeout = 15 * time.Second
-	tmuxCleanupTimeout         = 3 * time.Second
+	sleepPath              = "/bin/sleep"
+	yoloFlag               = "--dangerously-bypass-approvals-and-sandbox"
+	tmuxConvergenceTimeout = 5 * time.Second
+	tmuxCleanupTimeout     = 3 * time.Second
 
 	// justify-polling: tmux and launched processes expose state only through
 	// their external query boundaries; 25 ms keeps the bounded integration
@@ -899,87 +898,26 @@ exec %s "$@"
 		}
 	})
 
-	t.Run("current-window tmux activity is the complete provider-neutral card state", func(t *testing.T) {
-		fixture.tmux(t, "new-session", "-d", "-s", "activity-shell", "-c", fixture.project, "--", "/bin/sh")
+	t.Run("inventory preserves existing terminal options", func(t *testing.T) {
+		fixture.tmux(t, "new-session", "-d", "-s", "inventory-shell", "-c", fixture.project, "--", "/bin/sh")
 		listed, err := fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatalf("list initial generic-shell activity: %v", err)
+			t.Fatal("list generic shell")
 		}
-		initial := requireSessionNamed(t, listed, "activity-shell")
-		if initial.Activity != sessions.SessionActivityActive {
-			t.Fatalf("new generic-shell window activity = %q, want Active", initial.Activity)
-		}
-		beforeActivity := fixture.tmux(t, "display-message", "-p", "-t", initial.TmuxID, "#{window_activity}")
+		initial := requireSessionNamed(t, listed, "inventory-shell")
 		beforeCharacter := fixture.tmux(t, "show-options", "-qv", "-t", initial.TmuxID, "@skid_character")
 		beforeOptions := sessionNonCharacterSnapshot(t, fixture, initial.TmuxID)
-		beforeMonitor := fixture.tmux(t, "show-options", "-wv", "-t", initial.TmuxID, "monitor-activity") + "|" +
-			fixture.tmux(t, "show-options", "-wv", "-t", initial.TmuxID, "monitor-silence")
 		for range 2 {
 			if _, err := fixture.manager.List(ctx); err != nil {
-				t.Fatalf("repeat read-only activity inventory: %v", err)
+				t.Fatal("repeat inventory")
 			}
 		}
-		if afterActivity := fixture.tmux(t, "display-message", "-p", "-t", initial.TmuxID, "#{window_activity}"); afterActivity != beforeActivity {
-			t.Fatalf("inventory read changed tmux window_activity: before=%q after=%q", beforeActivity, afterActivity)
+		if after := fixture.tmux(t, "show-options", "-qv", "-t", initial.TmuxID, "@skid_character"); after != beforeCharacter {
+			t.Fatal("inventory changed the existing character")
 		}
-		if afterCharacter := fixture.tmux(t, "show-options", "-qv", "-t", initial.TmuxID, "@skid_character"); afterCharacter != beforeCharacter {
-			t.Fatalf("inventory read changed the existing character: before=%q after=%q", beforeCharacter, afterCharacter)
+		if after := sessionNonCharacterSnapshot(t, fixture, initial.TmuxID); after != beforeOptions {
+			t.Fatal("inventory mutated terminal structure or options")
 		}
-		if afterOptions := sessionNonCharacterSnapshot(t, fixture, initial.TmuxID); afterOptions != beforeOptions {
-			t.Fatal("activity inventory mutated tmux structure or options")
-		}
-		afterMonitor := fixture.tmux(t, "show-options", "-wv", "-t", initial.TmuxID, "monitor-activity") + "|" +
-			fixture.tmux(t, "show-options", "-wv", "-t", initial.TmuxID, "monitor-silence")
-		if afterMonitor != beforeMonitor {
-			t.Fatalf("activity inventory changed monitor options: before=%q after=%q", beforeMonitor, afterMonitor)
-		}
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityQuiet, "activity-shell")
-		fixture.tmux(t, "new-window", "-d", "-t", "activity-shell", "-n", "other", "-c", fixture.project, "--", "/bin/sh")
-		otherPane := fixture.tmux(t, "display-message", "-p", "-t", "activity-shell:other", "#{pane_id}")
-		fixture.tmux(t, "send-keys", "-t", otherPane, "-l", "printf other-window-output")
-		fixture.tmux(t, "send-keys", "-t", otherPane, "Enter")
-		listed, err = fixture.manager.List(ctx)
-		if err != nil {
-			t.Fatalf("list after non-current-window output: %v", err)
-		}
-		if activity := requireSessionNamed(t, listed, "activity-shell").Activity; activity != sessions.SessionActivityQuiet {
-			t.Fatalf("non-current-window output changed current-window activity to %q", activity)
-		}
-
-		fixture.tmux(t, "select-window", "-t", "activity-shell:other")
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityActive, "activity-shell")
-		fixture.tmux(t, "select-window", "-t", "activity-shell:0")
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityActive, "activity-shell")
-
-		siblingPane := fixture.tmux(t, "split-window", "-d", "-P", "-F", "#{pane_id}", "-t", "activity-shell:0", "-c", fixture.project, "--", "/bin/sh")
-		fixture.tmux(t, "new-session", "-d", "-t", "activity-shell", "-s", "activity-link")
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityQuiet, "activity-shell", "activity-link")
-		fixture.tmux(t, "send-keys", "-t", siblingPane, "-l", "printf sibling-pane-output")
-		fixture.tmux(t, "send-keys", "-t", siblingPane, "Enter")
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityActive, "activity-shell", "activity-link")
-
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityQuiet, "activity-shell", "activity-link")
-		outputDone := make(chan error, 1)
-		go func() {
-			_, commandErr := isolatedTmuxCommand(
-				tmuxPath, "-L", fixture.socket, "-f", "/dev/null",
-				"send-keys", "-t", siblingPane, "-l", "printf concurrent-output", ";",
-				"send-keys", "-t", siblingPane, "Enter",
-			).CombinedOutput()
-			outputDone <- commandErr
-		}()
-		concurrent, err := fixture.manager.List(ctx)
-		if err != nil {
-			t.Fatalf("inventory concurrent with generic-shell output: %v", err)
-		}
-		concurrentActivity := requireSessionNamed(t, concurrent, "activity-shell").Activity
-		if concurrentActivity != sessions.SessionActivityActive && concurrentActivity != sessions.SessionActivityQuiet {
-			t.Fatalf("concurrent output produced activity outside the closed union: %q", concurrentActivity)
-		}
-		if commandErr := <-outputDone; commandErr != nil {
-			t.Fatal("emit concurrent generic-shell output")
-		}
-		fixture.waitForActivities(t, ctx, sessions.SessionActivityActive, "activity-shell", "activity-link")
 	})
 
 	t.Run("phone shadows are excluded while reclaimed last links receive characters", func(t *testing.T) {
@@ -1042,7 +980,7 @@ exec %s "$@"
 		}
 	})
 
-	t.Run("an enumerated dead pane keeps activity while omitting agent identity", func(t *testing.T) {
+	t.Run("an enumerated dead pane remains visible without agent identity", func(t *testing.T) {
 		fixture.tmux(t, "new-session", "-d", "-s", "unobservable", "-c", fixture.project, "--", "/bin/sh")
 		fixture.tmux(t, "set-option", "-w", "-t", "unobservable", "remain-on-exit", "on")
 		fixture.tmux(t, "send-keys", "-t", "unobservable", "exit", "Enter")
@@ -1055,9 +993,6 @@ exec %s "$@"
 		requireValidCharacter(t, unobservable)
 		if unobservable.Agent != nil {
 			t.Fatalf("dead pane projected optional agent identity: %+v", unobservable.Agent)
-		}
-		if unobservable.Activity != sessions.SessionActivityActive && unobservable.Activity != sessions.SessionActivityQuiet {
-			t.Fatalf("dead pane activity escaped the closed union: %q", unobservable.Activity)
 		}
 	})
 
@@ -1669,8 +1604,7 @@ func (fixture sessionFixture) attachClient(t *testing.T, session string) {
 	})
 }
 
-// waitForAgent observes process-start convergence; it never participates in
-// terminal-activity derivation.
+// waitForAgent observes process-start convergence.
 func (fixture sessionFixture) waitForAgent(t *testing.T, ctx context.Context, name string) sessions.Session {
 	t.Helper()
 	deadline := time.Now().Add(tmuxConvergenceTimeout)
@@ -1695,46 +1629,6 @@ func (fixture sessionFixture) waitForAgent(t *testing.T, ctx context.Context, na
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("session %s did not project agent identity", name)
-		}
-		time.Sleep(tmuxConvergencePollInterval)
-	}
-}
-
-// waitForActivities waits only for the host's fixed activity window to cross
-// or for emitted terminal output to become observable through the next poll.
-func (fixture sessionFixture) waitForActivities(
-	t *testing.T,
-	ctx context.Context,
-	want sessions.SessionActivity,
-	names ...string,
-) sessions.Inventory {
-	t.Helper()
-	deadline := time.Now().Add(activityConvergenceTimeout)
-	for {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			t.Fatalf("activity convergence exceeded %s: want=%s sessions=%v", activityConvergenceTimeout, want, names)
-		}
-		pollContext, cancel := context.WithTimeout(ctx, remaining)
-		listed, err := fixture.manager.List(pollContext)
-		pollContextError := pollContext.Err()
-		cancel()
-		if err != nil {
-			if errors.Is(pollContextError, context.DeadlineExceeded) {
-				t.Fatalf("activity convergence exceeded %s: want=%s sessions=%v", activityConvergenceTimeout, want, names)
-			}
-			t.Fatalf("list while waiting for %s activity: %v", want, err)
-		}
-		converged := true
-		for _, name := range names {
-			observed := requireSessionNamed(t, listed, name)
-			if observed.Activity != sessions.SessionActivityActive && observed.Activity != sessions.SessionActivityQuiet {
-				t.Fatalf("session %s exposed activity outside the closed union: %q", name, observed.Activity)
-			}
-			converged = converged && observed.Activity == want
-		}
-		if converged {
-			return listed
 		}
 		time.Sleep(tmuxConvergencePollInterval)
 	}

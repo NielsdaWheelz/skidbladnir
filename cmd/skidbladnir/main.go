@@ -14,9 +14,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentcli"
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agenthook"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/gateway"
@@ -49,8 +52,18 @@ func main() {
 
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT|--client-config PATH agent OPERATION}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
+	}
+	if arguments[0] == "agent" || arguments[0] == "--client-config" || strings.HasPrefix(arguments[0], "--client-config=") {
+		flags := flag.NewFlagSet("agent", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		configPath := flags.String("client-config", "", "private fleet client configuration")
+		if err := flags.Parse(arguments); err != nil || *configPath == "" || flags.NArg() != 2 || flags.Arg(0) != "agent" {
+			_, _ = io.WriteString(stdout, "{\"ok\":false,\"error\":{\"code\":\"invalid_request\",\"dispatch\":\"not_sent\"}}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitFailure
+		}
+		return agentcli.Run(context.Background(), *configPath, flags.Arg(1), stdin, stdout)
 	}
 	if arguments[0] == "version" {
 		if len(arguments) != 1 {
@@ -297,11 +310,16 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	if err != nil {
 		return fmt.Errorf("initialize tmux sessions: %w", err)
 	}
+	agents, err := agentcontrol.New(manager, host.NativeControlPath)
+	if err != nil {
+		return fmt.Errorf("initialize agent control: %w", err)
+	}
 	monitor := pressure.NewMonitor()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go monitor.Run(ctx)
 	handler := gateway.New(gateway.Config{
+		Agents:   agents,
 		Sessions: manager,
 		Workdir:  workingDirectories,
 		Pressure: monitor,
