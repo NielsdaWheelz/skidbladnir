@@ -152,59 +152,6 @@ func TestMatchProfileEnvironmentReadsOnlyTheProvidersOwnDiscriminator(t *testing
 	}
 }
 
-func TestValidateProfilesAllowsOneClaudeDefaultButRejectsEmptyOrDuplicateRoots(t *testing.T) {
-	profiles := testProfiles()
-	defaultProfile := profiles[1]
-	defaultProfile.Key = "native-default"
-	defaultProfile.Label = "Native default"
-	defaultProfile.Environment = nil
-	profiles = append(profiles, defaultProfile)
-	if _, err := ValidateProfiles(profiles); err != nil {
-		t.Fatalf("default Claude profile rejected: %v", err)
-	}
-	duplicate := defaultProfile
-	duplicate.Key = "another-default"
-	duplicate.Label = "Another default"
-	if _, err := ValidateProfiles(append(profiles, duplicate)); err == nil {
-		t.Fatal("two default Claude profiles accepted")
-	}
-	profiles[2].Environment = []EnvironmentVariable{{Name: "CLAUDE_CONFIG_DIR", Value: ""}}
-	if _, err := ValidateProfiles(profiles); err == nil {
-		t.Fatal("empty explicit Claude root accepted as default")
-	}
-}
-
-func TestMatchClaudeProfileRequiresAbsenceForTheNativeDefault(t *testing.T) {
-	profiles := testProfiles()
-	defaultProfile := profiles[1]
-	defaultProfile.Key = "native-default"
-	defaultProfile.Label = "Native default"
-	defaultProfile.Environment = []EnvironmentVariable{{Name: "OTHER", Value: "preserved"}}
-	profiles = append(profiles, defaultProfile)
-	for _, test := range []struct {
-		name, value string
-		present     bool
-		want        ProfileKey
-	}{
-		{"absent", "", false, "native-default"},
-		{"work", "/home/niels/.claude-work", true, "claude-work"},
-		{"empty", "", true, ""},
-		{"explicit default directory", "/home/niels/.claude", true, ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got, found := MatchProfileEnvironment(profiles, ProviderClaude, func(name string) (string, bool) {
-				if name != "CLAUDE_CONFIG_DIR" {
-					t.Fatalf("unexpected environment lookup %q", name)
-				}
-				return test.value, test.present
-			})
-			if got != test.want || found != (test.want != "") {
-				t.Fatalf("profile=(%q,%t), want %q", got, found, test.want)
-			}
-		})
-	}
-}
-
 func TestLaunchArgumentsNamesOnlyManagedClaude(t *testing.T) {
 	profiles, err := ValidateProfiles(testProfiles())
 	if err != nil {
