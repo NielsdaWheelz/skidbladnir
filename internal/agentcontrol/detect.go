@@ -11,7 +11,7 @@ var (
 	workingChrome  = regexp.MustCompile(`^[•◦✻✽✶✳✢·] .+\([^\n]*esc to interrupt[^\n]*\)$`)
 	selectedChoice = regexp.MustCompile(`^[❯›] [1-9][0-9]*[.)] .+$`)
 	idleFooter     = regexp.MustCompile(`^\? for shortcuts(?:\s+[0-9]+% context left)?$`)
-	codexFooter    = regexp.MustCompile(`^gpt-[a-z0-9][a-z0-9._-]*(?: (?:none|minimal|low|medium|high|xhigh))?(?: fast)?(?: · (?:~(?:/[^\n]*)?|/[^\n]*))? · context [0-9]+% used(?: · (?:5h|weekly) [0-9]+% left)*$`)
+	codexFooter    = regexp.MustCompile(`^gpt-[a-z0-9][a-z0-9._-]*(?: (?:none|minimal|low|medium|high|xhigh))?(?: fast)?(?: · (?:~(?:/[^\n]*)?|/[^\n]*))? · context [0-9]+% used(?: · (?:5h|weekly) [0-9]+% left)*(?: · ← for agents)?$`)
 )
 
 // Detect uses anchored current interface chrome. Arbitrary titles and quoted
