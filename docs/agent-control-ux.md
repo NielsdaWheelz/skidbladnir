@@ -300,12 +300,11 @@ implementation spans new skid, jarvis, and dev-server worktrees on branch
 | boundary | current evidence |
 | --- | --- |
 | cli / tui / terminal bridge | local command, tls/http, authenticated websocket and real pty tests pass; includes multiline input, pinned confirmation, tea attach/detach/return, restored termios and joined input readers |
-| host / phone | static and unit gates pass, including android compile/lint and 112 unit tests; new real-tmux and device proofs compile but are `NOT_RUN` |
+| host / phone | static and unit gates pass, including android compile/lint and 112 unit tests; darwin isolated integration and arch direct-client live pass; full linux and device acceptance remain pending |
 | jarvis | 866 database-backed tests pass, five existing platform skips; final affected suite passes 62; type/lint checks pass; real owner/tool/provider journey is `NOT_RUN` |
 | installer / guide | full local suite passes; final installer suite passes 20 groups including activation and command-link failure rollback; live instruction discovery is `NOT_RUN` |
 | rollout | coordinated release, shadow drain by old gateways, all three peer routes, phone preservation, and unchanged unrelated lifetimes are `NOT_RUN` |
 
-acceptance a1–a9 is not yet complete. remaining real-boundary checks require
-current-turn tmux/device authorization under `AGENTS.md`; jarvis also requires
-a genuine owner-authored event. no machine, active tmux session, or provider
-service has been changed by this implementation turn.
+acceptance a1–a9 is not yet complete. the owner approved the remaining real-boundary
+checks and coordinated release/rollout. jarvis still requires a genuine
+owner-authored event. unrelated tmux sessions and provider services remain unchanged.

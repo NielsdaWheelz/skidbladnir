@@ -3,9 +3,10 @@
 in implementation: [usable agent client and direct attachment](agent-control-ux.md).
 the new branch contains the normal cli/tui, direct attachment, phone protocol,
 and matching jarvis/installer changes. local static and unit gates pass;
-adversarial boundary review is complete. isolated tmux, provider, phone, fleet,
-and owner-authored jarvis acceptance remain `NOT_RUN`, awaiting current-turn
-live/device authorization. v0.3.1 remains installed; no release pin has changed.
+adversarial boundary review is complete. approved darwin isolated integration and
+arch direct-client live checks pass after correcting test fixtures. full native
+linux qualification is in progress. provider, phone, fleet, and owner-authored
+jarvis acceptance remain pending. v0.3.1 remains installed; no release pin has changed.
 
 accepted target: [agent control](agent-control.md). immutable v0.3.1 is published
 at `ac1b2079af4a5db35509a7ed0607eea77448bb85`, pinned across both repositories,

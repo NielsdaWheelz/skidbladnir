@@ -88,6 +88,9 @@ func TestTmuxDirectClientBehavior(t *testing.T) {
 	server.start(t, rootDir, logA, logB)
 
 	rootBefore := server.panes(t)[server.root]
+	if len(rootBefore) != 2 {
+		t.Fatal("fixture did not create both panes")
+	}
 	laptop := startTmuxBehaviorClient(t, server, server.root)
 	phone := startTmuxBehaviorClient(t, server, server.root)
 	waitForClientCount(t, server, server.root, 2)
@@ -267,13 +270,13 @@ func (s *tmuxBehaviorServer) command(args ...string) ([]byte, error) {
 
 func (s *tmuxBehaviorServer) panes(t *testing.T) map[string][]tmuxBehaviorPane {
 	t.Helper()
-	format := "#{session_name}\t#{pane_id}\t#{pane_pid}\t#{pane_tty}"
+	format := "#{session_name}|#{pane_id}|#{pane_pid}|#{pane_tty}"
 	out := s.run(t, "list-panes", "-a", "-F", format)
 	result := map[string][]tmuxBehaviorPane{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		fields := strings.Split(line, "\t")
+		fields := strings.Split(line, "|")
 		if len(fields) != 4 || fields[0] == "" {
-			continue
+			t.Fatalf("malformed pane metadata: field_count=%d", len(fields))
 		}
 		pid, err := strconv.Atoi(fields[2])
 		if err != nil {
@@ -429,9 +432,9 @@ func assertSamePaneSet(t *testing.T, want, got []tmuxBehaviorPane, context strin
 
 func assertWindowActivePane(t *testing.T, server *tmuxBehaviorServer, index int) {
 	t.Helper()
-	out := strings.TrimSpace(server.run(t, "list-panes", "-t", server.root+":0", "-F", "#{pane_index}\t#{pane_active}"))
+	out := strings.TrimSpace(server.run(t, "list-panes", "-t", server.root+":0", "-F", "#{pane_index}|#{pane_active}"))
 	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Split(line, "\t")
+		fields := strings.Split(line, "|")
 		if len(fields) == 2 && fields[1] == "1" {
 			got, err := strconv.Atoi(fields[0])
 			if err != nil || got != index {
@@ -440,7 +443,7 @@ func assertWindowActivePane(t *testing.T, server *tmuxBehaviorServer, index int)
 			return
 		}
 	}
-	t.Fatal("tmux reported no active pane")
+	t.Fatalf("tmux reported no active pane: pane_flags=%q", out)
 }
 
 func waitForLog(t *testing.T, path, marker string) {

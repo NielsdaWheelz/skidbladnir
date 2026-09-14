@@ -296,6 +296,9 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 	}
 	disappearing := createdDisappearing.Session
 	fixture.tmux(t, "kill-session", "-t", disappearing.TmuxID)
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("unrelated fixture creation changed the rename snapshot before the missing-target request")
+	}
 	response = request(
 		t,
 		server.Client(),
@@ -1499,7 +1502,7 @@ func renameInvariantSnapshot(t *testing.T, fixture sessionFixture, tmuxID string
 	memberSet := make(map[string]struct{})
 	for _, line := range strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_group}"), "\n") {
 		fields := strings.SplitN(line, "|", 2)
-		if len(fields) == 2 && fields[1] == group {
+		if len(fields) == 2 && (fields[0] == tmuxID || group != "" && fields[1] == group) {
 			groupMembers = append(groupMembers, fields[0])
 			memberSet[fields[0]] = struct{}{}
 		}

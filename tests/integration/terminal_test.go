@@ -52,7 +52,10 @@ func TestTerminalWebSocketSharesSessionAndNavigation(t *testing.T) {
 	fixture.tmux(t, "select-pane", "-t", "shared-terminal:0.0")
 
 	source := terminalSource(t, fixture, "shared-terminal")
-	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
+	paneA := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0.0", "#{pane_id}")
+	paneB := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0.1", "#{pane_id}")
+	paneAPID, paneAStart := terminalPaneIdentity(t, fixture, paneA)
+	paneBPID, paneBStart := terminalPaneIdentity(t, fixture, paneB)
 	laptop := startTerminalLaptop(t, fixture, source.TmuxID, 120, 40)
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 1, terminalIntegrationTimeout)
 	laptopShapeBefore := terminalLaptopShape(t, fixture, laptop.command.Process.Pid)
@@ -124,7 +127,8 @@ func TestTerminalWebSocketSharesSessionAndNavigation(t *testing.T) {
 	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "1" {
 		t.Fatalf("phone detach changed the shared active pane: index=%s", active)
 	}
-	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
+	requireTerminalPaneIdentity(t, fixture, paneA, paneAPID, paneAStart)
+	requireTerminalPaneIdentity(t, fixture, paneB, paneBPID, paneBStart)
 	if _, err := laptop.Write([]byte("LAPTOP-A\r")); err != nil {
 		t.Fatal("write through surviving laptop client")
 	}
@@ -194,13 +198,14 @@ func TestTerminalRefusesUnsupportedSourceOptionsWithoutMutation(t *testing.T) {
 		t.Run(invalid.option, func(t *testing.T) {
 			fixture := newSessionFixture(t)
 			fixture.tmux(t, "new-session", "-d", "-s", "policy-source", "-x", "80", "-y", "24", "-c", fixture.project, "--", sleepPath, "300")
-			laptop := startTerminalLaptop(t, fixture, "policy-source", 80, 24)
+			source := terminalSource(t, fixture, "policy-source")
+			laptop := startTerminalLaptop(t, fixture, source.TmuxID, 80, 24)
+			waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 1, terminalIntegrationTimeout)
 			args := []string{"set-option", "-t", "policy-source"}
 			if invalid.window {
 				args = append(args, "-w")
 			}
 			fixture.tmux(t, append(args, invalid.option, invalid.value)...)
-			source := terminalSource(t, fixture, "policy-source")
 			panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
 			gatewayFixture := newTerminalGateway(t, fixture, nil)
 			optionsBefore := sessionNonCharacterSnapshot(t, fixture, source.TmuxID)
@@ -271,18 +276,22 @@ func TestTerminalLastClientDetachPreservesSession(t *testing.T) {
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "LAST-CLIENT")
 	source := terminalSource(t, fixture, "last-client")
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}")
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
 	sendInitialTerminalResize(t, connection, 300, 50)
 	requireTerminalHello(t, connection, 1)
 	waitForTerminalWindowSize(t, fixture, "last-client:0", 300, 50)
-	if got := fixture.tmux(t, "list-sessions", "-F", "#{session_id}"); got != source.TmuxID {
-		t.Fatal("attachment created a session")
+	if got := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}"); got != sessionsBefore {
+		t.Fatal("attachment changed the session set")
 	}
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
 	requireTerminalClosed(t, connection)
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 0, terminalIntegrationTimeout)
 	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
+	if got := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}"); got != sessionsBefore {
+		t.Fatal("last-client detach changed the session set")
+	}
 }
 
 func TestTerminalSessionSwitchEndsTheAddressedConnection(t *testing.T) {
