@@ -3339,9 +3339,9 @@ class TerminalInstrumentedTest {
             """{"kind":"ViewportTooSmall","extra":true}""",
             """{"kind":"Resize","columns":"40","rows":18}""",
             """{"kind":"Resize","columns":19,"rows":18}""",
-            """{"kind":"Resize","columns":241,"rows":18}""",
+            """{"kind":"Resize","columns":1025,"rows":18}""",
             """{"kind":"Resize","columns":40,"rows":4}""",
-            """{"kind":"Resize","columns":40,"rows":121}""",
+            """{"kind":"Resize","columns":40,"rows":513}""",
             """{"kind":"SelectionAvailable","anchorX":0.5,"anchorY":0.5,"text":"x"}""",
             """{"kind":"SelectionStarted","generation":1}""",
             """{"kind":"SelectionStarted","generation":"01"}""",
@@ -4355,14 +4355,14 @@ class TerminalInstrumentedTest {
     }
 
     private fun awaitLatestTerminalSize(caseId: String): Pair<Int, Int> {
-        var latest = awaitTerminalSize { it.first in 20..240 && it.second in 5..120 }
+        var latest = awaitTerminalSize { it.first in 20..1024 && it.second in 5..512 }
         val hardDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
         var quietDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250)
         while (System.nanoTime() < hardDeadline && System.nanoTime() < quietDeadline) {
             val sample = TerminalTestProbe.sizes.poll(50, TimeUnit.MILLISECONDS) ?: continue
             assertTrue(
                 "case=$caseId route=geometry sample-range",
-                sample.first in 20..240 && sample.second in 5..120,
+                sample.first in 20..1024 && sample.second in 5..512,
             )
             latest = sample
             quietDeadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(250)

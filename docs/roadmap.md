@@ -1,5 +1,13 @@
 # Skíðblaðnir v0 roadmap
 
+in implementation: [usable agent client and direct attachment](agent-control-ux.md).
+the new branch contains the normal cli/tui, direct attachment, phone protocol,
+and matching jarvis/installer changes. local static and unit gates pass;
+adversarial boundary review is complete. approved darwin isolated integration and
+arch direct-client live checks pass after correcting test fixtures. full native
+linux qualification is in progress. provider, phone, fleet, and owner-authored
+jarvis acceptance remain pending. v0.3.1 remains installed; no release pin has changed.
+
 accepted target: [agent control](agent-control.md). immutable v0.3.1 is published
 at `ac1b2079af4a5db35509a7ed0607eea77448bb85`, pinned across both repositories,
 and installed on all three gateways and clis, including jarvis's executable copy,
@@ -261,9 +269,9 @@ tmux sessions and reads its pressure.
   balanced Dvergatal assignment, user options set at create, YOLO exec.
 - `DELETE /v1/sessions/{tmuxId}`: inventory `identityToken` binds a random
   tmux-server epoch + built-in PID/start time + id; all lifetime facts, the
-  displayed name, ungrouped-or-last-link predicate, and `kill-session` share
-  one tmux client queue; owned stale phone shadows reconcile first, while any
-  remaining ordinary group fails closed.
+  displayed name, and `kill-session` share one tmux client queue. close owned
+  terminal connections before final revalidation/deletion. group membership
+  does not prevent deletion; sibling links and shared work can survive.
 - `GET /v1/pressure` with the proven thresholds.
 - `skid-notify` is a BEL-only terminal convenience with no product-state
   authority.
@@ -272,15 +280,15 @@ tmux sessions and reads its pressure.
   foreground provider origin.
 
 Red: a kill with a stale lifetime token (including server restart plus id/name
-reuse) destroys the wrong session; a grouped ordinary sibling lets Kill claim
-that surviving work ended; a non-allowlisted command launches; a bad
+reuse) destroys the wrong session; a grouped deletion destroys a sibling or
+claims surviving work ended; a non-allowlisted command launches; a bad
 cwd mutates state; an unauthenticated or
 off-Tailnet remote request reaches `/v1`; a laptop-created session is
 invisible or guessed at.
 
 Gate: unit + real-tmux integration on an isolated `-L` socket covering
-create/list/metadata/kill-exactness, stale-shadow recovery, ordinary-group
-refusal without mutation, a command-boundary name collision, and notify; no
+create/list/metadata/kill-exactness, grouped deletion with sibling preservation,
+a command-boundary name collision, and notify; no
 Android required.
 
 ## S2 — shared terminal
@@ -288,24 +296,21 @@ Android required.
 Outcome: a phone-shaped client attaches to any listed session while the
 laptop stays attached, then detaches leaving everything intact.
 
-- WSS endpoint per architecture §5: one PTY + gateway-owned phone client +
-  grouped shadow per connection; `active-pane`/`ignore-size`;
-  explicit tmux RGB client capability;
-  session/window-level targeting with later navigation through the phone PTY;
-  last-link guard; OWNER/CONSTRAINED presence; typed
-  `Reconnect required` on loss.
+- wss endpoint per architecture §5: one pty and direct tmux client per connection;
+  explicit rgb capability, shared navigation and latest-client geometry;
+  session-local attached-client count; typed reconnect-required on loss.
 - The inventory identity token travels in the non-query terminal header; one
-  tmux queue gates shadow creation, attachment, and attention clearing on the
-  exact server lifetime/id/name before any mutation.
+  tmux queue gates attachment on the exact server lifetime/id/name and supported
+  effective options. unsupported configuration fails before attachment.
 - One protocol-faithful non-Android test client.
 
-Red: attach steals or resizes the laptop's view or moves the shared active
-pane; detach or WSS teardown kills the source session; a slow client grows
+red: attach detaches another client or changes the selected window/pane as a
+handoff action; detach or wss teardown kills the source session; a slow client grows
 unbounded; bytes replay after reconnect.
 
-Gate: real-tmux proof with two live clients — source window active pane and
-laptop geometry byte-identical across phone attach/detach; last-link guard
-exercised; bounded backpressure.
+gate: real-tmux proof with two clients in the same session, shared navigation and
+measured geometry, client-only detach/shutdown, unsupported settings, source
+destruction, eventual session-switch detection, and bounded backpressure.
 
 ## S3 — Android dashboard
 

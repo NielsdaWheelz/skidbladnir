@@ -36,7 +36,7 @@ name. Claude/Codex provider names remain independent and are never synchronized.
   outcome-unknown and resolves only through inventory.
 - An unchanged desired name is not a transition: the UI disables submission;
   a direct request returns `409 SessionNameConflict` without mutation.
-- Rename one member of a tmux group without a Kill-style last-link guard.
+- rename one member of a tmux group without changing shared windows/processes.
 - Keep the active phone terminal attached and retarget its presentation only
   after inventory proves the same machine/id/token under the observed name.
 - Dashboard rename, Unicode/spaces, push eventing, and provider rename are not
@@ -150,11 +150,10 @@ server epoch + server PID + server start time
 + exact expected session_name
 ```
 
-The manager validates the desired name, token, current identity, and ordinary
-non-phone-shadow target. One tmux client command then queues:
+the manager validates the desired name, token, and current identity. One tmux client command then queues:
 
 ```text
-if exact lifetime/id/expected-name/ordinary-session
+if exact lifetime/id/expected-name
   -> rename-session -t '$session_id' 'new-name'
   -> success marker
 else
@@ -173,14 +172,10 @@ Rules:
   stale identity, disappearance, or defect; stderr text is not a protocol.
 - Two renames from one expected name yield at most one success. Two sessions
   racing for one destination yield at most one success. Neither loser mutates.
-- A server restart, id reuse, external rename, source disappearance, internal
-  shadow, or invalid token cannot reach the rename branch.
-- The reserved phone-shadow namespace stays two-factor: when either expected
-  or desired name has the reserved shape, the conditional queue also requires
-  that the internal shadow marker is absent. A marker-only ordinary session
-  cannot be promoted into reconciliation-owned shadow state by Rename.
+- a server restart, id reuse, external rename, source disappearance, or invalid
+  token cannot reach the rename branch. no internal namespace or marker exists.
 - Before returning a definitive destination conflict after failure, reread the
-  source id/name/token/server/marker after the destination observation. A
+  source id/name/token/server after the destination observation. A
   concurrent source change is identity mismatch, never a false conflict.
 - Group topology is not an eligibility predicate: session names belong to
   individual group links and rename changes no shared pane/window.
@@ -240,9 +235,8 @@ generic mutation/recovery framework.
 - Replace `validateOptionalTmuxName` with one required `validateTmuxName`;
   Create calls it only when its optional value is present, Rename always calls
   it. One regex and one error literal remain.
-- Extract the shared lifetime/id/name tmux predicate from Kill; Kill adds its
-  existing group guard, Rename adds its ordinary-session guard. Delete the old
-  kill-only helper name; keep Kill behavior unchanged.
+- share one lifetime/id/name tmux predicate with kill. neither operation adds
+  a group or internal-session eligibility predicate.
 - Extract one exact session-path parser for PATCH and DELETE.
 - Add one bodyless-response client helper and move Kill and Rename to it.
 - Reuse the manager mutation lock, identity-token parser, format escaping,

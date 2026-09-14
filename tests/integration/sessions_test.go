@@ -971,64 +971,18 @@ exec %s "$@"
 		}
 	})
 
-	t.Run("phone shadows are excluded while reclaimed last links receive characters", func(t *testing.T) {
-		const phoneShadow = "skid-phone-00112233445566778899aabbccddeeff"
-		const reclaimedShadow = "skid-phone-ffeeddccbbaa99887766554433221100"
-		fixture.tmux(t, "new-session", "-d", "-s", phoneShadow, "-c", fixture.project, "--", sleepPath, "300")
-		fixture.tmux(t, "set-option", "-t", phoneShadow, "--", "@skid_internal", "phone-shadow")
-		fixture.attachClient(t, phoneShadow)
-		fixture.tmux(t, "new-session", "-d", "-s", reclaimedShadow, "-c", fixture.project, "--", sleepPath, "300")
-		fixture.tmux(t, "set-option", "-t", reclaimedShadow, "--", "@skid_internal", "phone-shadow")
+	t.Run("inventory counts clients per session even when windows are shared", func(t *testing.T) {
 		fixture.tmux(t, "new-session", "-d", "-s", "group-source", "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "new-session", "-d", "-t", "group-source", "-s", "group-link")
 		fixture.attachClient(t, "group-source")
 		fixture.attachClient(t, "group-link")
-
-		deadline := time.Now().Add(tmuxConvergenceTimeout)
-		var reclaimed sessions.Session
-		for {
+		waitForTerminalCondition(t, "individual session client counts", func() bool {
 			listed, err := fixture.manager.List(ctx)
 			if err != nil {
-				t.Fatalf("list grouped client fixture: %v", err)
+				t.Fatal("list grouped client fixture")
 			}
-			if slices.ContainsFunc(listed.Sessions, func(session sessions.Session) bool { return session.TmuxName == phoneShadow }) {
-				t.Fatalf("gateway-owned phone shadow leaked into inventory: %+v", listed.Sessions)
-			}
-			if character := fixture.tmux(t, "show-options", "-qv", "-t", phoneShadow, "@skid_character"); character != "" {
-				t.Fatalf("phone shadow received a character: %q", character)
-			}
-			reclaimed = requireSessionNamed(t, listed, reclaimedShadow)
-			requireValidCharacter(t, reclaimed)
-			if marker := fixture.tmux(t, "show-options", "-qv", "-t", reclaimedShadow, "@skid_internal"); marker != "" {
-				t.Fatalf("reclaimed last link retained phone-shadow marker: %q", marker)
-			}
-			source := requireSessionNamed(t, listed, "group-source")
-			link := requireSessionNamed(t, listed, "group-link")
-			requireValidCharacter(t, source)
-			requireValidCharacter(t, link)
-			if source.AttachedClients == 2 && link.AttachedClients == 2 {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("group attachment count did not converge: source=%+v link=%+v", source, link)
-			}
-			time.Sleep(tmuxConvergencePollInterval)
-		}
-		persistedCharacter := fixture.tmux(t, "show-options", "-qv", "-t", reclaimed.TmuxID, "@skid_character")
-		if persistedCharacter != reclaimed.Character.Key {
-			t.Fatalf("reclaimed last link did not persist its character: session=%+v persisted=%q", reclaimed, persistedCharacter)
-		}
-		repeated, err := fixture.manager.List(ctx)
-		if err != nil {
-			t.Fatalf("repeat reclaimed last-link inventory: %v", err)
-		}
-		repeatedReclaimed := requireSessionID(t, repeated, reclaimed.TmuxID)
-		if repeatedReclaimed.Character != reclaimed.Character {
-			t.Fatalf("repeated inventory changed reclaimed character: first=%+v repeated=%+v", reclaimed, repeatedReclaimed)
-		}
-		if persisted := fixture.tmux(t, "show-options", "-qv", "-t", reclaimed.TmuxID, "@skid_character"); persisted != persistedCharacter {
-			t.Fatalf("repeated inventory changed reclaimed persisted character: before=%q after=%q", persistedCharacter, persisted)
-		}
+			return requireSessionNamed(t, listed, "group-source").AttachedClients == 1 && requireSessionNamed(t, listed, "group-link").AttachedClients == 1
+		})
 	})
 
 	t.Run("an enumerated dead pane remains visible without agent identity", func(t *testing.T) {
@@ -1213,7 +1167,7 @@ exec %s "$@"
 		requireSessionID(t, listed, survivor.TmuxID)
 	})
 
-	t.Run("kill refuses an ordinary grouped sibling without mutation", func(t *testing.T) {
+	t.Run("kill closes one grouped session and retains shared work", func(t *testing.T) {
 		fixture.tmux(t, "new-session", "-d", "-s", "grouped-kill-target", "-c", fixture.project, "--", sleepPath, "300")
 		fixture.tmux(t, "new-session", "-d", "-t", "grouped-kill-target", "-s", "grouped-kill-sibling")
 		listed, err := fixture.manager.List(ctx)
@@ -1228,84 +1182,24 @@ exec %s "$@"
 		}
 
 		err = fixture.manager.Kill(ctx, sessions.KillInput{TmuxID: target.TmuxID, TmuxName: target.TmuxName, IdentityToken: target.IdentityToken})
-		assertSessionError(t, err, sessions.ErrorSessionGroupedConflict)
+		if err != nil {
+			t.Fatal("close selected grouped session")
+		}
 		listed, err = fixture.manager.List(ctx)
 		if err != nil {
-			t.Fatal("list after refused grouped kill")
+			t.Fatal("list after grouped session closure")
 		}
-		if observed := requireSessionID(t, listed, target.TmuxID); observed.TmuxName != target.TmuxName {
-			t.Fatal("refused grouped kill changed target identity")
+		if slices.ContainsFunc(listed.Sessions, func(row sessions.Session) bool { return row.TmuxID == target.TmuxID }) {
+			t.Fatal("closed grouped session remains")
 		}
 		if observed := requireSessionID(t, listed, sibling.TmuxID); observed.TmuxName != sibling.TmuxName {
-			t.Fatal("refused grouped kill changed sibling identity")
+			t.Fatal("grouped session closure changed sibling identity")
 		}
-		if after := fixture.tmux(t, "display-message", "-p", "-t", target.TmuxID, "#{pane_pid}"); after != panePID {
-			t.Fatal("refused grouped kill changed shared pane process")
+		if after := fixture.tmux(t, "display-message", "-p", "-t", sibling.TmuxID, "#{pane_pid}"); after != panePID {
+			t.Fatal("grouped session closure changed shared pane process")
 		}
 	})
 
-	t.Run("one kill reconciles every stale owned shadow before ending only the source", func(t *testing.T) {
-		targetObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "shadowed_kill_target"})
-		if err != nil {
-			t.Fatal("create shadowed kill target")
-		}
-		target := targetObserved.Session
-		survivorObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalTmuxName: "shadowed_kill_survivor"})
-		if err != nil {
-			t.Fatal("create shadowed kill survivor")
-		}
-		survivor := survivorObserved.Session
-		panePIDText := fixture.tmux(t, "display-message", "-p", "-t", target.TmuxID, "#{pane_pid}")
-		panePID, err := strconv.Atoi(panePIDText)
-		if err != nil {
-			t.Fatal("parse shadowed target pane pid")
-		}
-		paneStartTime := processStartIdentity(panePID)
-		if paneStartTime == "" {
-			t.Fatal("capture shadowed target pane process identity")
-		}
-		survivorPanePIDText := fixture.tmux(t, "display-message", "-p", "-t", survivor.TmuxID, "#{pane_pid}")
-		survivorPanePID, err := strconv.Atoi(survivorPanePIDText)
-		if err != nil {
-			t.Fatal("parse shadowed survivor pane pid")
-		}
-		survivorPaneStartTime := processStartIdentity(survivorPanePID)
-		if survivorPaneStartTime == "" {
-			t.Fatal("capture shadowed survivor pane process identity")
-		}
-		shadowNames := []string{
-			"skid-phone-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"skid-phone-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			"skid-phone-cccccccccccccccccccccccccccccccc",
-		}
-		for _, shadowName := range shadowNames {
-			fixture.tmux(t, "new-session", "-d", "-t", target.TmuxID, "-s", shadowName)
-			fixture.tmux(t, "set-option", "-t", "="+shadowName+":", "--", "@skid_internal", "phone-shadow")
-		}
-
-		if err := fixture.manager.Kill(ctx, sessions.KillInput{TmuxID: target.TmuxID, TmuxName: target.TmuxName, IdentityToken: target.IdentityToken}); err != nil {
-			t.Fatal("kill source after multi-shadow fixed-point recovery")
-		}
-		deadline := time.Now().Add(tmuxConvergenceTimeout)
-		for processStartIdentity(panePID) == paneStartTime {
-			if time.Now().After(deadline) {
-				t.Fatal("source process survived successful kill after stale-shadow recovery")
-			}
-			time.Sleep(tmuxConvergencePollInterval)
-		}
-		remainingNames := strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_name}"), "\n")
-		for _, name := range append([]string{target.TmuxName}, shadowNames...) {
-			if slices.Contains(remainingNames, name) {
-				t.Fatalf("successful kill left a grouped link: remaining_session_count=%d", len(remainingNames))
-			}
-		}
-		if !slices.Contains(remainingNames, survivor.TmuxName) {
-			t.Fatalf("multi-shadow recovery killed the unrelated survivor: remaining_session_count=%d", len(remainingNames))
-		}
-		if observed := fixture.tmux(t, "display-message", "-p", "-t", survivor.TmuxID, "#{pane_pid}"); observed != survivorPanePIDText || processStartIdentity(survivorPanePID) != survivorPaneStartTime {
-			t.Fatal("multi-shadow recovery changed the survivor process")
-		}
-	})
 }
 
 func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
@@ -1713,7 +1607,7 @@ func assertSessionError(t *testing.T, err error, want sessions.ErrorCode) {
 func sessionNonCharacterSnapshot(t *testing.T, fixture sessionFixture, id string) string {
 	t.Helper()
 	session := fixture.tmux(t, "display-message", "-p", "-t", id,
-		"#{session_id}|#{session_name}|#{session_attached}|#{session_group}|#{session_group_size}|#{session_group_attached}|#{window_id}|#{pane_id}|#{@skid_internal}|#{@skid_profile}|#{@skid_objective_b64}")
+		"#{session_id}|#{session_name}|#{session_attached}|#{session_group}|#{session_group_size}|#{window_id}|#{pane_id}|#{@skid_profile}|#{@skid_objective_b64}")
 	windows := strings.Split(fixture.tmux(t, "list-windows", "-t", id, "-F",
 		"#{session_id}|#{window_id}|#{window_index}|#{window_active}|#{window_name}|#{window_panes}|#{window_width}|#{window_height}|#{window_layout}|#{window_active_clients}"), "\n")
 	panes := strings.Split(fixture.tmux(t, "list-panes", "-s", "-t", id, "-F",

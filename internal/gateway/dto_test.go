@@ -450,7 +450,6 @@ func TestClosedAPIErrorsWriteExactHTTPResponses(t *testing.T) {
 		{errorSessionIdentityMismatch, "SessionIdentityMismatch", "The session changed. Refresh and try again.", http.StatusConflict},
 		{errorPairingInviteRejected, "PairingInviteRejected", "This fleet invite is invalid, expired, or already used.", http.StatusUnauthorized},
 		{errorMachineIdentityMismatch, "MachineIdentityMismatch", "The machine identity changed. Fleet reset is required.", http.StatusConflict},
-		{errorSessionGroupedConflict, "SessionGroupedConflict", "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.", http.StatusConflict},
 		{errorInternal, "InternalError", "Skíðblaðnir could not complete the request.", http.StatusInternalServerError},
 	}
 

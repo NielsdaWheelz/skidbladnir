@@ -6,9 +6,8 @@ import (
 )
 
 type OwnedResources struct {
-	ClosePTY      func() error
-	CloseClient   func() error
-	ReleaseShadow func() error
+	ClosePTY    func() error
+	CloseClient func() error
 }
 
 type Cleanup struct {
@@ -18,8 +17,8 @@ type Cleanup struct {
 }
 
 func NewCleanup(resources OwnedResources) *Cleanup {
-	if resources.ClosePTY == nil || resources.CloseClient == nil || resources.ReleaseShadow == nil {
-		panic("terminal cleanup requires PTY, client, and shadow release functions") // justify-defect: the owning adapter must close all three published resources.
+	if resources.ClosePTY == nil || resources.CloseClient == nil {
+		panic("terminal cleanup requires PTY and client close functions") // justify-defect: the owning adapter must close both published resources.
 	}
 	return &Cleanup{resources: resources}
 }
@@ -28,8 +27,7 @@ func (cleanup *Cleanup) Close() error {
 	cleanup.once.Do(func() {
 		ptyError := cleanup.resources.ClosePTY()
 		clientError := cleanup.resources.CloseClient()
-		shadowError := cleanup.resources.ReleaseShadow()
-		cleanup.err = errors.Join(ptyError, clientError, shadowError)
+		cleanup.err = errors.Join(ptyError, clientError)
 	})
 	return cleanup.err
 }

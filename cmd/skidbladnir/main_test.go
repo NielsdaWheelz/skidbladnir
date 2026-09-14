@@ -3,15 +3,23 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -22,11 +30,11 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 )
 
-func TestAgentCommandReturnsStructuredFailureWithoutServiceHome(t *testing.T) {
+func TestClientCommandReturnsStructuredFailureWithoutServiceHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	var stdout, stderr bytes.Buffer
 	code := run(
-		[]string{"--client-config", filepath.Join(t.TempDir(), "missing.json"), "agent", "list"},
+		[]string{"--config", filepath.Join(t.TempDir(), "missing.json"), "list", "--json"},
 		commandInput(t, "{}"), &stdout, &stderr,
 	)
 	var result struct {
@@ -40,6 +48,19 @@ func TestAgentCommandReturnsStructuredFailureWithoutServiceHome(t *testing.T) {
 		result.OK || result.Error.Code == "" || result.Error.Dispatch != "not_sent" || stderr.Len() != 0 {
 		t.Fatalf("agent entry point did not return a structured pre-dispatch failure: exit=%d stdout_bytes=%d stderr_bytes=%d", code, stdout.Len(), stderr.Len())
 	}
+}
+
+func TestClientHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--help"}, emptyCommandInput(t), &stdout, &stderr); code != 0 {
+		t.Fatalf("human client help failed: exit=%d", code)
+	}
+	for _, word := range []string{"list", "enter", "--ref", "--stdin"} {
+		if !bytes.Contains(stdout.Bytes(), []byte(word)) {
+			t.Errorf("help is missing %s", word)
+		}
+	}
+
 }
 
 func TestVersionReportsExactReleaseIdentity(t *testing.T) {
@@ -513,4 +534,99 @@ func writeHostConfig(t *testing.T, tmuxPath, tmuxTestedVersion string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestClientSubprocess(t *testing.T) {
+	if os.Getenv("SKID_TEST_CLIENT_CHILD") != "1" {
+		return
+	}
+	certificate, err := os.ReadFile(os.Getenv("SKID_TEST_CLIENT_CA"))
+	if err != nil {
+		os.Exit(90)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificate) {
+		os.Exit(91)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: roots}
+	address := os.Getenv("SKID_TEST_CLIENT_ADDRESS")
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, address)
+	}
+	http.DefaultTransport = transport
+	start := 0
+	for i, arg := range os.Args {
+		if arg == "--" {
+			start = i + 1
+			break
+		}
+	}
+	os.Exit(run(os.Args[start:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func TestClientRealSubprocessHTTPBoundary(t *testing.T) {
+	const machine = "mh-11111111111111111111111111111111"
+	const bearer = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	const fixture = "first line\nsecond `$(literal)`\n"
+	var calls atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("Authorization") != "Bearer "+bearer || r.Header.Get("Skidbladnir-Machine") != machine {
+			t.Error("authentication did not cross subprocess boundary")
+		}
+		var body map[string]any
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body["paneId"] != "%4" || body["pid"] != float64(321) {
+			t.Error("target did not cross subprocess boundary")
+		}
+		switch r.URL.Path {
+		case "/v1/sessions/$3/agent/send":
+			if body["text"] != fixture {
+				t.Error("stdin bytes changed across subprocess/http")
+			}
+		case "/v1/sessions/$3/agent/keys":
+			keys, ok := body["keys"].([]any)
+			if !ok || len(keys) != 2 || keys[0] != "up" || keys[1] != "enter" {
+				t.Error("keys changed across subprocess/http")
+			}
+		default:
+			t.Error("unexpected operation")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"method":"terminal","outcome":"written"}`)
+	}))
+	defer server.Close()
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "skidbladnir")
+	if os.MkdirAll(configDir, 0700) != nil {
+		t.Fatal("cannot create fixture config directory")
+	}
+	if os.WriteFile(filepath.Join(configDir, "client.json"), []byte(`{"peers":[{"label":"arch","origin":"https://example.com:8443","machine":"`+machine+`","bearer":"`+bearer+`"}]}`), 0600) != nil {
+		t.Fatal("cannot create private client config")
+	}
+	ca := filepath.Join(home, "fixture-ca.pem")
+	if os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0600) != nil {
+		t.Fatal("cannot write fixture certificate")
+	}
+	ref := base64.RawURLEncoding.EncodeToString([]byte(`{"machine":"` + machine + `","tmuxId":"$3","identityToken":"lifetime","agent":{"paneId":"%4","pid":321,"startIdentity":"1234"}}`))
+	for _, operation := range []string{"send", "keys"} {
+		args := []string{"-test.run=^TestClientSubprocess$", "--", operation, "--json", "--ref", ref}
+		if operation == "send" {
+			args = append(args, "--stdin")
+		} else {
+			args = append(args, "up", "enter")
+		}
+		child := exec.Command(os.Args[0], args...)
+		child.Env = append(os.Environ(), "SKID_TEST_CLIENT_CHILD=1", "SKID_TEST_CLIENT_CA="+ca, "SKID_TEST_CLIENT_ADDRESS="+server.Listener.Addr().String(), "HOME="+home)
+		child.Stdin = strings.NewReader(fixture)
+		var stdout, stderr bytes.Buffer
+		child.Stdout = &stdout
+		child.Stderr = &stderr
+		if child.Run() != nil || !json.Valid(stdout.Bytes()) || bytes.Count(stdout.Bytes(), []byte("\n")) != 1 || stderr.Len() != 0 {
+			t.Fatalf("subprocess failed: stdout_bytes=%d stderr_bytes=%d", stdout.Len(), stderr.Len())
+		}
+	}
+	if calls.Load() != 2 {
+		t.Fatal("subprocess replayed or omitted operation")
+	}
 }

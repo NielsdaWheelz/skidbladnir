@@ -149,11 +149,11 @@ func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error)
 	return identity, nil
 }
 
-func (client Client) KillSessionIfIdentityAndIsolated(ctx context.Context, id, name string, server ServerIdentity) (bool, error) {
+func (client Client) KillSessionIfIdentity(ctx context.Context, id, name string, server ServerIdentity) (bool, error) {
 	if !sessionIDPattern.MatchString(id) || name == "" || !server.valid() {
 		return false, errors.New("tmux kill identity is invalid")
 	}
-	condition := killEligibilityCondition(id, name, server)
+	condition := mutationIdentityCondition(id, name, server)
 	output, err := client.Output(ctx, "kill-session-if-identity", "if-shell", "-F", "-t", id, condition,
 		"kill-session -t '"+id+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
@@ -170,7 +170,7 @@ func (client Client) KillSessionIfIdentityAndIsolated(ctx context.Context, id, n
 	}
 }
 
-func (client Client) RenameSessionIfIdentityAndOrdinary(
+func (client Client) RenameSessionIfIdentity(
 	ctx context.Context,
 	id string,
 	expectedName string,
@@ -200,12 +200,8 @@ func renameSessionArguments(id, expectedName, newName string, server ServerIdent
 		!tmuxCommandTokenPattern.MatchString(newName) || !server.valid() {
 		return nil, errors.New("tmux rename identity is invalid")
 	}
-	conditions := []string{mutationIdentityCondition(id, expectedName, server)}
-	if phoneShadowNamePattern.MatchString(expectedName) || phoneShadowNamePattern.MatchString(newName) {
-		conditions = append(conditions, "#{!=:#{@skid_internal},"+phoneShadowMarker+"}")
-	}
 	return []string{
-		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
+		"if-shell", "-F", "-t", id, mutationIdentityCondition(id, expectedName, server),
 		"rename-session -t '" + id + "' '" + newName + "' ; display-message -p -l '" + renameSuccessMarker + "'",
 		"display-message -p -l '" + identityMismatchMarker + "'",
 	}, nil
@@ -246,18 +242,12 @@ func characterAssignmentArguments(id, expected, character string, server ServerI
 		"#{==:#{start_time}," + formatLiteral(server.StartTime) + "}",
 		"#{==:#{session_id}," + formatLiteral(id) + "}",
 		"#{==:#{@skid_character}," + formatLiteral(expected) + "}",
-		"#{!=:#{@skid_internal}," + phoneShadowMarker + "}",
 	}
 	return []string{
 		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
 		"set-option -t '" + id + "' -- @skid_character " + character,
 		"display-message -p -l '" + identityMismatchMarker + "'",
 	}, nil
-}
-
-func killEligibilityCondition(id, name string, server ServerIdentity) string {
-	isolated := "#{||:#{==:#{session_group_size},},#{==:#{session_group_size},1}}"
-	return "#{&&:" + mutationIdentityCondition(id, name, server) + "," + isolated + "}"
 }
 
 func (client Client) readServerEpoch(ctx context.Context, allowAbsent bool) (string, error) {

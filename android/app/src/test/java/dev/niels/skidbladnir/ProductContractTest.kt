@@ -283,7 +283,6 @@ class ProductContractTest {
         assertFalse(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.InternalError)))
         assertFalse(createFailureIsDefinitive(GatewayFailure.Transport))
         assertTrue(killFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionIdentityMismatch)))
-        assertTrue(killFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionGroupedConflict)))
         assertFalse(killFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.InternalError)))
         assertFalse(killFailureIsDefinitive(GatewayFailure.Transport))
     }
@@ -374,6 +373,32 @@ class ProductContractTest {
         )
         assertEquals("{\"kind\":\"Resize\",\"columns\":40,\"rows\":18}", encodeTerminalResize(40, 18))
         assertEquals("{\"kind\":\"Detach\"}", encodeTerminalDetach())
+    }
+
+    @Test
+    fun `terminal protocol supports the same large grids as desktop`() {
+        assertEquals(
+            "{\"kind\":\"Resize\",\"columns\":1024,\"rows\":512}",
+            encodeTerminalResize(1024, 512),
+        )
+        assertThrows(IllegalArgumentException::class.java) { encodeTerminalResize(1025, 512) }
+        assertThrows(IllegalArgumentException::class.java) { encodeTerminalResize(1024, 513) }
+    }
+
+    @Test
+    fun `unsupported terminal configuration gives actionable requirements`() {
+        val message = "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
+        val frame = decodeTerminalServerEvent(
+            """{"kind":"Error","error":{"code":"TerminalConfigurationUnsupported","message":"$message"}}""",
+        ) as TerminalServerEvent.Error
+        assertEquals("TerminalConfigurationUnsupported", frame.code.wireName)
+        assertEquals(message, apiErrorMessage(frame.code))
+        assertThrows(ProtocolDecodeException::class.java) {
+            decodeGatewayHttpFailure(
+                400,
+                """{"code":"TerminalConfigurationUnsupported","message":"$message"}""",
+            )
+        }
     }
 
     @Test

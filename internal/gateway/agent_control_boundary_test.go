@@ -542,7 +542,7 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 			fmt.Println(state.Registration)
 		case "@skid_profile":
 			fmt.Println("unit")
-		case "@skid_internal", "@skid_objective_b64":
+		case "@skid_objective_b64":
 		default:
 			os.Exit(65)
 		}
@@ -556,8 +556,8 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 			} else {
 				os.Exit(1)
 			}
-		case "#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}|#{session_group_attached}":
-			fmt.Println("$1|" + state.PaneID + "|" + strconv.Itoa(state.PID) + "|0|0")
+		case "#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}":
+			fmt.Println("$1|" + state.PaneID + "|" + strconv.Itoa(state.PID) + "|0")
 		case "#{pane_current_path}":
 			fmt.Println(filepath.Dir(path))
 		case "#{pane_current_command}":

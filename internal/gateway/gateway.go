@@ -650,8 +650,6 @@ func writeSessionError(writer http.ResponseWriter, err error) {
 		writeError(writer, errorSessionNotFound)
 	case sessions.ErrorSessionIdentityMismatch:
 		writeError(writer, errorSessionIdentityMismatch)
-	case sessions.ErrorSessionGroupedConflict:
-		writeError(writer, errorSessionGroupedConflict)
 	default:
 		writeError(writer, errorInternal)
 	}

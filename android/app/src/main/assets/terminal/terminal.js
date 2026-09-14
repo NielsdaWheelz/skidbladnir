@@ -14,9 +14,9 @@
     var maximumSelectionBytes = 256 * 1024;
     // The gateway's Resize bounds; the page fits down to them and never up.
     var minimumColumns = 20;
-    var maximumColumns = 240;
+    var maximumColumns = 1024;
     var minimumRows = 5;
-    var maximumRows = 120;
+    var maximumRows = 512;
     var lastPublishedColumns = 0;
     var lastPublishedRows = 0;
     var viewportTooSmallPublished = false;

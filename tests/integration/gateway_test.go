@@ -296,6 +296,9 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 	}
 	disappearing := createdDisappearing.Session
 	fixture.tmux(t, "kill-session", "-t", disappearing.TmuxID)
+	if renameInvariantSnapshot(t, fixture, target.TmuxID) != tmuxBefore {
+		t.Fatal("unrelated fixture creation changed the rename snapshot before the missing-target request")
+	}
 	response = request(
 		t,
 		server.Client(),
@@ -1019,20 +1022,17 @@ exec "$tmux_real" "$@"
 		t.Fatalf("capture grouped target pane PID: command_ok=%t output_present=%t", err == nil, strings.TrimSpace(string(sharedPanePID)) != "")
 	}
 	response = request(t, server.Client(), http.MethodDelete, server.URL+"/v1/sessions/"+url.PathEscape(laptopID), bearer, "niels@example.test", fmt.Sprintf(`{"tmuxName":"laptop","identityToken":%q}`, laptopToken))
-	assertError(t, response, http.StatusConflict, "SessionGroupedConflict")
+	assertStatus(t, response, http.StatusNoContent)
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
 	inventory = decodeObject(t, response)
-	unchangedLaptop := findSession(t, inventory, "laptop")
 	findSession(t, inventory, groupedPeerName)
-	idUnchanged := unchangedLaptop["tmuxId"] == laptopID
-	identityUnchanged := unchangedLaptop["identityToken"] == laptopToken
-	if !idUnchanged || !identityUnchanged {
-		t.Fatalf("refused grouped HTTP kill changed target identity: id_unchanged=%t identity_unchanged=%t", idUnchanged, identityUnchanged)
+	if len(inventory["sessions"].([]any)) != 1 {
+		t.Fatal("grouped closure retained the selected session")
 	}
-	afterPanePID, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", laptopID, "#{pane_pid}").Output()
+	afterPanePID, err := isolatedTmuxCommand(tmuxPath, "-L", socketName, "-f", "/dev/null", "display-message", "-p", "-t", groupedPeerName, "#{pane_pid}").Output()
 	if err != nil || strings.TrimSpace(string(afterPanePID)) != strings.TrimSpace(string(sharedPanePID)) {
-		t.Fatalf("refused grouped HTTP kill changed shared pane: command_ok=%t identity_unchanged=%t", err == nil, strings.TrimSpace(string(afterPanePID)) == strings.TrimSpace(string(sharedPanePID)))
+		t.Fatal("grouped HTTP closure changed shared pane")
 	}
 
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/pressure", bearer, "niels@example.test", "")
@@ -1492,7 +1492,7 @@ func providerSessionName(card map[string]any) string {
 func renameInvariantSnapshot(t *testing.T, fixture sessionFixture, tmuxID string) string {
 	t.Helper()
 	session := fixture.tmux(t, "display-message", "-p", "-t", tmuxID,
-		"#{session_id}|#{session_attached}|#{session_group_size}|#{session_group_attached}|#{session_width}|#{session_height}|#{window_id}|#{pane_id}|#{pane_pid}|#{@skid_internal}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}")
+		"#{session_id}|#{session_attached}|#{session_group_size}|#{session_width}|#{session_height}|#{window_id}|#{pane_id}|#{pane_pid}|#{@skid_profile}|#{@skid_character}|#{@skid_objective_b64}")
 	windows := strings.Split(fixture.tmux(t, "list-windows", "-t", tmuxID, "-F",
 		"#{window_id}|#{window_index}|#{window_active}|#{window_name}|#{window_panes}|#{window_width}|#{window_height}|#{window_layout}|#{window_active_clients}"), "\n")
 	panes := strings.Split(fixture.tmux(t, "list-panes", "-s", "-t", tmuxID, "-F",
@@ -1502,7 +1502,7 @@ func renameInvariantSnapshot(t *testing.T, fixture sessionFixture, tmuxID string
 	memberSet := make(map[string]struct{})
 	for _, line := range strings.Split(fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_group}"), "\n") {
 		fields := strings.SplitN(line, "|", 2)
-		if len(fields) == 2 && fields[1] == group {
+		if len(fields) == 2 && (fields[0] == tmuxID || group != "" && fields[1] == group) {
 			groupMembers = append(groupMembers, fields[0])
 			memberSet[fields[0]] = struct{}{}
 		}
@@ -1582,7 +1582,6 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 		"ObjectiveInvalid":            "Use 1–240 characters without terminal controls.",
 		"SessionIdentityMismatch":     "The session changed. Refresh and try again.",
 		"MachineIdentityMismatch":     "The machine identity changed. Fleet reset is required.",
-		"SessionGroupedConflict":      "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.",
 	}
 	wantMessage, found := messages[code]
 	if !found {

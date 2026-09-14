@@ -607,8 +607,8 @@ internal fun KillConfirmation(
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "Interrupt the agent and close this terminal. Detached work may continue."
-                else -> "This closes the terminal. A separately hosted agent may continue."
+                stoppingAgent -> "Try to halt this agent, then close its session. Halting shared work affects linked sessions; detached work may continue."
+                else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
             })
         },
         confirmButton = {

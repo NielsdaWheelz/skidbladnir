@@ -1,69 +1,50 @@
 package tmux
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/creack/pty"
 )
 
 const (
-	phoneShadowMarker           = "phone-shadow"
-	windowSizeUnsupportedMarker = "SKIDBLADNIR_WINDOW_SIZE_UNSUPPORTED_V1"
-	windowSizeLatestCondition   = "#{==:#{window-size},latest}"
-	attachmentControlLimit      = 5 * time.Second
-	attachmentReadyLimit        = 5 * time.Second
-	attachmentReadyPollInterval = 25 * time.Millisecond
-	attachmentExitLimit         = 2 * time.Second
-	attachmentRecoveryLimit     = 3 * time.Second
-	shadowReleaseSettleLimit    = 2 * time.Second
-	shadowReleaseSettleInterval = 25 * time.Millisecond
+	attachmentConfigurationMarker = "SKIDBLADNIR_TERMINAL_CONFIGURATION_UNSUPPORTED"
+	attachmentReadyLimit          = 5 * time.Second
+	attachmentReadyPollInterval   = 25 * time.Millisecond
+	attachmentExitLimit           = 2 * time.Second
 )
 
 var (
-	phoneShadowNamePattern              = regexp.MustCompile(`^skid-phone-[0-9a-f]{32}$`)
-	windowIDPattern                     = regexp.MustCompile(`^@[0-9]+$`)
-	ErrAttachmentIdentityMismatch       = errors.New("tmux attachment identity changed")
-	ErrAttachmentCleanupFailed          = errors.New("tmux attachment startup cleanup failed")
-	ErrAttachmentWindowSizeUnsupported  = errors.New("tmux source window does not use window-size latest")
-	errAttachmentCleanupIncomplete      = errors.New("tmux attachment cleanup is incomplete")
-	errAttachmentCleanupReadbackInvalid = errors.New("tmux attachment cleanup readback is invalid")
+	ErrAttachmentIdentityMismatch         = errors.New("tmux attachment identity changed")
+	ErrAttachmentCleanupFailed            = errors.New("tmux attachment startup cleanup failed")
+	ErrAttachmentConfigurationUnsupported = errors.New("tmux terminal configuration is unsupported")
 )
 
 type AttachmentSpec struct {
 	SourceID   string
 	SourceName string
-	ShadowName string
 	Columns    int
 	Rows       int
 	Server     ServerIdentity
 }
 
-type phoneShadowRecord struct {
-	id            string
-	name          string
-	attached      int
-	groupSize     int
-	groupSizeText string
-	server        ServerIdentity
-}
-
 type Attachment struct {
-	client      Client
-	spec        AttachmentSpec
-	shadowID    string
-	pty         *os.File
-	command     *exec.Cmd
-	processDone chan struct{}
-	processErr  error
+	client        Client
+	spec          AttachmentSpec
+	pty           *os.File
+	command       *exec.Cmd
+	processDone   chan struct{}
+	startupOutput bytes.Buffer
+	clientTTY     string
 
 	ptyMutex        sync.Mutex
 	ptyClosed       bool
@@ -77,51 +58,25 @@ func (client Client) StartAttachment(ctx context.Context, spec AttachmentSpec) (
 	if err != nil {
 		return nil, err
 	}
-	controlContext, cancelControl := context.WithTimeout(ctx, attachmentControlLimit)
-	output, err := client.Output(controlContext, "create-phone-shadow", arguments[0], arguments[1:]...)
-	cancelControl()
-	if err != nil {
-		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
-	}
-	shadowID, sourceWindowID, err := parseAttachmentCreationOutput(output)
-	if err != nil {
-		if errors.Is(err, ErrAttachmentIdentityMismatch) || errors.Is(err, ErrAttachmentWindowSizeUnsupported) {
-			return nil, err
-		}
-		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
-	}
-	selectContext, cancelSelect := context.WithTimeout(ctx, attachmentControlLimit)
-	err = client.selectShadowWindow(selectContext, spec, shadowID, sourceWindowID)
-	cancelSelect()
-	if err != nil {
-		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
-	}
-	clientArguments, err := attachmentClientArguments(shadowID)
-	if err != nil {
-		return nil, attachmentStartFailure(err, reconcileAttachmentShadow(client, spec))
-	}
-	command := client.commandWithStderr(ctx, nil, nil, clientArguments[0], clientArguments[1:]...)
+	attachment := &Attachment{client: client, spec: spec, processDone: make(chan struct{})}
+	// Tmux renders through the terminal descriptor inherited as stdin. Ordinary
+	// command stdout carries only the closed startup failure marker, not the screen.
+	command := client.commandWithStderr(ctx, &attachment.startupOutput, nil, arguments[0], arguments[1:]...)
 	command.Env = attachmentEnvironment(command.Env)
-	// The terminal protocol bounds every accepted Resize to 20..240 columns and
-	// 5..120 rows, so this narrowing to the Winsize fields cannot truncate.
 	terminalPTY, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(spec.Columns), Rows: uint16(spec.Rows)})
 	if err != nil {
-		return nil, attachmentStartFailure(fmt.Errorf("start tmux phone client: %w", err), reconcileAttachmentShadow(client, spec))
+		return nil, fmt.Errorf("start tmux terminal client: %w", err)
 	}
-	attachment := &Attachment{
-		client:      client,
-		spec:        spec,
-		shadowID:    shadowID,
-		pty:         terminalPTY,
-		command:     command,
-		processDone: make(chan struct{}),
-	}
+	attachment.pty = terminalPTY
+	attachment.command = command
 	go func() {
-		attachment.processErr = command.Wait()
+		_ = command.Wait() // justify-ignore-error: readiness observes the exact client and startup marker; completion only needs the owned child reaped.
 		close(attachment.processDone)
 	}()
-	if err := attachment.awaitAttachedAndArm(ctx); err != nil {
-		return nil, attachmentStartFailure(err, attachment.abortStartedClient())
+	if err := attachment.awaitAttached(ctx); err != nil {
+		ptyErr := attachment.ClosePTY()
+		clientErr := attachment.CloseClient()
+		return nil, attachmentStartFailure(err, errors.Join(ptyErr, clientErr))
 	}
 	return attachment, nil
 }
@@ -133,17 +88,29 @@ func attachmentStartFailure(cause, cleanupErr error) error {
 	return errors.Join(cause, ErrAttachmentCleanupFailed, cleanupErr)
 }
 
+func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
+	if !sessionIDPattern.MatchString(spec.SourceID) || spec.SourceName == "" || !spec.Server.valid() ||
+		spec.Columns < terminal.MinimumColumns || spec.Columns > terminal.MaximumColumns || spec.Rows < terminal.MinimumRows || spec.Rows > terminal.MaximumRows {
+		return nil, errors.New("tmux attachment identity or geometry is invalid")
+	}
+	options := "#{&&:#{==:#{window-size},latest},#{&&:#{==:#{destroy-unattached},off},#{==:#{detach-on-destroy},on}}}"
+	return []string{
+		"-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
+		mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server),
+		"if-shell -F -t '" + spec.SourceID + "' '" + options + "' \"attach-session -E -t '" + spec.SourceID + "'\" \"display-message -p -l '" + attachmentConfigurationMarker + "'\"",
+		"display-message -p -l '" + identityMismatchMarker + "'",
+	}, nil
+}
+
 func (attachment *Attachment) Read(contents []byte) (int, error) {
 	return attachment.pty.Read(contents)
 }
-
 func (attachment *Attachment) Write(contents []byte) (int, error) {
 	return attachment.pty.Write(contents)
 }
 
 func (attachment *Attachment) Resize(columns, rows int) error {
-	// The resize ioctl uses the raw descriptor, so it must never race ClosePTY
-	// into a number the kernel has already reissued to an unrelated file.
+	// The descriptor must not race close and be reused for an unrelated file.
 	attachment.ptyMutex.Lock()
 	defer attachment.ptyMutex.Unlock()
 	if attachment.ptyClosed {
@@ -153,26 +120,92 @@ func (attachment *Attachment) Resize(columns, rows int) error {
 }
 
 func (attachment *Attachment) AttachedClients(ctx context.Context) (int, error) {
-	output, err := attachment.client.Output(ctx, "read-phone-presence", "display-message", "-p", "-t", attachment.shadowID,
-		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_name}|#{@skid_internal}|#{session_group_attached}|#{session_attached}")
+	count, tty, found, err := attachment.observeClient(ctx)
 	if err != nil {
 		return 0, err
 	}
-	fields := strings.Split(output, "|")
-	if len(fields) != 8 || fields[0] != attachment.spec.Server.Epoch || fields[1] != attachment.spec.Server.PID ||
-		fields[2] != attachment.spec.Server.StartTime || fields[3] != attachment.shadowID ||
-		fields[4] != attachment.spec.ShadowName || fields[5] != phoneShadowMarker {
+	if !found || tty != attachment.clientTTY {
 		return 0, ErrAttachmentIdentityMismatch
 	}
-	attachedText := fields[6]
-	if attachedText == "" {
-		attachedText = fields[7]
+	return count, nil
+}
+
+func (attachment *Attachment) observeClient(ctx context.Context) (int, string, bool, error) {
+	output, err := attachment.client.Output(ctx, "read-terminal-client", "list-clients", "-F",
+		"#{client_pid}|#{client_tty}|#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_attached}")
+	if err != nil {
+		return 0, "", false, err
 	}
-	attached, err := strconv.Atoi(attachedText)
-	if err != nil || attached < 1 {
-		return 0, errors.New("tmux attachment returned an invalid client count")
+	return parseAttachmentClient(output, attachment.command.Process.Pid, attachment.spec)
+}
+
+func parseAttachmentClient(output string, pid int, spec AttachmentSpec) (int, string, bool, error) {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Split(line, "|")
+		if fields[0] != strconv.Itoa(pid) {
+			continue
+		}
+		if len(fields) != 7 || fields[1] == "" {
+			return 0, "", false, errors.New("tmux terminal client observation is invalid")
+		}
+		server := ServerIdentity{Epoch: fields[2], PID: fields[3], StartTime: fields[4]}
+		if server != spec.Server || fields[5] != spec.SourceID {
+			return 0, "", false, ErrAttachmentIdentityMismatch
+		}
+		count, err := strconv.Atoi(fields[6])
+		if err != nil || count < 1 {
+			return 0, "", false, errors.New("tmux terminal client count is invalid")
+		}
+		return count, fields[1], true, nil
 	}
-	return attached, nil
+	return 0, "", false, nil
+}
+
+func (attachment *Attachment) awaitAttached(parent context.Context) error {
+	ctx, cancel := context.WithTimeout(parent, attachmentReadyLimit)
+	defer cancel()
+	// justify-polling: the spawned tmux client exposes no attach notification;
+	// read its identity every 25ms for at most 5s without consuming screen bytes.
+	ticker := time.NewTicker(attachmentReadyPollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-attachment.processDone:
+			return attachment.exitBeforeReadyError()
+		default:
+		}
+		_, tty, found, err := attachment.observeClient(ctx)
+		if err != nil {
+			select {
+			case <-attachment.processDone:
+				return attachment.exitBeforeReadyError()
+			default:
+				return err
+			}
+		}
+		if found {
+			attachment.clientTTY = tty
+			return nil
+		}
+		select {
+		case <-attachment.processDone:
+			return attachment.exitBeforeReadyError()
+		case <-ctx.Done():
+			return fmt.Errorf("tmux attachment readiness ended: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (attachment *Attachment) exitBeforeReadyError() error {
+	switch strings.TrimSpace(attachment.startupOutput.String()) {
+	case identityMismatchMarker:
+		return ErrAttachmentIdentityMismatch
+	case attachmentConfigurationMarker:
+		return ErrAttachmentConfigurationUnsupported
+	default:
+		return errors.New("tmux client exited before attachment")
+	}
 }
 
 func (attachment *Attachment) ClosePTY() error {
@@ -193,532 +226,24 @@ func (attachment *Attachment) CloseClient() error {
 		case <-time.After(attachmentExitLimit):
 		}
 		if err := attachment.command.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			attachment.closeClientErr = fmt.Errorf("stop owned tmux phone client: %w", err)
+			attachment.closeClientErr = fmt.Errorf("stop owned tmux terminal client: %w", err)
 			return
 		}
 		select {
 		case <-attachment.processDone:
 		case <-time.After(attachmentExitLimit):
-			attachment.closeClientErr = errors.New("owned tmux phone client did not exit")
+			attachment.closeClientErr = errors.New("owned tmux terminal client did not exit")
 		}
 	})
 	return attachment.closeClientErr
 }
 
-func (attachment *Attachment) ReleaseShadow(ctx context.Context) error {
-	condition, err := shadowReleaseCondition(attachment.shadowID, attachment.spec.ShadowName, attachment.spec.Server)
-	if err != nil {
-		return err
-	}
-	release, err := shadowReleaseCommand(attachment.shadowID, attachment.spec.ShadowName, attachment.spec.Server)
-	if err != nil {
-		return err
-	}
-	// justify-polling: tmux processes the owned client's disconnect and any armed
-	// keep-last destruction asynchronously and offers no completion signal, so a
-	// still-attached readback retries every 25ms for at most 2s before it is a
-	// real identity conflict.
-	deadline := time.Now().Add(shadowReleaseSettleLimit)
-	for {
-		output, err := attachment.client.Output(ctx, "release-phone-shadow", "if-shell", "-F", "-t", attachment.shadowID,
-			condition, release, "display-message -p -l '"+identityMismatchMarker+"'")
-		if err != nil {
-			exists, existsErr := attachment.client.HasSession(ctx, attachment.shadowID)
-			if existsErr != nil {
-				return existsErr
-			}
-			if !exists {
-				return nil
-			}
-			return err
-		}
-		exists := true
-		if output == identityMismatchMarker {
-			// if-shell's -t lookup is allowed to fail, so a shadow that tmux
-			// already destroyed through the armed keep-last option also prints
-			// the marker; absence of the exact shadow id is the proven owned
-			// outcome because session ids are never reused within one server
-			// lifetime.
-			exists, err = attachment.client.HasSession(ctx, attachment.shadowID)
-			if err != nil {
-				return err
-			}
-		}
-		settled, classifyErr := classifyShadowRelease(output, exists, time.Now().Before(deadline))
-		if classifyErr != nil {
-			return classifyErr
-		}
-		if settled {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("tmux shadow release canceled: %w", ctx.Err())
-		case <-time.After(shadowReleaseSettleInterval):
-		}
-	}
-}
-
-func classifyShadowRelease(output string, exists, retryable bool) (bool, error) {
-	switch output {
-	case "":
-		return true, nil
-	case identityMismatchMarker:
-		if !exists {
-			return true, nil
-		}
-		if retryable {
-			return false, nil
-		}
-		return false, ErrAttachmentIdentityMismatch
-	default:
-		return false, errors.New("tmux shadow release returned unexpected output")
-	}
-}
-
-func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
-	if !sessionIDPattern.MatchString(spec.SourceID) || spec.SourceName == "" ||
-		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
-		return nil, errors.New("tmux attachment identity is invalid")
-	}
-	identity := mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server)
-	shadowSessionTarget := "=" + spec.ShadowName
-	shadowPaneTarget := shadowSessionTarget + ":"
-	success := strings.Join([]string{
-		"new-session -d -E -t '" + spec.SourceID + "' -s '" + spec.ShadowName + "'",
-		"set-option -t '" + shadowPaneTarget + "' -- @skid_internal " + phoneShadowMarker,
-		"display-message -p -t '" + shadowPaneTarget + "' '#{session_id}'",
-		"display-message -p -t '" + spec.SourceID + "' '#{window_id}'",
-	}, " ; ")
-	// "#{window-size}" resolves the option by name for the if-shell target's
-	// window, falling back to the global window option, so the gate reads the
-	// initial source window's effective policy without changing it. The failure
-	// branch re-reads the policy alone to tell an unsupported window apart from
-	// a changed target; it embeds no session name, so an arbitrary tmux name
-	// can never reach a quoted command string.
-	return []string{
-		"if-shell", "-F", "-t", spec.SourceID,
-		"#{&&:" + identity + "," + windowSizeLatestCondition + "}", success,
-		"if-shell -F -t '" + spec.SourceID + "' '" + windowSizeLatestCondition + "' " +
-			"\"display-message -p -l '" + identityMismatchMarker + "'\" " +
-			"\"display-message -p -l '" + windowSizeUnsupportedMarker + "'\"",
-	}, nil
-}
-
-func parseAttachmentCreationOutput(output string) (string, string, error) {
-	switch output {
-	case identityMismatchMarker:
-		return "", "", ErrAttachmentIdentityMismatch
-	case windowSizeUnsupportedMarker:
-		return "", "", ErrAttachmentWindowSizeUnsupported
-	}
-	shadowID, sourceWindowID, separated := strings.Cut(output, "\n")
-	if !separated || !sessionIDPattern.MatchString(shadowID) || !windowIDPattern.MatchString(sourceWindowID) {
-		return "", "", errors.New("tmux attachment creation returned an invalid shadow identity")
-	}
-	return shadowID, sourceWindowID, nil
-}
-
-// The grouped session tmux mints opens on the group's lowest-index window, so
-// the shadow's own current window must be moved to the source's captured
-// current window before the phone client attaches. Selecting a window on the
-// shadow session mutates only that session's per-session state, never the
-// laptop's selection or the window's shared active pane.
-func (client Client) selectShadowWindow(ctx context.Context, spec AttachmentSpec, shadowID, sourceWindowID string) error {
-	if !sessionIDPattern.MatchString(shadowID) || !windowIDPattern.MatchString(sourceWindowID) ||
-		!phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() {
-		return errors.New("tmux shadow window selection identity is invalid")
-	}
-	condition := "#{&&:" + mutationIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
-		",#{==:#{@skid_internal}," + phoneShadowMarker + "}}"
-	output, err := client.Output(ctx, "select-shadow-window", "if-shell", "-F", "-t", shadowID, condition,
-		"select-window -t '"+shadowID+":"+sourceWindowID+"'",
-		"display-message -p -l '"+identityMismatchMarker+"'")
-	if err != nil {
-		return err
-	}
-	switch output {
-	case "":
-		return nil
-	case identityMismatchMarker:
-		return ErrAttachmentIdentityMismatch
-	default:
-		return errors.New("tmux shadow window selection returned unexpected output")
-	}
-}
-
-func attachmentClientArguments(shadowID string) ([]string, error) {
-	if !sessionIDPattern.MatchString(shadowID) {
-		return nil, errors.New("tmux attachment client identity is invalid")
-	}
-	return []string{"-T", "RGB", "attach-session", "-E", "-f", "active-pane", "-t", shadowID}, nil
-}
-
-func parseAttachmentStartupObservation(output string, spec AttachmentSpec, shadowID string) (int, error) {
-	if !phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() ||
-		!sessionIDPattern.MatchString(shadowID) {
-		return 0, errors.New("tmux attachment observation identity is invalid")
-	}
-	fields := strings.Split(output, "|")
-	if len(fields) != 7 {
-		return 0, errors.New("tmux attachment returned an invalid readiness observation")
-	}
-	if fields[0] != spec.Server.Epoch || fields[1] != spec.Server.PID || fields[2] != spec.Server.StartTime ||
-		fields[3] != shadowID || fields[4] != spec.ShadowName || fields[5] != phoneShadowMarker {
-		return 0, ErrAttachmentIdentityMismatch
-	}
-	attached, err := strconv.Atoi(fields[6])
-	if err != nil || attached < 0 {
-		return 0, errors.New("tmux attachment returned an invalid readiness client count")
-	}
-	return attached, nil
-}
-
-func attachmentArmArguments(spec AttachmentSpec, shadowID string) ([]string, error) {
-	if !phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() ||
-		!sessionIDPattern.MatchString(shadowID) {
-		return nil, errors.New("tmux attachment arm identity is invalid")
-	}
-	condition := "#{&&:" + mutationIdentityCondition(shadowID, spec.ShadowName, spec.Server) +
-		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{>:#{session_attached},0}}}"
-	return []string{
-		"if-shell", "-F", "-t", shadowID, condition,
-		"set-option -t '" + shadowID + ":' destroy-unattached keep-last",
-		"display-message -p -l '" + identityMismatchMarker + "'",
-	}, nil
-}
-
-func (attachment *Attachment) awaitAttachedAndArm(parent context.Context) error {
-	ctx, cancel := context.WithTimeout(parent, attachmentReadyLimit)
-	defer cancel()
-	// justify-polling: tmux exposes no notification when a spawned client becomes
-	// attached, so readiness reads every 25ms for at most 5s; bounded control
-	// reads keep PTY bytes exclusively in the data plane.
-	ticker := time.NewTicker(attachmentReadyPollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-attachment.processDone:
-			return attachment.exitBeforeReadyError()
-		default:
-		}
-
-		output, err := attachment.client.Output(ctx, "observe-phone-shadow-attachment", "display-message", "-p", "-t", attachment.shadowID,
-			"#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}|#{session_name}|#{@skid_internal}|#{session_attached}")
-		if err != nil {
-			select {
-			case <-attachment.processDone:
-				return attachment.exitBeforeReadyError()
-			default:
-			}
-			if ctx.Err() != nil {
-				return attachmentReadinessContextError(ctx.Err())
-			}
-			return err
-		}
-		attached, err := parseAttachmentStartupObservation(output, attachment.spec, attachment.shadowID)
-		if err != nil {
-			return err
-		}
-		if attached > 0 {
-			if err := attachment.arm(ctx); err != nil {
-				return err
-			}
-			select {
-			case <-attachment.processDone:
-				return attachment.exitBeforeReadyError()
-			default:
-				return nil
-			}
-		}
-
-		select {
-		case <-attachment.processDone:
-			return attachment.exitBeforeReadyError()
-		case <-ctx.Done():
-			return attachmentReadinessContextError(ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
-func (attachment *Attachment) arm(ctx context.Context) error {
-	arguments, err := attachmentArmArguments(attachment.spec, attachment.shadowID)
-	if err != nil {
-		return err
-	}
-	output, err := attachment.client.Output(ctx, "arm-phone-shadow", arguments[0], arguments[1:]...)
-	if err != nil {
-		return err
-	}
-	switch output {
-	case "":
-		return nil
-	case identityMismatchMarker:
-		return ErrAttachmentIdentityMismatch
-	default:
-		return errors.New("tmux attachment arm returned unexpected output")
-	}
-}
-
-func (attachment *Attachment) exitBeforeReadyError() error {
-	if attachment.processErr == nil {
-		return errors.New("tmux phone client exited before attachment")
-	}
-	return fmt.Errorf("tmux phone client exited before attachment: %w", attachment.processErr)
-}
-
-func attachmentReadinessContextError(err error) error {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return errors.New("tmux attachment readiness timed out")
-	}
-	return fmt.Errorf("tmux attachment readiness canceled: %w", err)
-}
-
-func shadowReleaseCondition(id, name string, server ServerIdentity) (string, error) {
-	if !sessionIDPattern.MatchString(id) || !phoneShadowNamePattern.MatchString(name) || !server.valid() {
-		return "", errors.New("tmux shadow identity is invalid")
-	}
-	return "#{&&:" + mutationIdentityCondition(id, name, server) +
-		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{==:#{session_attached},0}}}", nil
-}
-
-func shadowReleaseCommand(id, name string, server ServerIdentity) (string, error) {
-	if _, err := shadowReleaseCondition(id, name, server); err != nil {
-		return "", err
-	}
-	return "if-shell -F -t '" + id + "' '#{>:#{session_group_size},1}' " +
-		"\"kill-session -t '" + id + "'\" " +
-		"\"set-option -u -t '" + id + "' destroy-unattached ; set-option -qu -t '" + id + "' -- @skid_internal\"", nil
-}
-
-// IsPhoneShadow closes the reserved ownership marker over the minted name
-// namespace. A user session carrying only one of those facts is ordinary and
-// must never be hidden or reconciled.
-func IsPhoneShadow(name, marker string) bool {
-	return marker == phoneShadowMarker && phoneShadowNamePattern.MatchString(name)
-}
-
-// ReconcilePhoneShadows removes only stale duplicate links and promotes a
-// stale last link into an ordinary visible session. Protected names belong to
-// live attachments in this gateway process and are never inspected for
-// mutation.
-func (client Client) ReconcilePhoneShadows(ctx context.Context, server ServerIdentity, protected []string) (bool, error) {
-	return client.reconcilePhoneShadows(ctx, server, protected, "")
-}
-
-func (client Client) reconcilePhoneShadows(
-	ctx context.Context,
-	server ServerIdentity,
-	protected []string,
-	onlyName string,
-) (bool, error) {
-	if !server.valid() || onlyName != "" && !phoneShadowNamePattern.MatchString(onlyName) {
-		return false, errors.New("tmux phone-shadow reconciliation identity is invalid")
-	}
-	protectedSet := make(map[string]struct{}, len(protected))
-	for _, name := range protected {
-		if !phoneShadowNamePattern.MatchString(name) {
-			return false, errors.New("protected tmux phone-shadow name is invalid")
-		}
-		protectedSet[name] = struct{}{}
-	}
-
-	changed := false
-	for {
-		ids, err := client.ListSessionIDs(ctx)
-		if err != nil || len(ids) == 0 {
-			return changed, err
-		}
-		output, err := client.Output(ctx, "list-phone-shadows", "list-sessions", "-F",
-			"#{session_id}|#{session_name}|#{@skid_internal}|#{session_attached}|#{session_group_size}|#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
-		if err != nil {
-			remaining, listErr := client.ListSessionIDs(ctx)
-			if listErr == nil && len(remaining) == 0 {
-				return changed, nil
-			}
-			return changed, err
-		}
-		records, err := parsePhoneShadowRecords(output, server)
-		if err != nil {
-			return changed, err
-		}
-
-		// A successful mutation changes the group size recorded for every sibling;
-		// never authorize another mutation from that stale topology snapshot.
-		topologyChanged := false
-		for _, record := range records {
-			if onlyName != "" && record.name != onlyName {
-				continue
-			}
-			if !phoneShadowNeedsReconciliation(record, protectedSet) {
-				continue
-			}
-			reconciled, reconcileErr := client.reconcilePhoneShadow(ctx, record)
-			if reconcileErr != nil {
-				return changed, reconcileErr
-			}
-			if reconciled {
-				changed = true
-				topologyChanged = true
-				break
-			}
-		}
-		if !topologyChanged {
-			return changed, nil
-		}
-	}
-}
-
-func parsePhoneShadowRecords(output string, expected ServerIdentity) ([]phoneShadowRecord, error) {
-	if !expected.valid() {
-		return nil, errors.New("expected tmux server identity is invalid")
-	}
-	if output == "" {
-		return []phoneShadowRecord{}, nil
-	}
-	records := make([]phoneShadowRecord, 0)
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Split(line, "|")
-		if len(fields) != 8 || !IsPhoneShadow(fields[1], fields[2]) {
-			continue
-		}
-		if !sessionIDPattern.MatchString(fields[0]) {
-			return nil, errors.New("tmux phone shadow has an invalid session id")
-		}
-		attached, attachedErr := strconv.Atoi(fields[3])
-		groupSize := 1
-		var groupErr error
-		if fields[4] != "" {
-			groupSize, groupErr = strconv.Atoi(fields[4])
-		}
-		observed := ServerIdentity{Epoch: fields[5], PID: fields[6], StartTime: fields[7]}
-		if attachedErr != nil || attached < 0 || groupErr != nil || groupSize < 1 {
-			return nil, errors.New("tmux phone shadow has invalid topology")
-		}
-		if observed != expected {
-			return nil, ErrAttachmentIdentityMismatch
-		}
-		records = append(records, phoneShadowRecord{
-			id: fields[0], name: fields[1], attached: attached,
-			groupSize: groupSize, groupSizeText: fields[4], server: observed,
-		})
-	}
-	return records, nil
-}
-
-func phoneShadowNeedsReconciliation(record phoneShadowRecord, protected map[string]struct{}) bool {
-	_, active := protected[record.name]
-	return !active && record.attached == 0
-}
-
-func (client Client) reconcilePhoneShadow(ctx context.Context, record phoneShadowRecord) (bool, error) {
-	arguments, err := phoneShadowReconciliationArguments(record)
-	if err != nil {
-		return false, err
-	}
-	output, err := client.Output(ctx, "reconcile-phone-shadow", arguments[0], arguments[1:]...)
-	if err != nil {
-		exists, existsErr := client.HasSession(ctx, record.id)
-		if existsErr == nil && !exists {
-			return true, nil
-		}
-		return false, err
-	}
-	switch output {
-	case "":
-		return true, nil
-	case identityMismatchMarker:
-		return false, nil
-	default:
-		return false, errors.New("tmux phone-shadow reconciliation returned unexpected output")
-	}
-}
-
-func phoneShadowReconciliationArguments(record phoneShadowRecord) ([]string, error) {
-	if !sessionIDPattern.MatchString(record.id) || !phoneShadowNamePattern.MatchString(record.name) ||
-		record.attached != 0 || record.groupSize < 1 || !record.server.valid() {
-		return nil, errors.New("tmux phone-shadow reconciliation identity is invalid")
-	}
-	groupSizeText := record.groupSizeText
-	if groupSizeText == "" && record.groupSize > 1 {
-		groupSizeText = strconv.Itoa(record.groupSize)
-	}
-	if groupSizeText != "" {
-		observedGroupSize, err := strconv.Atoi(groupSizeText)
-		if err != nil || observedGroupSize != record.groupSize {
-			return nil, errors.New("tmux phone-shadow reconciliation topology is invalid")
-		}
-	}
-	condition := "#{&&:" + mutationIdentityCondition(record.id, record.name, record.server) +
-		",#{&&:#{==:#{@skid_internal}," + phoneShadowMarker + "},#{&&:#{==:#{session_attached},0},#{==:#{session_group_size}," + groupSizeText + "}}}}"
-	action := "kill-session -t '" + record.id + "'"
-	if record.groupSize == 1 {
-		action = "set-option -u -t '" + record.id + "' destroy-unattached ; " +
-			"set-option -qu -t '" + record.id + "' -- @skid_internal"
-	}
-	return []string{
-		"if-shell", "-F", "-t", record.id, condition, action,
-		"display-message -p -l '" + identityMismatchMarker + "'",
-	}, nil
-}
-
-func (attachment *Attachment) abortStartedClient() error {
-	ptyErr := attachment.ClosePTY()
-	clientErr := attachment.CloseClient()
-	shadowErr := reconcileAttachmentShadow(attachment.client, attachment.spec)
-	return errors.Join(ptyErr, clientErr, shadowErr)
-}
-
-func reconcileAttachmentShadow(client Client, spec AttachmentSpec) error {
-	ctx, cancel := context.WithTimeout(context.Background(), attachmentRecoveryLimit)
-	defer cancel()
-	if _, err := client.reconcilePhoneShadows(ctx, spec.Server, nil, spec.ShadowName); err != nil {
-		return err
-	}
-	output, err := client.Output(ctx, "verify-phone-shadow-cleanup", "list-sessions", "-F",
-		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}|#{@skid_internal}|#{session_name}")
-	if err != nil {
-		return err
-	}
-	return parseAttachmentCleanupPostcondition(output, spec)
-}
-
-func parseAttachmentCleanupPostcondition(output string, spec AttachmentSpec) error {
-	if !phoneShadowNamePattern.MatchString(spec.ShadowName) || !spec.Server.valid() || output == "" {
-		return errAttachmentCleanupReadbackInvalid
-	}
-	found := false
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.SplitN(line, "|", 5)
-		if len(fields) != 5 {
-			return errAttachmentCleanupReadbackInvalid
-		}
-		observed := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
-		if !observed.valid() || observed != spec.Server {
-			return ErrAttachmentIdentityMismatch
-		}
-		if fields[4] != spec.ShadowName {
-			continue
-		}
-		if found {
-			return errAttachmentCleanupReadbackInvalid
-		}
-		found = true
-		if fields[3] == phoneShadowMarker {
-			return errAttachmentCleanupIncomplete
-		}
-	}
-	return nil
-}
-
 func attachmentEnvironment(environment []string) []string {
 	filtered := make([]string, 0, len(environment)+1)
 	for _, entry := range environment {
-		if strings.HasPrefix(entry, "TERM=") {
-			continue
+		if !strings.HasPrefix(entry, "TERM=") {
+			filtered = append(filtered, entry)
 		}
-		filtered = append(filtered, entry)
 	}
 	return append(filtered, "TERM=xterm-256color")
 }

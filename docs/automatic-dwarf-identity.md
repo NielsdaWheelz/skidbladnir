@@ -36,21 +36,19 @@ origin identity.
 ## Capability contract
 
 `Manager.List` is an inventory query with one declared lazy-normalization
-effect: after phone-shadow reconciliation, it assigns a valid
+effect: it assigns a valid
 `@skid_character` to each visible session whose current value is absent or
 invalid. A successful inventory contains a valid character for every returned
 session. It never fabricates a response-only character.
 
 - Preserve every valid existing character.
-- Exclude every session still classified as a phone shadow.
-- A reclaimed last-link shadow becomes ordinary and is assigned in that list.
 - Persist only the catalogue key. Derive all presentation from the catalogue.
 - Never read terminal bytes, infer agenthood, or infer other metadata.
 - Never rename, resize, retarget, attach, detach, signal, or kill a session.
 - Serialize with the existing `Manager.mutations` lock.
 - Linearize each assignment in one tmux client queue guarded by exact server
-  epoch/PID/start time, `$session_id`, expected raw option value, and absence of
-  the phone-shadow marker. The tmux name is not an assignment predicate.
+  epoch/PID/start time, `$session_id`, and expected raw option value. the tmux
+  name is not an assignment predicate.
 - On a lost conditional race, re-read once: accept a now-valid value, omit a
   vanished session, or make one guarded attempt against the newly observed raw
   value. An unresolved extant session is an internal failure. Do not return a
@@ -103,7 +101,6 @@ names. New code contains no dwarf-derived tmux-name path.
 ```text
 GET /v1/sessions
   -> sessions.Manager.List
-  -> reconcile owned phone shadows
   -> scan visible session ids/options
   -> tmux exact conditional character assignment
   -> inspect persisted character before fallible pane facts
@@ -220,8 +217,7 @@ change.
 7. Assignment changes only `@skid_character`; name, pane/window ids, pane PID,
    group topology, clients, selection, geometry, and other options are
    unchanged.
-8. Phone shadows are neither returned nor assigned; a shadow made ordinary is
-   assigned when first returned.
+8. every ordinary session is eligible regardless of its operator-owned name.
 9. Every successful session/create response uses `tmuxName` and a required
    character; Android rejects any other same-system shape.
 10. No character-management UI or API exists, and active source/docs contain

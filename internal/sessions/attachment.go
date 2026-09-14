@@ -2,25 +2,19 @@ package sessions
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
-	"time"
 
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
-const shadowReleaseTimeout = 3 * time.Second
-
-var ErrTerminalCleanupFailed = errors.New("terminal attachment cleanup failed")
+var (
+	ErrTerminalCleanupFailed            = errors.New("terminal attachment cleanup failed")
+	ErrTerminalConfigurationUnsupported = errors.New("tmux terminal configuration is unsupported")
+)
 
 type TerminalAttachment struct {
-	manager    *Manager
-	sourceID   string
-	shadowName string
-	runtime    *tmuxclient.Attachment
+	sourceID string
+	runtime  *tmuxclient.Attachment
 }
 
 func (manager *Manager) ValidateTerminal(ctx context.Context, id, identityToken string) error {
@@ -38,39 +32,26 @@ func (manager *Manager) OpenTerminal(ctx context.Context, input OpenTerminalInpu
 	if err != nil {
 		return nil, err
 	}
-	shadowName, err := newShadowName()
-	if err != nil {
-		return nil, err
-	}
 	runtime, err := manager.tmux.StartAttachment(ctx, tmuxclient.AttachmentSpec{
-		SourceID: input.TmuxID, SourceName: name, ShadowName: shadowName,
+		SourceID: input.TmuxID, SourceName: name,
 		Columns: input.Columns, Rows: input.Rows, Server: server,
 	})
-	// The creation gate created nothing, and an unsupported window is an
-	// operator prerequisite the phone cannot act on, so the unclassified error
-	// reaches the phone as the content-free internal error.
-	if errors.Is(err, tmuxclient.ErrAttachmentWindowSizeUnsupported) {
-		return nil, err
-	}
-	if errors.Is(err, tmuxclient.ErrAttachmentIdentityMismatch) {
-		classified := error(newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it."))
-		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
-			classified = errors.Join(classified, ErrTerminalCleanupFailed)
-		}
-		return nil, classified
-	}
 	if err != nil {
-		classified := manager.classifyMissingSession(ctx, input.TmuxID, err)
+		var classified error
+		switch {
+		case errors.Is(err, tmuxclient.ErrAttachmentIdentityMismatch):
+			classified = newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
+		case errors.Is(err, tmuxclient.ErrAttachmentConfigurationUnsupported):
+			classified = ErrTerminalConfigurationUnsupported
+		default:
+			classified = manager.classifyMissingSession(ctx, input.TmuxID, err)
+		}
 		if errors.Is(err, tmuxclient.ErrAttachmentCleanupFailed) {
 			classified = errors.Join(classified, ErrTerminalCleanupFailed)
 		}
 		return nil, classified
 	}
-	if _, exists := manager.activeShadows[shadowName]; exists {
-		panic("phone shadow name collision") // justify-defect: 128-bit names are unique within one manager lifetime.
-	}
-	manager.activeShadows[shadowName] = struct{}{}
-	return &TerminalAttachment{manager: manager, sourceID: input.TmuxID, shadowName: shadowName, runtime: runtime}, nil
+	return &TerminalAttachment{sourceID: input.TmuxID, runtime: runtime}, nil
 }
 
 func (attachment *TerminalAttachment) SourceID() string { return attachment.sourceID }
@@ -99,15 +80,6 @@ func (attachment *TerminalAttachment) CloseClient() error {
 	return attachment.runtime.CloseClient()
 }
 
-func (attachment *TerminalAttachment) ReleaseShadow() error {
-	attachment.manager.mutations.Lock()
-	defer attachment.manager.mutations.Unlock()
-	defer delete(attachment.manager.activeShadows, attachment.shadowName)
-	ctx, cancel := context.WithTimeout(context.Background(), shadowReleaseTimeout)
-	defer cancel()
-	return attachment.runtime.ReleaseShadow(ctx)
-}
-
 func (manager *Manager) terminalIdentity(ctx context.Context, id, identityToken string) (tmuxclient.ServerIdentity, string, error) {
 	if !sessionIDPattern.MatchString(id) {
 		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
@@ -127,24 +99,5 @@ func (manager *Manager) terminalIdentity(ctx context.Context, id, identityToken 
 	if err != nil || observed != server {
 		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
 	}
-	internal, err := manager.sessionOption(ctx, id, "@skid_internal")
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, "", err
-	}
-	if tmuxclient.IsPhoneShadow(name, internal) {
-		return tmuxclient.ServerIdentity{}, "", newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
 	return server, name, nil
-}
-
-func newShadowName() (string, error) {
-	return shadowNameFromEntropy(rand.Reader)
-}
-
-func shadowNameFromEntropy(entropy io.Reader) (string, error) {
-	random := make([]byte, 16)
-	if _, err := io.ReadFull(entropy, random); err != nil {
-		return "", fmt.Errorf("mint phone shadow name: %w", err)
-	}
-	return "skid-phone-" + hex.EncodeToString(random), nil
 }

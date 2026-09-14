@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -52,18 +51,12 @@ func main() {
 
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT|--client-config PATH agent OPERATION}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-		return exitUsage
+		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
-	if arguments[0] == "agent" || arguments[0] == "--client-config" || strings.HasPrefix(arguments[0], "--client-config=") {
-		flags := flag.NewFlagSet("agent", flag.ContinueOnError)
-		flags.SetOutput(io.Discard)
-		configPath := flags.String("client-config", "", "private fleet client configuration")
-		if err := flags.Parse(arguments); err != nil || *configPath == "" || flags.NArg() != 2 || flags.Arg(0) != "agent" {
-			_, _ = io.WriteString(stdout, "{\"ok\":false,\"error\":{\"code\":\"invalid_request\",\"dispatch\":\"not_sent\"}}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
-			return exitFailure
-		}
-		return agentcli.Run(context.Background(), *configPath, flags.Arg(1), stdin, stdout)
+	switch arguments[0] {
+	case "version", "gateway", "machine", "bearer", "pairing-invite", "agent-hook":
+	default:
+		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
 	if arguments[0] == "version" {
 		if len(arguments) != 1 {
