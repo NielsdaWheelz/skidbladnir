@@ -89,7 +89,6 @@ const (
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
-	ErrorSessionGroupedConflict      ErrorCode = "SessionGroupedConflict"
 )
 
 type Error struct {

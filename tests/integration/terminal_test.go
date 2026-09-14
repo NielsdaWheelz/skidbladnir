@@ -36,14 +36,12 @@ import (
 
 const terminalIntegrationTimeout = 10 * time.Second
 
-var terminalPhoneShadowName = regexp.MustCompile(`^skid-phone-[0-9a-f]{32}$`)
-
 // The one owning gateway+tmux sizing proof: the phone's mandatory first Resize
 // starts the shared PTY at its own size, ordinary tmux window-size latest hands
 // the shared window back and forth on input, and the pane's process, its
-// unsubmitted draft across a reshape, independent pane selection, and detach
+// unsubmitted draft across a reshape, shared pane selection, and detach
 // lifetime survive the handoffs.
-func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T) {
+func TestTerminalWebSocketSharesSessionAndNavigation(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logA := filepath.Join(fixture.root, "pane-a.log")
 	logB := filepath.Join(fixture.root, "pane-b.log")
@@ -57,12 +55,12 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
 	laptop := startTerminalLaptop(t, fixture, source.TmuxID, 120, 40)
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 1, terminalIntegrationTimeout)
-	laptopShapeBefore := terminalLaptopShape(t, fixture, "shared-terminal")
+	laptopShapeBefore := terminalLaptopShape(t, fixture, laptop.command.Process.Pid)
 	waitForTerminalWindowSize(t, fixture, "shared-terminal:0", 120, 40)
 
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
 	terminalURL := gatewayFixture.url(source.TmuxID)
-	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}")
 	staleToken := source.IdentityToken[:len(source.IdentityToken)-1] + differentASCII(source.IdentityToken[len(source.IdentityToken)-1])
 	_, response, err := websocket.Dial(context.Background(), terminalURL, &websocket.DialOptions{HTTPHeader: http.Header{
 		"Authorization":                []string{"Bearer " + gatewayFixture.bearer},
@@ -79,7 +77,7 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	if response.Body != nil {
 		_ = response.Body.Close()
 	}
-	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
+	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}"); sessionsAfter != sessionsBefore {
 		t.Fatal("stale terminal identity mutated sessions")
 	}
 
@@ -89,8 +87,8 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	readTerminalBinaryUntil(t, connection, []string{"FRAME=A BUFFER=seed-A"}, nil)
 
 	waitForTerminalWindowSize(t, fixture, "shared-terminal:0", 60, 20)
-	requireTerminalPhoneClientShape(t, fixture, "60x20")
-	if got := terminalLaptopShape(t, fixture, "shared-terminal"); got != laptopShapeBefore {
+	requireTerminalClientShape(t, fixture, laptop.command.Process.Pid, "60x20")
+	if got := terminalLaptopShape(t, fixture, laptop.command.Process.Pid); got != laptopShapeBefore {
 		t.Fatalf("phone sizing changed the laptop client shape: before=%q after=%q", laptopShapeBefore, got)
 	}
 
@@ -106,38 +104,35 @@ func TestTerminalWebSocketSharesOneSessionWithoutStealingTheLaptop(t *testing.T)
 	if contents, readErr := os.ReadFile(logA); readErr == nil && bytes.Contains(contents, []byte("PHONE-B")) {
 		t.Fatalf("phone input reached laptop-selected pane: content_bytes=%d", len(contents))
 	}
-	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
-		t.Fatalf("phone active-pane key sequence stole laptop selection: %q", active)
+	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "1" {
+		t.Fatalf("phone navigation did not update the shared selection: %q", active)
 	}
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("DRAFT-"))
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Resize","columns":70,"rows":25}`))
 	waitForTerminalWindowSize(t, fixture, "shared-terminal:0", 70, 25)
-	requireTerminalPhoneClientShape(t, fixture, "70x25")
+	requireTerminalClientShape(t, fixture, laptop.command.Process.Pid, "70x25")
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("KEPT\r"))
 	waitForTerminalFile(t, logB, "DRAFT-KEPT")
 
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
 	requireTerminalClosed(t, connection)
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 1, terminalIntegrationTimeout)
-	waitForTerminalCondition(t, "phone shadow teardown", func() bool {
-		return len(terminalPhoneShadows(t, fixture)) == 0
-	})
-	if got := terminalLaptopShape(t, fixture, "shared-terminal"); got != laptopShapeBefore {
+	if got := terminalLaptopShape(t, fixture, laptop.command.Process.Pid); got != laptopShapeBefore {
 		t.Fatalf("phone detach changed the laptop client shape: before=%q after=%q", laptopShapeBefore, got)
 	}
 	waitForTerminalWindowSize(t, fixture, "shared-terminal:0", 120, 40)
-	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "0" {
-		t.Fatalf("phone detach moved the shared active pane: index=%s", active)
+	if active := fixture.tmux(t, "display-message", "-p", "-t", "shared-terminal:0", "#{pane_index}"); active != "1" {
+		t.Fatalf("phone detach changed the shared active pane: index=%s", active)
 	}
 	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
 	if _, err := laptop.Write([]byte("LAPTOP-A\r")); err != nil {
 		t.Fatal("write through surviving laptop client")
 	}
-	waitForTerminalFile(t, logA, "LAPTOP-A")
+	waitForTerminalFile(t, logB, "LAPTOP-A")
 }
 
 // Nothing is created before a valid first Resize: every other first frame is
-// classified, closed, and leaves no shadow, no client, and no changed session.
+// classified, closed, and leaves no client, and no changed session.
 func TestTerminalFirstFrameGateCreatesNoResources(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logPath := filepath.Join(fixture.root, "first-frame.log")
@@ -145,7 +140,7 @@ func TestTerminalFirstFrameGateCreatesNoResources(t *testing.T) {
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "FIRST-FRAME")
 	source := terminalSource(t, fixture, "first-frame-source")
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
-	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}")
 
 	tests := []struct {
 		name string
@@ -189,29 +184,46 @@ func TestTerminalFirstFrameGateCreatesNoResources(t *testing.T) {
 // Effective window-size latest is a deployment prerequisite. An unsupported
 // source window is refused with the content-free internal error before any
 // creation command runs, and the window's own options are never touched.
-func TestTerminalRefusesASourceWindowWithoutWindowSizeLatest(t *testing.T) {
-	fixture := newSessionFixture(t)
-	logPath := filepath.Join(fixture.root, "window-size-policy.log")
-	fixture.tmux(t, "new-session", "-d", "-s", "policy-source", "-x", "80", "-y", "24", "-c", fixture.project,
-		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "POLICY")
-	fixture.tmux(t, "set-option", "-w", "-t", "policy-source:0", "window-size", "manual")
-	source := terminalSource(t, fixture, "policy-source")
-	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
-	gatewayFixture := newTerminalGateway(t, fixture, nil)
-	optionsBefore := fixture.tmux(t, "show-options", "-w", "-t", "policy-source:0")
-	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
-
-	connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
-	sendInitialTerminalResize(t, connection, 60, 20)
-	requireTerminalError(t, connection, "InternalError", "Skíðblaðnir could not complete the request.")
-	requireTerminalClosed(t, connection)
-
-	requireNoTerminalResources(t, fixture, sessionsBefore)
-	if optionsAfter := fixture.tmux(t, "show-options", "-w", "-t", "policy-source:0"); optionsAfter != optionsBefore {
-		t.Fatalf("unsupported window-size policy mutated the source window options: before_lines=%d after_lines=%d",
-			len(strings.Split(optionsBefore, "\n")), len(strings.Split(optionsAfter, "\n")))
+func TestTerminalRefusesUnsupportedSourceOptionsWithoutMutation(t *testing.T) {
+	for _, invalid := range []struct {
+		option, value string
+		window        bool
+	}{
+		{"window-size", "manual", true}, {"destroy-unattached", "on", false}, {"detach-on-destroy", "off", false},
+	} {
+		t.Run(invalid.option, func(t *testing.T) {
+			fixture := newSessionFixture(t)
+			fixture.tmux(t, "new-session", "-d", "-s", "policy-source", "-x", "80", "-y", "24", "-c", fixture.project, "--", sleepPath, "300")
+			laptop := startTerminalLaptop(t, fixture, "policy-source", 80, 24)
+			args := []string{"set-option", "-t", "policy-source"}
+			if invalid.window {
+				args = append(args, "-w")
+			}
+			fixture.tmux(t, append(args, invalid.option, invalid.value)...)
+			source := terminalSource(t, fixture, "policy-source")
+			panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
+			gatewayFixture := newTerminalGateway(t, fixture, nil)
+			optionsBefore := sessionNonCharacterSnapshot(t, fixture, source.TmuxID)
+			sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}")
+			connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
+			sendInitialTerminalResize(t, connection, 60, 20)
+			requireTerminalError(t, connection, "TerminalConfigurationUnsupported", "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on.")
+			requireTerminalClosed(t, connection)
+			if fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}") != sessionsBefore {
+				t.Fatal("refused attachment changed the session set")
+			}
+			if fixture.tmux(t, "list-clients", "-F", "#{client_pid}") != strconv.Itoa(laptop.command.Process.Pid) {
+				t.Fatal("refused attachment changed client ownership")
+			}
+			if sessionNonCharacterSnapshot(t, fixture, source.TmuxID) != optionsBefore {
+				t.Fatal("unsupported options changed source state")
+			}
+			requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
+			if invalid.option == "destroy-unattached" {
+				fixture.tmux(t, "set-option", "-t", source.TmuxID, "destroy-unattached", "off")
+			}
+		})
 	}
-	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
 }
 
 func TestTerminalBearerRotationRevokesLiveStreamAndReconnectsWithoutReplay(t *testing.T) {
@@ -240,9 +252,6 @@ func TestTerminalBearerRotationRevokesLiveStreamAndReconnectsWithoutReplay(t *te
 	requireTerminalError(t, oldConnection, "ReconnectRequired", "Reconnect required.")
 	requireTerminalClosed(t, oldConnection)
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 0, terminalIntegrationTimeout)
-	waitForTerminalCondition(t, "revoked terminal shadow teardown", func() bool {
-		return len(terminalPhoneShadows(t, fixture)) == 0
-	})
 
 	freshConnection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), freshBearer, source.IdentityToken)
 	sendInitialTerminalResize(t, freshConnection, 80, 24)
@@ -255,84 +264,65 @@ func TestTerminalBearerRotationRevokesLiveStreamAndReconnectsWithoutReplay(t *te
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 0, terminalIntegrationTimeout)
 }
 
-func TestTerminalPresenceAndLastLinkDetachPreserveThePane(t *testing.T) {
+func TestTerminalLastClientDetachPreservesSession(t *testing.T) {
 	fixture := newSessionFixture(t)
-	logPath := filepath.Join(fixture.root, "last-link.log")
-	fixture.tmux(t, "new-session", "-d", "-s", "last-link-source", "-x", "80", "-y", "24", "-c", fixture.project,
-		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "LAST-LINK")
-	source := terminalSource(t, fixture, "last-link-source")
-	startTerminalLaptop(t, fixture, source.TmuxID, 80, 24)
-	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 1, terminalIntegrationTimeout)
+	logPath := filepath.Join(fixture.root, "last-client.log")
+	fixture.tmux(t, "new-session", "-d", "-s", "last-client", "-x", "80", "-y", "24", "-c", fixture.project,
+		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "LAST-CLIENT")
+	source := terminalSource(t, fixture, "last-client")
 	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
-
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
-	sendInitialTerminalResize(t, connection, 80, 24)
-	requireTerminalHello(t, connection, 2)
-	shadow := requireTerminalPhoneShadow(t, fixture)
-	fixture.tmux(t, "detach-client", "-t", requireTerminalLaptopClient(t, fixture, source.TmuxID, source.TmuxName))
-	requireTerminalPresence(t, connection, 1)
-
-	removeExactTerminalSourceLink(t, fixture, source, panePID)
-	waitForTerminalCondition(t, "phone shadow became the last grouped link", func() bool {
-		return !terminalSessionExists(t, fixture, source.TmuxID, source.TmuxName) && terminalSessionExists(t, fixture, shadow.id, shadow.name)
-	})
-	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
-	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("PHONE-SURVIVES\r"))
-	waitForTerminalFile(t, logPath, "PHONE-SURVIVES")
-
+	sendInitialTerminalResize(t, connection, 300, 50)
+	requireTerminalHello(t, connection, 1)
+	waitForTerminalWindowSize(t, fixture, "last-client:0", 300, 50)
+	if got := fixture.tmux(t, "list-sessions", "-F", "#{session_id}"); got != source.TmuxID {
+		t.Fatal("attachment created a session")
+	}
 	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
 	requireTerminalClosed(t, connection)
-	waitForTerminalCondition(t, "last phone link promoted to an ordinary session", func() bool {
-		return fixture.tmux(t, "show-options", "-qv", "-t", shadow.id, "@skid_internal") == ""
-	})
-	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
-	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
-		t.Fatal("promoted last phone link disappeared")
-	}
+	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 0, terminalIntegrationTimeout)
+	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
 }
 
-func TestTerminalDetachLeavesAnAttachedPhoneShadowUntouched(t *testing.T) {
+func TestTerminalSessionSwitchEndsTheAddressedConnection(t *testing.T) {
 	fixture := newSessionFixture(t)
-	logPath := filepath.Join(fixture.root, "attached-shadow.log")
-	fixture.tmux(t, "new-session", "-d", "-s", "attached-shadow-source", "-x", "80", "-y", "24", "-c", fixture.project,
-		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "ATTACHED-SHADOW")
-	source := terminalSource(t, fixture, "attached-shadow-source")
-	panePID, paneStartTime := terminalPaneIdentity(t, fixture, source.TmuxID)
+	for _, name := range []string{"switch-source", "switch-destination"} {
+		fixture.tmux(t, "new-session", "-d", "-s", name, "-x", "80", "-y", "24", "-c", fixture.project, "--", sleepPath, "300")
+	}
+	source := terminalSource(t, fixture, "switch-source")
+	destination := terminalSource(t, fixture, "switch-destination")
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
-
 	connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
 	sendInitialTerminalResize(t, connection, 80, 24)
 	requireTerminalHello(t, connection, 1)
-	shadow := requireTerminalPhoneShadow(t, fixture)
-	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
-
-	unrelated := startTerminalLaptop(t, fixture, shadow.id, 100, 30)
-	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 2, terminalIntegrationTimeout)
-	unrelatedClient := requireTerminalLaptopClient(t, fixture, shadow.id, shadow.name)
-	requireTerminalPresence(t, connection, 2)
-
-	writeTerminalFrame(t, connection, websocket.MessageText, []byte(`{"kind":"Detach"}`))
+	ownClient := fixture.tmux(t, "list-clients", "-F", "#{client_name}")
+	fixture.tmux(t, "switch-client", "-c", ownClient, "-t", destination.TmuxID)
+	requireTerminalError(t, connection, "ReconnectRequired", "Reconnect required.")
 	requireTerminalClosed(t, connection)
-	waitForTerminalCondition(t, "attached phone shadow retained with unrelated client", func() bool {
-		return terminalHasOnlyExactClient(t, fixture, unrelatedClient, shadow.id, shadow.name)
-	})
+	waitForTerminalAttachmentCount(t, fixture, destination.TmuxID, 0, terminalIntegrationTimeout)
+	if !terminalSessionExists(t, fixture, source.TmuxID, source.TmuxName) || !terminalSessionExists(t, fixture, destination.TmuxID, destination.TmuxName) {
+		t.Fatal("attachment cleanup removed a session")
+	}
+}
 
-	if !terminalSessionExists(t, fixture, source.TmuxID, source.TmuxName) {
-		t.Fatal("terminal detach removed source session")
+func TestTerminalSourceDestructionDoesNotRetarget(t *testing.T) {
+	fixture := newSessionFixture(t)
+	for _, name := range []string{"destroy-source", "destroy-survivor"} {
+		fixture.tmux(t, "new-session", "-d", "-s", name, "-x", "80", "-y", "24", "-c", fixture.project, "--", sleepPath, "300")
 	}
-	if !terminalSessionExists(t, fixture, shadow.id, shadow.name) {
-		t.Fatal("terminal detach removed attached phone shadow")
-	}
-	if marker := fixture.tmux(t, "show-options", "-qv", "-t", shadow.id, "@skid_internal"); marker != "phone-shadow" {
-		t.Fatal("terminal detach changed attached phone-shadow marker")
-	}
-	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
-	requireTerminalPaneIdentity(t, fixture, shadow.id, panePID, paneStartTime)
-	if _, err := unrelated.Write([]byte("UNRELATED-SURVIVES\r")); err != nil {
-		t.Fatal("write through unrelated shadow client after phone detach")
-	}
-	waitForTerminalFile(t, logPath, "UNRELATED-SURVIVES")
+	source := terminalSource(t, fixture, "destroy-source")
+	survivor := terminalSource(t, fixture, "destroy-survivor")
+	sourcePID, _ := terminalPaneIdentity(t, fixture, source.TmuxID)
+	survivorPID, survivorStart := terminalPaneIdentity(t, fixture, survivor.TmuxID)
+	gatewayFixture := newTerminalGateway(t, fixture, nil)
+	connection := dialTerminal(t, nil, gatewayFixture.url(source.TmuxID), gatewayFixture.bearer, source.IdentityToken)
+	sendInitialTerminalResize(t, connection, 80, 24)
+	requireTerminalHello(t, connection, 1)
+	removeExactTerminalSourceLink(t, fixture, source, sourcePID)
+	requireTerminalClosed(t, connection)
+	waitForTerminalAttachmentCount(t, fixture, survivor.TmuxID, 0, terminalIntegrationTimeout)
+	requireTerminalPaneIdentity(t, fixture, survivor.TmuxID, survivorPID, survivorStart)
 }
 
 func TestTerminalSlowReaderIsTornDownWithoutKillingTheSource(t *testing.T) {
@@ -350,9 +340,6 @@ func TestTerminalSlowReaderIsTornDownWithoutKillingTheSource(t *testing.T) {
 	writeGate.arm()
 	writeTerminalFrame(t, connection, websocket.MessageBinary, []byte("FLOOD\r"))
 	waitForTerminalAttachmentCount(t, fixture, source.TmuxID, 0, 20*time.Second)
-	waitForTerminalConditionWithin(t, "slow-reader shadow teardown", 20*time.Second, func() bool {
-		return len(terminalPhoneShadows(t, fixture)) == 0
-	})
 	requireTerminalPaneIdentity(t, fixture, source.TmuxID, panePID, paneStartTime)
 }
 
@@ -390,9 +377,7 @@ func terminalFloodScript() string {
 done`
 }
 
-// A grouped session initially opens on its lowest-index window. The phone
-// shadow must instead open on the source's current window without retargeting
-// the source session itself.
+// Attachment opens the selected session at its existing current window.
 func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
 	fixture := newSessionFixture(t)
 	logPath := filepath.Join(fixture.root, "current-window.log")
@@ -409,16 +394,12 @@ func TestTerminalAttachOpensTheSourceCurrentWindow(t *testing.T) {
 	sendInitialTerminalResize(t, connection, 80, 24)
 	requireTerminalHello(t, connection, 1)
 
-	shadow := requireTerminalPhoneShadow(t, fixture)
-	if got := fixture.tmux(t, "display-message", "-p", "-t", shadow.id, "#{window_id}"); got != sourceWindow {
-		t.Fatalf("phone shadow current-window mismatch: got=%s want=%s", got, sourceWindow)
-	}
 	if got := fixture.tmux(t, "display-message", "-p", "-t", "windowed-source:", "#{window_id}"); got != sourceWindow {
 		t.Fatalf("attach moved the source current window: got=%s want=%s", got, sourceWindow)
 	}
 }
 
-// Kill settles the live phone attachment and its owned shadow before applying
+// Kill settles the owned terminal attachment before applying
 // the exact machine-bound kill, while unrelated sessions remain untouched.
 func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 	fixture := newSessionFixture(t)
@@ -461,8 +442,8 @@ func TestKillWithOpenTerminalClosesTheStreamAndKillsExactly(t *testing.T) {
 		t.Fatalf("kill with open terminal failed: response_read=%t status=%d body_bytes=%d", readErr == nil, response.StatusCode, len(responseBody))
 	}
 	requireTerminalClosed(t, connection)
-	waitForTerminalCondition(t, "killed session and its shadow disappear", func() bool {
-		return !terminalSessionExists(t, fixture, source.TmuxID, source.TmuxName) && len(terminalPhoneShadows(t, fixture)) == 0
+	waitForTerminalCondition(t, "selected session disappears", func() bool {
+		return !terminalSessionExists(t, fixture, source.TmuxID, source.TmuxName)
 	})
 	if !terminalSessionExists(t, fixture, bystander.TmuxID, bystander.TmuxName) {
 		t.Fatal("kill with open terminal destroyed the bystander session")
@@ -479,7 +460,7 @@ func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T
 		"--", "/bin/sh", "-c", terminalPaneScript(), "fixture", logPath, "AUTH")
 	source := terminalSource(t, fixture, "auth-source")
 	gatewayFixture := newTerminalGateway(t, fixture, nil)
-	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
+	sessionsBefore := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}")
 
 	tests := []struct {
 		name    string
@@ -550,11 +531,8 @@ func TestTerminalEndpointRejectsMissingCredentialsBeforeAnyMutation(t *testing.T
 			_ = response.Body.Close()
 		}
 	}
-	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
+	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}"); sessionsAfter != sessionsBefore {
 		t.Fatal("rejected terminal credentials mutated the tmux session set")
-	}
-	if shadows := terminalPhoneShadows(t, fixture); len(shadows) != 0 {
-		t.Fatalf("rejected terminal credentials created phone shadows: count=%d", len(shadows))
 	}
 }
 
@@ -795,65 +773,6 @@ func terminalSource(t *testing.T, fixture sessionFixture, name string) sessions.
 	return requireSessionNamed(t, listed, name)
 }
 
-type terminalShadow struct {
-	id   string
-	name string
-}
-
-func terminalPhoneShadows(t *testing.T, fixture sessionFixture) []terminalShadow {
-	t.Helper()
-	output := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}")
-	shadows := make([]terminalShadow, 0, 1)
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Split(line, "|")
-		if len(fields) == 3 && fields[2] == "phone-shadow" && terminalPhoneShadowName.MatchString(fields[1]) {
-			shadows = append(shadows, terminalShadow{id: fields[0], name: fields[1]})
-		}
-	}
-	return shadows
-}
-
-func requireTerminalPhoneShadow(t *testing.T, fixture sessionFixture) terminalShadow {
-	t.Helper()
-	shadows := terminalPhoneShadows(t, fixture)
-	if len(shadows) != 1 {
-		t.Fatalf("terminal phone shadow count=%d, want exactly one", len(shadows))
-	}
-	return shadows[0]
-}
-
-func requireTerminalLaptopClient(t *testing.T, fixture sessionFixture, sourceID, sourceName string) string {
-	t.Helper()
-	output := fixture.tmux(t, "list-clients", "-F", "#{client_name}|#{session_id}|#{session_name}|#{client_flags}")
-	matches := make([]string, 0, 1)
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Split(line, "|")
-		if len(fields) == 4 && fields[1] == sourceID && fields[2] == sourceName && !strings.Contains(fields[3], "active-pane") {
-			matches = append(matches, fields[0])
-		}
-	}
-	if len(matches) != 1 {
-		t.Fatalf("test-owned laptop client match count=%d, want exactly one", len(matches))
-	}
-	return matches[0]
-}
-
-func terminalHasOnlyExactClient(t *testing.T, fixture sessionFixture, clientName, sessionID, sessionName string) bool {
-	t.Helper()
-	output := fixture.tmux(t, "list-clients", "-F", "#{client_name}|#{session_id}|#{session_name}")
-	matches := 0
-	exact := false
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Split(line, "|")
-		if len(fields) != 3 || fields[1] != sessionID || fields[2] != sessionName {
-			continue
-		}
-		matches++
-		exact = exact || fields[0] == clientName
-	}
-	return matches == 1 && exact
-}
-
 func terminalPaneIdentity(t *testing.T, fixture sessionFixture, target string) (int, processinfo.StartIdentity) {
 	t.Helper()
 	pidText := fixture.tmux(t, "display-message", "-p", "-t", target, "#{pane_pid}")
@@ -965,11 +884,11 @@ func (laptop *terminalLaptop) Write(contents []byte) (int, error) {
 	return laptop.pty.Write(contents)
 }
 
-func terminalLaptopShape(t *testing.T, fixture sessionFixture, sessionName string) string {
+func terminalLaptopShape(t *testing.T, fixture sessionFixture, clientPID int) string {
 	t.Helper()
-	for _, line := range strings.Split(fixture.tmux(t, "list-clients", "-F", "#{session_name}|#{client_width}x#{client_height}|#{client_flags}"), "\n") {
+	for _, line := range strings.Split(fixture.tmux(t, "list-clients", "-F", "#{client_pid}|#{client_width}x#{client_height}|#{client_flags}"), "\n") {
 		fields := strings.Split(line, "|")
-		if len(fields) == 3 && fields[0] == sessionName {
+		if len(fields) == 3 && fields[0] == strconv.Itoa(clientPID) {
 			return fields[1] + "|" + fields[2]
 		}
 	}
@@ -1022,7 +941,7 @@ func differentASCII(value byte) string {
 const terminalStatusRows = 1
 
 // Every terminal dial must send the mandatory first Resize before the gateway
-// creates a shadow, a PTY, or sends Hello.
+// creates a PTY or sends Hello.
 func sendInitialTerminalResize(t *testing.T, connection *websocket.Conn, columns, rows int) {
 	t.Helper()
 	writeTerminalFrame(t, connection, websocket.MessageText,
@@ -1037,30 +956,26 @@ func waitForTerminalWindowSize(t *testing.T, fixture sessionFixture, target stri
 	})
 }
 
-// The gateway's phone client is the only client attached with active-pane.
-func requireTerminalPhoneClientShape(t *testing.T, fixture sessionFixture, size string) {
+func requireTerminalClientShape(t *testing.T, fixture sessionFixture, laptopPID int, size string) {
 	t.Helper()
-	matches := make([]string, 0, 1)
-	for _, line := range strings.Split(fixture.tmux(t, "list-clients", "-F", "#{client_flags}|#{client_width}x#{client_height}"), "\n") {
+	matches := 0
+	for _, line := range strings.Split(fixture.tmux(t, "list-clients", "-F", "#{client_pid}|#{client_flags}|#{client_width}x#{client_height}"), "\n") {
 		fields := strings.Split(line, "|")
-		if len(fields) == 2 && strings.Contains(fields[0], "active-pane") {
-			matches = append(matches, line)
+		if len(fields) == 3 && fields[0] != strconv.Itoa(laptopPID) {
+			matches++
+			if fields[2] != size || strings.Contains(fields[1], "active-pane") {
+				t.Fatal("owned client geometry or navigation flags differ")
+			}
 		}
 	}
-	if len(matches) != 1 {
-		t.Fatalf("phone client match count=%d, want exactly one", len(matches))
-	}
-	if !strings.HasSuffix(matches[0], "|"+size) {
-		t.Fatalf("phone client shape mismatch: got=%q want size=%q", matches[0], size)
+	if matches != 1 {
+		t.Fatal("expected one owned terminal client")
 	}
 }
 
 func requireNoTerminalResources(t *testing.T, fixture sessionFixture, sessionsBefore string) {
 	t.Helper()
-	if shadows := terminalPhoneShadows(t, fixture); len(shadows) != 0 {
-		t.Fatalf("refused terminal startup created phone shadows: count=%d", len(shadows))
-	}
-	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}|#{@skid_internal}"); sessionsAfter != sessionsBefore {
+	if sessionsAfter := fixture.tmux(t, "list-sessions", "-F", "#{session_id}|#{session_name}"); sessionsAfter != sessionsBefore {
 		t.Fatalf("refused terminal startup mutated the tmux session set: before_lines=%d after_lines=%d",
 			len(strings.Split(sessionsBefore, "\n")), len(strings.Split(sessionsAfter, "\n")))
 	}

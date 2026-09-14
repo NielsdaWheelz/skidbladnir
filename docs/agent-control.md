@@ -2,6 +2,8 @@
 
 2026-09-12 · accepted v1 implementation target; 2026-09-13 terminal-codex/profile amendment.
 implemented and deployed in v0.3.1; [acceptance and limitations](roadmap.md).
+current client/attachment contract: [usable client and direct attachment](agent-control-ux.md).
+verification status is recorded in the roadmap. other v1 contracts remain.
 product scope follows the user's reviewed decisions; this document fixes the
 engineering contract. the existing jarvis → native codex → tmux → phone
 flow is manually confirmed by the user. that is baseline evidence, not evidence
@@ -34,7 +36,7 @@ session type, ownership relationship, or permission class.
 
 ```text
 human / codex / claude / jarvis
-  -> skidbladnir agent <operation> -> configured peer's https gateway
+  -> skid <operation> -> configured peer's https gateway
 phone ---------------------------> configured peer's https gateway
                                      -> sessions / tmux / process observation
                                      -> agentcontrol
@@ -59,8 +61,7 @@ phone ---------------------------> configured peer's https gateway
    no second authored profile/account table.
    set a selected profile's environment before starting/importing its helper.
 4. **the cli owns fleet routing.** one reusable go client calls the same gateway
-   locally/remotely. jarvis invokes this installed cli with structured stdin and
-   consumes json; it does not gain another http/provider/tmux implementation.
+   locally/remotely. jarvis invokes ordinary cli arguments with `--json` and prompt-only stdin; it does not gain another http/provider/tmux implementation.
 5. **providers retain history and execution.** tmux retains terminal inventory.
    helpers/connections never own worker lifetime. gateway restart re-lists tmux.
 
@@ -239,18 +240,13 @@ terminal output, transcripts, credentials, or raw provider errors.
 
 ## clients, configuration, and presentation
 
-`skidbladnir agent list|start|read|send|keys|interrupt|stop` accepts one json object
-on stdin and prints one json result. list accepts optional `machine`; omitted
-means all configured peers. start takes `machine, profile, cwd, name?`; other
-operations take `target` plus the inputs above. list returns independent per-peer
-results, including unavailable peers, rather than failing the entire fleet.
-no wait command in v1: agents can list/read again. human terminal opening continues
-through ordinary tmux/ssh and skid's existing attachment path.
-inventory is bounded separately from control replies: the aggregate cli list
-allows at most 1 mib of encoded output; exceeding it returns `output_limit`,
-never an incomplete list presented as complete. other cli results retain 64 kib.
-each peer's cli inventory response has the same 1-mib bound. the phone retains
-its existing 64-kib response bound.
+[agent-control ux](agent-control-ux.md) owns the normal cli/tui, opaque references,
+common json projection, errors, and exit codes. no json-request stdin grammar or
+manually assembled target remains. desktop terminal entry uses the same gateway
+websocket as the phone. native provider selection remains the contract above.
+inventory allows at most 1 mib after projection; overflow is an error, never an
+incomplete list presented as complete. control replies retain their 64 kib bound;
+each peer inventory is at most 1 mib; the phone retains its 64 kib http bound.
 
 private client configuration:
 
@@ -260,8 +256,8 @@ private client configuration:
 ```
 
 labels are unique; handles/origins use existing validation. profiles come from
-the host. add one explicit client config path option, not environment-driven
-routing. deployment/operator code writes mode-0600 copies for each trusted user;
+the host. default to `~/.config/skidbladnir/client.json`, with `--config PATH`
+for an explicit override; no environment-driven routing. deployment/operator code writes mode-0600 copies for each trusted user;
 jarvis gets its own readable configuration under its service configuration owner.
 reuse existing pairing/bearer provisioning, with no provider credentials in the
 client file. extending the peer list is explicit configuration. bearer rotation
@@ -269,16 +265,11 @@ requires refreshing copies; no synchronization daemon.
 provisioning is sequential: a failed copy can leave a partial update. fix the
 transport and rerun; there is no distributed configuration transaction.
 
-machine selectors for list/start are configured labels; target.machine is the
-canonical handle. reject unknown selectors before dispatch. cli name maps to the
-existing creation name field. stdout is exactly `{ok:true,result}` or
-`{ok:false,error:{code,dispatch:not_sent|unknown}}`; exit 0/1 respectively.
-
-jarvis replaces worker-facing `codex.*` tools with `agent.*`, retaining its action
-recording. invoke the absolute cli directly with `--client-config <path> agent
-<operation>` and json stdin; bound stdout and suppress content-bearing stderr.
-timeout/child loss after possible dispatch is unknown; killing the client does
-not cancel remote work. no shell or automatic write retries.
+machine selectors use configured labels; references route by canonical handle.
+unknown selectors cannot dispatch. jarvis's `agent.*` tools retain its action
+recording and call the absolute installed cli with ordinary arguments, `--json`,
+and prompt-only stdin. timeout/child loss after possible dispatch is unknown;
+killing the cli does not cancel remote work. no shell or automatic write retry.
 no hardcoded devbox, provider restriction, coordinator exclusion, or worker
 work-root policy. preserve unrelated jarvis cognition, kernel, and six-table
 durability and existing host cwd validation. cognition without a tmux session is
@@ -286,9 +277,9 @@ outside this inventory naturally.
 retain only a read-only decoder for existing durable codex uncertainty results;
 removing old execution does not erase canonical action history. no legacy tool
 or dispatch path remains.
-jarvis projects inventory into a closed tool schema containing peer outcomes,
-profiles, session labels/cwd, full targets, provider, status, and methods. it
-omits phone presentation metadata; the cli still returns the full host inventory.
+fleetclient projects inventory once for cli, tui, and jarvis: peer outcomes,
+profiles, session labels/cwd, opaque references, provider, status, and methods.
+jarvis consumes that projection directly without a second inventory adapter.
 
 android replaces active/quiet labels with semantic status, marking inferred
 status unobtrusively. use machine/name/id ordering; no urgency sorting, search,

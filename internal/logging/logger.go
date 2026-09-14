@@ -79,7 +79,6 @@ const (
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
 	ErrorPairingInviteRejected       ErrorCode = "PairingInviteRejected"
 	ErrorMachineIdentityMismatch     ErrorCode = "MachineIdentityMismatch"
-	ErrorSessionGroupedConflict      ErrorCode = "SessionGroupedConflict"
 	ErrorInternal                    ErrorCode = "InternalError"
 )
 
@@ -100,7 +99,6 @@ func (code ErrorCode) valid() bool {
 		ErrorSessionIdentityMismatch,
 		ErrorPairingInviteRejected,
 		ErrorMachineIdentityMismatch,
-		ErrorSessionGroupedConflict,
 		ErrorInternal:
 		return true
 	default:

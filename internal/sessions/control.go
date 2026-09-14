@@ -58,9 +58,6 @@ func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTa
 	if err != nil {
 		return Session{}, err
 	}
-	if identity.phoneShadow {
-		return Session{}, ErrAgentTargetStale
-	}
 	observed, found, err := manager.scanSession(ctx, target.TmuxID)
 	if err != nil {
 		return Session{}, err
@@ -68,7 +65,7 @@ func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTa
 	if !found {
 		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	inspected, present, err := manager.inspectRequired(ctx, observed, identity.server)
+	inspected, present, err := manager.inspectRequired(ctx, observed, identity)
 	if err != nil {
 		return Session{}, err
 	}
@@ -147,8 +144,7 @@ func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profi
 	return profile, found
 }
 
-// KillAgentTerminal rechecks the pane and foreground after phone detach and
-// shadow reconciliation, under the same mutation lock as the exact-session kill.
+// KillAgentTerminal rechecks the pane and foreground after client detach, under the same mutation lock as the exact-session kill.
 func (manager *Manager) KillAgentTerminal(ctx context.Context, target AgentTarget) error {
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()

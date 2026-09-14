@@ -309,9 +309,9 @@ internal fun completeWorkingDirectoryRequest(
                 ApiErrorCode.SessionNameConflict,
                 ApiErrorCode.SessionNotFound,
                 ApiErrorCode.SessionIdentityMismatch,
-                ApiErrorCode.SessionGroupedConflict,
                 ApiErrorCode.PairingInviteRejected,
                 ApiErrorCode.ReconnectRequired,
+                ApiErrorCode.TerminalConfigurationUnsupported,
             ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable,
             ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
                 -> throw ProtocolDecodeException("directory-listing completion error set")
@@ -613,11 +613,11 @@ internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean = when (this) {
         ApiErrorCode.SessionNameConflict,
         ApiErrorCode.SessionNotFound,
         ApiErrorCode.SessionIdentityMismatch,
-        ApiErrorCode.SessionGroupedConflict,
         ApiErrorCode.PairingInviteRejected,
         ApiErrorCode.MachineIdentityMismatch,
         ApiErrorCode.InternalError,
         ApiErrorCode.ReconnectRequired,
+        ApiErrorCode.TerminalConfigurationUnsupported,
             ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable,
             ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
         -> false

@@ -1,18 +1,18 @@
 package terminal
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 const (
 	MaximumFrameBytes = 64 * 1024
 	MinimumColumns    = 20
-	MaximumColumns    = 240
+	MaximumColumns    = 1024
 	MinimumRows       = 5
-	MaximumRows       = 120
+	MaximumRows       = 512
 )
 
 var (
@@ -23,10 +23,11 @@ var (
 type ErrorCode string
 
 const (
-	ErrorInvalidRequest    ErrorCode = "InvalidRequest"
-	ErrorRequestTooLarge   ErrorCode = "RequestTooLarge"
-	ErrorReconnectRequired ErrorCode = "ReconnectRequired"
-	ErrorInternal          ErrorCode = "InternalError"
+	ErrorInvalidRequest                   ErrorCode = "InvalidRequest"
+	ErrorRequestTooLarge                  ErrorCode = "RequestTooLarge"
+	ErrorReconnectRequired                ErrorCode = "ReconnectRequired"
+	ErrorInternal                         ErrorCode = "InternalError"
+	ErrorTerminalConfigurationUnsupported ErrorCode = "TerminalConfigurationUnsupported"
 )
 
 type ClientFrame interface {
@@ -44,6 +45,21 @@ type DetachFrame struct{}
 
 func (DetachFrame) isClientFrame() {}
 
+type ServerFrame interface {
+	isServerFrame()
+}
+
+type HelloFrame struct{ AttachedClients int }
+type PresenceFrame struct{ AttachedClients int }
+type ErrorFrame struct {
+	Code    ErrorCode `json:"code"`
+	Message string    `json:"message"`
+}
+
+func (HelloFrame) isServerFrame()    {}
+func (PresenceFrame) isServerFrame() {}
+func (ErrorFrame) isServerFrame()    {}
+
 func EncodeHello(attachedClients int) ([]byte, error) {
 	return encodePresence("Hello", attachedClients)
 }
@@ -52,33 +68,85 @@ func EncodePresence(attachedClients int) ([]byte, error) {
 	return encodePresence("Presence", attachedClients)
 }
 
-func EncodeError(code ErrorCode) ([]byte, error) {
-	message := ""
+func errorMessage(code ErrorCode) string {
 	switch code {
 	case ErrorInvalidRequest:
-		message = "The request is not valid."
+		return "The request is not valid."
 	case ErrorRequestTooLarge:
-		message = "The request is too large."
+		return "The request is too large."
 	case ErrorReconnectRequired:
-		message = "Reconnect required."
+		return "Reconnect required."
 	case ErrorInternal:
-		message = "Skíðblaðnir could not complete the request."
+		return "Skíðblaðnir could not complete the request."
+	case ErrorTerminalConfigurationUnsupported:
+		return "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
 	default:
+		return ""
+	}
+}
+
+func EncodeError(code ErrorCode) ([]byte, error) {
+	message := errorMessage(code)
+	if message == "" {
 		return nil, ErrInvalidFrame
 	}
 	return json.Marshal(struct {
-		Kind  string `json:"kind"`
-		Error struct {
-			Code    ErrorCode `json:"code"`
-			Message string    `json:"message"`
-		} `json:"error"`
+		Kind  string     `json:"kind"`
+		Error ErrorFrame `json:"error"`
 	}{
-		Kind: "Error",
-		Error: struct {
-			Code    ErrorCode `json:"code"`
-			Message string    `json:"message"`
-		}{Code: code, Message: message},
+		Kind:  "Error",
+		Error: ErrorFrame{Code: code, Message: message},
 	})
+}
+
+func EncodeResize(columns, rows int) ([]byte, error) {
+	if columns < MinimumColumns || columns > MaximumColumns || rows < MinimumRows || rows > MaximumRows {
+		return nil, ErrInvalidFrame
+	}
+	return json.Marshal(struct {
+		Kind    string `json:"kind"`
+		Columns int    `json:"columns"`
+		Rows    int    `json:"rows"`
+	}{Kind: "Resize", Columns: columns, Rows: rows})
+}
+
+func EncodeDetach() []byte { return []byte(`{"kind":"Detach"}`) }
+
+func ParseServerText(encoded []byte) (ServerFrame, error) {
+	if len(encoded) > MaximumFrameBytes {
+		return nil, ErrFrameTooLarge
+	}
+	var envelope struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		return nil, ErrInvalidFrame
+	}
+	switch envelope.Kind {
+	case "Hello", "Presence":
+		var frame struct {
+			Kind            string `json:"kind"`
+			AttachedClients int    `json:"attachedClients"`
+		}
+		if strictjson.Decode(encoded, &frame) != nil || frame.AttachedClients < 1 {
+			return nil, ErrInvalidFrame
+		}
+		if frame.Kind == "Hello" {
+			return HelloFrame{AttachedClients: frame.AttachedClients}, nil
+		}
+		return PresenceFrame{AttachedClients: frame.AttachedClients}, nil
+	case "Error":
+		var frame struct {
+			Kind  string     `json:"kind"`
+			Error ErrorFrame `json:"error"`
+		}
+		if strictjson.Decode(encoded, &frame) != nil || errorMessage(frame.Error.Code) == "" || frame.Error.Message != errorMessage(frame.Error.Code) {
+			return nil, ErrInvalidFrame
+		}
+		return frame.Error, nil
+	default:
+		return nil, ErrInvalidFrame
+	}
 }
 
 func ParseClientText(encoded []byte) (ClientFrame, error) {
@@ -98,7 +166,7 @@ func ParseClientText(encoded []byte) (ClientFrame, error) {
 			Columns int    `json:"columns"`
 			Rows    int    `json:"rows"`
 		}
-		if !decodeExact(encoded, &frame) || frame.Kind != "Resize" ||
+		if strictjson.Decode(encoded, &frame) != nil || frame.Kind != "Resize" ||
 			frame.Columns < MinimumColumns || frame.Columns > MaximumColumns ||
 			frame.Rows < MinimumRows || frame.Rows > MaximumRows {
 			return nil, ErrInvalidFrame
@@ -108,7 +176,7 @@ func ParseClientText(encoded []byte) (ClientFrame, error) {
 		var frame struct {
 			Kind string `json:"kind"`
 		}
-		if !decodeExact(encoded, &frame) || frame.Kind != "Detach" {
+		if strictjson.Decode(encoded, &frame) != nil || frame.Kind != "Detach" {
 			return nil, ErrInvalidFrame
 		}
 		return DetachFrame{}, nil
@@ -132,13 +200,4 @@ func encodePresence(kind string, attachedClients int) ([]byte, error) {
 		Kind            string `json:"kind"`
 		AttachedClients int    `json:"attachedClients"`
 	}{Kind: kind, AttachedClients: attachedClients})
-}
-
-func decodeExact(encoded []byte, destination any) bool {
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return false
-	}
-	return decoder.Decode(&struct{}{}) == io.EOF
 }

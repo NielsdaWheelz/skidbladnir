@@ -2022,14 +2022,14 @@ case "$gate" in
       not_run live 'Live tmux proofs refuse an invoking tmux client'
     fi
     if [[ "$(uname -s)" != 'Linux' ]]; then
-      not_run live 'The grouped-session proof is Linux-only; use integration for cross-host tmux acceptance'
+      not_run live 'The direct-client proof is Linux-only; use integration for cross-host tmux acceptance'
     fi
     if [[ ! -x "$tmux_path" ]]; then
       not_run live "Configured ${tmux_path} is unavailable on the target host"
     fi
     cd "$repo_dir"
-    run grouped-tmux go test -tags=live ./tests/live \
-      -run '^(TestTmuxGroupedBehavior|TestRegisteredLiveTmuxCommandRejectsSecondarySocketSelectors)$' -count=1 -args \
+    run direct-tmux go test -tags=live ./tests/live \
+      -run '^(TestTmuxDirectClientBehavior|TestRegisteredLiveTmuxCommandRejectsSecondarySocketSelectors)$' -count=1 -args \
       -skidbladnir-isolated-tmux-capability=isolated-cli-v1
     ;;
   release)

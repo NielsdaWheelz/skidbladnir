@@ -115,9 +115,8 @@ func (gateway *Gateway) runTerminal(
 	runtimeContext, cancel := context.WithCancel(ctx)
 	queue := terminal.NewOutboundQueue()
 	cleanup := terminal.NewCleanup(terminal.OwnedResources{
-		ClosePTY:      attachment.ClosePTY,
-		CloseClient:   attachment.CloseClient,
-		ReleaseShadow: attachment.ReleaseShadow,
+		ClosePTY:    attachment.ClosePTY,
+		CloseClient: attachment.CloseClient,
 	})
 	var workers sync.WaitGroup
 	defer func() {
@@ -281,7 +280,7 @@ func pumpTerminalOutput(ctx context.Context, connection *websocket.Conn, queue *
 func pumpTerminalLiveness(ctx context.Context, connection *websocket.Conn, interval, timeout time.Duration) terminalEnd {
 	// justify-polling: a vanished peer emits no transport close, and the WebSocket
 	// pong reply is observable only to a Ping caller; one ping per interval with a
-	// bounded reply wait releases a dead phone's PTY, tmux client, and shadow
+	// bounded reply wait releases a dead phone's PTY and tmux client
 	// within interval+timeout.
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -451,6 +450,9 @@ func terminalErrorForEnd(ending terminalEnd) (terminal.ErrorCode, bool) {
 }
 
 func terminalCodeForSessionError(err error) terminal.ErrorCode {
+	if errors.Is(err, sessions.ErrTerminalConfigurationUnsupported) {
+		return terminal.ErrorTerminalConfigurationUnsupported
+	}
 	var sessionError *sessions.Error
 	if !errors.As(err, &sessionError) {
 		return terminal.ErrorInternal

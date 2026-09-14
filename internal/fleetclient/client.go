@@ -1,4 +1,4 @@
-// Package fleetclient routes the shared agent operations directly to configured peers.
+// Package fleetclient owns direct peer routing, name resolution, and exact references.
 package fleetclient
 
 import (
@@ -8,10 +8,13 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
+	"github.com/coder/websocket"
 )
 
 const (
@@ -25,15 +28,19 @@ type Failure struct {
 	Code     string `json:"code"`
 	Dispatch string `json:"dispatch"`
 }
-
 type Result struct {
-	OK    bool            `json:"ok"`
-	Value json.RawMessage `json:"result,omitempty"`
-	Error *Failure        `json:"error,omitempty"`
+	OK         bool            `json:"ok"`
+	Value      json.RawMessage `json:"result,omitempty"`
+	Error      *Failure        `json:"error,omitempty"`
+	Candidates []string        `json:"-"`
 }
 
 func Failed(code, dispatch string) Result {
 	return Result{Error: &Failure{Code: code, Dispatch: dispatch}}
+}
+func success(value any) Result {
+	encoded, _ := json.Marshal(value)
+	return Result{OK: true, Value: encoded}
 }
 
 type Client struct {
@@ -41,66 +48,275 @@ type Client struct {
 	http  *http.Client
 }
 
-// Execute accepts the same structured inputs as the command-line interface.
-// A failed write is never retried, including after a lost acknowledgement.
-func (client *Client) Execute(ctx context.Context, operation string, encoded []byte) Result {
-	if len(encoded) > MaximumInputBytes {
-		return Failed("input_limit", "not_sent")
+// Execute never retries a write, including after a lost acknowledgement.
+func (client *Client) Execute(ctx context.Context, request Request) Result {
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	if !request.Valid() {
+		return Failed("invalid_input", "not_sent")
 	}
-	if operation == "list" {
-		var input *struct {
-			Machine string `json:"machine,omitempty"`
+	var result Result
+	switch request.Operation {
+	case "list":
+		result = client.list(ctx, request.Machine)
+	case "start":
+		selected, ok := client.peerByLabel(request.Machine)
+		if !ok {
+			return Failed("machine_unknown", "not_sent")
 		}
-		if strictjson.Decode(encoded, &input) != nil || input == nil {
+		cwd := request.CWD
+		if cwd == "" {
+			cwd = "~"
+		}
+		body, _ := json.Marshal(struct {
+			CWD     string `json:"cwd"`
+			Profile string `json:"profile"`
+			Name    string `json:"optionalTmuxName"`
+		}{cwd, request.Profile, request.Name})
+		if len(body) > MaximumInputBytes {
+			return Failed("input_limit", "not_sent")
+		}
+		result = client.call(ctx, selected, "start", "/v1/sessions", body)
+		if result.OK {
+			var created hostObservedSession
+			if json.Unmarshal(result.Value, &created) != nil {
+				return Failed("protocol_error", "unknown")
+			}
+			result = success(ObservedSession{Label: selected.Label, Machine: selected.Machine, ObservedAt: created.ObservedAt, Session: created.Session.project(selected.Machine)})
+		}
+	default:
+		ref, observed, failure := client.resolve(ctx, request)
+		if failure != nil {
+			return *failure
+		}
+		selected, ok := client.peerByMachine(ref.Machine)
+		if !ok {
+			return Failed("machine_unknown", "not_sent")
+		}
+		if request.Operation == "info" {
+			result = success(observed)
+			break
+		}
+		if request.Operation == "enter" {
 			return Failed("invalid_input", "not_sent")
 		}
-		var members map[string]json.RawMessage
-		if strictjson.Decode(encoded, &members) != nil || members["machine"] != nil && input.Machine == "" {
-			return Failed("invalid_input", "not_sent")
+		body := map[string]any{"identityToken": ref.IdentityToken}
+		path := "/v1/sessions/" + ref.TmuxID
+		if request.Operation == "kill" {
+			body["tmuxName"] = observed.Session.Name
+		} else {
+			if ref.Agent == nil {
+				return Failed("agent_unavailable", "not_sent")
+			}
+			body["paneId"] = ref.Agent.PaneID
+			body["pid"] = ref.Agent.PID
+			body["startIdentity"] = ref.Agent.StartIdentity
+			path += "/agent/" + request.Operation
+			switch request.Operation {
+			case "read", "send":
+				mode := request.Mode
+				if mode == "" {
+					mode = "auto"
+				}
+				body["mode"] = mode
+				if request.Operation == "read" {
+					maximum := request.MaxBytes
+					if maximum == 0 {
+						maximum = 16384
+					}
+					body["maxBytes"] = maximum
+				} else {
+					body["text"] = request.Text
+				}
+			case "keys":
+				body["keys"] = request.Keys
+			}
 		}
-		peers := client.peers
-		if input.Machine != "" {
-			peers = nil
-			for _, candidate := range client.peers {
-				if candidate.Label == input.Machine {
-					peers = []peer{candidate}
-					break
+		encoded, _ := json.Marshal(body)
+		if len(encoded) > MaximumInputBytes {
+			return Failed("input_limit", "not_sent")
+		}
+		result = client.call(ctx, selected, request.Operation, path, encoded)
+	}
+	if _, err := result.Encode(request.Operation); err != nil {
+		dispatch := "not_sent"
+		if request.Operation == "start" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" {
+			dispatch = "unknown"
+		}
+		return Failed("output_limit", dispatch)
+	}
+	return result
+}
+
+func (client *Client) list(ctx context.Context, label string) Result {
+	peers := client.peers
+	if label != "" {
+		selected, ok := client.peerByLabel(label)
+		if !ok {
+			return Failed("machine_unknown", "not_sent")
+		}
+		peers = []peer{selected}
+	}
+	rows := make([]Peer, len(peers))
+	var pending sync.WaitGroup
+	for index, selected := range peers {
+		pending.Go(func() {
+			result := client.call(ctx, selected, "list", "/v1/sessions", nil)
+			row := Peer{Label: selected.Label, Machine: selected.Machine, OK: result.OK, Error: result.Error}
+			if result.OK {
+				var observed hostInventory
+				if json.Unmarshal(result.Value, &observed) != nil {
+					row.OK = false
+					row.Error = &Failure{Code: "protocol_error", Dispatch: "not_sent"}
+				} else {
+					row.ObservedAt = observed.ObservedAt
+					row.Profiles = observed.Profiles
+					row.Sessions = make([]Session, 0, len(observed.Sessions))
+					for _, session := range observed.Sessions {
+						row.Sessions = append(row.Sessions, session.project(selected.Machine))
+					}
+					sort.SliceStable(row.Sessions, func(i, j int) bool { return row.Sessions[i].Name < row.Sessions[j].Name })
 				}
 			}
-			if len(peers) == 0 {
-				return Failed("machine_unknown", "not_sent")
+			rows[index] = row
+		})
+	}
+	pending.Wait()
+	result := Inventory{Peers: rows}
+	for _, row := range rows {
+		if !row.OK {
+			result.Partial = true
+		}
+	}
+	encoded := success(result)
+	if _, err := encoded.Encode("list"); err != nil {
+		return Failed("output_limit", "not_sent")
+	}
+	return encoded
+}
+
+func (client *Client) resolve(ctx context.Context, request Request) (Reference, ObservedSession, *Result) {
+	fail := func(code string) (Reference, ObservedSession, *Result) {
+		result := Failed(code, "not_sent")
+		return Reference{}, ObservedSession{}, &result
+	}
+	var ref Reference
+	label := request.Machine
+	if request.Ref != "" {
+		var err error
+		ref, err = DecodeReference(request.Ref)
+		if err != nil {
+			return fail("invalid_input")
+		}
+		selected, ok := client.peerByMachine(ref.Machine)
+		if !ok {
+			return fail("machine_unknown")
+		}
+		if request.Operation != "info" && request.Operation != "kill" {
+			return ref, ObservedSession{}, nil
+		}
+		label = selected.Label
+	}
+	result := client.list(ctx, label)
+	if !result.OK {
+		return Reference{}, ObservedSession{}, &result
+	}
+	var listed Inventory
+	if json.Unmarshal(result.Value, &listed) != nil {
+		return fail("protocol_error")
+	}
+	if listed.Partial {
+		return fail("inventory_incomplete")
+	}
+	matches := make([]ObservedSession, 0)
+	for _, peer := range listed.Peers {
+		for _, row := range peer.Sessions {
+			current, err := DecodeReference(row.Ref)
+			if err != nil {
+				return fail("protocol_error")
+			}
+			if request.Ref != "" {
+				if !current.SessionEqual(ref) {
+					continue
+				}
+			} else if row.Name != request.Name {
+				continue
+			}
+			matches = append(matches, ObservedSession{Label: peer.Label, Machine: peer.Machine, ObservedAt: peer.ObservedAt, Session: row})
+		}
+	}
+	if len(matches) == 0 {
+		if request.Ref != "" {
+			return fail("SessionIdentityMismatch")
+		}
+		return fail("name_not_found")
+	}
+	if len(matches) > 1 {
+		result := Failed("name_ambiguous", "not_sent")
+		for _, match := range matches {
+			result.Candidates = append(result.Candidates, match.Label+" / "+match.Session.Name)
+		}
+		return Reference{}, ObservedSession{}, &result
+	}
+	observed := matches[0]
+	if request.Ref == "" {
+		ref, _ = DecodeReference(observed.Session.Ref)
+	}
+	return ref, observed, nil
+}
+
+// OpenTerminal shares the configured transport and identity binding with control calls.
+func (client *Client) OpenTerminal(ctx context.Context, request Request) (*websocket.Conn, *Failure) {
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	request.Operation = "enter"
+	if !request.Valid() {
+		return nil, &Failure{Code: "invalid_input", Dispatch: "not_sent"}
+	}
+	ref, _, failure := client.resolve(ctx, request)
+	if failure != nil {
+		return nil, failure.Error
+	}
+	selected, ok := client.peerByMachine(ref.Machine)
+	if !ok {
+		return nil, &Failure{Code: "machine_unknown", Dispatch: "not_sent"}
+	}
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+selected.Bearer)
+	headers.Set("Skidbladnir-Machine", selected.Machine)
+	headers.Set("Skidbladnir-Session-Identity", ref.IdentityToken)
+	connection, response, err := websocket.Dial(ctx, strings.Replace(selected.Origin, "https://", "wss://", 1)+"/v1/sessions/"+ref.TmuxID+"/terminal", &websocket.DialOptions{HTTPClient: client.http, HTTPHeader: headers, CompressionMode: websocket.CompressionDisabled})
+	if err != nil {
+		if response != nil && response.Body != nil {
+			defer response.Body.Close()
+			encoded, readErr := io.ReadAll(io.LimitReader(response.Body, MaximumControlBytes+1))
+			mediaType, _, typeErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
+			if readErr == nil && len(encoded) <= MaximumControlBytes && typeErr == nil && mediaType == "application/json" {
+				if refusal := decodeFailure(encoded, "not_sent"); refusal != nil {
+					return nil, refusal
+				}
 			}
 		}
-		type observation struct {
-			Label   string          `json:"label"`
-			Machine string          `json:"machine"`
-			OK      bool            `json:"ok"`
-			Result  json.RawMessage `json:"result,omitempty"`
-			Error   *Failure        `json:"error,omitempty"`
-		}
-		rows := make([]observation, len(peers))
-		var pending sync.WaitGroup
-		for index, target := range peers {
-			pending.Go(func() {
-				result := client.call(ctx, target, "list", "/v1/sessions", nil)
-				rows[index] = observation{target.Label, target.Machine, result.OK, result.Value, result.Error}
-			})
-		}
-		pending.Wait()
-		value, _ := json.Marshal(struct {
-			Peers []observation `json:"peers"`
-		}{rows}) // json.RawMessage values were decoded at the HTTP boundary.
-		result := Result{OK: true, Value: value}
-		if _, err := result.Encode(operation); err != nil {
-			return Failed("output_limit", "not_sent")
-		}
-		return result
+		return nil, &Failure{Code: "terminal_unavailable", Dispatch: "not_sent"}
 	}
-	selected, path, body, failure := client.prepare(operation, encoded)
-	if failure != nil {
-		return Result{Error: failure}
+	return connection, nil
+}
+
+func (client *Client) peerByLabel(label string) (peer, bool) {
+	for _, p := range client.peers {
+		if p.Label == label {
+			return p, true
+		}
 	}
-	return client.call(ctx, selected, operation, path, body)
+	return peer{}, false
+}
+func (client *Client) peerByMachine(machine string) (peer, bool) {
+	for _, p := range client.peers {
+		if p.Machine == machine {
+			return p, true
+		}
+	}
+	return peer{}, false
 }
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
@@ -114,6 +330,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "list" {
 		method = http.MethodGet
 	} else {
+		if operation == "kill" {
+			method = http.MethodDelete
+		}
 		// No GetBody: net/http cannot replay a possibly delivered mutation.
 		reader = io.NopCloser(bytes.NewReader(body))
 	}
@@ -146,51 +365,66 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
+	if operation == "kill" && response.StatusCode == http.StatusNoContent {
+		if len(encoded) != 0 {
+			return Failed("protocol_error", dispatch)
+		}
+		return success(struct {
+			Terminal string `json:"terminal"`
+		}{"closed"})
+	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		return Failed("protocol_error", dispatch)
 	}
-	expectedStatus := http.StatusOK
+	expected := http.StatusOK
 	if operation == "start" {
-		expectedStatus = http.StatusCreated
+		expected = http.StatusCreated
 	}
-	if response.StatusCode != expectedStatus {
-		var failure *struct {
-			Code     string `json:"code"`
-			Message  string `json:"message"`
-			Dispatch string `json:"dispatch,omitempty"`
-		}
-		if strictjson.Decode(encoded, &failure) != nil || failure == nil || failure.Code == "" {
+	if operation == "kill" {
+		expected = http.StatusNoContent
+	}
+	if response.StatusCode != expected {
+		failure := decodeFailure(encoded, dispatch)
+		if failure == nil {
 			return Failed("protocol_error", dispatch)
 		}
-		if failure.Dispatch == "not_sent" || knownRejection(failure.Code) {
-			dispatch = "not_sent"
-		}
-		return Failed(failure.Code, dispatch)
+		return Result{Error: failure}
 	}
 	if !validResponse(operation, encoded, target.Machine) {
 		return Failed("protocol_error", dispatch)
 	}
 	var compact bytes.Buffer
-	if err := json.Compact(&compact, encoded); err != nil {
+	if json.Compact(&compact, encoded) != nil {
 		return Failed("protocol_error", dispatch)
 	}
 	return Result{OK: true, Value: compact.Bytes()}
 }
 
+func decodeFailure(encoded []byte, dispatch string) *Failure {
+	var value *struct {
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		Dispatch string `json:"dispatch,omitempty"`
+	}
+	if strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
+		return nil
+	}
+	if value.Dispatch == "not_sent" || knownRejection(value.Code) {
+		dispatch = "not_sent"
+	}
+	return &Failure{Code: value.Code, Dispatch: dispatch}
+}
+
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge",
-		"WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown",
-		"SessionNameInvalid", "ObjectiveInvalid", "SessionNameConflict", "SessionNotFound",
-		"SessionIdentityMismatch", "SessionGroupedConflict":
+	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch":
 		return true
 	default:
 		return false
 	}
 }
 
-// Encode bounds the complete envelope, including the aggregate fleet result.
 func (result Result) Encode(operation string) ([]byte, error) {
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -204,4 +438,35 @@ func (result Result) Encode(operation string) ([]byte, error) {
 		return nil, errOutputLimit
 	}
 	return append(encoded, '\n'), nil
+}
+
+func (result Result) ExitCode(operation string) int {
+	if !result.OK {
+		return 1
+	}
+	switch operation {
+	case "list":
+		var value Inventory
+		if json.Unmarshal(result.Value, &value) != nil || value.Partial {
+			return 1
+		}
+	case "send", "keys", "interrupt":
+		var value WriteResult
+		if json.Unmarshal(result.Value, &value) != nil || value.Outcome == "unknown" {
+			return 1
+		}
+	case "stop":
+		var value StopResult
+		if json.Unmarshal(result.Value, &value) != nil || value.Agent == "unconfirmed" || value.Terminal != "closed" {
+			return 1
+		}
+	case "kill":
+		var value struct {
+			Terminal string `json:"terminal"`
+		}
+		if json.Unmarshal(result.Value, &value) != nil || value.Terminal != "closed" {
+			return 1
+		}
+	}
+	return 0
 }

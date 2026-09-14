@@ -20,10 +20,6 @@ func TestCleanupReleasesEachOwnedResourceOnceInOrder(t *testing.T) {
 			called = append(called, "client")
 			return nil
 		},
-		ReleaseShadow: func() error {
-			called = append(called, "shadow")
-			return nil
-		},
 	})
 
 	const callers = 12
@@ -39,7 +35,7 @@ func TestCleanupReleasesEachOwnedResourceOnceInOrder(t *testing.T) {
 	}
 	wait.Wait()
 
-	want := []string{"pty", "client", "shadow"}
+	want := []string{"pty", "client"}
 	if !reflect.DeepEqual(called, want) {
 		t.Fatalf("unexpected cleanup order or multiplicity: want=%v got=%v", want, called)
 	}
@@ -47,7 +43,7 @@ func TestCleanupReleasesEachOwnedResourceOnceInOrder(t *testing.T) {
 
 func TestCleanupAttemptsEveryResourceAfterFailures(t *testing.T) {
 	ptyFailure := errors.New("pty close failed")
-	shadowFailure := errors.New("shadow release failed")
+	clientFailure := errors.New("client close failed")
 	var called []string
 	cleanup := terminal.NewCleanup(terminal.OwnedResources{
 		ClosePTY: func() error {
@@ -56,19 +52,15 @@ func TestCleanupAttemptsEveryResourceAfterFailures(t *testing.T) {
 		},
 		CloseClient: func() error {
 			called = append(called, "client")
-			return nil
-		},
-		ReleaseShadow: func() error {
-			called = append(called, "shadow")
-			return shadowFailure
+			return clientFailure
 		},
 	})
 
 	err := cleanup.Close()
-	if !errors.Is(err, ptyFailure) || !errors.Is(err, shadowFailure) {
+	if !errors.Is(err, ptyFailure) || !errors.Is(err, clientFailure) {
 		t.Fatalf("cleanup did not retain both failures: %v", err)
 	}
-	if want := []string{"pty", "client", "shadow"}; !reflect.DeepEqual(called, want) {
+	if want := []string{"pty", "client"}; !reflect.DeepEqual(called, want) {
 		t.Fatalf("cleanup stopped early: want=%v got=%v", want, called)
 	}
 }

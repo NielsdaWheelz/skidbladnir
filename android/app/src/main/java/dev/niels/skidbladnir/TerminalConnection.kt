@@ -41,7 +41,7 @@ internal class TerminalConnection(
     private var resizeDrainScheduled = false
     private val resizeDrain = Runnable(::drainResize)
 
-    // The gateway creates no shadow or PTY until a valid Resize arrives, so a
+    // The gateway creates no PTY until a valid Resize arrives, so a
     // connection cannot exist without its measured geometry already queued as the
     // first client frame the open-time flush will send.
     init {

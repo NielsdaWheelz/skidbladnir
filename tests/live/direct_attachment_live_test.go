@@ -29,7 +29,6 @@ const (
 type tmuxBehaviorServer struct {
 	socket          string
 	root            string
-	shadow          string
 	pid             int
 	startTime       uint64
 	tmuxStartTime   string
@@ -55,7 +54,7 @@ type tmuxBehaviorPane struct {
 	StartTime uint64
 }
 
-func TestTmuxGroupedBehavior(t *testing.T) {
+func TestTmuxDirectClientBehavior(t *testing.T) {
 	if os.Getenv("SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS") != "isolated-v1" {
 		t.Fatal("live tmux proof requires explicit isolated tmux approval")
 	}
@@ -72,7 +71,7 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 	if err := hostconfig.ValidateTmuxVersion(observedVersion); err != nil {
 		t.Fatalf("P0 proof requires a canonical tmux stable release, found %q", observedVersion)
 	}
-	t.Logf("running grouped-client proof against %s", observedVersion)
+	t.Logf("running direct-client proof against %s", observedVersion)
 	const scriptPath = "/usr/bin/script"
 	info, err := os.Stat(scriptPath)
 	if err != nil {
@@ -88,55 +87,27 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 	logB := filepath.Join(rootDir, "pane-b.log")
 	server.start(t, rootDir, logA, logB)
 
-	panesBefore := server.panes(t)
-	rootBefore := panesBefore[server.root]
-	shadowBefore := panesBefore[server.shadow]
-	assertSamePaneSet(t, rootBefore, shadowBefore, "group creation")
-
-	laptop := startTmuxBehaviorClient(t, server, server.root, "")
-	phone := startTmuxBehaviorClient(t, server, server.shadow, "active-pane")
-
-	server.selectPane(t, server.root, 0)
-	waitForCapture(t, server, "FRAME=A BUFFER=seed-A", server.root+":0.0")
+	rootBefore := server.panes(t)[server.root]
+	laptop := startTmuxBehaviorClient(t, server, server.root)
+	phone := startTmuxBehaviorClient(t, server, server.root)
+	waitForClientCount(t, server, server.root, 2)
 	phone.waitForOutput(t, "FRAME=A")
-
 	laptop.send(t, "LAPTOP-A\r")
 	waitForLog(t, logA, "LAPTOP-A")
-	assertLogAbsent(t, logB, "LAPTOP-A")
-
-	// This is a real client key sequence, rather than tmux send-keys. The
-	// active-pane flag makes this selection local to the phone client.
-	phone.send(t, "\x02o")
-	phone.send(t, "PHONE-B\r")
+	phone.send(t, "\x02oPHONE-B\r")
 	waitForLog(t, logB, "PHONE-B")
-	assertLogAbsent(t, logA, "PHONE-B")
-
-	laptop.send(t, "LAPTOP-A2\r")
-	waitForLog(t, logA, "LAPTOP-A2")
-	assertLogAbsent(t, logB, "LAPTOP-A2")
-	assertWindowActivePane(t, server, 0)
-
-	server.detachClient(t, server.clientFor(t, server.root))
-	waitForClientCount(t, server, server.root, 0)
-
-	laptopAfterDetach := startTmuxBehaviorClient(t, server, server.root, "")
-
-	shadowPaneAfter := server.panes(t)[server.shadow]
-	assertSamePaneSet(t, rootBefore, shadowPaneAfter, "before non-last kill")
-	server.killSession(t, server.shadow)
-	waitForClientCount(t, server, server.shadow, 0)
-	rootAfterNonLast := server.panes(t)[server.root]
-	assertSamePaneSet(t, rootBefore, rootAfterNonLast, "non-last grouped session kill")
-	laptopAfterDetach.send(t, "\x02o")
-	laptopAfterDetach.send(t, "ROOT-POST-SHADOW-KILL\r")
-	waitForLog(t, logB, "ROOT-POST-SHADOW-KILL")
-	assertLogAbsent(t, logA, "ROOT-POST-SHADOW-KILL")
-	laptopAfterDetach.send(t, "\x02o")
-	assertWindowActivePane(t, server, 0)
-
-	fresh := startTmuxBehaviorClient(t, server, server.root, "active-pane")
-	fresh.waitForOutput(t, "FRAME=A")
-	waitForCapture(t, server, "FRAME=A\nTOKEN=LAPTOP-A2", server.root+":0.0")
+	assertWindowActivePane(t, server, 1)
+	laptop.send(t, "LAPTOP-B\r")
+	waitForLog(t, logB, "LAPTOP-B")
+	assertLogAbsent(t, logA, "LAPTOP-B")
+	phone.send(t, "\x02d")
+	waitForClientCount(t, server, server.root, 1)
+	assertSamePaneSet(t, rootBefore, server.panes(t)[server.root], "client detach")
+	laptop.send(t, "SURVIVING-CLIENT\r")
+	waitForLog(t, logB, "SURVIVING-CLIENT")
+	fresh := startTmuxBehaviorClient(t, server, server.root)
+	fresh.waitForOutput(t, "FRAME=B")
+	waitForClientCount(t, server, server.root, 2)
 
 	oldPIDs := []int{rootBefore[0].PID, rootBefore[1].PID}
 	oldTTYs := []string{rootBefore[0].TTY, rootBefore[1].TTY}
@@ -156,7 +127,7 @@ func TestTmuxGroupedBehavior(t *testing.T) {
 func newTmuxBehaviorServer(t *testing.T) *tmuxBehaviorServer {
 	t.Helper()
 	socketPath := registerLiveTmuxSocket(t)
-	server := &tmuxBehaviorServer{socket: socketPath, root: "root", shadow: "shadow"}
+	server := &tmuxBehaviorServer{socket: socketPath, root: "root"}
 	t.Cleanup(func() {
 		if !server.cleanup(t) {
 			return
@@ -180,7 +151,6 @@ func (s *tmuxBehaviorServer) start(t *testing.T, cwd, logA, logB string) {
 	s.run(t, "set-option", "-g", "status", "off")
 	s.run(t, "split-window", "-t", s.root+":0", "-h", fixtureCommand(logB, "B"))
 	s.run(t, "select-pane", "-t", s.root+":0.0")
-	s.run(t, "new-session", "-d", "-t", s.root, "-s", s.shadow)
 	for _, pane := range s.panes(t)[s.root] {
 		s.fixtures = append(s.fixtures, tmuxBehaviorProcess{PID: pane.PID, StartTime: pane.StartTime})
 	}
@@ -197,15 +167,12 @@ done`
 	return "exec /bin/sh -c " + shellQuote(script) + " fixture " + shellQuote(logPath) + " " + shellQuote(frame)
 }
 
-func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, flags string) *tmuxBehaviorClient {
+func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session string) *tmuxBehaviorClient {
 	t.Helper()
 	if err := validateRegisteredLiveSocket(server.socket); err != nil {
 		t.Fatal(err)
 	}
 	attach := fmt.Sprintf("stty cols 120 rows 40; exec env -u TMUX -u TMUX_PANE -u TMUX_TMPDIR TERM=xterm-256color %s -S %s -f /dev/null attach-session", shellQuote(liveTmuxPath), shellQuote(server.socket))
-	if flags != "" {
-		attach += " -f " + shellQuote(flags)
-	}
 	attach += " -t " + shellQuote(session)
 	cmd := exec.Command("/usr/bin/script", "-qefc", attach, "/dev/null")
 	cmd.Env = withoutTmuxEnvironment(os.Environ())
@@ -267,13 +234,13 @@ func startTmuxBehaviorClient(t *testing.T, server *tmuxBehaviorServer, session, 
 func (c *tmuxBehaviorClient) send(t *testing.T, value string) {
 	t.Helper()
 	if _, err := io.WriteString(c.feed, value); err != nil {
-		t.Fatalf("send PTY client input %q: %v", value, err)
+		t.Fatalf("send PTY client input failed: input_bytes=%d", len(value))
 	}
 }
 
 func (c *tmuxBehaviorClient) waitForOutput(t *testing.T, marker string) {
 	t.Helper()
-	waitUntil(t, "PTY output "+marker, func() bool {
+	waitUntil(t, "PTY output marker", func() bool {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return strings.Contains(c.out.String(), marker)
@@ -284,7 +251,7 @@ func (s *tmuxBehaviorServer) run(t *testing.T, args ...string) string {
 	t.Helper()
 	out, err := s.command(args...)
 	if err != nil {
-		t.Fatalf("tmux %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		t.Fatalf("tmux command failed: operation=%s output_bytes=%d", args[0], len(out))
 	}
 	return string(out)
 }
@@ -331,41 +298,6 @@ func (s *tmuxBehaviorServer) panes(t *testing.T) map[string][]tmuxBehaviorPane {
 		})
 	}
 	return result
-}
-
-func (s *tmuxBehaviorServer) clientFor(t *testing.T, session string) string {
-	t.Helper()
-	out := s.run(t, "list-clients", "-F", "#{client_name}\t#{session_name}")
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		fields := strings.Split(line, "\t")
-		if len(fields) == 2 && fields[1] == session {
-			return fields[0]
-		}
-	}
-	t.Fatalf("no tmux client for session %s", session)
-	return ""
-}
-
-func (s *tmuxBehaviorServer) selectPane(t *testing.T, session string, index int) {
-	t.Helper()
-	s.run(t, "select-pane", "-t", fmt.Sprintf("%s:0.%d", session, index))
-}
-
-func (s *tmuxBehaviorServer) detachClient(t *testing.T, client string) {
-	t.Helper()
-	if observed := processStartTime(s.pid); observed != s.startTime {
-		t.Fatalf("refusing client detach after process identity changed: pid=%d captured=%d observed=%d", s.pid, s.startTime, observed)
-	}
-	const mismatchMarker = "SKIDBLADNIR_TEST_SERVER_MISMATCH_V1"
-	output, err := s.command("if-shell", "-F", s.identityCondition(),
-		"detach-client -t "+shellQuote(client),
-		"display-message -p -l '"+mismatchMarker+"'")
-	if err != nil {
-		t.Fatalf("conditionally detach test-owned client: client=%s error=%v output=%q", client, err, output)
-	}
-	if strings.TrimSpace(string(output)) != "" {
-		t.Fatalf("refusing client detach after routed identity mismatch: client=%s output=%q", client, output)
-	}
 }
 
 func (s *tmuxBehaviorServer) killSession(t *testing.T, session string) {
@@ -511,23 +443,9 @@ func assertWindowActivePane(t *testing.T, server *tmuxBehaviorServer, index int)
 	t.Fatal("tmux reported no active pane")
 }
 
-func waitForCapture(t *testing.T, server *tmuxBehaviorServer, marker, target string) {
-	t.Helper()
-	var last string
-	deadline := time.Now().Add(tmuxBehaviorTimeout)
-	for time.Now().Before(deadline) {
-		last = server.run(t, "capture-pane", "-p", "-J", "-t", target, "-S", "-")
-		if strings.Contains(last, marker) {
-			return
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	t.Fatalf("timed out waiting for capture %q; last=%q", marker, last)
-}
-
 func waitForLog(t *testing.T, path, marker string) {
 	t.Helper()
-	waitUntil(t, "log "+marker, func() bool {
+	waitUntil(t, "fixture log marker", func() bool {
 		data, err := os.ReadFile(path)
 		return err == nil && strings.Contains(string(data), marker)
 	})
@@ -537,7 +455,7 @@ func assertLogAbsent(t *testing.T, path, marker string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
 	if err == nil && strings.Contains(string(data), marker) {
-		t.Fatalf("unexpected token %q in %s", marker, path)
+		t.Fatal("unexpected token in fixture log")
 	}
 }
 
@@ -587,7 +505,7 @@ func waitForProcessGone(t *testing.T, pid int) {
 func waitForTTYGone(t *testing.T, tty string) {
 	t.Helper()
 	if tty == "" {
-		t.Fatal("last grouped session reported an empty pane TTY")
+		t.Fatal("last session reported an empty pane TTY")
 	}
 	waitUntil(t, "pane TTY "+tty+" gone", func() bool {
 		_, err := os.Stat(tty)

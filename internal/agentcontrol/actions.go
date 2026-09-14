@@ -67,8 +67,8 @@ func terminalWriteResult(err error) (WriteResult, error) {
 	return WriteResult{}, err
 }
 
-// The gateway supplies its existing terminal closer so active phone shadows are
-// detached before the existing exact-session kill. No provider owns this step.
+// The gateway closes its own terminal clients before exact-session deletion.
+// Provider halt and terminal closure remain separate outcomes.
 func (service *Service) Stop(parent context.Context, target sessions.AgentTarget, closeTerminal func(context.Context, sessions.AgentTarget) error) (StopResult, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()

@@ -29,12 +29,12 @@ The phone displays the shared terminal at a chosen readable text size. Whole
 cells fit the available viewport; tmux's `window-size latest` selects the active
 client's dimensions. Desktop input can return sizing to the desktop. Only input
 that reaches tmux counts; local emulator scrollback and OS focus are not handoff
-guarantees. Process, draft, independent pane selection, detach, and no-replay
-semantics remain intact.
+guarantees. process, draft, detach, and no-replay semantics remain intact; window/pane
+navigation is shared under the [direct-attachment contract](agent-control-ux.md).
 
 Ship three capabilities: saved text size, responsive whole-cell fitting, and
 normal tmux sizing participation. Retain JetBrains Mono, theme, padding, key
-deck, gesture/selection owners, FitAddon, PTY transport, and grouped shadows.
+deck, gesture/selection owners, FitAddon, and direct pty/client transport.
 This supersedes the 80-column guarantee, protected desktop geometry,
 Owner/Constrained presentation, and packaged-page version 3.
 
@@ -92,16 +92,16 @@ authority over composition through font/layout changes. A font operation emits
 geometry, never user terminal bytes. Resize the existing view/attachment; retain
 existing recreation behavior without replay.
 
-**Shared sizing.** Attach with `active-pane` only. Effective `window-size latest`
-is a deployment/operator prerequisite for supported windows. In the existing
-identity-gated tmux queue, check the initial source window's effective policy
-before shadow creation; a mismatch creates no resources and maps to the existing
-content-free `InternalError`. Do not mutate/save/restore options, scan all
-windows, add a watchdog, or synthesize handoff input. Later navigation follows
-ordinary tmux configuration; conflicting overrides are unsupported.
+**shared sizing.** direct attachment shares navigation and uses effective
+`window-size latest`, `destroy-unattached off`, and `detach-on-destroy on`.
+validate these prerequisites in the initial identity-gated tmux queue before
+attachment. unsupported settings produce `TerminalConfigurationUnsupported`
+with the fixed required-options message. do not mutate/save/restore options,
+scan all windows, add a watchdog, or synthesize handoff input. later navigation
+follows ordinary tmux configuration; conflicting overrides are unsupported.
 
 Require the first WSS client frame to be a valid Resize before `OpenTerminal`
-creates a shadow/PTY. Use existing bounded frame parsing and a named
+creates a pty/client. Use existing bounded frame parsing and a named
 `terminalInitialResizeTimeout = 5s`. Start the PTY at those dimensions; delete
 the guessed `80 × 24` startup size. Revalidate target identity at creation.
 Invalid/oversized first frames, timeout, or close create no attachment resources;
@@ -160,7 +160,7 @@ features. Root must assign any discovered additional path before it changes.
 | Owner | Files |
 | --- | --- |
 | Root integrator | This document, `docs/architecture.md`, `docs/roadmap.md`; only required supersession references in `docs/terminal-theme.md`, `docs/terminal-key-deck.md`, `docs/terminal-selection-copy.md`. `scripts/test` only if existing discovery misses a proof. |
-| Host/transport builder | `internal/tmux/attachment.go`, `internal/tmux/client_test.go`; `internal/sessions/attachment.go`, `internal/sessions/attachment_test.go`; `internal/gateway/terminal.go`, `internal/gateway/terminal_test.go`; `internal/terminal/protocol.go`, `internal/terminal/protocol_test.go`, `internal/terminal/queue_test.go`; `tests/integration/terminal_test.go`, `tests/live/tmux_grouped_live_test.go`. |
+| Host/transport builder | `internal/tmux/attachment.go`, `internal/tmux/client_test.go`; `internal/sessions/attachment.go`, `internal/sessions/attachment_test.go`; `internal/gateway/terminal.go`, `internal/gateway/terminal_test.go`; `internal/terminal/protocol.go`, `internal/terminal/protocol_test.go`, `internal/terminal/queue_test.go`; `tests/integration/terminal_test.go`, `tests/live/direct_attachment_live_test.go`. |
 | Android builder | `android/app/build.gradle.kts`; `android/app/src/main/assets/terminal/terminal.js`, `terminal.css`; main Kotlin `TerminalTextSize.kt` (new), `TerminalScreen.kt`, `LockedTerminalWebView.kt`, `ProductModel.kt`, `TerminalConnection.kt`, `SkidbladnirController.kt`; corresponding test files listed below. |
 | Product/content designer | Owns the content table and hands-on design review; no builder-file edits. |
 | Independent verifier | Read-only; no production files or tests. |

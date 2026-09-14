@@ -76,7 +76,6 @@ internal fun killFailureIsDefinitive(failure: GatewayFailure): Boolean = when (f
         ApiErrorCode.RequestTooLarge,
         ApiErrorCode.SessionNotFound,
         ApiErrorCode.SessionIdentityMismatch,
-        ApiErrorCode.SessionGroupedConflict,
     )
 }
 
@@ -345,6 +344,7 @@ private fun decodeApiHttpFailure(status: Int, encoded: String): GatewayFailure =
     val code = parseApiErrorCode(response.code)
     if (
         code == ApiErrorCode.ReconnectRequired ||
+        code == ApiErrorCode.TerminalConfigurationUnsupported ||
         status != apiErrorHttpStatus(code) ||
         response.message != apiErrorMessage(code)
     ) {
@@ -436,7 +436,6 @@ internal fun decodeKillHttpFailure(status: Int, encoded: String): GatewayFailure
             ApiErrorCode.RequestTooLarge,
             ApiErrorCode.SessionNotFound,
             ApiErrorCode.SessionIdentityMismatch,
-            ApiErrorCode.SessionGroupedConflict,
             ApiErrorCode.MachineIdentityMismatch,
             ApiErrorCode.InternalError,
         ),
@@ -507,7 +506,6 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     -> 422
     ApiErrorCode.SessionNameConflict,
     ApiErrorCode.SessionIdentityMismatch,
-    ApiErrorCode.SessionGroupedConflict,
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
     ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentBlocked -> 409
@@ -515,7 +513,7 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
     ApiErrorCode.InternalError -> 500
-    ApiErrorCode.ReconnectRequired -> throw SerializationException("terminal error has no HTTP status")
+    ApiErrorCode.ReconnectRequired, ApiErrorCode.TerminalConfigurationUnsupported -> throw SerializationException("terminal error has no HTTP status")
 }
 
 @Serializable

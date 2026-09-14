@@ -1,5 +1,9 @@
 # Skíðblaðnir v0: product and architecture
 
+current implementation target: [usable agent client and direct attachment](agent-control-ux.md).
+its contracts are incorporated below. delivery and verification status are in the
+[roadmap](roadmap.md); historical releases do not prove this target.
+
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
 scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
 for that target; runtime acceptance is recorded in the [roadmap](roadmap.md).
@@ -116,8 +120,8 @@ or authorize action against the other.
 | Profiles | Every host exposes closed `personal \| work \| work2 \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
-| Handoff | Grouped shadow tmux clients; laptop and phone attach concurrently |
-| Client | Kotlin/Compose multi-machine dashboard; source-pinned, reproducibly built xterm.js terminal fork |
+| Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
+| Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
 | Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, fallback, or smaller-fleet branch |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
@@ -194,7 +198,7 @@ automation, and independent phone revocation are also out of scope. The app
 has no add, rename, or remove machine capability. It installs or reconnects
 only the exact three-machine fleet from one transient QR; quarantine and
 machine-identity replacement still require explicit app-data reset outside the
-app. Android federation is the whole runtime control plane.
+app. the cli uses explicitly configured peers, each reached directly.
 
 ## 3. Platform evidence carried forward
 
@@ -203,18 +207,13 @@ physical SM-S906W. Those versions identify the evidence run; the behavioral
 findings below remain binding, but the tool versions do not. Hosts install the
 latest stable release exposed by their managed package channel:
 
-- A stock TUI uses the normal terminal buffer and is shareable by tmux
-  clients. Grouped sessions share panes/processes while clients keep
-  independent current-window context; `active-pane` remains required for phone
-  attachment. The readable-sizing target replaces the historical `ignore-size`
-  policy; its shared-size handoff requires new acceptance.
-- **Pane-steal hazard:** every pane-level targeting form (`switch-client` with
-  a pane target, pane-targeted attach, `select-pane`) mutates the window's
-  shared active pane and drags an unflagged laptop client with it. Targeting
-  must be session/window-level; a client's own active pane is selected only by
-  a key sequence written into that client's PTY.
-- Killing the last grouped session kills the shared panes: Detach must run a
-  last-link guard and never destroys the source session.
+- stock terminal programs are shareable by concurrent tmux clients. direct
+  attachment shares current window and active pane. navigation through either
+  client is visible to the other; the gateway targets a session, never moves
+  a different client's selection as a handoff operation.
+- grouped tmux sessions share windows/processes. deleting one group member can
+  leave those processes alive through another. skid creates no groups; detach
+  closes only its owned client and never issues a session deletion.
 - Stock TUI input: raw Ctrl-J (`0x0a`) is newline-without-submit; raw CR
   (`0x0d`) submits; these bytes survive the tmux 3.4 client path.
 - S22+ WebView/xterm.js/Gboard: ANSI, Unicode, IME composition, editable
@@ -251,9 +250,7 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
 - One card anchors to the session's current window and that window's active
   pane. Cwd, command, runtime registration, and the built-in
   `window_activity` timestamp all come from that anchor.
-  Attached clients are `session_group_attached` for a grouped session and
-  `session_attached` otherwise. Gateway-owned phone shadows carry
-  `@skid_internal=phone-shadow` and never appear as cards.
+  attached clients are the selected session's `session_attached` count.
 
 - **Card facts:** machine label, exact local tmux id, tmux name, an opaque
   server-lifetime identity token, required dwarf icon portrait, launch profile
@@ -278,13 +275,12 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   profile/unknown for a pane without an agent. It never substitutes launch
   profile for missing runtime profile. Cwd abbreviation never changes its
   complete spoken value. Provider session id/name and PID stay off the card.
-- Character normalization runs after phone-shadow reconciliation under the
-  gateway's one mutation lock. Valid assignments are retained. Missing or
+- Character normalization runs under the gateway's one mutation lock. Valid assignments are retained. Missing or
   invalid assignments use least-live-use selection with a stable
   server-epoch/session-id tie-break and one identity-guarded conditional tmux
   write. A concurrent valid writer is accepted after reread; a changed or
   vanished session is never overwritten, and non-convergence fails the
-  inventory instead of fabricating a card. Phone shadows are never candidates.
+  inventory instead of fabricating a card.
 - **Activity is exactly `Active | Quiet`.** The gateway derives it from the
   current window's positive canonical `window_activity` and the host projection
   clock: `Active` through the inclusive ten-second boundary and `Quiet`
@@ -459,35 +455,22 @@ machine:
    an unproven cleanup kill. No prompt is sent; the opaque agent's own
    permission and trust flows appear in the terminal like any laptop launch.
 
-### Attach and handoff
+### attach and handoff
 
-- Opening a card routes by its full `(machineHandle, session)` target, starts
-  no second process, and never detaches that machine's laptop.
-- The gateway creates an ephemeral session grouped with the target, attaches
-  one gateway-owned phone PTY as a client with `active-pane`, and targets
-  **session/window-level only**. The grouped session
-  opens on the target's current window and active pane; later phone navigation
-  is ordinary key input through the phone PTY, never a pane-targeted tmux
-  command. Never mutate another client's selection.
-- Supported windows use effective `window-size latest`, owned by tmux and
-  deployment/operator configuration. Both clients participate in sizing;
-  ordinary tmux activity determines handoff. The gateway validates the initial
-  window's policy without changing it. Client count conveys presence only;
-  `Owner`/`Constrained` classifications do not exist.
-- The first validated phone Resize precedes PTY/shadow creation and determines
-  initial dimensions. There is no guessed startup grid. The exact startup,
-  failure, and local viewport contracts are in
-  [readable terminal sizing](terminal-readable-sizing.md).
-- Both devices share process, screen, draft, and turn.
-- A session is an internal phone shadow only when both its reserved random
-  `skid-phone-<32 lowercase hex>` name and `@skid_internal=phone-shadow` marker
-  match. The gateway protects every shadow owned by a live connection. On
-  inventory and failed attachment startup it reconciles only an unprotected,
-  unattached shadow whose server lifetime, id, name, marker, and group topology
-  still match: a duplicate grouped link is removed; a last link is made an
-  ordinary visible session by clearing the internal marker and
-  `destroy-unattached`. Attached, protected, ambiguous, or changed sessions are
-  never mutated.
+- opening a card or `skid enter` uses the exact machine/session lifetime. the
+  gateway launches one owned tmux client directly attached to that session;
+  no shadow, group, active-pane isolation, or second agent is created.
+- the identity predicate and `attach-session -E -t <id>` share one tmux queue.
+  initial effective options must be `window-size latest`, `destroy-unattached off`,
+  and `detach-on-destroy on`. unsupported options emit terminal-only
+  `TerminalConfigurationUnsupported` before `Hello`; no source option is changed.
+- the first measured resize precedes pty creation. both clients participate in
+  latest-client sizing and share window/pane navigation, screen, draft, and turn.
+  [readable sizing](terminal-readable-sizing.md) owns phone viewport behavior.
+- detach, loss, or gateway shutdown closes only the owned pty/client. the existing
+  presence monitor binds that client to the same session lifetime and ignores
+  rename. an explicit session switch closes on detection, not atomically; bytes
+  may pass before the next observation. no extra watchdog or replay exists.
 
 ### Rename
 
@@ -498,12 +481,11 @@ machine. The desired name uses the Forge's existing 1–64-character ASCII gramm
 unchanged input is disabled and is `SessionNameConflict` if submitted directly.
 
 Under the gateway's mutation lock, one tmux command queue verifies server
-epoch/PID/start-time, id, expected current name, and ordinary-session status
-before `rename-session` targets only the id. Tmux owns destination uniqueness.
+epoch/PID/start-time, id, and expected current name before `rename-session`
+targets only the id. Tmux owns destination uniqueness.
 The request body has exactly three case-sensitive, non-duplicate string keys.
-Reserved shadow-shaped names additionally require the internal marker to be
-absent, and destination-failure classification revalidates source identity
-after observing the destination. Stale identity and collision mutate nothing.
+destination-failure classification revalidates source identity after observing
+the destination. Stale identity and collision mutate nothing.
 Success is bodyless `204`; Android never retries, supersedes that machine's
 inventory, and requires one later inventory read before replacing the terminal
 target. A content-free transient mutation fence survives terminal Detach until
@@ -514,8 +496,7 @@ never synchronized.
 
 ### Detach
 
-Detach closes only the active target machine's phone client and shadow through
-a last-link guard;
+detach closes only the selected machine's owned pty/client;
 the source session and its process are never destroyed by Detach. Phone loss,
 app backgrounding, and process recreation destroy only the attachment; the
 next open attaches fresh with no byte replay.
@@ -527,17 +508,27 @@ pinned machine header, local tmux session id, displayed tmux name, and inventory
 `identityToken`. The request field is the hard-cut `tmuxName`; no legacy
 `name` reader exists. The token binds the session id to that server's random epoch
 plus built-in PID and start time. One
-tmux client command queues the epoch/PID/start-time/id/name predicate, an
-ungrouped-or-last-link predicate, and `kill-session`; stale tokens, including
-after a server restart and id/name reuse or restoration of an old epoch,
-cannot reach the kill branch. Before that queue, the gateway removes only
-identity-proven, unattached phone shadows, then revalidates the target. Any
-remaining grouped sibling is ambiguous and fails closed without mutating the
-selected or sibling session; the user resolves that group in tmux. The app
-confirms `Kill <tmuxName> on <machine>?` and never offers kill and detach in the
+tmux client command queues the epoch/PID/start-time/id/name predicate and
+`kill-session`; stale tokens, including after server restart and id/name reuse,
+cannot reach deletion. the gateway validates, closes its owned terminal
+connections, then revalidates and deletes. group membership is no restriction:
+only the selected session is removed; shared windows/processes may survive.
+the app confirms `Kill <tmuxName> on <machine>?` and never offers kill and detach in the
 same gesture. There is no working/idle
 gate — the human is looking at the terminal facts; the guarantee is exactness
 of target, not semantic safety.
+
+### desktop and agent controls
+
+`skid` opens one fleet table; ordinary commands expose list, info, enter, read,
+send, keys, interrupt, stop, kill, and start. default private peer configuration
+is `~/.config/skidbladnir/client.json`. exact names select across complete live
+inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
+identity. cli, tui, and jarvis consume one fleetclient projection. jarvis's nine
+noninteractive tools invoke `skid --json`, with prompt text through stdin.
+[agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
+interrupt retains the session; stop attempts provider halt then closes it; kill
+closes the session alone. halt and closure remain separately observed outcomes.
 
 ### Pressure
 
@@ -656,8 +647,7 @@ history item is `current`.
   deletion creates a new machine and requires explicit fleet reset on Android.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
   `@skid_objective_b64`, `@skid_character`, `@skid_agent_runtime`, the
-  server-scoped `@skid_server_epoch`, and the reserved `@skid_internal` shadow
-  marker). Poller state is in-memory and rebuilt on start.
+  server-scoped `@skid_server_epoch`). Poller state is in-memory and rebuilt on start.
 - Authentication runs before identity disclosure. Ordinary requests send
   exactly one `Skidbladnir-Machine` header matching the gateway installation
   handle. A missing or wrong handle fails before mutation, WSS upgrade, or tmux
@@ -675,8 +665,8 @@ history item is `current`.
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
-| `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before creating any shadow/PTY |
-| `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; owned stale-shadow reconciliation, then one-queue exact lifetime/last-link kill |
+| `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
+| `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 
 Errors use only `{code,message}` with this exhaustive v0 mapping:
@@ -698,7 +688,6 @@ Errors use only `{code,message}` with this exhaustive v0 mapping:
 | `SessionIdentityMismatch` | 409 | `The session changed. Refresh and try again.` |
 | `PairingInviteRejected` | 401 | `This fleet invite is invalid, expired, or already used.` |
 | `MachineIdentityMismatch` | 409 | `The machine identity changed. Fleet reset is required.` |
-| `SessionGroupedConflict` | 409 | `This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.` |
 | `InternalError` | 500 | `Skíðblaðnir could not complete the request.` |
 
 Malformed, oversized, auth, and machine-binding failures are distinguished;
@@ -710,15 +699,16 @@ enum values are defects, with no protocol branch or compatibility state.
 - WSS: text frames `Hello | Presence | Resize | Detach | Error`; Hello/Presence
   contain only kind and attached-client count. The first client Resize gates
   attachment creation. Binary
-  frames are PTY bytes both ways. One WSS owns one PTY/client/shadow and
-  tears all three down on any close, subject to the last-link guard. No byte
+  frames are pty bytes both ways. one websocket owns one pty/client and closes
+  both on connection loss. terminal-only `TerminalConfigurationUnsupported` names
+  the three required tmux options; it is not an http error. No byte
   replay or gateway scrollback; slow clients disconnect and reattach fresh.
   Any WSS loss freezes terminal input behind a typed `Reconnect required`.
 - Bounds: HTTP body 64 KiB; cwd 4,096 bytes; one directory listing scans at
   most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
   encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
   views; objective 240 scalars; terminal frame 64 KiB; queue 1 MiB; geometry
-  20–240 × 5–120. Named, not schema-frozen.
+  20–1024 × 5–512. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
   providerless profile rows, `status`, `runtime`, `interaction`, `attention`,
@@ -898,7 +888,7 @@ enum values are defects, with no protocol branch or compatibility state.
 - The terminal endpoint is shell-equivalent authority: Kotlin supplies the
   inventory token outside the WebView in the non-query
   `Skidbladnir-Session-Identity` header; one tmux queue validates the full
-  server lifetime, id, and name before any PTY/shadow mutation, and the stream
+  server lifetime, id, and name before direct pty/client attachment, and the stream
   closes on mismatch. Android never supplies raw tmux targets, commands, or
   homes.
 - Logs carry names, timings, and typed errors — never terminal bytes, cwd,
@@ -972,14 +962,14 @@ Verification follows an 80/20 boundary shape:
   process recreation, machine-local outage/recovery, and preserved pairings
   and production tmux lifetimes. Its explicit capability permits only the
   gateway's bounded inventory reconciliation of gateway-owned character
-  metadata and stale phone shadows;
+  metadata;
   it proves the machine-local session lifetime set is unchanged. Host
   lifecycle mutation coverage stays in isolated gates.
 - one separately approved named second-phone gate installs the same public APK
   and connects with a fresh QR; until the device is named it is `NOT_RUN`.
 
 The terminal/identity proofs additionally cover latest-client shared sizing and
-unchanged independent focus, last-link detach, bounded backpressure, exact
+shared window/pane navigation, client-only detach, bounded backpressure, exact
 foreground process lifetime, inherited nested-Codex rejection,
 Gboard/IME/dictation, stable text size with fully fitted rotation geometry,
 true color, the reviewed key-deck inputs and atomic one-shot Ctrl/Alt lifecycle,
@@ -1035,10 +1025,9 @@ card remains machine-named to accessibility; one host outage leaves the
 other fresh and actionable while only the failed snapshot becomes stale and
 non-mutating; origin/handle or bearer failure cannot cross machines; each
 Forge uses only local profiles/paths; laptop and phone share one pane/PID/draft
-with tmux latest-client geometry and independent focus preserved; detach leaves
-work alive; kill ends only the exact unambiguously last machine-local lifetime;
-stale identities and
-ordinary groups mutate nothing; every fresh card exposes exactly one required
+with tmux latest-client geometry and shared navigation; detach leaves work
+alive; kill removes only the exact machine-local session lifetime; stale
+identities mutate nothing and grouped deletion preserves sibling links; every fresh card exposes exactly one required
 `Active | Quiet` value from the current window's built-in activity timestamp;
 `ACTIVE` and `QUIET` are distinguishable without color and are spoken only as
 recent or no recent tmux activity at the last check; the inclusive ten-second
@@ -1051,8 +1040,7 @@ exposes `tmuxId` and `tmuxName`, exact foreground Codex or
 Claude exposes provider/PID, valid hooks add only bounded runtime profile and
 provider session id, explicit Claude name flags map exactly, and launch profile
 never substitutes for an unknown runtime profile; first inventory persists one valid dwarf for every visible ordinary
-session, preserves concurrent valid assignment, and never assigns a phone
-shadow; the terminal key deck exposes only its reviewed terminal inputs;
+session and preserves concurrent valid assignment; the terminal key deck exposes only its reviewed terminal inputs;
 Ctrl/Alt never alter literal IME, dictation-shaped, Unicode, multi-character,
 or paste input or survive a lifecycle boundary; and leaving through the top detach action or Back detaches
 only the phone; both pressure capability sets are honest, host statuses drive

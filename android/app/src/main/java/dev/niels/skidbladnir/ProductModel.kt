@@ -971,10 +971,11 @@ internal enum class ApiErrorCode(val wireName: String) {
     DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
-    SessionIdentityMismatch("SessionIdentityMismatch"), SessionGroupedConflict("SessionGroupedConflict"),
+    SessionIdentityMismatch("SessionIdentityMismatch"),
     PairingInviteRejected("PairingInviteRejected"),
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
+    TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
     AgentTargetStale("AgentTargetStale"), AgentUnavailable("AgentUnavailable"),
     AgentBlocked("AgentBlocked"), AgentInputInvalid("AgentInputInvalid"),
 }
@@ -995,11 +996,12 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.SessionNameConflict -> "A session with that name already exists."
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
     ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh and try again."
-    ApiErrorCode.SessionGroupedConflict -> "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it."
     ApiErrorCode.PairingInviteRejected -> "This fleet invite is invalid, expired, or already used."
     ApiErrorCode.MachineIdentityMismatch -> "The machine identity changed. Fleet reset is required."
     ApiErrorCode.InternalError -> "Skíðblaðnir could not complete the request."
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
+    ApiErrorCode.TerminalConfigurationUnsupported ->
+        "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
     ApiErrorCode.AgentTargetStale -> "The agent changed. Refresh and try again."
     ApiErrorCode.AgentUnavailable -> "That agent method is unavailable."
     ApiErrorCode.AgentBlocked -> "Inspect the terminal and send a deliberate reply."
@@ -1043,7 +1045,7 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
             objectValue.requiredObject("error").requireExactKeys(setOf("code", "message"))
             val payload = productJson.decodeFromJsonElement<TerminalErrorEnvelope>(objectValue).error
             val code = parseApiErrorCode(payload.code)
-            if (code !in setOf(ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge, ApiErrorCode.ReconnectRequired, ApiErrorCode.InternalError)) {
+            if (code !in setOf(ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge, ApiErrorCode.ReconnectRequired, ApiErrorCode.TerminalConfigurationUnsupported, ApiErrorCode.InternalError)) {
                 throw SerializationException("error code is outside the terminal protocol")
             }
             if (payload.message != apiErrorMessage(code)) throw SerializationException("incorrect API error message")
@@ -1055,8 +1057,8 @@ internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = d
 
 // One geometry bound: the page publishes only fitted whole-cell grids inside it
 // (and ViewportTooSmall below it), and the resize transport carries nothing else.
-internal val TERMINAL_COLUMNS_RANGE = 20..240
-internal val TERMINAL_ROWS_RANGE = 5..120
+internal val TERMINAL_COLUMNS_RANGE = 20..1024
+internal val TERMINAL_ROWS_RANGE = 5..512
 
 internal fun encodeTerminalResize(columns: Int, rows: Int): String {
     if (columns !in TERMINAL_COLUMNS_RANGE || rows !in TERMINAL_ROWS_RANGE) {

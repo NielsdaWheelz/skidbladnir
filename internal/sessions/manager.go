@@ -41,7 +41,6 @@ type Manager struct {
 	profiles      []agentruntime.Profile
 	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
 	mutations     sync.RWMutex
-	activeShadows map[string]struct{}
 }
 
 func New(config Config) (*Manager, error) {
@@ -73,7 +72,6 @@ func New(config Config) (*Manager, error) {
 		catalogue:     characters,
 		profiles:      profiles,
 		profilesByKey: profilesByKey,
-		activeShadows: make(map[string]struct{}),
 	}, nil
 }
 
@@ -99,9 +97,6 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	}
 	server, err := manager.ensureServerIdentity(ctx)
 	if err != nil {
-		return Inventory{}, err
-	}
-	if _, err := manager.tmux.ReconcilePhoneShadows(ctx, server, manager.protectedPhoneShadows()); err != nil {
 		return Inventory{}, err
 	}
 	scan, err := manager.scanSessions(ctx)
@@ -237,7 +232,7 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	if err != nil {
 		return ObservedSession{}, err
 	}
-	if !found || observed.phoneShadow {
+	if !found {
 		return ObservedSession{}, errors.New("created tmux session is absent from inventory")
 	}
 	session, present, err := manager.inspectRequired(ctx, observed, server)
@@ -284,19 +279,12 @@ func (manager *Manager) kill(ctx context.Context, input KillInput, target *Agent
 	if err != nil {
 		return err
 	}
-	if _, err := manager.tmux.ReconcilePhoneShadows(ctx, identity.server, manager.protectedPhoneShadows()); err != nil {
-		return err
-	}
-	identity, err = manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
-	if err != nil {
-		return err
-	}
 	if target != nil {
 		if _, err := manager.agentTerminalKillInput(ctx, *target); err != nil {
 			return err
 		}
 	}
-	killed, err := manager.tmux.KillSessionIfIdentityAndIsolated(ctx, input.TmuxID, input.TmuxName, identity.server)
+	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, input.TmuxName, identity)
 	if err != nil {
 		return manager.classifyMissingSession(ctx, input.TmuxID, err)
 	}
@@ -304,7 +292,7 @@ func (manager *Manager) kill(ctx context.Context, input KillInput, target *Agent
 		if _, identityErr := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken); identityErr != nil {
 			return identityErr
 		}
-		return newSessionError(ErrorSessionGroupedConflict, "This session shares its work with another non-phone tmux session. Resolve the group in tmux before killing it.")
+		return sessionIdentityMismatch()
 	}
 	return nil
 }
@@ -314,11 +302,6 @@ func (manager *Manager) ValidateKill(ctx context.Context, input KillInput) error
 	defer manager.mutations.RUnlock()
 	_, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
 	return err
-}
-
-type sessionMutationIdentity struct {
-	server      tmuxclient.ServerIdentity
-	phoneShadow bool
 }
 
 func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
@@ -332,21 +315,18 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 	if err != nil {
 		return err
 	}
-	if identity.phoneShadow {
-		return sessionIdentityMismatch()
-	}
 	if input.NewTmuxName == input.TmuxName {
 		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
-	renamed, err := manager.tmux.RenameSessionIfIdentityAndOrdinary(
-		ctx, input.TmuxID, input.TmuxName, input.NewTmuxName, identity.server,
+	renamed, err := manager.tmux.RenameSessionIfIdentity(
+		ctx, input.TmuxID, input.TmuxName, input.NewTmuxName, identity,
 	)
 	if err != nil {
-		return manager.classifyRenameFailure(ctx, input, identity.server, err)
+		return manager.classifyRenameFailure(ctx, input, identity, err)
 	}
 	if !renamed {
 		return manager.classifyRenameFailure(
-			ctx, input, identity.server, errors.New("tmux conditional rename rejected an exact preflight identity"),
+			ctx, input, identity, errors.New("tmux conditional rename rejected an exact preflight identity"),
 		)
 	}
 	return nil
@@ -357,36 +337,29 @@ func (manager *Manager) mutationIdentity(
 	tmuxID string,
 	tmuxName string,
 	identityToken string,
-) (sessionMutationIdentity, error) {
+) (tmuxclient.ServerIdentity, error) {
 	if !sessionIDPattern.MatchString(tmuxID) {
-		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
 	server, validToken := parseIdentityToken(identityToken, tmuxID)
 	if tmuxName == "" || !validToken {
-		return sessionMutationIdentity{}, sessionIdentityMismatch()
+		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
 	name, found, err := manager.sessionIdentity(ctx, tmuxID)
 	if err != nil {
-		return sessionMutationIdentity{}, err
+		return tmuxclient.ServerIdentity{}, err
 	}
 	if !found {
-		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
 	if name != tmuxName {
-		return sessionMutationIdentity{}, sessionIdentityMismatch()
-	}
-	internal, found, err := manager.sessionOptionIfPresent(ctx, tmuxID, "@skid_internal")
-	if err != nil {
-		return sessionMutationIdentity{}, err
-	}
-	if !found {
-		return sessionMutationIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
 	observed, err := manager.tmux.ServerIdentity(ctx)
 	if err != nil || observed != server {
-		return sessionMutationIdentity{}, sessionIdentityMismatch()
+		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
 	}
-	return sessionMutationIdentity{server: server, phoneShadow: tmuxclient.IsPhoneShadow(name, internal)}, nil
+	return server, nil
 }
 
 func (manager *Manager) classifyRenameFailure(
@@ -406,17 +379,10 @@ func (manager *Manager) classifyRenameFailure(
 	if err != nil || server != expectedServer {
 		return sessionIdentityMismatch()
 	}
-	internal, found, err := manager.sessionOptionIfPresent(ctx, input.TmuxID, "@skid_internal")
-	if err != nil {
-		return fmt.Errorf("reread failed rename source marker: %w", err)
-	}
-	if !found {
-		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
 	if name == input.NewTmuxName {
 		return fmt.Errorf("tmux rename failed after the source acquired the desired name: %w", cause)
 	}
-	if name != input.TmuxName || tmuxclient.IsPhoneShadow(name, internal) {
+	if name != input.TmuxName {
 		return sessionIdentityMismatch()
 	}
 	destinationID, occupied, err := manager.sessionIDNamed(ctx, input.NewTmuxName)
@@ -424,14 +390,11 @@ func (manager *Manager) classifyRenameFailure(
 		return fmt.Errorf("reread failed rename destination: %w", err)
 	}
 	if occupied && destinationID != input.TmuxID {
-		identity, identityErr := manager.mutationIdentity(
+		_, identityErr := manager.mutationIdentity(
 			ctx, input.TmuxID, input.TmuxName, input.IdentityToken,
 		)
 		if identityErr != nil {
 			return identityErr
-		}
-		if identity.phoneShadow {
-			return sessionIdentityMismatch()
 		}
 		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
@@ -475,12 +438,12 @@ func (manager *Manager) inspectRequired(
 		IdentityToken: identityToken, Character: observed.character,
 	}}
 	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", observed.id,
-		"#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}|#{session_group_attached}")
+		"#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}")
 	if err != nil {
 		return manager.reconcileFailedInspection(ctx, observed.id, fmt.Errorf("read required tmux card anchor: %w", err))
 	}
 	fields := strings.Split(anchor, "|")
-	if len(fields) != 5 || fields[0] != observed.id {
+	if len(fields) != 4 || fields[0] != observed.id {
 		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
 	}
 	if !paneIDPattern.MatchString(fields[1]) {
@@ -488,17 +451,12 @@ func (manager *Manager) inspectRequired(
 	}
 	panePID, paneErr := strconv.Atoi(fields[2])
 	attached, attachedErr := strconv.Atoi(fields[3])
-	groupAttached := attached
-	var groupErr error
-	if fields[4] != "" {
-		groupAttached, groupErr = strconv.Atoi(fields[4])
-	}
-	if paneErr != nil || panePID <= 0 || attachedErr != nil || attached < 0 || groupErr != nil || groupAttached < 0 {
+	if paneErr != nil || panePID <= 0 || attachedErr != nil || attached < 0 {
 		return inspected, true, nil
 	}
 	inspected.paneID = fields[1]
 	inspected.panePID = processinfo.PID(panePID)
-	inspected.attachedClients = groupAttached
+	inspected.attachedClients = attached
 	return inspected, true, nil
 }
 
@@ -581,7 +539,6 @@ type scannedSession struct {
 	tmuxName     string
 	characterRaw string
 	character    catalog.Character
-	phoneShadow  bool
 }
 
 type sessionScan struct {
@@ -612,9 +569,6 @@ func (manager *Manager) scanSessions(ctx context.Context) (sessionScan, error) {
 			continue
 		}
 		scan.names[observed.tmuxName] = struct{}{}
-		if observed.phoneShadow {
-			continue
-		}
 		scan.visible = append(scan.visible, observed)
 		if observed.character.Key != "" {
 			scan.characterUse[observed.character.Key]++
@@ -628,16 +582,7 @@ func (manager *Manager) scanSession(ctx context.Context, id string) (scannedSess
 	if err != nil || !found {
 		return scannedSession{}, found, err
 	}
-	internal, found, err := manager.sessionOptionIfPresent(ctx, id, "@skid_internal")
-	if err != nil || !found {
-		return scannedSession{}, found, err
-	}
-	observed := scannedSession{
-		id: id, tmuxName: name, phoneShadow: tmuxclient.IsPhoneShadow(name, internal),
-	}
-	if observed.phoneShadow {
-		return observed, true, nil
-	}
+	observed := scannedSession{id: id, tmuxName: name}
 	observed.characterRaw, found, err = manager.sessionOptionIfPresent(ctx, id, "@skid_character")
 	if err != nil || !found {
 		return scannedSession{}, found, err
@@ -690,7 +635,7 @@ func (manager *Manager) normalizeCharacters(
 			if rereadErr != nil {
 				return nil, rereadErr
 			}
-			if !found || reread.phoneShadow {
+			if !found {
 				included[index] = false
 				continue
 			}
@@ -754,15 +699,6 @@ func selectCharacter(characters []catalog.Character, characterUse map[string]int
 		}
 	}
 	return selected
-}
-
-func (manager *Manager) protectedPhoneShadows() []string {
-	protected := make([]string, 0, len(manager.activeShadows))
-	for name := range manager.activeShadows {
-		protected = append(protected, name)
-	}
-	sort.Strings(protected)
-	return protected
 }
 
 func (manager *Manager) sessionOption(ctx context.Context, id, option string) (string, error) {

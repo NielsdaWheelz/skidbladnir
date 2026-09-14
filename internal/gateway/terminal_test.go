@@ -132,6 +132,12 @@ func TestTerminalLivenessEndsOnSilentPeerAndSurvivesResponsivePeer(t *testing.T)
 }
 
 func TestTerminalSessionFailuresRequireReconnectOnlyAfterIdentityLoss(t *testing.T) {
+	for _, err := range []error{sessions.ErrTerminalConfigurationUnsupported, errors.Join(sessions.ErrTerminalConfigurationUnsupported, sessions.ErrTerminalCleanupFailed)} {
+		if terminalCodeForSessionError(err) != terminal.ErrorTerminalConfigurationUnsupported {
+			t.Fatal("terminal prerequisite error lost its public classification")
+		}
+	}
+
 	for _, code := range []sessions.ErrorCode{sessions.ErrorSessionNotFound, sessions.ErrorSessionIdentityMismatch} {
 		if got := terminalCodeForSessionError(&sessions.Error{Code: code, Message: "closed test error"}); got != terminal.ErrorReconnectRequired {
 			t.Fatalf("session error %q projected as %q", code, got)
