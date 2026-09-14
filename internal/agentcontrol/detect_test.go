@@ -101,8 +101,10 @@ func TestDetectorRecognizesCodexAgentFooterWithoutContext(t *testing.T) {
 
 func TestDetectorRecognizesClaudePermissionFooterAtCurrentPrompt(t *testing.T) {
 	footer := "⏵⏵ auto mode on (shift+tab to cycle) · ← 0 agents"
+	uncountedFooter := "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents"
 	for _, test := range []struct{ name, text, want string }{
 		{"auto", "❯\n" + footer, "idle"},
+		{"uncounted agent hint", "❯\n" + uncountedFooter, "idle"},
 		{"draft", "❯ explain this\n" + footer, "idle"},
 		{"plan", "❯\n⏸ plan mode on (shift+tab to cycle)", "idle"},
 		{"manual", "❯\n⏸ manual mode on (shift+tab to cycle)", "idle"},
@@ -117,6 +119,11 @@ func TestDetectorRecognizesClaudePermissionFooterAtCurrentPrompt(t *testing.T) {
 		{"old footer", footer + "\n❯\nmore text", "unknown"},
 		{"incomplete footer", "❯\n⏵⏵ auto mode on (shift+tab to", "unknown"},
 		{"unrecognized suffix", "❯\n" + footer + " waiting for input", "unknown"},
+		{"uncounted hint without prompt", uncountedFooter, "unknown"},
+		{"quoted uncounted hint", "❯\n> " + uncountedFooter, "unknown"},
+		{"incomplete agent hint", "❯\n⏵⏵ auto mode on (shift+tab to cycle) · ← for", "unknown"},
+		{"unknown uncounted suffix", "❯\n" + uncountedFooter + " waiting for input", "unknown"},
+		{"wrapped agent hint", "❯\n⏵⏵ auto mode on (shift+tab to cycle) · ← for\nagents", "unknown"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := Detect(agentruntime.ProviderClaude, test.text); got.State != test.want {

@@ -16,7 +16,7 @@ var (
 	// an explicit directory, and the complete agent hint; separators or clipping
 	// inside the directory must not disguise additional or incomplete fields.
 	codexAgentFooter = regexp.MustCompile(`^gpt-[a-z0-9][a-z0-9._-]* (?:none|minimal|low|medium|high|xhigh)(?: fast)? · (?:~(?:/[^·…\r\n]*)?|/[^·…\r\n]*) · ← for agents$`)
-	claudeFooter     = regexp.MustCompile(`^(?:⏸ (?:manual|plan) mode|⏵⏵ (?:auto mode|accept edits|bypass permissions|don't ask)) on \(shift\+tab to cycle\)(?: · ← (?:[0-9]{1,2}|99\+) agents?)?$`)
+	claudeFooter     = regexp.MustCompile(`^(?:⏸ (?:manual|plan) mode|⏵⏵ (?:auto mode|accept edits|bypass permissions|don't ask)) on \(shift\+tab to cycle\)(?: · ← (?:(?:[0-9]{1,2}|99\+) agents?|for agents))?$`)
 	confirmFooter    = regexp.MustCompile(`^(?:enter to (?:select|confirm)|press enter to confirm)(?: · | or )esc to cancel$`)
 )
 
