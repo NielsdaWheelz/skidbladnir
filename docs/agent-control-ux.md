@@ -1,6 +1,6 @@
 # agent control: usable client, direct attachment
 
-2026-09-13 spec · shipped in v0.4.1; remaining acceptance recorded below.
+2026-09-13 spec · shipped in v0.4.1; a1–a9 verified on 2026-09-14.
 baseline: skid `919e3d2`, dev-server `453d72c`, jarvis `1dbeee3`.
 this document supersedes only the cli, attachment, and grouped-kill contracts in
 [agent control](agent-control.md) and [architecture](architecture.md).
@@ -303,18 +303,23 @@ repositories, and installed on all three hosts and the phone. jarvis runs
 | --- | --- |
 | cli / tui / terminal bridge | local command, tls/http, authenticated websocket and real pty tests pass; includes multiline input, pinned confirmation, tea attach/detach/return, restored termios and joined input readers |
 | host / phone | static/unit, android compile/lint and 112 unit tests pass; isolated integration and direct-client live pass on darwin, arch linux/tmux 3.7c and devbox linux/tmux 3.4; v0.4.1 physical platform gate passes 76/76, no skips |
-| jarvis | exact-source canonical linux verification passes: 874 jarvis, 267 kernel, 1003 provider and 203 tools tests, static/package checks, one expected provider no-extras skip; hosted ci is `NOT_RUN` because of billing; genuine v3 owner list/start passes; remaining tools are pending |
-| installer / guide | full local suite and hosted macos/linux checks pass; installer suite passes 20 groups including activation and command-link failure rollback; guide installed in existing provider roots; ordinary codex read the installed guide through an observed tool result; claude discovery is `NOT_RUN` |
+| jarvis | exact-source canonical linux verification passes: 874 jarvis, 267 kernel, 1003 provider and 203 tools tests, static/package checks, one expected provider no-extras skip; hosted ci is `NOT_RUN` because of billing; genuine v3 owner events exercise all nine tools, both providers' actual replies, startup keys and exact closure; final stop retains unconfirmed halt separately from closed terminal |
+| installer / guide | full local suite and hosted macos/linux checks pass; installer suite passes 20 groups including activation and command-link failure rollback; guide installed in existing provider roots; ordinary codex and claude read the installed guide through observed tool results |
 | rollout | public-download verification and all three gateway/instruction-only upgrades pass; no owned shadows remain; all six directed routes and macbook↔arch control during devbox outage pass; immediate before/after session/process lifetimes and private files preserved |
 | actual phone | all three hosts entered/detached at readable size; devbox additionally proves real gboard input/reply, draft retention, background/reconnect, touch scroll and native copy on v0.4.0, whose android tree is identical to v0.4.1; pairing survives both updates and platform gates |
 | final phone actions | v0.4.1 stop confirmation/cancel passes; confirmed stop reports unconfirmed agent halt and closed terminal; terminal-only kill closes the other two exact fixtures; all three fixtures removed, remaining references preserved, public apk hash exact, test package absent and all three hosts authenticate |
-| installed providers | eleven of twelve profile launch/reply/closure cases pass across v0.4.0/v0.4.1; devbox claude submitted one turn but returned a provider session-limit notice, so its reply and cleanup remain pending |
-| ordinary coordinators | codex passed guide discovery, exact remote peer creation, trust keys, send/read, independently observed reply, kill and post-closure verification; both fixtures/directories removed and all 18 baseline references preserved; claude is `NOT_RUN` while its account is limited |
+| installed providers | all twelve profile launch/reply/closure cases pass across v0.4.0/v0.4.1; devbox claude's distinct successful coordination task supplies its reply proof; the earlier quota-failed turn remains failed |
+| ordinary coordinators | both passed guide discovery, exact remote peer creation, trust keys, send/read, independently observed reply, kill and post-closure verification; all coordinator fixtures and owned empty directories removed; codex preserved all 18 baseline refs; claude preserved all 10 protected refs with exact concurrent test closures and one owner-confirmed unrelated closure recorded separately |
 
-acceptance a1–a9 is not yet complete. the owner approved the remaining real-boundary
-checks and coordinated release/rollout. jarvis still requires a genuine
-owner-authored event for the next explicitly scoped action; its first v3 request
-completed list/start. rollout did not reboot machines, reload the tmux template,
+acceptance a1–a9 is complete. genuine owner events exercised jarvis's nine tools
+through the installed cli without copying refs into owner requests. both jarvis
+fixtures are closed; the final cleanup preserves all twelve other baseline refs.
+historical denied/uncertain actions remain recorded: one conditional startup
+request was denied before dispatch, and a new explicit owner grant then passed.
+the owner probes used no gate/budget override, manual provider-session reset, or
+context edit.
+one completed owner turn lacks usage data; its token cost remains unverified.
+rollout did not reboot machines, reload the tmux template,
 or restart busy provider services. installed tui creation/read/interrupt/stop/kill
 and terminal return pass; unconfirmed provider halt remains distinct from closure.
 installed tui/outage and native tmux qualification are v0.4.0-era evidence over
@@ -335,3 +340,9 @@ eleven approvals were required. this is not unattended-operation proof. no profi
 policy or persistent command permission was changed. the coordinator's clipped
 footer remained unknown; its initial and cleanup goals used deliberate terminal
 mode after observing its composer. automatic-send readiness is not claimed there.
+claude's distinct coordination and cleanup goals each used one terminal send and
+one additional enter after the exact retained draft was observed; native history
+confirmed each goal was submitted once. its peer received one explicit terminal
+send after two automatic attempts returned `not_sent`. no uncertain input was
+replayed and no persistent provider policy changed. its final stop returned
+`agent: unconfirmed`, `terminal: closed`, exit 1; provider halt remains unclaimed.

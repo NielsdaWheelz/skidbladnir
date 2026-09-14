@@ -41,15 +41,26 @@ provider sandbox approvals, with no persistent policy change, so unattended
 operation is not claimed. the coordinator's clipped footer remained unknown;
 its initial and cleanup goals used deliberate terminal mode after inspecting the
 composer, not automatic readiness.
-claude coordination and the complete owner-authored nine-tool journey remain
-pending; jarvis's first v3 owner list/start passes. acceptance a1–a9 is not yet
-complete. current status belongs in
-the [delivery table](agent-control-ux.md#delivery-status).
+claude coordination also passes: actual guide/tool results, exact peer controls,
+independent reply, native completed response, and exact cleanup are verified.
+both fixtures and the owned empty directory are removed. ten protected refs survive;
+one owner-confirmed unrelated closure and exact concurrent jarvis test closures are
+recorded separately. each controller goal needed one additional enter after its
+retained draft was verified. two automatic peer sends were refused without delivery;
+one explicit terminal send succeeded. final stop reports unconfirmed halt and
+confirmed closure. no uncertain input replay or persistent policy change occurred.
 
-eleven of twelve installed profile reply/closure cases pass. devbox claude returned
-a provider session-limit notice after one submitted turn; its reply and cleanup
-remain pending. all three claude-work profiles report the same provider account.
-no further claude model requests are sent before the stated 07:10 utc reset.
+all twelve installed profile reply/closure cases pass. devbox claude's earlier
+quota-failed turn remains failed; its distinct successful coordination task supplies
+the remaining profile proof after the stated reset. jarvis's genuine v3 owner
+events exercise all nine tools, both providers' actual replies, startup keys and
+exact closure. final stop retains unconfirmed provider halt and confirmed closure;
+all twelve other final-baseline refs survive. all owned fixtures are removed.
+acceptance a1–a9 is complete. original denied/uncertain receipts remain intact;
+one completed owner turn lacks usage data, so its token cost remains unverified.
+the owner probes used no gate/budget override, manual provider-session reset, or
+context edit. details are in the
+[delivery table](agent-control-ux.md#delivery-status).
 
 historical v0.3.1 delivery follows. its provider and phone evidence retains its
 original release attribution; it does not establish the new cli/tui acceptance.
