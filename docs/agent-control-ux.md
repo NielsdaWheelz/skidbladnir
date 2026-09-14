@@ -1,6 +1,6 @@
 # agent control: usable client, direct attachment
 
-2026-09-13 · implemented on branch `agent-control-ux`; live acceptance pending.
+2026-09-13 spec · shipped in v0.4.1; remaining acceptance recorded below.
 baseline: skid `919e3d2`, dev-server `453d72c`, jarvis `1dbeee3`.
 this document supersedes only the cli, attachment, and grouped-kill contracts in
 [agent control](agent-control.md) and [architecture](architecture.md).
@@ -294,17 +294,44 @@ uses stdin); best-effort halt remains distinct from closure; coordinated hard cu
 
 ## delivery status
 
-implementation spans new skid, jarvis, and dev-server worktrees on branch
-`agent-control-ux`. current installed release and pins remain v0.3.1.
+implementation is merged across skid, jarvis, and dev-server. immutable v0.4.1
+at `bd4983f9ea23589283dac67c89d3b83cbe7cde8a` is published, pinned in both
+repositories, and installed on all three hosts and the phone. jarvis runs
+`f4e2ce6` through its matching installed cli. the original worktrees are preserved.
 
 | boundary | current evidence |
 | --- | --- |
 | cli / tui / terminal bridge | local command, tls/http, authenticated websocket and real pty tests pass; includes multiline input, pinned confirmation, tea attach/detach/return, restored termios and joined input readers |
-| host / phone | static and unit gates pass, including android compile/lint and 112 unit tests; darwin isolated integration and arch direct-client live pass; full linux and device acceptance remain pending |
-| jarvis | 866 database-backed tests pass, five existing platform skips; final affected suite passes 62; type/lint checks pass; real owner/tool/provider journey is `NOT_RUN` |
-| installer / guide | full local suite passes; final installer suite passes 20 groups including activation and command-link failure rollback; live instruction discovery is `NOT_RUN` |
-| rollout | coordinated release, shadow drain by old gateways, all three peer routes, phone preservation, and unchanged unrelated lifetimes are `NOT_RUN` |
+| host / phone | static/unit, android compile/lint and 112 unit tests pass; isolated integration and direct-client live pass on darwin, arch linux/tmux 3.7c and devbox linux/tmux 3.4; v0.4.1 physical platform gate passes 76/76, no skips |
+| jarvis | exact-source canonical linux verification passes: 874 jarvis, 267 kernel, 1003 provider and 203 tools tests, static/package checks, one expected provider no-extras skip; hosted ci is `NOT_RUN` because of billing; genuine v3 owner list/start passes; remaining tools are pending |
+| installer / guide | full local suite and hosted macos/linux checks pass; installer suite passes 20 groups including activation and command-link failure rollback; guide installed in existing provider roots; ordinary codex read the installed guide through an observed tool result; claude discovery is `NOT_RUN` |
+| rollout | public-download verification and all three gateway/instruction-only upgrades pass; no owned shadows remain; all six directed routes and macbook↔arch control during devbox outage pass; immediate before/after session/process lifetimes and private files preserved |
+| actual phone | all three hosts entered/detached at readable size; devbox additionally proves real gboard input/reply, draft retention, background/reconnect, touch scroll and native copy on v0.4.0, whose android tree is identical to v0.4.1; pairing survives both updates and platform gates |
+| final phone actions | v0.4.1 stop confirmation/cancel passes; confirmed stop reports unconfirmed agent halt and closed terminal; terminal-only kill closes the other two exact fixtures; all three fixtures removed, remaining references preserved, public apk hash exact, test package absent and all three hosts authenticate |
+| installed providers | eleven of twelve profile launch/reply/closure cases pass across v0.4.0/v0.4.1; devbox claude submitted one turn but returned a provider session-limit notice, so its reply and cleanup remain pending |
+| ordinary coordinators | codex passed guide discovery, exact remote peer creation, trust keys, send/read, independently observed reply, kill and post-closure verification; both fixtures/directories removed and all 18 baseline references preserved; claude is `NOT_RUN` while its account is limited |
 
 acceptance a1–a9 is not yet complete. the owner approved the remaining real-boundary
 checks and coordinated release/rollout. jarvis still requires a genuine
-owner-authored event. unrelated tmux sessions and provider services remain unchanged.
+owner-authored event for the next explicitly scoped action; its first v3 request
+completed list/start. rollout did not reboot machines, reload the tmux template,
+or restart busy provider services. installed tui creation/read/interrupt/stop/kill
+and terminal return pass; unconfirmed provider halt remains distinct from closure.
+installed tui/outage and native tmux qualification are v0.4.0-era evidence over
+host/client paths unchanged by v0.4.1. hosted v0.4.1 routine verification does not
+substitute for those real boundaries.
+
+v0.4.1 adds one observed claude idle-footer form, `← for agents`, to the existing
+anchored detector. its unchanged-source red, focused green and independent review
+pass. the original rejected arch fixture then accepted automatic send and produced
+a native-history reply. unfamiliar terminal presentation still requires explicit
+terminal intent; no broader provider policy or readiness inference was added.
+terminal input delivery does not prove submission: the retained devbox claude
+prompt remained a pasted draft until one separately observed enter. no second
+paste was sent; native history then established one user turn and the limit notice.
+ordinary coordinators retain their provider's existing trust and sandbox approvals.
+the codex live check uses individual approvals for its exact fleet commands;
+eleven approvals were required. this is not unattended-operation proof. no profile
+policy or persistent command permission was changed. the coordinator's clipped
+footer remained unknown; its initial and cleanup goals used deliberate terminal
+mode after observing its composer. automatic-send readiness is not claimed there.

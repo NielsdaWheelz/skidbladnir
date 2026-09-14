@@ -1,7 +1,7 @@
 # Skíðblaðnir v0: product and architecture
 
-current implementation target: [usable agent client and direct attachment](agent-control-ux.md).
-its contracts are incorporated below. delivery and verification status are in the
+current release: v0.4.1, [usable agent client and direct attachment](agent-control-ux.md).
+its contracts are incorporated below. delivery and remaining acceptance are in the
 [roadmap](roadmap.md); historical releases do not prove this target.
 
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the

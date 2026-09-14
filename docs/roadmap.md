@@ -1,14 +1,60 @@
 # Skíðblaðnir v0 roadmap
 
-in implementation: [usable agent client and direct attachment](agent-control-ux.md).
-the new branch contains the normal cli/tui, direct attachment, phone protocol,
-and matching jarvis/installer changes. local static and unit gates pass;
-adversarial boundary review is complete. approved darwin isolated integration and
-arch direct-client live checks pass after correcting test fixtures. full native
-linux qualification is in progress. provider, phone, fleet, and owner-authored
-jarvis acceptance remain pending. v0.3.1 remains installed; no release pin has changed.
+current release: [usable agent client and direct attachment](agent-control-ux.md),
+immutable v0.4.1 at `bd4983f9ea23589283dac67c89d3b83cbe7cde8a`, pinned in both
+repositories and installed on all three gateways/clis, jarvis's executable copy,
+and the phone. normal cli/tui and direct attachment replace the old json client
+and shadow grouping. source admission, exact-source hosted verification, signed
+builds, public-download verification, and both installer platforms pass.
 
-accepted target: [agent control](agent-control.md). immutable v0.3.1 is published
+routine verification, isolated darwin/linux integration and direct-client live,
+installed tui entry/return and actions, all six directed peer routes, and
+macbook↔arch controls during a devbox gateway outage pass. installed tui/outage
+and native tmux qualification are v0.4.0-era evidence; v0.4.1 leaves those host/client
+paths unchanged. its hosted verification reruns routine checks, not live boundaries.
+gateway-only rollout
+preserved each host's immediately observed session/process identities, private
+files, and shared provider service lifetimes. the managed tmux template was staged
+without reloading it; no reboot or busy-provider restart occurred.
+
+the v0.4.1 release-bound phone gate passes 76/76 with no skips. ordinary update and
+instrumentation preserved pairing, restored the signed public apk, and retained
+fresh authentication to all three hosts. the actual three-host terminal journey
+passed on v0.4.0: all three hosts have readable 35-column entry/detach; devbox
+additionally proves real gboard input/reply, draft retention through background
+and client disconnect, explicit reattach, touch scroll and native copy. v0.4.1
+has the identical android source tree. live clipboard bytes
+were not read; exact copy equality is established by instrumentation.
+final v0.4.1 phone stop/cancel and terminal-only kill pass. stop visibly reports
+unconfirmed provider halt with confirmed closure. all three owned phone fixtures
+are removed; remaining references survive. the public apk hash is exact, the test
+package is absent, and all three hosts authenticate afterward.
+
+jarvis's exact deployed source `f4e2ce6` passes canonical linux verification:
+874 jarvis, 267 kernel, 1003 provider, and 203 tools tests, plus static/package
+checks; one expected provider no-extras skip remains. hosted jarvis ci is `NOT_RUN`
+because of account billing. ordinary codex has read the installed guide, created
+a remote peer, handled its trust dialog, sent a prompt and read its actual reply.
+it closed the exact peer and verified absence; both fixture sessions/directories
+are removed and all 18 baseline references survived. this used eleven individual
+provider sandbox approvals, with no persistent policy change, so unattended
+operation is not claimed. the coordinator's clipped footer remained unknown;
+its initial and cleanup goals used deliberate terminal mode after inspecting the
+composer, not automatic readiness.
+claude coordination and the complete owner-authored nine-tool journey remain
+pending; jarvis's first v3 owner list/start passes. acceptance a1–a9 is not yet
+complete. current status belongs in
+the [delivery table](agent-control-ux.md#delivery-status).
+
+eleven of twelve installed profile reply/closure cases pass. devbox claude returned
+a provider session-limit notice after one submitted turn; its reply and cleanup
+remain pending. all three claude-work profiles report the same provider account.
+no further claude model requests are sent before the stated 07:10 utc reset.
+
+historical v0.3.1 delivery follows. its provider and phone evidence retains its
+original release attribution; it does not establish the new cli/tui acceptance.
+
+accepted target: [agent control](agent-control.md). immutable v0.3.1 was published
 at `ac1b2079af4a5db35509a7ed0607eea77448bb85`, pinned across both repositories,
 and installed on all three gateways and clis, including jarvis's executable copy,
 and the phone. the published-release and fleet verification gates
