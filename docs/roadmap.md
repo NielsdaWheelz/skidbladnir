@@ -1,5 +1,57 @@
 # Skíðblaðnir v0 roadmap
 
+## new terminal here — source implemented, runtime acceptance open
+
+2026-09-15: pr 2 of [the three-pr plan](spaces-and-shells.md), implemented on
+`shells-pr2`, stacked directly on pr 1 commit `256fee2450d83f4255444fd0b00f97ac695016c3`.
+implementation worktree: `/home/niels/src/personal/skidbladnir-shells-pr2`.
+on 2026-09-15 the user authorized committing, pushing, merging prs 1 and 2, and
+cleaning up their worktrees while retaining darwin/phone proofs as `NOT_RUN`.
+merge authorization does not establish those runtime proofs. release pins and
+deployed installations remain unchanged.
+
+outcome: standalone terminal creation in cli/tui/android; `skid shell`, tui `t`,
+and the android attach-header action create an independent terminal using the
+exact source session's sampled cwd/space. no profiles are required. configured
+login-shell startup preserves literal paths and fails closed on directory/shell
+loss. shared creation/result owners preserve exact references, dispatch uncertainty,
+selection, and attachment semantics. [shells.md](shells.md) owns the contract.
+
+hard cut: explicit launch kind and three-field creation errors replace the old
+profile-only request/error paths across host/desktop/android. empty-profile
+blocking is removed. no terminal provider/profile, persisted launch request,
+parent link, compatibility path, or pr 3 scaffolding was added.
+
+verification on this candidate:
+
+| boundary | evidence |
+| --- | --- |
+| behavioral reds | host strict launch/empty profiles and actual gateway creation; desktop grammar/state and actual tui form; android launch/error/form contracts observed failing before implementation. phone runtime red is `NOT_RUN`. |
+| h / linux | actual binary/gateway/isolated tmux matrix passes, including observed agent replacement with retained session identity, literal startup/login argv, sampled local metadata, independent lifetimes, pre-dispatch rejection and uncertain partial creation. |
+| d / linux | real tui/pty → fleetclient → TLS gateway → isolated tmux passes: zero-profile form, one shortcut creation, exact attach/detach/filters, source survival, and real lost response without replay. |
+| routine | `GOTOOLCHAIN=go1.26.3 ./scripts/test verify` passes: static checks, Go/Android builds, host suites, 126 Android JVM tests, instrumentation/fixture compilation, and existing gate-policy checks. |
+| integration / live | complete isolated linux integration passes (77.040s control-plane package); direct-client live gate passes. |
+| darwin h / phone p | `NOT_RUN` by explicit user direction. android geometry, device completion/recreation, and real create/attach remain runtime-unproven. |
+| provider-live / platform / release / deployment | `NOT_RUN`; not established by isolated fixtures or historical releases. |
+
+independent reviews challenged lifetime guards, literal execution, strict wire
+cutover, completion ownership and fixture sensitivity. fixes preserve unknown
+creation after possible dispatch; do not infer certainty from tmux stderr or
+later inventory. routine verification exposed an existing fixture that reported
+closure before its killed process exited; the fixture now waits for kernel exit,
+with one reap owner and unchanged production stop behavior. review also moved
+temporary phone artifacts under existing
+platform cleanup before release restoration; its hermetic cleanup sensitivity
+passes, while device execution remains `NOT_RUN`.
+
+accepted costs: generated shortcut names, sampled cwd/space, one exec helper
+without readiness, manual uncertain-creation recovery (including a collision
+reported only after tmux starts), compact header glyphs/reduced title width,
+collection-based return until pr 3, and coordinated host/cli/android cutover.
+[shells.md](shells.md#7-accepted-costs) is normative. full h/d/p acceptance remains
+open. tmux/integration/live and platform/adb retain their explicit current-turn
+approval boundaries.
+
 ## spaces — source implemented, runtime acceptance open
 
 2026-09-15: pr 1 of [spaces, shells, and client composition](spaces-and-shells.md).
@@ -81,9 +133,9 @@ filter changes, and one-time navigation reset on the task-schema hard cut.
 [the complete cost table](spaces.md#13-hard-cutover-non-goals-and-explicit-costs)
 is part of the implementation contract.
 
-pr 2 (independent shell creation) and pr 3 (additional terminal navigation and
-composition) remain separate. their own unfinished launch/navigation contracts
-must be closed before their implementation. do not broaden pr 1 to prepare them.
+pr 2's independent shell creation now has its own [accepted plan](shells.md).
+pr 3's additional terminal navigation/composition remains separate and still
+needs its contract. neither is part of pr 1.
 
 ## released baseline and historical evidence
 

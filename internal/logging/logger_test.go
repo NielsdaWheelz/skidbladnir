@@ -43,6 +43,24 @@ func TestLoggerEmitsOnlyClosedTmuxIdentityFields(t *testing.T) {
 	}
 }
 
+func TestTerminalCreationLogOmitsAgentProfile(t *testing.T) {
+	event, err := NewSessionCreated("$42", "skidbladnir-terminal-1", "", time.Millisecond)
+	if err != nil {
+		t.Fatal("ordinary terminal creation rejected as a log event")
+	}
+	var output bytes.Buffer
+	if err := New(&output).Write(event); err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(output.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := fields["skidbladnir.session.launch_profile"]; present {
+		t.Fatal("terminal creation invented an agent profile")
+	}
+}
+
 func TestRequestLogUsesRouteTemplatesAndClosedErrors(t *testing.T) {
 	event, err := NewRequestCompleted(MethodDelete, RouteSession, 409, time.Millisecond, ErrorSessionIdentityMismatch)
 	if err != nil {

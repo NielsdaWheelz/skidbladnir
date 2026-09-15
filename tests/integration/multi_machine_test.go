@@ -36,6 +36,7 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		t.Helper()
 		body, err := json.Marshal(map[string]string{
 			"cwd":              cwd,
+			"kind":             "agent",
 			"profile":          "personal",
 			"optionalTmuxName": "same-local-agent",
 		})
@@ -65,9 +66,9 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		"",
 		secondIntegrationMachineText,
 		"",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"kind":"agent","cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
-	assertError(t, unauthenticatedWrongMachine, http.StatusUnauthorized, "Unauthenticated")
+	assertCreationError(t, unauthenticatedWrongMachine, http.StatusUnauthorized, "Unauthenticated")
 	leftBearerAtRight := requestForMachine(
 		t, rightServer.Client(), http.MethodGet, rightServer.URL+"/v1/sessions", leftBearer, secondIntegrationMachineText, "", "",
 	)
@@ -79,9 +80,9 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 
 	missingMachine := requestForMachine(
 		t, leftServer.Client(), http.MethodPost, leftServer.URL+"/v1/sessions", leftBearer, "", "",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"kind":"agent","cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
-	assertError(t, missingMachine, http.StatusConflict, "MachineIdentityMismatch")
+	assertCreationError(t, missingMachine, http.StatusConflict, "MachineIdentityMismatch")
 	for _, headers := range [][]string{
 		{integrationMachineText, integrationMachineText},
 		{integrationMachineText + ", " + integrationMachineText},
@@ -93,9 +94,9 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 			leftServer.URL+"/v1/sessions",
 			leftBearer,
 			headers,
-			fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
+			fmt.Sprintf(`{"kind":"agent","cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 		)
-		assertError(t, repeatedMachine, http.StatusBadRequest, "InvalidRequest")
+		assertCreationError(t, repeatedMachine, http.StatusBadRequest, "InvalidRequest")
 	}
 
 	wrongMachineRead := requestForMachine(
@@ -110,9 +111,9 @@ func TestMachineBoundGatewaysKeepCollidingLocalSessionsIndependent(t *testing.T)
 		leftBearer,
 		secondIntegrationMachineText,
 		"",
-		fmt.Sprintf(`{"cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
+		fmt.Sprintf(`{"kind":"agent","cwd":%q,"profile":"personal","optionalTmuxName":"must-not-exist"}`, left.project),
 	)
-	assertError(t, wrongMachineCreate, http.StatusConflict, "MachineIdentityMismatch")
+	assertCreationError(t, wrongMachineCreate, http.StatusConflict, "MachineIdentityMismatch")
 	wrongMachinePressure := requestForMachine(
 		t, leftServer.Client(), http.MethodGet, leftServer.URL+"/v1/pressure", leftBearer, secondIntegrationMachineText, "", "",
 	)

@@ -75,9 +75,6 @@ type Profile struct {
 }
 
 func ValidateProfiles(profiles []Profile) ([]Profile, error) {
-	if len(profiles) == 0 {
-		return nil, errors.New("at least one profile is required")
-	}
 	validated := make([]Profile, 0, len(profiles))
 	keys := make(map[ProfileKey]struct{}, len(profiles))
 	labels := make(map[string]struct{}, len(profiles))

@@ -120,6 +120,7 @@ func (m *model) refresh() tea.Cmd {
 	return m.fetch()
 }
 func (m *model) execute(request fleetclient.Request) tea.Cmd {
+	m.pending = request
 	m.busy = true
 	return func() tea.Msg {
 		return actionMsg{operation: request.Operation, result: m.client.Execute(m.ctx, request)}
@@ -189,6 +190,16 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case actionMsg:
+		if message.operation == "start" || message.operation == "shell" {
+			if m.ctx.Err() != nil {
+				return m, nil
+			}
+			// Keyboard navigation is blocked while busy, so this pending request
+			// and page identify the only interaction allowed to adopt creation.
+			if !m.busy || m.pending.Operation != message.operation || message.operation == "start" && m.page != "create" || message.operation == "shell" && m.page != "" {
+				return m, m.refresh()
+			}
+		}
 		m.busy = false
 		if m.refreshing {
 			m.refreshAfterAction = true
@@ -217,7 +228,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.page = "output"
 			m.offset = 0
 			m.text = strings.Split(fmt.Sprintf("%s · %s · truncated: %t\n\n%s", read.Source, read.Scope, read.Truncated, read.Text), "\n")
-		case "start":
+		case "start", "shell":
 			var value fleetclient.ObservedSession
 			if json.Unmarshal(message.result.Value, &value) != nil {
 				m.notice = "invalid creation response"
@@ -265,7 +276,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			m.notice = "created " + value.Session.Name + "; enter to handle startup"
+			m.notice = "created " + value.Session.Name + "; enter to attach"
+			if message.operation == "shell" {
+				request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
+				return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
+			}
 		case "space":
 			m.spaceChecking = true
 			m.spaceAcknowledged = true
@@ -395,15 +410,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "n":
 			for _, peer := range m.peers {
-				if peer.OK && len(peer.Profiles) > 0 && (m.machine == "" || m.machine == peer.Label) && m.scopeReady {
+				if peer.OK && (m.machine == "" || m.machine == peer.Label) && m.scopeReady {
 					m.page = "create"
 					m.field = 0
-					m.form = [5]string{peer.Label, peer.Profiles[0].Key, "", "~", m.spaceFilter.Label().String()}
+					launch := "terminal"
+					if len(peer.Profiles) != 0 {
+						launch = peer.Profiles[0].Key
+					}
+					m.form = [5]string{peer.Label, launch, "", "~", m.spaceFilter.Label().String()}
 					m.notice = ""
 					return m, nil
 				}
 			}
-			m.notice = "no available host profiles"
+			m.notice = "no available host"
 			return m, nil
 		}
 		row := m.selectedRow()
@@ -412,6 +431,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		request := fleetclient.Request{Ref: row.session.Ref}
 		switch key {
+		case "t":
+			request.Operation = "shell"
+			m.notice = "creating terminal here"
+			return m, m.execute(request)
 		case "e":
 			request.Operation = "space"
 			m.pending = request
@@ -753,6 +776,9 @@ func (m *model) createAvailable() bool {
 		if peer.Label != m.form[0] || !peer.OK {
 			continue
 		}
+		if m.form[1] == "terminal" {
+			return true
+		}
 		for _, profile := range peer.Profiles {
 			if profile.Key == m.form[1] {
 				return true
@@ -776,7 +802,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if !m.createAvailable() {
-			m.notice = "host profiles unavailable; refresh before creating"
+			m.notice = "host unavailable; refresh before creating"
 			return nil
 		}
 		label, err := space.ParseDraft(m.form[4])
@@ -784,9 +810,12 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			m.notice = space.ErrInvalid.Error()
 			return nil
 		}
-		request := fleetclient.Request{Operation: "start", Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Space: label}
+		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Space: label}
+		if m.form[1] == "terminal" {
+			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
+		}
 		if !request.Valid() {
-			m.notice = "name, machine, profile, and directory are required"
+			m.notice = "name, machine, launch, and directory are required"
 			return nil
 		}
 		return m.execute(request)
@@ -803,13 +832,14 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			if !peer.OK {
 				continue
 			}
-			if m.field == 0 && len(peer.Profiles) > 0 {
+			if m.field == 0 {
 				options = append(options, peer.Label)
 			}
 			if m.field == 1 && peer.Label == m.form[0] {
 				for _, profile := range peer.Profiles {
 					options = append(options, profile.Key)
 				}
+				options = append(options, "terminal")
 			}
 		}
 		if len(options) == 0 {
@@ -830,10 +860,13 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		m.form[m.field] = options[index]
 		if m.field == 0 {
 			m.form[3] = "~"
-			for _, peer := range m.peers {
-				if peer.Label == m.form[0] && len(peer.Profiles) > 0 {
-					m.form[1] = peer.Profiles[0].Key
-					break
+			if m.form[1] != "terminal" {
+				m.form[1] = "terminal"
+				for _, peer := range m.peers {
+					if peer.Label == m.form[0] && len(peer.Profiles) != 0 {
+						m.form[1] = peer.Profiles[0].Key
+						break
+					}
 				}
 			}
 		}
@@ -919,7 +952,7 @@ func (m *model) View() tea.View {
 			fmt.Fprintln(&body, "left/right fill suggestion · ctrl-u unassigned · escape cancels")
 		}
 	case "create":
-		for i, label := range []string{"machine", "profile", "name", "directory", "space"} {
+		for i, label := range []string{"machine", "launch", "name", "directory", "space"} {
 			marker := "  "
 			if i == m.field {
 				marker = "> "
@@ -932,12 +965,12 @@ func (m *model) View() tea.View {
 		}
 		m.writeSpaceSuggestions(&body)
 		if !m.createAvailable() {
-			fmt.Fprintln(&body, "host profiles unavailable; create disabled")
+			fmt.Fprintln(&body, "host unavailable; create disabled")
 		}
 		if _, err := space.ParseDraft(m.form[4]); err != nil {
 			fmt.Fprintln(&body, space.ErrInvalid.Error())
 		}
-		fmt.Fprintln(&body, "\nleft/right choose machine/profile/space · tab/enter next\nenter on space creates · ctrl-u unassigned · escape cancels")
+		fmt.Fprintln(&body, "\nleft/right choose machine/launch/space · tab/enter next\nenter on space creates · ctrl-u unassigned · escape cancels")
 	case "output", "details":
 		lines := m.detailLines()
 		for i := m.offset; i < min(len(lines), m.offset+max(1, m.height-7)); i++ {
@@ -992,7 +1025,7 @@ func (m *model) View() tea.View {
 				fmt.Fprintln(&body, "no sessions in this view")
 			}
 		}
-		fmt.Fprintln(&body, "\n↑↓/j/k select · enter attach · space info · r read · i interrupt\ns stop · x kill · n new · ctrl-r refresh · q quit\ng space filter · m machine filter · e edit space")
+		fmt.Fprintln(&body, "\n↑↓/j/k select · enter attach · space info · r read · i interrupt\ns stop · x kill · n new · t terminal here · ctrl-r refresh · q quit\ng space filter · m machine filter · e edit space")
 	}
 	if m.notice != "" {
 		fmt.Fprintln(&body, "\n"+m.notice)

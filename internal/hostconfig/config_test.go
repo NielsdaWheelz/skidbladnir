@@ -1,6 +1,7 @@
 package hostconfig
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -8,6 +9,28 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 )
+
+func TestParseAcceptsEmptyProfilesWithoutWideningTheNonemptyTable(t *testing.T) {
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(validLinuxConfig), &document); err != nil {
+		t.Fatal(err)
+	}
+	for _, profiles := range []string{`[]`, `null`, `[{}]`} {
+		document["profiles"] = json.RawMessage(profiles)
+		encoded, err := json.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		config, err := parse(encoded, platform.KindLinux)
+		if profiles == `[]` {
+			if err != nil || config.Profiles == nil || len(config.Profiles) != 0 {
+				t.Fatalf("empty profiles rejected or changed: accepted=%t", err == nil)
+			}
+		} else if err == nil {
+			t.Fatal("null or incomplete nonempty profile table accepted")
+		}
+	}
+}
 
 func TestParseAcceptsTheClosedDeploymentHostConfig(t *testing.T) {
 	config, err := parse([]byte(validLinuxConfig), platform.KindLinux)

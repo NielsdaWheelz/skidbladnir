@@ -183,11 +183,12 @@ func mapDirectoryListing(machine machineDTO, listing workdir.Listing) (directory
 }
 
 type createSessionRequest struct {
-	CWD              stringField `json:"cwd"`
-	Profile          stringField `json:"profile"`
-	OptionalTmuxName stringField `json:"optionalTmuxName"`
-	Objective        stringField `json:"objective"`
-	Space            stringField `json:"space"`
+	Kind             sessions.LaunchKind `json:"kind"`
+	CWD              stringField         `json:"cwd"`
+	Profile          stringField         `json:"profile"`
+	OptionalTmuxName stringField         `json:"optionalTmuxName"`
+	Objective        stringField         `json:"objective"`
+	Space            stringField         `json:"space"`
 }
 
 func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
@@ -195,21 +196,36 @@ func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
 	if err := strictjson.Decode(encoded, &members); err != nil {
 		return err
 	}
-	if len(members) < 2 || len(members) > 5 || members["cwd"] == nil || members["profile"] == nil {
+	if len(members) < 2 || len(members) > 6 || members["cwd"] == nil || members["kind"] == nil {
 		return errors.New("create request does not have its exact required fields")
 	}
 	for member := range members {
 		switch member {
-		case "cwd", "profile", "optionalTmuxName", "objective", "space":
+		case "kind", "cwd", "profile", "optionalTmuxName", "objective", "space":
 		default:
 			return errors.New("create request has an unknown field")
 		}
 	}
 	var decoded createSessionRequest
-	if err := json.Unmarshal(members["cwd"], &decoded.CWD); err != nil {
+	if err := json.Unmarshal(members["kind"], &decoded.Kind); err != nil {
 		return err
 	}
-	if err := json.Unmarshal(members["profile"], &decoded.Profile); err != nil {
+	switch decoded.Kind {
+	case sessions.LaunchAgent:
+		if members["profile"] == nil {
+			return errors.New("agent creation requires a profile")
+		}
+		if err := json.Unmarshal(members["profile"], &decoded.Profile); err != nil {
+			return err
+		}
+	case sessions.LaunchTerminal:
+		if members["profile"] != nil {
+			return errors.New("terminal creation forbids a profile")
+		}
+	default:
+		return errors.New("unknown launch kind")
+	}
+	if err := json.Unmarshal(members["cwd"], &decoded.CWD); err != nil {
 		return err
 	}
 	if optionalTmuxName, present := members["optionalTmuxName"]; present {
@@ -643,4 +659,20 @@ func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging
 		}
 	}
 	return level, reasons, nil
+}
+
+// Shell creation addresses only the source session lifetime.
+type shellSessionRequest struct {
+	IdentityToken stringField `json:"identityToken"`
+}
+
+func (request *shellSessionRequest) UnmarshalJSON(encoded []byte) error {
+	var members map[string]json.RawMessage
+	if err := strictjson.Decode(encoded, &members); err != nil {
+		return err
+	}
+	if len(members) != 1 || members["identityToken"] == nil {
+		return errors.New("shell request does not have its exact field")
+	}
+	return json.Unmarshal(members["identityToken"], &request.IdentityToken)
 }

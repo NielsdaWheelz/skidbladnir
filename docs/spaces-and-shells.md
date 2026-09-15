@@ -5,7 +5,8 @@ shippable prs. pr 1's [implementation spec](spaces.md) is implemented in source,
 including the approved restoration and post-create selection decisions.
 [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open) records
 verification and open runtime acceptance. this document owns the three-pr
-boundary; prs 2 and 3 have no implementation or scaffolding.
+boundary; pr 2 is [implemented in source](shells.md), with linux evidence and
+open darwin/phone acceptance in the roadmap. pr 3 has no implementation or scaffolding.
 
 ## goal and approach
 
@@ -22,7 +23,7 @@ sessions; it does not own them. git owns checkouts and worktrees.
 | pr | goal and scope | acceptance and accepted cost |
 | --- | --- | --- |
 | 1. spaces | optional per-session work label, inventory exposure, assignment and clearing, grouped views in cli/tui/phone. see [spaces.md](spaces.md). | sessions remain addressable and usable through regrouping. labels last only for the tmux session lifetime; manual filing; no saved empty spaces. |
-| 2. new shell here | create an independent ordinary tmux session on an exact target's host, using its validated cwd sampled at launch. expose through the existing clients. shell creation works without space membership. | creating/selecting/closing the shell preserves the agent session. separate cleanup; no cloned agent environment, automatic commands, or mandatory companion relationship. specify the shell launch kind and host shell policy before implementation. |
+| 2. new shell here | standalone terminal choice; tui `t` and android attach-header action create/attach an independent session on the exact source's host with its sampled cwd/space. see [shells.md](shells.md). works with zero agent profiles or no space. | independent lifetime, configured login shell with strict directory entry, exact creation/attachment composition. generated shortcut name; manual uncertainty recovery; collection-based return until pr 3. |
 | 3. client navigation/composition | quick agent/shell switching and preserved return context. desktop can compose separate attachments in an existing terminal split; phone shows one readable terminal at a time. | inspecting the shell and returning preserves the intended targets and context. desktop layout belongs to its client; phone sacrifices simultaneous viewing. implement only missing navigation behavior; no new split renderer is required. |
 
 each pr completes its feature end to end, including docs and appropriate checks.
@@ -55,8 +56,9 @@ or replayed.
 pr 1 follows its closed contracts and observed owner red proofs. these documents
 record the user's accepted scope changes. pr 1's affected scope and acceptance
 are incorporated into [architecture.md](architecture.md), with delivery in
-[roadmap.md](roadmap.md). later prs require their own incorporation, without
-relabeling historical evidence as new proof.
+[roadmap.md](roadmap.md). pr 2's [shells contract](shells.md) is now incorporated
+there with source implementation and separately attributed acceptance. pr 3 requires its own incorporation; never
+relabel historical evidence as new proof.
 broader capability changes require a new explicit scope decision.
 
 read [../AGENTS.md](../AGENTS.md), [rules/index.md](rules/index.md),

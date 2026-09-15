@@ -54,22 +54,8 @@ internal fun gatewayFailureMessage(failure: GatewayFailure): String = when (fail
     GatewayFailure.Transport -> "Could not reach this machine over your Tailnet."
 }
 
-internal fun createFailureIsDefinitive(failure: GatewayFailure): Boolean = when (failure) {
-    GatewayFailure.Transport -> false
-    is GatewayFailure.Api -> failure.code in setOf(
-        ApiErrorCode.Unauthenticated,
-        ApiErrorCode.MachineIdentityMismatch,
-        ApiErrorCode.InvalidRequest,
-        ApiErrorCode.RequestTooLarge,
-        ApiErrorCode.WorkingDirectoryInvalid,
-        ApiErrorCode.WorkingDirectoryUnavailable,
-        ApiErrorCode.ProfileUnknown,
-        ApiErrorCode.SessionNameInvalid,
-        ApiErrorCode.ObjectiveInvalid,
-        ApiErrorCode.SpaceInvalid,
-        ApiErrorCode.SessionNameConflict,
-    )
-}
+internal fun createFailureIsDefinitive(failure: GatewayFailure): Boolean =
+    failure is GatewayFailure.Api && failure.dispatch == MutationDispatch.NotSent
 
 internal fun killFailureIsDefinitive(failure: GatewayFailure): Boolean = when (failure) {
     GatewayFailure.Transport -> false
@@ -191,6 +177,18 @@ internal class GatewayClient(
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "sessions"))
                 .post(encodeCreateSessionRequest(draft).toRequestBody(jsonMediaType))
+                .build(),
+            expectedStatus = 201,
+            decode = ::decodeCreatedSessionResponse,
+            decodeFailure = ::decodeCreateHttpFailure,
+        )
+    }
+
+    fun createShell(credential: MachineCredential, source: SessionTarget): GatewayResult<TmuxSession> {
+        require(source.machineHandle == credential.machine.handle)
+        return executeJson(
+            request = authorizedRequest(credential, listOf("v1", "sessions", source.session.tmuxId, "shell"))
+                .post(productJson.encodeToString(SessionIdentityRequest(source.session.identityToken)).toRequestBody(jsonMediaType))
                 .build(),
             expectedStatus = 201,
             decode = ::decodeCreatedSessionResponse,
@@ -436,26 +434,16 @@ internal fun decodePressureHttpFailure(status: Int, encoded: String): GatewayFai
         "pressure",
     )
 
-internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailure =
-    decodeClosedHttpFailure(
-        status,
-        encoded,
-        setOf(
-            ApiErrorCode.Unauthenticated,
-            ApiErrorCode.InvalidRequest,
-            ApiErrorCode.RequestTooLarge,
-            ApiErrorCode.WorkingDirectoryInvalid,
-            ApiErrorCode.WorkingDirectoryUnavailable,
-            ApiErrorCode.ProfileUnknown,
-            ApiErrorCode.SessionNameInvalid,
-            ApiErrorCode.ObjectiveInvalid,
-        ApiErrorCode.SpaceInvalid,
-            ApiErrorCode.SessionNameConflict,
-            ApiErrorCode.MachineIdentityMismatch,
-            ApiErrorCode.InternalError,
-        ),
-        "create",
-    )
+internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailure {
+    if (status == 502 || status == 503 || status == 504) return GatewayFailure.Transport
+    return decodeMutationHttpFailure(status, encoded, setOf(
+        ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
+        ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable,
+        ApiErrorCode.ProfileUnknown, ApiErrorCode.SessionNameInvalid, ApiErrorCode.ObjectiveInvalid,
+        ApiErrorCode.SpaceInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
+        ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
+    ))
+}
 
 internal fun decodeKillHttpFailure(status: Int, encoded: String): GatewayFailure =
     decodeClosedHttpFailure(
@@ -562,21 +550,25 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
 }
 
 @Serializable private data class SpaceRequest(val identityToken: String, val space: String)
-@Serializable private data class SpaceErrorResponse(val code: String, val message: String, val dispatch: String)
+@Serializable private data class SessionIdentityRequest(val identityToken: String)
+@Serializable private data class MutationErrorResponse(val code: String, val message: String, val dispatch: String)
 
-internal fun decodeSpaceHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
-    val response = productJson.decodeFromJsonElement<SpaceErrorResponse>(strictJsonObject(encoded))
-    val code = parseApiErrorCode(response.code)
-    require(code in setOf(
+internal fun decodeSpaceHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeMutationHttpFailure(status, encoded, setOf(
         ApiErrorCode.Unauthenticated, ApiErrorCode.MachineIdentityMismatch, ApiErrorCode.InvalidRequest,
         ApiErrorCode.RequestTooLarge, ApiErrorCode.SpaceInvalid, ApiErrorCode.SessionNotFound,
         ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
     ))
+
+private fun decodeMutationHttpFailure(status: Int, encoded: String, allowed: Set<ApiErrorCode>): GatewayFailure = decodeProtocol {
+    val response = productJson.decodeFromJsonElement<MutationErrorResponse>(strictJsonObject(encoded))
+    val code = parseApiErrorCode(response.code)
+    require(code in allowed)
     require(status == apiErrorHttpStatus(code) && response.message == apiErrorMessage(code))
     val dispatch = when (response.dispatch) {
         "not_sent" -> MutationDispatch.NotSent
         "unknown" -> MutationDispatch.Unknown
-        else -> throw SerializationException("invalid membership dispatch")
+        else -> throw SerializationException("invalid mutation dispatch")
     }
     require(dispatch == MutationDispatch.NotSent || code == ApiErrorCode.InternalError)
     GatewayFailure.Api(code, dispatch)

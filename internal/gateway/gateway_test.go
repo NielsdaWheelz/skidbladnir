@@ -8,21 +8,21 @@ import (
 )
 
 func TestRequestIngressAdmitsExactlyOneUnambiguousJSONDocument(t *testing.T) {
-	const valid = `{"cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship"}`
+	const valid = `{"kind":"agent","cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship"}`
 	tests := []struct {
 		name     string
 		body     string
 		accepted bool
 	}{
 		{name: "exact document", body: valid, accepted: true},
-		{name: "duplicate member", body: `{"cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship","cwd":"/etc"}`},
-		{name: "wrong-case member", body: `{"CWD":"/src","profile":"work","optionalTmuxName":"card","objective":"ship"}`},
-		{name: "case-alias duplicate member", body: `{"cwd":"/src","CWD":"/etc","profile":"work","optionalTmuxName":"card","objective":"ship"}`},
-		{name: "duplicate member inside a nested value", body: `{"cwd":{"a":1,"a":2},"profile":"work","optionalTmuxName":"card","objective":"ship"}`},
-		{name: "unknown member", body: `{"cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship","extra":"value"}`},
+		{name: "duplicate member", body: `{"kind":"agent","cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship","cwd":"/etc"}`},
+		{name: "wrong-case member", body: `{"kind":"agent","CWD":"/src","profile":"work","optionalTmuxName":"card","objective":"ship"}`},
+		{name: "case-alias duplicate member", body: `{"kind":"agent","cwd":"/src","CWD":"/etc","profile":"work","optionalTmuxName":"card","objective":"ship"}`},
+		{name: "duplicate member inside a nested value", body: `{"kind":"agent","cwd":{"a":1,"a":2},"profile":"work","optionalTmuxName":"card","objective":"ship"}`},
+		{name: "unknown member", body: `{"kind":"agent","cwd":"/src","profile":"work","optionalTmuxName":"card","objective":"ship","extra":"value"}`},
 		{name: "trailing document", body: valid + valid},
 		{name: "trailing text", body: valid + " garbage"},
-		{name: "invalid UTF-8", body: "{\"cwd\":\"\xff\",\"profile\":\"work\",\"optionalTmuxName\":\"card\",\"objective\":\"ship\"}"},
+		{name: "invalid UTF-8", body: "{\"kind\":\"agent\",\"cwd\":\"\xff\",\"profile\":\"work\",\"optionalTmuxName\":\"card\",\"objective\":\"ship\"}"},
 		{name: "null literal", body: `null`},
 		{name: "empty body", body: ``},
 	}
@@ -51,7 +51,7 @@ func TestRequestIngressAdmitsExactlyOneUnambiguousJSONDocument(t *testing.T) {
 }
 
 func TestRequestIngressRejectsABodyBeyondItsCap(t *testing.T) {
-	body := `{"cwd":"` + strings.Repeat("a", int(MaximumBodyBytes)) + `"}`
+	body := `{"kind":"agent","cwd":"` + strings.Repeat("a", int(MaximumBodyBytes)) + `"}`
 	request := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.ContentLength = -1

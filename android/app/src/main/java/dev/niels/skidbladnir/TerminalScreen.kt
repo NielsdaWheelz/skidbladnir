@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import android.view.WindowInsets as PlatformWindowInsets
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -34,7 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -72,15 +78,17 @@ internal fun TerminalScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag("terminal-header"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             HeaderChip(
-                label = "Detach",
-                spokenName = null,
+                label = "‹",
+                spokenName = "Detach",
                 enabled = true,
                 onClick = onDetach,
+                modifier = Modifier.width(48.dp),
             )
             TerminalRenameControl(
                 machine = state.machine.machine,
@@ -91,21 +99,41 @@ internal fun TerminalScreen(
                 onClick = controller::openRename,
                 modifier = Modifier.weight(1f).testTag(terminalStatusTag(state.connection)),
             )
+            val shellEnabled = !state.shellPending && state.kill == null && state.rename == null &&
+                terminalActionAdmissible(state.machine.canMutate, state.connection)
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                HeaderChip(
+                    label = "", spokenName = "new terminal here", enabled = shellEnabled,
+                    onClick = controller::newTerminalHere, modifier = Modifier.fillMaxSize(),
+                )
+                Canvas(Modifier.size(24.dp)) {
+                    val color = if (shellEnabled) Gold else Muted
+                    val stroke = 1.5.dp.toPx()
+                    val unit = size.width / 24f
+                    drawRect(color, Offset(2 * unit, 3 * unit), Size(16 * unit, 15 * unit), style = Stroke(stroke))
+                    drawLine(color, Offset(5 * unit, 7 * unit), Offset(8 * unit, 10 * unit), stroke)
+                    drawLine(color, Offset(8 * unit, 10 * unit), Offset(5 * unit, 13 * unit), stroke)
+                    drawLine(color, Offset(10 * unit, 13 * unit), Offset(14 * unit, 13 * unit), stroke)
+                    drawRect(DeepSurface, Offset(15 * unit, 13 * unit), Size(9 * unit, 11 * unit))
+                    drawLine(color, Offset(19 * unit, 14 * unit), Offset(19 * unit, 22 * unit), stroke)
+                    drawLine(color, Offset(15 * unit, 18 * unit), Offset(23 * unit, 18 * unit), stroke)
+                }
+            }
             HeaderChip(
-                label = "Aa",
+                label = "A",
                 spokenName = "Terminal text size",
                 enabled = state.textSize is TerminalTextSizeState.Ready &&
                     terminalPageLive(state.connection),
                 onClick = controller::openTextSize,
-                modifier = Modifier.testTag("terminal-text-size"),
+                modifier = Modifier.width(48.dp).testTag("terminal-text-size"),
             )
             if (state.target.session.agent != null) {
                 var expanded by remember(state.attempt) { mutableStateOf(false) }
                 Box {
                     HeaderChip(
-                        label = "Agent", spokenName = "Agent actions",
+                        label = "⋯", spokenName = "Agent actions",
                         enabled = !state.agentControlPending && terminalActionAdmissible(state.machine.canMutate, state.connection),
-                        onClick = { expanded = true }, modifier = Modifier.testTag("terminal-agent-actions"),
+                        onClick = { expanded = true }, modifier = Modifier.width(48.dp).testTag("terminal-agent-actions"),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         DropdownMenuItem(text = { Text("Interrupt") }, onClick = {

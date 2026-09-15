@@ -180,12 +180,12 @@ private fun ForgeFormContent(
         }
         if (selected == null) {
             Text(
-                "Choose a machine to choose a working directory and profile.",
+                "Choose a machine to choose a working directory and launch.",
                 color = Muted,
             )
         } else {
             Text(
-                "Profiles on ${bidiIsolate(selected.machine.label.text)}",
+                "Launch on ${bidiIsolate(selected.machine.label.text)}",
                 color = Muted,
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -195,8 +195,8 @@ private fun ForgeFormContent(
             ) {
                 inventory?.profiles.orEmpty().forEach { profile ->
                     FilterChip(
-                        selected = state.form.profile == profile.key,
-                        onClick = { actions.updateDraft { it.copy(profile = profile.key) } },
+                        selected = state.form.launch == LaunchChoice.Agent(profile.key),
+                        onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Agent(profile.key)) } },
                         enabled = fieldsEnabled,
                         label = { Text(profile.label, fontFamily = NidavellirType.Data) },
                         shape = NidavellirShapes.Chip,
@@ -205,6 +205,14 @@ private fun ForgeFormContent(
                         ),
                     )
                 }
+                FilterChip(
+                    selected = state.form.launch == LaunchChoice.Terminal,
+                    onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Terminal) } },
+                    enabled = fieldsEnabled,
+                    label = { Text("Terminal", fontFamily = NidavellirType.Data) },
+                    shape = NidavellirShapes.Chip,
+                    modifier = Modifier.testTag("forge-terminal"),
+                )
             }
             ForgeWorkingDirectorySelection(
                 state = state,

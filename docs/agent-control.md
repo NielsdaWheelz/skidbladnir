@@ -9,6 +9,13 @@ engineering contract. the existing jarvis → native codex → tmux → phone
 flow is manually confirmed by the user. that is baseline evidence, not evidence
 for the new cross-provider controls.
 
+2026-09-15 pr 2 amendment: [shells.md](shells.md) owns terminal launch and
+source-session creation. its explicit deltas permit zero launch profiles and
+extend the create schema. source is implemented; [the roadmap](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
+records current proof and open darwin/phone acceptance.
+agent controls, provider behavior, and attachment retain their contracts;
+historical evidence does not prove this new target.
+
 2026-09-15 accepted extension: [spaces](spaces.md) adds optional session labels,
 session-lifetime-only assignment, and grouped/filterable client collections.
 its source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)

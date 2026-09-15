@@ -113,7 +113,7 @@ func TestSpaceCreateProjectsObservedMembershipAndStrictReplies(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		io.WriteString(w, `{"observedAt":"2026-09-15T00:00:00Z","session":`+testSession+`}`)
 	})
-	result := client.Execute(context.Background(), Request{Operation: "start", Machine: "arch", Name: "new", Profile: "work", Space: label})
+	result := client.Execute(context.Background(), Request{Operation: "start", Kind: LaunchAgent, Machine: "arch", Name: "new", Profile: "work", Space: label})
 	var observed ObservedSession
 	if !result.OK || json.Unmarshal(result.Value, &observed) != nil || !observed.Session.Space.IsUnassigned() {
 		t.Fatal("creation fabricated requested membership over observed result")
@@ -164,7 +164,7 @@ func TestSpaceFailureDispatchContract(t *testing.T) {
 				Message  string `json:"message"`
 				Dispatch string `json:"dispatch"`
 			}{test.code, test.message, dispatch})
-			failure := decodeSpaceFailure(encoded, test.status)
+			failure := decodeMutationFailure("space", encoded, test.status)
 			accepted := dispatch == "not_sent" || test.code == "InternalError"
 			if accepted && (failure == nil || failure.Dispatch != dispatch || failure.Code != test.code) || !accepted && failure != nil {
 				t.Fatal("closed membership error dispatch mapping differs from host contract")

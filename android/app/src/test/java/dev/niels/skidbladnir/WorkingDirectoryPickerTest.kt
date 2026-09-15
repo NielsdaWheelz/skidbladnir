@@ -592,11 +592,11 @@ class WorkingDirectoryPickerTest {
 
         val changed = updateForgeState(
             opened,
-            opened.form.copy(machineHandle = otherHandle, cwd = "/must-clear", profile = profile),
+            opened.form.copy(machineHandle = otherHandle, cwd = "/must-clear", launch = LaunchChoice.Agent(profile)),
         )
         assertEquals(otherHandle, changed.form.machineHandle)
         assertEquals("", changed.form.cwd)
-        assertNull(changed.form.profile)
+        assertNull(changed.form.launch)
         assertEquals(ForgeSurface.Form, changed.surface)
     }
 
@@ -774,7 +774,7 @@ class WorkingDirectoryPickerTest {
         form = ForgeForm(
             machineHandle = handle,
             cwd = cwd,
-            profile = profile,
+            launch = LaunchChoice.Agent(profile),
             optionalTmuxName = "",
             objective = "",
         ),

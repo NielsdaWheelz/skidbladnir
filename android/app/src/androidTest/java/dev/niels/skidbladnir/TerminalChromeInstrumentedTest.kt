@@ -37,6 +37,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -208,34 +209,19 @@ class TerminalChromeInstrumentedTest {
             }
             compose.mainClock.advanceTimeByFrame()
 
-            val detachNodes = compose.onAllNodesWithText("Detach").fetchSemanticsNodes()
+            val detachNodes = compose.onAllNodesWithContentDescription("Detach").fetchSemanticsNodes()
             assertEquals(
-                "the terminal header must expose exactly one control whose complete visible " +
-                    "label is \"Detach\"; matching semantics nodes=$detachNodes",
+                "the terminal header exposes one spoken Detach action; matching nodes=$detachNodes",
                 1,
                 detachNodes.size,
             )
-            val detach = compose.onNodeWithText("Detach")
+            val detach = compose.onNodeWithContentDescription("Detach")
             detach.assertIsDisplayed().assertHasClickAction()
             val detachNode = detach.fetchSemanticsNode()
             val semantics = detachNode.config
-            assertEquals(
-                "the visible Detach text must be the control's sole spoken content; " +
-                    "rendered text=${semantics.getOrNull(SemanticsProperties.Text)?.map { it.text }}",
-                listOf("Detach"),
-                semantics.getOrNull(SemanticsProperties.Text)?.map { it.text },
-            )
-            assertTrue(
-                "Detach must not replace its visible label with custom accessibility prose; " +
-                    "contentDescription=${semantics.getOrNull(SemanticsProperties.ContentDescription)}",
-                semantics.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty(),
-            )
-            assertEquals(
-                "Detach must carry Role.Button so its literal label is announced as an action; " +
-                    "semantics=$semantics",
-                Role.Button,
-                semantics.getOrNull(SemanticsProperties.Role),
-            )
+            assertEquals("the compact detach action retains its spoken meaning", listOf("Detach"),
+                semantics.getOrNull(SemanticsProperties.ContentDescription))
+            assertEquals("detach remains an action", Role.Button, semantics.getOrNull(SemanticsProperties.Role))
 
             val pixels = detach.captureToImage().toPixelMap()
             val outer = pixels.corners(with(compose.density) { 1.dp.roundToPx() })
@@ -298,18 +284,18 @@ class TerminalChromeInstrumentedTest {
                 textSizeNode.config.getOrNull(SemanticsProperties.Role),
             )
 
-            val killNodes = compose.onAllNodesWithText("Agent").fetchSemanticsNodes()
+            val killNodes = compose.onAllNodesWithContentDescription("Agent actions").fetchSemanticsNodes()
             assertEquals(
-                "the terminal header must retain exactly one visible Agent control beside " +
+                "the terminal header must retain exactly one Agent actions control beside " +
                     "Detach and the machine/session identity; matching semantics nodes=$killNodes",
                 1,
                 killNodes.size,
             )
-            val kill = compose.onNodeWithText("Agent")
+            val kill = compose.onNodeWithContentDescription("Agent actions")
             kill.assertIsDisplayed()
             val killNode = kill.fetchSemanticsNode()
             assertEquals(
-                "the trailing visible Agent label must belong to Role.Button; " +
+                "the trailing Agent actions control must belong to Role.Button; " +
                     "semantics=${killNode.config}",
                 Role.Button,
                 killNode.config.getOrNull(SemanticsProperties.Role),
@@ -656,10 +642,11 @@ class TerminalChromeInstrumentedTest {
         val minimumGapPx = with(compose.density) { 8.dp.roundToPx() }
         val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         val controls = listOf(
-            "Detach" to compose.onNodeWithText("Detach"),
+            "Detach" to compose.onNodeWithContentDescription("Detach"),
             "identity" to compose.onNodeWithContentDescription(identity),
+            "new terminal here" to compose.onNodeWithContentDescription("new terminal here"),
             "Terminal text size" to compose.onNodeWithContentDescription("Terminal text size"),
-            "Agent" to compose.onNodeWithText("Agent"),
+            "Agent" to compose.onNodeWithContentDescription("Agent actions"),
         ).map { (name, node) -> name to node.fetchSemanticsNode().boundsInRoot }
         for ((name, bounds) in controls) {
             assertTrue(
@@ -673,7 +660,7 @@ class TerminalChromeInstrumentedTest {
         }
         val gapsPx = controls.zipWithNext { (_, left), (_, right) -> right.left - left.right }
         assertTrue(
-            "case=$caseId header must remain ordered Detach, identity, Terminal text size, Agent " +
+            "case=$caseId header must remain ordered Detach, identity, terminal creation, text size, Agent " +
                 "with at least 8dp clear between each semantic bound; headerPx=$controls, " +
                 "gapsPx=$gapsPx, minimumGapPx=$minimumGapPx, density=${compose.density.density}",
             gapsPx.all { it >= minimumGapPx },

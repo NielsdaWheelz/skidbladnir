@@ -173,7 +173,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 }
 
 func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
-	if len(wire) != len(expectedProfiles) {
+	if len(wire) != 0 && len(wire) != len(expectedProfiles) {
 		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfiles))
 	}
 	profiles := make([]agentruntime.Profile, len(wire))

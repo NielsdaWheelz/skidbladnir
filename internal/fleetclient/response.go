@@ -216,7 +216,7 @@ func validResponse(operation string, encoded []byte, machine string) bool {
 			}
 		}
 		return true
-	case "start":
+	case "start", "shell":
 		var value *hostObservedSession
 		if strictjson.Decode(encoded, &value) != nil || value == nil || !validSession(value.Session) {
 			return false
@@ -253,9 +253,9 @@ func validSession(s hostSession) bool {
 	return slices.Contains([]string{"Codex", "Claude"}, a.Provider) && a.PID > 0 && tmuxAddress(a.PaneID, '%') && a.StartIdentity != "" && slices.Contains([]string{"working", "blocked", "idle", "done", "failed", "stopped", "unknown"}, a.Status.State) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Status.Source) && slices.Contains([]string{"", "permission", "input", "dialog", "provider_unavailable", "unrecognized"}, a.Status.Reason) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Read) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Send) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Interrupt)
 }
 
-// Membership errors carry required dispatch evidence. Malformed evidence never
-// becomes a definite rejection through the older control-route classification.
-func decodeSpaceFailure(encoded []byte, status int) *Failure {
+// Creation and membership errors carry required dispatch evidence. Malformed
+// evidence never becomes a definite rejection through control-route inference.
+func decodeMutationFailure(operation string, encoded []byte, status int) *Failure {
 	var value struct {
 		Code     string `json:"code"`
 		Message  string `json:"message"`
@@ -280,6 +280,25 @@ func decodeSpaceFailure(encoded []byte, status int) *Failure {
 		wantStatus, wantMessage = http.StatusNotFound, "That session no longer exists."
 	case "SessionIdentityMismatch":
 		wantStatus, wantMessage = http.StatusConflict, "The session changed. Refresh and try again."
+	case "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "SessionNameConflict", "ObjectiveInvalid":
+		if operation == "space" {
+			return nil
+		}
+		wantStatus = http.StatusUnprocessableEntity
+		switch value.Code {
+		case "WorkingDirectoryInvalid":
+			wantMessage = "Choose a valid working directory."
+		case "WorkingDirectoryUnavailable":
+			wantMessage = "That directory does not exist or cannot be opened."
+		case "ProfileUnknown":
+			wantMessage = "Choose an available profile."
+		case "SessionNameInvalid":
+			wantMessage = "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
+		case "SessionNameConflict":
+			wantStatus, wantMessage = http.StatusConflict, "A session with that name already exists."
+		case "ObjectiveInvalid":
+			wantMessage = "Use 1–240 characters without terminal controls."
+		}
 	case "InternalError":
 		wantStatus, wantMessage = http.StatusInternalServerError, "Skíðblaðnir could not complete the request."
 	default:

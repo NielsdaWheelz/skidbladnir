@@ -185,7 +185,7 @@ func TestStartAndShellReferencesSupportImmediateSessionOperations(t *testing.T) 
 		w.WriteHeader(201)
 		io.WriteString(w, `{"observedAt":"2026-09-12T00:00:00Z","session":{"tmuxId":"$3","tmuxName":"shell","identityToken":"lifetime","character":{"key":"a","displayName":"a"},"attachedClients":0}}`)
 	})
-	start := client.Execute(context.Background(), Request{Operation: "start", Machine: "arch", Name: "shell", Profile: "work"})
+	start := client.Execute(context.Background(), Request{Operation: "start", Kind: LaunchAgent, Machine: "arch", Name: "shell", Profile: "work"})
 	var observed ObservedSession
 	if !start.OK || json.Unmarshal(start.Value, &observed) != nil || observed.Session.Agent != nil || observed.Session.Ref == "" {
 		t.Fatal("start did not return a shell reference")
@@ -233,7 +233,7 @@ func TestInvalidInputsNeverReachPeer(t *testing.T) {
 			t.Error("invalid reference admitted")
 		}
 	}
-	for _, request := range []Request{{Operation: "send", Ref: testRef(), Name: "reviewer", Text: "fixture"}, {Operation: "keys", Ref: testRef(), Keys: []string{"bad"}}, {Operation: "read", Ref: testRef(), MaxBytes: 32769}, {Operation: "start", Machine: "missing", Name: "x", Profile: "work"}} {
+	for _, request := range []Request{{Operation: "send", Ref: testRef(), Name: "reviewer", Text: "fixture"}, {Operation: "keys", Ref: testRef(), Keys: []string{"bad"}}, {Operation: "read", Ref: testRef(), MaxBytes: 32769}, {Operation: "start", Kind: LaunchAgent, Machine: "missing", Name: "x", Profile: "work"}} {
 		result := client.Execute(context.Background(), request)
 		if result.OK || result.Error.Dispatch != "not_sent" {
 			t.Error("invalid request admitted")

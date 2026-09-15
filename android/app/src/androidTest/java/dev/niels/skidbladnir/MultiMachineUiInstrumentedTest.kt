@@ -506,7 +506,7 @@ class MultiMachineUiInstrumentedTest {
                         InstrumentationRegistry.getInstrumentation()
                             .sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
                     } else {
-                        compose.onNodeWithText("Detach").assertIsDisplayed().performClick()
+                        compose.onNodeWithContentDescription("Detach").assertIsDisplayed().performClick()
                     }
                     compose.waitForIdle()
                     compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
@@ -1194,7 +1194,7 @@ class MultiMachineUiInstrumentedTest {
         val recoveryDraft = ForgeDraft(
             machineHandle = TEST_MACHINE.handle,
             cwd = "/src",
-            profile = TEST_PROFILE.key,
+            launch = LaunchChoice.Agent(TEST_PROFILE.key),
             optionalTmuxName = "",
             objective = "",
         )
@@ -1323,7 +1323,7 @@ class MultiMachineUiInstrumentedTest {
         val draft = ForgeDraft(
             machineHandle = TEST_MACHINE.handle,
             cwd = "/src",
-            profile = TEST_PROFILE.key,
+            launch = LaunchChoice.Agent(TEST_PROFILE.key),
             optionalTmuxName = "",
             objective = "",
         )

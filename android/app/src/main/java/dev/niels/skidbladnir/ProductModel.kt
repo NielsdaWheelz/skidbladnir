@@ -429,10 +429,15 @@ private data class WirePressureResponse(
     val history: List<WirePressureHistorySample>,
 )
 
+internal sealed interface LaunchChoice {
+    data class Agent(val profile: ProfileKey) : LaunchChoice
+    data object Terminal : LaunchChoice
+}
+
 internal data class ForgeDraft(
     val machineHandle: MachineHandle,
     val cwd: String,
-    val profile: ProfileKey,
+    val launch: LaunchChoice,
     val optionalTmuxName: String,
     val objective: String,
     val space: SpaceLabel? = null,
@@ -593,7 +598,7 @@ private fun compareUtf8(first: String, second: String): Int {
 internal data class ForgeForm(
     val machineHandle: MachineHandle?,
     val cwd: String,
-    val profile: ProfileKey?,
+    val launch: LaunchChoice?,
     val optionalTmuxName: String,
     val objective: String,
     val space: SpaceDraft = SpaceDraft.Chosen(""),
@@ -601,26 +606,29 @@ internal data class ForgeForm(
     constructor(draft: ForgeDraft) : this(
         draft.machineHandle,
         draft.cwd,
-        draft.profile,
+        draft.launch,
         draft.optionalTmuxName,
         draft.objective,
         SpaceDraft.Chosen(draft.space?.text.orEmpty()),
     )
 
     fun submission(): ForgeDraft? {
-        if (machineHandle == null || profile == null || cwd.isBlank()) return null
+        if (machineHandle == null || launch == null || cwd.isBlank()) return null
         val chosen = space as? SpaceDraft.Chosen ?: return null
         val label = if (chosen.text.isEmpty()) null else SpaceLabel.fromDraft(chosen.text) ?: return null
-        return ForgeDraft(machineHandle, cwd, profile, optionalTmuxName, objective, label)
+        return ForgeDraft(machineHandle, cwd, launch, optionalTmuxName, objective, label)
     }
 }
 
 /**
  * Single owner of the Forge draft transition: a machine change clears the machine-scoped working
- * directory and profile while preserving the machine-independent name and objective.
+ * directory and agent profile while preserving terminal choice and the independent metadata.
  */
 internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeForm =
-    if (proposed.machineHandle == current.machineHandle) proposed else proposed.copy(cwd = "", profile = null)
+    if (proposed.machineHandle == current.machineHandle) proposed else proposed.copy(
+        cwd = "",
+        launch = proposed.launch.takeIf { it == LaunchChoice.Terminal },
+    )
 
 internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
 
@@ -634,8 +642,9 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, t
     killActionLabel(label, target, terminalOnly) + "?"
 
 @Serializable private data class CreateSessionRequest(
+    val kind: String,
     val cwd: String,
-    val profile: String,
+    val profile: String? = null,
     val optionalTmuxName: String? = null,
     val objective: String? = null,
     val space: String? = null,
@@ -729,8 +738,12 @@ internal fun decodePressureResponse(encoded: String): PressureResponse = decodeP
 
 internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson.encodeToString(
     CreateSessionRequest(
+        when (draft.launch) {
+            is LaunchChoice.Agent -> "agent"
+            LaunchChoice.Terminal -> "terminal"
+        },
         draft.cwd,
-        draft.profile.encoded,
+        (draft.launch as? LaunchChoice.Agent)?.profile?.encoded,
         draft.optionalTmuxName.ifEmpty { null },
         draft.objective.ifEmpty { null },
         draft.space?.text,
@@ -805,11 +818,7 @@ internal data class MachineState(
         MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
     }
 
-    val canForge: Boolean get() = when (access) {
-        MachineAccess.Ready ->
-            inventory is InventoryState.Fresh && inventory.snapshot.inventory.profiles.isNotEmpty()
-        MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> false
-    }
+    val canForge: Boolean get() = canMutate
 
     fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
 }

@@ -34,13 +34,15 @@ skid keys NAME KEY...                     send 1–16 logical keys
 skid interrupt NAME                       cancel current work, keep session
 skid stop NAME                            attempt agent halt, close session
 skid kill NAME                            close session without requesting agent halt
-skid start NAME --machine HOST --profile PROFILE [--cwd '~'] [--space LABEL]
+skid start NAME --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--space LABEL]
+skid shell NAME                           create a terminal in this session's directory/space
 skid space NAME (--set LABEL | --clear)    assign or clear membership
 
 existing targets: use NAME [--machine HOST] or --ref VALUE
 --json: one structured envelope for noninteractive commands
 --: remaining operands are literal; --help: this guide
-browser: g chooses space; m chooses machine; e edits membership
+browser: n creates; t creates and attaches a terminal here
+         g chooses space; m chooses machine; e edits membership
 keys: enter escape ctrl-c up down left right tab backspace page-up page-down
 config defaults to ~/.config/skidbladnir/client.json
 shared window/pane navigation and latest-client sizing are intentional.
@@ -87,7 +89,7 @@ results and uncertainty
     success: {"ok":true,"result":...}
     failure: {"ok":false,"error":{"code":...,"dispatch":"not_sent"|"unknown"}}
   list returns result.partial and result.peers; available peers have profiles
-  and sessions, including each session's ref. info/start return result.session.
+  and sessions, including each session's ref. info/start/shell return result.session.
   exit 0 confirms the operation's reported effect; exit 1 covers failure, partial
   inventory, unknown delivery, or unconfirmed stop/closure; exit 2 is invalid usage.
   exit 1 can accompany ok:true: keep and inspect that result. not_sent means no
@@ -212,7 +214,7 @@ func parse(args []string) (command, error) {
 			return result, errors.New("start requires name")
 		}
 		result.request.Name = operands[0]
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space":
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space", "shell":
 		if result.request.Ref == "" {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
@@ -243,6 +245,13 @@ func parse(args []string) (command, error) {
 		return result, errors.New("unknown command")
 	}
 	operation := result.request.Operation
+	if operation == "start" {
+		result.request.Kind = fleetclient.LaunchAgent
+		if seen["--terminal"] {
+			result.request.Kind = fleetclient.LaunchTerminal
+			result.request.Mode = ""
+		}
+	}
 	if seen["--space"] {
 		if operation != "list" && operation != "start" || seen["--unassigned"] {
 			return result, errors.New("space option not supported")
@@ -434,13 +443,13 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if table.Flush() != nil {
 			return 1
 		}
-	case "info", "start":
+	case "info", "start", "shell":
 		var value fleetclient.ObservedSession
 		if json.Unmarshal(result.Value, &value) != nil {
 			return 1
 		}
-		if command.request.Operation == "start" {
-			if _, err := fmt.Fprintf(stdout, "created %s on %s; provider may still be starting\nenter with: skid enter %q --machine %q\n", value.Session.Name, value.Label, value.Session.Name, value.Label); err != nil {
+		if command.request.Operation != "info" {
+			if _, err := fmt.Fprintf(stdout, "created %s on %s\nreference: %s\nenter with: skid enter --ref %s\n", value.Session.Name, value.Label, value.Session.Ref, value.Session.Ref); err != nil {
 				return 1
 			}
 		} else {

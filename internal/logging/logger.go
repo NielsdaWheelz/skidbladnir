@@ -41,6 +41,7 @@ const (
 	RouteSessions          Route = "/v1/sessions"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
 	RouteSessionSpace      Route = "/v1/sessions/{tmuxId}/space"
+	RouteSessionShell      Route = "/v1/sessions/{tmuxId}/shell"
 	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
 	RoutePressure          Route = "/v1/pressure"
 	RoutePairingInvites    Route = "/v1/pairing-invites"
@@ -51,7 +52,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionSpace, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
+	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionSpace, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -238,7 +239,7 @@ func (event Event) valid() bool {
 		return event.duration >= 0
 	case eventSessionCreated:
 		_, profileErr := agentruntime.ParseProfileKey(string(event.launchProfile))
-		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && profileErr == nil && event.duration >= 0
+		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
 	case eventSessionKilled:
 		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && event.duration >= 0
 	case eventPressureSampled:
@@ -300,7 +301,9 @@ func (logger Logger) Write(event Event) error {
 	case eventSessionCreated:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
 		fields["skidbladnir.session.tmux_name"] = event.tmuxName
-		fields["skidbladnir.session.launch_profile"] = event.launchProfile
+		if event.launchProfile != "" {
+			fields["skidbladnir.session.launch_profile"] = event.launchProfile
+		}
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionKilled:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID

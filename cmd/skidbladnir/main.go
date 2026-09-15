@@ -50,6 +50,13 @@ func main() {
 }
 
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(arguments) != 0 && arguments[0] == "terminal-exec" {
+		if err := terminalExec(arguments[1:]); err != nil {
+			_, _ = io.WriteString(stderr, "terminal startup failed\n") // justify-ignore-error: a broken terminal output cannot be recovered.
+			return exitFailure
+		}
+		return 0
+	}
 	if len(arguments) == 0 {
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
 	}
