@@ -246,6 +246,12 @@ private fun ForgeFormContent(
             minLines = 2,
             maxLines = 4,
         )
+        SpaceField(
+            draft = state.form.space,
+            labels = observedSpaces(machines),
+            enabled = !state.pending && (selected == null || selected.canMutate),
+            onChange = { text -> actions.updateDraft { it.copy(space = SpaceDraft.Chosen(text)) } },
+        )
         when (val failure = state.failure) {
             ForgeFailure.None -> Unit
             is ForgeFailure.Definite -> Text(

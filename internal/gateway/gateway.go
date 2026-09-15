@@ -23,6 +23,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -37,6 +38,7 @@ type sessionManager interface {
 	List(context.Context) (sessions.Inventory, error)
 	Create(context.Context, sessions.CreateInput) (sessions.ObservedSession, error)
 	Rename(context.Context, sessions.RenameInput) error
+	SetSpace(context.Context, sessions.SetSpaceInput) error
 	ValidateKill(context.Context, sessions.KillInput) error
 	Kill(context.Context, sessions.KillInput) error
 	AgentTerminalKillInput(context.Context, sessions.AgentTarget) (sessions.KillInput, error)
@@ -115,6 +117,9 @@ func New(config Config) *Gateway {
 
 func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
+	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space") {
+		tracked.errorDispatch = "not_sent"
+	}
 	startedAt := time.Now()
 	route := logging.RouteUnmatched
 	if request.URL.RawPath == "" {
@@ -130,6 +135,8 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			method = logging.MethodGet
 		case http.MethodPost:
 			method = logging.MethodPost
+		case http.MethodPut:
+			method = logging.MethodPut
 		case http.MethodPatch:
 			method = logging.MethodPatch
 		case http.MethodDelete:
@@ -181,6 +188,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	}
 
 	switch {
+	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space"):
+		gateway.setSessionSpace(writer, request)
 	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
 		gateway.agentOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
@@ -461,11 +470,17 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		}
 		objective = input.Objective.value
 	}
+	label, err := space.Parse(input.Space.value)
+	if err != nil || input.Space.present && label.IsUnassigned() {
+		writeError(writer, errorSpaceInvalid)
+		return
+	}
 	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
 		CWD:              input.CWD.value,
 		Profile:          input.Profile.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
+		Space:            label,
 	})
 	if err != nil {
 		writeSessionError(writer, err)
@@ -555,6 +570,42 @@ func (gateway *Gateway) renameSession(writer http.ResponseWriter, request *http.
 func parseSessionPath(path string) (string, bool) {
 	tmuxID := strings.TrimPrefix(path, "/v1/sessions/")
 	return tmuxID, tmuxID != "" && tmuxID != path && !strings.ContainsRune(tmuxID, '/')
+}
+
+func (gateway *Gateway) setSessionSpace(writer http.ResponseWriter, request *http.Request) {
+	id, valid := parseSessionPath(strings.TrimSuffix(request.URL.Path, "/space"))
+	if !valid || len(id) < 2 || id[0] != '$' || strings.IndexFunc(id[1:], func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	input, failure := decodeJSON[setSessionSpaceRequest](writer, request)
+	if failure != nil {
+		writeError(writer, *failure)
+		return
+	}
+	if input.IdentityToken.value == "" {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	label, err := space.Parse(input.Space.value)
+	if err != nil {
+		writeError(writer, errorSpaceInvalid)
+		return
+	}
+	err = gateway.sessions.SetSpace(request.Context(), sessions.SetSpaceInput{
+		TmuxID: id, IdentityToken: input.IdentityToken.value, Space: label,
+	})
+	if errors.Is(err, sessions.ErrSpaceDispatchUnknown) {
+		failure := errorInternal
+		failure.Dispatch = "unknown"
+		writeError(writer, failure)
+		return
+	}
+	if err != nil {
+		writeSessionError(writer, err)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func (gateway *Gateway) readPressure(writer http.ResponseWriter) {
@@ -667,6 +718,9 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 }
 
 func writeError(writer http.ResponseWriter, failure apiError) {
+	if tracked, ok := writer.(*trackedResponseWriter); ok && failure.Dispatch == "" {
+		failure.Dispatch = tracked.errorDispatch
+	}
 	payload, err := json.Marshal(failure)
 	if err != nil {
 		panic("static API error failed JSON encoding") // justify-defect: every error is a fixed string pair.
@@ -681,8 +735,9 @@ func writeError(writer http.ResponseWriter, failure apiError) {
 
 type trackedResponseWriter struct {
 	http.ResponseWriter
-	status    int
-	errorCode logging.ErrorCode
+	status        int
+	errorCode     logging.ErrorCode
+	errorDispatch string
 }
 
 func (writer *trackedResponseWriter) WriteHeader(status int) {
@@ -724,6 +779,8 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteDirectoryListings
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
 		return logging.RouteAgentControl
+	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/space"):
+		return logging.RouteSessionSpace
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):
 		return logging.RouteTerminal
 	case strings.HasPrefix(path, "/v1/sessions/"):

@@ -24,6 +24,19 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 )
 
+func testFleetClient(t *testing.T) *fleetclient.Client {
+	t.Helper()
+	config := filepath.Join(t.TempDir(), "client.json")
+	if os.WriteFile(config, []byte(`{"peers":[{"label":"arch","origin":"https://example.com:8443","machine":"mh-11111111111111111111111111111111","bearer":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]}`), 0600) != nil {
+		t.Fatal("write synthetic client configuration")
+	}
+	client, err := fleetclient.Open(config)
+	if err != nil {
+		t.Fatal("open synthetic client configuration")
+	}
+	return client
+}
+
 func row(name, id string, pid int) fleetclient.Session {
 	ref := fleetclient.Reference{Machine: "mh-11111111111111111111111111111111", TmuxID: id, IdentityToken: "lifetime" + id, Agent: &fleetclient.ProcessReference{PaneID: "%1", PID: pid, StartIdentity: "1"}}
 	return fleetclient.Session{Name: name, Ref: ref.Encode(), Agent: &fleetclient.Agent{Provider: "Claude", Status: fleetclient.Status{State: "idle", Source: "native"}}}
@@ -39,7 +52,7 @@ func key(value string) tea.KeyPressMsg {
 }
 
 func TestRefreshRetainsSelectionAndPinsConfirmation(t *testing.T) {
-	m := newModel(context.Background(), nil, nil, nil)
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.Update(observation(row("bravo", "$2", 22), row("charlie", "$3", 33)))
 	m.Update(key("j"))
 	m.Update(key("s"))
@@ -61,8 +74,21 @@ func TestRefreshRetainsSelectionAndPinsConfirmation(t *testing.T) {
 	}
 }
 
+func TestCollectionHeadingsAndRemovedSelection(t *testing.T) {
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
+	m.Update(observation(row("alpha", "$1", 11), row("bravo", "$2", 22), row("charlie", "$3", 33)))
+	if !strings.Contains(m.View().Content, "unassigned") {
+		t.Error("unassigned group has no heading")
+	}
+	m.Update(key("j"))
+	m.Update(observation(row("alpha", "$1", 11), row("charlie", "$3", 33)))
+	if m.selectedRow() == nil || m.selectedRow().session.Name != "charlie" {
+		t.Error("removed selection did not retain its clamped visible session index")
+	}
+}
+
 func TestMissingAndOfflineSelectionDisablesActions(t *testing.T) {
-	m := newModel(context.Background(), nil, nil, nil)
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.Update(observation(row("reviewer", "$1", 11)))
 	m.Update(inventoryMsg{value: fleetclient.Inventory{Partial: true, Peers: []fleetclient.Peer{{Label: "arch", Machine: "mh-11111111111111111111111111111111", Error: &fleetclient.Failure{Code: "unavailable", Dispatch: "not_sent"}}}}})
 	if _, cmd := m.Update(key("s")); cmd != nil {
@@ -78,7 +104,7 @@ func TestMissingAndOfflineSelectionDisablesActions(t *testing.T) {
 }
 
 func TestCreatedSelectionSurvivesEarlierInventoryCompletion(t *testing.T) {
-	m := newModel(context.Background(), nil, nil, nil)
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.Update(observation(row("existing", "$1", 11)))
 	m.refreshing = true
 	created := row("created", "$2", 22)
@@ -95,7 +121,7 @@ func TestCreatedSelectionSurvivesEarlierInventoryCompletion(t *testing.T) {
 }
 
 func TestDetailsWrapLongMetadataAndTableShowsDirectory(t *testing.T) {
-	m := newModel(context.Background(), nil, nil, nil)
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.width = 80
 	session := row("reviewer", "$1", 11)
 	session.CWD = "/very/long/parent/directory/code/project"
@@ -153,7 +179,7 @@ func TestConfirmedActionDispatchesOriginalProcessThroughHTTP(t *testing.T) {
 }
 
 func TestNormalWidthHintsAndFullMetadataRemainVisible(t *testing.T) {
-	m := newModel(context.Background(), nil, nil, nil)
+	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.width = 80
 	m.height = 24
 	observed := observation(row("reviewer", "$1", 11))
@@ -171,7 +197,7 @@ func TestNormalWidthHintsAndFullMetadataRemainVisible(t *testing.T) {
 	}
 	m.Update(key("q"))
 	m.Update(key("n"))
-	if !strings.Contains(m.View().Content, "enter on directory creates") || !strings.Contains(m.View().Content, "escape cancels") {
+	if !strings.Contains(m.View().Content, "enter on space creates") || !strings.Contains(m.View().Content, "escape cancels") {
 		t.Fatal("creation hints clipped at normal width")
 	}
 }

@@ -151,7 +151,7 @@ internal fun completeRenameHttp(
             ApiErrorCode.DirectoryListingUnavailable,
             ApiErrorCode.DirectoryListingTooLarge,
             ApiErrorCode.ProfileUnknown,
-            ApiErrorCode.ObjectiveInvalid,
+            ApiErrorCode.ObjectiveInvalid, ApiErrorCode.SpaceInvalid,
             ApiErrorCode.PairingInviteRejected,
             ApiErrorCode.ReconnectRequired,
             ApiErrorCode.TerminalConfigurationUnsupported,
@@ -172,7 +172,7 @@ private fun renameNeedsInventory(state: RenameState, error: String?): RenameHttp
         requireInventoryRead = true,
     )
 
-internal fun clearRenameMutationFence(inventory: InventoryState, fence: Long): InventoryState =
+internal fun clearMetadataMutationFence(inventory: InventoryState, fence: Long): InventoryState =
     if (inventory is InventoryState.Superseded && inventory.requiredMutationFence == fence) {
         InventoryState.Fresh(inventory.snapshot)
     } else {

@@ -250,6 +250,7 @@ internal data class TmuxSession(
     val character: CharacterSummary,
     val launchProfile: ProfileKey? = null,
     val objective: String? = null,
+    val space: SpaceLabel? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -303,6 +304,7 @@ private data class WireTmuxSession(
     val character: CharacterSummary,
     val launchProfile: String? = null,
     val objective: String? = null,
+    val space: String? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -433,6 +435,7 @@ internal data class ForgeDraft(
     val profile: ProfileKey,
     val optionalTmuxName: String,
     val objective: String,
+    val space: SpaceLabel? = null,
 )
 
 internal const val MAXIMUM_WORKING_DIRECTORY_BYTES = 4_096
@@ -593,6 +596,7 @@ internal data class ForgeForm(
     val profile: ProfileKey?,
     val optionalTmuxName: String,
     val objective: String,
+    val space: SpaceDraft = SpaceDraft.Chosen(""),
 ) {
     constructor(draft: ForgeDraft) : this(
         draft.machineHandle,
@@ -600,11 +604,14 @@ internal data class ForgeForm(
         draft.profile,
         draft.optionalTmuxName,
         draft.objective,
+        SpaceDraft.Chosen(draft.space?.text.orEmpty()),
     )
 
     fun submission(): ForgeDraft? {
         if (machineHandle == null || profile == null || cwd.isBlank()) return null
-        return ForgeDraft(machineHandle, cwd, profile, optionalTmuxName, objective)
+        val chosen = space as? SpaceDraft.Chosen ?: return null
+        val label = if (chosen.text.isEmpty()) null else SpaceLabel.fromDraft(chosen.text) ?: return null
+        return ForgeDraft(machineHandle, cwd, profile, optionalTmuxName, objective, label)
     }
 }
 
@@ -631,6 +638,7 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, t
     val profile: String,
     val optionalTmuxName: String? = null,
     val objective: String? = null,
+    val space: String? = null,
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
 @Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
@@ -725,6 +733,7 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
         draft.profile.encoded,
         draft.optionalTmuxName.ifEmpty { null },
         draft.objective.ifEmpty { null },
+        draft.space?.text,
     ),
 )
 internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
@@ -969,7 +978,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
     DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
-    ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"),
+    ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), SpaceInvalid("SpaceInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
     PairingInviteRejected("PairingInviteRejected"),
@@ -992,6 +1001,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
         "This directory has too many folders to show. Enter the path instead."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
+    ApiErrorCode.SpaceInvalid -> SPACE_INVALID
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
     ApiErrorCode.SessionNameConflict -> "A session with that name already exists."
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
@@ -1093,7 +1103,8 @@ private fun JsonObject.requireAbsentOrNonNull(optionalKeys: Set<String>) {
     if (optionalKeys.any { this[it] is JsonNull }) throw SerializationException("same-system optional field was null")
 }
 private fun JsonObject.requireSessionOptionalFields() {
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "cwd", "activeCommand", "agent"))
+    if ("space" in this) requiredString("space")
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "space", "cwd", "activeCommand", "agent"))
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireAbsentOrNonNull(setOf("profile", "providerSession"))
         (agent["status"] as? JsonObject)?.requireAbsentOrNonNull(setOf("reason"))
@@ -1119,6 +1130,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     character = session.character,
     launchProfile = session.launchProfile?.let { requireNotNull(ProfileKey.parse(it)) },
     objective = session.objective,
+    space = session.space?.let { requireNotNull(SpaceLabel.parse(it)) },
     cwd = session.cwd,
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,

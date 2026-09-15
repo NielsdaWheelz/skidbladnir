@@ -7,6 +7,13 @@ this document supersedes only the cli, attachment, and grouped-kill contracts in
 implementation must replace their affected normative sections; historical release
 evidence remains historical. no compatibility path survives the cutover.
 
+2026-09-15 accepted target amendment: [spaces](spaces.md) adds optional session
+labels, one exact membership route, grouped human collections, machine/space
+filters, and space-aware creation/return. source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
+records verification and open acceptance. the shipped a1–a9 evidence below does
+not prove that amendment.
+its detailed contracts supersede only the affected collection/create surfaces.
+
 ## outcome and limits
 
 run `skid` on any configured linux/darwin machine: see the fleet, select a session,
@@ -17,7 +24,7 @@ and agents. phone and desktop attach directly to the same tmux session.
   observations, direct peer routing, credentials, and three-host phone enrollment.
 - bare names normally suffice. machine qualification resolves collisions; exact
   returned references support automation. no global name registry.
-- delete skid's grouping and grouped-session refusal. shared window/pane navigation
+- delete skid's tmux shadow grouping and grouped-session refusal. shared window/pane navigation
   is intentional. unrelated user-created groups remain ordinary tmux objects.
 - no search, attention system, layouts, scheduler, task schema, coordinator role,
   new agent launcher, native codex binding, transcript store, ssh transport,
@@ -33,7 +40,7 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | command | behavior |
 | --- | --- |
 | `skid` | open tui; without a tty, print usage and exit 2 |
-| `skid list [--machine arch]` | sessions and unavailable peers, including shell-only sessions |
+| `skid list [--machine arch] [--space label \| --unassigned]` | space-grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
 | `skid info reviewer` | full metadata and fresh reference for this session |
 | `skid enter reviewer` | attach; explicit detach returns to the caller |
 | `skid read reviewer [--terminal] [--max-bytes N]` | existing bounded read; label source, scope, truncation |
@@ -42,7 +49,8 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid interrupt reviewer` | existing provider cancellation input; retain session |
 | `skid stop reviewer` | best-effort agent halt, then exact session closure; report both outcomes |
 | `skid kill reviewer` | close exactly this tmux session; works without an agent |
-| `skid start reviewer --machine arch --profile work [--cwd '~']` | ordinary creation; cwd defaults to remote home; no initial prompt or readiness wait |
+| `skid start reviewer --machine arch --profile work [--cwd '~'] [--space label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
+| `skid space reviewer --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same name/machine/ref selectors; no agent required |
 
 for commands targeting an existing session, replace the name with `--ref VALUE` or add
 `--machine LABEL` to the name. these selector forms are mutually exclusive.
@@ -69,7 +77,7 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
 ```text
 ref payload = {machine, tmuxId, identityToken,
                agent?: {paneId, pid, startIdentity}}
-row = {name, ref, cwd?, activeCommand?, launchProfile?, attachedClients,
+row = {name, ref, space?, cwd?, activeCommand?, launchProfile?, attachedClients,
        agent?: {provider, profile?, providerSession?, status, methods}}
 peer = {label, machine, ok,
         observedAt?, profiles?, sessions?: [row], error?}
@@ -82,7 +90,10 @@ reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
 `info` and `start` return `{label, machine, observedAt, session: row}`. other results
 retain the current agent-control schema; `kill` returns `{terminal: closed}` only
-after confirmed deletion. `--json` emits exactly one envelope on stdout, with no
+after confirmed deletion. `space` acknowledges `{space: string}`, with empty
+string for clear, only after the host's bodyless `204`; it returns no new ref.
+space filtering keeps every source peer/error in machine scope and never changes
+name-resolution uniqueness. `--json` emits exactly one envelope on stdout, with no
 human decoration. a partial list is a success envelope with `partial: true` and
 nonzero exit status. local selector codes are `name_not_found`, `name_ambiguous`,
 `inventory_incomplete`, existing `machine_unknown`, and `invalid_input` for malformed
@@ -108,20 +119,26 @@ preserve partial stop results even with exit 1; nonzero never authorizes replay.
 
 ## one small tui
 
-one model and table: machine, name, provider/profile or shell, state/source, cwd.
-stable sort by configured peer order then name; selection follows session lifetime,
-not row number. show offline peers explicitly. refresh every five seconds with
+one model and grouped table: machine, name, provider/profile or shell, state/source,
+cwd. named spaces precede unassigned; within groups retain configured peer order
+then name. selection follows session lifetime, not row number. show offline peers
+explicitly, outside group headings. refresh every five seconds with
 at most one inventory in flight; manual refresh is available. retain stale rows
 only as visibly unavailable, with actions disabled.
 
 - arrows/j/k select; enter attaches; space shows full metadata; r opens bounded
   output with source/scope/truncation; i interrupts; s stops; x kills; n creates;
   ctrl-r refreshes; q/escape returns or quits. key hints remain visible.
+- `g` chooses space, `m` chooses machine, and `e` edits the selected session's
+  membership. the [spaces contract](spaces.md#8-tui-interaction-and-return) owns
+  filtering, scoped refresh, exact editing, and heading-aware return behavior.
 - stop/kill require one confirmation naming session, host, and effect. pin the
   reference when the action starts; refresh cannot change its target. cli commands
   are explicit actions and require no additional confirmation.
-- creation is one form: machine, its advertised profile, name, cwd. reuse server
-  validation; display errors inline. select the returned session. shell rows disable
+- creation is one form: machine, its advertised profile, name, cwd, space. named
+  space selection prefills visibly/editably; use the spaces contract for its
+  confirmed post-create filter transition. reuse server validation and display
+  errors inline. select the returned session. shell rows disable
   agent-only read/send/keys/interrupt/stop; info/enter/kill still work.
 - use [bubble tea](https://github.com/charmbracelet/bubbletea) v2 for input/rendering
   and one local model. no component framework or handwritten escape parser.
@@ -192,7 +209,8 @@ expose existing fleetclient inventory types; own selection, reference encoding,
 and the single client projection there. reuse its auth, bounds, validation, deadline,
 and error machinery; extend explicit request handling for bodyless delete success.
 cli parses/renders; tui presents; neither reimplements routing or provider logic.
-reuse terminal protocol codecs in both directions. no new host endpoints.
+reuse terminal protocol codecs in both directions. the spaces extension adds
+only its specified membership endpoint; the terminal/agent routes are unchanged.
 
 jarvis exposes list/info/start/read/send/keys/interrupt/stop/kill. replace structured
 targets with the returned opaque reference; spawn exact argv, never a shell, and

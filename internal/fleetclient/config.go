@@ -77,3 +77,14 @@ func Open(path string) (*Client, error) {
 		http:  &http.Client{Transport: transport, Timeout: Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}, nil
 }
+
+// Machines exposes picker metadata without routing credentials or origins.
+func (client *Client) Machines() []Machine {
+	result := make([]Machine, 0, len(client.peers))
+	for _, peer := range client.peers {
+		result = append(result, Machine{peer.Label, peer.Machine})
+	}
+	return result
+}
+
+type Machine struct{ Label, Handle string }
