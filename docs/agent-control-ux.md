@@ -214,10 +214,15 @@ bump the agent tool implementation revision.
 preserve existing write gating, uncertainty, budgets,
 kernel, cognition, and immutable action-history rendering. no new authority model.
 
-dev-server appends usage to its existing `assets/agent-instructions.md` and installs
-it through `ai_install_instructions` for configured codex and claude roots. explain
-help/list/info, name versus ref, ordinary verbs, startup dialogs, and uncertain
-results. no new skill installer or second guide. new agents discover it normally;
+`skid --help` keeps the human command summary first and appends an automation
+guide: when to use skid, a discover/start/inspect/send/read example, exact session
+and agent references, startup dialogs, json and exit semantics, uncertain delivery,
+interrupt/stop/kill effects, and work products. native subagents and workflows
+remain the agent's choice.
+dev-server keeps only a brief usage hint pointing to `skid --help` in its existing
+`assets/agent-instructions.md`, installed through `ai_install_instructions` for
+configured codex and claude roots. the operating guide ships with the binary;
+no new skill installer or second guide. new agents discover the hint normally;
 busy agents learn it when asked to reread their instructions.
 
 delete shadow creation/names/markers, hiding, reconciliation, promotion, last-link
