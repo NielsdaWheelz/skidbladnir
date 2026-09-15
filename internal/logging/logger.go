@@ -18,6 +18,7 @@ type Method string
 const (
 	MethodGet    Method = "GET"
 	MethodPost   Method = "POST"
+	MethodPut    Method = "PUT"
 	MethodPatch  Method = "PATCH"
 	MethodDelete Method = "DELETE"
 	MethodOther  Method = "OTHER"
@@ -25,7 +26,7 @@ const (
 
 func (method Method) valid() bool {
 	switch method {
-	case MethodGet, MethodPost, MethodPatch, MethodDelete, MethodOther:
+	case MethodGet, MethodPost, MethodPut, MethodPatch, MethodDelete, MethodOther:
 		return true
 	default:
 		return false
@@ -39,6 +40,7 @@ const (
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
+	RouteSessionSpace      Route = "/v1/sessions/{tmuxId}/space"
 	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
 	RoutePressure          Route = "/v1/pressure"
 	RoutePairingInvites    Route = "/v1/pairing-invites"
@@ -49,7 +51,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
+	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionSpace, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -74,6 +76,7 @@ const (
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
+	ErrorSpaceInvalid                ErrorCode = "SpaceInvalid"
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
@@ -94,6 +97,7 @@ func (code ErrorCode) valid() bool {
 		ErrorProfileUnknown,
 		ErrorSessionNameInvalid,
 		ErrorObjectiveInvalid,
+		ErrorSpaceInvalid,
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,

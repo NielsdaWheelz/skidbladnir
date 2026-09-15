@@ -58,6 +58,7 @@ internal fun SessionCard(
     motionEnabled: Boolean,
     onOpen: () -> Unit,
     onKill: () -> Unit,
+    onSpace: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
@@ -140,10 +141,9 @@ internal fun SessionCard(
                     fontFamily = NidavellirType.Data,
                 )
             }
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
                     text = visibleContext,
@@ -153,7 +153,7 @@ internal fun SessionCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .testTag(
                             "session-context-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
                         )
@@ -162,15 +162,22 @@ internal fun SessionCard(
                                 "Machine ${visibleSession.machine.label.text}. Profile $profile."
                         },
                 )
-                KillButton(
-                    machineLabel = visibleSession.machine.label,
-                    target = visibleSession.target,
-                    enabled = machine.canMutate,
-                    onClick = onKill,
-                    modifier = Modifier.testTag(
-                        "session-kill-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
-                    ),
-                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    SpaceTextAction(
+                        label = "space", enabled = machine.canMutate, onClick = onSpace,
+                        description = "space for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
+                            (session.space?.let { "space: ${it.text}" } ?: "unassigned"),
+                    )
+                    KillButton(
+                        machineLabel = visibleSession.machine.label,
+                        target = visibleSession.target,
+                        enabled = machine.canMutate,
+                        onClick = onKill,
+                        modifier = Modifier.testTag(
+                            "session-kill-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
+                        ),
+                    )
+                }
             }
         }
     }

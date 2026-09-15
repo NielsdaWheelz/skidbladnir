@@ -4,6 +4,15 @@ current release: v0.4.1, [usable agent client and direct attachment](agent-contr
 its contracts are incorporated below. delivery and verification are in the
 [roadmap](roadmap.md); historical releases do not prove this target.
 
+accepted 2026-09-15 target: [spaces](spaces.md), pr 1 of
+[spaces, shells, and client composition](spaces-and-shells.md). its contracts
+are incorporated below; source is implemented, with verification and open
+runtime acceptance recorded in the [roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open).
+this is an optional session-label and client-collection upgrade, with no new
+runtime owner. shell creation and additional terminal composition are separate
+later prs. this document's release evidence remains attributed to its original
+source; it does not prove spaces.
+
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
 scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
 for that target; runtime acceptance is recorded in the [roadmap](roadmap.md).
@@ -120,6 +129,7 @@ or authorize action against the other.
 | Profiles | Every host exposes closed `personal \| work \| work2 \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
+| spaces | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/space filters; no space registry or lifecycle |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
@@ -242,10 +252,13 @@ them.
 
 ### Dashboard
 
-Independent `GET /v1/sessions` inventories, polled from each local tmux server
-plus the platform process observer, drive one dense card grid. `All` and one
-chip per paired machine filter the same collection; local session IDs, names,
-identity tokens, profile keys, and dwarf keys remain machine-scoped:
+independent `GET /v1/sessions` inventories drive one dense grouped card grid.
+machine selection (`All` or one paired machine) intersects a separate space
+selection (all spaces, unassigned, or one named space). equal canonical space
+labels group across hosts; local session ids, names, identity tokens, profile
+keys, and dwarf keys remain machine-scoped. unavailable-machine notices are
+outside space filtering. [spaces](spaces.md) owns the exact grouping, editing,
+creation, and content-free restoration contracts:
 
 - One card anchors to the session's current window and that window's active
   pane. Cwd, command, runtime registration, and the built-in
@@ -257,7 +270,8 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   (`@skid_profile` when present), optional exact foreground agent provider/PID,
   registered runtime profile and provider session id, observable explicit
   Claude name, objective (optional; URL-safe base64 in
-  `@skid_objective_b64`, decoded by the gateway), pane cwd and active command when tmux exposes them,
+  `@skid_objective_b64`, decoded by the gateway), optional space label
+  (`@skid_space_b64`), pane cwd and active command when tmux exposes them,
   attached-client count, and required flat `Active | Quiet` activity.
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
@@ -310,24 +324,30 @@ identity tokens, profile keys, and dwarf keys remain machine-scoped:
   observation used for optional identity. Stale, malformed, nested, ambiguous, or
   wrong-provider registrations are ignored and never repaired. Provider ids and
   names are bounded facts, not unique keys, addresses, or authority.
-- Grid order: fresh `Quiet`, fresh `Active`, retained stale/non-actionable
-  snapshots, then case-folded/exact machine label, machine handle,
-  case-folded/exact tmux name, and local tmux id. Retained activity never
-  animates or claims current priority. Android owns this full cross-host order;
-  each gateway publishes deterministic local tmux name/id order only.
+- grid order: named space headings in the shared ascii-folded/exact utf-8 label
+  order, then unassigned. within each group use the current agent-control order:
+  case-folded/exact machine label, machine handle, case-folded/exact tmux name,
+  then local tmux id. no urgency sorting. retained stale rows remain explicitly
+  unavailable and non-actionable. each gateway retains local name/id order;
+  grouping belongs to clients, never the host inventory envelope.
 
 The Dashboard is one retained Android navigation entry. Opening Terminal does
 not replace that entry: top `Detach` and Android Back return to its same typed
-`All` or machine scope. That scope is restored before inventory verification;
-its semantic first-visible session lifetime and offset settle before Dashboard
-interaction. An unchanged list returns to the exact card and pixel offset; live
-insertion or reorder preserves the same lifetime at that offset; a removed
-lifetime clamps its former index; an empty or unavailable machine remains
+machine and space filters. those filters restore before inventory verification;
+the semantic first-visible session or heading and offset settle before dashboard
+interaction. an unchanged list returns to the same item and pixel offset; live
+insertion/reorder preserves its key; a removed item clamps its former rendered
+index. an empty or unavailable selected machine or space remains
 selected. Restoration is immediate, non-animated, and one-shot before cards
 become interactive; selecting a different filter cancels pending restoration,
-while selecting the active filter is a no-op. Terminal access-loss recovery
-remains the explicit exception that selects the affected machine, resets its
-viewport to top, and shows its notice.
+while selecting the active filter is a no-op. terminal access-loss recovery
+selects the affected machine, retains space selection, resets viewport to top,
+and shows its notice. confirmed creation outside the selected space changes that
+space filter before post-create navigation; ordinary membership edits do not.
+the schema-2 task capsule stores a space-label fingerprint and typed heading or
+session anchor, never raw labels. a missing restored label stays selected as
+`previously selected space`; creation then requires an explicit named/unassigned
+choice. schema-1 navigation is discarded, with no compatibility reader.
 Lifecycle stop never consumes pending restoration; only a modeled non-live
 machine outcome may resolve it without an inventory snapshot.
 The filter strip need not retain its exact horizontal offset, but it reveals the
@@ -430,8 +450,9 @@ or another gateway. [`working-directory-chooser.md`](working-directory-chooser.m
 owns the exact state, content, symlink, bound, and red/green contracts.
 
 Changing machine closes the chooser, invalidates its requests, clears
-cwd/profile, and preserves tmux name/objective. Submission names the target and sends
-`POST /v1/sessions {cwd, profile, optionalTmuxName?, objective?}` to only that
+cwd/profile, and preserves tmux name/objective and the space draft. submission
+names the target and sends
+`POST /v1/sessions {cwd, profile, optionalTmuxName?, objective?, space?}` to only that
 machine:
 
 1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
@@ -442,12 +463,16 @@ machine:
 2. Profile must be one of the target gateway's declared allowlisted commands.
 3. Optional tmux name is 1–64 ASCII letters, digits, underscores, or hyphens;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
-   Invalid input mutates nothing.
+   optional space is 1–64 unicode-15 nfc scalars with the exact whitespace and
+   display-safety rules in [spaces](spaces.md#3-labels-equality-and-ordering).
+   invalid input mutates nothing. interactive named-space creation prefills a
+   visible editable label; a space supplies no other launch context.
 4. One tmux client command queue creates the session (named
    `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>`),
    initializes the random
    server-scoped `@skid_server_epoch` if absent, sets `@skid_profile` and
-   `@skid_character`, sets encoded `@skid_objective_b64` only when supplied,
+   `@skid_character`, sets encoded `@skid_objective_b64` and `@skid_space_b64`
+   only when supplied,
    and runs the profile command with that row's exact arguments in the cwd.
    Managed Claude inserts `--name <tmuxName>` before those arguments; configured
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
@@ -471,6 +496,31 @@ machine:
   presence monitor binds that client to the same session lifetime and ignores
   rename. an explicit session switch closes on detection, not atomically; bytes
   may pass before the next observation. no extra watchdog or replay exists.
+
+### spaces
+
+`PUT /v1/sessions/{tmuxId}/space` accepts exactly `{identityToken,space}`.
+the required string is a canonical label or empty to clear; omission/null are
+invalid. success is bodyless `204`. the gateway's mutation lock and one tmux
+queue bind assignment to server epoch/pid/start and session id, independently of
+name, pane, or foreground process. rename and agent replacement preserve the
+target; replacing the session rejects it. repeated same-value assignment and
+clearing absence are valid. concurrent writers use last applied write semantics;
+lost completion stays unknown and is never replayed automatically.
+
+membership is only session-local canonical unpadded base64url metadata. invalid
+or absent local metadata projects as unassigned without repair; global options
+are not inherited. creation publishes membership in its existing queue. no space
+id, registry, launch context, lifecycle, tmux group, or new hook exists.
+
+cli/tui/phone expose assignment and clearing. human collections use headings;
+json remains peer-oriented with optional `space` per row. machine/space filters
+intersect, selection/actions retain session lifetimes, and an emptied selected
+space stays selected. filtering never removes source inventory or narrows refresh
+by previously observed space membership. android uses one retained dashboard
+entry and the existing metadata mutation/read ordering; a digest-only unresolved
+space can regain its display label from later inventory. exact contracts, file
+ownership, costs, and acceptance are in [spaces.md](spaces.md).
 
 ### Rename
 
@@ -520,8 +570,11 @@ of target, not semantic safety.
 
 ### desktop and agent controls
 
-`skid` opens one fleet table; ordinary commands expose list, info, enter, read,
-send, keys, interrupt, stop, kill, and start. default private peer configuration
+`skid` opens one grouped fleet table; ordinary commands expose list, info, enter,
+read, send, keys, interrupt, stop, kill, start, and space. `list --space LABEL` /
+`--unassigned`, `start --space LABEL`, and `space TARGET --set LABEL | --clear`
+use the [spaces contract](spaces.md#6-cli-and-shared-fleet-presentation).
+default private peer configuration
 is `~/.config/skidbladnir/client.json`. exact names select across complete live
 inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
 identity. cli, tui, and jarvis consume one fleetclient projection. jarvis's nine
@@ -646,7 +699,7 @@ history item is `current`.
   content and never mints, repairs, or substitutes identity. Intentional
   deletion creates a new machine and requires explicit fleet reset on Android.
 - No SQLite. Session metadata lives in tmux user options (`@skid_profile`,
-  `@skid_objective_b64`, `@skid_character`, `@skid_agent_runtime`, the
+  `@skid_objective_b64`, `@skid_space_b64`, `@skid_character`, `@skid_agent_runtime`, the
   server-scoped `@skid_server_epoch`). Poller state is in-memory and rebuilt on start.
 - Authentication runs before identity disclosure. Ordinary requests send
   exactly one `Skidbladnir-Machine` header matching the gateway installation
@@ -661,15 +714,19 @@ history item is `current`.
 | --- | --- |
 | `POST /v1/pairing-invites` | Normal bearer + machine auth, empty body; replaces the in-memory slot and returns one five-minute `pairingInviteToken`, expiry, and machine |
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; every session has required `tmuxId`, `tmuxName`, `character`, local card facts, opaque `identityToken`, optional `launchProfile`, optional exact `agent`, and required flat `activity = Active \| Quiet` |
+| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; session fields include `tmuxId`, `tmuxName`, `character`, opaque `identityToken`, local facts, optional `space`, optional `launchProfile`, and optional exact `agent` with current agent-control status/methods |
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
-| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
+| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?, space?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
+| `PUT /v1/sessions/{tmuxId}/space` | exact `{identityToken,space}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 
-Errors use only `{code,message}` with this exhaustive v0 mapping:
+errors use `{code,message}` and the existing optional `dispatch` for operations
+that distinguish `not_sent` from `unknown`. the spaces route requires that
+distinction; its mapping is in [spaces](spaces.md#5-host-api-and-projection).
+agent-control errors retain their own spec. session and v0 mappings:
 
 | Code | HTTP | Literal message |
 | --- | ---: | --- |
@@ -683,6 +740,7 @@ Errors use only `{code,message}` with this exhaustive v0 mapping:
 | `ProfileUnknown` | 422 | `Choose an available profile.` |
 | `SessionNameInvalid` | 422 | `Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.` |
 | `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
+| `SpaceInvalid` | 422 | `use 1–64 nfc characters; only interior ordinary spaces, without display controls.` |
 | `SessionNameConflict` | 409 | `A session with that name already exists.` |
 | `SessionNotFound` | 404 | `That session no longer exists.` |
 | `SessionIdentityMismatch` | 409 | `The session changed. Refresh and try again.` |
@@ -707,7 +765,7 @@ enum values are defects, with no protocol branch or compatibility state.
 - Bounds: HTTP body 64 KiB; cwd 4,096 bytes; one directory listing scans at
   most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
   encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
-  views; objective 240 scalars; terminal frame 64 KiB; queue 1 MiB; geometry
+  views; objective 240 scalars; space 64 scalars / 256 utf-8 bytes; terminal frame 64 KiB; queue 1 MiB; geometry
   20–1024 × 5–512. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
@@ -768,14 +826,19 @@ enum values are defects, with no protocol branch or compatibility state.
   smaller-fleet branch.
 - Grid, selected-machine pressure rail/details sheet, filters, Forge, and
   terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
-  destination switch and exclusively owns typed scope, the live lazy-grid
+  destination switch and exclusively owns machine/space selection, the live lazy-grid
   state, and pending saved restoration. Android saved-instance state may retain
-  one exact-version capsule containing only scope, a comparison-only
-  lifetime fingerprint, fallback index, and pixel offset. It is validated
+  one exact-version schema-2 capsule containing only both filter discriminants,
+  the machine handle when selected, a comparison-only space-label fingerprint
+  when named, a typed session/heading anchor, rendered-item index, and pixel
+  offset. [spaces](spaces.md#10-android-navigation-and-content-free-restoration)
+  owns its exact schema and unresolved-label behavior. it is validated
   against the newly accepted fleet, never interpreted as a terminal target, and
-  never written to preferences, files, tmux, or a gateway. The fingerprint is
-  domain-separated SHA-256 over the machine handle, tmux id, and high-entropy
-  inventory identity token; the raw token never enters saved state. Scope
+  never written to preferences, files, tmux, or a gateway. session fingerprints
+  retain the domain-separated sha-256 over machine handle, tmux id, and
+  high-entropy inventory token. named filter/heading fingerprints use the separate
+  label domain specified in spaces; neither raw token nor raw label enters saved
+  state. machine scope
   validation uses store-accepted paired handles, never current reachability or
   inventory freshness. A fresh task or explicit app-data/fleet reset starts
   `All` at top; no compatibility reader or per-filter history exists. The Forge
@@ -906,6 +969,12 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder (deliberately not in v0)
 
+the accepted [spaces target](spaces.md) adds optional session labels and grouped
+client views only. [the three-pr plan](spaces-and-shells.md) separates shell
+creation and additional terminal navigation/composition; neither is part of pr 1.
+spaces add no execution ownership or lifecycle resource. source is implemented;
+the roadmap records its verification and remaining runtime boundaries.
+
 the [agent-control target](agent-control.md) is the accepted upgrade shipped in v0.3.1
 for semantic status, provider reads, and cross-agent interaction. it owns its
 scope and acceptance criteria; opaque-agent and activity-only rules describe v0,
@@ -915,6 +984,14 @@ history, durable receipts, and replay remain outside the target.
 ## 9. Verification
 
 Verification follows an 80/20 boundary shape:
+
+- spaces adds its [a1–a9 acceptance](spaces.md#12-acceptance-and-bounded-proof-plan):
+  compact go/android label/transport/navigation proofs, approved linux/darwin
+  isolated-tmux membership/lifetime acceptance, and approved real-compose/registry
+  plus phone-to-isolated-host editing/filter/return acceptance. runtime boundaries
+  require current-turn approval; missing boundaries are `NOT_RUN`. existing
+  routine gates are reused and historical release proofs do not satisfy these
+  new criteria;
 
 - pure table tests own handle/origin/strict DTO and host-config validation,
   pressure signal and recovery classification, pressure capability partitions,
@@ -1142,13 +1219,13 @@ mutation, or terminal-input operation. The collection's first content begins
 confined to `y = 0..2dp`, horizontally inset `12dp`, and does not change card,
 empty-content, focus, or scroll bounds.
 
-Dashboard-return acceptance additionally requires: from `All` or one machine
-filter, leaving a scrolled collection for Terminal and returning through top
-`Detach` or Android Back restores the same filter and surviving first-visible
-session lifetime at the same offset without an intermediate `All`/top frame;
-post-detach verification targets only that restored scope; reorder, deletion,
-empty, unavailable, background, and same-task saved-state cases follow the
+dashboard-return acceptance additionally requires: from any machine/space
+intersection, leaving a scrolled collection for terminal and returning through
+detach or android back restores both filters and the surviving first-visible
+session/heading at the same offset without an intermediate all/top frame;
+post-detach verification uses machine scope, never observed space membership;
+reorder, deletion, empty, unavailable, background, and same-task saved-state cases follow the
 rules in [`dashboard-return-continuity.md`](dashboard-return-continuity.md);
-fresh task/reset starts `All` at top; process restoration never retains a
-terminal target, attachment, bytes, or input; and no inventory snapshot/payload,
-raw identity token, or terminal content enters saved state.
+fresh task/reset starts all machines/all spaces at top; process restoration never
+retains a terminal target, attachment, bytes, or input; and no inventory snapshot/payload,
+raw identity token, raw space label, or terminal content enters saved state.

@@ -42,6 +42,7 @@ internal sealed interface SkidbladnirUiState {
         val forgeRecovery: ForgeRecovery?,
         val kill: KillState?,
         val unreadableMachines: List<UnreadableStoredMachine> = emptyList(),
+        val spaceEditor: SpaceEditor? = null,
     ) : Workspace
 
     data class Terminal(
@@ -334,6 +335,7 @@ internal fun dashboardAfterMachineAccessLoss(
             dashboard.forge
         },
         kill = dashboard.kill?.takeUnless { it.target.machineHandle == handle },
+        spaceEditor = dashboard.spaceEditor?.takeUnless { it.target.machineHandle == handle },
     )
 }
 
@@ -628,7 +630,7 @@ internal class SkidbladnirController(
     private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = MachineInventoryOperations(network, ::surfaceDefect)
-    private val pendingRenameFences = mutableMapOf<MachineHandle, Long>()
+    private val pendingMetadataFences = mutableMapOf<MachineHandle, Long>()
 
     /** Main-thread owner of the app-wide inventory-read indicator. */
     private val awaitedInventoryReads = AwaitedInventoryReads()
@@ -943,7 +945,7 @@ internal class SkidbladnirController(
         )
     }
 
-    fun restoreDashboardOnce(keys: List<DashboardCardKey>) {
+    fun restoreDashboardOnce(keys: List<DashboardItemKey>) {
         if (!dashboardEntry.restorationPending) return
         if (dashboardRestorationReady(
             scope = dashboardEntry.scope,
@@ -977,10 +979,10 @@ internal class SkidbladnirController(
             DashboardScope.All -> machineStates.values.any { it.canForge }
             is DashboardScope.Machine -> machineStates[scope.handle]?.canForge == true
         }
-        if (!admissible) return
+        if (!admissible || current.spaceEditor != null) return
         state = current.copy(
             forge = ForgeState(
-                ForgeForm(handle, "", null, "", ""),
+                ForgeForm(handle, "", null, "", "", dashboardEntry.space.creationDraft()),
                 pending = false,
                 failure = ForgeFailure.None,
                 surface = ForgeSurface.Form,
@@ -1198,6 +1200,7 @@ internal class SkidbladnirController(
                     if (!isCredentialActive(activeGeneration, credential)) return@post
                     if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready ||
                         polling[credential.machine.handle] !== runtime) return@post
+                    dashboardEntry.followCreatedMembership(result.value.space)
                     enterCreatedTerminal(
                         SessionTarget(credential.machine.handle, result.value),
                         mutationFence,
@@ -1242,7 +1245,75 @@ internal class SkidbladnirController(
         }
     }
 
+    fun openSpaceEditor(target: SessionTarget) {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
+        if (dashboard.forge != null || dashboard.kill != null || dashboard.spaceEditor != null) return
+        val machine = machineStates[target.machineHandle] ?: return
+        if (!machine.canMutate) return
+        val observed = machine.inventory.lastSnapshot()?.inventory?.sessions?.singleOrNull {
+            sameSessionLifetime(target, SessionTarget(target.machineHandle, it))
+        } ?: return
+        state = dashboard.copy(spaceEditor = SpaceEditor(target.copy(session = observed), observed.space?.text.orEmpty()))
+    }
+
+    fun updateSpaceDraft(draft: String) {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
+        val editor = dashboard.spaceEditor ?: return
+        if (editor.phase == SpacePhase.Editing) {
+            state = dashboard.copy(spaceEditor = editor.copy(draft = draft, error = null))
+        }
+    }
+
+    fun dismissSpaceEditor() {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
+        if (dashboard.spaceEditor?.phase != SpacePhase.Sending) state = dashboard.copy(spaceEditor = null)
+    }
+
+    fun submitSpace() {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
+        val editor = dashboard.spaceEditor ?: return
+        val handle = editor.target.machineHandle
+        val machine = machineStates[handle] ?: return
+        if (!spaceSubmissionAdmissible(editor, machine)) return
+        val label = if (editor.draft.isEmpty()) null else checkNotNull(SpaceLabel.fromDraft(editor.draft))
+        val credential = credentials[handle] ?: return
+        val runtime = polling[handle] ?: return
+        val activeGeneration = generation
+        val sending = editor.copy(phase = SpacePhase.Sending, error = null)
+        state = dashboard.copy(spaceEditor = sending)
+        runtime.inventoryOperation.submitMutation(
+            onReserved = { fence -> requireMetadataInventoryRefresh(handle, fence) },
+        ) { fence ->
+            val result = client.setSessionSpace(credential, editor.target, label)
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
+                if (result is GatewayResult.Failure && acceptAccessFailure(handle, result.failure)) return@post
+                val completed = completeSpaceHttp(sending, result)
+                if (completed.phase == SpacePhase.Editing) clearMetadataInventoryRefresh(handle, fence)
+                val current = state as? SkidbladnirUiState.Dashboard
+                if (current?.spaceEditor == sending) state = current.copy(spaceEditor = completed)
+                if (completed.phase is SpacePhase.Checking) awaitInventory(handle, activeGeneration)
+            }
+        }
+    }
+
+    private fun advanceSpaceEditor(handle: MachineHandle) {
+        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
+        val editor = dashboard.spaceEditor ?: return
+        if (editor.target.machineHandle != handle) return
+        val machine = machineStates.getValue(handle)
+        val updated = reconcileSpaceEditor(editor, machine)
+        val missing = machine.inventory.lastSnapshot()?.inventory?.sessions?.none {
+            sameSessionLifetime(editor.target, SessionTarget(handle, it))
+        } == true
+        state = dashboard.copy(
+            spaceEditor = updated,
+            notice = if (missing) "that session lifetime is no longer available." else dashboard.notice,
+        )
+    }
+
     fun openTerminal(target: SessionTarget) {
+        if ((state as? SkidbladnirUiState.Dashboard)?.spaceEditor != null) return
         val machine = machineStates[target.machineHandle] ?: return
         if (!machine.canMutate) return
         enterTerminal(machine, target)
@@ -1505,7 +1576,7 @@ internal class SkidbladnirController(
         val activeGeneration = generation
         state = current.copy(rename = sending)
         runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireRenameInventoryRefresh(current.target.machineHandle, fence) },
+            onReserved = { fence -> requireMetadataInventoryRefresh(current.target.machineHandle, fence) },
         ) { mutationFence ->
             val result = client.renameSession(credential, sending.target, sending.draft)
             main.post {
@@ -1515,7 +1586,7 @@ internal class SkidbladnirController(
                 ) return@post
                 val transition = completeRenameHttp(sending, result)
                 if (transition.clearMutationFence) {
-                    clearRenameInventoryRefresh(sending.target.machineHandle, mutationFence)
+                    clearMetadataInventoryRefresh(sending.target.machineHandle, mutationFence)
                 }
                 val terminal = state as? SkidbladnirUiState.Terminal
                 val activeRename = terminal?.rename
@@ -1634,7 +1705,7 @@ internal class SkidbladnirController(
         val machine = machineStates[target.machineHandle] ?: return
         val kill = KillState(machine.machine, target, false, terminalOnly)
         state = when (val current = state) {
-            is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = kill) else return
+            is SkidbladnirUiState.Dashboard -> if (machine.canMutate && current.spaceEditor == null) current.copy(kill = kill) else return
             is SkidbladnirUiState.Terminal ->
                 if (current.rename == null && terminalTextSizeSheet(current.textSize, current.connection) == null &&
                     terminalActionAdmissible(machine.canMutate, current.connection)
@@ -1745,7 +1816,7 @@ internal class SkidbladnirController(
 
     private fun stopPolling(handle: MachineHandle) {
         awaitedInventoryReads.stop(handle)
-        pendingRenameFences.remove(handle)
+        pendingMetadataFences.remove(handle)
         polling.remove(handle)?.let { runtime ->
             runtime.inventoryFuture?.cancel(false)
             runtime.pressureFuture?.cancel(false)
@@ -1815,7 +1886,7 @@ internal class SkidbladnirController(
             ) {
                 when (result) {
                     is GatewayResult.Failure -> if (!acceptAccessFailure(handle, result.failure) &&
-                        pendingRenameFences[handle]?.let { completedMutationFence >= it } != true
+                        pendingMetadataFences[handle]?.let { completedMutationFence >= it } != true
                     ) markInventoryFailed(handle, result.failure)
                     is GatewayResult.Success -> if (acceptMachineIdentity(credential, result.value)) {
                         updateMachine(handle) {
@@ -1824,10 +1895,12 @@ internal class SkidbladnirController(
                                 inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
                             )
                         }
-                        pendingRenameFences[handle]?.let { fence ->
-                            if (completedMutationFence >= fence) pendingRenameFences.remove(handle)
+                        pendingMetadataFences[handle]?.let { fence ->
+                            if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
                         }
                         advanceTerminalRename(handle)
+                        advanceSpaceEditor(handle)
+                        dashboardEntry.resolveSpace(observedSpaces(sortedMachineStates()))
                     }
                 }
                 advanceCreatedTerminalAdmission(handle, completedMutationFence)
@@ -1959,16 +2032,16 @@ internal class SkidbladnirController(
         if (dashboard != null) state = dashboard.copy(machines = sortedMachineStates())
     }
 
-    private fun requireRenameInventoryRefresh(handle: MachineHandle, fence: Long) {
-        check(pendingRenameFences.put(handle, fence) == null)
+    private fun requireMetadataInventoryRefresh(handle: MachineHandle, fence: Long) {
+        check(pendingMetadataFences.put(handle, fence) == null)
         requireInventoryRefresh(handle, fence)
     }
 
-    private fun clearRenameInventoryRefresh(handle: MachineHandle, fence: Long) {
-        if (pendingRenameFences[handle] != fence) return
-        pendingRenameFences.remove(handle)
+    private fun clearMetadataInventoryRefresh(handle: MachineHandle, fence: Long) {
+        if (pendingMetadataFences[handle] != fence) return
+        pendingMetadataFences.remove(handle)
         updateMachine(handle) { machine ->
-            machine.copy(inventory = clearRenameMutationFence(machine.inventory, fence))
+            machine.copy(inventory = clearMetadataMutationFence(machine.inventory, fence))
         }
         publishDashboardIfVisible()
     }

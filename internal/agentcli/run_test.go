@@ -72,3 +72,54 @@ func TestBareNonTTYPrintsUsageAndExplanation(t *testing.T) {
 		t.Fatal("bare non-tty invocation omitted usage or tty explanation")
 	}
 }
+
+func TestSpaceCommandGrammar(t *testing.T) {
+	ref := fleetclient.Reference{Machine: "mh-11111111111111111111111111111111", TmuxID: "$1", IdentityToken: "fixture"}.Encode()
+	for index, args := range [][]string{
+		{"list", "--space", "alpha"}, {"list", "--unassigned"},
+		{"start", "worker", "--machine", "arch", "--profile", "work", "--space=alpha"},
+		{"space", "worker", "--set", "alpha"}, {"space", "--ref", ref, "--clear"},
+		{"space", "--set", "alpha", "--", "--literal"},
+	} {
+		if _, err := parse(args); err != nil {
+			t.Errorf("space grammar rejected: case=%d", index)
+		}
+	}
+	for index, args := range [][]string{
+		{"--space", "alpha"}, {"list", "--space", "alpha", "--unassigned"},
+		{"start", "worker", "--machine", "arch", "--profile", "work", "--unassigned"},
+		{"info", "worker", "--space", "alpha"}, {"space", "worker"},
+		{"space", "worker", "--set", "alpha", "--clear"}, {"space", "worker", "--set", ""},
+		{"space", "worker", "--clear", "--space", "alpha"}, {"space", "worker", "--clear=true"},
+		{"space", "worker", "--set", " alpha"}, {"space", "worker", "--set", "a\tb"},
+	} {
+		if _, err := parse(args); err == nil {
+			t.Errorf("invalid space grammar admitted: case=%d", index)
+		}
+	}
+}
+
+func TestSpaceHumanGroupingAndAcknowledgement(t *testing.T) {
+	var value fleetclient.Inventory
+	if json.Unmarshal([]byte(`{"partial":true,"peers":[{"label":"arch","machine":"mh-11111111111111111111111111111111","ok":true,"profiles":[],"sessions":[{"name":"later","ref":"fixture","attachedClients":0,"space":"zulu"},{"name":"first","ref":"fixture","attachedClients":0,"space":"alpha"},{"name":"shell","ref":"fixture","attachedClients":0}]},{"label":"offline","machine":"mh-22222222222222222222222222222222","ok":false,"error":{"code":"unavailable","dispatch":"not_sent"}}]}`), &value) != nil {
+		t.Fatal("decode synthetic inventory")
+	}
+	encoded, _ := json.Marshal(value)
+	var stdout, stderr bytes.Buffer
+	if render(command{request: fleetclient.Request{Operation: "list"}}, fleetclient.Result{OK: true, Value: encoded}, &stdout, &stderr) != 1 {
+		t.Fatal("partial grouped list lost failure status")
+	}
+	text := stdout.String()
+	alpha, zulu, unassigned := strings.Index(text, "space: alpha"), strings.Index(text, "space: zulu"), strings.Index(text, "unassigned")
+	if alpha < 0 || zulu <= alpha || unassigned <= zulu || strings.Count(text, "offline") != 1 {
+		t.Fatal("human grouping lost ordering, headings, or peer outage")
+	}
+	stdout.Reset()
+	if render(command{request: fleetclient.Request{Operation: "space"}}, fleetclient.Result{OK: true, Value: json.RawMessage(`{"space":""}`)}, &stdout, &stderr) != 0 || stdout.String() != "space cleared\n" {
+		t.Fatal("clear acknowledgement fabricated other output")
+	}
+	parsed, err := parse([]string{"space", "worker", "--set", "e\u0301"})
+	if err != nil || parsed.request.Space.String() != "é" {
+		t.Fatal("human membership input did not normalize nfc")
+	}
+}

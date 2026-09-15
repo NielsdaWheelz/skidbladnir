@@ -288,6 +288,7 @@ class SessionCardInstrumentedTest {
                             motionEnabled = current.motionEnabled,
                             onOpen = onOpen,
                             onKill = { error("rendering a card killed its session") },
+                            onSpace = { error("rendering a card edited its space") },
                         )
                     }
                 }

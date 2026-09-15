@@ -225,7 +225,7 @@ class DashboardEntryStateTest {
         assertEquals(0, accessLossEntry.gridState.firstVisibleItemScrollOffset)
         assertEquals(
             DashboardEntrySnapshot(
-                schemaVersion = 1,
+                schemaVersion = 2,
                 scope = DashboardScope.Machine(devboxHandle),
                 viewport = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0),
             ),
@@ -316,7 +316,7 @@ class DashboardEntryStateTest {
         fallbackIndex: Int,
         offsetPx: Int,
     ) = DashboardEntrySnapshot(
-        schemaVersion = 1,
+        schemaVersion = 2,
         scope = scope,
         viewport = DashboardViewport(anchor, fallbackIndex, offsetPx),
     )
@@ -360,7 +360,7 @@ class DashboardEntryStateTest {
     private companion object {
         val OBSERVED_AT: Instant = Instant.parse("2026-08-31T12:00:00Z")
         val freshSnapshot = DashboardEntrySnapshot(
-            schemaVersion = 1,
+            schemaVersion = 2,
             scope = DashboardScope.All,
             viewport = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0),
         )

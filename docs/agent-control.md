@@ -9,6 +9,13 @@ engineering contract. the existing jarvis → native codex → tmux → phone
 flow is manually confirmed by the user. that is baseline evidence, not evidence
 for the new cross-provider controls.
 
+2026-09-15 accepted extension: [spaces](spaces.md) adds optional session labels,
+session-lifetime-only assignment, and grouped/filterable client collections.
+its source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
+records verification and open acceptance. this is the sole new
+exception to the placement restriction below; provider operations, opaque
+references, runtime owners, and their historical evidence remain unchanged.
+
 ## outcome and scope
 
 from any configured linux/darwin computer, phone, or agent: find an agent on a
@@ -282,8 +289,9 @@ profiles, session labels/cwd, opaque references, provider, status, and methods.
 jarvis consumes that projection directly without a second inventory adapter.
 
 android replaces active/quiet labels with semantic status, marking inferred
-status unobtrusively. use machine/name/id ordering; no urgency sorting, search,
-or saved placement. shell-only sessions remain visible as terminals. add interrupt
+status unobtrusively. use machine/name/id ordering within the accepted
+[space groups](spaces.md); no urgency sorting, search, or manual saved ordering.
+shell-only sessions remain visible as terminals. add interrupt
 and stop to existing actions; stop reuses existing destructive confirmation.
 read/send/keys remain available to tools; phone interaction uses its native
 terminal. preserve attachment, keyboard, selection, sizing, pairing, and polling.

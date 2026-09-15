@@ -20,6 +20,21 @@ const testMachine = "mh-11111111111111111111111111111111"
 const testBearer = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 const testSession = `{"tmuxId":"$3","tmuxName":"reviewer","identityToken":"lifetime","character":{"key":"a.b","displayName":"name"},"attachedClients":0,"cwd":"/tmp/project","agent":{"provider":"Claude","pid":321,"paneId":"%4","startIdentity":"1234","status":{"state":"idle","source":"native"},"methods":{"read":"native","send":"terminal","interrupt":"terminal"}}}`
 
+func TestSpaceResponsePresence(t *testing.T) {
+	for index, field := range []string{``, `,"space":"alpha"`, `,"space":"é"`} {
+		encoded := []byte(`{"observedAt":"2026-09-15T00:00:00Z","session":` + strings.TrimSuffix(testSession, "}") + field + `}}`)
+		if !validResponse("start", encoded, testMachine) {
+			t.Errorf("valid optional membership rejected: case=%d", index)
+		}
+	}
+	for index, field := range []string{`null`, `""`, `"e\u0301"`, `"\ud800"`, `" a"`, `"a\nb"`, `42`} {
+		encoded := []byte(`{"observedAt":"2026-09-15T00:00:00Z","session":` + strings.TrimSuffix(testSession, "}") + `,"space":` + field + `}}`)
+		if validResponse("start", encoded, testMachine) {
+			t.Errorf("invalid present membership admitted: case=%d", index)
+		}
+	}
+}
+
 func testRef() string {
 	return base64.RawURLEncoding.EncodeToString([]byte(`{"machine":"` + testMachine + `","tmuxId":"$3","identityToken":"lifetime","agent":{"paneId":"%4","pid":321,"startIdentity":"1234"}}`))
 }

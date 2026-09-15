@@ -65,11 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleRegistry
-import androidx.savedstate.SavedStateRegistry
-import androidx.savedstate.SavedStateRegistryController
-import androidx.savedstate.SavedStateRegistryOwner
 import java.time.Instant
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
@@ -221,7 +216,11 @@ class MultiMachineUiInstrumentedTest {
             insertedMacBookSessions.map(TmuxSession::tmuxId),
             shiftedVisibleSessions.take(2).map { it.target.session.tmuxId },
         )
-        val shiftedKeys = shiftedVisibleSessions.map(VisibleSession::cardKey)
+        val shiftedKeys = dashboardItems(
+            shiftedFreshDashboard.machines,
+            DashboardScope.Machine(OTHER_MACHINE.handle),
+            DashboardSpaceSelection.All,
+        ).map(DashboardItem::key)
         val reobservedMacBook = macBookMachine.copy(
             inventory = InventoryState.Fresh(
                 macBookSnapshot.copy(
@@ -242,7 +241,7 @@ class MultiMachineUiInstrumentedTest {
         val allTopTarget = SessionTarget(TEST_MACHINE.handle, devboxSessions.first())
         val entry = DashboardEntryState(
             DashboardEntrySnapshot(
-                schemaVersion = 1,
+                schemaVersion = 2,
                 scope = DashboardScope.Machine(OTHER_MACHINE.handle),
                 viewport = DashboardViewport(
                     anchor = dashboardCardKey(restoredTarget),
@@ -252,9 +251,9 @@ class MultiMachineUiInstrumentedTest {
             ),
         )
         entry.acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
-        lateinit var measuredRegistryOwner: RegistryOwner
+        lateinit var measuredRegistryOwner: DashboardRegistryOwner
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            measuredRegistryOwner = RegistryOwner().apply { restore(null) }
+            measuredRegistryOwner = DashboardRegistryOwner().apply { restore(null) }
             entry.install(measuredRegistryOwner.savedStateRegistry)
         }
         var workspace: SkidbladnirUiState.Workspace by mutableStateOf(readingDashboard)
@@ -277,7 +276,7 @@ class MultiMachineUiInstrumentedTest {
             compose.onNodeWithTag("machine-filter-${OTHER_MACHINE.handle.encoded}")
                 .assertIsSelected()
             compose.onNodeWithTag("machine-filter-all").assertIsNotSelected()
-            compose.onNodeWithText("No tmux sessions").assertDoesNotExist()
+            compose.onNodeWithText("no sessions in this view").assertDoesNotExist()
             assertFalse(
                 "$label exposed an ordinary empty projection while restoration was pending",
                 compose.onAllNodesWithTag("EmptyStateOrnament", useUnmergedTree = true)
@@ -325,7 +324,7 @@ class MultiMachineUiInstrumentedTest {
                     compose.mainClock.advanceTimeByFrame()
                     assertMacBookFrame("Reading frame $frame")
                     compose.onNodeWithTag("sessions-grid").assertDoesNotExist()
-                    compose.onNodeWithText("Sessions not current").assertDoesNotExist()
+                    compose.onNodeWithText("no matching sessions in available inventory").assertDoesNotExist()
                     compose.onAllNodes(hasProgressSemantics(), useUnmergedTree = true)
                         .assertCountEquals(1)
                     val pendingProgress = compose.onNode(
@@ -341,10 +340,11 @@ class MultiMachineUiInstrumentedTest {
                     )
                 }
 
-                val restoredKeys = visibleSessions(
+                val restoredKeys = dashboardItems(
                     freshDashboard.machines,
-                    scope = DashboardScope.Machine(OTHER_MACHINE.handle),
-                ).map(VisibleSession::cardKey)
+                    DashboardScope.Machine(OTHER_MACHINE.handle),
+                    DashboardSpaceSelection.All,
+                ).map(DashboardItem::key)
                 compose.runOnIdle {
                     entry.restoreOnce(restoredKeys)
                     workspace = freshDashboard
@@ -549,9 +549,9 @@ class MultiMachineUiInstrumentedTest {
                 lateinit var measuredSave: Bundle
                 compose.runOnIdle { measuredSave = measuredRegistryOwner.save() }
                 lateinit var recreatedEntry: DashboardEntryState
-                lateinit var recreatedRegistryOwner: RegistryOwner
+                lateinit var recreatedRegistryOwner: DashboardRegistryOwner
                 compose.runOnIdle {
-                    recreatedRegistryOwner = RegistryOwner().apply { restore(measuredSave) }
+                    recreatedRegistryOwner = DashboardRegistryOwner().apply { restore(measuredSave) }
                     recreatedEntry = DashboardEntryState().apply {
                         install(recreatedRegistryOwner.savedStateRegistry)
                         acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
@@ -609,7 +609,7 @@ class MultiMachineUiInstrumentedTest {
                 }
                 lateinit var topResetEntry: DashboardEntryState
                 compose.runOnIdle {
-                    val topResetOwner = RegistryOwner().apply { restore(topResetSave) }
+                    val topResetOwner = DashboardRegistryOwner().apply { restore(topResetSave) }
                     topResetEntry = DashboardEntryState().apply {
                         install(topResetOwner.savedStateRegistry)
                         acceptFleet(setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle))
@@ -627,10 +627,11 @@ class MultiMachineUiInstrumentedTest {
                 macBookFilter.assertIsNotSelected()
                 compose.onNodeWithTag("sessions-grid").assertDoesNotExist()
 
-                val allKeys = visibleSessions(
+                val allKeys = dashboardItems(
                     shiftedFreshDashboard.machines,
                     DashboardScope.All,
-                ).map(VisibleSession::cardKey)
+                    DashboardSpaceSelection.All,
+                ).map(DashboardItem::key)
                 compose.runOnIdle {
                     topResetEntry.restoreOnce(allKeys)
                     workspace = shiftedFreshDashboard
@@ -647,7 +648,8 @@ class MultiMachineUiInstrumentedTest {
                 assertTrue(
                     "registry save after an uncomposed top override resurrected the old card: " +
                         "gridTop=$topResetGridTop cardTop=$allTopCard",
-                    (allTopCard - (topResetGridTop + 12.dp)).value.absoluteValue <= 1f,
+                    topResetEntry.gridState.firstVisibleItemIndex == 0 &&
+                        topResetEntry.gridState.firstVisibleItemScrollOffset == 0,
                 )
             }
         } finally {
@@ -661,7 +663,7 @@ class MultiMachineUiInstrumentedTest {
     fun dashboardEntryRegistryRoundTripsPendingAndSettledStateStrictly() =
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val pending = DashboardEntrySnapshot(
-                schemaVersion = 1,
+                schemaVersion = 2,
                 scope = DashboardScope.Machine(OTHER_MACHINE.handle),
                 viewport = DashboardViewport(
                     anchor = DashboardCardKey("a".repeat(64)),
@@ -671,40 +673,42 @@ class MultiMachineUiInstrumentedTest {
             )
             val paired = setOf(TEST_MACHINE.handle, OTHER_MACHINE.handle)
 
-            val firstOwner = RegistryOwner().apply { restore(null) }
+            val firstOwner = DashboardRegistryOwner().apply { restore(null) }
             val firstEntry = DashboardEntryState(pending)
             firstEntry.install(firstOwner.savedStateRegistry)
             firstEntry.acceptFleet(paired)
             val firstSave = firstOwner.save()
 
-            val writerInspectionOwner = RegistryOwner().apply { restore(firstOwner.save()) }
+            val writerInspectionOwner = DashboardRegistryOwner().apply { restore(firstOwner.save()) }
             val writerPayload = writerInspectionOwner.savedStateRegistry
                 .consumeRestoredStateForKey(DASHBOARD_ENTRY_REGISTRY_KEY)
             assertNotNull("the production provider did not write its registry capsule", writerPayload)
             requireNotNull(writerPayload)
             assertEquals(
-                "the writer must emit only the exact primitive v1 fields",
+                "the writer must emit only the exact primitive fields",
                 setOf(
                     "version",
                     "scopeKind",
                     "scopeMachine",
-                    "anchorLifetimeSha256",
+                    "spaceKind",
+                    "anchorKind",
+                    "anchorSha256",
                     "fallbackIndex",
                     "offsetPx",
                 ),
                 writerPayload.keySet(),
             )
-            assertEquals(1, writerPayload.getInt("version", Int.MIN_VALUE))
+            assertEquals(2, writerPayload.getInt("version", Int.MIN_VALUE))
             assertEquals("machine", writerPayload.getString("scopeKind"))
             assertEquals(OTHER_MACHINE.handle.encoded, writerPayload.getString("scopeMachine"))
             assertEquals(
-                pending.viewport.anchor?.lifetimeFingerprint,
-                writerPayload.getString("anchorLifetimeSha256"),
+                (pending.viewport.anchor as DashboardCardKey).lifetimeFingerprint,
+                writerPayload.getString("anchorSha256"),
             )
             assertEquals(17, writerPayload.getInt("fallbackIndex", Int.MIN_VALUE))
             assertEquals(29, writerPayload.getInt("offsetPx", Int.MIN_VALUE))
 
-            val restoredOwner = RegistryOwner().apply { restore(firstSave) }
+            val restoredOwner = DashboardRegistryOwner().apply { restore(firstSave) }
             val restoredEntry = DashboardEntryState()
             restoredEntry.install(restoredOwner.savedStateRegistry)
             restoredEntry.acceptFleet(paired)
@@ -724,20 +728,20 @@ class MultiMachineUiInstrumentedTest {
             )
 
             val savedAgain = restoredOwner.save()
-            val savedAgainOwner = RegistryOwner().apply { restore(savedAgain) }
+            val savedAgainOwner = DashboardRegistryOwner().apply { restore(savedAgain) }
             val savedAgainEntry = DashboardEntryState()
             savedAgainEntry.install(savedAgainOwner.savedStateRegistry)
             savedAgainEntry.acceptFleet(paired)
             assertEquals("save-again erased pending place", pending, savedAgainEntry.snapshot())
 
-            val settledOwner = RegistryOwner().apply { restore(null) }
+            val settledOwner = DashboardRegistryOwner().apply { restore(null) }
             val settledEntry = DashboardEntryState()
             settledEntry.install(settledOwner.savedStateRegistry)
             settledEntry.acceptFleet(paired)
             assertFalse("a fresh settled entry cannot be pending", settledEntry.restorationPending)
             assertEquals(FRESH_DASHBOARD_ENTRY, settledEntry.snapshot())
             val settledSave = settledOwner.save()
-            val settledRestoredOwner = RegistryOwner().apply { restore(settledSave) }
+            val settledRestoredOwner = DashboardRegistryOwner().apply { restore(settledSave) }
             val settledRestoredEntry = DashboardEntryState()
             settledRestoredEntry.install(settledRestoredOwner.savedStateRegistry)
             assertEquals(
@@ -746,14 +750,14 @@ class MultiMachineUiInstrumentedTest {
                 settledRestoredEntry.snapshot(),
             )
 
-            val absentOwner = RegistryOwner().apply { restore(null) }
+            val absentOwner = DashboardRegistryOwner().apply { restore(null) }
             val absentEntry = DashboardEntryState()
             absentEntry.install(absentOwner.savedStateRegistry)
             assertFalse(absentEntry.restorationPending)
             assertEquals(FRESH_DASHBOARD_ENTRY, absentEntry.snapshot())
 
-            val unknownOwner = RegistryOwner().apply {
-                restore(savedRegistryPayload(Bundle().apply { putInt("version", 2) }))
+            val unknownOwner = DashboardRegistryOwner().apply {
+                restore(savedRegistryPayload(Bundle().apply { putInt("version", 3) }))
             }
             val unknownEntry = DashboardEntryState()
             unknownEntry.install(unknownOwner.savedStateRegistry)
@@ -762,26 +766,32 @@ class MultiMachineUiInstrumentedTest {
 
             listOf(
                 "partial current-version machine variant" to Bundle().apply {
-                    putInt("version", 1)
+                    putInt("version", 2)
+                    putString("spaceKind", "all")
+                    putString("anchorKind", "none")
                     putString("scopeKind", "machine")
                     putInt("fallbackIndex", 0)
                     putInt("offsetPx", 0)
                 },
                 "otherwise-valid All/top variant with a legacy field" to Bundle().apply {
-                    putInt("version", 1)
+                    putInt("version", 2)
+                    putString("spaceKind", "all")
+                    putString("anchorKind", "none")
                     putString("scopeKind", "all")
                     putInt("fallbackIndex", 0)
                     putInt("offsetPx", 0)
                     putString("selectedMachine", OTHER_MACHINE.handle.encoded)
                 },
                 "otherwise-valid All/top variant with a non-Int fallback" to Bundle().apply {
-                    putInt("version", 1)
+                    putInt("version", 2)
+                    putString("spaceKind", "all")
+                    putString("anchorKind", "none")
                     putString("scopeKind", "all")
                     putString("fallbackIndex", "0")
                     putInt("offsetPx", 0)
                 },
             ).forEach { (case, malformed) ->
-                val malformedOwner = RegistryOwner().apply {
+                val malformedOwner = DashboardRegistryOwner().apply {
                     restore(savedRegistryPayload(malformed))
                 }
                 assertThrows(
@@ -847,6 +857,7 @@ class MultiMachineUiInstrumentedTest {
                                 onRestore = entry::restoreOnce,
                                 onOpen = { error("pull opened a tmux session") },
                                 onKill = { error("pull killed a tmux session") },
+                                onSpace = { error("pull edited a tmux session") },
                             )
                         }
                     }
@@ -855,9 +866,9 @@ class MultiMachineUiInstrumentedTest {
                 val retained = if (sessions.isEmpty()) {
                     compose.onNodeWithText(
                         if (machine.inventory is InventoryState.Fresh) {
-                            "No tmux sessions"
+                            "no sessions in this view"
                         } else {
-                            "Sessions not current"
+                            "no matching sessions in available inventory"
                         },
                     )
                 } else {
@@ -1919,31 +1930,12 @@ class MultiMachineUiInstrumentedTest {
     }
 
     private fun savedRegistryPayload(payload: Bundle): Bundle {
-        val owner = RegistryOwner()
+        val owner = DashboardRegistryOwner()
         owner.restore(null)
         owner.savedStateRegistry.registerSavedStateProvider(DASHBOARD_ENTRY_REGISTRY_KEY) {
             payload
         }
         return owner.save()
-    }
-
-    private class RegistryOwner : SavedStateRegistryOwner {
-        private val lifecycleRegistry = LifecycleRegistry(this)
-        private val controller = SavedStateRegistryController.create(this)
-
-        override val lifecycle: Lifecycle get() = lifecycleRegistry
-        override val savedStateRegistry: SavedStateRegistry get() = controller.savedStateRegistry
-
-        init {
-            controller.performAttach()
-        }
-
-        fun restore(savedState: Bundle?) {
-            controller.performRestore(savedState)
-            lifecycleRegistry.currentState = Lifecycle.State.CREATED
-        }
-
-        fun save(): Bundle = Bundle().also(controller::performSave)
     }
 
     private fun pull(beyondThreshold: Boolean) {
@@ -2166,7 +2158,7 @@ class MultiMachineUiInstrumentedTest {
         const val CHECKING_SESSIONS = "Checking tmux sessions"
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
         val FRESH_DASHBOARD_ENTRY = DashboardEntrySnapshot(
-            schemaVersion = 1,
+            schemaVersion = 2,
             scope = DashboardScope.All,
             viewport = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0),
         )

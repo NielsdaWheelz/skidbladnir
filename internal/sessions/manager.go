@@ -188,6 +188,10 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 		encodedObjective := base64.RawURLEncoding.EncodeToString([]byte(input.Objective))
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_objective_b64", encodedObjective)
 	}
+	if !input.Space.IsUnassigned() {
+		encodedSpace := base64.RawURLEncoding.EncodeToString([]byte(input.Space.String()))
+		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", tmuxclient.SpaceOption, encodedSpace)
+	}
 	commandArgs = append(commandArgs,
 		";", "display-message", "-p", "-t", exactName,
 		"#{"+tmuxclient.ServerEpochOption+"}|#{pid}|#{start_time}|#{session_id}")
@@ -462,6 +466,10 @@ func (manager *Manager) inspectRequired(
 
 func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
 	session := inspected.session
+	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
+	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.SpaceOption); err == nil {
+		session.Space = decodeSpaceMetadata(encoded)
+	}
 	if inspected.paneID == "" {
 		return session
 	}

@@ -8,6 +8,15 @@ acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. This document changes no source. Adopting any section into the app is a
 delta slice with its own red/green plan; §17 names the deltas.
 
+2026-09-15 accepted [spaces](spaces.md) target reuses these visual primitives for
+one compact dashboard selector, quiet full-span group headings, a literal card
+action, and a shared editor/forge field. no new palette, icon family, ornament,
+animation, or terminal chrome. space labels retain authored case and use the
+existing body/data typography, never display-face capitalisation. this target's
+source is implemented; device acceptance remains `NOT_RUN`. historical design
+proofs do not establish it. spaces owns its interaction and accessibility
+acceptance, with current delivery evidence in the roadmap.
+
 The name: *Vǫluspá* 37 places a hall of gold of Sindri's line on Niðavellir,
 the "dark fields" — the same poem whose stanzas 10–16 supply the Dvergatal
 ([Vǫluspá, literal text](https://www.voluspa.org/literal/voluspa.htm)). A hall

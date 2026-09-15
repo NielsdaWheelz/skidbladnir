@@ -15,6 +15,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"golang.org/x/term"
 )
@@ -22,7 +23,8 @@ import (
 const usage = `usage: skid [--config PATH] COMMAND [options]
 
 skid                                      open the session browser
-skid list [--machine HOST]                 list the fleet
+skid list [--machine HOST] [--space LABEL | --unassigned]
+                                          list the fleet by space
 skid info NAME                            show metadata and exact reference
 skid enter NAME                           enter terminal; ctrl-] d detaches
 skid read NAME [--terminal] [--max-bytes N] read bounded output
@@ -32,11 +34,13 @@ skid keys NAME KEY...                     send 1–16 logical keys
 skid interrupt NAME                       cancel current work, keep session
 skid stop NAME                            attempt agent halt, close session
 skid kill NAME                            close session without requesting agent halt
-skid start NAME --machine HOST --profile PROFILE [--cwd '~']
+skid start NAME --machine HOST --profile PROFILE [--cwd '~'] [--space LABEL]
+skid space NAME (--set LABEL | --clear)    assign or clear membership
 
 existing targets: use NAME [--machine HOST] or --ref VALUE
 --json: one structured envelope for noninteractive commands
 --: remaining operands are literal; --help: this guide
+browser: g chooses space; m chooses machine; e edits membership
 keys: enter escape ctrl-c up down left right tab backspace page-up page-down
 config defaults to ~/.config/skidbladnir/client.json
 shared window/pane navigation and latest-client sizing are intentional.
@@ -117,6 +121,7 @@ type command struct {
 func parse(args []string) (command, error) {
 	var result command
 	var operands []string
+	var spaceArgument, setArgument string
 	seen := map[string]bool{}
 	literal := false
 	for i := 0; i < len(args); i++ {
@@ -132,7 +137,7 @@ func parse(args []string) (command, error) {
 			}
 			seen[name] = true
 			switch name {
-			case "--json", "--stdin", "--terminal", "--help":
+			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear":
 				if hasValue {
 					return result, errors.New("boolean option takes no value")
 				}
@@ -146,7 +151,7 @@ func parse(args []string) (command, error) {
 				case "--help":
 					result.help = true
 				}
-			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes":
+			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--space", "--set":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -158,6 +163,10 @@ func parse(args []string) (command, error) {
 					return result, errors.New("empty option value")
 				}
 				switch name {
+				case "--space":
+					spaceArgument = argument
+				case "--set":
+					setArgument = argument
 				case "--config":
 					result.config = argument
 				case "--machine":
@@ -186,7 +195,7 @@ func parse(args []string) (command, error) {
 		return result, nil
 	}
 	if len(operands) == 0 {
-		if result.json || result.stdin || result.request.Machine != "" || result.request.Ref != "" || result.request.Profile != "" || result.request.CWD != "" || result.request.Mode != "" || result.request.MaxBytes != 0 {
+		if seen["--space"] || seen["--set"] || seen["--clear"] || seen["--unassigned"] || result.json || result.stdin || result.request.Machine != "" || result.request.Ref != "" || result.request.Profile != "" || result.request.CWD != "" || result.request.Mode != "" || result.request.MaxBytes != 0 {
 			return result, errors.New("missing command")
 		}
 		return result, nil
@@ -203,7 +212,7 @@ func parse(args []string) (command, error) {
 			return result, errors.New("start requires name")
 		}
 		result.request.Name = operands[0]
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill":
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space":
 		if result.request.Ref == "" {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
@@ -232,6 +241,41 @@ func parse(args []string) (command, error) {
 		}
 	default:
 		return result, errors.New("unknown command")
+	}
+	operation := result.request.Operation
+	if seen["--space"] {
+		if operation != "list" && operation != "start" || seen["--unassigned"] {
+			return result, errors.New("space option not supported")
+		}
+		label, err := space.ParseDraft(spaceArgument)
+		if err != nil || label.IsUnassigned() {
+			return result, errors.New("invalid space")
+		}
+		if operation == "list" {
+			result.request.SpaceFilter, _ = space.NamedFilter(label)
+		} else {
+			result.request.Space = label
+		}
+	}
+	if seen["--unassigned"] {
+		if operation != "list" {
+			return result, errors.New("unassigned is list-only")
+		}
+		result.request.SpaceFilter = space.UnassignedFilter()
+	}
+	if operation == "space" {
+		if seen["--set"] == seen["--clear"] {
+			return result, errors.New("choose set or clear")
+		}
+		if seen["--set"] {
+			label, err := space.ParseDraft(setArgument)
+			if err != nil || label.IsUnassigned() {
+				return result, errors.New("invalid space")
+			}
+			result.request.Space = label
+		}
+	} else if seen["--set"] || seen["--clear"] {
+		return result, errors.New("assignment option not supported")
 	}
 	if result.stdin && result.request.Operation != "send" || result.json && result.request.Operation == "enter" {
 		return result, errors.New("option not supported by command")
@@ -359,9 +403,13 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		for _, peer := range list.Peers {
 			if !peer.OK {
 				fmt.Fprintf(table, "%s\tunavailable\t\t%s\t\n", peer.Label, peer.Error.Code)
-				continue
 			}
-			for _, row := range peer.Sessions {
+		}
+		groups := fleetclient.Groups(list.Peers, space.Filter{})
+		for _, group := range groups {
+			fmt.Fprintln(table, fleetclient.SpaceHeading(group.Space))
+			for _, entry := range group.Rows {
+				row := entry.Session
 				provider, state := "shell", "—"
 				if row.Agent != nil {
 					provider = row.Agent.Provider
@@ -373,7 +421,14 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 						state += " · " + row.Agent.Status.Reason
 					}
 				}
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", peer.Label, row.Name, provider, state, row.CWD)
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", entry.Label, row.Name, provider, state, row.CWD)
+			}
+		}
+		if len(groups) == 0 {
+			if list.Partial {
+				fmt.Fprintln(table, "no matching sessions in available inventory")
+			} else {
+				fmt.Fprintln(table, "no sessions in this view")
 			}
 		}
 		if table.Flush() != nil {
@@ -390,6 +445,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 		} else {
 			row := value.Session
+			fmt.Fprintln(stdout, fleetclient.SpaceHeading(row.Space))
 			fmt.Fprintf(stdout, "session: %s\nmachine: %s\nmachine id: %s\ndirectory: %s\ncommand: %s\nattached clients: %d\n", row.Name, value.Label, value.Machine, row.CWD, row.ActiveCommand, row.AttachedClients)
 			if row.Agent == nil {
 				fmt.Fprintln(stdout, "agent: none (shell)")
@@ -422,6 +478,14 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			return 1
 		}
 		if _, err := fmt.Fprintf(stdout, "agent halt: %s; terminal: %s\n", value.Agent, value.Terminal); err != nil {
+			return 1
+		}
+	case "space":
+		text := "space assigned\n"
+		if command.request.Space.IsUnassigned() {
+			text = "space cleared\n"
+		}
+		if _, err := io.WriteString(stdout, text); err != nil {
 			return 1
 		}
 	case "kill":
