@@ -530,10 +530,10 @@ func TestRenameRequestRejectsAlternateCaseRequiredKeys(t *testing.T) {
 }
 
 func TestCreateRequestRejectsAmbiguousOrLossyJSONBeforeCWDValidation(t *testing.T) {
-	invalidUTF8 := `{"cwd":"/tmp/` + string([]byte{0xff}) + `","profile":"codex"}`
+	invalidUTF8 := `{"kind":"agent","cwd":"/tmp/` + string([]byte{0xff}) + `","profile":"codex"}`
 	for _, body := range []string{
 		`{"Cwd":"/tmp","profile":"codex"}`,
-		`{"cwd":"/tmp/\ud800","profile":"codex"}`,
+		`{"kind":"agent","cwd":"/tmp/\ud800","profile":"codex"}`,
 		invalidUTF8,
 	} {
 		request := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(body))

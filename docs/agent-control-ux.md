@@ -14,6 +14,13 @@ records verification and open acceptance. the shipped a1–a9 evidence below doe
 not prove that amendment.
 its detailed contracts supersede only the affected collection/create surfaces.
 
+2026-09-15 accepted pr 2 amendment: [shells.md](shells.md) adds standalone
+terminal creation and source-session create/attach. it owns the hard-cut launch
+schema, session-level source operation, and completion guards. source is
+implemented; [the roadmap](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
+records linux proof and open darwin/phone acceptance. provider controls and
+attachment transport retain their contracts.
+
 ## outcome and limits
 
 run `skid` on any configured linux/darwin machine: see the fleet, select a session,
@@ -50,13 +57,16 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid stop reviewer` | best-effort agent halt, then exact session closure; report both outcomes |
 | `skid kill reviewer` | close exactly this tmux session; works without an agent |
 | `skid start reviewer --machine arch --profile work [--cwd '~'] [--space label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
+| `skid start terminal-name --machine arch --terminal [--cwd '~'] [--space label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
+| `skid shell reviewer` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/space; return the new reference without attaching |
 | `skid space reviewer --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same name/machine/ref selectors; no agent required |
 
 for commands targeting an existing session, replace the name with `--ref VALUE` or add
 `--machine LABEL` to the name. these selector forms are mutually exclusive.
 `--json` works on every noninteractive command. support the shown flag placement
 and `--` for literal operands; publish complete usage in `skid --help`.
-start requires machine, name, and advertised profile. commands never infer a host
+start requires machine, name, and either advertised profile or `--terminal`.
+commands never infer a host
 from the caller's location. stdin text is exclusive with positional text, bounded
 at the existing 32 kib limit; preserve newlines. normal human reads put text on
 stdout and source/scope/truncation on stderr. no command logs prompt/output bytes.
@@ -135,11 +145,15 @@ only as visibly unavailable, with actions disabled.
 - stop/kill require one confirmation naming session, host, and effect. pin the
   reference when the action starts; refresh cannot change its target. cli commands
   are explicit actions and require no additional confirmation.
-- creation is one form: machine, its advertised profile, name, cwd, space. named
+- creation is one form: machine, launch (terminal or advertised profile), name,
+  cwd, space. terminal works with zero profiles. named
   space selection prefills visibly/editably; use the spaces contract for its
   confirmed post-create filter transition. reuse server validation and display
   errors inline. select the returned session. shell rows disable
   agent-only read/send/keys/interrupt/stop; info/enter/kill still work.
+- `t` creates a terminal from the selected session and attaches the returned
+  exact reference. use [shells.md](shells.md#4-client-ownership-and-completion)
+  for pending/late outcomes and attachment failure. direct source return is pr 3.
 - use [bubble tea](https://github.com/charmbracelet/bubbletea) v2 for input/rendering
   and one local model. no component framework or handwritten escape parser.
   attachment exclusively owns tty input/output while active; restore tui and refresh

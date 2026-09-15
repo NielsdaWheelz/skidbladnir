@@ -55,6 +55,7 @@ internal sealed interface SkidbladnirUiState {
         val kill: KillState?,
         val rename: RenameState? = null,
         val agentControlPending: Boolean = false,
+        val shellPending: Boolean = false,
     ) : Workspace
 }
 
@@ -1200,19 +1201,22 @@ internal class SkidbladnirController(
                     if (!isCredentialActive(activeGeneration, credential)) return@post
                     if (machineStates[credential.machine.handle]?.access != MachineAccess.Ready ||
                         polling[credential.machine.handle] !== runtime) return@post
-                    dashboardEntry.followCreatedMembership(result.value.space)
+                    awaitInventory(credential.machine.handle, activeGeneration)
+                    val activeForge = (state as? SkidbladnirUiState.Dashboard)?.forge
+                    if (activeForge?.pending != true || activeForge.form !== forge.form) return@post
                     enterCreatedTerminal(
                         SessionTarget(credential.machine.handle, result.value),
                         mutationFence,
                     )
-                    awaitInventory(credential.machine.handle, activeGeneration)
                 }
                 is GatewayResult.Failure -> main.post {
                     if (!isCredentialActive(activeGeneration, credential)) return@post
                     if (acceptAccessFailure(credential.machine.handle, result.failure)) return@post
+                    if (polling[credential.machine.handle] !== runtime) return@post
+                    awaitInventory(credential.machine.handle, activeGeneration)
                     val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
                     val activeForge = dashboard.forge ?: return@post
-                    awaitInventory(credential.machine.handle, activeGeneration)
+                    if (!activeForge.pending || activeForge.form !== forge.form) return@post
                     if (createFailureIsDefinitive(result.failure)) {
                         val definiteFailure = when (val failure = result.failure) {
                             GatewayFailure.Transport ->
@@ -1239,6 +1243,43 @@ internal class SkidbladnirController(
                                 checkNotNull(activeForge.form.submission()),
                             ),
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    fun newTerminalHere() {
+        val source = state as? SkidbladnirUiState.Terminal ?: return
+        if (source.shellPending || source.kill != null || source.rename != null ||
+            !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
+        val handle = source.target.machineHandle
+        val credential = credentials[handle] ?: return
+        val runtime = polling[handle] ?: return
+        val activeGeneration = generation
+        state = source.copy(shellPending = true)
+        runtime.inventoryOperation.submitMutation(
+            onReserved = { fence -> requireInventoryRefresh(handle, fence) },
+        ) { fence ->
+            val result = client.createShell(credential, source.target)
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
+                if (result is GatewayResult.Failure && acceptAccessFailure(handle, result.failure)) return@post
+                awaitInventory(handle, activeGeneration)
+                val current = state as? SkidbladnirUiState.Terminal ?: return@post
+                if (current.attempt != source.attempt || !current.shellPending ||
+                    machineStates[handle]?.access != MachineAccess.Ready) return@post
+                when (result) {
+                    is GatewayResult.Success -> enterCreatedTerminal(SessionTarget(handle, result.value), fence)
+                    is GatewayResult.Failure -> {
+                        if (createFailureIsDefinitive(result.failure)) clearInventoryRefresh(handle)
+                        else markInventoryFailed(handle, result.failure)
+                        val active = state as? SkidbladnirUiState.Terminal ?: return@post
+                        state = active.copy(shellPending = false)
+                        val message = if (createFailureIsDefinitive(result.failure)) {
+                            gatewayFailureMessage(result.failure)
+                        } else "Terminal creation outcome unknown. Inspect the session collection before creating another."
+                        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -1336,6 +1377,7 @@ internal class SkidbladnirController(
 
     private fun enterCreatedTerminal(target: SessionTarget, requiredMutationFence: Long) {
         val machine = machineStates[target.machineHandle] ?: return
+        dashboardEntry.followCreatedMembership(target.session.space)
         leaveTerminal()
         val attempt = nextTerminalAttempt++
         state = SkidbladnirUiState.Terminal(
@@ -2097,12 +2139,10 @@ internal class SkidbladnirController(
 
     private fun publishDashboardIfVisible() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val carry = forgeCarry(current)
         state = current.copy(
             machines = sortedMachineStates(),
             refreshing = awaitedInventoryReads.isActive,
-            forge = carry.forge,
-            forgeRecovery = advanceForgeRecovery(carry.recovery, machineStates.values),
+            forgeRecovery = advanceForgeRecovery(current.forgeRecovery, machineStates.values),
         )
     }
 

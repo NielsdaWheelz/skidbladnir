@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,7 +62,12 @@ func newControlHarness(t *testing.T, nativeMode string) controlHarness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = child.Process.Kill(); _ = child.Wait(); _ = terminal.Close() })
+	exited := make(chan struct{})
+	go func() {
+		_ = child.Wait() // justify-ignore-error: fixture termination intentionally kills this owned process.
+		close(exited)
+	}()
+	t.Cleanup(func() { _ = child.Process.Kill(); <-exited; _ = terminal.Close() })
 	ready := make([]byte, 1)
 	if _, err := terminal.Read(ready); err != nil {
 		t.Fatal("fixture process did not start")
@@ -601,6 +607,21 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 		if strings.Contains(strings.Join(args, " "), "kill-session -t '$1'") {
 			child, _ := os.FindProcess(state.PID)
 			_ = child.Kill()
+			// Signal delivery does not prove exit. This fixture promises a
+			// completed closure; its parent owns the sole Wait and reaps promptly.
+			deadline := time.Now().Add(time.Second)
+			for {
+				_, err := processinfo.Observe(processinfo.PID(state.PID))
+				if errors.Is(err, processinfo.ErrProcessAbsent) {
+					break
+				}
+				if time.Now().After(deadline) {
+					os.Exit(69)
+				}
+				// justify-polling: the external fixture reports closure only
+				// after the kernel no longer exposes its test-owned process.
+				time.Sleep(time.Millisecond)
+			}
 			state.Exists = false
 			write()
 		} else {

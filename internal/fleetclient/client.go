@@ -89,22 +89,17 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			cwd = "~"
 		}
 		body, _ := json.Marshal(struct {
-			CWD     string `json:"cwd"`
-			Profile string `json:"profile"`
-			Name    string `json:"optionalTmuxName"`
-			Space   string `json:"space,omitempty"`
-		}{cwd, request.Profile, request.Name, request.Space.String()})
+			Kind    LaunchKind `json:"kind"`
+			CWD     string     `json:"cwd"`
+			Profile string     `json:"profile,omitempty"`
+			Name    string     `json:"optionalTmuxName"`
+			Space   string     `json:"space,omitempty"`
+		}{request.Kind, cwd, request.Profile, request.Name, request.Space.String()})
 		if len(body) > MaximumInputBytes {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, "start", "/v1/sessions", body)
-		if result.OK {
-			var created hostObservedSession
-			if json.Unmarshal(result.Value, &created) != nil {
-				return Failed("protocol_error", "unknown")
-			}
-			result = success(ObservedSession{Label: selected.Label, Machine: selected.Machine, ObservedAt: created.ObservedAt, Session: created.Session.project(selected.Machine)})
-		}
+		result = creationResult(selected, result)
 	default:
 		ref, observed, failure := client.resolve(ctx, request)
 		if failure != nil {
@@ -123,7 +118,9 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		}
 		body := map[string]any{"identityToken": ref.IdentityToken}
 		path := "/v1/sessions/" + ref.TmuxID
-		if request.Operation == "space" {
+		if request.Operation == "shell" {
+			path += "/shell"
+		} else if request.Operation == "space" {
 			body["space"] = request.Space.String()
 			path += "/space"
 		} else if request.Operation == "kill" {
@@ -161,6 +158,9 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, request.Operation, path, encoded)
+		if request.Operation == "shell" {
+			result = creationResult(selected, result)
+		}
 		if result.OK && request.Operation == "space" {
 			result = success(struct {
 				Space string `json:"space"`
@@ -169,12 +169,23 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "space" {
+		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "space" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
 	}
 	return result
+}
+
+func creationResult(selected peer, result Result) Result {
+	if !result.OK {
+		return result
+	}
+	var created hostObservedSession
+	if json.Unmarshal(result.Value, &created) != nil {
+		return Failed("protocol_error", "unknown")
+	}
+	return success(ObservedSession{Label: selected.Label, Machine: selected.Machine, ObservedAt: created.ObservedAt, Session: created.Session.project(selected.Machine)})
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {
@@ -412,7 +423,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 		return Failed("protocol_error", dispatch)
 	}
 	expected := http.StatusOK
-	if operation == "start" {
+	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
 	if operation == "kill" || operation == "space" {
@@ -420,8 +431,8 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	}
 	if response.StatusCode != expected {
 		var failure *Failure
-		if operation == "space" {
-			failure = decodeSpaceFailure(encoded, response.StatusCode)
+		if operation == "space" || operation == "start" || operation == "shell" {
+			failure = decodeMutationFailure(operation, encoded, response.StatusCode)
 		} else {
 			failure = decodeFailure(encoded, dispatch)
 		}

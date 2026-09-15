@@ -67,9 +67,9 @@ class SpacesTest {
 
     @Test
     fun `create accepts the space validation error contract and emits omission or canonical label`() {
-        val failure = decodeCreateHttpFailure(422, """{"code":"SpaceInvalid","message":"use 1–64 nfc characters; only interior ordinary spaces, without display controls."}""")
+        val failure = decodeCreateHttpFailure(422, """{"code":"SpaceInvalid","message":"use 1–64 nfc characters; only interior ordinary spaces, without display controls.","dispatch":"not_sent"}""")
         assertTrue("validation copy", gatewayFailureMessage(failure) == SPACE_INVALID)
-        val form = ForgeForm(machine.handle, "~", profile, "", "", SpaceDraft.Chosen("e\u0301"))
+        val form = ForgeForm(machine.handle, "~", LaunchChoice.Agent(profile), "", "", SpaceDraft.Chosen("e\u0301"))
         val draft = requireNotNull(form.submission())
         assertTrue("normalized creation field", strictJsonObject(encodeCreateSessionRequest(draft))["space"].toString() == "\"é\"")
         assertFalse(strictJsonObject(encodeCreateSessionRequest(draft.copy(space = null))).containsKey("space"))
@@ -78,7 +78,7 @@ class SpacesTest {
         val changed = changeForgeDraft(form, form.copy(machineHandle = other.handle))
         assertTrue("machine preserves label draft", changed.space == form.space)
         assertTrue("machine clears working directory", changed.cwd.isEmpty())
-        assertNull(changed.profile)
+        assertNull(changed.launch)
     }
 
     @Test

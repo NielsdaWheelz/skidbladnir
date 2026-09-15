@@ -29,7 +29,7 @@ import (
 func TestSpacesAuthenticatedMembershipPreservesSessionLifetime(t *testing.T) {
 	fixture := newSessionFixture(t)
 	server, bearer := newMachineGateway(t, fixture, integrationMachineText)
-	createBody := spaceJSON(t, map[string]string{"cwd": fixture.project, "profile": "personal", "optionalTmuxName": "space-source", "space": "alpha"})
+	createBody := spaceJSON(t, map[string]string{"kind": "agent", "cwd": fixture.project, "profile": "personal", "optionalTmuxName": "space-source", "space": "alpha"})
 	response := request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "", createBody)
 	assertStatus(t, response, http.StatusCreated)
 	created := decodeObject(t, response)["session"].(map[string]any)
@@ -185,7 +185,7 @@ func TestSpacesAuthenticatedMembershipPreservesSessionLifetime(t *testing.T) {
 		assertStatus(t, response, want)
 		response.Body.Close()
 	}
-	unassignedBody := spaceJSON(t, map[string]string{"cwd": fixture.project, "profile": "personal", "optionalTmuxName": "space-unassigned"})
+	unassignedBody := spaceJSON(t, map[string]string{"kind": "agent", "cwd": fixture.project, "profile": "personal", "optionalTmuxName": "space-unassigned"})
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "", unassignedBody)
 	assertStatus(t, response, http.StatusCreated)
 	if _, present := decodeObject(t, response)["session"].(map[string]any)["space"]; present {
@@ -245,7 +245,7 @@ func TestSpacesLostCommandCompletionStaysUnknown(t *testing.T) {
 	for _, mode := range []string{"lost completion", "vanished after dispatch", "failed required read"} {
 		t.Run(mode, func(t *testing.T) {
 			fixture := newSessionFixture(t)
-			created, err := fixture.manager.Create(context.Background(), sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-uncertain"})
+			created, err := fixture.manager.Create(context.Background(), sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-uncertain"})
 			if err != nil {
 				t.Fatal("create uncertainty fixture")
 			}
@@ -322,7 +322,7 @@ func TestSpacesRejectRecycledSessionIDAfterServerRestart(t *testing.T) {
 			t.Error("clean exact restart session")
 		}
 	})
-	first, err := manager.Create(context.Background(), sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-recycled"})
+	first, err := manager.Create(context.Background(), sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-recycled"})
 	if err != nil {
 		t.Fatal("create original server lifetime")
 	}
@@ -333,7 +333,7 @@ func TestSpacesRejectRecycledSessionIDAfterServerRestart(t *testing.T) {
 	}
 	cleanup = nil
 	waitForTerminalCondition(t, "original test server exits", func() bool { return processStartIdentity(oldServer.pid) != oldServer.kernelStartTime })
-	second, err := manager.Create(context.Background(), sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-recycled"})
+	second, err := manager.Create(context.Background(), sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "space-recycled"})
 	if err != nil {
 		t.Fatal("create replacement server lifetime")
 	}
@@ -439,7 +439,7 @@ func TestSpacesRealFleetClientAndCLIComposeTwoHosts(t *testing.T) {
 	}
 	var createdRefs []string
 	for index, machine := range []string{"arch", "second"} {
-		result := client.Execute(context.Background(), fleetclient.Request{Operation: "start", Machine: machine, Name: "space-client", Profile: "personal", CWD: "~", Space: label})
+		result := client.Execute(context.Background(), fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: machine, Name: "space-client", Profile: "personal", CWD: "~", Space: label})
 		if !result.OK {
 			t.Fatalf("real fleet create failed: host=%d", index)
 		}

@@ -137,15 +137,15 @@ class ProductContractTest {
     @Test
     fun `forge request uses the hard-cut optional tmux name`() {
         val emptyOptional = encodeCreateSessionRequest(
-            ForgeDraft(machineHandle, cwd = "~/src", profile = workProfile, optionalTmuxName = "", objective = ""),
+            ForgeDraft(machineHandle, cwd = "~/src", launch = LaunchChoice.Agent(workProfile), optionalTmuxName = "", objective = ""),
         )
         val invalidDraft = encodeCreateSessionRequest(
-            ForgeDraft(machineHandle, cwd = "~/src", profile = workProfile, optionalTmuxName = "bad name", objective = "\u001b"),
+            ForgeDraft(machineHandle, cwd = "~/src", launch = LaunchChoice.Agent(workProfile), optionalTmuxName = "bad name", objective = "\u001b"),
         )
 
-        assertEquals("{\"cwd\":\"~/src\",\"profile\":\"work\"}", emptyOptional)
+        assertEquals("{\"kind\":\"agent\",\"cwd\":\"~/src\",\"profile\":\"work\"}", emptyOptional)
         assertEquals(
-            "{\"cwd\":\"~/src\",\"profile\":\"work\",\"optionalTmuxName\":\"bad name\",\"objective\":\"\\u001b\"}",
+            "{\"kind\":\"agent\",\"cwd\":\"~/src\",\"profile\":\"work\",\"optionalTmuxName\":\"bad name\",\"objective\":\"\\u001b\"}",
             invalidDraft,
         )
     }
@@ -279,7 +279,7 @@ class ProductContractTest {
 
     @Test
     fun `mutation failures distinguish rejection from unknown outcome`() {
-        assertTrue(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionNameConflict)))
+        assertTrue(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionNameConflict, MutationDispatch.NotSent)))
         assertFalse(createFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.InternalError)))
         assertFalse(createFailureIsDefinitive(GatewayFailure.Transport))
         assertTrue(killFailureIsDefinitive(GatewayFailure.Api(ApiErrorCode.SessionIdentityMismatch)))
@@ -302,7 +302,7 @@ class ProductContractTest {
         val draft = ForgeDraft(
             machineHandle = machineHandle,
             cwd = "bad relative directory",
-            profile = personalProfile,
+            launch = LaunchChoice.Agent(personalProfile),
             optionalTmuxName = "bad name",
             objective = "Inspect the forge",
         )

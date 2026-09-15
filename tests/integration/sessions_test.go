@@ -274,7 +274,7 @@ exec %s -S "$expected_root/owned-default.sock" "$@"
 	if err != nil {
 		t.Fatalf("construct default-socket manager: %v", err)
 	}
-	if _, err := manager.Create(context.Background(), sessions.CreateInput{CWD: project, Profile: "personal"}); err != nil {
+	if _, err := manager.Create(context.Background(), sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: project, Profile: "personal"}); err != nil {
 		t.Fatalf("create through ordinary default tmux invocation: %v", err)
 	}
 	serverIdentity := captureTestTmuxServer(t, tmuxPath, socketPath)
@@ -380,19 +380,19 @@ func TestSessionManagerAgainstRealTmux(t *testing.T) {
 			input sessions.CreateInput
 			code  sessions.ErrorCode
 		}{
-			{name: "relative cwd", input: sessions.CreateInput{CWD: "relative", Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
-			{name: "invalid UTF-8 cwd", input: sessions.CreateInput{CWD: string([]byte{0xff}), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
-			{name: "control in cwd", input: sessions.CreateInput{CWD: fixture.root + "\nelsewhere", Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
-			{name: "oversized cwd", input: sessions.CreateInput{CWD: "/" + strings.Repeat("a", 4096), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
-			{name: "missing cwd", input: sessions.CreateInput{CWD: filepath.Join(fixture.root, "missing"), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
-			{name: "file cwd", input: sessions.CreateInput{CWD: file, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
-			{name: "unsearchable cwd", input: sessions.CreateInput{CWD: unsearchable, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
-			{name: "unknown profile", input: sessions.CreateInput{CWD: fixture.project, Profile: "other"}, code: sessions.ErrorProfileUnknown},
-			{name: "unsafe name", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "unsafe:name"}, code: sessions.ErrorSessionNameInvalid},
-			{name: "non-NFC objective", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "e\u0301"}, code: sessions.ErrorObjectiveInvalid},
-			{name: "objective control", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "inspect\u2028later"}, code: sessions.ErrorObjectiveInvalid},
-			{name: "objective bidi isolate", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: "inspect\u2066later"}, code: sessions.ErrorObjectiveInvalid},
-			{name: "oversized objective", input: sessions.CreateInput{CWD: fixture.project, Profile: "personal", Objective: strings.Repeat("x", 241)}, code: sessions.ErrorObjectiveInvalid},
+			{name: "relative cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: "relative", Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
+			{name: "invalid UTF-8 cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: string([]byte{0xff}), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
+			{name: "control in cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.root + "\nelsewhere", Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
+			{name: "oversized cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: "/" + strings.Repeat("a", 4096), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryInvalid},
+			{name: "missing cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: filepath.Join(fixture.root, "missing"), Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
+			{name: "file cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: file, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
+			{name: "unsearchable cwd", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: unsearchable, Profile: "personal"}, code: sessions.ErrorWorkingDirectoryUnavailable},
+			{name: "unknown profile", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "other"}, code: sessions.ErrorProfileUnknown},
+			{name: "unsafe name", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "unsafe:name"}, code: sessions.ErrorSessionNameInvalid},
+			{name: "non-NFC objective", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", Objective: "e\u0301"}, code: sessions.ErrorObjectiveInvalid},
+			{name: "objective control", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", Objective: "inspect\u2028later"}, code: sessions.ErrorObjectiveInvalid},
+			{name: "objective bidi isolate", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", Objective: "inspect\u2066later"}, code: sessions.ErrorObjectiveInvalid},
+			{name: "oversized objective", input: sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", Objective: strings.Repeat("x", 241)}, code: sessions.ErrorObjectiveInvalid},
 		}
 
 		for _, test := range cases {
@@ -462,13 +462,15 @@ exec %s "$@"
 		if err != nil {
 			t.Fatal("construct collision manager")
 		}
-		_, err = manager.Create(ctx, sessions.CreateInput{
+		_, err = manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 			CWD:              fixture.project,
 			Profile:          "personal",
 			OptionalTmuxName: collisionName,
 			Objective:        "must not land",
 		})
-		assertSessionError(t, err, sessions.ErrorSessionNameConflict)
+		if !errors.Is(err, sessions.ErrCreateDispatchUnknown) {
+			t.Fatal("command-boundary collision did not preserve creation uncertainty")
+		}
 
 		beforeBytes, err := os.ReadFile(identity)
 		if err != nil {
@@ -1028,7 +1030,7 @@ exec %s "$@"
 			}
 			return observed.Session
 		}
-		firstObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{
+		firstObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 			CWD:       "~/project with spaces",
 			Profile:   "personal",
 			Objective: "Inspect Ω",
@@ -1038,25 +1040,25 @@ exec %s "$@"
 		}
 		first := requireObservedCreate("first generated", firstObserved)
 		requireCreatedLeastUsed("first generated", first)
-		secondObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work"})
+		secondObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "work"})
 		if err != nil {
 			t.Fatalf("create second generated session: %v", err)
 		}
 		second := requireObservedCreate("second generated", secondObserved)
 		requireCreatedLeastUsed("second generated", second)
-		thirdObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work2"})
+		thirdObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "work2"})
 		if err != nil {
 			t.Fatalf("create generated session beyond catalogue base names: %v", err)
 		}
 		third := requireObservedCreate("third generated", thirdObserved)
 		requireCreatedLeastUsed("third generated", third)
-		customObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "hand_named"})
+		customObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "hand_named"})
 		if err != nil {
 			t.Fatalf("create custom named session: %v", err)
 		}
 		custom := requireObservedCreate("custom named", customObserved)
 		requireCreatedLeastUsed("custom named", custom)
-		claudeObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "claude-work"})
+		claudeObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "claude-work"})
 		if err != nil {
 			t.Fatalf("create Claude work session: %v", err)
 		}
@@ -1128,12 +1130,12 @@ exec %s "$@"
 	})
 
 	t.Run("kill rechecks exact id and tmux name", func(t *testing.T) {
-		victimObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "personal", OptionalTmuxName: "kill_victim"})
+		victimObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "personal", OptionalTmuxName: "kill_victim"})
 		if err != nil {
 			t.Fatal("create kill victim")
 		}
 		victim := victimObserved.Session
-		survivorObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{CWD: fixture.project, Profile: "work", OptionalTmuxName: "kill_survivor"})
+		survivorObserved, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: fixture.project, Profile: "work", OptionalTmuxName: "kill_survivor"})
 		if err != nil {
 			t.Fatal("create kill survivor")
 		}
@@ -1258,7 +1260,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 		}
 	})
 
-	firstObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "claude-work", OptionalTmuxName: "epoch-reuse"})
+	firstObserved, err := manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: project, Profile: "claude-work", OptionalTmuxName: "epoch-reuse"})
 	if err != nil {
 		t.Fatal("create first lifetime fixture")
 	}
@@ -1324,7 +1326,7 @@ func TestStaleLifetimeTokenCannotKillRecycledSession(t *testing.T) {
 	}
 	cleanup = nil
 
-	secondObserved, err := manager.Create(ctx, sessions.CreateInput{CWD: project, Profile: "claude-work", OptionalTmuxName: first.TmuxName})
+	secondObserved, err := manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent, CWD: project, Profile: "claude-work", OptionalTmuxName: first.TmuxName})
 	if err != nil {
 		t.Fatal("recreate lifetime fixture")
 	}

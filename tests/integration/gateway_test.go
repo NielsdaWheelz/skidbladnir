@@ -106,7 +106,7 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 		disappearingName = "rename-disappearing"
 	)
 
-	createdTarget, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	createdTarget, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD:              fixture.project,
 		Profile:          "claude-work",
 		OptionalTmuxName: sourceName,
@@ -122,7 +122,7 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 	if createdTarget.Session.TmuxID != target.TmuxID || createdTarget.Session.IdentityToken != target.IdentityToken {
 		t.Fatal("rename target changed identity while its provider runtime converged")
 	}
-	if _, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	if _, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: fixture.project, Profile: "personal", OptionalTmuxName: collisionName,
 	}); err != nil {
 		t.Fatal("create rename collision fixture")
@@ -233,13 +233,13 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 		t.Fatal("a rejected rename mutated the exact target")
 	}
 
-	createdClassificationSource, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	createdClassificationSource, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: fixture.project, Profile: "personal", OptionalTmuxName: "rename-classify-source",
 	})
 	if err != nil {
 		t.Fatal("create rename classification source")
 	}
-	createdClassificationDestination, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	createdClassificationDestination, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: fixture.project, Profile: "personal", OptionalTmuxName: "rename-classify-occupied",
 	})
 	if err != nil {
@@ -288,7 +288,7 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 		t.Fatal("rename classification race did not preserve the externally renamed source identity")
 	}
 
-	createdDisappearing, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	createdDisappearing, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: fixture.project, Profile: "personal", OptionalTmuxName: disappearingName,
 	})
 	if err != nil {
@@ -335,7 +335,7 @@ func TestAuthenticatedGatewayRenamesExactSessionInPlace(t *testing.T) {
 		t.Fatal("same-source rename race changed non-name target facts")
 	}
 
-	createdRival, err := fixture.manager.Create(ctx, sessions.CreateInput{
+	createdRival, err := fixture.manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: fixture.project, Profile: "personal", OptionalTmuxName: rivalName,
 	})
 	if err != nil {
@@ -466,7 +466,7 @@ func assertGatewayRenameRejectsRestartedLifetime(t *testing.T) {
 	})
 
 	const recycledName = "rename-restarted"
-	createdFirst, err := manager.Create(ctx, sessions.CreateInput{
+	createdFirst, err := manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: project, Profile: "personal", OptionalTmuxName: recycledName,
 	})
 	if err != nil {
@@ -507,7 +507,7 @@ func assertGatewayRenameRejectsRestartedLifetime(t *testing.T) {
 		time.Sleep(tmuxConvergencePollInterval)
 	}
 
-	createdSecond, err := manager.Create(ctx, sessions.CreateInput{
+	createdSecond, err := manager.Create(ctx, sessions.CreateInput{Kind: sessions.LaunchAgent,
 		CWD: project, Profile: "personal", OptionalTmuxName: recycledName,
 	})
 	if err != nil {
@@ -873,32 +873,32 @@ exec "$tmux_real" "$@"
 	}
 
 	before := len(inventory["sessions"].([]any))
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"/definitely/not/a/skidbladnir/directory","profile":"personal"}`)
-	assertError(t, response, http.StatusUnprocessableEntity, "WorkingDirectoryUnavailable")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"not-allowlisted"}`)
-	assertError(t, response, http.StatusUnprocessableEntity, "ProfileUnknown")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"/definitely/not/a/skidbladnir/directory","profile":"personal"}`)
+	assertCreationError(t, response, http.StatusUnprocessableEntity, "WorkingDirectoryUnavailable")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"not-allowlisted"}`)
+	assertCreationError(t, response, http.StatusUnprocessableEntity, "ProfileUnknown")
 	response = request(t, server.Client(), http.MethodGet, server.URL+"/v1/sessions", bearer, "niels@example.test", "")
 	assertStatus(t, response, http.StatusOK)
 	if got := len(decodeObject(t, response)["sessions"].([]any)); got != before {
 		t.Fatalf("rejected creates changed tmux inventory: before=%d after=%d", before, got)
 	}
 
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","unknown":true}`)
-	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal"} {}`)
-	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"profile":"personal"}`)
-	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":null}`)
-	assertError(t, response, http.StatusBadRequest, "InvalidRequest")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":""}`)
-	assertError(t, response, http.StatusUnprocessableEntity, "SessionNameInvalid")
-	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"cwd":"`+testRoot+`","profile":"personal","objective":""}`)
-	assertError(t, response, http.StatusUnprocessableEntity, "ObjectiveInvalid")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"personal","unknown":true}`)
+	assertCreationError(t, response, http.StatusBadRequest, "InvalidRequest")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"personal"} {}`)
+	assertCreationError(t, response, http.StatusBadRequest, "InvalidRequest")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","profile":"personal"}`)
+	assertCreationError(t, response, http.StatusBadRequest, "InvalidRequest")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":null}`)
+	assertCreationError(t, response, http.StatusBadRequest, "InvalidRequest")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"personal","optionalTmuxName":""}`)
+	assertCreationError(t, response, http.StatusUnprocessableEntity, "SessionNameInvalid")
+	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", `{"kind":"agent","cwd":"`+testRoot+`","profile":"personal","objective":""}`)
+	assertCreationError(t, response, http.StatusUnprocessableEntity, "ObjectiveInvalid")
 	response = request(t, server.Client(), http.MethodPost, server.URL+"/v1/sessions", bearer, "niels@example.test", strings.Repeat("x", int(gateway.MaximumBodyBytes)+1))
-	assertError(t, response, http.StatusRequestEntityTooLarge, "RequestTooLarge")
+	assertCreationError(t, response, http.StatusRequestEntityTooLarge, "RequestTooLarge")
 
-	createBody, err := json.Marshal(map[string]string{"cwd": testRoot, "profile": "claude-work", "optionalTmuxName": "gateway-test", "objective": "Prove the control plane"})
+	createBody, err := json.Marshal(map[string]string{"kind": "agent", "cwd": testRoot, "profile": "claude-work", "optionalTmuxName": "gateway-test", "objective": "Prove the control plane"})
 	if err != nil {
 		t.Fatalf("encode create request: %v", err)
 	}
@@ -1568,6 +1568,16 @@ func assertStatus(t *testing.T, response *http.Response, want int) {
 
 func assertError(t *testing.T, response *http.Response, status int, code string) {
 	t.Helper()
+	assertErrorContract(t, response, status, code, "")
+}
+
+func assertCreationError(t *testing.T, response *http.Response, status int, code string) {
+	t.Helper()
+	assertErrorContract(t, response, status, code, "not_sent")
+}
+
+func assertErrorContract(t *testing.T, response *http.Response, status int, code, dispatch string) {
+	t.Helper()
 	assertStatus(t, response, status)
 	body := decodeObject(t, response)
 	messages := map[string]string{
@@ -1587,7 +1597,14 @@ func assertError(t *testing.T, response *http.Response, status int, code string)
 	if !found {
 		t.Fatalf("test has no literal message for error code %s", code)
 	}
-	if len(body) != 2 || body["code"] != code || body["message"] != wantMessage {
+	wantFields := 2
+	if dispatch != "" {
+		wantFields++
+		if body["dispatch"] != dispatch {
+			t.Fatal("error response dispatch did not match exact contract")
+		}
+	}
+	if len(body) != wantFields || body["code"] != code || body["message"] != wantMessage {
 		t.Fatalf(
 			"error response did not match exact contract: field_count=%d code_match=%t message_match=%t",
 			len(body),
@@ -1645,6 +1662,7 @@ type sessionCardResponse struct {
 	LaunchProfile   string                   `json:"launchProfile,omitempty"`
 	Agent           *sessionAgentResponse    `json:"agent,omitempty"`
 	Objective       string                   `json:"objective,omitempty"`
+	Space           string                   `json:"space,omitempty"`
 	CWD             string                   `json:"cwd,omitempty"`
 	ActiveCommand   string                   `json:"activeCommand,omitempty"`
 	AttachedClients int                      `json:"attachedClients"`

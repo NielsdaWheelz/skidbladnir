@@ -109,6 +109,7 @@ func TestCreatedSelectionSurvivesEarlierInventoryCompletion(t *testing.T) {
 	m.refreshing = true
 	created := row("created", "$2", 22)
 	encoded, _ := json.Marshal(fleetclient.ObservedSession{Label: "arch", Machine: "mh-11111111111111111111111111111111", Session: created})
+	m.page, m.busy, m.pending = "create", true, fleetclient.Request{Operation: "start"}
 	m.Update(actionMsg{operation: "start", result: fleetclient.Result{OK: true, Value: encoded}})
 	_, refresh := m.Update(observation(row("existing", "$1", 11)))
 	if refresh == nil || m.selectedRow() == nil || m.selectedRow().session.Name != "created" {

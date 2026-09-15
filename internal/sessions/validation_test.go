@@ -75,7 +75,8 @@ esac
 	}
 
 	_, createErr := manager.Create(context.Background(), CreateInput{
-		CWD: cwd, Profile: "personal", OptionalTmuxName: "revalidation-test",
+		Kind: LaunchAgent,
+		CWD:  cwd, Profile: "personal", OptionalTmuxName: "revalidation-test",
 	})
 	var sessionError *Error
 	invokedCreate := false

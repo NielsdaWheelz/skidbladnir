@@ -12,12 +12,20 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
+type LaunchKind string
+
+const (
+	LaunchAgent    LaunchKind = "agent"
+	LaunchTerminal LaunchKind = "terminal"
+)
+
 // Request is shared by command parsing and the session browser. It is never a wire DTO.
 type Request struct {
 	Operation   string
 	Name        string
 	Machine     string
 	Ref         string
+	Kind        LaunchKind
 	Profile     string
 	CWD         string
 	Text        string
@@ -95,15 +103,16 @@ func (request Request) Valid() bool {
 	if request.Operation != "send" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
 		return false
 	}
-	if request.Operation != "start" && (request.Profile != "" || request.CWD != "") {
+	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" || request.CWD != "") {
 		return false
 	}
 	switch request.Operation {
 	case "list":
 		return request.Name == "" && request.Ref == ""
 	case "start":
-		return request.Name != "" && request.Machine != "" && request.Profile != "" && request.Ref == ""
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space":
+		return request.Name != "" && request.Machine != "" && request.Ref == "" &&
+			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space", "shell":
 	default:
 		return false
 	}

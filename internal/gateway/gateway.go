@@ -37,6 +37,7 @@ type sessionManager interface {
 	Profiles() []agentruntime.Profile
 	List(context.Context) (sessions.Inventory, error)
 	Create(context.Context, sessions.CreateInput) (sessions.ObservedSession, error)
+	CreateShell(context.Context, sessions.ShellInput) (sessions.ObservedSession, error)
 	Rename(context.Context, sessions.RenameInput) error
 	SetSpace(context.Context, sessions.SetSpaceInput) error
 	ValidateKill(context.Context, sessions.KillInput) error
@@ -117,7 +118,8 @@ func New(config Config) *Gateway {
 
 func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
-	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space") {
+	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space") ||
+		request.Method == http.MethodPost && (request.URL.Path == "/v1/sessions" || strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/shell")) {
 		tracked.errorDispatch = "not_sent"
 	}
 	startedAt := time.Now()
@@ -188,6 +190,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	}
 
 	switch {
+	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/shell"):
+		gateway.createShell(writer, request)
 	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space"):
 		gateway.setSessionSpace(writer, request)
 	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
@@ -450,7 +454,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, *failure)
 		return
 	}
-	if !input.CWD.present || !input.Profile.present {
+	if !input.CWD.present {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -476,24 +480,57 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		return
 	}
 	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
+		Kind:             input.Kind,
 		CWD:              input.CWD.value,
 		Profile:          input.Profile.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
 		Space:            label,
 	})
+	gateway.completeCreation(writer, created, err, startedAt)
+}
+
+func (gateway *Gateway) createShell(writer http.ResponseWriter, request *http.Request) {
+	startedAt := time.Now()
+	id, valid := parseSessionPath(strings.TrimSuffix(request.URL.Path, "/shell"))
+	if !valid {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	input, failure := decodeJSON[shellSessionRequest](writer, request)
+	if failure != nil {
+		writeError(writer, *failure)
+		return
+	}
+	if input.IdentityToken.value == "" {
+		writeError(writer, errorInvalidRequest)
+		return
+	}
+	created, err := gateway.sessions.CreateShell(request.Context(), sessions.ShellInput{TmuxID: id, IdentityToken: input.IdentityToken.value})
+	gateway.completeCreation(writer, created, err, startedAt)
+}
+
+func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created sessions.ObservedSession, err error, startedAt time.Time) {
+	if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
+		failure := errorInternal
+		failure.Dispatch = "unknown"
+		writeError(writer, failure)
+		return
+	}
 	if err != nil {
 		writeSessionError(writer, err)
 		return
 	}
 	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
 	if err != nil {
-		writeError(writer, errorInternal)
+		failure := errorInternal
+		failure.Dispatch = "unknown"
+		writeError(writer, failure)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.TmuxName, agentruntime.ProfileKey(input.Profile.value), time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.TmuxName, created.Session.LaunchProfile, time.Since(startedAt))
 	if eventErr != nil {
-		panic("invalid session-created log event") // justify-defect: Create validated the profile key and tmux minted the id and name.
+		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusCreated, response)
@@ -779,6 +816,8 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteDirectoryListings
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
 		return logging.RouteAgentControl
+	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):
+		return logging.RouteSessionShell
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/space"):
 		return logging.RouteSessionSpace
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):

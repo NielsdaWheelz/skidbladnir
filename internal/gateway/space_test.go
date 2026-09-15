@@ -14,7 +14,7 @@ import (
 )
 
 func TestSpaceCreateIngressAcceptsOptionalCanonicalLabel(t *testing.T) {
-	request := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"cwd":"/src","profile":"work","space":"alpha"}`))
+	request := httptest.NewRequest(http.MethodPost, "/v1/sessions", strings.NewReader(`{"kind":"agent","cwd":"/src","profile":"work","space":"alpha"}`))
 	request.Header.Set("Content-Type", "application/json")
 	_, failure := decodeJSON[createSessionRequest](httptest.NewRecorder(), request)
 	if failure != nil {

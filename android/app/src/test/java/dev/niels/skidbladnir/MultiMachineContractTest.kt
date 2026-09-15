@@ -389,7 +389,7 @@ class MultiMachineContractTest {
         val form = ForgeForm(
             machineHandle = devboxHandle,
             cwd = "/home/niels/src/skidbladnir",
-            profile = personal,
+            launch = LaunchChoice.Agent(personal),
             optionalTmuxName = "forge-review",
             objective = "Review the federation",
         )
@@ -397,14 +397,14 @@ class MultiMachineContractTest {
         val changed = changeForgeDraft(form, form.copy(machineHandle = macBookHandle))
         assertEquals(macBookHandle, changed.machineHandle)
         assertTrue(changed.cwd.isEmpty())
-        assertNull(changed.profile)
+        assertNull(changed.launch)
         assertEquals("forge-review", changed.optionalTmuxName)
         assertTrue(changed.objective == "Review the federation")
         assertEquals("Create on MacBook", forgeActionLabel(macBook.label))
 
         val typed = changeForgeDraft(form, form.copy(cwd = "/src/other"))
         assertEquals("/src/other", typed.cwd)
-        assertEquals(personal, typed.profile)
+        assertEquals(LaunchChoice.Agent(personal), typed.launch)
     }
 
     @Test
@@ -412,7 +412,7 @@ class MultiMachineContractTest {
         val empty = ForgeForm(
             machineHandle = null,
             cwd = "",
-            profile = null,
+            launch = null,
             optionalTmuxName = "preserved-name",
             objective = "preserved objective",
         )
@@ -420,15 +420,15 @@ class MultiMachineContractTest {
 
         val machineChosen = changeForgeDraft(empty, empty.copy(machineHandle = devboxHandle))
         assertEquals(devboxHandle, machineChosen.machineHandle)
-        assertNull("choosing a machine must never arm a profile", machineChosen.profile)
+        assertNull("choosing a machine must never arm a profile", machineChosen.launch)
         assertNull("a machine alone cannot submit", machineChosen.submission())
 
-        val profileChosen = changeForgeDraft(machineChosen, machineChosen.copy(profile = personal))
+        val profileChosen = changeForgeDraft(machineChosen, machineChosen.copy(launch = LaunchChoice.Agent(personal)))
         assertNull("a profile without a working directory cannot submit", profileChosen.submission())
 
         val ready = changeForgeDraft(profileChosen, profileChosen.copy(cwd = "/src"))
         assertEquals(
-            ForgeDraft(devboxHandle, "/src", personal, "preserved-name", "preserved objective"),
+            ForgeDraft(devboxHandle, "/src", LaunchChoice.Agent(personal), "preserved-name", "preserved objective"),
             ready.submission(),
         )
     }
@@ -438,7 +438,7 @@ class MultiMachineContractTest {
         val recoveryDraft = ForgeDraft(
             machineHandle = devboxHandle,
             cwd = "/home/niels/src/skidbladnir",
-            profile = personal,
+            launch = LaunchChoice.Agent(personal),
             optionalTmuxName = "recovered-agent",
             objective = "Preserve the explicit target",
         )
@@ -703,7 +703,7 @@ class MultiMachineContractTest {
     @Test
     fun `Dashboard mutation access loss clears pending controls and focuses recovery`() {
         val target = SessionTarget(devboxHandle, session())
-        val draft = ForgeDraft(devboxHandle, "/src", personal, "name", "objective")
+        val draft = ForgeDraft(devboxHandle, "/src", LaunchChoice.Agent(personal), "name", "objective")
         val base = SkidbladnirUiState.Dashboard(
             machines = listOf(readyMachine(devbox, target.session), readyMachine(macBook, session())),
             refreshing = false,

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -137,6 +138,40 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
+	return manager.create(ctx, input, "", tmuxclient.ServerIdentity{})
+}
+
+// ErrCreateDispatchUnknown means a session may exist; callers must not replay.
+var ErrCreateDispatchUnknown = errors.New("session creation completion is unknown")
+
+func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (ObservedSession, error) {
+	manager.mutations.Lock()
+	defer manager.mutations.Unlock()
+
+	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
+	if err != nil {
+		return ObservedSession{}, err
+	}
+	anchor, err := manager.tmux.Output(ctx, "read-shell-source-pane", "display-message", "-p", "-t", input.TmuxID, "#{session_id}|#{pane_id}")
+	if err != nil {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
+	}
+	id, pane, found := strings.Cut(anchor, "|")
+	if !found || id != input.TmuxID || !paneIDPattern.MatchString(pane) {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
+	}
+	cwd, err := manager.tmux.Output(ctx, "read-shell-source-cwd", "display-message", "-p", "-t", pane, "#{pane_current_path}")
+	if err != nil || cwd == "" {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
+	}
+	encoded, err := manager.sessionOption(ctx, input.TmuxID, tmuxclient.SpaceOption)
+	if err != nil {
+		return ObservedSession{}, err
+	}
+	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: cwd, Space: decodeSpaceMetadata(encoded)}, input.TmuxID, server)
+}
+
+func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (result ObservedSession, resultErr error) {
 	candidate, err := manager.workdir.ParseCandidate(input.CWD)
 	if err != nil {
 		return ObservedSession{}, mapWorkingDirectoryError(err)
@@ -145,9 +180,20 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	if err != nil {
 		return ObservedSession{}, mapWorkingDirectoryError(err)
 	}
-	profile, found := manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
-	if !found {
-		return ObservedSession{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
+	var profile agentruntime.Profile
+	switch input.Kind {
+	case LaunchAgent:
+		var found bool
+		profile, found = manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
+		if !found {
+			return ObservedSession{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
+		}
+	case LaunchTerminal:
+		if input.Profile != "" {
+			panic("terminal launch carries a profile") // justify-defect: creation ingress forbids a terminal profile.
+		}
+	default:
+		panic("unknown launch kind") // justify-defect: creation ingress admits the closed launch union.
 	}
 	if input.OptionalTmuxName != "" {
 		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
@@ -168,22 +214,38 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	}
 	name := input.OptionalTmuxName
 	if name == "" {
-		name = generatedTmuxName(scan.names, string(profile.Key))
+		prefix := string(profile.Key)
+		if input.Kind == LaunchTerminal {
+			prefix = "terminal"
+		}
+		name = generatedTmuxName(scan.names, prefix)
 	} else if _, occupied := scan.names[name]; occupied {
 		return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}
 	character := selectCharacter(manager.catalogue.Characters(), scan.characterUse, epochCandidate)
-	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name, "-c", cwd.String()}
-	for _, variable := range profile.Environment {
-		commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
+	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
+	creationDirectory := ""
+	if input.Kind == LaunchAgent {
+		commandArgs = append(commandArgs, "-c", cwd.String())
+		for _, variable := range profile.Environment {
+			commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
+		}
+		commandArgs = append(commandArgs, "--", profile.Command)
+		commandArgs = append(commandArgs, agentruntime.LaunchArguments(profile, name)...)
+	} else {
+		terminal, err := manager.tmux.TerminalCommand(cwd.String())
+		if err != nil {
+			return ObservedSession{}, err
+		}
+		creationDirectory = cwd.String()
+		commandArgs = append(commandArgs, terminal...)
 	}
-	commandArgs = append(commandArgs, "--", profile.Command)
-	commandArgs = append(commandArgs, agentruntime.LaunchArguments(profile, name)...)
 	exactName := "=" + name + ":"
-	commandArgs = append(commandArgs,
-		";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate,
-		";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key),
-		";", "set-option", "-t", exactName, "--", "@skid_character", character.Key)
+	commandArgs = append(commandArgs, ";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate)
+	if input.Kind == LaunchAgent {
+		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key))
+	}
+	commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_character", character.Key)
 	if input.Objective != "" {
 		encodedObjective := base64.RawURLEncoding.EncodeToString([]byte(input.Objective))
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_objective_b64", encodedObjective)
@@ -198,20 +260,23 @@ func (manager *Manager) Create(ctx context.Context, input CreateInput) (Observed
 	if _, err := manager.workdir.ValidateStart(candidate); err != nil {
 		return ObservedSession{}, mapWorkingDirectoryError(err)
 	}
-	output, err := manager.tmux.Output(ctx, "create-session", "new-session", commandArgs...)
+	output, accepted, err := manager.tmux.CreateSession(ctx, creationDirectory, sourceID, sourceServer, commandArgs)
+	if !accepted {
+		if err != nil {
+			var pathError *os.PathError
+			if errors.As(err, &pathError) && pathError.Op == "chdir" {
+				return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "That directory is unavailable.")
+			}
+			return ObservedSession{}, err
+		}
+		return ObservedSession{}, sessionIdentityMismatch()
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(ErrCreateDispatchUnknown, resultErr)
+		}
+	}()
 	if err != nil {
-		firstLine, _, _ := strings.Cut(output, "\n")
-		if sessionIDPattern.MatchString(firstLine) {
-			return ObservedSession{}, fmt.Errorf("tmux create sequence failed after session creation: %w", err)
-		}
-		observed, listErr := manager.scanSessions(ctx)
-		if listErr != nil {
-			return ObservedSession{}, fmt.Errorf("create tmux session: %w; classify name conflict: %v", err, listErr)
-		}
-		_, occupied := observed.names[name]
-		if occupied {
-			return ObservedSession{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
-		}
 		return ObservedSession{}, err
 	}
 	firstLine, identityLine, separated := strings.Cut(output, "\n")

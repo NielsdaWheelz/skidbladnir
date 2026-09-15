@@ -10,8 +10,14 @@ are incorporated below; source is implemented, with verification and open
 runtime acceptance recorded in the [roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open).
 this is an optional session-label and client-collection upgrade, with no new
 runtime owner. shell creation and additional terminal composition are separate
-later prs. this document's release evidence remains attributed to its original
+prs. this document's release evidence remains attributed to its original
 source; it does not prove spaces.
+
+accepted 2026-09-15 pr 2 target: [new terminal here](shells.md). standalone
+terminal creation and source-session create/attach extend the existing owners;
+source is implemented. [delivery and evidence](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
+are tracked separately from pr 1; darwin and phone runtime acceptance remain open. pr 3 retains additional navigation
+and composition.
 
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
 scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
@@ -108,8 +114,9 @@ v0 scope. A platform fact that contradicts a premise reopens this document.
 From either trusted Android 16 phone, Niels can see every tmux session on the
 paired Devbox, MacBook, and Arch host in one collection, with an honest
 machine, optional exact agent identity, and recent terminal activity;
-create on an explicit machine and directory using only that host's allowlisted
-profiles; attach the same stock TUI that host's laptop sees; type, paste, and
+create on an explicit machine and directory using terminal or that host's
+allowlisted agent profiles; create an independent terminal from a session's
+current host/cwd/space; attach the same stock TUI that host's laptop sees; type, paste, and
 dictate through Gboard; select rendered terminal text and explicitly copy it to
 that phone's Android clipboard; detach without stopping anything; and kill an
 exact machine-bound confirmed session. One unavailable machine does not block
@@ -126,17 +133,18 @@ or authorize action against the other.
 | Network | One pinned Tailscale Serve TLS `:8443` origin per machine; Funnel/public ingress forbidden |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
-| Profiles | Every host exposes closed `personal \| work \| work2 \| claude-work` rows with required `Codex \| Claude` provider and one provider-home discriminator. Callers never supply commands, account homes, or permission flags |
+| Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
 | spaces | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/space filters; no space registry or lifecycle |
+| terminal creation | standalone or from an exact source session; host-sampled cwd/space, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
 | Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, fallback, or smaller-fleet branch |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
 
-Profile mapping is one ordered, closed, host-local gateway-config table:
+Nonempty profile mapping is one ordered, closed, host-local gateway-config table:
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -183,8 +191,8 @@ portrait manifest.
 
 - Never kill a tmux session other than the exact confirmed target.
 - Detach and kill are visibly different actions; kill always confirms.
-- Validate cwd; allowlist only the target host's declared closed profile set;
-  nothing else launches.
+- Validate cwd; launch only the configured terminal shell or the target host's
+  declared closed agent profile set.
 - Codex credentials stay on their host; the app holds one encrypted bearer per
   paired gateway and never shares it across machines.
 - App or gateway restart re-lists tmux; it never replays input or guesses.
@@ -438,8 +446,9 @@ notifier.
 
 ### Start (The Forge)
 
-The Forge first requires a machine and then renders only that machine's
-declared profiles. An explicit machine filter may preselect it; otherwise no
+The Forge first requires a machine and then offers terminal and that machine's
+declared agent profiles. Terminal remains available with zero profiles.
+An explicit machine filter may preselect it; otherwise no
 machine is inferred. A fresh machine replaces the primary cwd editor with one
 full-height, machine-bound chooser: Home, distinct current tmux cwd values,
 one-level-at-a-time Home browsing with local folder filtering, and a secondary
@@ -450,17 +459,20 @@ or another gateway. [`working-directory-chooser.md`](working-directory-chooser.m
 owns the exact state, content, symlink, bound, and red/green contracts.
 
 Changing machine closes the chooser, invalidates its requests, clears
-cwd/profile, and preserves tmux name/objective and the space draft. submission
+cwd/agent-profile choice, retains a terminal choice, and preserves tmux
+name/objective and the space draft. submission
 names the target and sends
-`POST /v1/sessions {cwd, profile, optionalTmuxName?, objective?, space?}` to only that
-machine:
+`POST /v1/sessions` with required `kind:"agent"` and `profile`, or
+`kind:"terminal"` and no profile; both carry
+`{cwd, optionalTmuxName?, objective?, space?}` to only that machine:
 
 1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
    U+2028/U+2029, and bidi controls are rejected. Exact `~`/`~/` expands against
    the service UID home; all other input must be absolute. The normalized path
    must be an existing searchable directory. Failure is typed and mutates
    nothing.
-2. Profile must be one of the target gateway's declared allowlisted commands.
+2. Agent launch requires one of the target gateway's declared profiles; terminal
+   forbids a profile and uses the host shell policy in [shells.md](shells.md).
 3. Optional tmux name is 1–64 ASCII letters, digits, underscores, or hyphens;
    optional objective is 1–240 NFC Unicode scalars without terminal controls.
    optional space is 1–64 unicode-15 nfc scalars with the exact whitespace and
@@ -468,17 +480,33 @@ machine:
    invalid input mutates nothing. interactive named-space creation prefills a
    visible editable label; a space supplies no other launch context.
 4. One tmux client command queue creates the session (named
-   `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>`),
+   `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>` for an agent,
+   `skidbladnir-terminal-<N>` for a terminal),
    initializes the random
-   server-scoped `@skid_server_epoch` if absent, sets `@skid_profile` and
+   server-scoped `@skid_server_epoch` if absent, sets agent-only `@skid_profile` and
    `@skid_character`, sets encoded `@skid_objective_b64` and `@skid_space_b64`
    only when supplied,
-   and runs the profile command with that row's exact arguments in the cwd.
+   and starts the chosen launch. agent commands retain their exact arguments and
+   environment. terminal uses the one-shot current-binary entrypoint specified
+   in [shells.md](shells.md#3-host-composition-and-launch): literal directory
+   entry followed by exec of the configured login shell, without fallback.
    Managed Claude inserts `--name <tmuxName>` before those arguments; configured
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
    an unproven cleanup kill. No prompt is sent; the opaque agent's own
    permission and trust flows appear in the terminal like any laptop launch.
+
+### new terminal here
+
+[shells.md](shells.md) owns pr 2's exact request, launch, client-completion,
+ownership, and h/d/p proof contracts. `POST /v1/sessions/{tmuxId}/shell` accepts
+only `{identityToken}`. the host samples current pane cwd and local space,
+guards creation by session lifetime, then returns a new independent session.
+tui `t` and the android attach-header action create once and attach the returned
+reference; source name or agent replacement does not retarget the operation.
+one-shot launch failure may follow session creation; no shell-readiness promise,
+automatic retry, or persistent creation receipt exists. returning to the source
+uses the collection until pr 3.
 
 ### attach and handoff
 
@@ -571,7 +599,7 @@ of target, not semantic safety.
 ### desktop and agent controls
 
 `skid` opens one grouped fleet table; ordinary commands expose list, info, enter,
-read, send, keys, interrupt, stop, kill, start, and space. `list --space LABEL` /
+read, send, keys, interrupt, stop, kill, start, shell, and space. `list --space LABEL` /
 `--unassigned`, `start --space LABEL`, and `space TARGET --set LABEL | --clear`
 use the [spaces contract](spaces.md#6-cli-and-shared-fleet-presentation).
 default private peer configuration
@@ -716,7 +744,8 @@ history item is `current`.
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
 | `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; session fields include `tmuxId`, `tmuxName`, `character`, opaque `identityToken`, local facts, optional `space`, optional `launchProfile`, and optional exact `agent` with current agent-control status/methods |
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
-| `POST /v1/sessions` | `{cwd, profile, optionalTmuxName?, objective?, space?}`; success is exactly `{observedAt,session}` where `session` is the same strict session DTO; typed failures |
+| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without profile; common `{cwd, optionalTmuxName?, objective?, space?}`. success `201 {observedAt,session}` uses the existing strict session DTO; exact creation errors include `code,message,dispatch` |
+| `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/space and session-lifetime gate; no agent predicate |
 | `PUT /v1/sessions/{tmuxId}/space` | exact `{identityToken,space}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
@@ -975,6 +1004,10 @@ creation and additional terminal navigation/composition; neither is part of pr 1
 spaces add no execution ownership or lifecycle resource. source is implemented;
 the roadmap records its verification and remaining runtime boundaries.
 
+the accepted [new terminal here target](shells.md) closes pr 2's launch and
+create/attach contracts. it adds no persistent runtime owner, provider, or
+companion relationship. pr 3 navigation/composition remains deferred.
+
 the [agent-control target](agent-control.md) is the accepted upgrade shipped in v0.3.1
 for semantic status, provider reads, and cross-agent interaction. it owns its
 scope and acceptance criteria; opaque-agent and activity-only rules describe v0,
@@ -984,6 +1017,13 @@ history, durable receipts, and replay remain outside the target.
 ## 9. Verification
 
 Verification follows an 80/20 boundary shape:
+
+- shells adds [h/d/p acceptance](shells.md#6-acceptance-and-redgreenrefactor):
+  one real host creation proof on linux/darwin, one desktop create/attach journey,
+  and one phone create/attach journey with real platform completion/restoration
+  cases. small pure contract tables supplement these boundaries; no mocked
+  internal api or historical result establishes them. the roadmap records each
+  executed boundary; unavailable or unapproved boundaries remain `NOT_RUN`;
 
 - spaces adds its [a1–a9 acceptance](spaces.md#12-acceptance-and-bounded-proof-plan):
   compact go/android label/transport/navigation proofs, approved linux/darwin

@@ -66,6 +66,66 @@ func (client Client) Output(ctx context.Context, operation, commandName string, 
 	return output, nil
 }
 
+// TerminalCommand crosses tmux's argv boundary without exposing launch data to
+// its format parser or to a shell interpreter.
+func (client Client) TerminalCommand(directory string) ([]string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return []string{"--", executable, "terminal-exec",
+		base64.RawURLEncoding.EncodeToString([]byte(directory)),
+		base64.RawURLEncoding.EncodeToString([]byte(client.path)), client.socketName}, nil
+}
+
+// CreateSession preserves the agent argv path. Terminal launches supply the
+// subprocess cwd; a source supplies the existing lifetime gate in the same
+// tmux command queue. Any command error may follow creation.
+func (client Client) CreateSession(ctx context.Context, directory, sourceID string, server ServerIdentity, args []string) (string, bool, error) {
+	commandName := "new-session"
+	if sourceID != "" {
+		if !sessionIDPattern.MatchString(sourceID) || !server.valid() {
+			panic("invalid source creation identity") // justify-defect: sessions admitted this exact source lifetime.
+		}
+		var branch strings.Builder
+		branch.WriteString("new-session")
+		for _, argument := range args {
+			branch.WriteByte(' ')
+			if argument == ";" {
+				branch.WriteByte(';')
+			} else {
+				branch.WriteString("'" + strings.ReplaceAll(argument, "'", "'\\''") + "'")
+			}
+		}
+		commandName = "-N" // A vanished source must never start a replacement server.
+		args = []string{"if-shell", "-F", "-t", sourceID, andFormatConditions(sessionLifetimeConditions(sourceID, server)),
+			branch.String(), "display-message -p -l '" + identityMismatchMarker + "'"}
+	} else if directory != "" {
+		// cmd_parse_from_arguments consumes a trailing semicolon even in direct
+		// argv. Escape that delimiter once; all other bytes remain literal.
+		for index, argument := range args {
+			if len(argument) > 1 && strings.HasSuffix(argument, ";") {
+				args[index] = argument[:len(argument)-1] + "\\;"
+			}
+		}
+	}
+	var stdout bytes.Buffer
+	command := client.command(ctx, &stdout, commandName, args...)
+	command.Dir = directory
+	if err := command.Start(); err != nil {
+		return "", false, err
+	}
+	err := command.Wait()
+	output := strings.TrimSuffix(stdout.String(), "\n")
+	if err != nil {
+		return output, true, fmt.Errorf("tmux create session failed: %w", err)
+	}
+	if output == identityMismatchMarker {
+		return "", false, nil
+	}
+	return output, true, nil
+}
+
 func (client Client) Run(ctx context.Context, operation, commandName string, args ...string) error {
 	if err := client.command(ctx, nil, commandName, args...).Run(); err != nil {
 		return fmt.Errorf("tmux %s failed: %w", operation, err)

@@ -121,6 +121,7 @@ func TestSpaceAssignmentKeepsEmptyFilterAndCreateFollowsObservedMembership(t *te
 	ref.Machine = "mh-22222222222222222222222222222222"
 	created.Ref = ref.Encode()
 	encoded, _ := json.Marshal(fleetclient.ObservedSession{Label: "laptop", Machine: ref.Machine, Session: created})
+	m.page, m.busy, m.pending = "create", true, fleetclient.Request{Operation: "start"}
 	m.Update(actionMsg{operation: "start", result: fleetclient.Result{OK: true, Value: encoded}})
 	if m.machine != "laptop" || m.spaceFilter.Label() != created.Space || m.selectedRow() == nil || m.selectedRow().session.Ref != created.Ref {
 		t.Fatal("confirmed creation did not follow returned host and observed membership")
@@ -253,6 +254,7 @@ func TestCreateReplyDoesNotDuplicateAlreadyObservedSession(t *testing.T) {
 	created := spaceRow(t, "created", "$2", "alpha")
 	m.Update(observation(row("existing", "$1", 11), created))
 	encoded, _ := json.Marshal(fleetclient.ObservedSession{Label: "arch", Machine: "mh-11111111111111111111111111111111", Session: created})
+	m.page, m.busy, m.pending = "create", true, fleetclient.Request{Operation: "start"}
 	m.Update(actionMsg{operation: "start", result: fleetclient.Result{OK: true, Value: encoded}})
 	if len(m.rows) != 2 || m.selectedRow() == nil || m.selectedRow().session.Ref != created.Ref {
 		t.Fatal("create reply duplicated already observed lifetime")

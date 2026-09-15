@@ -327,6 +327,23 @@ android_platform_companion_matches_release() {
     "$(android_apk_version_code "$companion_apk")" == "$version_code" ]]
 }
 
+android_platform_remove_shell_fixture() {
+  local state="${platform_shell_fixture_state:-}" file port mappings
+  [[ -n "$state" ]] || return 0
+  if [[ -s "$state" ]]; then
+    { read -r file && read -r port; } <"$state" || return 1
+    "$platform_adb" -s "$platform_serial" shell run-as "$platform_app_package" \
+      rm -f "files/$file" || return 1
+    mappings="$("$platform_adb" -s "$platform_serial" reverse --list)" || return 1
+    if awk -v destination="tcp:$port" \
+      '$2 == "tcp:8443" && $3 == destination { found = 1 } END { exit !found }' <<<"$mappings"; then
+      "$platform_adb" -s "$platform_serial" reverse --remove tcp:8443 || return 1
+    fi
+  fi
+  /bin/unlink "$state" || return 1
+  platform_shell_fixture_state=''
+}
+
 android_platform_restore_owned_state() {
   local failed=0 test_package_path test_package_path_after
   if [[ "${platform_test_package_installed:-0}" == 1 ]]; then
@@ -410,6 +427,8 @@ android_platform_cleanup() {
     fi
     platform_instrumentation_output_file=''
   fi
+  # run-as must remove the private fixture before deviceDebug is replaced.
+  android_platform_remove_shell_fixture || exit_status=1
   android_platform_restore_owned_state || exit_status=1
   if [[ -n "${platform_release_snapshot:-}" &&
     "${platform_app_replaced:-0}" == 0 ]]; then
@@ -731,6 +750,9 @@ android_platform_helper_self_test() (
 #!/bin/sh
 printf '%s\n' "$*" >>"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
 case "$*" in
+  *' reverse --list')
+    printf 'fixture tcp:8443 tcp:54321\n'
+    ;;
   *' shell pm path test')
     if [ -f "$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE" ]; then
       printf 'package:/data/app/test/base.apk\n'
@@ -772,6 +794,7 @@ EOF
   : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
   : >"$SKIDBLADNIR_TEST_PLATFORM_PACKAGE_STATE"
   printf 'temporary evidence\n' >"$fixture/platform-output"
+  printf 'shell-fixture.json\n54321\n' >"$fixture/shell-state"
   cp "$release_apk" "$fixture/release-snapshot.apk"
   cp "$release_apk" "$fixture/retained-release-snapshot.apk"
   /bin/unlink "$release_apk"
@@ -786,6 +809,7 @@ EOF
     platform_test_package_installed=1
     platform_app_replaced=1
     platform_instrumentation_output_file="$fixture/platform-output"
+    platform_shell_fixture_state="$fixture/shell-state"
     platform_release_snapshot="$fixture/release-snapshot.apk"
     platform_release_snapshot_dir=''
     platform_signing_check="$fixture/signing-check"
@@ -798,14 +822,29 @@ EOF
   )
   cleanup_status=$?
   set -e
-  [[ "$cleanup_status" == 130 && ! -e "$fixture/platform-output" &&
+  [[ "$cleanup_status" == 130 && ! -e "$fixture/platform-output" && ! -e "$fixture/shell-state" &&
     ! -e "$fixture/release-snapshot.apk" ]] || {
     printf 'Android platform signal cleanup did not preserve status or remove owned files\n' >&2
     return 1
   }
   [[ "$(cat "$SKIDBLADNIR_TEST_PLATFORM_CALLS")" == \
-    $'-s serial shell pm path test\n-s serial uninstall test\n-s serial shell pm path test\n-s serial install -r '"$fixture/release-snapshot.apk"$'\nverify app '"$apk_digest" ]] || {
+    $'-s serial shell run-as app rm -f files/shell-fixture.json\n-s serial reverse --list\n-s serial reverse --remove tcp:8443\n-s serial shell pm path test\n-s serial uninstall test\n-s serial shell pm path test\n-s serial install -r '"$fixture/release-snapshot.apk"$'\nverify app '"$apk_digest" ]] || {
     printf 'Android platform cleanup did not restore its exact owned boundary\n' >&2
+    return 1
+  }
+
+  : >"$SKIDBLADNIR_TEST_PLATFORM_CALLS"
+  printf 'shell-fixture.json\n54322\n' >"$fixture/shell-state"
+  (
+    platform_adb="$fixture/adb"
+    platform_serial=serial
+    platform_app_package=app
+    platform_shell_fixture_state="$fixture/shell-state"
+    android_platform_remove_shell_fixture
+  )
+  [[ ! -e "$fixture/shell-state" && "$(cat "$SKIDBLADNIR_TEST_PLATFORM_CALLS")" == \
+    $'-s serial shell run-as app rm -f files/shell-fixture.json\n-s serial reverse --list' ]] || {
+    printf 'Android platform cleanup changed an unowned reverse mapping\n' >&2
     return 1
   }
 
@@ -938,7 +977,7 @@ EOF
   HOME="$fixture/home" ANDROID_HOME="$fixture_android_sdk" \
     SKIDBLADNIR_RELEASE_APK="$release_apk" \
     SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT='' \
-    "$control_checkout/scripts/test" platform --allow-device-mutation \
+    "$control_checkout/scripts/test" platform --allow-device-mutation --allow-isolated-tmux-mutation \
     >"$output" 2>&1
   status=$?
   set -e
@@ -953,7 +992,7 @@ EOF
     SKIDBLADNIR_RELEASE_APK="$release_apk" \
     SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT="$source_checkout" \
     SKIDBLADNIR_DISPATCH_PROBE_LOG="$probe_log" \
-    "$control_checkout/scripts/test" platform --allow-device-mutation \
+    "$control_checkout/scripts/test" platform --allow-device-mutation --allow-isolated-tmux-mutation \
     >"$output" 2>&1
   status=$?
   set -e
@@ -1391,10 +1430,10 @@ case "$gate" in
     run ornament-static ./scripts/check-ornament
     run go-mod-verify go mod verify
     run go-vet go vet ./...
-    run go-vet-integration go vet -tags=integration ./tests/integration ./internal/machine ./internal/process ./internal/pressure
+    run go-vet-integration go vet -tags='integration androidplatform' ./tests/integration ./internal/machine ./internal/process ./internal/pressure
     run go-vet-provider-live go vet -tags='integration providerlive' ./tests/integration
     run go-vet-live go vet -tags=live ./tests/live
-    run integration-compile go test -tags=integration -c -o /dev/null ./tests/integration
+    run integration-compile go test -tags='integration androidplatform' -c -o /dev/null ./tests/integration
     run provider-live-compile go test -tags='integration providerlive' -c -o /dev/null ./tests/integration
     run integration-host-compile go test -tags=integration -c -o /dev/null ./internal/machine ./internal/process ./internal/pressure
     run live-compile go test -tags=live -c -o /dev/null ./tests/live
@@ -1477,8 +1516,9 @@ case "$gate" in
       -skidbladnir-provider-live-source-sha="$provider_live_source_sha"
     ;;
   platform)
-    if [[ "${1:-}" != '--allow-device-mutation' || "$#" -ne 1 ]]; then
-      not_run platform 'Pass --allow-device-mutation only after explicit current-turn user approval'
+    if [[ "${1:-}" != '--allow-device-mutation' ||
+      "${2:-}" != '--allow-isolated-tmux-mutation' || "$#" -ne 2 ]]; then
+      not_run platform 'Pass --allow-device-mutation --allow-isolated-tmux-mutation only after explicit current-turn user approval'
     fi
     platform_declared_release_apk="${SKIDBLADNIR_RELEASE_APK:-}"
     platform_declared_source_checkout="${SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT:-}"
@@ -1504,6 +1544,7 @@ case "$gate" in
     platform_test_package_installed=0
     platform_app_replaced=0
     platform_instrumentation_output_file=''
+    platform_shell_fixture_state=''
     platform_signing_check="$platform_source_checkout/scripts/check-android-signing"
     trap android_platform_cleanup EXIT
     trap 'exit 129' HUP
@@ -1535,6 +1576,10 @@ case "$gate" in
       "$platform_signing_check" --config-only
     run android-platform-release-signature \
       "$platform_signing_check" --public-apk "$platform_release_apk"
+    if [[ "${SKIDBLADNIR_ALLOW_ISOLATED_TMUX_TESTS:-}" != 'isolated-v1' ||
+      -n "${TMUX:-}" || -n "${TMUX_PANE:-}" || -n "${TMUX_TMPDIR:-}" || ! -x "$tmux_path" ]]; then
+      not_run platform 'The real shell fixture requires approved isolated tmux outside an invoking tmux client'
+    fi
     adb="$android_sdk/platform-tools/adb"
     if [[ ! -x "$adb" ]]; then
       not_run platform 'Pinned Android SDK adb is unavailable'
@@ -1639,11 +1684,21 @@ case "$gate" in
     run android-platform-tests "$adb" -s "$serial" install -r -t "$test_apk"
     instrumentation_status=0
     platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
-    run_bounded_to_file \
-      "$platform_instrumentation_timeout_seconds" \
+    platform_shell_fixture_state="$(mktemp -t skidbladnir-platform-shells.XXXXXX)"
+    cd "$platform_source_checkout"
+    # Allow the Go fixture's signal-aware cleanup to finish before hard kill.
+    android_process_termination_grace_seconds=20 run_bounded_to_file \
+      "$((platform_instrumentation_timeout_seconds + 60))" \
       "$platform_instrumentation_output_file" \
-      "$adb" -s "$serial" shell am instrument -r -w \
-      "${test_package}/androidx.test.runner.AndroidJUnitRunner" || instrumentation_status=$?
+      go test -v -tags='integration androidplatform' ./tests/integration \
+      -run '^TestAndroidPlatformWithShellGateway$' -count=1 -timeout=20m -args \
+      -skidbladnir-isolated-tmux-capability=isolated-cli-v1 \
+      -skidbladnir-tmux-path="$tmux_path" \
+      -skidbladnir-platform-capability=device-cli-v1 \
+      -skidbladnir-platform-adb="$adb" \
+      -skidbladnir-platform-serial="$serial" \
+      -skidbladnir-platform-fixture-state="$platform_shell_fixture_state" \
+      -skidbladnir-platform-timeout="${platform_instrumentation_timeout_seconds}s" || instrumentation_status=$?
     instrumentation_output="$(<"$platform_instrumentation_output_file")"
     printf '%s\n' "$instrumentation_output"
     if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
@@ -1662,6 +1717,7 @@ case "$gate" in
       printf 'Android instrumentation changed the encrypted pairing state\n' >&2
       exit 1
     }
+    run android-platform-shell-cleanup android_platform_remove_shell_fixture
     run android-platform-restore android_platform_restore_owned_state
     android_platform_remove_release_snapshot
     trap - EXIT HUP INT TERM
@@ -2230,7 +2286,7 @@ case "$gate" in
     not_run full 'Run release, published-release, integration, provider-live, live, platform, product, and second-phone separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation|provider-live --allow-isolated-tmux-mutation --allow-provider-launch}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation --allow-isolated-tmux-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation|provider-live --allow-isolated-tmux-mutation --allow-provider-launch}\n' "$0" >&2
     exit 64
     ;;
   *)

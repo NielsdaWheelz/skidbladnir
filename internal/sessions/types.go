@@ -18,12 +18,25 @@ type Config struct {
 	Profiles      []agentruntime.Profile
 }
 
+type LaunchKind string
+
+const (
+	LaunchAgent    LaunchKind = "agent"
+	LaunchTerminal LaunchKind = "terminal"
+)
+
 type CreateInput struct {
+	Kind             LaunchKind
 	CWD              string
 	Profile          string
 	OptionalTmuxName string
 	Objective        string
 	Space            space.Label
+}
+
+type ShellInput struct {
+	TmuxID        string
+	IdentityToken string
 }
 
 type SetSpaceInput struct {
