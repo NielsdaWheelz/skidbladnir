@@ -1,4 +1,10 @@
-# v0 dashboard return continuity
+# dashboard return continuity
+
+2026-09-15 target amendment: [spaces](spaces.md) extends this retained-entry
+contract with independent space selection, heading-aware viewport keys, and the
+exact schema-2 task capsule. source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
+records verification and open device acceptance. the delivery evidence
+immediately below is historical.
 
 Status: source implemented, 2026-08-31. The JVM, real-Compose, and real-registry
 boundary-owner reds, plus four review-corrective grid-reset, scope-membership,
@@ -21,9 +27,9 @@ or is added.
 ## Outcome
 
 Attaching is a drill-in from one retained Dashboard entry. Top `Detach` and
-Android Back return to that same entry: same active machine filter, same
-semantic viewport. Live tmux inventory revalidates in place. A return never
-constructs `All` at the top.
+Android Back return to that same entry: same machine and space filters, same
+semantic viewport (session or group heading). live tmux inventory revalidates in
+place. a return never constructs all/all at the top.
 
 Principle: drill-in never resets the workspace. Tmux owns sessions; Android
 owns this bounded navigation/spatial context.
@@ -46,10 +52,11 @@ owns this bounded navigation/spatial context.
 
 ## Capability contract
 
-Given scope `Machine(MacBook)`, first-visible card `K`, and offset `O`:
+given a machine/space intersection, first-visible session or heading `K`, and
+offset `O`:
 
 1. Attach to any visible card, then top `Detach` or Android Back: the first
-   Dashboard frame is `Machine(MacBook)` with `K` at `O` when `K` survives.
+   dashboard frame has both original filters and `K` at `O` when `K` survives.
 2. Inserts or reorder move `K` in the collection but not in the viewport.
 3. If `K` disappeared, restore the saved index clamped into the new filtered
    collection, with `O` clamped to valid geometry.
@@ -63,12 +70,14 @@ Given scope `Machine(MacBook)`, first-visible card `K`, and offset `O`:
    task retain the Dashboard entry. If Terminal was visible, recreation lands
    on Dashboard and never restores an attachment, terminal target, or bytes.
 8. A fresh task, app-data reset, or restored machine absent from the accepted
-   fleet starts `All` at top. Temporary outage never clears the filter.
+   fleet starts all machines/all spaces at top. temporary outage never clears
+   either filter. an unresolved named space retains its fingerprint selection.
 9. Selecting a different filter cancels pending restoration and uses normal
    stable-key clamping; selecting the active filter is a no-op. No per-filter
    viewport history is created.
 10. Terminal access loss remains the explicit exception: atomically select the
-   affected machine, cancel saved restoration, reset its viewport to top, and
+   affected machine, retain the space filter, cancel saved restoration, reset
+   its viewport to top, and
    show the existing notice. Dashboard-side pending Forge/kill access loss keeps
    its existing affected-machine selection and live-grid clamping behavior.
 
@@ -76,8 +85,8 @@ During saved-task inventory loading, the existing neutral Booting/Reading
 surface may precede the restored grid. An `All`/top or false-empty grid frame
 may not.
 
-“Exact” means the same card and pixel offset for unchanged geometry, and the
-same semantic card with platform-clamped geometry after layout change. Fresh
+“exact” means the same session/heading and pixel offset for unchanged geometry,
+and the same semantic item with platform-clamped geometry after layout change. Fresh
 tmux truth wins over frozen ordering.
 
 ## Ownership and final composition
@@ -85,7 +94,8 @@ tmux truth wins over frozen ordering.
 ```text
 MainActivity (task/saved-state owner)
 |- DashboardEntryState                 retained above destination switch
-|  |- scope: DashboardScope
+|  |- scope: DashboardScope            machine dimension
+|  |- space selection                   named display label is memory-only
 |  |- gridState: LazyGridState
 |  `- pending saved restoration
 |- SkidbladnirController               inventory/terminal/action owner
@@ -96,8 +106,8 @@ MainActivity (task/saved-state owner)
 
 `DashboardEntryState` is created/restored before the controller, passed to the
 controller and app shell, and retained while Dashboard leaves composition. It
-is the sole mutable owner of scope and viewport. Controller commands read or
-change it only through semantic methods; Dashboard supplies only ordered safe
+is the sole mutable owner of machine/space selection and viewport. controller
+commands read or change it only through semantic methods; dashboard supplies ordered safe
 keys for one-shot restoration, while snapshots read the owned grid directly.
 
 After `super.onCreate`, `MainActivity` calls the entry's one production
@@ -110,59 +120,36 @@ longer reconstructs navigation state in `publishDashboard`. Inventory remains
 in controller process memory; no inventory snapshot or payload is copied into
 the entry or saved capsule.
 
-## State schema
+## state schema
 
-```kotlin
-internal sealed interface DashboardScope {
-    data object All : DashboardScope
-    data class Machine(val handle: MachineHandle) : DashboardScope
-}
+the exact current capsule is schema 2 in
+[spaces §10](spaces.md#10-android-navigation-and-content-free-restoration).
+that section owns its primitive keys, closed variants, fingerprint framing,
+unresolved-name rules, and one-time schema cut. do not implement the historical
+schema-1 capsule or keep a compatibility reader.
 
-@JvmInline
-internal value class DashboardCardKey(
-    val lifetimeFingerprint: String,
-)
-
-internal data class DashboardViewport(
-    val anchor: DashboardCardKey?,
-    val fallbackIndex: Int,
-    val offsetPx: Int,
-)
-
-internal data class DashboardEntrySnapshot(
-    val schemaVersion: Int,             // exactly 1; no migration reader
-    val scope: DashboardScope,
-    val viewport: DashboardViewport,
-)
-```
-
-Registry key: `dev.niels.skidbladnir.dashboard-entry`. The nested `Bundle` is
-primitive-only: required `version`, `scopeKind`, `fallbackIndex`, and `offsetPx`;
-`scopeMachine` iff scope is `machine`; and optional `anchorLifetimeSha256`.
-Kinds are exactly `all | machine`. No `Serializable`, `Parcelable` product
-model, JSON, or alternate field name is accepted.
-
-Invariants:
-
-- Index and offset are non-negative; a null anchor requires both to be zero.
-- `DashboardCardKey` is the one comparison-only card identity. Its 64-character
-  lowercase fingerprint is SHA-256 over the UTF-8 domain
-  `skidbladnir.dashboard-card.v1`, then each of machine handle, tmux id, and the
-  inventory identity token framed by its 32-bit big-endian byte length. Rename
-  does not change it; replacement does.
-- A pure ProductModel constructor derives the key before the state boundary.
-  Raw identity tokens never enter the entry or saved state. A fingerprint is
-  never logged, displayed, routed, or interpreted as a `SessionTarget`.
-- The fingerprint string is both the Compose item key and saved anchor. No salt,
-  HMAC, Keystore key, new dependency, or second identity exists.
-- Saved state contains no inventory snapshot/payload, labels, names, objective,
-  cwd, terminal destination, input, bearer, connection state, or attachment
-  state.
-- The capsule is Android task saved state only: no preferences, DataStore,
-  database, file, tmux option, gateway field, or compatibility decoder.
-- Restore accepts the exact current schema atomically. No bundle or an unknown
-  version means a fresh entry; malformed current-version keys, types, values,
-  or partial variants are trusted-state defects, never fallback input.
+- retain `DashboardScope.All | Machine(handle)` as the machine dimension.
+- the live entry owns the independent space selection and may retain its known
+  label in memory. the saved selection contains only all/unassigned/named and a
+  fingerprint for named; no raw label is accepted into the saved representation.
+- `DashboardCardKey` retains its current machine/id/lifetime fingerprint and
+  unchanged compose key. the shared rendered-item sequence wraps it in
+  `DashboardItemKey` alongside named and unassigned heading keys.
+  the session fingerprint remains sha-256 over utf-8
+  `skidbladnir.dashboard-card.v1`, then machine handle, tmux id, and identity
+  token, each framed by its four-byte big-endian utf-8 byte length. rename does
+  not change it; replacement does. no raw token enters navigation state.
+- `DashboardViewport` anchors to that typed item key. its nonnegative former
+  index now counts rendered items, including headings; its offset keeps the
+  existing nonnegative platform meaning. no anchor requires index/offset zero.
+- `DashboardEntrySnapshot` contains exact schema version 2, machine scope,
+  comparison-only space selection, and viewport. it contains no inventory,
+  raw label, name, objective, cwd, raw lifetime token, editor, destination,
+  connection, attachment, input, or credential.
+- use only the existing activity-owned saved-state registry key and adapter.
+  no preferences, database, file, gateway field, salt, key store, alternate
+  schema, or new dependency. no capsule/unsupported version starts fresh;
+  malformed current-version state is a trusted-state defect.
 
 ## Restoration algorithm
 
@@ -170,27 +157,31 @@ Invariants:
    `acceptFleet` with every handle accepted from `MachineStore`, before its
    first Dashboard publication. Reachability, access, polling, and snapshot
    freshness do not affect membership. A missing pairing resets scope, viewport,
-   and pending anchor together to `All`/top; temporary outage does not.
+   and pending anchor together to all machines/all spaces/top; temporary outage
+   does not.
 2. Keep the live `LazyGridState` object for ordinary Terminal round trips; the
    existing stable lazy key owns in-process insert/reorder anchoring.
-3. For saved-task restoration, wait until every machine in the restored scope
+3. for saved-task restoration, wait until every machine in restored machine scope
    either has a current/retained snapshot or has reached a non-live outcome.
    `Reading` without a snapshot remains pending; `Unreachable`,
    `AuthRequired`, or `IdentityChanged` resolves without one. A lifecycle stop
    remains pending; an unexplained foreground poller stop is a defect.
-4. Dashboard projects ordered `DashboardCardKey` values from the current
-   `visibleSessions`, including a retained stale snapshot; the entry never
-   receives those sessions. If the saved key survives, use its new index and
-   saved offset; otherwise clamp the saved index. Empty stays empty.
+4. dashboard projects ordered `DashboardItemKey` values from the same grouped
+   item sequence it renders, including retained stale rows and headings. the
+   entry receives keys, not session snapshots. resolve the saved selected-space
+   name from observations without changing its comparison key; an absent label
+   remains selected with generic copy and does not block settled rendering. if
+   the saved key survives, use its new index and saved offset; otherwise clamp
+   the saved index. empty stays empty.
 5. Call `requestScrollToItem(resolvedIndex, savedOffset)` once while cards are
    withheld, then consume restoration and expose the grid for its next measure;
    platform layout clamps geometry. Never animate from top. Existing neutral
    Booting/Reading may remain pending.
 6. While pending, `snapshot()` re-emits that accepted capsule unchanged, so
    repeated process death cannot erase place. Otherwise it synchronously matches
-   `gridState.firstVisibleItemIndex` to the last layout's visible fingerprint key
+   `gridState.firstVisibleItemIndex` to the last layout's visible session/heading key
    and records that index/offset; no scroll observer or inventory shadow exists.
-   No measured session key means null/top.
+   no measured session/heading key means no anchor/top.
 7. Later polls and filter changes use normal keyed lazy-grid behavior. Selecting
    a different filter cancels the pending capsule; selecting the active one is a
    no-op. No delayed corrective scroll runs after user input.
@@ -205,13 +196,15 @@ The state holder exposes only the behavior the two current consumers need:
 
 ```kotlin
 val scope: DashboardScope
+val space: DashboardSpaceSelection
 val gridState: LazyGridState
 val restorationPending: Boolean
 fun acceptFleet(handles: Set<MachineHandle>)
 fun selectScope(scope: DashboardScope)
+fun selectSpace(space: DashboardSpaceSelection)
 fun selectTerminalAccessLoss(handle: MachineHandle)
 fun resetAll()
-fun restoreOnce(keys: List<DashboardCardKey>)
+fun restoreOnce(keys: List<DashboardItemKey>)
 fun snapshot(): DashboardEntrySnapshot
 ```
 
@@ -229,10 +222,12 @@ normalization boundary; after it, invalid scope selection is a caller defect.
   cancels pending restoration, and lets the live keyed grid clamp. The current
   scope is a no-op.
 - `selectTerminalAccessLoss` always selects that machine, cancels restoration,
-  and schedules top. `resetAll` clears scope, pending state, and viewport to
-  `All`/top. These are semantic operations, not a boolean viewport policy.
-- `visibleSessions`, `visibleInventoryTargets`, pressure visibility, Forge
-  preselection, and refresh routing accept/read `DashboardScope` exhaustively.
+  and schedules top while preserving space selection. `resetAll` clears both
+  filters, pending state, and viewport to all/all/top. these are semantic
+  operations, not a boolean viewport policy.
+- session grouping consumes both filters. inventory targets, pressure visibility,
+  and refresh routing read machine scope only. forge adds the explicit space
+  prefill/unresolved-choice rules from the spaces spec.
 - The controller is the sole restoration-readiness oracle: background lifecycle
   stop leaves pending state untouched; a foreground Ready/Reading machine with
   no owned poller is a defect; modeled non-live outcomes may resolve empty.
@@ -255,9 +250,10 @@ normalization boundary; after it, invalid scope selection is a caller defect.
 - Machine-filter taps call `entry.selectScope` directly. The controller reads
   or forces scope only for controller-owned operations; it exposes no gated
   pass-through selection command.
-- Lazy item identity and restoration derive from the same
-  `DashboardCardKey`; its fingerprint string is the one Compose item key.
-  Existing test tags remain selectors, not a second lifetime key.
+- lazy item identity and restoration use the same `DashboardItemKey` projection.
+  session keys remain the existing `DashboardCardKey` strings; headings have
+  the comparison-only keys defined in spaces. test tags remain selectors, not
+  another lifetime identity.
 - Extract one production `DashboardTerminalHost` in `MainActivity.kt`. It owns
   the closed destination switch and Terminal Back, renders the actual screens,
   and receives required `onOpenTerminal` and `onDetach` events. Production binds
@@ -269,8 +265,9 @@ normalization boundary; after it, invalid scope selection is a caller defect.
 - The controller detach operation tears down the phone attachment, publishes
   Dashboard, then verifies `entry.scope`.
 
-No public Kotlin, HTTP, WSS, gateway, tmux, credential, storage, terminal-page,
-or dependency API changes.
+this navigation owner adds no public api, terminal protocol, credential store,
+or dependency. the spaces feature owns its separate host membership operation;
+its presence does not make terminal navigation a host responsibility.
 
 ```kotlin
 @Composable
@@ -301,7 +298,12 @@ type is created.
 Add no restore message, preference, bookmark, `Clear` action, sticky-bottom
 control, highlight animation, haptic, telemetry, or explanatory copy.
 
-## Hard cut and cleanup
+## historical original hard cut and cleanup
+
+the following delivery instructions describe the original return-continuity
+implementation. they are retained as context for its evidence, not a new
+assignment. spaces uses its own [file and removal contract](spaces.md#11-reuse-removals-and-files),
+which supersedes the old path exclusions and card-only capsule design.
 
 Delete in the same implementation:
 
@@ -317,7 +319,7 @@ flag, preference, fallback navigator, or test-only production seam. Do not add
 Navigation 3, a ViewModel migration, or a generic state/navigation framework
 without a second production requirement.
 
-## Files and non-overlapping ownership
+## historical original files and non-overlapping ownership
 
 | Slice | Exclusive paths | Proof |
 | --- | --- | --- |
@@ -342,7 +344,7 @@ Each changed ownership boundary has one proof shape:
 No external protocol or tmux ownership boundary changes, so none receives a
 ceremonial duplicate proof.
 
-## Red / green / refactor
+## historical original red / green / refactor
 
 **Baseline:** run `./scripts/test verify`. Do not run tmux or a device gate.
 
@@ -405,7 +407,7 @@ the separately approved complete platform gate.
 lifetime key, and update existing fixtures rather than duplicating them. Add no
 abstraction without its named production consumer.
 
-## Acceptance and 80/20 verification
+## original acceptance and 80/20 verification
 
 - MacBook/bottom returns through Detach and Back with filter, anchor, and offset
   intact; no `All`/top frame appears.
@@ -430,12 +432,12 @@ abstraction without its named production consumer.
   run; only the explicitly scoped hands-on sample touches the already-running
   product.
 
-## Non-goals and tradeoffs
+## retained non-goals and tradeoffs
 
 No independent viewport per filter; cold-launch/device-reboot continuity;
 exact horizontal filter-strip offset restoration; pressure/Forge sheet
 restoration; keyboard/D-pad input-focus restoration; TalkBack/Switch Access
-focus restoration; sorting change; sticky bottom; cached inventory; terminal
+focus restoration; manual sorting; sticky bottom; persisted inventory; terminal
 scrollback or target persistence; automatic reattach; deep link; adaptive split
 pane; predictive Back redesign; new decorative/highlight motion or content;
 analytics; backend work; or cross-device state.
@@ -445,11 +447,12 @@ Tradeoffs are explicit:
 - One active Dashboard context solves the reported journey; filter-to-filter
   history remains absent. Filter changes use the same keyed grid and therefore
   clamp rather than recreate a remembered position for each filter.
-- Task saved state can carry one opaque lifetime fingerprint; the gain is honest
+- task saved state carries comparison-only filter and item fingerprints; the gain is honest
   semantic restoration after OS recreation, and the cost is a narrowly
   documented exception to “Android persists only pairings.” The stored form is
   only a deterministic fingerprint: it leaks equality but cannot be replayed as
-  a terminal/mutation header. Hash work is one bounded pass per visible
+  a terminal/mutation header. label hashes are dictionary-guessable and are not
+  a secrecy mechanism. hash work is one bounded pass per visible
   collection projection.
 - System task state, rather than preferences, preserves continuity without
   inventing a durable workspace record. The accepted cost is that a true cold

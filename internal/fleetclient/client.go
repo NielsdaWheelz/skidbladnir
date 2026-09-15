@@ -8,11 +8,11 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
 )
@@ -59,6 +59,26 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	switch request.Operation {
 	case "list":
 		result = client.list(ctx, request.Machine)
+		if result.OK && request.SpaceFilter.Kind() != space.FilterAll {
+			var value Inventory
+			if json.Unmarshal(result.Value, &value) != nil {
+				return Failed("protocol_error", "not_sent")
+			}
+			for index := range value.Peers {
+				peer := &value.Peers[index]
+				if !peer.OK {
+					continue
+				}
+				rows := make([]Session, 0, len(peer.Sessions))
+				for _, row := range peer.Sessions {
+					if request.SpaceFilter.Matches(row.Space) {
+						rows = append(rows, row)
+					}
+				}
+				peer.Sessions = rows
+			}
+			result = success(value)
+		}
 	case "start":
 		selected, ok := client.peerByLabel(request.Machine)
 		if !ok {
@@ -72,7 +92,8 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			CWD     string `json:"cwd"`
 			Profile string `json:"profile"`
 			Name    string `json:"optionalTmuxName"`
-		}{cwd, request.Profile, request.Name})
+			Space   string `json:"space,omitempty"`
+		}{cwd, request.Profile, request.Name, request.Space.String()})
 		if len(body) > MaximumInputBytes {
 			return Failed("input_limit", "not_sent")
 		}
@@ -102,7 +123,10 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		}
 		body := map[string]any{"identityToken": ref.IdentityToken}
 		path := "/v1/sessions/" + ref.TmuxID
-		if request.Operation == "kill" {
+		if request.Operation == "space" {
+			body["space"] = request.Space.String()
+			path += "/space"
+		} else if request.Operation == "kill" {
 			body["tmuxName"] = observed.Session.Name
 		} else {
 			if ref.Agent == nil {
@@ -137,10 +161,15 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, request.Operation, path, encoded)
+		if result.OK && request.Operation == "space" {
+			result = success(struct {
+				Space string `json:"space"`
+			}{request.Space.String()})
+		}
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" {
+		if request.Operation == "start" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "space" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
@@ -175,7 +204,6 @@ func (client *Client) list(ctx context.Context, label string) Result {
 					for _, session := range observed.Sessions {
 						row.Sessions = append(row.Sessions, session.project(selected.Machine))
 					}
-					sort.SliceStable(row.Sessions, func(i, j int) bool { return row.Sessions[i].Name < row.Sessions[j].Name })
 				}
 			}
 			rows[index] = row
@@ -330,6 +358,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "list" {
 		method = http.MethodGet
 	} else {
+		if operation == "space" {
+			method = http.MethodPut
+		}
 		if operation == "kill" {
 			method = http.MethodDelete
 		}
@@ -365,9 +396,12 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if operation == "kill" && response.StatusCode == http.StatusNoContent {
+	if (operation == "kill" || operation == "space") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
+		}
+		if operation == "space" {
+			return success(struct{}{})
 		}
 		return success(struct {
 			Terminal string `json:"terminal"`
@@ -381,11 +415,16 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" {
 		expected = http.StatusCreated
 	}
-	if operation == "kill" {
+	if operation == "kill" || operation == "space" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {
-		failure := decodeFailure(encoded, dispatch)
+		var failure *Failure
+		if operation == "space" {
+			failure = decodeSpaceFailure(encoded, response.StatusCode)
+		} else {
+			failure = decodeFailure(encoded, dispatch)
+		}
 		if failure == nil {
 			return Failed("protocol_error", dispatch)
 		}
@@ -418,7 +457,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch":
+	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "SpaceInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch":
 		return true
 	default:
 		return false

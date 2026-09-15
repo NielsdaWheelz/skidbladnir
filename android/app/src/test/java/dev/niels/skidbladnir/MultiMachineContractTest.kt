@@ -658,7 +658,7 @@ class MultiMachineContractTest {
             val lost = readyMachine(devbox, target.session).copy(access = access)
             val dashboardEntry = DashboardEntryState(
                 DashboardEntrySnapshot(
-                    schemaVersion = 1,
+                    schemaVersion = 2,
                     scope = DashboardScope.Machine(macBookHandle),
                     viewport = DashboardViewport(
                         anchor = DashboardCardKey("4".repeat(64)),
@@ -975,9 +975,9 @@ class MultiMachineContractTest {
         assertEquals(
             "an older callback must not clear a newer mutation fence",
             superseded,
-            clearRenameMutationFence(superseded, fence = 3),
+            clearMetadataMutationFence(superseded, fence = 3),
         )
-        assertEquals(InventoryState.Fresh(snapshot), clearRenameMutationFence(superseded, fence = 4))
+        assertEquals(InventoryState.Fresh(snapshot), clearMetadataMutationFence(superseded, fence = 4))
 
         val laneEvents = mutableListOf<String>()
         val lane = InventoryOperationLane(Executor(Runnable::run)) { throw it }

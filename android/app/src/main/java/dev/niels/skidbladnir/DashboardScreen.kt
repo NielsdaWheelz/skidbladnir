@@ -61,6 +61,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -113,6 +114,16 @@ internal fun DashboardScreen(
             ),
         )
     }
+    state.spaceEditor?.let { editor ->
+        SpaceSheet(
+            editor = editor,
+            machine = state.machines.single { it.machine.handle == editor.target.machineHandle },
+            labels = observedSpaces(state.machines),
+            onChange = controller::updateSpaceDraft,
+            onDismiss = controller::dismissSpaceEditor,
+            onSubmit = controller::submitSpace,
+        )
+    }
     state.kill?.let { kill ->
         KillConfirmation(
             state = kill,
@@ -151,7 +162,7 @@ internal fun DashboardMain(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val sessions = visibleSessions(state.machines, scope)
+    val sessions = visibleSessions(state.machines, scope).filter { entry.space.matches(it.target.session.space) }
     val canForge = machines.any(MachineState::canForge)
     val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
@@ -162,6 +173,7 @@ internal fun DashboardMain(
             )
 
             MachineFilters(state.machines, scope, entry::selectScope)
+            SpaceSelector(entry.space, observedSpaces(state.machines), entry::selectSpace)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     MachineStrip(
@@ -197,6 +209,7 @@ internal fun DashboardMain(
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
                 onKill = controller::requestKill,
+                onSpace = controller::openSpaceEditor,
             )
         }
 
@@ -226,9 +239,10 @@ internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
     onVerify: () -> Unit,
-    onRestore: (List<DashboardCardKey>) -> Unit,
+    onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
+    onSpace: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
     val machines = state.machines.filter { machine ->
@@ -237,8 +251,8 @@ internal fun DashboardDwarfCollection(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val sessions = visibleSessions(state.machines, scope)
-    val keys = sessions.map(VisibleSession::cardKey)
+    val items = dashboardItems(state.machines, scope, entry.space)
+    val keys = items.map(DashboardItem::key)
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)
     }
@@ -258,11 +272,12 @@ internal fun DashboardDwarfCollection(
                 state,
                 scope,
                 machines,
-                sessions,
+                items,
                 entry.gridState,
                 motionEnabled,
                 onOpen,
                 onKill,
+                onSpace,
             )
         }
     } else {
@@ -270,11 +285,12 @@ internal fun DashboardDwarfCollection(
             state,
             scope,
             machines,
-            sessions,
+            items,
             entry.gridState,
             motionEnabled,
             onOpen,
             onKill,
+            onSpace,
         )
     }
 }
@@ -359,11 +375,12 @@ private fun DashboardDwarfGrid(
     state: SkidbladnirUiState.Dashboard,
     scope: DashboardScope,
     machines: List<MachineState>,
-    sessions: List<VisibleSession>,
+    items: List<DashboardItem>,
     gridState: LazyGridState,
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
+    onSpace: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
     val bottomPadding = 84.dp
@@ -382,7 +399,7 @@ private fun DashboardDwarfGrid(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (sessions.isEmpty()) {
+            if (items.isEmpty()) {
                 item(
                     key = "dashboard-empty-state",
                     span = { GridItemSpan(maxLineSpan) },
@@ -395,9 +412,9 @@ private fun DashboardDwarfGrid(
                                 tone = NoticeTone.Failure,
                             )
                             else -> dashboardInventoryWaitCopy(machines)?.let {
-                                EmptyState("Sessions not current", it.message, tone = it.tone)
+                                EmptyState("no matching sessions in available inventory", it.message, tone = it.tone)
                             } ?: EmptyState(
-                                "No tmux sessions",
+                                "no sessions in this view",
                                 "Create a dwarf here, or launch tmux on the visible " +
                                     if (machines.size == 1) "machine." else "machines.",
                                 ornament = true,
@@ -407,23 +424,33 @@ private fun DashboardDwarfGrid(
                 }
             } else {
                 items(
-                    items = sessions,
-                    key = { it.cardKey.lifetimeFingerprint },
-                ) { visibleSession ->
-                    val machineState = state.machines.single {
-                        it.machine.handle == visibleSession.target.machineHandle
+                    items = items,
+                    key = { it.key.encoded },
+                    span = { if (it is DashboardItem.Heading) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                ) { item ->
+                    when (item) {
+                        is DashboardItem.Heading -> {
+                            val label = item.label?.let { "space: ${it.text}" } ?: "unassigned"
+                            Text(label, fontFamily = NidavellirType.Data, color = Muted,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics {
+                                    heading()
+                                    contentDescription = label
+                                }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        is DashboardItem.Session -> {
+                            val visible = item.visible
+                            val machine = state.machines.single { it.machine.handle == visible.target.machineHandle }
+                            SessionCard(
+                                visible,
+                                machine,
+                                showMachineLabel = scope == DashboardScope.All,
+                                motionEnabled = motionEnabled,
+                                onOpen = { onOpen(visible.target) },
+                                onKill = { onKill(visible.target) },
+                                onSpace = { onSpace(visible.target) },
+                            )
+                        }
                     }
-                    SessionCard(
-                        visibleSession,
-                        machineState,
-                        showMachineLabel = when (scope) {
-                            DashboardScope.All -> true
-                            is DashboardScope.Machine -> false
-                        },
-                        motionEnabled = motionEnabled,
-                        onOpen = { onOpen(visibleSession.target) },
-                        onKill = { onKill(visibleSession.target) },
-                    )
                 }
             }
         }

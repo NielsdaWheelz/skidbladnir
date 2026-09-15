@@ -3,6 +3,7 @@ package tmux
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 )
 
 var (
@@ -21,6 +24,8 @@ const (
 	ServerEpochOption      = "@skid_server_epoch"
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
 	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
+	SpaceOption            = "@skid_space_b64"
+	spaceSuccessMarker     = "SKIDBLADNIR_SPACE_SUCCESS_V1"
 )
 
 var (
@@ -232,17 +237,37 @@ func (client Client) AssignCharacterIfUnchanged(
 	}
 }
 
+func (client Client) SetSessionSpaceIfIdentity(ctx context.Context, id string, label space.Label, server ServerIdentity) (bool, error) {
+	if !sessionIDPattern.MatchString(id) || !server.valid() {
+		return false, errors.New("tmux space assignment identity is invalid")
+	}
+	assignment := "set-option -u -t '" + id + "' -- " + SpaceOption
+	if !label.IsUnassigned() {
+		encoded := base64.RawURLEncoding.EncodeToString([]byte(label.String()))
+		assignment = "set-option -t '" + id + "' -- " + SpaceOption + " " + encoded
+	}
+	output, err := client.Output(ctx, "set-space-if-identity", "if-shell", "-F", "-t", id,
+		andFormatConditions(sessionLifetimeConditions(id, server)),
+		assignment+" ; display-message -p -l '"+spaceSuccessMarker+"'",
+		"display-message -p -l '"+identityMismatchMarker+"'")
+	if err != nil {
+		return false, err
+	}
+	switch output {
+	case spaceSuccessMarker:
+		return true, nil
+	case identityMismatchMarker:
+		return false, nil
+	default:
+		return false, errors.New("tmux conditional space assignment returned unexpected output")
+	}
+}
+
 func characterAssignmentArguments(id, expected, character string, server ServerIdentity) ([]string, error) {
 	if !sessionIDPattern.MatchString(id) || !tmuxCommandTokenPattern.MatchString(character) || !server.valid() {
 		return nil, errors.New("tmux character assignment identity is invalid")
 	}
-	conditions := []string{
-		"#{==:#{" + ServerEpochOption + "}," + formatLiteral(server.Epoch) + "}",
-		"#{==:#{pid}," + formatLiteral(server.PID) + "}",
-		"#{==:#{start_time}," + formatLiteral(server.StartTime) + "}",
-		"#{==:#{session_id}," + formatLiteral(id) + "}",
-		"#{==:#{@skid_character}," + formatLiteral(expected) + "}",
-	}
+	conditions := append(sessionLifetimeConditions(id, server), "#{==:#{@skid_character},"+formatLiteral(expected)+"}")
 	return []string{
 		"if-shell", "-F", "-t", id, andFormatConditions(conditions),
 		"set-option -t '" + id + "' -- @skid_character " + character,
@@ -266,14 +291,16 @@ func formatLiteral(value string) string {
 }
 
 func mutationIdentityCondition(id, name string, server ServerIdentity) string {
-	conditions := []string{
+	return andFormatConditions(append(sessionLifetimeConditions(id, server), "#{==:#{session_name},"+formatLiteral(name)+"}"))
+}
+
+func sessionLifetimeConditions(id string, server ServerIdentity) []string {
+	return []string{
 		"#{==:#{" + ServerEpochOption + "}," + formatLiteral(server.Epoch) + "}",
 		"#{==:#{pid}," + formatLiteral(server.PID) + "}",
 		"#{==:#{start_time}," + formatLiteral(server.StartTime) + "}",
 		"#{==:#{session_id}," + formatLiteral(id) + "}",
-		"#{==:#{session_name}," + formatLiteral(name) + "}",
 	}
-	return andFormatConditions(conditions)
 }
 
 func andFormatConditions(conditions []string) string {

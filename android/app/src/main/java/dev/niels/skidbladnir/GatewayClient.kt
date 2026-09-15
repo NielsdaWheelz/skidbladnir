@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -41,8 +42,10 @@ internal sealed interface GatewayResult<out Value> {
     data class Failure(val failure: GatewayFailure) : GatewayResult<Nothing>
 }
 
+internal enum class MutationDispatch { NotSent, Unknown }
+
 internal sealed interface GatewayFailure {
-    data class Api(val code: ApiErrorCode) : GatewayFailure
+    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null) : GatewayFailure
     data object Transport : GatewayFailure
 }
 
@@ -63,6 +66,7 @@ internal fun createFailureIsDefinitive(failure: GatewayFailure): Boolean = when 
         ApiErrorCode.ProfileUnknown,
         ApiErrorCode.SessionNameInvalid,
         ApiErrorCode.ObjectiveInvalid,
+        ApiErrorCode.SpaceInvalid,
         ApiErrorCode.SessionNameConflict,
     )
 }
@@ -246,6 +250,32 @@ internal class GatewayClient(
             .build()
     }
 
+    fun setSessionSpace(
+        credential: MachineCredential,
+        target: SessionTarget,
+        label: SpaceLabel?,
+    ): GatewayResult<Unit> {
+        val request = spaceRequest(credential, target, label)
+        return try {
+            executeBodyless(request, ::decodeSpaceHttpFailure)
+        } catch (_: ProtocolDecodeException) {
+            // A malformed completion after dispatch cannot establish that the write failed.
+            GatewayResult.Failure(GatewayFailure.Transport)
+        }
+    }
+
+    internal fun spaceRequest(
+        credential: MachineCredential,
+        target: SessionTarget,
+        label: SpaceLabel?,
+    ): Request {
+        require(target.machineHandle == credential.machine.handle)
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "space"))
+            .put(productJson.encodeToString(SpaceRequest(target.session.identityToken, label?.text.orEmpty()))
+                .toRequestBody(jsonMediaType))
+            .build()
+    }
+
     internal fun terminalRequest(credential: MachineCredential, target: SessionTarget): Request {
         require(target.machineHandle == credential.machine.handle)
         return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal"))
@@ -419,6 +449,7 @@ internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailu
             ApiErrorCode.ProfileUnknown,
             ApiErrorCode.SessionNameInvalid,
             ApiErrorCode.ObjectiveInvalid,
+        ApiErrorCode.SpaceInvalid,
             ApiErrorCode.SessionNameConflict,
             ApiErrorCode.MachineIdentityMismatch,
             ApiErrorCode.InternalError,
@@ -503,6 +534,7 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.ProfileUnknown,
     ApiErrorCode.SessionNameInvalid,
     ApiErrorCode.ObjectiveInvalid,
+        ApiErrorCode.SpaceInvalid,
     -> 422
     ApiErrorCode.SessionNameConflict,
     ApiErrorCode.SessionIdentityMismatch,
@@ -527,4 +559,25 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
     require(code in setOf(ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid))
     require(error.dispatch == "not_sent" && status == apiErrorHttpStatus(code) && error.message == apiErrorMessage(code))
     GatewayFailure.Api(code)
+}
+
+@Serializable private data class SpaceRequest(val identityToken: String, val space: String)
+@Serializable private data class SpaceErrorResponse(val code: String, val message: String, val dispatch: String)
+
+internal fun decodeSpaceHttpFailure(status: Int, encoded: String): GatewayFailure = decodeProtocol {
+    val response = productJson.decodeFromJsonElement<SpaceErrorResponse>(strictJsonObject(encoded))
+    val code = parseApiErrorCode(response.code)
+    require(code in setOf(
+        ApiErrorCode.Unauthenticated, ApiErrorCode.MachineIdentityMismatch, ApiErrorCode.InvalidRequest,
+        ApiErrorCode.RequestTooLarge, ApiErrorCode.SpaceInvalid, ApiErrorCode.SessionNotFound,
+        ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
+    ))
+    require(status == apiErrorHttpStatus(code) && response.message == apiErrorMessage(code))
+    val dispatch = when (response.dispatch) {
+        "not_sent" -> MutationDispatch.NotSent
+        "unknown" -> MutationDispatch.Unknown
+        else -> throw SerializationException("invalid membership dispatch")
+    }
+    require(dispatch == MutationDispatch.NotSent || code == ApiErrorCode.InternalError)
+    GatewayFailure.Api(code, dispatch)
 }

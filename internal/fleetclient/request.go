@@ -8,21 +8,24 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 // Request is shared by command parsing and the session browser. It is never a wire DTO.
 type Request struct {
-	Operation string
-	Name      string
-	Machine   string
-	Ref       string
-	Profile   string
-	CWD       string
-	Text      string
-	Keys      []string
-	Mode      string
-	MaxBytes  int
+	Operation   string
+	Name        string
+	Machine     string
+	Ref         string
+	Profile     string
+	CWD         string
+	Text        string
+	Keys        []string
+	Mode        string
+	MaxBytes    int
+	Space       space.Label
+	SpaceFilter space.Filter
 }
 
 type ProcessReference struct {
@@ -80,6 +83,9 @@ func (ref Reference) SessionEqual(other Reference) bool {
 }
 
 func (request Request) Valid() bool {
+	if request.Operation != "start" && request.Operation != "space" && !request.Space.IsUnassigned() || request.Operation != "list" && request.SpaceFilter.Kind() != space.FilterAll {
+		return false
+	}
 	if request.Mode != "" && request.Mode != "auto" && request.Mode != "terminal" {
 		return false
 	}
@@ -97,7 +103,7 @@ func (request Request) Valid() bool {
 		return request.Name == "" && request.Ref == ""
 	case "start":
 		return request.Name != "" && request.Machine != "" && request.Profile != "" && request.Ref == ""
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill":
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space":
 	default:
 		return false
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -38,6 +39,7 @@ var (
 	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
 	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
 	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
+	errorSpaceInvalid                = apiError{Code: "SpaceInvalid", Message: space.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSpaceInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
 	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
 	errorPairingInviteRejected       = apiError{Code: "PairingInviteRejected", Message: "This fleet invite is invalid, expired, or already used.", Status: http.StatusUnauthorized, logCode: logging.ErrorPairingInviteRejected}
@@ -80,6 +82,7 @@ type sessionDTO struct {
 	LaunchProfile   string       `json:"launchProfile,omitempty"`
 	Agent           *agentDTO    `json:"agent,omitempty"`
 	Objective       string       `json:"objective,omitempty"`
+	Space           string       `json:"space,omitempty"`
 	CWD             string       `json:"cwd,omitempty"`
 	ActiveCommand   string       `json:"activeCommand,omitempty"`
 	AttachedClients int          `json:"attachedClients"`
@@ -184,6 +187,7 @@ type createSessionRequest struct {
 	Profile          stringField `json:"profile"`
 	OptionalTmuxName stringField `json:"optionalTmuxName"`
 	Objective        stringField `json:"objective"`
+	Space            stringField `json:"space"`
 }
 
 func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
@@ -191,12 +195,12 @@ func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
 	if err := strictjson.Decode(encoded, &members); err != nil {
 		return err
 	}
-	if len(members) < 2 || len(members) > 4 || members["cwd"] == nil || members["profile"] == nil {
+	if len(members) < 2 || len(members) > 5 || members["cwd"] == nil || members["profile"] == nil {
 		return errors.New("create request does not have its exact required fields")
 	}
 	for member := range members {
 		switch member {
-		case "cwd", "profile", "optionalTmuxName", "objective":
+		case "cwd", "profile", "optionalTmuxName", "objective", "space":
 		default:
 			return errors.New("create request has an unknown field")
 		}
@@ -215,6 +219,11 @@ func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
 	}
 	if objective, present := members["objective"]; present {
 		if err := json.Unmarshal(objective, &decoded.Objective); err != nil {
+			return err
+		}
+	}
+	if label, present := members["space"]; present {
+		if err := json.Unmarshal(label, &decoded.Space); err != nil {
 			return err
 		}
 	}
@@ -247,6 +256,30 @@ type renameSessionRequest struct {
 	TmuxName      stringField `json:"tmuxName"`
 	NewTmuxName   stringField `json:"newTmuxName"`
 	IdentityToken stringField `json:"identityToken"`
+}
+
+type setSessionSpaceRequest struct {
+	IdentityToken stringField `json:"identityToken"`
+	Space         stringField `json:"space"`
+}
+
+func (request *setSessionSpaceRequest) UnmarshalJSON(encoded []byte) error {
+	var members map[string]json.RawMessage
+	if err := strictjson.Decode(encoded, &members); err != nil {
+		return err
+	}
+	if len(members) != 2 || members["identityToken"] == nil || members["space"] == nil {
+		return errors.New("space request does not have its exact fields")
+	}
+	var decoded setSessionSpaceRequest
+	if err := json.Unmarshal(members["identityToken"], &decoded.IdentityToken); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(members["space"], &decoded.Space); err != nil {
+		return err
+	}
+	*request = decoded
+	return nil
 }
 
 func (request *renameSessionRequest) UnmarshalJSON(encoded []byte) error {
@@ -371,6 +404,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
 		Objective:       session.Objective,
+		Space:           session.Space.String(),
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,

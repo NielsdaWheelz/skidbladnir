@@ -1,5 +1,92 @@
 # Skíðblaðnir v0 roadmap
 
+## spaces — source implemented, runtime acceptance open
+
+2026-09-15: pr 1 of [spaces, shells, and client composition](spaces-and-shells.md).
+[spaces.md](spaces.md) closes its capability, wire, validation, ui, restoration,
+file-ownership, cutover, cost, and a1–a9 acceptance contracts. the host, cli/tui,
+and android source is implemented together on `spaces-pr1`, based on `73aeb26`.
+the isolated worktree is `/home/niels/src/personal/skidbladnir-spaces-pr1`;
+the original checkout and its uncommitted specification remain untouched.
+this candidate changes no release version, pin, or deployed installation.
+
+outcome: one optional host-owned label per session; cross-host grouping and
+intersecting machine/space views; create/set/change/clear through cli/tui/phone.
+session references and runtime ownership remain unchanged. no space lifecycle,
+shell launcher, terminal-composition work, or later-pr scaffolding is included.
+
+implemented through the existing owners: one pure go label/filter package;
+session-local encoded tmux membership and an exact session-lifetime put;
+strict fleetclient/phone boundaries; shared grouped projections and local filters;
+pinned editors and existing ordered inventory reads; schema-2 content-free task
+restoration. flat human rendering, four-field tui assumptions, schema-1 capsule
+paths, and rename-only fence bookkeeping are removed. existing controls retain
+their original references and runtime ownership.
+
+verification for this candidate:
+
+- owner behavioral reds were observed before implementation: host request
+  rejection against unchanged source on isolated tmux; desktop grammar, wire,
+  and grouping behavior; android wire/schema behavior. the unchanged host's
+  complete integration baseline also passed.
+- cross-owner adversarial reviews found and corrected malformed dispatch
+  classification, stale action admission, uncertain-result retention, duplicate
+  create projection, immediate post-create saved viewport, and unicode
+  stream-safe/table-version differences. fixes retain definite versus unknown outcomes;
+  no retry, compensating mutation, or new lifecycle owner was added.
+- `./scripts/test verify` passes: static checks, go and android builds, and the
+  complete unit workflow. focused go tests with race detection pass. android's
+  122 jvm tests pass and all instrumented test source compiles; compilation is
+  not a device pass.
+- approved complete linux integration passed after the unicode correction
+  (`67.691s`), including four spaces journeys and real tls fleetclient/cli
+  composition. the linux direct-tmux live gate passed (`0.278s`).
+- plain-nfc conformance passed 95,370 assertions from the unicode-15 corpus;
+  independent parser/draft oracle review passed 36,514 cases. corpus and probe
+  artifacts were temporary; no new test framework or copied tables ship.
+- darwin isolated integration, real compose/registry execution, the phone-to-
+  isolated-host membership sample, and hands-on phone acceptance are `NOT_RUN`.
+  no phone/adb, platform, provider, release, or deployment gate was invoked.
+  a2–a4 lack their darwin boundary; a4 and a6–a8 lack the required phone runtime
+  evidence. source and routine checks cannot close those acceptance gaps.
+
+implementation and remaining delivery order within this single pr:
+
+1. write and observe each owner's bounded behavioral red before implementation.
+   share go label/order/filter values, then add session-local metadata and the
+   session-lifetime-only put operation through existing tmux/gateway primitives.
+   live-boundary reds require their current-turn approvals.
+2. extend strict fleetclient/cli projections and commands; add grouped text and
+   tui filters/editor/creation. preserve original references and retain complete
+   source rows before filtering.
+3. extend phone schemas, shared space field, dashboard editor, and the existing
+   metadata mutation/read fence. add grouping and schema-2 return restoration in
+   the retained dashboard entry. preserve provider/terminal behavior.
+4. remove superseded flat renderers, schema-1 navigation readers, card-only item
+   indexing, four-field tui form assumptions, and duplicated metadata-fence
+   bookkeeping as specified. complete routine verification and diff review.
+5. with explicit current-turn approval, complete isolated linux/darwin membership
+   and lifetime checks, real-compose/registry checks, and phone-to-isolated-host
+   editing/filter/return acceptance. without those boundaries, report the exact
+   `NOT_RUN` criteria; source completion is not runtime acceptance.
+6. release host/cli/android together through existing admission and installers.
+   mixed versions are unsupported; no protocol negotiation, compatibility route,
+   metadata migration, or alternate renderer. publication, pins, deployment, and
+   phone operations are separate actions, not authorized by this spec revision.
+
+accepted costs include manual filing, last-applied concurrent writes, incomplete
+observed suggestions, deterministic non-localised ordering, unresolved restored
+label display, explicit creation choice in that state, possible post-create
+filter changes, and one-time navigation reset on the task-schema hard cut.
+[the complete cost table](spaces.md#13-hard-cutover-non-goals-and-explicit-costs)
+is part of the implementation contract.
+
+pr 2 (independent shell creation) and pr 3 (additional terminal navigation and
+composition) remain separate. their own unfinished launch/navigation contracts
+must be closed before their implementation. do not broaden pr 1 to prepare them.
+
+## released baseline and historical evidence
+
 current release: [usable agent client and direct attachment](agent-control-ux.md),
 immutable v0.4.1 at `bd4983f9ea23589283dac67c89d3b83cbe7cde8a`, pinned in both
 repositories and installed on all three gateways/clis, jarvis's executable copy,
@@ -1179,6 +1266,7 @@ historical results remain historical.
 
 | Slice | Status |
 | --- | --- |
+| spaces, pr 1 | source implemented; owner reds, complete routine verification, focused race/unicode checks and approved linux integration/live pass; 122 android jvm tests pass; darwin and phone runtime acceptance `NOT_RUN`; unpublished |
 | v0 readable terminal sizing | Historical 2026-09-10 snapshot: implemented 2026-09-08 and published in immutable `v0.2.30`; routine and publication checks green; three hosts and the phone deployed; fleet generation-digest mismatch subsequently fixed by agent control; this slice's owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
