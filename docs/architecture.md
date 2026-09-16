@@ -5,6 +5,8 @@ source `df7ad499d87f96e9ca79336ef0632a9d23ef072d`. delivery, executed runtime
 boundaries, and remaining acceptance gaps are in the
 [roadmap](roadmap.md#v050-deployment-and-runtime-acceptance). deployment does not
 establish missing runtime acceptance; historical releases do not prove this target.
+the narrow-card action fix is verified on unreleased main. v0.5.0 and its pins
+remain unchanged, with its recorded platform failure and open hands-on acceptance.
 
 accepted 2026-09-15 target: [spaces](spaces.md), pr 1 of
 [spaces, shells, and client composition](spaces-and-shells.md). its contracts

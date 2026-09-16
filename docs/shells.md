@@ -3,10 +3,11 @@
 2026-09-15: pr 2 source implemented on `shells-pr2`, following [spaces](spaces.md).
 linux host/desktop proofs passed during implementation. v0.5.0 is now deployed;
 darwin host/desktop proofs pass with the documented test-only shell observation
-correction. the release-bound phone journey stops at its
-[invalid fixture fleet](issues/shells-phone-fixture.md), before creation or layout
-checks. [the roadmap](roadmap.md#v050-deployment-and-runtime-acceptance)
-owns current evidence. full h/d/p acceptance remains open.
+correction. the corrected real phone journey passes creation, cwd/space
+inheritance, duplicate suppression, independent lifetime, attachment and
+restoration. the complete released platform gate remains failed, and hands-on
+acceptance remains `NOT_RUN`. [the roadmap](roadmap.md#v050-deployment-and-runtime-acceptance)
+owns the distinct immutable, corrected-test and unreleased-development evidence.
 [architecture.md](architecture.md) owns scope; [roadmap.md](roadmap.md) owns
 delivery; this document owns the contracts below. read [AGENTS.md](../AGENTS.md),
 [agent-control.md](agent-control.md), [agent-control-ux.md](agent-control-ux.md),

@@ -9,8 +9,8 @@ hands-on checks have not been performed and directed that acceptance remain
 impact: membership set/change/clear, intersecting filters and return position,
 forge/header terminal creation with cwd/space inheritance, duplicate taps, and
 narrow/enlarged-text usability remain `NOT_RUN` as hands-on evidence. automated
-host/component results must retain their own attribution; the failed shell
-fixture also blocks the real phone automation.
+host, real phone, and component results retain their own attribution. the
+corrected real phone automation now passes; it does not supply human observation.
 
 resolved when: an approved bounded journey records which checks a person
 actually performs, with synthetic test sessions and unchanged existing user

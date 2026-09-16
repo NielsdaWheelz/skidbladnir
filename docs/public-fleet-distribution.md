@@ -2,8 +2,10 @@
 
 v0.5.0 deployment, devbox reboot persistence, and the human-operated s22+ product
 journey are recorded in the [current delivery evidence](roadmap.md#v050-deployment-and-runtime-acceptance).
-that record separately reports the release-bound platform failures and recovery;
-historical passes below do not establish current feature acceptance.
+that record separately reports release-bound failures, corrected real phone
+proofs, and the unreleased card fix. exact public apk recovery and pairing
+preservation pass; no new version or pin was published. historical passes below
+do not establish current feature acceptance.
 
 historical v0.2.29 acceptance follows; current release and rollout status live
 in [the roadmap](roadmap.md). this remains the accepted contract with the

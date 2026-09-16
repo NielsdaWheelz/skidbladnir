@@ -2,51 +2,71 @@
 
 ## v0.5.0 deployment and runtime acceptance
 
-2026-09-15 macbook-local completion run. immutable release source is
-`df7ad499d87f96e9ca79336ef0632a9d23ef072d`; pin/operator commit is
-`261796bea039a857eb64fdc5e6814658e03fb3d7`; the clean declared dev-server
-candidate is `545af0c98d9fa2e5f25884efded1b6ae0552577a`. both tracked pins agree,
-and all five retained public artifacts match their tracked sha256 values. the
-separate exact-source checkout remains clean. earlier routine/linux/publication
-evidence was retained, not rerun or reattributed.
+2026-09-15–16: macbook, devbox, arch, and the s22+ run public v0.5.0. the
+release-bound platform result remains **failed**. its real narrow-card defect
+is fixed on unreleased main and verified separately; the user explicitly
+requested no new version, release, or pin. hands-on spaces/shells acceptance
+remains `NOT_RUN` by user direction.
+
+immutable release source is `df7ad499d87f96e9ca79336ef0632a9d23ef072d`;
+the original pin/operator commit is `261796bea039a857eb64fdc5e6814658e03fb3d7`;
+the clean declared dev-server candidate is
+`545af0c98d9fa2e5f25884efded1b6ae0552577a`. both tracked pins agree and remain
+unchanged. all five retained public artifacts match their tracked sha256 values.
+the separate exact-source checkout remains clean. earlier linux/publication
+proofs retain their original attribution.
 
 | boundary | actual result |
 | --- | --- |
-| hosts | macbook, devbox, and user-applied arch binaries report exact v0.5.0/source; public `scripts/fleet verify` passes all three. prior macbook/devbox public apply/reapply and credential/reference preservation remain accepted. arch apply/reapply preservation was not measured by this completion run. |
-| devbox reboot | public `verify-reboot devbox --allow-reboot-acceptance` passes against the original checkpoint: changed boot, unchanged release/credentials, automatic gateway startup and service intent. separate system-service observations show all three codex services enabled/running from boot. the gate consumed its checkpoint normally; no new reboot or checkpoint was created. old devbox session refs may be stale after reboot. |
-| macbook shared services | all three retain their prior accepted pids; no shared codex restart occurred. |
-| darwin integration, unchanged release tests | **failed** at `TestShellCreationOwnsAnIndependentSession`: the predicate combined exact cwd with `pane_current_command == sh`. isolated diagnosis found exact cwd, a live pane, and command `bash`; macos dispatches `/bin/sh` to its selected shell. |
-| darwin integration, corrected observation | **passed**, complete canonical `scripts/test integration --allow-isolated-tmux-mutation`, control-plane package `130.054s`, tmux 3.7c. the sole test correction waits for exact cwd and the existing exact login argv `[-sh]` invariant. all production source matches the immutable release. this proves the runtime with the corrected test; it does not retroactively pass the unchanged release test. |
-| physical product | **passed**, canonical product gate exit 0 in a human-operated terminal. real confirmations cover pre-update fleet, signed 0.4.1/4001 → 0.5.0/5000 update preservation before reconnect, scanner reconnect, machine pressure/routing, existing-session attach/detach, process recreation, and bounded macbook gateway outage/recovery. final exact fleet lifetime digests and installed apk digest/signer match. a mistyped pre-install confirmation exited 1; installed 0.4.1 was verified before the requested retry. |
-| release-bound platform | **failed**, 80 started, 73 passed, 7 failed, no skips; canonical gate exit 1. clean `261796b` policy/pin checkout invoked the separate clean `df7ad49` source and its isolated fixture. three spaces component/registry/normalization tests pass. six obsolete ui assertions fail; the real shell journey fails at fixture admission before its behavior checks. the go fixture's successful process exit does not override instrumentation failure. |
-| release restoration | **passed**: cleanup restored exact public 0.5.0/5000 apk; independent pull/digest, signer, and metadata verification agree. test-only package and fixture reverse port are absent; restored app launched. no production-package uninstall, data clear, downgrade, or debug-signing substitution occurred. the failed-suite path exits before its final encrypted-pairing byte comparison, so that comparison is `NOT_RUN`. the user subsequently confirmed that arch, devbox, and macbook all still connect without another invite: functional pairing preservation passes by human observation. |
+| hosts | **passed**: all three installed binaries report exact v0.5.0/source; public `scripts/fleet verify` passes. prior macbook/devbox public apply/reapply and credential/reference preservation remain accepted. arch was applied by the user; this run did not measure its apply/reapply preservation. |
+| devbox reboot | **passed**: public `verify-reboot devbox --allow-reboot-acceptance` used the original checkpoint and verified changed boot, unchanged release/credentials, automatic gateway startup, and service intent. separate system-service observations show all three codex services enabled/running from boot. the checkpoint was consumed normally; no reboot or replacement checkpoint was created. old session refs may be stale across reboot. |
+| macbook shared services | all three retain their prior accepted pids. no shared codex restart occurred. |
+| physical product | **passed**, human-operated canonical gate exit 0: real pre-update fleet confirmation, signed 0.4.1/4001 → 0.5.0/5000 preservation before reconnect, scanner reconnect, machine pressure/routing, existing-session attach/detach, recreation, and bounded macbook gateway outage/recovery. fleet lifetime digests and final apk digest/signer match. a mistyped pre-install confirmation exited 1; installed 0.4.1 was inspected before the requested retry. |
+| darwin integration | unchanged release test **failed** because it required tmux's kernel command name to be `sh`; macos selects `bash` for `/bin/sh`. corrected canonical isolated integration **passed** (control-plane package 130.054s, tmux 3.7c), asserting exact cwd and the existing configured login argv `[-sh]`. production was unchanged. the original result remains failed. |
+| original release-bound platform | **failed**, 80 started, 73 passed, 7 failed, no skips, exit 1. clean `261796b` policy/pin invoked clean `df7ad49` source. six stale ui assertions failed; the shell fixture reused a bearer across three peers and failed fleet admission before its behavior checks. |
+| corrected tests, unchanged release runtime | **failed**, complete canonical gate: 80 started, 78 passed, 2 failed, no skips, exit 1. test source `d6b342f8e13778b130f884120328cdc6d8027afe`; runtime remained exact `df7ad49`. the complete real spaces/shells phone journey passed. failures were the actual 170dp/2x card target defect and pressure-sheet back synchronization. a successful go fixture process exit never overrides instrumentation failures. |
+| unreleased card/dashboard development proof | **passed**, all 11 tests in `SessionCardInstrumentedTest` and `MultiMachineUiInstrumentedTest`, no skips, exit 0, source `9dc53f4451bb0617280c9bba4553d391af321cc8`. the sole production change wraps card actions while retaining complete labels, 48dp targets, and 8dp separation. the back test now waits for the native dialog to own focus. this signed same-version component proof uses the canonical signing, bounded-runner, pairing and restoration helpers; it is not a full platform gate or a v0.5.0 pass. |
+| restoration and pairing | **passed**: every mutating repair run restored the exact public 0.5.0/5000 apk. final independent pull/digest, signer, and metadata checks agree; test package and fixture reverse port are absent; public app launched. repair runs compare encrypted pairing bytes even when assertions fail. the original immutable run's final byte comparison was `NOT_RUN`; the user's subsequent all-three-host reconnect without another invite remains its functional preservation evidence. no production-package uninstall, data clear, downgrade, or debug signer was used. |
+| routine | local `GOTOOLCHAIN=local scripts/test verify` passes after the production fix. final hosted verification and merge are tracked by [pr 97](https://github.com/NielsdaWheelz/skidbladnir/pull/97). |
 
-spaces/shells acceptance is explicitly bounded. the user confirmed that the
-new-feature hands-on checks have not been performed and directed that they remain
-`NOT_RUN`; this does not waive the acceptance criteria.
+proof sensitivity: a separate test-only candidate canceled the first membership
+save while retaining the expected host change; the real-gateway membership
+assertion failed as intended. further device execution exposed fixture defects:
+a selector matched both a heading and button; a deliberately held response
+threw an uncaught interruption when the controller closed; terminal control
+setup cleared two acknowledgment queues before both deliveries completed. the
+corrections select the action, propagate transport cancellation, and consume the
+exact acknowledgment on both queues. no runtime prerequisite was bypassed.
 
-| behavior | automated evidence | hands-on evidence |
+the interrupted fixture run started 29 of 80 tests and passed 27 before process
+failure; its remaining 51 tests were `NOT_RUN`. the later complete run above
+supersedes that incomplete coverage without erasing its result. the pressure
+failure supports a window-focus race diagnosis; the original log does not prove
+where the back event landed. the focused development run passes the same real
+back, dismissal, and returned-focus assertions. complete platform execution of
+the unreleased production change remains `NOT_RUN`; its 11-test component proof
+is the bounded validation for that change.
+
+| spaces/shells behavior | automated evidence | hands-on evidence |
 | --- | --- | --- |
-| membership set/change/clear | linux/darwin host and real desktop boundaries pass; phone compose editor passes, but no phone membership put is exercised | `NOT_RUN` pending a reported real journey |
-| intersecting filters | host/desktop composition and phone component projection pass; the component changes machine scope directly | `NOT_RUN` for the new combined-filter journey |
-| restoration | phone schema-2 registry and heading tests pass; the broader return test fails at its old pre-reset geometry assumption, leaving later checks unexecuted | product retains machine selection after detach and fleet identities/routing after recreation; spaces-specific return position `NOT_RUN` |
-| forge/header terminal creation | host/desktop pass; real phone journey blocked by invalid fixture fleet | `NOT_RUN` |
-| sampled cwd/space and independent lifetime | linux/darwin host proofs pass, including later source edits/closure; phone journey not reached | `NOT_RUN` |
-| duplicate submission | desktop real journey passes; phone duplicate/completion checks not reached | `NOT_RUN` |
-| attach/back | desktop new-terminal journey passes; phone new-terminal journey not reached | product existing-session attach/detach passes; new-terminal return `NOT_RUN` |
-| narrow/enlarged-text layout | phone shell header checks not reached; old card/header assertions fail; text-size persistence test passes only its own boundary | `NOT_RUN` |
+| membership set/change/clear | **passed**: real phone editor → controller → https gateway → isolated tmux; inventory confirms each write, unchanged exact lifetimes/source facts, and no writes for invalid/canceled drafts | `NOT_RUN` |
+| intersecting filters | **passed**: real machine/space selectors, named/unassigned empty intersections, and actual visible session identities | `NOT_RUN` |
+| restoration | **passed**: real filtered attach/detach/back and activity recreation preserve the content-free viewport capsule; component tests cover nonzero heading offsets and reset-to-top | product machine selection/recreation passed; spaces-specific return position `NOT_RUN` |
+| forge/header terminal creation | **passed**: real zero-profile forge creation and header creation/attachment | `NOT_RUN` |
+| cwd/space inheritance and independent lifetime | **passed**: phone verifies requested/inherited cwd and space, source survival, then exact source closure with four created terminals surviving; host proofs additionally cover changed source cwd/space | `NOT_RUN` |
+| duplicate submission and completion | **passed**: disabled pending controls, duplicate suppression, late completion after detach/credential rotation, and no replay after recreation | `NOT_RUN` |
+| attach/back | **passed**: real new-terminal attachment, detach and android back with exact lifetime/filter preservation | product existing-session attach/detach passed; new-terminal journey `NOT_RUN` |
+| narrow/enlarged text | phone header **passed** at 320dp/2x; public card **failed** at 170dp/2x (kill width 30.33dp); unreleased card fix and dashboard component checks **passed** | `NOT_RUN` |
 
-follow-ups: [real phone membership proof](issues/spaces-phone-membership-proof.md),
-[distinct shell-fixture credentials](issues/shells-phone-fixture.md), and
-[current ui assertions](issues/spaces-shells-platform-assertions.md), and
-[hands-on acceptance](issues/spaces-shells-hands-on.md). these require
-corrected, separately attributed proof source and another authorized device run;
-the immutable v0.5.0 source was not edited and failed admission was not bypassed.
-linux `live` and routine checks retain their prior results; they were not repeated.
-provider-live, a second phone, and other-host reboot proofs were not run in this
-completion scope. no pr 3 work or new release was introduced.
+remaining actions: [deploy the card fix in a future authorized release](issues/spaces-card-large-text.md)
+and [perform the hands-on journey](issues/spaces-shells-hands-on.md). the current
+instruction forbids a new release/pin and leaves hands-on acceptance unperformed,
+not waived. linux `live` retains its earlier result. provider-live, a second
+phone, and other-host reboot proofs were not run in this completion scope.
+no pr 3 work was introduced; existing user sessions were not killed, resized,
+or retargeted.
 
-the public apk sha256 is
+the public apk sha256 remains
 `1b050bde3bd91a4bbff7f4608c408b2313753200ac25f2127512f9c97d0c1591`;
 production signer sha256 is
 `7b2ba254e9d3cb18044b723fe124dec87b727ab56e817860bb48e056eddc47bf`.
@@ -54,11 +74,12 @@ the observed old apk matched exact public v0.4.1
 (`8ee72da268e00002fc9fb827aefcd7b88176d42fb06ad01e2fc94de47e6dc760`).
 the product gate owned the forward install; no manual install preceded it.
 
-content-free local evidence is retained under
-`/tmp/skid-release-v050-z3j4orxg/runtime-completion/`, with earlier rollout evidence
-in the adjacent `deploy/` directory. qr payloads and human terminal content were
-not retained. the original source/publication and deployment reports remain at
-`/tmp/skid-release-v050-report.md` and `/tmp/skid-release-v050-deploy-report.md`.
+content-free evidence is retained under
+`/tmp/skid-release-v050-z3j4orxg/runtime-completion/` and `test-repairs/`, with
+earlier rollout evidence in `deploy/`. qr payloads and human terminal content
+were not retained. original reports remain at `/tmp/skid-release-v050-report.md`
+and `/tmp/skid-release-v050-deploy-report.md`; the current runtime report is
+`/tmp/skid-release-v050-runtime-report.md`.
 
 ## new terminal here — source implemented, runtime acceptance open
 
@@ -1381,12 +1402,12 @@ historical results remain historical.
 older release results below retain their historical attribution, including
 wording that called a platform run current at that time. the v0.5.0 result at
 the top governs current delivery and acceptance; earlier greens do not override
-its seven device failures or missing runtime proofs.
+its release-bound failures or missing hands-on acceptance.
 
 | Slice | Status |
 | --- | --- |
-| spaces, pr 1 | deployed in v0.5.0; linux and corrected-test darwin integration pass; three phone component/registry/normalization methods pass; complete platform fails 7/80 and real phone membership editing remains `NOT_RUN`; current evidence and gaps are above |
-| new terminal here, pr 2 | deployed in v0.5.0; linux/darwin host and desktop pass; phone journey stops at invalid fixture fleet before creation, duplicate, return, or layout proofs; full acceptance open |
+| spaces, pr 1 | deployed in v0.5.0; host/desktop and corrected real phone membership/filter/restoration proofs pass. original platform 73/80; corrected release runtime 78/80. unreleased card/dashboard fix passes 11/11; deployed card defect and hands-on acceptance remain open |
+| new terminal here, pr 2 | deployed in v0.5.0; linux/darwin host/desktop and corrected real phone creation, inheritance, independent lifetime, duplicate suppression, attach/back and recreation proofs pass. complete released platform remains failed; hands-on acceptance is `NOT_RUN` |
 | v0 readable terminal sizing | Historical 2026-09-10 snapshot: implemented 2026-09-08 and published in immutable `v0.2.30`; routine and publication checks green; three hosts and the phone deployed; fleet generation-digest mismatch subsequently fixed by agent control; this slice's owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
