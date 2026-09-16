@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -251,7 +253,7 @@ class ShellsInstrumentedTest {
                 }
                 fun selectSpace(description: String) {
                     compose.onNodeWithTag("space-selector").performClick()
-                    compose.onNodeWithContentDescription(description).performScrollTo().performClick()
+                    compose.onNode(hasContentDescription(description) and hasClickAction()).performScrollTo().performClick()
                 }
 
                 compose.onNodeWithTag("machine-filter-${credential.machine.handle.encoded}").performScrollTo().performClick()
