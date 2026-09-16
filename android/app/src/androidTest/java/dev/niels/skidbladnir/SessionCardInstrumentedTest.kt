@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -29,6 +30,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
@@ -76,7 +79,7 @@ class SessionCardInstrumentedTest {
             useUnmergedTree = true,
         ).assertIsDisplayed().assertIsEnabled().assertHasClickAction().getUnclippedBoundsInRoot()
 
-        assertCardActions("common", cardBounds, contextBounds, space, kill)
+        assertCardActions("common", cardBounds, contextBounds, space, kill, "Stop")
         context.assertIsDisplayed()
         val text = card.textValues()
         assertTrue("tmux must precede dwarf in traversal order: $text", text.indexOf(TMUX_NAME) < text.indexOf(DWARF_NAME))
@@ -214,7 +217,7 @@ class SessionCardInstrumentedTest {
         assertTrue("footer must stop at one line", context.getUnclippedBoundsInRoot().height <= ONE_DATA_LINE)
         assertCardActions(
             "long content", card().getUnclippedBoundsInRoot(), context.getUnclippedBoundsInRoot(),
-            space.getUnclippedBoundsInRoot(), kill.getUnclippedBoundsInRoot(),
+            space.getUnclippedBoundsInRoot(), kill.getUnclippedBoundsInRoot(), "Kill",
         )
         assertEquals(listOf(LONG_OBJECTIVE), objective.textValues())
         directory.assertTextAndDescription(LONG_DIRECTORY_VISIBLE, LONG_DIRECTORY_DESCRIPTION)
@@ -247,7 +250,7 @@ class SessionCardInstrumentedTest {
                 activity.bottom <= largeObjective.top && largeObjective.bottom <= largeDirectory.top &&
                 largeDirectory.bottom <= largeContext.top,
         )
-        assertCardActions("large type", card, largeContext, largeSpace, largeKill)
+        assertCardActions("large type", card, largeContext, largeSpace, largeKill, "Kill")
     }
 
     private fun assertActivity(label: String, spoken: String, tone: androidx.compose.ui.graphics.Color) {
@@ -377,7 +380,9 @@ class SessionCardInstrumentedTest {
         )
     }
 
-    private fun assertCardActions(label: String, card: DpRect, context: DpRect, space: DpRect, kill: DpRect) {
+    private fun assertCardActions(
+        label: String, card: DpRect, context: DpRect, space: DpRect, kill: DpRect, killLabel: String,
+    ) {
         assertTrue(
             "$label card must contain its footer and both actions: card=$card context=$context space=$space kill=$kill",
             listOf(context, space, kill).all { card.contains(it) },
@@ -386,13 +391,27 @@ class SessionCardInstrumentedTest {
             "$label space and kill must retain 48dp targets: space=$space kill=$kill",
             listOf(space, kill).all { it.width >= MINIMUM_TARGET && it.height >= MINIMUM_TARGET },
         )
+        val horizontal = (space.top - kill.top).value.absoluteValue <= POSITION_TOLERANCE &&
+            (kill.left - space.right - 8.dp).value.absoluteValue <= POSITION_TOLERANCE
+        val wrapped = (kill.top - space.bottom - 8.dp).value.absoluteValue <= POSITION_TOLERANCE &&
+            (space.right - kill.right).value.absoluteValue <= POSITION_TOLERANCE
         assertTrue(
-            "$label footer must sit 8dp above a separate, nonoverlapping action row: " +
+            "$label footer must sit 8dp above ordered actions with an 8dp horizontal or wrapped gap: " +
                 "context=$context space=$space kill=$kill",
             (space.top - context.bottom - 8.dp).value.absoluteValue <= POSITION_TOLERANCE &&
-                (space.top - kill.top).value.absoluteValue <= POSITION_TOLERANCE &&
-                space.right + 8.dp <= kill.left + POSITION_TOLERANCE.dp,
+                (horizontal || wrapped),
         )
+        for (text in listOf("space", killLabel)) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(text, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action -> action(layouts) }
+            val layout = layouts.single()
+            assertTrue(
+                "$label action label $text must remain complete on one line",
+                layout.lineCount == 1 && !layout.hasVisualOverflow && !layout.isLineEllipsized(0),
+            )
+        }
         assertTrue(
             "$label card must end at its ordinary padding below the action row: card=$card space=$space kill=$kill",
             (card.bottom - maxOf(space.bottom, kill.bottom) - CARD_PADDING)

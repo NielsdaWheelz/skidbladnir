@@ -476,7 +476,9 @@ composable serves forge and the editor. suggestions only fill; clear saves
 unassigned and never deletes sessions.
 the observed suggestions open in one disclosure menu so a large observed set
 does not lengthen the form. the card footer sits above the spaced action row,
-accepting extra card height to retain readable context and 48dp targets.
+accepting extra card height to retain readable context and 48dp targets. when
+width or enlarged text prevents both actions fitting, the action container wraps
+with the same 8dp separation; labels and touch targets remain complete.
 
 follow [design-language.md](design-language.md): literal labels, existing body/data
 faces and surfaces, quiet headings, gold selection, 48dp actions, existing spacing,

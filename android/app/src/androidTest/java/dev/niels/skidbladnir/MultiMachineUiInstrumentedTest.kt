@@ -64,6 +64,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.pressBack
+import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.time.Instant
@@ -1859,7 +1863,7 @@ class MultiMachineUiInstrumentedTest {
 
                 largeRail.performClick()
                 compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
-                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                onView(isRoot()).inRoot(isDialog()).perform(pressBack())
                 compose.waitUntil(10_000) {
                     compose.onAllNodes(hasText("MacBook pressure")).fetchSemanticsNodes().isEmpty()
                 }
