@@ -407,12 +407,19 @@ class SessionCardInstrumentedTest {
                 .assertIsDisplayed()
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action -> action(layouts) }
             val layout = layouts.single()
+            // Compose synthesizes this paragraph under the earlier constraints; its allocation
+            // may exceed the cached size. Check the occupied line, with pixel-rounding tolerance.
+            val lineFits = layout.getLineLeft(0) >= -1f && layout.getLineTop(0) >= -1f &&
+                layout.getLineRight(0) <= layout.size.width + 1f &&
+                layout.getLineBottom(0) <= layout.size.height + 1f
             assertTrue(
                 "$label action label $text must remain complete on one line: lines=${layout.lineCount} " +
                     "overflowWidth=${layout.didOverflowWidth} overflowHeight=${layout.didOverflowHeight} " +
                     "ellipsized=${layout.isLineEllipsized(0)} visibleEnd=${layout.getLineEnd(0, visibleEnd = true)} " +
-                    "size=${layout.size}",
-                layout.lineCount == 1 && !layout.hasVisualOverflow && !layout.isLineEllipsized(0),
+                    "size=${layout.size} line=(${layout.getLineLeft(0)},${layout.getLineTop(0)}).." +
+                    "(${layout.getLineRight(0)},${layout.getLineBottom(0)})",
+                layout.lineCount == 1 && !layout.isLineEllipsized(0) &&
+                    layout.getLineEnd(0, visibleEnd = true) == text.length && lineFits,
             )
         }
         assertTrue(
