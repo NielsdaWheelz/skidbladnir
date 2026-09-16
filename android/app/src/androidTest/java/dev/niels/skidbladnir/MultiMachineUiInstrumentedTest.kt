@@ -3,6 +3,8 @@ package dev.niels.skidbladnir
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.WindowManager
+import android.view.inspector.WindowInspector
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -64,10 +66,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
-import androidx.test.espresso.Espresso.onView
-import androidx.test.espresso.action.ViewActions.pressBack
-import androidx.test.espresso.matcher.RootMatchers.isDialog
-import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.time.Instant
@@ -1863,7 +1861,17 @@ class MultiMachineUiInstrumentedTest {
 
                 largeRail.performClick()
                 compose.onNodeWithText("MacBook pressure").assertIsDisplayed()
-                onView(isRoot()).inRoot(isDialog()).perform(pressBack())
+                compose.waitUntil(10_000) {
+                    var dialogReady = false
+                    scenario.onActivity { activity ->
+                        dialogReady = WindowInspector.getGlobalWindowViews().any { root ->
+                            root !== activity.window.decorView && root.hasWindowFocus() && !root.isLayoutRequested &&
+                                (root.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_APPLICATION
+                        }
+                    }
+                    dialogReady
+                }
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
                 compose.waitUntil(10_000) {
                     compose.onAllNodes(hasText("MacBook pressure")).fetchSemanticsNodes().isEmpty()
                 }
