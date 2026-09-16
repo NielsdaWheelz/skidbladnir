@@ -28,6 +28,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.io.InterruptedIOException
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import javax.net.ssl.SSLContext
@@ -114,7 +115,13 @@ class ShellsInstrumentedTest {
                 if (call.request().method != "POST" || !call.request().url.encodedPath.startsWith("/v1/sessions")) return
                 val pending = hold.getAndSet(null) ?: return
                 pending.arrived.countDown()
-                check(pending.release.await(30, TimeUnit.SECONDS)) { "creation completion hold expired" }
+                try {
+                    check(pending.release.await(30, TimeUnit.SECONDS)) { "creation completion hold expired" }
+                } catch (_: InterruptedException) {
+                    // Controller shutdown cancels the real call during the recreation proof.
+                    Thread.currentThread().interrupt()
+                    throw InterruptedIOException("creation completion hold canceled")
+                }
             }
         })
         var controller: SkidbladnirController? = null
