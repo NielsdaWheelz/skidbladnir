@@ -408,7 +408,10 @@ class SessionCardInstrumentedTest {
                 .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action -> action(layouts) }
             val layout = layouts.single()
             assertTrue(
-                "$label action label $text must remain complete on one line",
+                "$label action label $text must remain complete on one line: lines=${layout.lineCount} " +
+                    "overflowWidth=${layout.didOverflowWidth} overflowHeight=${layout.didOverflowHeight} " +
+                    "ellipsized=${layout.isLineEllipsized(0)} visibleEnd=${layout.getLineEnd(0, visibleEnd = true)} " +
+                    "size=${layout.size}",
                 layout.lineCount == 1 && !layout.hasVisualOverflow && !layout.isLineEllipsized(0),
             )
         }
