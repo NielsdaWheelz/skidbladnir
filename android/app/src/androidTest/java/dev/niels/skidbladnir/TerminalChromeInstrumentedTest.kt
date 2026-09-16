@@ -363,7 +363,7 @@ class TerminalChromeInstrumentedTest {
             compose.onNodeWithText("Hide the keyboard, reduce text size, or make the app window larger.")
                 .assertIsDisplayed()
             compose.onNodeWithText("Text size").assertIsDisplayed().assertHasClickAction()
-            compose.onNodeWithText("Detach").assertIsDisplayed().assertHasClickAction()
+            compose.onNodeWithContentDescription("Detach").assertIsDisplayed().assertIsEnabled().assertHasClickAction()
             compose.onNodeWithContentDescription("Escape").assertIsNotEnabled()
             assertTrue(
                 "a too-small viewport must gate touch, focus, typing and paste at the hosted page",

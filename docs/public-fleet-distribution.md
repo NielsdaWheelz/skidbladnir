@@ -1,5 +1,12 @@
 # Public Fleet Distribution And Connect
 
+v0.5.0 deployment, devbox reboot persistence, and the human-operated s22+ product
+journey are recorded in the [current delivery evidence](roadmap.md#v050-deployment-and-runtime-acceptance).
+that record separately reports release-bound failures, corrected real phone
+proofs, and the unreleased card fix. exact public apk recovery and pairing
+preservation pass; no new version or pin was published. historical passes below
+do not establish current feature acceptance.
+
 historical v0.2.29 acceptance follows; current release and rollout status live
 in [the roadmap](roadmap.md). this remains the accepted contract with the
 Skíðblaðnir side of the host-installer/operator hard cut implemented. The complete upstream pin names
@@ -136,10 +143,18 @@ working-tree pin is not release authority.
 The release-bound Android platform gate deliberately has two checkouts. The
 post-publication checkout running `scripts/test` owns the tracked final pin and
 policy. A separate clean checkout at the exact release source SHA is supplied
-in `SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` and owns every source, signing-policy,
-build-output, and test-enumeration path. This permits the immutable `v0.2.27`
-source to remain exact after the later pin commit, without a same-checkout
-fallback.
+in `SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` and owns release metadata and signing
+policy. By default it also owns all build and test paths. For a test correction
+after publication, `--test-source-checkout /absolute/path` explicitly selects a
+separate clean release descendant for the complete build and suite. Its tracked
+pin must match the control checkout byte-for-byte. Only documentation,
+`scripts/test`, Go integration test files, and Android instrumentation sources
+may differ from the release (besides the matching post-publication pin); runtime,
+dependency, build, and signing files must remain identical. The gate prints both
+source SHAs, retains full-suite/no-skip enforcement, compares encrypted pairing
+after instrumentation even when assertions fail, and restores the exact public
+APK. A corrected-test pass is separately attributed; it never rewrites the
+immutable release's original test result.
 
 Update order is hosts first, verify, then phone. Mixed versions are not
 supported. A failed host update is repinned before the phone advances; after a

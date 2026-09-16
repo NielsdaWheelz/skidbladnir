@@ -4379,6 +4379,8 @@ class TerminalInstrumentedTest {
             "case=$caseId route=fixture count=1 index=0 expectedLength=4 actualLength=${actual?.size ?: -1}",
             actual != null && actual.contentEquals("\u001b[0n".toByteArray()),
         )
+        // The listener publishes input before its protocol event; consume both before clearing.
+        assertEvent(TerminalTestEvent.Input("\u001b[0n".toByteArray()), "$caseId-ack")
         clearTerminalEvents()
     }
 

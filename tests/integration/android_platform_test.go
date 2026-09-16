@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 )
 
 var platformADB = flag.String("skidbladnir-platform-adb", "", "approved device adb executable")
@@ -42,11 +44,19 @@ func TestAndroidPlatformWithShellGateway(t *testing.T) {
 	}
 	deviceFile := fixture.socket + ".json"
 	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: fixture.server.Certificate().Raw})
+	devboxBearer, err := auth.Mint(auth.MintOptions{Path: filepath.Join(fixture.root, "devbox-bearer")})
+	if err != nil {
+		t.Fatal("mint unavailable devbox fixture credential")
+	}
+	macbookBearer, err := auth.Mint(auth.MintOptions{Path: filepath.Join(fixture.root, "macbook-bearer")})
+	if err != nil {
+		t.Fatal("mint unavailable macbook fixture credential")
+	}
 	encoded, err := json.Marshal(map[string]any{
 		"credentials": []map[string]string{
 			{"handle": integrationMachineText, "label": "Arch", "origin": "https://127.0.0.1:8443/", "bearer": fixture.bearer},
-			{"handle": "mh-11111111111111111111111111111111", "label": "Devbox", "origin": "https://127.0.0.2:8443/", "bearer": fixture.bearer},
-			{"handle": "mh-22222222222222222222222222222222", "label": "MacBook", "origin": "https://127.0.0.3:8443/", "bearer": fixture.bearer},
+			{"handle": "mh-11111111111111111111111111111111", "label": "Devbox", "origin": "https://127.0.0.2:8443/", "bearer": devboxBearer},
+			{"handle": "mh-22222222222222222222222222222222", "label": "MacBook", "origin": "https://127.0.0.3:8443/", "bearer": macbookBearer},
 		},
 		"machineHandle": integrationMachineText, "cwd": fixture.project,
 		"tlsCertificatePem": string(certificate),

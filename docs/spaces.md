@@ -5,7 +5,13 @@
 restoration/creation edge cases are approved. source implementation and owner
 behavioral reds are complete on `spaces-pr1`. current verification and the
 remaining runtime boundaries are recorded in [roadmap.md](roadmap.md#spaces--source-implemented-runtime-acceptance-open).
-source completion does not establish device or darwin acceptance.
+v0.5.0 is deployed to the three hosts and s22+. corrected darwin runtime and the
+real phone membership/filter/restoration journey pass. the complete released
+platform gate remains failed; the narrow-card fix passes a separate development
+component proof and remains unreleased. hands-on acceptance is `NOT_RUN`.
+[current delivery evidence](roadmap.md#v050-deployment-and-runtime-acceptance)
+and the [remaining deployed card defect](issues/spaces-card-large-text.md) retain
+those boundaries.
 
 [architecture.md](architecture.md) incorporates this scope and acceptance;
 [roadmap.md](roadmap.md) owns delivery. this document owns the detailed spaces
@@ -472,7 +478,9 @@ composable serves forge and the editor. suggestions only fill; clear saves
 unassigned and never deletes sessions.
 the observed suggestions open in one disclosure menu so a large observed set
 does not lengthen the form. the card footer sits above the spaced action row,
-accepting extra card height to retain readable context and 48dp targets.
+accepting extra card height to retain readable context and 48dp targets. when
+width or enlarged text prevents both actions fitting, the action container wraps
+with the same 8dp separation; labels and touch targets remain complete.
 
 follow [design-language.md](design-language.md): literal labels, existing body/data
 faces and surfaces, quiet headings, gold selection, 48dp actions, existing spacing,

@@ -315,6 +315,23 @@ android_platform_release_values() {
     "$expected_version_code" "$source_sha"
 }
 
+android_platform_test_checkout() {
+  local declared="$1" source_sha="$2" checkout
+  [[ "$declared" == /* && -d "$declared" && ! -L "$declared" ]] || return 1
+  checkout="$(cd "$declared" && pwd -P)" || return 1
+  [[ "$(git -C "$checkout" rev-parse --show-toplevel 2>/dev/null)" == "$checkout" &&
+    -z "$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)" ]] || return 1
+  git -C "$checkout" merge-base --is-ancestor "$source_sha" HEAD || return 1
+  tracked_file_at_head "$checkout" release-pin.json || return 1
+  cmp -s "$checkout/release-pin.json" "$repo_dir/release-pin.json" || return 1
+  # All runtime, dependency, build, and signing inputs remain exact release bytes.
+  git -C "$checkout" diff --quiet "$source_sha" HEAD -- . \
+    ':(exclude)docs/**' ':(exclude)release-pin.json' ':(exclude)scripts/test' \
+    ':(exclude)tests/integration/*_test.go' \
+    ':(exclude)android/app/src/androidTest/**' || return 1
+  printf '%s\n' "$checkout"
+}
+
 android_platform_companion_matches_release() {
   local companion_apk="$1"
   local release_digest="$2"
@@ -884,7 +901,7 @@ android_platform_dispatch_self_test() (
   set -euo pipefail
   local fixture control_checkout source_checkout resolved_source_checkout fixture_android_sdk
   local release_apk probe_log output
-  local source_sha apk_digest signer_digest control_sha status
+  local source_sha apk_digest signer_digest control_sha status test_checkout test_sha rejected_change
   fixture="$(mktemp -d /tmp/skidbladnir-platform-dispatch.XXXXXX)"
   case "$fixture" in
     /tmp/skidbladnir-platform-dispatch.* | /private/tmp/skidbladnir-platform-dispatch.*) ;;
@@ -1009,12 +1026,81 @@ EOF
     printf 'Android platform dispatcher did not reach the bounded signing probe\n' >&2
     return 1
   }
+  test_checkout="$fixture/corrected-tests"
+  git clone -q --no-hardlinks "$source_checkout" "$test_checkout"
+  install -m 0644 "$control_checkout/release-pin.json" "$test_checkout/release-pin.json"
+  printf '@Test corrected fixture\n' \
+    >"$test_checkout/android/app/src/androidTest/java/dev/niels/skidbladnir/FixtureTest.kt"
+  git -C "$test_checkout" add .
+  git -C "$test_checkout" -c user.name=Skidbladnir \
+    -c user.email=fixture@example.invalid -c commit.gpgsign=false \
+    commit -qm 'corrected tests with unchanged runtime'
+  rm -f "$probe_log"
+  set +e
+  env ANDROID_HOME="$fixture_android_sdk" \
+    SKIDBLADNIR_RELEASE_APK="$release_apk" \
+    SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT="$source_checkout" \
+    SKIDBLADNIR_DISPATCH_PROBE_LOG="$probe_log" \
+    "$control_checkout/scripts/test" platform --allow-device-mutation --allow-isolated-tmux-mutation \
+    --test-source-checkout "$test_checkout" >"$output" 2>&1
+  status=$?
+  set -e
+  [[ "$status" == 86 && -f "$probe_log" ]] || {
+    printf 'Android platform dispatcher rejected corrected tests with unchanged runtime (status %s)\n' "$status" >&2
+    return 1
+  }
+  [[ "$(cat "$probe_log")" == \
+    "$resolved_source_checkout/scripts/check-android-signing --config-only" ]] || {
+    printf 'Corrected-test run replaced the exact-source signing policy\n' >&2
+    return 1
+  }
+  grep -Fq 'test-only source' "$output" || {
+    printf 'Corrected-test run did not identify its distinct evidence source\n' >&2
+    return 1
+  }
+  test_sha="$(git -C "$test_checkout" rev-parse HEAD)"
+  for rejected_change in dirty-test runtime build signer pin; do
+    case "$rejected_change" in
+      dirty-test)
+        printf 'uncommitted test\n' \
+          >>"$test_checkout/android/app/src/androidTest/java/dev/niels/skidbladnir/FixtureTest.kt"
+        ;;
+      runtime)
+        mkdir -p "$test_checkout/android/app/src/main"
+        printf 'changed runtime\n' >"$test_checkout/android/app/src/main/Changed.kt"
+        ;;
+      build) printf 'changed build\n' >"$test_checkout/android/app/build.gradle.kts" ;;
+      signer) printf 'changed signer\n' >>"$test_checkout/android/app-signing-cert.sha256" ;;
+      pin) printf ' \n' >>"$test_checkout/release-pin.json" ;;
+    esac
+    if [[ "$rejected_change" != dirty-test ]]; then
+      git -C "$test_checkout" add .
+      git -C "$test_checkout" -c user.name=Skidbladnir \
+        -c user.email=fixture@example.invalid -c commit.gpgsign=false \
+        commit -qm "rejected $rejected_change change"
+    fi
+    rm -f "$probe_log"
+    set +e
+    env ANDROID_HOME="$fixture_android_sdk" \
+      SKIDBLADNIR_RELEASE_APK="$release_apk" \
+      SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT="$source_checkout" \
+      SKIDBLADNIR_DISPATCH_PROBE_LOG="$probe_log" \
+      "$control_checkout/scripts/test" platform --allow-device-mutation --allow-isolated-tmux-mutation \
+      --test-source-checkout "$test_checkout" >"$output" 2>&1
+    status=$?
+    set -e
+    [[ "$status" == 2 && ! -e "$probe_log" ]] || {
+      printf 'Corrected-test admission accepted %s (status %s)\n' "$rejected_change" "$status" >&2
+      return 1
+    }
+    git -C "$test_checkout" reset --hard -q "$test_sha"
+  done
   [[ -z "$(git -C "$control_checkout" status --porcelain=v1 --untracked-files=all)" &&
     -z "$(git -C "$source_checkout" status --porcelain=v1 --untracked-files=all)" ]] || {
     printf 'Android platform dispatcher mutated a trust-root checkout\n' >&2
     return 1
   }
-  printf 'Android platform dispatcher used distinct pin-control and exact-source HEADs\n'
+  printf 'Android platform dispatcher preserved release authority and bounded corrected-test admission\n'
 )
 
 verify_installed_android_signer() {
@@ -1517,8 +1603,9 @@ case "$gate" in
     ;;
   platform)
     if [[ "${1:-}" != '--allow-device-mutation' ||
-      "${2:-}" != '--allow-isolated-tmux-mutation' || "$#" -ne 2 ]]; then
-      not_run platform 'Pass --allow-device-mutation --allow-isolated-tmux-mutation only after explicit current-turn user approval'
+      "${2:-}" != '--allow-isolated-tmux-mutation' ||
+      ( "$#" -ne 2 && ( "$#" -ne 4 || "${3:-}" != '--test-source-checkout' ) ) ]]; then
+      not_run platform 'Pass --allow-device-mutation --allow-isolated-tmux-mutation [--test-source-checkout PATH] only after explicit current-turn user approval'
     fi
     platform_declared_release_apk="${SKIDBLADNIR_RELEASE_APK:-}"
     platform_declared_source_checkout="${SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT:-}"
@@ -1559,9 +1646,16 @@ case "$gate" in
     IFS=$'\t' read -r platform_expected_apk_digest _platform_release_version \
       platform_version_name platform_version_code _platform_source_sha \
       <<<"$platform_release_values"
+    platform_test_checkout="$platform_source_checkout"
+    if [[ "$#" == 4 ]]; then
+      platform_test_checkout="$(android_platform_test_checkout "$4" "$_platform_source_sha")" ||
+        not_run platform 'Test source must be a clean release descendant with the same pin and changes limited to tests, docs, and scripts/test'
+      printf 'Android platform test-only source %s; unchanged runtime source %s\n' \
+        "$(git -C "$platform_test_checkout" rev-parse HEAD)" "$_platform_source_sha"
+    fi
     platform_expected_tests="$(awk \
       '/@Test/ { total++ } END { print total + 0 }' \
-      "$platform_source_checkout"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt
+      "$platform_test_checkout"/android/app/src/androidTest/java/dev/niels/skidbladnir/*.kt
     )" || {
       printf 'Could not discover the Android instrumentation test count\n' >&2
       exit 1
@@ -1599,8 +1693,8 @@ case "$gate" in
     fi
     app_package='dev.niels.skidbladnir'
     test_package='dev.niels.skidbladnir.test'
-    app_apk="$platform_source_checkout/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
-    test_apk="$platform_source_checkout/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
+    app_apk="$platform_test_checkout/android/app/build/outputs/apk/deviceDebug/app-deviceDebug.apk"
+    test_apk="$platform_test_checkout/android/app/build/outputs/apk/androidTest/deviceDebug/app-deviceDebug-androidTest.apk"
     platform_adb="$adb"
     platform_serial="$serial"
     platform_app_package="$app_package"
@@ -1648,7 +1742,7 @@ case "$gate" in
     if "$adb" -s "$serial" shell dumpsys window policy | grep -q 'mIsShowing=true'; then
       not_run platform 'Connected Android device must be awake and unlocked'
     fi
-    cd "$platform_source_checkout/android"
+    cd "$platform_test_checkout/android"
     run android-platform-build env ANDROID_HOME="$android_sdk" \
       SKIDBLADNIR_ANDROID_SIGNING_CONFIG="$android_signing_config" ./gradlew \
       -Pskidbladnir.android.testBuildType=deviceDebug \
@@ -1685,7 +1779,7 @@ case "$gate" in
     instrumentation_status=0
     platform_instrumentation_output_file="$(mktemp -t skidbladnir-platform.XXXXXX)"
     platform_shell_fixture_state="$(mktemp -t skidbladnir-platform-shells.XXXXXX)"
-    cd "$platform_source_checkout"
+    cd "$platform_test_checkout"
     # Allow the Go fixture's signal-aware cleanup to finish before hard kill.
     android_process_termination_grace_seconds=20 run_bounded_to_file \
       "$((platform_instrumentation_timeout_seconds + 60))" \
@@ -1701,14 +1795,6 @@ case "$gate" in
       -skidbladnir-platform-timeout="${platform_instrumentation_timeout_seconds}s" || instrumentation_status=$?
     instrumentation_output="$(<"$platform_instrumentation_output_file")"
     printf '%s\n' "$instrumentation_output"
-    if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
-      "$instrumentation_status" "$platform_instrumentation_output_file"; then
-      printf 'Android instrumentation failed, skipped, or did not pass exactly %s tests\n' \
-        "$platform_expected_tests" >&2
-      exit 1
-    fi
-    /bin/unlink "$platform_instrumentation_output_file"
-    platform_instrumentation_output_file=''
     current_pairing_digest="$(
       "$adb" -s "$serial" exec-out run-as "$app_package" cat "$pairing_preferences" |
         content_digest
@@ -1717,6 +1803,15 @@ case "$gate" in
       printf 'Android instrumentation changed the encrypted pairing state\n' >&2
       exit 1
     }
+    printf 'Android instrumentation preserved encrypted pairing state\n'
+    if ! assert_complete_instrumentation android-platform "$platform_expected_tests" \
+      "$instrumentation_status" "$platform_instrumentation_output_file"; then
+      printf 'Android instrumentation failed, skipped, or did not pass exactly %s tests\n' \
+        "$platform_expected_tests" >&2
+      exit 1
+    fi
+    /bin/unlink "$platform_instrumentation_output_file"
+    platform_instrumentation_output_file=''
     run android-platform-shell-cleanup android_platform_remove_shell_fixture
     run android-platform-restore android_platform_restore_owned_state
     android_platform_remove_release_snapshot
@@ -2286,7 +2381,7 @@ case "$gate" in
     not_run full 'Run release, published-release, integration, provider-live, live, platform, product, and second-phone separately after explicit approval for each external boundary'
     ;;
   '')
-    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation --allow-isolated-tmux-mutation|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation|provider-live --allow-isolated-tmux-mutation --allow-provider-launch}\n' "$0" >&2
+    printf 'usage: %s {static|unit|verify|full|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA|platform --allow-device-mutation --allow-isolated-tmux-mutation [--test-source-checkout PATH]|product --allow-device-mutation --allow-three-host-inventory-reconciliation --allow-one-host-service-restart --allow-terminal-open-detach|second-phone --allow-device-mutation --allow-three-host-inventory-reconciliation|{integration|live} --allow-isolated-tmux-mutation|provider-live --allow-isolated-tmux-mutation --allow-provider-launch}\n' "$0" >&2
     exit 64
     ;;
   *)

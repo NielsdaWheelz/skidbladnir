@@ -1,8 +1,12 @@
 # Skíðblaðnir v0: product and architecture
 
-current release: v0.4.1, [usable agent client and direct attachment](agent-control-ux.md).
-its contracts are incorporated below. delivery and verification are in the
-[roadmap](roadmap.md); historical releases do not prove this target.
+current release: v0.5.0, [spaces](spaces.md) and [new terminal here](shells.md),
+source `df7ad499d87f96e9ca79336ef0632a9d23ef072d`. delivery, executed runtime
+boundaries, and remaining acceptance gaps are in the
+[roadmap](roadmap.md#v050-deployment-and-runtime-acceptance). deployment does not
+establish missing runtime acceptance; historical releases do not prove this target.
+the narrow-card action fix is verified on unreleased main. v0.5.0 and its pins
+remain unchanged, with its recorded platform failure and open hands-on acceptance.
 
 accepted 2026-09-15 target: [spaces](spaces.md), pr 1 of
 [spaces, shells, and client composition](spaces-and-shells.md). its contracts
@@ -16,7 +20,8 @@ source; it does not prove spaces.
 accepted 2026-09-15 pr 2 target: [new terminal here](shells.md). standalone
 terminal creation and source-session create/attach extend the existing owners;
 source is implemented. [delivery and evidence](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
-are tracked separately from pr 1; darwin and phone runtime acceptance remain open. pr 3 retains additional navigation
+are tracked separately from pr 1; current runtime evidence and gaps are recorded
+there. pr 3 retains additional navigation
 and composition.
 
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
@@ -1243,8 +1248,16 @@ The Android platform gate uses two explicit trust roots. The post-publication
 checkout running `scripts/test` owns policy and a `release-pin.json` that is
 tracked and byte-exact at `HEAD`. The required absolute, non-symlink
 `SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` is clean at the release's exact source SHA
-and owns metadata, signing behavior, build inputs/outputs, and test enumeration.
-The later pin commit is never treated as release source.
+and owns metadata and signing behavior. It also owns build inputs/outputs and
+test enumeration by default. An explicit `--test-source-checkout` may select a
+clean descendant with the same tracked pin and changes confined to documentation,
+`scripts/test`, Go integration tests, and Android instrumentation. Runtime,
+dependency, build, and signing inputs must remain byte-identical to the release;
+full-suite enforcement, pairing comparison, and exact public APK restoration
+still apply. Record the corrected test SHA separately from the unchanged runtime
+SHA and preserve the original failed result. The later pin commit is never
+treated as release source. [public-fleet-distribution.md](public-fleet-distribution.md)
+owns this test-correction procedure.
 
 Dashboard acceptance additionally requires: a threshold pull at the top of an
 empty, short, stale, reading, or populated dwarf collection verifies only the
