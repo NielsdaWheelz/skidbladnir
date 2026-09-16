@@ -54,6 +54,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
@@ -585,19 +586,27 @@ class MultiMachineUiInstrumentedTest {
                 )
 
                 val recreatedGrid = compose.onNodeWithTag("sessions-grid").assertIsDisplayed()
-                recreatedGrid.performScrollToNode(hasTestTag(cardTag(shiftedMacBookTopTarget)))
+                recreatedGrid.performScrollToIndex(0)
+                val nonTopHeading = compose.onNodeWithContentDescription("unassigned").assertIsDisplayed()
+                val headingTopBeforeScroll = nonTopHeading.getUnclippedBoundsInRoot().top
                 recreatedGrid.performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy ->
                     scrollBy(0f, 23f)
                 }
                 compose.waitForIdle()
-                val nonTopGridTop = recreatedGrid.getBoundsInRoot().top
                 val nonTopCard = compose.onNodeWithTag(cardTag(shiftedMacBookTopTarget))
                     .assertIsDisplayed()
-                val nonTopCardTop = nonTopCard.getUnclippedBoundsInRoot().top
+                val headingTopAfterScroll = nonTopHeading.getUnclippedBoundsInRoot().top
                 assertTrue(
-                    "the top-reset fixture never reached its measured non-top position",
-                    (nonTopCardTop - restoredOffsetTop(nonTopGridTop)).value.absoluteValue <= 1f,
+                    "the top-reset fixture must scroll its rendered heading by 23px: " +
+                        "before=$headingTopBeforeScroll after=$headingTopAfterScroll",
+                    (headingTopBeforeScroll - headingTopAfterScroll - with(phoneDensity) { 23.toDp() })
+                        .value.absoluteValue <= 1f,
                 )
+                compose.runOnIdle {
+                    val viewport = recreatedEntry.snapshot().viewport
+                    assertEquals("the measured first item must be the group heading", DashboardItemKey.Unassigned, viewport.anchor)
+                    assertEquals("the heading must retain its measured nonzero offset", 23, viewport.offsetPx)
+                }
                 nonTopCard.performClick()
                 compose.onNodeWithTag("terminal-screen-${OTHER_MACHINE.handle.encoded}")
                     .assertIsDisplayed()
@@ -908,6 +917,10 @@ class MultiMachineUiInstrumentedTest {
                     compose.onNodeWithTag(cardTag(it)).assertIsDisplayed()
                 }
                 val firstCardBoundsAtRest = firstCard?.getUnclippedBoundsInRoot()
+                val heading = if (sessions.isEmpty()) null else {
+                    compose.onNodeWithContentDescription("unassigned").assertIsDisplayed()
+                }
+                val headingBoundsAtRest = heading?.getUnclippedBoundsInRoot()
                 val firstKill = sessions.firstOrNull()?.let {
                     compose.onNodeWithTag(killTag(it)).assertIsDisplayed()
                 }
@@ -927,6 +940,7 @@ class MultiMachineUiInstrumentedTest {
 
                 val pullingIndicatorEvidence = if (fixtureName == "short") {
                     val cardBounds = requireNotNull(firstCardBoundsAtRest)
+                    val headingBounds = requireNotNull(headingBoundsAtRest)
                     val gridBounds = gridBoundsAtRest
                     grid.performTouchInput {
                         down(percentOffset(0.5f, 0.2f))
@@ -947,7 +961,7 @@ class MultiMachineUiInstrumentedTest {
                     val goldBounds = goldBoundsInGridGutter(
                         grid = grid,
                         gridBounds = gridBounds,
-                        gutterHeight = cardBounds.top - gridBounds.top,
+                        gutterHeight = headingBounds.top - gridBounds.top,
                         density = density,
                     )
                     assertTrue(
@@ -974,6 +988,11 @@ class MultiMachineUiInstrumentedTest {
                             "actions=$pullingCustomActions grid=$gridBounds card=$cardBounds " +
                             "semantics=$semanticsBounds gold=$goldBounds",
                         pullingCustomActions.isNullOrEmpty(),
+                    )
+                    assertEquals(
+                        "short held pull moved the group heading",
+                        headingBounds,
+                        requireNotNull(heading).getUnclippedBoundsInRoot(),
                     )
                     assertEquals(
                         "short held pull moved the first card: " +
@@ -1042,7 +1061,7 @@ class MultiMachineUiInstrumentedTest {
                 compose.onAllNodes(hasProgressSemantics(), useUnmergedTree = true).assertCountEquals(1)
                 assertEquals("$fixtureName threshold pull did not dispatch once", 1, dispatchCount)
                 val indicatorSemanticsBounds = indicator.getUnclippedBoundsInRoot()
-                val contentBounds = firstCardBoundsAtRest ?: retainedBoundsAtRest
+                val contentBounds = headingBoundsAtRest ?: retainedBoundsAtRest
                 lateinit var indicatorGoldBounds: DpRect
                 compose.waitUntil(
                     conditionDescription = "$fixtureName checking progress paints full-opacity Gold: " +
@@ -1065,6 +1084,7 @@ class MultiMachineUiInstrumentedTest {
                         requireNotNull(pullingIndicatorEvidence)
                     assertRefreshBoundaryBounds(
                         grid = gridBoundsAtRest,
+                        heading = requireNotNull(headingBoundsAtRest),
                         card = requireNotNull(firstCardBoundsAtRest),
                         pullingSemantics = pullingSemanticsBounds,
                         pullingGold = pullingGoldBounds,
@@ -1078,6 +1098,14 @@ class MultiMachineUiInstrumentedTest {
                     retained.getUnclippedBoundsInRoot(),
                 )
                 assertNoOverlap("$fixtureName first-row text", indicatorGoldBounds, retainedBoundsAtRest)
+                headingBoundsAtRest?.let { bounds ->
+                    assertEquals(
+                        "$fixtureName checking moved the group heading",
+                        bounds,
+                        requireNotNull(heading).getUnclippedBoundsInRoot(),
+                    )
+                    assertNoOverlap("$fixtureName group heading", indicatorGoldBounds, bounds)
+                }
                 firstCardBoundsAtRest?.let { bounds ->
                     assertEquals(
                         "$fixtureName checking moved the first card",
@@ -1623,9 +1651,11 @@ class MultiMachineUiInstrumentedTest {
                     .assertDoesNotExist()
                 val placementCard = compose.onNodeWithTag(cardTag(placementTarget))
                     .assertIsDisplayed()
-                assertRailToCardGap(
+                assertRailToCollectionGap(
                     size = "360dp / 1.0x",
                     rail = rail.getUnclippedBoundsInRoot(),
+                    heading = compose.onNodeWithContentDescription("unassigned").assertIsDisplayed()
+                        .getUnclippedBoundsInRoot(),
                     card = placementCard.getUnclippedBoundsInRoot(),
                 )
                 val header = compose.onNodeWithText(
@@ -1799,9 +1829,11 @@ class MultiMachineUiInstrumentedTest {
                 val largeCardBounds = compose.onNodeWithTag(cardTag(placementTarget))
                     .assertIsDisplayed()
                     .getUnclippedBoundsInRoot()
-                assertRailToCardGap(
+                assertRailToCollectionGap(
                     size = "320dp / 2.0x",
                     rail = largeBounds,
+                    heading = compose.onNodeWithContentDescription("unassigned").assertIsDisplayed()
+                        .getUnclippedBoundsInRoot(),
                     card = largeCardBounds,
                 )
                 val headerBounds = compose.onNodeWithTag(
@@ -2004,6 +2036,7 @@ class MultiMachineUiInstrumentedTest {
 
     private fun assertRefreshBoundaryBounds(
         grid: DpRect,
+        heading: DpRect,
         card: DpRect,
         pullingSemantics: DpRect,
         pullingGold: DpRect?,
@@ -2022,7 +2055,9 @@ class MultiMachineUiInstrumentedTest {
             if (delta > 1f) failures += "$label expected=$expected actual=$actual delta=${delta}dp"
         }
 
-        compare("resting card top", grid.top + 12.dp, card.top)
+        // The heading's semantics exclude its 4dp vertical padding.
+        compare("resting heading top", grid.top + 12.dp + 4.dp, heading.top)
+        compare("heading-to-card gap", heading.bottom + 4.dp + 10.dp, card.top)
         listOf(
             "pulling" to pullingSemantics,
             "checking" to checkingSemantics,
@@ -2031,7 +2066,7 @@ class MultiMachineUiInstrumentedTest {
             compare("$phase semantics right", expectedIndicator.right, semantics.right)
         }
         if (pullingGold == null) {
-            failures += "pulling painted no full-opacity Gold in the pre-card gutter"
+            failures += "pulling painted no full-opacity Gold in the pre-heading gutter"
         } else {
             compare("pulling Gold left", expectedIndicator.left, pullingGold.left)
             compare("pulling Gold top", expectedIndicator.top, pullingGold.top)
@@ -2057,7 +2092,7 @@ class MultiMachineUiInstrumentedTest {
         }
         assertTrue(
             "refresh boundary geometry mismatch within 1dp: failures=$failures; " +
-                "expectedIndicator=$expectedIndicator grid=$grid card=$card " +
+                "expectedIndicator=$expectedIndicator grid=$grid heading=$heading card=$card " +
                 "pullingSemantics=$pullingSemantics pullingGold=$pullingGold " +
                 "checkingSemantics=$checkingSemantics checkingGold=$checkingGold",
             failures.isEmpty(),
@@ -2112,12 +2147,18 @@ class MultiMachineUiInstrumentedTest {
         )
     }
 
-    private fun assertRailToCardGap(size: String, rail: DpRect, card: DpRect) {
-        val gap = card.top - rail.bottom
+    private fun assertRailToCollectionGap(size: String, rail: DpRect, heading: DpRect, card: DpRect) {
+        // The first rendered item is a heading with 4dp vertical padding.
+        val gap = heading.top - 4.dp - rail.bottom
         assertTrue(
-            "$size selected ready/fresh one-card rail-to-card gap must be 16dp +/- 1dp: " +
-                "actual=$gap rail=$rail card=$card",
+            "$size selected ready/fresh rail-to-collection gap must be 16dp +/- 1dp: " +
+                "actual=$gap rail=$rail heading=$heading card=$card",
             (gap - 16.dp).value.absoluteValue <= 1f,
+        )
+        assertTrue(
+            "$size the first card must follow the heading's padding and 10dp item gap: " +
+                "heading=$heading card=$card",
+            (card.top - heading.bottom - 4.dp - 10.dp).value.absoluteValue <= 1f,
         )
     }
 

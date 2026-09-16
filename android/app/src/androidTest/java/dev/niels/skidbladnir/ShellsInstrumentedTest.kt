@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
@@ -32,6 +33,7 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import okhttp3.Call
 import okhttp3.EventListener
@@ -98,7 +100,14 @@ class ShellsInstrumentedTest {
         }
         assertTrue("fixture must start empty with no agent profiles", inventory().let { it.profiles.isEmpty() && it.sessions.isEmpty() })
         val hold = AtomicReference<CreationHold?>()
+        val membershipRequests = AtomicInteger()
         fun client() = gatewayClient(object : EventListener() {
+            override fun callStart(call: Call) {
+                if (call.request().method == "PUT" && call.request().url.encodedPath.endsWith("/space")) {
+                    membershipRequests.incrementAndGet()
+                }
+            }
+
             override fun responseHeadersEnd(call: Call, response: Response) {
                 if (call.request().method != "POST" || !call.request().url.encodedPath.startsWith("/v1/sessions")) return
                 val pending = hold.getAndSet(null) ?: return
@@ -173,6 +182,7 @@ class ShellsInstrumentedTest {
                 attached()
                 val source = terminal().target
                 assertEquals("phone-shells", source.session.space?.text)
+                assertEquals("forge creation uses its requested cwd", fixture.cwd, source.session.cwd)
                 assertEquals(null, source.session.launchProfile)
                 compose.runOnIdle { fontScale = 2f }
                 compose.waitForIdle()
@@ -201,12 +211,129 @@ class ShellsInstrumentedTest {
                 val created = terminal().target
                 assertTrue("new terminal has a distinct exact lifetime", !sameSessionLifetime(source, created))
                 assertEquals(source.session.space, created.session.space)
+                assertEquals("header creation inherits the sampled cwd", source.session.cwd, created.session.cwd)
                 assertTrue("source survived creation", inventory().sessions.any { it.identityToken == source.session.identityToken })
 
                 // Actual platform back returns to the existing collection and the new membership.
                 scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
                 readyDashboard(2)
                 assertTrue(entry.space.matches(created.session.space))
+
+                // Membership edits cross the real controller, HTTPS gateway and isolated tmux.
+                val sourceCard = "session-card-${credential.machine.handle.encoded}-${source.session.tmuxId}"
+                val createdCard = "session-card-${credential.machine.handle.encoded}-${created.session.tmuxId}"
+                val membershipBaseline = inventory().sessions.associateBy { it.tmuxId }
+                fun editMembership(current: String?) {
+                    val membership = current?.let { "space: $it" } ?: "unassigned"
+                    compose.onNodeWithContentDescription(
+                        "space for ${created.session.tmuxName} on ${credential.machine.label.text}: $membership",
+                    ).performScrollTo().performClick()
+                    compose.runOnIdle {
+                        val editor = (controller!!.state as SkidbladnirUiState.Dashboard).spaceEditor
+                        assertTrue("editor retains the exact created lifetime", editor != null && sameSessionLifetime(editor.target, created))
+                    }
+                }
+                fun membershipSettled(expected: String?, requests: Int) {
+                    compose.waitUntil(15_000) {
+                        val dashboard = controller?.state as? SkidbladnirUiState.Dashboard
+                        dashboard != null && dashboard.spaceEditor == null && dashboard.machines.any {
+                            it.machine.handle == credential.machine.handle && it.canMutate
+                        }
+                    }
+                    val observed = inventory().sessions.associateBy { it.tmuxId }
+                    assertTrue("membership editing preserves both exact lifetimes", observed.keys == membershipBaseline.keys &&
+                        observed.all { (id, session) -> session.identityToken == membershipBaseline.getValue(id).identityToken })
+                    assertTrue("real gateway applied the requested membership", observed.getValue(created.session.tmuxId).space?.text == expected)
+                    assertTrue("membership editing preserves the source and terminal facts", observed.all { (id, session) ->
+                        session.copy(space = null, attachedClients = 0) == membershipBaseline.getValue(id).copy(space = null, attachedClients = 0)
+                    } && observed.getValue(source.session.tmuxId).space == source.session.space)
+                    assertEquals("each membership edit dispatches exactly once", requests, membershipRequests.get())
+                }
+                fun selectSpace(description: String) {
+                    compose.onNodeWithTag("space-selector").performClick()
+                    compose.onNodeWithContentDescription(description).performScrollTo().performClick()
+                }
+
+                compose.onNodeWithTag("machine-filter-${credential.machine.handle.encoded}").performScrollTo().performClick()
+                editMembership("phone-shells")
+                compose.onNodeWithTag("space-draft").performTextReplacement(" invalid")
+                compose.onNodeWithTag("space-save").assertIsNotEnabled()
+                compose.runOnIdle {
+                    assertTrue("invalid draft remains editable", (controller!!.state as SkidbladnirUiState.Dashboard).spaceEditor?.draft == " invalid")
+                }
+                compose.onNodeWithTag("space-draft").performTextReplacement("phone-canceled")
+                compose.onNodeWithTag("space-save").assertIsEnabled()
+                compose.onNodeWithText("cancel").performScrollTo().performClick()
+                membershipSettled("phone-shells", 0)
+
+                editMembership("phone-shells")
+                compose.onNodeWithContentDescription("unassigned").performScrollTo().performClick()
+                assertEquals("choosing membership does not submit", 0, membershipRequests.get())
+                // Membership sensitivity red replaces only this save action with cancel.
+                compose.onNodeWithTag("space-save").assertIsEnabled().performScrollTo().performClick()
+                membershipSettled(null, 1)
+                selectSpace("unassigned")
+                compose.onNodeWithTag(createdCard).assertIsDisplayed()
+                compose.onNodeWithTag(sourceCard).assertDoesNotExist()
+
+                editMembership(null)
+                compose.onNodeWithTag("space-draft").performTextReplacement("phone-edited")
+                compose.onNodeWithTag("space-save").assertIsEnabled().performScrollTo().performClick()
+                membershipSettled("phone-edited", 2)
+                compose.runOnIdle { assertTrue("assignment retains the empty selected intersection", entry.space == DashboardSpaceSelection.Unassigned) }
+                compose.onNodeWithTag(createdCard).assertDoesNotExist()
+                compose.onNodeWithTag(sourceCard).assertDoesNotExist()
+
+                selectSpace("space: phone-edited")
+                compose.onNodeWithTag(createdCard).assertIsDisplayed()
+                editMembership("phone-edited")
+                compose.onNodeWithTag("space-draft").performTextReplacement("phone-final")
+                compose.onNodeWithTag("space-save").assertIsEnabled().performScrollTo().performClick()
+                membershipSettled("phone-final", 3)
+                compose.runOnIdle {
+                    assertTrue("changing membership retains the emptied named filter", entry.space.matches(SpaceLabel.parse("phone-edited")))
+                }
+                compose.onNodeWithTag(createdCard).assertDoesNotExist()
+                selectSpace("space: phone-final")
+                compose.onNodeWithTag(createdCard).assertIsDisplayed()
+                compose.onNodeWithTag(sourceCard).assertDoesNotExist()
+
+                val otherMachine = credentials.single { it.machine.label.text == "Devbox" }.machine.handle
+                compose.onNodeWithTag("machine-filter-${otherMachine.encoded}").performScrollTo().performClick()
+                compose.onNodeWithTag(createdCard).assertDoesNotExist()
+                compose.onNodeWithTag(sourceCard).assertDoesNotExist()
+                compose.runOnIdle {
+                    assertTrue("machine and space filters intersect independently", entry.scope == DashboardScope.Machine(otherMachine) &&
+                        entry.space.matches(SpaceLabel.parse("phone-final")))
+                }
+                compose.onNodeWithTag("machine-filter-${credential.machine.handle.encoded}").performScrollTo().performClick()
+                compose.onNodeWithTag(createdCard).assertIsDisplayed()
+                val returnSnapshot = compose.runOnIdle { entry.snapshot() }
+                assertTrue("real collection exposes a restorable heading or card", returnSnapshot.viewport.anchor != null)
+                for (useBack in listOf(false, true)) {
+                    compose.onNodeWithTag(createdCard).performClick()
+                    attached()
+                    assertTrue("membership edits preserve the attachment reference", sameSessionLifetime(terminal().target, created))
+                    if (useBack) scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+                    else compose.onNodeWithContentDescription("Detach").performClick()
+                    readyDashboard(2)
+                    compose.runOnIdle { assertTrue("detach and back retain both filters and viewport", entry.snapshot() == returnSnapshot) }
+                }
+                compose.runOnIdle { controller!!.close() }
+                scenario.recreate()
+                entry = DashboardEntryState()
+                mount()
+                readyDashboard(2)
+                compose.waitUntil(15_000) { !entry.restorationPending }
+                compose.onNodeWithTag(createdCard).assertIsDisplayed()
+                compose.onNodeWithTag(sourceCard).assertDoesNotExist()
+                compose.runOnIdle {
+                    assertTrue("activity restoration retains the real filtered collection", entry.snapshot() == returnSnapshot)
+                    assertFalse("restoration never opens an attachment", controller?.state is SkidbladnirUiState.Terminal)
+                }
+                membershipSettled("phone-final", 3)
+                selectSpace("all spaces")
+
                 compose.onNodeWithTag("session-card-${credential.machine.handle.encoded}-${created.session.tmuxId}").performClick()
                 attached()
                 val late = beginHold()
@@ -265,6 +392,11 @@ class ShellsInstrumentedTest {
                 readyDashboard(5)
                 assertFalse("recreation never restores an attachment", controller?.state is SkidbladnirUiState.Terminal)
                 assertEquals("recreation never replays a creation", 5, inventory().sessions.size)
+                assertTrue("close only the fixture's exact source lifetime", api.killSession(credential, source) is GatewayResult.Success)
+                val survivors = inventory().sessions
+                assertTrue("created terminals outlive their source", survivors.size == 4 &&
+                    survivors.none { it.identityToken == source.session.identityToken } &&
+                    survivors.any { it.identityToken == created.session.identityToken })
             }
         } finally {
             releaseOnFailure?.release?.countDown()

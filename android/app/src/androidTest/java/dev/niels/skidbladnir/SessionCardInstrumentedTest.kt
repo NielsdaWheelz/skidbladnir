@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -70,16 +71,13 @@ class SessionCardInstrumentedTest {
         val context = compose.onNodeWithTag(CONTEXT_TAG, useUnmergedTree = true)
         val contextBounds = context.getUnclippedBoundsInRoot()
         val kill = compose.onNodeWithTag(KILL_TAG, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val space = compose.onNodeWithContentDescription(
+            "space for $TMUX_NAME on Devbox: unassigned",
+            useUnmergedTree = true,
+        ).assertIsDisplayed().assertIsEnabled().assertHasClickAction().getUnclippedBoundsInRoot()
 
-        assertTrue(
-            "the card must contain its complete operator footer: card=$cardBounds context=$contextBounds kill=$kill",
-            cardBounds.contains(contextBounds) && cardBounds.contains(kill),
-        )
+        assertCardActions("common", cardBounds, contextBounds, space, kill)
         context.assertIsDisplayed()
-        assertTrue(
-            "the exact common card must be no taller than 200dp: card=$cardBounds",
-            cardBounds.bottom - cardBounds.top <= MAX_COMMON_HEIGHT,
-        )
         val text = card.textValues()
         assertTrue("tmux must precede dwarf in traversal order: $text", text.indexOf(TMUX_NAME) < text.indexOf(DWARF_NAME))
         assertTrue("literal activity disappeared: $text", text.contains("IDLE"))
@@ -104,10 +102,6 @@ class SessionCardInstrumentedTest {
         context.assertContext(ALL_CONTEXT, CONTEXT_DESCRIPTION)
         card.assertMergedContext(CONTEXT_DESCRIPTION)
         assertTrue("footer context must remain one line: bounds=$contextBounds", contextBounds.height <= ONE_DATA_LINE)
-        assertTrue(
-            "Kill must retain its 48dp target without footer overlap: context=$contextBounds kill=$kill",
-            kill.width >= MINIMUM_TARGET && kill.height >= MINIMUM_TARGET && contextBounds.right <= kill.left,
-        )
         card.assertIsEnabled()
         compose.onNodeWithTag(KILL_TAG, useUnmergedTree = true).assertIsEnabled()
 
@@ -208,15 +202,19 @@ class SessionCardInstrumentedTest {
         val directory = compose.onNodeWithTag(DIRECTORY_TAG, useUnmergedTree = true)
         val context = compose.onNodeWithTag(CONTEXT_TAG, useUnmergedTree = true)
         val kill = compose.onNodeWithTag(KILL_TAG, useUnmergedTree = true)
+        val space = compose.onNodeWithContentDescription(
+            "space for $LONG_TMUX on $LONG_MACHINE: unassigned",
+            useUnmergedTree = true,
+        ).assertIsDisplayed().assertIsEnabled().assertHasClickAction()
 
         assertTrue("long tmux must stop at two lines: bounds=$tmux", tmux.height <= TWO_TITLE_LINES)
         assertTrue("long dwarf name must stop at one line: bounds=$dwarf", dwarf.height <= ONE_DWARF_LINE)
         assertTrue("objective must stop at two lines", objective.getUnclippedBoundsInRoot().height <= TWO_BODY_LINES)
         assertTrue("directory must stop at one line", directory.getUnclippedBoundsInRoot().height <= ONE_DATA_LINE)
         assertTrue("footer must stop at one line", context.getUnclippedBoundsInRoot().height <= ONE_DATA_LINE)
-        assertTrue(
-            "the long footer must truncate before Kill",
-            context.getUnclippedBoundsInRoot().right <= kill.getUnclippedBoundsInRoot().left,
+        assertCardActions(
+            "long content", card().getUnclippedBoundsInRoot(), context.getUnclippedBoundsInRoot(),
+            space.getUnclippedBoundsInRoot(), kill.getUnclippedBoundsInRoot(),
         )
         assertEquals(listOf(LONG_OBJECTIVE), objective.textValues())
         directory.assertTextAndDescription(LONG_DIRECTORY_VISIBLE, LONG_DIRECTORY_DESCRIPTION)
@@ -234,8 +232,10 @@ class SessionCardInstrumentedTest {
         val largeDirectory = directory.getUnclippedBoundsInRoot()
         val largeContext = context.getUnclippedBoundsInRoot()
         val largeKill = kill.getUnclippedBoundsInRoot()
+        val largeSpace = space.assertIsDisplayed().getUnclippedBoundsInRoot()
         val children = listOf(
-            largeTmux, largeDwarf, largePortrait, activity, largeObjective, largeDirectory, largeContext, largeKill,
+            largeTmux, largeDwarf, largePortrait, activity, largeObjective, largeDirectory, largeContext,
+            largeSpace, largeKill,
         )
         assertTrue(
             "large type may grow the card but no stratum may clip outside it: card=$card children=$children",
@@ -245,8 +245,9 @@ class SessionCardInstrumentedTest {
             "large type must preserve activity/objective/directory/footer order: children=$children",
             largeTmux.bottom <= largeDwarf.top && largeDwarf.bottom <= activity.top &&
                 activity.bottom <= largeObjective.top && largeObjective.bottom <= largeDirectory.top &&
-                largeDirectory.bottom <= largeContext.top && largeContext.right <= largeKill.left,
+                largeDirectory.bottom <= largeContext.top,
         )
+        assertCardActions("large type", card, largeContext, largeSpace, largeKill)
     }
 
     private fun assertActivity(label: String, spoken: String, tone: androidx.compose.ui.graphics.Color) {
@@ -376,6 +377,29 @@ class SessionCardInstrumentedTest {
         )
     }
 
+    private fun assertCardActions(label: String, card: DpRect, context: DpRect, space: DpRect, kill: DpRect) {
+        assertTrue(
+            "$label card must contain its footer and both actions: card=$card context=$context space=$space kill=$kill",
+            listOf(context, space, kill).all { card.contains(it) },
+        )
+        assertTrue(
+            "$label space and kill must retain 48dp targets: space=$space kill=$kill",
+            listOf(space, kill).all { it.width >= MINIMUM_TARGET && it.height >= MINIMUM_TARGET },
+        )
+        assertTrue(
+            "$label footer must sit 8dp above a separate, nonoverlapping action row: " +
+                "context=$context space=$space kill=$kill",
+            (space.top - context.bottom - 8.dp).value.absoluteValue <= POSITION_TOLERANCE &&
+                (space.top - kill.top).value.absoluteValue <= POSITION_TOLERANCE &&
+                space.right + 8.dp <= kill.left + POSITION_TOLERANCE.dp,
+        )
+        assertTrue(
+            "$label card must end at its ordinary padding below the action row: card=$card space=$space kill=$kill",
+            (card.bottom - maxOf(space.bottom, kill.bottom) - CARD_PADDING)
+                .value.absoluteValue <= POSITION_TOLERANCE,
+        )
+    }
+
     private fun assertSquare(label: String, bounds: DpRect, side: androidx.compose.ui.unit.Dp) {
         assertTrue(
             "$label must be exactly $side square: bounds=$bounds",
@@ -406,7 +430,6 @@ class SessionCardInstrumentedTest {
         val MACHINE_ORIGIN = requireNotNull(MachineOrigin.parse("https://devbox.example:8443/"))
         val OBSERVED_AT: Instant = Instant.parse("2026-08-26T12:00:00Z")
         val CARD_WIDTH = 170.dp
-        val MAX_COMMON_HEIGHT = 200.dp
         val MINIMUM_TARGET = 48.dp
         val FACET_SIDE = 12.dp
         val CARD_PADDING = 10.dp

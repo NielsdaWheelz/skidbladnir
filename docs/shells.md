@@ -1,8 +1,11 @@
 # new terminal here
 
 2026-09-15: pr 2 source implemented on `shells-pr2`, following [spaces](spaces.md).
-linux host/desktop proofs pass; darwin and phone proofs remain `NOT_RUN` by
-explicit user direction. [the roadmap](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
+linux host/desktop proofs passed during implementation. v0.5.0 is now deployed;
+darwin host/desktop proofs pass with the documented test-only shell observation
+correction. the release-bound phone journey stops at its
+[invalid fixture fleet](issues/shells-phone-fixture.md), before creation or layout
+checks. [the roadmap](roadmap.md#v050-deployment-and-runtime-acceptance)
 owns current evidence. full h/d/p acceptance remains open.
 [architecture.md](architecture.md) owns scope; [roadmap.md](roadmap.md) owns
 delivery; this document owns the contracts below. read [AGENTS.md](../AGENTS.md),

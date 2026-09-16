@@ -340,20 +340,21 @@ func TestShellCreationOwnsAnIndependentSession(t *testing.T) {
 	if source["tmuxName"] != "skidbladnir-terminal-1" || source["space"] != "project" || source["launchProfile"] != nil {
 		t.Fatal("terminal did not receive ordinary identity and optional metadata")
 	}
-	waitForTerminalCondition(t, "literal shell working directory", func() bool {
-		return agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{pane_current_path}") == directory &&
-			agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{pane_current_command}") == "sh"
+	waitForTerminalCondition(t, "literal working directory and configured login shell", func() bool {
+		if agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{pane_current_path}") != directory {
+			return false
+		}
+		pid, err := strconv.Atoi(agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{pane_pid}"))
+		if err != nil {
+			t.Fatal("read terminal process identity")
+		}
+		// Darwin's /bin/sh dispatches to its selected shell, whose kernel name
+		// may be bash. The configured login argv is the startup contract.
+		process, err := processinfo.Observe(processinfo.PID(pid))
+		return err == nil && process.Argument(0) == "-sh" && len(process.Argv) == 1
 	})
 	if got := agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{session_path}"); got != directory {
 		t.Fatal("new session lost its literal default directory")
-	}
-	pid, err := strconv.Atoi(agentHookTmux(t, fixture.socket, "display-message", "-p", "-t", sourceID, "#{pane_pid}"))
-	if err != nil {
-		t.Fatal("read terminal process identity")
-	}
-	process, err := processinfo.Observe(processinfo.PID(pid))
-	if err != nil || process.Argument(0) != "-sh" || len(process.Argv) != 1 {
-		t.Fatal("terminal did not execute the configured login shell directly")
 	}
 
 	// A retained session lifetime survives name and foreground replacement.
