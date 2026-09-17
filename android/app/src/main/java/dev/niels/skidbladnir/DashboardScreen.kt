@@ -54,10 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.SemanticsPropertyKey
-import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -66,15 +63,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
-
-/**
- * The monotonic receipt of a machine's freshest inventory, published on that machine's real filter
- * control. It lets the acceptance journey observe that reads keep landing for one machine while
- * another is out without retaining an invisible pressure-strip node in `All`.
- */
-internal val MachineInventoryObservationKey =
-    SemanticsPropertyKey<Long>("SkidbladnirMachineInventoryObservation")
-internal var SemanticsPropertyReceiver.machineInventoryObservation by MachineInventoryObservationKey
 
 @Composable
 internal fun DashboardScreen(
@@ -388,7 +376,7 @@ private fun DashboardDwarfGrid(
         val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(170.dp),
-            modifier = Modifier.fillMaxSize().testTag("sessions-grid"),
+            modifier = Modifier.fillMaxSize(),
             state = gridState,
             contentPadding = PaddingValues(
                 start = 12.dp,
@@ -466,15 +454,14 @@ internal fun DashboardTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp)
-            .padding(horizontal = 16.dp)
-            .testTag("dashboard-top-bar"),
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The Hlíðskjálf mark on the surface it names (design-language.md §8):
         // Gold, decorative, and silent — "Dwarves" beside it carries the label.
-        HlidskjalfMark(color = Gold, markSize = 24.dp, tag = "dashboard-mark")
-        Column(modifier = Modifier.weight(1f).testTag("dashboard-title")) {
+        HlidskjalfMark(color = Gold, markSize = 24.dp)
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 "Dwarves",
                 style = MaterialTheme.typography.titleLarge,
@@ -529,8 +516,7 @@ private fun MachineFilters(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(remember { ScrollState(0) })
-                .padding(horizontal = 16.dp)
-                .testTag("machine-filters"),
+                .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val allSelected = when (scope) {
@@ -543,11 +529,9 @@ private fun MachineFilters(
                 label = { Text("All", fontFamily = NidavellirType.Data) },
                 shape = NidavellirShapes.Chip,
                 modifier = Modifier
-                    .testTag("machine-filter-all")
                     .then(if (allSelected) Modifier.bringIntoViewRequester(selectedChip) else Modifier),
             )
             machines.forEach { machine ->
-                val fresh = machine.inventory as? InventoryState.Fresh
                 val machineScope = DashboardScope.Machine(machine.machine.handle)
                 val selected = when (scope) {
                     DashboardScope.All -> false
@@ -559,13 +543,7 @@ private fun MachineFilters(
                     label = { Text(machine.machine.label.text, fontFamily = NidavellirType.Data) },
                     shape = NidavellirShapes.Chip,
                     modifier = Modifier
-                        .testTag("machine-filter-${machine.machine.handle.encoded}")
-                        .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier)
-                        .semantics {
-                            if (fresh != null) {
-                                machineInventoryObservation = fresh.snapshot.receivedAtElapsedMillis
-                            }
-                        },
+                        .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier),
                 )
             }
         }
@@ -647,7 +625,6 @@ internal fun KillConfirmation(
                     contentColor = Ink,
                 ),
                 shape = NidavellirShapes.Cleft,
-                modifier = Modifier.testTag("kill-confirm"),
             ) {
                 Text(if (state.pending) "$verb in progress…" else "$verb on ${state.machine.label.text}")
             }
@@ -674,7 +651,6 @@ internal fun EmptyState(
                 HlidskjalfMark(
                     color = Muted.copy(alpha = 0.40f),
                     markSize = 48.dp,
-                    tag = "EmptyStateOrnament",
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
             }

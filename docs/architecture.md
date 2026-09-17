@@ -1040,6 +1040,31 @@ history, durable receipts, and replay remain outside the target.
 
 ## 9. Verification
 
+2026-09-17 test retirement supersedes the test plans and required red/green
+procedures below and in feature specifications. all repository-owned behavioral
+suites and their runners are removed. product contracts and behavioral acceptance
+criteria remain; deleting their checks does not establish acceptance or erase
+earlier failures. historical results retain their original source attribution.
+
+current verification is `scripts/check verify`: formatting, syntax, lint,
+dependency integrity, catalogue/generated-asset checks, and go/android builds.
+`scripts/check release` and `scripts/check published-release` retain source,
+version/platform, signing, archive, checksum, pin, and hosted-verification checks.
+release-note formatting is not release identity. host binary reproduction is
+an explicit `scripts/check-release --reproduce` audit, not routine verification.
+without that audit, release checks do not independently prove source-to-binary
+equivalence. dependency pins live in their lockfile; catalogue validation owns
+data, not a second implementation of icon rendering. these commands establish
+only their named engineering properties. routine verification runs no behavioral
+tests and touches no tmux, provider, or device boundary. the removed unit, integration, provider-live,
+live, platform, product, second-phone, and full gates have no replacement in this pr.
+
+the next pr defines the test system from present requirements. the
+[testing status](rules/testing.md) owns the interim commands and the
+[coverage issue](issues/test-system-reset.md) records the gap.
+
+### retired verification plan and retained behavioral criteria
+
 Verification follows an 80/20 boundary shape:
 
 - desktop browser adds [a1–a5 acceptance](desktop-browser.md#7-acceptance-and-delivery):

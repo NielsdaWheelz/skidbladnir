@@ -67,15 +67,10 @@ phone at runtime beyond drawing pre-built paths.
      Kotlin constant, because nothing at runtime reads it (no dead code
      ships). [`launcher-mark.md`](launcher-mark.md) owns its constants and
      proofs.
-- The generated files are checked in. `scripts/check-ornament` (Python 3,
-  stdlib only, like its sibling checks) imports `build_outputs()`, calls it
-  twice to prove determinism, and byte-compares the result against every
-  checked-in path — drift between generator and checked-in source fails the
-  static gate. `scripts/test` gains exactly one line in its existing
-  `static` case (`run ornament-static ./scripts/check-ornament`, matching the
-  existing explicit-name convention); nothing else in `scripts/test`
-  changes, and Python checks stay outside the `bash-syntax`/`shellcheck`
-  lists by existing precedent.
+- the generated files are checked in. `scripts/check-ornament` imports
+  `build_outputs()` once and byte-compares each result with its checked-in file.
+  `scripts/check static` runs this drift check. no repeated generation or
+  behavioral test suite is part of this check.
 - Algorithms are reimplemented from the published construction methods
   (Bain grid-and-dot / parity weave); no third-party knot code is vendored
   (the GPL and unlicensed generators named in design language §7 stay out).

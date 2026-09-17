@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -86,7 +85,7 @@ internal fun SpaceField(
             label = { Text("space") },
             isError = invalid,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
-            modifier = Modifier.fillMaxWidth().testTag("space-draft"),
+            modifier = Modifier.fillMaxWidth(),
         )
         if (invalid) Text(SPACE_INVALID, color = Ember)
         SpaceTextAction("unassigned", enabled, { onChange("") })
@@ -128,7 +127,7 @@ internal fun SpaceSheet(
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = !sending, shouldDismissOnClickOutside = !sending),
     ) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()
-            .padding(horizontal = 20.dp).padding(bottom = 28.dp).testTag("space-sheet"),
+            .padding(horizontal = 20.dp).padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("space", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
             Text("${editor.target.session.tmuxName} on ${machine.machine.label.text}", fontFamily = NidavellirType.Data)
@@ -141,8 +140,7 @@ internal fun SpaceSheet(
                 OutlinedButton(onClick = onDismiss, enabled = !sending, modifier = Modifier.padding(end = 8.dp)) {
                     Text("cancel")
                 }
-                Button(onClick = onSubmit, enabled = spaceSubmissionAdmissible(editor, machine),
-                    modifier = Modifier.testTag("space-save")) { Text("save") }
+                Button(onClick = onSubmit, enabled = spaceSubmissionAdmissible(editor, machine)) { Text("save") }
             }
         }
     }
@@ -157,7 +155,7 @@ internal fun SpaceSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
     SpaceTextAction(selected.displayLabel(), true, { expanded = true },
-        modifier = Modifier.fillMaxWidth().testTag("space-selector"))
+        modifier = Modifier.fillMaxWidth())
     if (!expanded) return
     ModalBottomSheet(onDismissRequest = { expanded = false }, shape = NidavellirShapes.Sheet, containerColor = DeepSurface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())

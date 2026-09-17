@@ -19,7 +19,7 @@
     "esbuildSource": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.2.tgz",
     "esbuildIntegrity": "sha512-MpM6LUVTXAzOvN4KbjzU/q5smzryuoNjlriAIx+06RpecwCkL9JpenNzpKd2YMzLJFOdPqBpuub6eVRP5IgiSA==",
     "patch": "android/xterm-6.0.0-skidbladnir.patch",
-    "patchSha256": "70080c0196550a0722be4e745f39ad9c981211389fb82020f07e85afac9f8498",
+    "patchSha256": "bba0e11eefb88d8f7deb4d91341093233e5b186779437d2984a775b79eb40a26",
     "command": "./scripts/build-terminal-xterm"
   },
   "fitAddon": {

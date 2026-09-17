@@ -15,14 +15,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
-
-// Every top-level declaration in this file must stay JVM-safe: reading
-// `UnstruckMark` from the pure-JVM `ForgeSealTest` runs this file's class
-// initialiser, and a top-level Path, Paint, or Stroke is android.graphics-backed
-// and would fail that proof for a reason unrelated to the mark. Such things live
-// inside the composable's DrawScope.
 
 // The unstruck seal's mark (design-language.md §8, forge-seal.md "Geometry"):
 // the §11 seal with every trait at zero — a bare stave crossed by one
@@ -62,7 +55,6 @@ internal fun ForgeSeal(canForge: Boolean, onClick: () -> Unit) {
                 onClick = onClick,
             )
             .semantics {
-                testTag = "new-session"
                 contentDescription = "New dwarf"
             },
     ) {

@@ -133,9 +133,14 @@ checksum verification. It creates a GitHub **draft** only. Publication is one
 manual review action; published assets are never replaced. No signing secret is
 stored in GitHub. A separate read-only post-publication gate requires the final
 release to be non-draft, non-prerelease, immutable, exact-SHA, exact-five-assets,
-and byte-valid after a fresh public download. That gate compares the canonical
-tag, SHA, and all five downloaded-asset digests byte-for-byte with this
-repository's `release-pin.json`. The product gate separately requires the
+and byte-valid after a fresh public download. that gate compares the tag, source
+sha, and all five downloaded-asset digests with this repository's
+`release-pin.json` as data; json whitespace and release-note prose are not
+identity. hosted verification is looked up by source sha, not parsed from notes.
+host binary reproduction is an optional `scripts/check-release --reproduce`
+audit under the [current verification policy](rules/testing.md). ordinary checks
+verify declared identity and integrity, not independent source-to-binary
+equivalence. the retired product gate separately required the
 `dev-server` pin's tag, source, and two host-bundle digests to match it. Both
 pins must be tracked and byte-exact at their declared checkout `HEAD`; a dirty
 working-tree pin is not release authority.

@@ -45,7 +45,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -138,8 +137,7 @@ private fun ForgeFormContent(
             .verticalScroll(rememberScrollState())
             .imePadding()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp)
-            .testTag("forge-sheet"),
+            .padding(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
@@ -170,9 +168,7 @@ private fun ForgeFormContent(
                         )
                     },
                     shape = NidavellirShapes.Chip,
-                    modifier = Modifier.testTag(
-                        "forge-machine-${machine.machine.handle.encoded}",
-                    ).semantics {
+                    modifier = Modifier.semantics {
                         contentDescription = forgeMachineChoiceLabel(machine)
                     },
                 )
@@ -200,9 +196,6 @@ private fun ForgeFormContent(
                         enabled = fieldsEnabled,
                         label = { Text(profile.label, fontFamily = NidavellirType.Data) },
                         shape = NidavellirShapes.Chip,
-                        modifier = Modifier.testTag(
-                            "forge-profile-${selected.machine.handle.encoded}",
-                        ),
                     )
                 }
                 FilterChip(
@@ -211,7 +204,6 @@ private fun ForgeFormContent(
                     enabled = fieldsEnabled,
                     label = { Text("Terminal", fontFamily = NidavellirType.Data) },
                     shape = NidavellirShapes.Chip,
-                    modifier = Modifier.testTag("forge-terminal"),
                 )
             }
             ForgeWorkingDirectorySelection(
@@ -225,7 +217,7 @@ private fun ForgeFormContent(
                 Text(
                     bidiIsolate(notice.message),
                     color = noticeToneColor(notice.tone),
-                    modifier = Modifier.testTag("forge-machine-unavailable").semantics {
+                    modifier = Modifier.semantics {
                         contentDescription = notice.message
                     },
                 )
@@ -236,7 +228,7 @@ private fun ForgeFormContent(
             onValueChange = { value ->
                 actions.updateDraft { it.copy(optionalTmuxName = value) }
             },
-            modifier = Modifier.fillMaxWidth().testTag("forge-name"),
+            modifier = Modifier.fillMaxWidth(),
             enabled = fieldsEnabled,
             label = { Text("tmux name (optional)") },
             singleLine = true,
@@ -248,7 +240,7 @@ private fun ForgeFormContent(
         OutlinedTextField(
             value = state.form.objective,
             onValueChange = { value -> actions.updateDraft { it.copy(objective = value) } },
-            modifier = Modifier.fillMaxWidth().testTag("forge-objective"),
+            modifier = Modifier.fillMaxWidth(),
             enabled = fieldsEnabled,
             label = { Text("Objective (optional)") },
             minLines = 2,
@@ -265,13 +257,12 @@ private fun ForgeFormContent(
             is ForgeFailure.Definite -> Text(
                 gatewayFailureMessage(failure.rejection),
                 color = noticeToneColor(NoticeTone.Failure),
-                modifier = Modifier.testTag("forge-failure"),
             )
         }
         Button(
             onClick = actions.submit,
             enabled = state.admissibleSubmission() != null && selected?.canMutate == true,
-            modifier = Modifier.fillMaxWidth().testTag("forge-submit").semantics {
+            modifier = Modifier.fillMaxWidth().semantics {
                 contentDescription = selected?.let { forgeActionLabel(it.machine.label) }
                     ?: "Choose a machine"
             },
@@ -301,7 +292,7 @@ private fun ForgeWorkingDirectorySelection(
             onClick = onChoose,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .minimumInteractiveComponentSize().testTag("forge-working-directory"),
+                .minimumInteractiveComponentSize(),
             shape = NidavellirShapes.Chip,
         ) {
             Text("Choose a working directory")
@@ -313,7 +304,7 @@ private fun ForgeWorkingDirectorySelection(
         color = RaisedSurface,
         border = BorderStroke(1.dp, Gold.copy(alpha = 0.40f)),
         shape = NidavellirShapes.Card,
-        modifier = Modifier.fillMaxWidth().testTag("forge-working-directory"),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
@@ -326,13 +317,12 @@ private fun ForgeWorkingDirectorySelection(
             )
             WorkingDirectoryPathLine(
                 path = state.form.cwd,
-                modifier = Modifier.fillMaxWidth().testTag("working-directory-path-scroll"),
+                modifier = Modifier.fillMaxWidth(),
             )
             TextButton(
                 onClick = if (state.failure.isWorkingDirectoryRejection()) onRepair else onChoose,
                 enabled = enabled,
-                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()
-                    .testTag("forge-working-directory-change"),
+                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
             ) {
                 Text("Change")
             }

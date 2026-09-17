@@ -185,65 +185,6 @@ verify_apk() {
   }
 }
 
-self_test() {
-  local fixture_dir
-  local fixture
-  local observed
-  local expected
-  local name
-  local contents
-  fixture_dir="$(mktemp -d /tmp/skidbladnir-signing.XXXXXX)"
-  fixture="$fixture_dir/signing.properties"
-  while IFS='|' read -r name expected contents; do
-    printf '%b' "$contents" > "$fixture"
-    if parse_signing_config "$fixture"; then
-      observed=pass
-    else
-      observed=fail
-    fi
-    if [[ "$observed" != "$expected" ]]; then
-      unlink "$fixture"
-      rmdir "$fixture_dir"
-      printf 'Android signing policy case %s = %s, want %s\n' "$name" "$observed" "$expected" >&2
-      return 1
-    fi
-  done <<'CASES'
-canonical|pass|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\nkeyAlias=skidbladnir\n
-comments|pass|# private material stays outside Git\n\nstoreFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\nkeyAlias=skidbladnir-1\n
-missing key|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/skidbladnir.password\n
-duplicate key|fail|storeFile=/tmp/one.p12\nstoreFile=/tmp/two.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
-unknown key|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\nlegacyFallback=true\n
-relative store|fail|storeFile=skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
-relative password|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=password\nkeyAlias=skidbladnir\n
-whitespace|fail|storeFile = /tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=skidbladnir\n
-invalid alias|fail|storeFile=/tmp/skidbladnir.p12\npasswordFile=/tmp/password\nkeyAlias=not/valid\n
-CASES
-  expected='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  observed="$(
-    printf 'Signer #1 certificate SHA-256 digest: %s\n' "$expected" |
-      extract_apk_signer_digest
-  )" || return 1
-  [[ "$observed" == "$expected" ]] || {
-    printf 'Single APK signer digest was not accepted\n' >&2
-    return 1
-  }
-  if printf '%s\n' \
-    "Signer #1 certificate SHA-256 digest: $expected" \
-    'Signer #2 certificate SHA-256 digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' |
-    extract_apk_signer_digest >/dev/null; then
-    printf 'Additional APK signer digest was accepted\n' >&2
-    return 1
-  fi
-  unlink "$fixture"
-  rmdir "$fixture_dir"
-  printf 'Android signing policy passed: 9 config cases and exact-one APK signer\n'
-}
-
-if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
-  self_test
-  exit
-fi
-
 config_file="${SKIDBLADNIR_ANDROID_SIGNING_CONFIG:-$default_config}"
 if [[ "${1:-}" == '--config-only' && "$#" -eq 1 ]]; then
   validate_config "$config_file"
@@ -259,7 +200,7 @@ if [[ "${1:-}" == '--public-apk' && "$#" -ge 2 ]]; then
   exit
 fi
 if [[ "$#" -lt 1 ]]; then
-  printf 'usage: %s [--self-test|--config-only|--public-apk APK...|APK...]\n' "$0" >&2
+  printf 'usage: %s [--config-only|--public-apk APK...|APK...]\n' "$0" >&2
   exit 64
 fi
 

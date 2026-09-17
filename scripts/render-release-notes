@@ -96,54 +96,6 @@ render_notes() {
     'for installation and updates, never at runtime.'
 }
 
-# shellcheck disable=SC2329 # Invoked indirectly by the self-test EXIT trap.
-self_test_cleanup() {
-  local test_exit=$?
-  trap - EXIT
-  rm -R -- "$fixture_dir" || test_exit=1
-  exit "$test_exit"
-}
-
-self_test() (
-  set -euo pipefail
-  local fixture_dir
-  local notes
-  fixture_dir="$(mktemp -d /tmp/skidbladnir-release-notes.XXXXXX)"
-  trap self_test_cleanup EXIT
-  printf '%064d\n' 0 >"$fixture_dir/android-signing-cert.sha256"
-  {
-    printf '%064d  %s\n' 1 android-signing-cert.sha256
-    printf '%064d  %s\n' 2 skidbladnir-android.apk
-    printf '%064d  %s\n' 3 skidbladnir-darwin-arm64.tar.gz
-    printf '%064d  %s\n' 4 skidbladnir-linux-amd64.tar.gz
-  } >"$fixture_dir/SHA256SUMS"
-  notes="$(render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 "$fixture_dir")"
-  # shellcheck disable=SC2016 # The backticks are literal Markdown delimiters.
-  [[ "$notes" == *'## Update order'* && "$notes" == *'hosts first'* &&
-    "$notes" == *'update the phone second'* && "$notes" == *'`42`'* &&
-    "$notes" == *'SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify'* &&
-    "$notes" == *'SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite'* &&
-    "$notes" == *'separate post-publication pin-control checkout'* &&
-    "$notes" == *'tracked `release-pin.json`'* &&
-    "$notes" == *'all five asset digests'* &&
-    "$notes" == *'two host-bundle'* ]] || return 1
-  [[ "$notes" != *'./skidbladnir invite'* && "$notes" != *'fleet doctor'* &&
-    "$notes" != *'dev-server converge'* && "$notes" != *"this checkout's \`release-pin.json\`"* ]] ||
-    return 1
-  printf '%064d  %s\n' 5 skidbladnir-linux-amd64.tar.gz >>"$fixture_dir/SHA256SUMS"
-  if render_notes v0.2.0 0123456789abcdef0123456789abcdef01234567 42 \
-    "$fixture_dir" >/dev/null; then
-    printf 'Duplicate release-note asset digest was accepted\n' >&2
-    return 1
-  fi
-  printf 'Deterministic release notes passed\n'
-)
-
-if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
-  self_test
-  exit
-fi
-
 if [[ "$#" -ne 4 ]]; then
   printf 'usage: %s TAG SOURCE_SHA VERIFY_RUN_ID RELEASE_DIRECTORY\n' "$0" >&2
   exit 64

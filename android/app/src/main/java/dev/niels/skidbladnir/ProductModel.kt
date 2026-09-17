@@ -824,7 +824,7 @@ internal data class MachineState(
 }
 
 /**
- * Single classifier for what a machine can currently do. Every machine-state message, tag, colour,
+ * Single classifier for what a machine can currently do. Every machine-state message, colour,
  * and Forge affordance reads this one derivation, so a new access or inventory variant breaks the
  * build in exactly one place.
  */

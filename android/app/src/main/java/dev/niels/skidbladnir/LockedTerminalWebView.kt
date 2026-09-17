@@ -121,8 +121,6 @@ internal class LockedTerminalWebView(
     context: Context,
     nominalTextSizeSp: Int,
     private val listener: TerminalPageListener,
-    private val initialUrl: String = TERMINAL_URL,
-    readinessTimeoutMillis: Long = TERMINAL_PAGE_READY_TIMEOUT_MILLIS,
 ) : WebView(context), TerminalPage {
     private val assetLoader = WebViewAssetLoader.Builder()
         .setDomain(LOCAL_ASSET_HOST)
@@ -168,8 +166,6 @@ internal class LockedTerminalWebView(
     }
 
     init {
-        require(initialUrl.startsWith("https://$LOCAL_ASSET_HOST/assets/terminal/"))
-        require(readinessTimeoutMillis in 1..TERMINAL_PAGE_READY_TIMEOUT_MILLIS)
         requireWebMessagePort()
         setBackgroundColor(Color.rgb(12, 13, 15))
         isFocusable = true
@@ -203,8 +199,8 @@ internal class LockedTerminalWebView(
             mediaPlaybackRequiresUserGesture = true
         }
         webViewClient = localAssetClient()
-        main.postDelayed(pageReadinessDeadline, readinessTimeoutMillis)
-        loadUrl(initialUrl)
+        main.postDelayed(pageReadinessDeadline, TERMINAL_PAGE_READY_TIMEOUT_MILLIS)
+        loadUrl(TERMINAL_URL)
     }
 
     override fun scrollTo(x: Int, y: Int) {
@@ -386,11 +382,11 @@ internal class LockedTerminalWebView(
         override fun shouldOverrideUrlLoading(
             view: WebView,
             request: WebResourceRequest,
-        ): Boolean = request.isForMainFrame && request.url.toString() != initialUrl
+        ): Boolean = request.isForMainFrame && request.url.toString() != TERMINAL_URL
 
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
-            if (url == initialUrl) attachPagePort(view)
+            if (url == TERMINAL_URL) attachPagePort(view)
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {

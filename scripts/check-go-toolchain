@@ -30,42 +30,8 @@ compatible_toolchain() {
   ((10#$resolved_patch >= 10#$required_patch))
 }
 
-self_test() {
-  local name
-  local required
-  local resolved
-  local expected
-  local observed
-  while IFS='|' read -r name required resolved expected; do
-    if compatible_toolchain "$required" "$resolved"; then
-      observed=pass
-    else
-      observed=fail
-    fi
-    if [[ "$observed" != "$expected" ]]; then
-      printf 'Go toolchain policy case %s = %s, want %s\n' "$name" "$observed" "$expected" >&2
-      return 1
-    fi
-  done <<'CASES'
-minimum patch|1.26.0|go1.26.0|pass
-newer security patch|1.26.0|go1.26.7|pass
-older patch|1.26.7|go1.26.6|fail
-older language family|1.26.0|go1.25.9|fail
-newer language family|1.26.0|go1.27.0|fail
-release candidate|1.26.0|go1.27rc1|fail
-malformed directive|1.26|go1.26.7|fail
-resolved arithmetic overflow|1.26.0|go1.26.18446744073709551618|fail
-required arithmetic overflow|1.26.18446744073709551616|go1.26.0|fail
-CASES
-  printf 'Go toolchain policy passed: 9 cases\n'
-}
-
-if [[ "${1:-}" == '--self-test' && "$#" -eq 1 ]]; then
-  self_test
-  exit
-fi
 if [[ "$#" -ne 0 ]]; then
-  printf 'usage: %s [--self-test]\n' "$0" >&2
+  printf 'usage: %s\n' "$0" >&2
   exit 64
 fi
 

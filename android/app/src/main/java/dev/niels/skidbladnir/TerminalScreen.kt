@@ -43,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -72,14 +71,12 @@ internal fun TerminalScreen(
             .fillMaxSize()
             .background(Ink)
             .systemBarsPadding()
-            .imePadding()
-            .testTag("terminal-screen-${state.machine.machine.handle.encoded}"),
+            .imePadding(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .testTag("terminal-header"),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -97,7 +94,7 @@ internal fun TerminalScreen(
                 presenceColor = terminalPresenceColor(state.connection),
                 enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
                 onClick = controller::openRename,
-                modifier = Modifier.weight(1f).testTag(terminalStatusTag(state.connection)),
+                modifier = Modifier.weight(1f),
             )
             val shellEnabled = !state.shellPending && state.kill == null && state.rename == null &&
                 terminalActionAdmissible(state.machine.canMutate, state.connection)
@@ -125,7 +122,7 @@ internal fun TerminalScreen(
                 enabled = state.textSize is TerminalTextSizeState.Ready &&
                     terminalPageLive(state.connection),
                 onClick = controller::openTextSize,
-                modifier = Modifier.width(48.dp).testTag("terminal-text-size"),
+                modifier = Modifier.width(48.dp),
             )
             if (state.target.session.agent != null) {
                 var expanded by remember(state.attempt) { mutableStateOf(false) }
@@ -133,7 +130,7 @@ internal fun TerminalScreen(
                     HeaderChip(
                         label = "⋯", spokenName = "Agent actions",
                         enabled = !state.agentControlPending && terminalActionAdmissible(state.machine.canMutate, state.connection),
-                        onClick = { expanded = true }, modifier = Modifier.width(48.dp).testTag("terminal-agent-actions"),
+                        onClick = { expanded = true }, modifier = Modifier.width(48.dp),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         DropdownMenuItem(text = { Text("Interrupt") }, onClick = {
@@ -155,7 +152,6 @@ internal fun TerminalScreen(
                     machineLabel = state.machine.machine.label, target = state.target,
                     enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
                     onClick = { controller.requestKill(state.target) },
-                    modifier = Modifier.testTag("terminal-kill"),
                 )
             }
         }
@@ -178,7 +174,7 @@ internal fun TerminalScreen(
                     if (state.connection != TerminalUiStatus.Verifying && textSize is TerminalTextSizeState.Ready) {
                         key(state.attempt) {
                             AndroidView(
-                                modifier = Modifier.fillMaxSize().testTag("terminal-page"),
+                                modifier = Modifier.fillMaxSize(),
                                 factory = { context ->
                                     LockedTerminalWebView(
                                         context = context,
@@ -458,7 +454,7 @@ private fun ReconnectPanel(
             Button(
                 onClick = onReattach,
                 enabled = actionAdmissible,
-                modifier = Modifier.fillMaxWidth().testTag("terminal-reattach"),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Reattach to ${machineLabel.text}")
             }
@@ -468,7 +464,7 @@ private fun ReconnectPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp),
             ) {
-                BackToDwarvesContent(tag = "terminal-dwarves-mark")
+                BackToDwarvesContent()
             }
         }
     }
@@ -489,14 +485,6 @@ private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (c
     is TerminalUiStatus.Connected -> Moss
     is TerminalUiStatus.ReconnectRequired -> noticeToneColor(NoticeTone.Failure)
     TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> Gold
-}
-
-private fun terminalStatusTag(connection: TerminalUiStatus): String = when (connection) {
-    is TerminalUiStatus.Connected -> "terminal-status-connected"
-    is TerminalUiStatus.ReconnectRequired -> "terminal-status-reconnect"
-    TerminalUiStatus.Preparing -> "terminal-status-preparing"
-    TerminalUiStatus.Verifying -> "terminal-status-verifying"
-    TerminalUiStatus.Connecting -> "terminal-status-connecting"
 }
 
 internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =
