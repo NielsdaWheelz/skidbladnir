@@ -4,6 +4,10 @@ problem: the only file loader passes an `os.File` through a private file
 interface and a one-caller function. decoding is another one-caller wrapper.
 these seams obscure the linear file admission and decoding path.
 
+the admitted `Config.Platform` field also has no reader: startup obtains its
+runtime platform independently, while the wire platform is checked during
+admission. remove the unused output field, keeping every wire/platform check.
+
 evidence: `hostConfigFile` has one production supplier; `loadOpenedHostConfig`
 and `decodeConfig` each have one caller in `internal/hostconfig`. the behavioral
 harnesses that used replacement files are retired.

@@ -365,51 +365,6 @@ internal data class ReconciledStoredMachine(
     val machine: MachineState,
 )
 
-internal data class ReconciledStoredControllerState(
-    val machines: List<ReconciledStoredMachine>,
-    val forgeCarry: ForgeCarry,
-)
-
-internal class StoredMachineRead internal constructor(
-    val readingState: SkidbladnirUiState,
-    private val currentCredentials: List<MachineCredential>,
-    private val currentMachines: List<MachineState>,
-    val retainedForgeCarry: ForgeCarry?,
-) {
-    fun reconcileIfCurrent(
-        isCurrent: Boolean,
-        storedCredentials: List<MachineCredential>,
-    ): ReconciledStoredControllerState? {
-        if (!isCurrent) return null
-        return ReconciledStoredControllerState(
-            machines = reconcileStoredMachines(
-                currentCredentials = currentCredentials,
-                currentMachines = currentMachines,
-                storedCredentials = storedCredentials,
-            ),
-            forgeCarry = retainedForgeCarry?.takeIf {
-                forgeAuthoritySurvives(it, currentCredentials, storedCredentials)
-            } ?: ForgeCarry(null, null),
-        )
-    }
-}
-
-internal fun beginStoredMachineRead(
-    state: SkidbladnirUiState,
-    currentCredentials: Collection<MachineCredential>,
-    currentMachines: Collection<MachineState>,
-    retainedForgeCarry: ForgeCarry? = null,
-): StoredMachineRead = StoredMachineRead(
-    readingState = SkidbladnirUiState.Booting,
-    currentCredentials = currentCredentials.toList(),
-    currentMachines = currentMachines.toList(),
-    retainedForgeCarry = when (state) {
-        is SkidbladnirUiState.Dashboard -> forgeCarry(state).takeUnless { it == ForgeCarry(null, null) }
-        SkidbladnirUiState.Booting -> retainedForgeCarry
-        is SkidbladnirUiState.FleetConnect, is SkidbladnirUiState.Terminal -> null
-    },
-)
-
 private fun forgeAuthoritySurvives(
     carry: ForgeCarry,
     currentCredentials: Collection<MachineCredential>,
@@ -525,23 +480,28 @@ internal class SkidbladnirController(
         }
         val activeGeneration = generation
         awaitedInventoryReads.clear()
-        val storedMachineRead = beginStoredMachineRead(
-            state = state,
-            currentCredentials = credentials.values,
-            currentMachines = machineStates.values,
-            retainedForgeCarry = retainedStoredMachineForgeCarry,
-        )
-        retainedStoredMachineForgeCarry = storedMachineRead.retainedForgeCarry
-        state = storedMachineRead.readingState
+        val currentCredentials = credentials.values.toList()
+        val currentMachines = machineStates.values.toList()
+        val retainedForgeCarry = when (val current = state) {
+            is SkidbladnirUiState.Dashboard -> forgeCarry(current).takeUnless { it == ForgeCarry(null, null) }
+            SkidbladnirUiState.Booting -> retainedStoredMachineForgeCarry
+            is SkidbladnirUiState.FleetConnect, is SkidbladnirUiState.Terminal -> null
+        }
+        retainedStoredMachineForgeCarry = retainedForgeCarry
+        state = SkidbladnirUiState.Booting
         executeCredentialOperation {
             val stored = store.read()
             main.post {
-                val reconciliation = storedMachineRead.reconcileIfCurrent(
-                    isCurrent = isActiveGeneration(activeGeneration),
+                if (!isActiveGeneration(activeGeneration)) return@post
+                val reconciled = reconcileStoredMachines(
+                    currentCredentials = currentCredentials,
+                    currentMachines = currentMachines,
                     storedCredentials = stored.credentials,
-                ) ?: return@post
+                )
+                val carry = retainedForgeCarry?.takeIf {
+                    forgeAuthoritySurvives(it, currentCredentials, stored.credentials)
+                } ?: ForgeCarry(null, null)
                 retainedStoredMachineForgeCarry = null
-                val reconciled = reconciliation.machines
                 credentials.clear()
                 machineStates.clear()
                 reconciled.forEach { entry ->
@@ -582,7 +542,7 @@ internal class SkidbladnirController(
                     startPolling(it.credential.machine.handle, activeGeneration)
                 }
                 if (interruptedDisposition == FleetPersistenceDisposition.Connected) {
-                    publishDashboard(carry = reconciliation.forgeCarry)
+                    publishDashboard(carry = carry)
                     return@post
                 }
                 if (interruptedDisposition == FleetPersistenceDisposition.ResetRequired) {
@@ -603,7 +563,7 @@ internal class SkidbladnirController(
                     )
                     return@post
                 }
-                publishDashboard(carry = reconciliation.forgeCarry)
+                publishDashboard(carry = carry)
             }
         }
     }
