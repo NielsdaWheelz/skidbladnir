@@ -6,11 +6,14 @@ This document covers exhaustive branching and race-safety rules.
 
 ## Exhaustiveness
 
-- When branching on a value with a known finite set of possibilities, use exhaustive matching. That means that adding a new possibility to the producer of the value should cause a type error in the consumer until it explicitly handles that possibility. If new possibilities could possibly be added to the consumer without creating type errors, this rule has been violated.
-- Good patterns:
-  - Use the language or framework's exhaustive-match primitive when one exists.
-  - Use a runtime unreachable-branch check for impossible branches.
-  - Use a compile-time assertion for narrowed finite variants when the language supports one.
+- cover every case in a finite domain. use native compile-time exhaustiveness
+  where available, such as kotlin `when` over a sealed type or enum.
+- where the language cannot prove coverage, such as go switches over named
+  string constants, handle unmatched values explicitly. reject unsupported
+  external input; report impossible owned values as defects instead of returning
+  plausible default output.
+- do not add code generation or a matching framework solely to impose
+  compile-time exhaustiveness on a language that does not provide it.
 - This applies to errors as well. Do not erase finite error channels with catch-all handlers that discard or collapse distinct errors.
 - Prefer tag-specific or variant-specific error handlers for finite error sets.
 

@@ -1,45 +1,31 @@
-# Effects
+# effects
 
-## Scope
+## scope
 
-This document covers effectful work, asynchronous work, background task
-lifecycle, and scoped resource values.
+effectful work, background tasks, cancellation, and resource lifetime.
 
-## Rules
+## execution
 
-- Use explicit effect, task, result, or promise-returning functions when a
-  function can fail in a handleable way or performs asynchronous work.
-- Prefer the host runtime's native effect or async composition patterns unless
-  a boundary clearly requires another shape.
-- When in doubt, prefer the explicit effectful shape over hidden side effects.
+- use ordinary functions and the language's existing error and async mechanisms.
+  make dependencies, side effects, and failure results visible at the call site.
+- the owner starting concurrent work also owns its cancellation, completion,
+  and error handling. use the existing contexts, wait groups, futures, or
+  promises; do not add a runtime framework around them.
+- keep concurrency and its result handling together. a goroutine or callback
+  must not silently outlive the operation or resource it uses.
+- bind stream producers and monitors to the stream lifecycle. shutdown must
+  cancel work, unblock pending io, and observe worker completion.
+- work that intentionally outlives its caller needs a concrete longer-lived
+  owner and an explicit shutdown path, not an unobserved detached task.
 
-## Background Work
+## resources
 
-- Every forked or background task must have its termination propagated,
-  observed, or deliberately supervised.
-- Avoid bare detached tasks. Any detached task must include a justification.
-- Represent concurrent background work as returned task or effect values rather
-  than forking internally.
-- Compose concurrent background work at the call site so concurrency and error propagation are handled together.
-- In streams, bind background producers to the stream lifecycle.
-- Use structured concurrency primitives for races, joins, and parallel
-  execution.
-- Queue-based stream operators that need a forked producer should use a local
-  helper that owns producer startup, shutdown, and error propagation.
-- Dynamic concurrent work that must outlive its trigger should use a supervised
-  task registry.
-- Prefer keyed task registries when keyed deduplication is required.
-- Every fork site must document its termination-propagation mechanism.
-
-## Scope-Bound Values
-
-- Do not let values produced by scoped acquisition escape their scope.
-- Keep scoped value creation and use within the same scope.
-- Do not return scoped values, store them in mutable references or closures, or
-  pass them to long-lived background tasks.
-- Resource-provider and dependency-wiring scopes must cover both acquisition
-  and use.
-- If a provider scope wraps acquisition but not use, the value may outlive its
-  resources.
-- When a value depends on scoped resources, the scope must wrap both acquisition
-  and use.
+- keep acquisition, use, and release within the owning lifetime. use native
+  cleanup mechanisms and make release ordering explicit.
+- a value depending on an open resource must not escape the resource's lifetime
+  through a return value, closure, mutable reference, or background task.
+- when returning an owning handle, make the caller's release responsibility
+  explicit. do not return a borrowed value whose owner has already closed.
+- preserve product lifetime distinctions: closing a gateway attachment releases
+  its transport, pty, and tmux client, not the tmux session or foreground agent.
+  the [architecture](../architecture.md) owns that boundary.

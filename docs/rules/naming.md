@@ -1,35 +1,34 @@
-# Naming
+# naming
 
-## Scope
+## scope
 
-This document covers global naming grammar for identifiers and observability labels.
-Operation verb semantics such as `ensure...`, `require...`, and `validate...` belong to the owning semantic docs, not this grammar doc. For managed operations, see [operation-types.md](operation-types.md).
+names for values, operations, and observability.
 
-## Enums
+## values
 
-- Enums are `PascalCase` strings.
+- use names that describe the domain and current owner.
+- preserve the casing and spelling owned by each wire or provider contract.
+  launch kinds and agent-control states use lowercase; existing provider names
+  and error codes retain their specified spelling. do not rename wire values
+  to satisfy a global enum convention.
+- follow the language's existing identifier conventions within each package.
 
-## Identifiers
+## operations
 
-- String-valued identifiers in a global namespace should use dot-delimited PascalCase.
-- Service tags, error tags, and local union discriminators should use flat PascalCase with no dot.
+- choose a verb that states what success establishes: observing, validating,
+  creating, changing, or deleting are different contracts.
+- `ensure...` means convergence on the named condition; an already-satisfied
+  condition succeeds. implement that behavior explicitly in its owner.
+- do not give an ordinary create or delete operation convergent semantics by
+  silently swallowing an already-existing or missing target. use its specified
+  result and error contract.
+- distinguish parsing a representation from resolving or observing a live
+  resource; see [keys-and-identities.md](keys-and-identities.md).
 
-## Observability
+## observability
 
-- Observability names use a different grammar to align with OpenTelemetry conventions.
-- App-owned span names and similar nominal observability labels should use
-  dot-delimited PascalCase.
-- Protocol spans should follow the applicable OpenTelemetry semantic convention.
-- Span and log attribute keys are field paths, not nominal labels.
-- Resource, span, and log attribute keys should use lowercase dotted field
-  paths.
-- Resource, span, and log attribute keys must be stable. Do not derive attribute
-  keys from user input, provider data, request counters, entity ids, feature flag
-  names, or other unbounded runtime values.
-- Dynamic or unpredictable observability data belongs in attribute values or a
-  deliberately structured payload under a stable key.
-- Prefer OpenTelemetry semantic-convention keys when one fits the concept.
-- Custom application-specific attribute keys should live under one repository-owned
-  prefix.
-- Do not use camelCase attribute keys.
-- Do not reuse nominal-identifier PascalCase grammar for observability attribute keys.
+- use stable event names and field keys from the owning logging contract.
+- dynamic data belongs in values, not keys. do not derive keys from user input,
+  provider data, counters, or entity identities.
+- preserve content-free, credential-free logging. no prompts, terminal bytes,
+  objectives, tokens, or account data.

@@ -30,8 +30,9 @@ every line, file, abstraction, and test that does not earn its place.
 - Collapse repeated logic to a single owner: mutation flows, fetch and polling
   loops, state machines, pipelines, validators, normalizers, derived-state
   calculations, constants, and near-identical branches.
-- If a value is sanitized, validated, or derived in more than one place, cut it
-  to one.
+- share duplicated parsing and derivation at their owner. checks against
+  changing external state are observations, not repeated shape validation;
+  preserve the lifetime checks required by the operation.
 - If two abstractions expose the same capability, keep one.
 - If a registry or cache mirrors a source of truth that already exists, delete
   it.
@@ -82,15 +83,15 @@ every line, file, abstraction, and test that does not earn its place.
 - For each service, own the capability end to end: state, invariants,
   persistence, retries, provider/runtime wiring, and lifecycle rules.
 - Expose only a small semantic public interface: named commands/queries, one
-  object parameter at boundaries, typed inputs/outputs, typed errors, and
-  explicit transaction/replay semantics when relevant.
+  input type where useful, typed results, explicit failures, and documented
+  lifetime and concurrency semantics.
 - Keep everything else internal.
 - Edge adapters such as HTTP handlers, remote-call handlers, CLI commands,
-  database rows, vendor SDKs, and UI
-  transport may parse, validate, narrow, translate, and invoke the service.
+  vendor SDKs, and UI transport may parse, validate, narrow, translate, and
+  invoke the service.
   They must not own business rules.
 - Other modules may call only the public service, handle, or API, never another
-  module's tables, private helpers, SDK clients, or wiring.
+  module's private state, helpers, SDK clients, or wiring.
 - After ingress, keep values in rich owned types.
 - Model expected failures explicitly.
 - Defect on impossible states.
@@ -98,8 +99,8 @@ every line, file, abstraction, and test that does not earn its place.
   fallback branches.
 - Enforce ownership boundaries, service-private wiring, retry/mutation
   boundaries, and narrow public surfaces.
-- Public services return named operations.
-- Runtime layers close their own dependencies.
+- expose ordinary functions and methods with explicit dependencies. do not
+  wrap them in managed-operation or dependency-layer machinery.
 - Adapters translate at edges.
 - Provider-specific details sit behind driver or client services.
 - Use service boundaries inside one repository as much as across processes.

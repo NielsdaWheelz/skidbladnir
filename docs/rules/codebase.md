@@ -41,8 +41,9 @@ This document covers technology ownership, repository-wide code organization, im
   package imports asymmetric.
 - If a module has multiple files and a primary interface file, give that file
   an explicit primary-interface name.
-- If a module has one file, do not nest a single file in a directory. Name the
-  file after the module.
+- follow the language's native module boundary. a go package owns a directory
+  even when it contains one file. do not add wrapper directories that establish
+  no package, ownership, or runtime boundary.
 
 ## Generated Files
 
@@ -69,13 +70,11 @@ This document covers technology ownership, repository-wide code organization, im
 ## Host And Target Runtimes
 
 - The host language owns application logic.
-- Database queries, shell scripts, templates, generated programs, and other
-  emitted code are target languages that run in other runtimes.
+- shell scripts, templates, generated programs, and other emitted code are
+  target languages that run in other runtimes.
 - Prefer business rules, branching, fallback policy, and domain invariants in
   the host language whenever reasonably possible.
 - Use target-language code when the target runtime is the natural owner of the work, not just because the expression is shorter there.
-- Keep database query languages focused on database-shaped work such as set
-  filtering, joins, ordering, aggregation, and atomic mutations.
 - Keep shell focused on process and OS orchestration.
 
 ## Module Boundaries
@@ -85,8 +84,8 @@ This document covers technology ownership, repository-wide code organization, im
 - Lowest-level reusable substrate modules may be used by shared and product
   modules, but they must not import semantic sibling modules, product modules,
   build tooling, or app code.
-- Shared persistent tables have one storage owner. Semantic behavior still
-  lives in the module that owns the concept.
+- persisted state has one owner. other modules use its public operations
+  rather than writing its storage directly.
 - External functionality may be consumed by any module.
 - Internal functionality is only for a module and its submodules.
 - Default to internal unless functionality is clearly consumed externally.
