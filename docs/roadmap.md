@@ -17,6 +17,12 @@ source is implemented on `desktop-browser`, based on `261796b`, in
 builders own their disjoint files and behavioral reds. the original checkout is
 untouched. no release, dependency, host/android api or deployment change.
 
+2026-09-17 delivery: [pr 98](https://github.com/NielsdaWheelz/skidbladnir/pull/98)
+incorporates main's independent runtime-proof and card repair. publication and
+deployment are authorized but [blocked on signing-host access](issues/desktop-browser-deployment.md);
+the current release and pins remain v0.5.0. cleanup may remove the implementation
+worktree and superseded spec drafts after merge; their history is retained.
+
 | boundary | evidence |
 | --- | --- |
 | a1–a2 | sessionui baseline passed; local navigation, captured read identity and focused agent-order reds observed before their implementation. final model tests cover filters, lifetime reconciliation, modal focus, stale admission, order freezing and arrivals/removal. existing request/freshness/uncertainty proofs remain. |

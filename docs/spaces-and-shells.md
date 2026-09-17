@@ -5,12 +5,12 @@ implemented in source,
 including the approved restoration and post-create selection decisions.
 [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open) records
 verification and open runtime acceptance. this document owns the delivery
-boundary; pr 2 is [implemented in source](shells.md), with linux evidence and
-open darwin/phone acceptance in the roadmap.
+boundary; pr 2 is [implemented in source](shells.md), with separately attributed
+runtime evidence and remaining gaps in the roadmap.
 
 2026-09-17: approved navigation direction, split into two further prs: pr 3
-delivers the [organized desktop browser](desktop-browser.md) with existing fullscreen attachment;
-pr 4 investigates an embedded terminal. neither has implementation or scaffolding.
+implements the [organized desktop browser](desktop-browser.md) with existing fullscreen attachment;
+pr 4 investigates an embedded terminal and has no implementation or scaffolding.
 pr 3 is independently useful and does not depend on pr 4 succeeding.
 
 ## goal and approach
