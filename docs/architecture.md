@@ -1,12 +1,15 @@
 # Skíðblaðnir v0: product and architecture
 
-current release: v0.5.0, [spaces](spaces.md) and [new terminal here](shells.md),
-source `df7ad499d87f96e9ca79336ef0632a9d23ef072d`. delivery, executed runtime
-boundaries, and remaining acceptance gaps are in the
-[roadmap](roadmap.md#v050-deployment-and-runtime-acceptance). deployment does not
-establish missing runtime acceptance; historical releases do not prove this target.
-the narrow-card action fix is verified on unreleased main. v0.5.0 and its pins
-remain unchanged, with its recorded platform failure and open hands-on acceptance.
+current public release: v0.6.0, [organized desktop browser](desktop-browser.md),
+source `2d6184c63d62396f69342200e4229cc902ca140c`, including the narrow-card action
+repair. all three hosts and the s22+ run this release; host acceptance, fleet
+verification and the physical phone product journey pass. release-bound platform
+verification passes all 80 tests with a corrected background-selection assertion
+and unchanged release runtime.
+[delivery and acceptance](roadmap.md#v060-publication-and-deployment) distinguish
+published artifacts from installed versions. historical v0.5.0 platform failures
+and missing hands-on acceptance remain attributed to that release; publication
+does not establish the new release's device acceptance.
 
 accepted 2026-09-15 target: [spaces](spaces.md), pr 1 of
 [spaces, shells, and client composition](spaces-and-shells.md). its contracts

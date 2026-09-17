@@ -6,9 +6,9 @@ cross-compilation cannot establish tty ownership or attachment return.
 
 2026-09-17: the approved linux journey failed against the preceding browser at
 immediate space selection, then passed on the composed candidate (2.660s).
-the macbook is reachable, but ssh rejects the workspace's available key. the
-user explicitly instructed skipping darwin; its native proof remains `NOT_RUN`,
-not a pass. no further darwin execution is required for this implementation turn.
+ssh authentication initially failed, and the user explicitly instructed skipping
+darwin. access was later restored for publication; the browser's native proof
+remains `NOT_RUN`, not a pass. the user's skip instruction still stands.
 
 when darwin verification resumes with approval and a usable access route, run
 `TestShellDesktopRealTTYCreateAttachDetachAndLostReply` with the existing integration

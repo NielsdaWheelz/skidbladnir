@@ -1,5 +1,52 @@
 # Skíðblaðnir v0 roadmap
 
+## v0.6.0 publication and deployment
+
+2026-09-17: immutable [v0.6.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.6.0)
+publishes the desktop browser and the prior narrow-card repair from exact source
+`2d6184c63d62396f69342200e4229cc902ca140c`. [pr 98](https://github.com/NielsdaWheelz/skidbladnir/pull/98)
+merged the browser. [pr 99](https://github.com/NielsdaWheelz/skidbladnir/pull/99)
+repairs a pre-existing native-test fixture race exposed by post-merge ci:
+publish shared fixture state by atomic rename, with no production or assertion change.
+the unchanged http test reproduced the race; the publication probe went from
+108 empty reads per 100 writes to zero. the agent-control suite and exact-source
+[hosted verify](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/35176133232) pass.
+
+| boundary | actual result |
+| --- | --- |
+| release | **passed**: native macbook signed build, draft review, then canonical `published-release` gate against fresh public downloads and the committed pin. exact source, all five asset digests, signer, version and immutable metadata agree. native go 1.26.5 built both host bundles. |
+| pins | [upstream pr 100](https://github.com/NielsdaWheelz/skidbladnir/pull/100) and [dev-server pr 93](https://github.com/NielsdaWheelz/dev-server/pull/93) pin the same public source and host bytes. the installer candidate changes only its pin; its complete local test suite passes. |
+| macbook | **passed** with installer `bc9c789fc4da1b05e40ecb4f91ed4410fb75301a`: apply/reapply, quiescent second apply, credentials and tmux lifetimes preserved; all three codex process lifetimes unchanged. |
+| arch | user completed the canonical interactive host acceptance with the same installer candidate. independent installed-version, fleet and codex process-lifetime checks pass; all three codex services retain their original pids/start times and zero restarts. |
+| devbox | **passed** with installer `6c337813994fcb5bba55f66b70f1ebb0bffe226c`, including its package restart policy. the first remote apply failed at github key-enrollment inspection because the temporary token lacks ssh-key permission. after the user's local login repair, the canonical local-terminal retry completed both applies and entered the product command through `&&`. all three codex process lifetimes remain unchanged after that retry. |
+| fleet | **passed** after arch rollout. an earlier check during rollout failed because the two linux release identities differed; that result is not a runtime defect or acceptance pass. |
+| phone/product | **passed**, confirmed by the user with the final recovery output: forward signed v0.5.0→v0.6.0 update and fleet preservation, fresh invitation, terminal open/detach, process recreation, bounded macbook gateway outage/recovery, exact installed digest/signer and unchanged host tmux lifetime inventories. the earlier attempt stopped before updating while multiple phone apps lost connectivity; a phone reboot restored sessions. no network cause was established. |
+| phone/platform, original tests | **failed**: 80 started, 79 passed, one failed, no skips, exit 1. `backgroundSelectionClearAcknowledgementIsGenerationBounded` expected rendered selection nodes to clear while the activity was stopped. the narrow/enlarged-text card repair and real spaces/shells journey passed. |
+| phone/platform, corrected tests | **passed**: canonical gate, `OK (80 tests)`, no skips, exit 0. test source `9010f5218bc728d2d83bc5bd7b8168a7a5db4e08`; runtime remains exact `2d6184c`. both background checkpoints prove acknowledged clearing on a live native owner before resume, then rendered selection absence after resume. generation ordering, stale-clear rejection, gesture-tail and zero-input assertions remain intact. all runs preserved encrypted pairing bytes and restored exact public v0.6.0; the final gate removed its isolated fixture/test package and left the public app open. |
+| browser darwin journey | `NOT_RUN` by explicit user direction. restored ssh access does not turn the skipped journey into a pass. |
+| cleanup | merged implementation, release-pin and installer-repair worktrees/branches removed; incorporated spec drafts removed from the exact owned stash. macbook exact-source/test worktrees, release downloads, diagnostic files and temporary operator launcher removed after acceptance. unrelated worktrees and stashes retained. |
+
+the background-selection repair changes only two test checkpoints and their
+shared assertion. pinned xterm clears selection data before scheduling its
+rendering through `requestAnimationFrame`; [background frames may pause](https://developer.chrome.com/blog/background_tabs).
+the test must distinguish protocol acknowledgement from visible repaint. a
+diagnostic-only rerun passed all 80 without reproducing the failure, so the
+original transient state was not captured. the final correction neither forces
+hidden rendering nor extends timeouts; compile/lint and independent review pass.
+
+[dev-server pr 94](https://github.com/NielsdaWheelz/dev-server/pull/94) closes a
+real restart-policy gap found before devbox apply: ubuntu's automatic needrestart
+hook could bypass the explicit codex restart guard. a root-owned exact-three
+service override now precedes apt, preserves other policies and reports stale
+services. behavioral red, full installer suite, independent review and both hosted
+platform checks pass. accepted cost: these running servers retain old loaded
+runtime code until an explicitly authorized restart. no codex server was restarted.
+
+the [darwin browser boundary](issues/desktop-browser-runtime-acceptance.md)
+remains skipped. release publication supersedes the earlier no-new-release instruction; historical
+v0.5.0 failures below remain failures. no production tmux or phone boundary was
+crossed during publication.
+
 ## desktop browser — source implemented, runtime acceptance open
 
 2026-09-17: [desktop-browser.md](desktop-browser.md) closes pr 3's interaction,
@@ -12,16 +59,14 @@ scope, state, ownership, hard-cut and a1–a5 acceptance contracts.
 - pr 4: separate embedded-terminal feasibility experiment, followed by production
   integration only if compatibility is established and its contract is accepted.
 
-source is implemented on `desktop-browser`, based on `261796b`, in
-`/home/niels/src/personal/skidbladnir-desktop-browser`. browser, help and journey
-builders own their disjoint files and behavioral reds. the original checkout is
-untouched. no release, dependency, host/android api or deployment change.
+source was implemented on `desktop-browser`, based on `261796b`. browser, help
+and journey builders owned disjoint files and behavioral reds. no dependency or
+host/android api change. the implementation worktree was removed after merge.
 
 2026-09-17 delivery: [pr 98](https://github.com/NielsdaWheelz/skidbladnir/pull/98)
-incorporates main's independent runtime-proof and card repair. publication and
-deployment are authorized but [blocked on signing-host access](issues/desktop-browser-deployment.md);
-the current release and pins remain v0.5.0. cleanup may remove the implementation
-worktree and superseded spec drafts after merge; their history is retained.
+merged main's independent runtime-proof and card repair. signing-host access was
+restored and v0.6.0 published; [current delivery](#v060-publication-and-deployment)
+records rollout separately from source verification.
 
 | boundary | evidence |
 | --- | --- |
@@ -99,10 +144,12 @@ is the bounded validation for that change.
 | attach/back | **passed**: real new-terminal attachment, detach and android back with exact lifetime/filter preservation | product existing-session attach/detach passed; new-terminal journey `NOT_RUN` |
 | narrow/enlarged text | phone header **passed** at 320dp/2x; public card **failed** at 170dp/2x (kill width 30.33dp); unreleased card fix and dashboard component checks **passed** | `NOT_RUN` |
 
-remaining actions: [deploy the card fix in a future authorized release](issues/spaces-card-large-text.md)
-and [perform the hands-on journey](issues/spaces-shells-hands-on.md). the current
-instruction forbids a new release/pin and leaves hands-on acceptance unperformed,
-not waived. linux `live` retains its earlier result. provider-live, a second
+at the end of this v0.5.0 run, card-fix deployment and the
+[hands-on journey](issues/spaces-shells-hands-on.md) remained open; the instruction
+then forbade a new release/pin. the later authorized v0.6.0 deployment ships the
+card repair and passes its device assertions. spaces/shells-specific hands-on
+acceptance remains unperformed, not waived. linux `live` retains its earlier
+result. provider-live, a second
 phone, and other-host reboot proofs were not run in this completion scope.
 no pr 3 work was introduced; existing user sessions were not killed, resized,
 or retargeted.
@@ -1441,9 +1488,9 @@ historical results remain historical.
 ## Status
 
 older release results below retain their historical attribution, including
-wording that called a platform run current at that time. the v0.5.0 result at
-the top governs current delivery and acceptance; earlier greens do not override
-its release-bound failures or missing hands-on acceptance.
+wording that called a platform run current at that time. the v0.6.0 section at
+the top governs current delivery; neither publication nor earlier greens
+override release-bound failures or missing hands-on acceptance.
 
 | Slice | Status |
 | --- | --- |

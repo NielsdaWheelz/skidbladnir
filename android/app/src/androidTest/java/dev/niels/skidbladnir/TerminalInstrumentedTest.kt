@@ -1416,9 +1416,10 @@ class TerminalInstrumentedTest {
                                         "case=$caseId route=lifecycle created-window-focus",
                                         onUi(scenario) { webView.hasWindowFocus() },
                                     )
-                                    awaitNoTerminalSelection(webView, "$caseId-created-selection")
+                                    awaitLiveTerminalSelectionIdle(scenario, webView, "$caseId-created-selection")
                                     scenario.moveToState(Lifecycle.State.RESUMED)
                                     awaitResumedActivityWindowFocus(scenario, "$caseId-resumed")
+                                    awaitNoTerminalSelection(webView, "$caseId-resumed-selection")
                                     stream.move(end)
                                     stream.up(end)
                                 }
@@ -1589,9 +1590,10 @@ class TerminalInstrumentedTest {
             clearTerminalEvents()
 
             scenario.moveToState(Lifecycle.State.CREATED)
-            awaitNoTerminalSelection(webView, "$caseId-background-selection")
+            awaitLiveTerminalSelectionIdle(scenario, webView, "$caseId-background-selection")
             scenario.moveToState(Lifecycle.State.RESUMED)
             awaitResumedActivityWindowFocus(scenario, "$caseId-resumed")
+            awaitNoTerminalSelection(webView, "$caseId-resumed-selection")
             awaitNoSelectionCopyAction("$caseId-cleared-action")
             assertSelectionAndCopyRemainAbsent(webView, "$caseId-stable-absence")
             assertEquals(
@@ -5088,6 +5090,28 @@ class TerminalInstrumentedTest {
                 "window.getSelection().isCollapsed",
             caseId,
         )
+    }
+
+    private fun awaitLiveTerminalSelectionIdle(
+        scenario: ActivityScenario<TerminalTestActivity>,
+        webView: WebView,
+        caseId: String,
+    ) {
+        val controller = onUi(scenario) {
+            LockedTerminalWebView::class.java.getDeclaredField("selectionController")
+                .apply { isAccessible = true }
+                .get(webView) as TerminalSelectionController
+        }
+        // Hidden WebViews may defer repaint; live Idle proves the clear acknowledgement.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (onUi(scenario) { controller.permitsTerminalTapIme() }) {
+                assertEquals("case=$caseId route=protocol page-live", 1L, TerminalTestProbe.unavailable.count)
+                return
+            }
+            Thread.sleep(50)
+        }
+        throw AssertionError("case=$caseId route=protocol live-selection-idle=false")
     }
 
     private fun awaitNativeXtermSelection(

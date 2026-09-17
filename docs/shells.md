@@ -1,13 +1,14 @@
 # new terminal here
 
 2026-09-15: pr 2 source implemented on `shells-pr2`, following [spaces](spaces.md).
-linux host/desktop proofs passed during implementation. v0.5.0 is now deployed;
+linux host/desktop proofs passed during implementation. historical v0.5.0
 darwin host/desktop proofs pass with the documented test-only shell observation
 correction. the corrected real phone journey passes creation, cwd/space
 inheritance, duplicate suppression, independent lifetime, attachment and
-restoration. the complete released platform gate remains failed, and hands-on
-acceptance remains `NOT_RUN`. [the roadmap](roadmap.md#v050-deployment-and-runtime-acceptance)
-owns the distinct immutable, corrected-test and unreleased-development evidence.
+restoration. its complete released platform gate failed, and shell-specific
+hands-on acceptance remains `NOT_RUN`. v0.6.0 is now deployed;
+[the roadmap](roadmap.md#v060-publication-and-deployment) separates current
+acceptance from that historical evidence.
 
 2026-09-17: [pr 3](desktop-browser.md) changes only desktop presentation and the
 shortcut to `T` (shift+t); detach retains the newly created shell selection.
