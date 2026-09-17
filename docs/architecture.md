@@ -1082,9 +1082,11 @@ only their named engineering properties. routine verification runs no behavioral
 tests and touches no tmux, provider, or device boundary. the removed unit, integration, provider-live,
 live, platform, product, second-phone, and full gates have no replacement in this pr.
 
-the next pr defines the test system from present requirements. the
-[testing status](rules/testing.md) owns the interim commands and the
-[coverage issue](issues/test-system-reset.md) records the gap.
+the subsequent cleanup uses temporary integration/live tests removed before
+commit. [testing policy](rules/testing.md) owns that workflow and the retained
+commands; the [coverage issue](issues/test-system-reset.md) records the lack of
+automatic regression protection. [the codebase map](codebase-map.md) identifies
+the existing owners for sequential cleanup.
 
 ### retired verification plan and retained behavioral criteria
 
