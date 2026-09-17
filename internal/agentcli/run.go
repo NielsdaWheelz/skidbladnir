@@ -41,8 +41,14 @@ skid space NAME (--set LABEL | --clear)    assign or clear membership
 existing targets: use NAME [--machine HOST] or --ref VALUE
 --json: one structured envelope for noninteractive commands
 --: remaining operands are literal; --help: this guide
-browser: n creates; t creates and attaches a terminal here
-         g chooses space; m chooses machine; e edits membership
+browser (80x24 minimum)
+  g spaces; a agents; t tabs; tab/shift-tab cycles focus
+  up/down (j/k) lists; left/right (h/l) tabs; arrows select locally
+  n opens creation; m chooses machine; ctrl-r refreshes; q/escape quits
+  selected agent/tab: enter attaches fullscreen; spacebar shows details
+  T (shift+t) creates and attaches a terminal here; e edits membership
+  r reads; i interrupts; s stops; x kills; session actions require an agent/tab
+  ctrl-] d returns to the browser; forms and details own their keys
 keys: enter escape ctrl-c up down left right tab backspace page-up page-down
 config defaults to ~/.config/skidbladnir/client.json
 shared window/pane navigation and latest-client sizing are intentional.

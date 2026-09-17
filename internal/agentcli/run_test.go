@@ -73,6 +73,29 @@ func TestBareNonTTYPrintsUsageAndExplanation(t *testing.T) {
 	}
 }
 
+func TestHelpDescribesDesktopBrowserNavigation(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run(context.Background(), []string{"--help"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("help failed: exit=%d stderr=%q", code, stderr.String())
+	}
+	help := stdout.String()
+	for _, want := range []string{
+		"browser (80x24 minimum)", "g spaces; a agents; t tabs", "tab/shift-tab",
+		"arrows select locally", "enter attaches fullscreen", "ctrl-] d returns to the browser",
+		"T (shift+t) creates and attaches a terminal here", "e edits membership",
+	} {
+		if !strings.Contains(help, want) {
+			t.Errorf("browser help omits %q", want)
+		}
+	}
+	for _, retired := range []string{"t creates and attaches", "g chooses space"} {
+		if strings.Contains(help, retired) {
+			t.Errorf("browser help retains retired binding %q", retired)
+		}
+	}
+}
+
 func TestSpaceCommandGrammar(t *testing.T) {
 	ref := fleetclient.Reference{Machine: "mh-11111111111111111111111111111111", TmuxID: "$1", IdentityToken: "fixture"}.Encode()
 	for index, args := range [][]string{

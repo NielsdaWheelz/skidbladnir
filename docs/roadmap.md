@@ -1,8 +1,43 @@
 # Skíðblaðnir v0 roadmap
 
+## desktop browser — source implemented, runtime acceptance open
+
+2026-09-17: [desktop-browser.md](desktop-browser.md) closes pr 3's interaction,
+scope, state, ownership, hard-cut and a1–a5 acceptance contracts.
+[the delivery plan](spaces-and-shells.md) keeps embedding separate:
+
+- pr 3: organized browser, immediate local selection and existing forms/actions.
+  fullscreen attachment resumes the same browser state; no per-space history,
+  source-return exception, embedding dependency or later-pr scaffolding.
+- pr 4: separate embedded-terminal feasibility experiment, followed by production
+  integration only if compatibility is established and its contract is accepted.
+
+source is implemented on `desktop-browser`, based on `261796b`, in
+`/home/niels/src/personal/skidbladnir-desktop-browser`. browser, help and journey
+builders own their disjoint files and behavioral reds. the original checkout is
+untouched. no release, dependency, host/android api or deployment change.
+
+| boundary | evidence |
+| --- | --- |
+| a1–a2 | sessionui baseline passed; local navigation, captured read identity and focused agent-order reds observed before their implementation. final model tests cover filters, lifetime reconciliation, modal focus, stale admission, order freezing and arrivals/removal. existing request/freshness/uncertainty proofs remain. |
+| a3 | 80×24 layout and long-field reds; actual synthetic ordinary/form/details/unavailable renders inspected. long-target and paging review findings received observed reds and fixes. bounds, selected overflow rows, controls, pinned coverage and contiguous page scrolling pass. |
+| a4 / linux | changed real journey fails against the preceding browser at immediate space selection; composed candidate passes (2.660s) through the production pty/gateway/isolated-tmux boundary, including both attachment paths and real lost replies. |
+| a4 / darwin | `NOT_RUN` by explicit user direction after ssh authentication failed. this is skipped evidence, not a pass; [remaining boundary](issues/desktop-browser-runtime-acceptance.md). |
+| a5 / routine | `GOTOOLCHAIN=go1.26.3 ./scripts/test verify` passes: static/compile checks, go/android builds, go suites, 126 android jvm tests, and existing policy checks. old table, space picker, heading viewport and `t` shell alias are removed. |
+
+adversarial reviews corrected snapshot labelling, real viewport paging, long
+identity/notice budgets, and terminal-journey false positives. the real journey
+checks filter retention through keyboard behavior, observes zero clients before
+reattachment, and retains exact-reference/source-survival/no-replay assertions.
+no terminal parser, fixture framework or production test hook was added.
+long captured identity headers truncate names/machines independently so effects
+and coverage remain visible; full metadata stays in details. other accepted costs
+remain those in the spec. pr 3 is independent of pr 4. prior release evidence
+below proves only its original targets.
+
 ## new terminal here — source implemented, runtime acceptance open
 
-2026-09-15: pr 2 of [the three-pr plan](spaces-and-shells.md), implemented on
+2026-09-15: pr 2 of [the delivery plan](spaces-and-shells.md), implemented on
 `shells-pr2`, stacked directly on pr 1 commit `256fee2450d83f4255444fd0b00f97ac695016c3`.
 implementation worktree: `/home/niels/src/personal/skidbladnir-shells-pr2`.
 on 2026-09-15 the user authorized committing, pushing, merging prs 1 and 2, and
@@ -47,7 +82,7 @@ passes, while device execution remains `NOT_RUN`.
 accepted costs: generated shortcut names, sampled cwd/space, one exec helper
 without readiness, manual uncertain-creation recovery (including a collision
 reported only after tmux starts), compact header glyphs/reduced title width,
-collection-based return until pr 3, and coordinated host/cli/android cutover.
+collection-based return (retained in pr 3's browser), and coordinated host/cli/android cutover.
 [shells.md](shells.md#7-accepted-costs) is normative. full h/d/p acceptance remains
 open. tmux/integration/live and platform/adb retain their explicit current-turn
 approval boundaries.
@@ -134,8 +169,8 @@ filter changes, and one-time navigation reset on the task-schema hard cut.
 is part of the implementation contract.
 
 pr 2's independent shell creation now has its own [accepted plan](shells.md).
-pr 3's additional terminal navigation/composition remains separate and still
-needs its contract. neither is part of pr 1.
+the remaining desktop work now follows the approved pr 3 browser / pr 4 embedding
+split above. neither is part of pr 1.
 
 ## released baseline and historical evidence
 

@@ -45,11 +45,11 @@ func TestShellShortcutPinsSessionAndSuppressesDuplicate(t *testing.T) {
 	source := row("source", "$1", 11)
 	source.Agent = nil
 	m.Update(observation(source))
-	_, create := m.Update(key("t"))
+	_, create := m.Update(key("T"))
 	if create == nil || !m.busy || m.pending.Operation != "shell" || m.pending.Ref != source.Ref {
 		t.Fatal("terminal row did not start new terminal here")
 	}
-	if _, duplicate := m.Update(key("t")); duplicate != nil {
+	if _, duplicate := m.Update(key("T")); duplicate != nil {
 		t.Fatal("pending shell creation accepted another submission")
 	}
 	m.Update(observation(row("renamed", "$1", 22)))

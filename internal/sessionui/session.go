@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,7 +16,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type listedRow struct {
@@ -38,54 +35,33 @@ type actionMsg struct {
 }
 type attachedMsg struct{ err error }
 type model struct {
-	ctx                              context.Context
-	client                           *fleetclient.Client
-	input, output                    *os.File
-	peers                            []fleetclient.Peer
-	rows                             []listedRow
-	cursor                           int
-	initialized, refreshing, busy    bool
-	refreshAfterAction               bool
-	width, height                    int
-	notice, page                     string
-	text                             []string
-	offset                           int
-	pending                          fleetclient.Request
-	pendingLabel, pendingName        string
-	form                             [5]string
-	field                            int
-	machine                          string
-	spaceFilter                      space.Filter
-	scopeReady                       bool
-	picker                           int
-	spaceDraft                       string
-	spaceChecking, spaceAcknowledged bool
-	spaceFailure                     *fleetclient.Failure
-	top                              itemKey
-	items                            []collectionItem
-}
-type collectionItem struct {
-	row   int
-	label space.Label
-}
-type itemKey struct {
-	heading bool
-	label   space.Label
-	session fleetclient.Reference
-}
-
-func (m *model) itemKey(item collectionItem) itemKey {
-	if item.row < 0 {
-		return itemKey{heading: true, label: item.label}
-	}
-	ref, _ := fleetclient.DecodeReference(m.rows[item.row].session.Ref)
-	return itemKey{session: ref}
-}
-func (key itemKey) equal(other itemKey) bool {
-	if key.heading || other.heading {
-		return key.heading == other.heading && key.label == other.label
-	}
-	return key.session.SessionEqual(other.session)
+	ctx                                       context.Context
+	client                                    *fleetclient.Client
+	input, output                             *os.File
+	peers                                     []fleetclient.Peer
+	rows                                      []listedRow
+	cursor                                    int
+	initialized, refreshing, busy             bool
+	refreshAfterAction                        bool
+	width, height                             int
+	notice, page                              string
+	text                                      []string
+	offset                                    int
+	pending                                   fleetclient.Request
+	pendingLabel, pendingName                 string
+	form                                      [5]string
+	field                                     int
+	machine                                   string
+	spaceFilter                               space.Filter
+	scopeReady                                bool
+	picker                                    int
+	spaceDraft                                string
+	spaceChecking, spaceAcknowledged          bool
+	spaceFailure                              *fleetclient.Failure
+	focus                                     region
+	agents                                    []listedRow
+	spacesTop, agentsTop, tabsTop             int
+	outputName, outputMachine, outputCoverage string
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -128,7 +104,7 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	defer m.fitViewport()
+	defer m.fitViewports()
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
@@ -227,7 +203,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.page = "output"
 			m.offset = 0
-			m.text = strings.Split(fmt.Sprintf("%s · %s · truncated: %t\n\n%s", read.Source, read.Scope, read.Truncated, read.Text), "\n")
+			m.outputName, m.outputMachine = m.pendingName, m.pendingLabel
+			m.outputCoverage = fmt.Sprintf("%s · %s · truncated: %t", read.Source, read.Scope, read.Truncated)
+			m.text = strings.Split(read.Text, "\n")
 		case "start", "shell":
 			var value fleetclient.ObservedSession
 			if json.Unmarshal(message.result.Value, &value) != nil {
@@ -241,7 +219,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if !m.spaceFilter.Matches(value.Session.Space) {
 				m.spaceFilter = filterFor(value.Session.Space)
-				m.top = itemKey{}
 			}
 			created, _ := fleetclient.DecodeReference(value.Session.Ref)
 			found := false
@@ -276,6 +253,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
+			m.setFocus(tabs)
 			m.notice = "created " + value.Session.Name + "; enter to attach"
 			if message.operation == "shell" {
 				request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
@@ -319,7 +297,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.refresh()
 	case tea.PasteMsg:
-		if !m.busy {
+		if !m.busy && m.width >= 80 && m.height >= 24 {
 			if m.page == "space-edit" && !m.spaceChecking {
 				m.spaceDraft += message.Content
 			}
@@ -337,10 +315,22 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "operation in flight; delivery will be reported"
 			return m, nil
 		}
+		if m.width < 80 || m.height < 24 {
+			cancel := key == "esc"
+			switch m.page {
+			case "", "machine-picker", "details", "output":
+				cancel = cancel || key == "q"
+			case "confirm":
+				cancel = cancel || key == "q" || key == "n"
+			}
+			if !cancel {
+				return m, nil
+			}
+		}
 		if key == "ctrl+r" {
 			return m, m.refresh()
 		}
-		if m.page == "machine-picker" || m.page == "space-picker" {
+		if m.page == "machine-picker" {
 			return m, m.editPicker(key)
 		}
 		if m.page == "space-edit" {
@@ -376,33 +366,38 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "j":
 				m.offset = min(max(0, len(m.detailLines())-1), m.offset+1)
 			case "pgup":
-				m.offset = max(0, m.offset-max(1, m.height-5))
+				m.offset = max(0, m.offset-m.pageCapacity())
 			case "pgdown":
-				m.offset = min(max(0, len(m.detailLines())-1), m.offset+max(1, m.height-5))
+				m.offset = min(max(0, len(m.detailLines())-1), m.offset+m.pageCapacity())
 			}
 			return m, nil
 		}
 		switch key {
 		case "q", "esc":
 			return m, tea.Quit
-		case "up", "k":
-			if len(m.rows) > 0 {
-				m.cursor = max(0, m.cursor-1)
-			}
+		case "g":
+			m.setFocus(spaces)
 			return m, nil
-		case "down", "j":
-			if len(m.rows) > 0 {
-				m.cursor = min(len(m.rows)-1, m.cursor+1)
-			}
+		case "a":
+			m.setFocus(agents)
 			return m, nil
-		case "g", "m":
+		case "t":
+			m.setFocus(tabs)
+			return m, nil
+		case "tab":
+			m.setFocus((m.focus + 1) % 3)
+			return m, nil
+		case "shift+tab":
+			m.setFocus((m.focus + 2) % 3)
+			return m, nil
+		case "up", "k", "down", "j", "left", "h", "right", "l":
+			m.move(key)
+			return m, nil
+		case "m":
 			m.picker = 0
-			m.page = "space-picker"
-			if key == "m" {
-				m.page = "machine-picker"
-			}
+			m.page = "machine-picker"
 			for index, option := range m.pickerOptions() {
-				if option == m.pickerSelection() {
+				if option == m.machine {
 					m.picker = index
 					break
 				}
@@ -425,13 +420,27 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "no available host"
 			return m, nil
 		}
+		if m.focus == spaces {
+			if key == "enter" {
+				m.setFocus(tabs)
+			}
+			return m, nil
+		}
 		row := m.selectedRow()
-		if row == nil || !row.available {
+		if row == nil || m.focus == agents && m.agentIndex() < 0 {
+			return m, nil
+		}
+		if key == "space" || key == " " {
+			m.page, m.offset = "details", 0
+			m.text = strings.Split(m.details(row), "\n")
+			return m, nil
+		}
+		if !row.available {
 			return m, nil
 		}
 		request := fleetclient.Request{Ref: row.session.Ref}
 		switch key {
-		case "t":
+		case "T":
 			request.Operation = "shell"
 			m.notice = "creating terminal here"
 			return m, m.execute(request)
@@ -447,32 +456,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			request.Operation = "enter"
 			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
-		case "space", " ":
-			value := row.session
-			details := fmt.Sprintf("session: %s\nmachine: %s\nmachine id: %s\ndirectory: %s\ncommand: %s\nattached clients: %d\n", value.Name, row.label, row.machine, value.CWD, value.ActiveCommand, value.AttachedClients)
-			details += fleetclient.SpaceHeading(value.Space) + "\n"
-			if value.Agent == nil {
-				details += "agent: none (shell)\n"
-			} else {
-				a := value.Agent
-				details += fmt.Sprintf("provider: %s\nprofile: %s\nstate: %s (%s)\nreason: %s\nread: %s; send: %s; interrupt: %s\n", a.Provider, a.Profile, a.Status.State, a.Status.Source, a.Status.Reason, a.Methods.Read, a.Methods.Send, a.Methods.Interrupt)
-				if a.ProviderSession != nil {
-					details += fmt.Sprintf("provider session: %s %s\n", a.ProviderSession.ID, a.ProviderSession.Name)
-				}
-			}
-			if value.LaunchProfile != "" {
-				details += "launch profile: " + value.LaunchProfile + "\n"
-			}
-			for _, peer := range m.peers {
-				if peer.Machine == row.machine {
-					details += "observed: " + peer.ObservedAt + "\n"
-					break
-				}
-			}
-			details += "reference: " + value.Ref
-			m.page = "details"
-			m.text = strings.Split(details, "\n")
-			m.offset = 0
 		case "x":
 			request.Operation = "kill"
 		case "s":
@@ -491,6 +474,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			request.Operation = "read"
+			m.pendingName, m.pendingLabel = row.session.Name, row.label
 			return m, m.execute(request)
 		}
 		if request.Operation == "stop" || request.Operation == "kill" {
@@ -520,32 +504,6 @@ func (m *model) scopedPeers() []fleetclient.Peer {
 		}
 	}
 	return nil
-}
-func (m *model) rebuild() {
-	var selected fleetclient.Reference
-	if row := m.selectedRow(); row != nil {
-		selected, _ = fleetclient.DecodeReference(row.session.Ref)
-	}
-	previous := m.cursor
-	m.rows, m.items = nil, nil
-	for _, group := range fleetclient.Groups(m.scopedPeers(), m.spaceFilter) {
-		m.items = append(m.items, collectionItem{row: -1, label: group.Space})
-		for _, row := range group.Rows {
-			m.items = append(m.items, collectionItem{row: len(m.rows)})
-			m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
-		}
-	}
-	m.cursor = -1
-	for index, row := range m.rows {
-		ref, _ := fleetclient.DecodeReference(row.session.Ref)
-		if ref.SessionEqual(selected) {
-			m.cursor = index
-			return
-		}
-	}
-	if len(m.rows) > 0 {
-		m.cursor = min(max(0, previous), len(m.rows)-1)
-	}
 }
 func (m *model) pendingRow() *listedRow {
 	target, _ := fleetclient.DecodeReference(m.pending.Ref)
@@ -578,45 +536,11 @@ func (m *model) invalidatePendingPeer() {
 	m.rebuild()
 }
 func (m *model) pickerOptions() []string {
-	if m.page == "machine-picker" {
-		options := []string{"all machines"}
-		for _, machine := range m.client.Machines() {
-			options = append(options, machine.Label)
-		}
-		return options
-	}
-	options := []string{"all spaces", "unassigned"}
-	for _, label := range m.pickerSpaces() {
-		options = append(options, fleetclient.SpaceHeading(label))
+	options := []string{"all machines"}
+	for _, machine := range m.client.Machines() {
+		options = append(options, machine.Label)
 	}
 	return options
-}
-func (m *model) pickerSpaces() []space.Label {
-	labels := fleetclient.ObservedSpaces(m.scopedPeers())
-	selected := m.spaceFilter.Label()
-	if m.spaceFilter.Kind() == space.FilterNamed {
-		found := false
-		for _, label := range labels {
-			if label == selected {
-				found = true
-				break
-			}
-		}
-		if !found {
-			labels = append(labels, selected)
-			slices.SortFunc(labels, space.Compare)
-		}
-	}
-	return labels
-}
-func (m *model) pickerSelection() string {
-	if m.page == "machine-picker" {
-		if m.machine == "" {
-			return "all machines"
-		}
-		return m.machine
-	}
-	return fleetclient.SpaceFilterHeading(m.spaceFilter)
 }
 func (m *model) editPicker(key string) tea.Cmd {
 	options := m.pickerOptions()
@@ -629,34 +553,20 @@ func (m *model) editPicker(key string) tea.Cmd {
 	case "down", "j":
 		m.picker = min(len(options)-1, m.picker+1)
 	case "enter":
-		if m.page == "machine-picker" {
-			selected := ""
-			if m.picker > 0 {
-				selected = options[m.picker]
-			}
-			m.page = ""
-			if selected == m.machine {
-				return nil
-			}
-			m.machine, m.scopeReady = selected, false
-			if m.refreshing {
-				m.refreshAfterAction = true
-			}
-			m.rebuild()
-			return m.refresh()
-		}
-		filter := space.Filter{}
-		if m.picker == 1 {
-			filter = space.UnassignedFilter()
-		}
-		if m.picker > 1 {
-			filter = filterFor(m.pickerSpaces()[m.picker-2])
+		selected := ""
+		if m.picker > 0 {
+			selected = options[m.picker]
 		}
 		m.page = ""
-		if filter != m.spaceFilter {
-			m.spaceFilter = filter
-			m.rebuild()
+		if selected == m.machine {
+			return nil
 		}
+		m.machine, m.scopeReady = selected, false
+		if m.refreshing {
+			m.refreshAfterAction = true
+		}
+		m.rebuildForFilter()
+		return m.refresh()
 	}
 	return nil
 }
@@ -724,43 +634,6 @@ func (m *model) editSpace(key tea.KeyPressMsg) tea.Cmd {
 	}
 	return nil
 }
-func (m *model) viewport() (int, int) {
-	offline := 0
-	for _, peer := range m.scopedPeers() {
-		if !peer.OK {
-			offline++
-		}
-	}
-	visible := max(1, m.height-11-offline)
-	start, selected := 0, -1
-	for index, item := range m.items {
-		if m.itemKey(item).equal(m.top) {
-			start = index
-		}
-		if item.row == m.cursor && item.row >= 0 {
-			selected = index
-		}
-	}
-	start = min(start, max(0, len(m.items)-visible))
-	if selected >= 0 {
-		if selected < start {
-			start = selected
-		}
-		if selected >= start+visible {
-			start = selected - visible + 1
-		}
-	}
-	return start, min(len(m.items), start+visible)
-}
-func (m *model) fitViewport() {
-	start, end := m.viewport()
-	if start < end {
-		m.top = m.itemKey(m.items[start])
-	} else {
-		m.top = itemKey{}
-	}
-}
-
 func (m *model) selectedRow() *listedRow {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return nil
@@ -891,186 +764,6 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (m *model) View() tea.View {
-	var body strings.Builder
-	fmt.Fprintln(&body, "skid · shared sessions")
-	if m.refreshing {
-		fmt.Fprintln(&body, "refreshing…")
-	} else {
-		fmt.Fprintln(&body)
-	}
-	switch m.page {
-	case "confirm":
-		fmt.Fprintf(&body, "%s %s on %s?\n\n", m.pending.Operation, m.pendingName, m.pendingLabel)
-		if m.pending.Operation == "stop" {
-			fmt.Fprintln(&body, "attempt agent halt, then close this session. shared work may be affected.")
-		} else {
-			fmt.Fprintln(&body, "close this session. work shared through another session may survive.")
-		}
-		fmt.Fprintln(&body, "\ny/enter confirms · n/escape cancels")
-	case "machine-picker", "space-picker":
-		fmt.Fprintln(&body, m.pickerSelection())
-		if m.page == "space-picker" {
-			fmt.Fprintln(&body, "observed spaces")
-		}
-		options := m.pickerOptions()
-		start := max(0, m.picker-max(1, m.height-9)+1)
-		for index := start; index < min(len(options), start+max(1, m.height-9)); index++ {
-			option := options[index]
-			marker := "  "
-			if index == m.picker {
-				marker = "> "
-			}
-			fmt.Fprintln(&body, marker+option)
-		}
-		fmt.Fprintln(&body, "\n↑↓/j/k choose · enter selects · escape cancels")
-	case "space-edit":
-		if m.spaceFailure != nil {
-			fmt.Fprintf(&body, "%s (unknown); not repeated\n", m.spaceFailure.Code)
-		}
-		fmt.Fprintf(&body, "space for %s on %s\n", m.pendingName, m.pendingLabel)
-		current := m.pendingRow()
-		if current != nil {
-			fmt.Fprintln(&body, "current: "+fleetclient.SpaceHeading(current.session.Space))
-		}
-		fmt.Fprintln(&body, "> space: "+spaceDraftDisplay(m.spaceDraft))
-		if m.spaceChecking {
-			fmt.Fprintln(&body, "checking inventory; escape returns")
-		} else {
-			label, err := space.ParseDraft(m.spaceDraft)
-			switch {
-			case err != nil:
-				fmt.Fprintln(&body, space.ErrInvalid.Error())
-			case current == nil || !current.available:
-				fmt.Fprintln(&body, "session unavailable; save disabled")
-			case current.session.Space == label:
-				fmt.Fprintln(&body, "unchanged; save disabled")
-			default:
-				fmt.Fprintln(&body, "enter/ctrl-s saves")
-			}
-			m.writeSpaceSuggestions(&body)
-			fmt.Fprintln(&body, "left/right fill suggestion · ctrl-u unassigned · escape cancels")
-		}
-	case "create":
-		for i, label := range []string{"machine", "launch", "name", "directory", "space"} {
-			marker := "  "
-			if i == m.field {
-				marker = "> "
-			}
-			text := m.form[i]
-			if i == 4 {
-				text = spaceDraftDisplay(text)
-			}
-			fmt.Fprintf(&body, "%s%s: %s\n", marker, label, text)
-		}
-		m.writeSpaceSuggestions(&body)
-		if !m.createAvailable() {
-			fmt.Fprintln(&body, "host unavailable; create disabled")
-		}
-		if _, err := space.ParseDraft(m.form[4]); err != nil {
-			fmt.Fprintln(&body, space.ErrInvalid.Error())
-		}
-		fmt.Fprintln(&body, "\nleft/right choose machine/launch/space · tab/enter next\nenter on space creates · ctrl-u unassigned · escape cancels")
-	case "output", "details":
-		lines := m.detailLines()
-		for i := m.offset; i < min(len(lines), m.offset+max(1, m.height-7)); i++ {
-			fmt.Fprintln(&body, lines[i])
-		}
-		fmt.Fprintln(&body, "\nup/down/page-up/page-down scroll · q/escape returns")
-	default:
-		fmt.Fprintf(&body, "   %s %s %s %s directory\n", cell("machine", 8), cell("session", 16), cell("provider/profile", 18), cell("state · source", 18))
-		fmt.Fprintf(&body, "%s · %s\n", m.machineHeading(), fleetclient.SpaceFilterHeading(m.spaceFilter))
-		start, end := m.viewport()
-		for _, item := range m.items[start:end] {
-			if item.row < 0 {
-				fmt.Fprintln(&body, fleetclient.SpaceHeading(item.label))
-				continue
-			}
-			i := item.row
-			row := m.rows[i]
-			marker := "  "
-			if i == m.cursor {
-				marker = "> "
-			}
-			provider, state := "shell", "—"
-			if row.session.Agent != nil {
-				a := row.session.Agent
-				provider = a.Provider
-				if a.Profile != "" {
-					provider += "/" + a.Profile
-				}
-				state = a.Status.State + " · " + a.Status.Source
-			}
-			if !row.available {
-				state = "unavailable"
-			}
-			fmt.Fprintf(&body, "%s %s %s %s %s %s\n", marker, cell(row.label, 8), cell(row.session.Name, 16), cell(provider, 18), cell(state, 18), ansi.TruncateLeft(singleLine(row.session.CWD), max(0, ansi.StringWidth(row.session.CWD)-max(1, m.width-67)+1), "…"))
-		}
-		for _, peer := range m.scopedPeers() {
-			if !peer.OK {
-				fmt.Fprintf(&body, "%s: unavailable\n", peer.Label)
-			}
-		}
-		if len(m.rows) == 0 {
-			partial := false
-			for _, peer := range m.scopedPeers() {
-				partial = partial || !peer.OK
-			}
-			switch {
-			case !m.initialized || !m.scopeReady:
-				fmt.Fprintln(&body, "checking inventory")
-			case partial:
-				fmt.Fprintln(&body, "no matching sessions in available inventory")
-			default:
-				fmt.Fprintln(&body, "no sessions in this view")
-			}
-		}
-		fmt.Fprintln(&body, "\n↑↓/j/k select · enter attach · space info · r read · i interrupt\ns stop · x kill · n new · t terminal here · ctrl-r refresh · q quit\ng space filter · m machine filter · e edit space")
-	}
-	if m.notice != "" {
-		fmt.Fprintln(&body, "\n"+m.notice)
-	}
-	lines := strings.Split(body.String(), "\n")
-	for i, line := range lines {
-		lines[i] = ansi.Truncate(singleLine(line), max(1, m.width), "…")
-	}
-	if len(lines) > m.height {
-		lines = lines[:max(1, m.height)]
-	}
-	view := tea.NewView(strings.Join(lines, "\n"))
-	view.AltScreen = true
-	return view
-}
-
-func (m *model) machineHeading() string {
-	if m.machine == "" {
-		return "all machines"
-	}
-	return "machine: " + m.machine
-}
-func spaceDraftDisplay(draft string) string {
-	if _, err := space.ParseDraft(draft); err != nil {
-		return strconv.QuoteToASCII(draft)
-	}
-	return draft
-}
-
-func (m *model) writeSpaceSuggestions(body *strings.Builder) {
-	options := []string{}
-	for _, label := range fleetclient.ObservedSpaces(m.scopedPeers()) {
-		options = append(options, fleetclient.SpaceHeading(label))
-	}
-	fmt.Fprintln(body, "observed spaces: "+strings.Join(options, " · "))
-}
-
-func (m *model) detailLines() []string {
-	lines := make([]string, len(m.text))
-	for i, line := range m.text {
-		lines[i] = ansi.Hardwrap(singleLine(line), max(1, m.width), true)
-	}
-	return strings.Split(strings.Join(lines, "\n"), "\n")
-}
-
 func singleLine(text string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
@@ -1078,10 +771,6 @@ func singleLine(text string) string {
 		}
 		return r
 	}, text)
-}
-func cell(text string, width int) string {
-	text = ansi.Truncate(singleLine(text), width, "…")
-	return text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))
 }
 
 type attachment struct {

@@ -1,12 +1,17 @@
 # spaces, shells, and client composition
 
-2026-09-15: user-approved direction. deliver three separate, independently
-shippable prs. pr 1's [implementation spec](spaces.md) is implemented in source,
+2026-09-15: user-approved direction. pr 1's [implementation spec](spaces.md) is
+implemented in source,
 including the approved restoration and post-create selection decisions.
 [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open) records
-verification and open runtime acceptance. this document owns the three-pr
+verification and open runtime acceptance. this document owns the delivery
 boundary; pr 2 is [implemented in source](shells.md), with linux evidence and
-open darwin/phone acceptance in the roadmap. pr 3 has no implementation or scaffolding.
+open darwin/phone acceptance in the roadmap.
+
+2026-09-17: approved navigation direction, split into two further prs: pr 3
+delivers the [organized desktop browser](desktop-browser.md) with existing fullscreen attachment;
+pr 4 investigates an embedded terminal. neither has implementation or scaffolding.
+pr 3 is independently useful and does not depend on pr 4 succeeding.
 
 ## goal and approach
 
@@ -18,17 +23,34 @@ tmux owns terminals and process lifetime. each gateway owns its local operations
 clients compose the fleet and its presentation. space membership organizes
 sessions; it does not own them. git owns checkouts and worktrees.
 
-## the three prs
+## delivery split
 
 | pr | goal and scope | acceptance and accepted cost |
 | --- | --- | --- |
 | 1. spaces | optional per-session work label, inventory exposure, assignment and clearing, grouped views in cli/tui/phone. see [spaces.md](spaces.md). | sessions remain addressable and usable through regrouping. labels last only for the tmux session lifetime; manual filing; no saved empty spaces. |
-| 2. new shell here | standalone terminal choice; tui `t` and android attach-header action create/attach an independent session on the exact source's host with its sampled cwd/space. see [shells.md](shells.md). works with zero agent profiles or no space. | independent lifetime, configured login shell with strict directory entry, exact creation/attachment composition. generated shortcut name; manual uncertainty recovery; collection-based return until pr 3. |
-| 3. client navigation/composition | quick agent/shell switching and preserved return context. desktop can compose separate attachments in an existing terminal split; phone shows one readable terminal at a time. | inspecting the shell and returning preserves the intended targets and context. desktop layout belongs to its client; phone sacrifices simultaneous viewing. implement only missing navigation behavior; no new split renderer is required. |
+| 2. new shell here | standalone terminal choice; source-session create/attach. see [shells.md](shells.md). works with zero agent profiles or no space. | independent lifetime, generated shortcut name, sampled location, manual uncertainty recovery; browser-based return. |
+| 3. organized desktop browser | spaces, global agents, session tabs and main browser content; immediate local selection; existing fullscreen attachment. [desktop-browser.md](desktop-browser.md) owns implementation and acceptance. | one current browser state survives detach; no per-space memory or special source return. navigation and fleet status are hidden while attached. |
+| 4. embedded-terminal experiment | evaluate one borrowed terminal component inside the main area, using the existing authenticated attachment. persistent navigation during attachment is the proposed outcome. | establish terminal compatibility before committing to production integration. a negative feasibility result is valid; it does not block pr 3 or justify a homegrown emulator. |
 
-each pr completes its feature end to end, including docs and appropriate checks.
+each shipping pr completes its feature end to end, including docs and appropriate checks.
 do not add scaffolding for later prs. pr 1 owns space filtering and collection
-return continuity; pr 3 owns additional navigation between agent/shell terminals.
+return continuity; pr 3 owns the new desktop navigation. phone navigation beyond
+prs 1 and 2 remains separate; neither of the new desktop prs requires phone ui changes.
+
+## desktop navigation boundary
+
+[the pr 3 spec](desktop-browser.md) owns behavior, state, keys, geometry, file
+ownership, hard cut and acceptance. latest decisions replace the earlier proposed
+per-space memory and source-return exception: selection updates locally; detach
+resumes the same browser model; a new shell stays selected. no history is added.
+pr 3 introduces no host, phone, wire, terminal-transport or dependency change.
+
+pr 4 starts by checking the actual terminal boundary: bounded rendering, cursor,
+terminal replies, key modes, paste, unicode, resize, tmux copy mode, disconnect,
+and ordinary agent/shell use. production embedding needs a reviewed contract for
+input ownership, geometry, and attachment lifetime, with measured acceptance.
+library availability is not compatibility evidence. keep the experiment separate
+from pr 3; no permanent parallel renderer is implied by this delivery split.
 
 ## architectural trap
 
@@ -57,7 +79,11 @@ pr 1 follows its closed contracts and observed owner red proofs. these documents
 record the user's accepted scope changes. pr 1's affected scope and acceptance
 are incorporated into [architecture.md](architecture.md), with delivery in
 [roadmap.md](roadmap.md). pr 2's [shells contract](shells.md) is now incorporated
-there with source implementation and separately attributed acceptance. pr 3 requires its own incorporation; never
+there with source implementation and separately attributed acceptance. the
+2026-09-17 desktop spec is incorporated as the accepted pr 3 target; it supersedes
+only the named desktop presentation/selection rules and retains the prohibition
+on per-space history. direct attachment remains unchanged. pr 4 is a
+feasibility investigation, not an accepted production terminal contract. never
 relabel historical evidence as new proof.
 broader capability changes require a new explicit scope decision.
 
