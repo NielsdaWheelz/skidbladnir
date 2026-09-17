@@ -37,9 +37,3 @@ This document covers when and how to handle concurrent execution. It does not co
   that is a durable workflow boundary, not a reason to stretch step X's
   database transaction.
 - When the workflow spans multiple independent side effects, model it as a durable operation rather than open-coded retries or ad hoc locking.
-
-## Low-Level Coordination
-
-- Prefer higher-level operation primitives over direct use of leases, queues, memos, or other low-level transient coordination mechanics.
-- Use low-level coordination services directly only in coordination infrastructure or when no higher-level primitive fits the correctness boundary.
-- See [modules/coordination.md](modules/coordination.md) for the coordination module surface and storage backends.

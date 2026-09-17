@@ -55,10 +55,6 @@ This directory is the canonical home for repository documentation.
 - [timing.md](timing.md): schedules and timing constants
 - [polling.md](polling.md): polling rules
 
-### Modules
-
-- [modules/index.md](modules/index.md): service, infrastructure-module, and feature docs
-
 ## Placement Rules
 
 - Each rule lives in exactly one document.
