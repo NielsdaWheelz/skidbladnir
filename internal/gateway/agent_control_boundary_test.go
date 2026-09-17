@@ -131,7 +131,12 @@ func writeControlState(t *testing.T, path string, state controlFixtureState) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+	// Native inspection writes while terminal observation reads this fixture.
+	// Publish a complete snapshot; truncating the live file can hide the agent.
+	if err := os.WriteFile(path+".next", encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path+".next", path); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -463,10 +468,7 @@ func TestAgentControlFixtureProcess(t *testing.T) {
 		os.Exit(61)
 	}
 	write := func() {
-		encoded, _ := json.Marshal(state)
-		if os.WriteFile(path, encoded, 0o600) != nil {
-			os.Exit(62)
-		}
+		writeControlState(t, path, state)
 	}
 	if mode == "native" {
 		state.NativeCalls++
