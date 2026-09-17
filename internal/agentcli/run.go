@@ -409,10 +409,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	}
 	switch command.request.Operation {
 	case "list":
-		var list fleetclient.Inventory
-		if json.Unmarshal(result.Value, &list) != nil {
-			return 1
-		}
+		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(table, "machine\tsession\tprovider/profile\tstate · source\tdirectory")
 		for _, peer := range list.Peers {
@@ -450,10 +447,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			return 1
 		}
 	case "info", "start", "shell":
-		var value fleetclient.ObservedSession
-		if json.Unmarshal(result.Value, &value) != nil {
-			return 1
-		}
+		value := result.Value.(fleetclient.ObservedSession)
 		if command.request.Operation != "info" {
 			if _, err := fmt.Fprintf(stdout, "created %s on %s\nreference: %s\nenter with: skid enter --ref %s\n", value.Session.Name, value.Label, value.Session.Ref, value.Session.Ref); err != nil {
 				return 1
@@ -480,7 +474,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	case "read":
 		var value fleetclient.ReadResult
-		if json.Unmarshal(result.Value, &value) != nil {
+		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil {
 			return 1
 		}
 		fmt.Fprintf(stderr, "source: %s; scope: %s; truncated: %t\n", value.Source, value.Scope, value.Truncated)
@@ -489,7 +483,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	case "stop":
 		var value fleetclient.StopResult
-		if json.Unmarshal(result.Value, &value) != nil {
+		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil {
 			return 1
 		}
 		if _, err := fmt.Fprintf(stdout, "agent halt: %s; terminal: %s\n", value.Agent, value.Terminal); err != nil {
@@ -509,7 +503,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	default:
 		var value fleetclient.WriteResult
-		if json.Unmarshal(result.Value, &value) != nil {
+		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil {
 			return 1
 		}
 		if _, err := fmt.Fprintf(stdout, "%s: %s\n", value.Method, value.Outcome); err != nil {

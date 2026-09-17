@@ -29,18 +29,19 @@ type Failure struct {
 	Dispatch string `json:"dispatch"`
 }
 type Result struct {
-	OK         bool            `json:"ok"`
-	Value      json.RawMessage `json:"result,omitempty"`
-	Error      *Failure        `json:"error,omitempty"`
-	Candidates []string        `json:"-"`
+	OK bool `json:"ok"`
+	// Success values are Inventory, ObservedSession, KillResult, or SpaceResult.
+	// Read/write/stop retain json.RawMessage; list peer calls return Peer.
+	Value      any      `json:"result,omitempty"`
+	Error      *Failure `json:"error,omitempty"`
+	Candidates []string `json:"-"`
 }
 
 func Failed(code, dispatch string) Result {
 	return Result{Error: &Failure{Code: code, Dispatch: dispatch}}
 }
 func success(value any) Result {
-	encoded, _ := json.Marshal(value)
-	return Result{OK: true, Value: encoded}
+	return Result{OK: true, Value: value}
 }
 
 type Client struct {
@@ -60,10 +61,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	case "list":
 		result = client.list(ctx, request.Machine)
 		if result.OK && request.SpaceFilter.Kind() != space.FilterAll {
-			var value Inventory
-			if json.Unmarshal(result.Value, &value) != nil {
-				return Failed("protocol_error", "not_sent")
-			}
+			value := result.Value.(Inventory)
 			for index := range value.Peers {
 				peer := &value.Peers[index]
 				if !peer.OK {
@@ -99,7 +97,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, "start", "/v1/sessions", body)
-		result = creationResult(selected, result)
 	default:
 		ref, observed, failure := client.resolve(ctx, request)
 		if failure != nil {
@@ -158,13 +155,8 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, request.Operation, path, encoded)
-		if request.Operation == "shell" {
-			result = creationResult(selected, result)
-		}
 		if result.OK && request.Operation == "space" {
-			result = success(struct {
-				Space string `json:"space"`
-			}{request.Space.String()})
+			result = success(SpaceResult{Space: request.Space.String()})
 		}
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
@@ -175,17 +167,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		return Failed("output_limit", dispatch)
 	}
 	return result
-}
-
-func creationResult(selected peer, result Result) Result {
-	if !result.OK {
-		return result
-	}
-	var created hostObservedSession
-	if json.Unmarshal(result.Value, &created) != nil {
-		return Failed("protocol_error", "unknown")
-	}
-	return success(ObservedSession{Label: selected.Label, Machine: selected.Machine, ObservedAt: created.ObservedAt, Session: created.Session.project(selected.Machine)})
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {
@@ -204,18 +185,7 @@ func (client *Client) list(ctx context.Context, label string) Result {
 			result := client.call(ctx, selected, "list", "/v1/sessions", nil)
 			row := Peer{Label: selected.Label, Machine: selected.Machine, OK: result.OK, Error: result.Error}
 			if result.OK {
-				var observed hostInventory
-				if json.Unmarshal(result.Value, &observed) != nil {
-					row.OK = false
-					row.Error = &Failure{Code: "protocol_error", Dispatch: "not_sent"}
-				} else {
-					row.ObservedAt = observed.ObservedAt
-					row.Profiles = observed.Profiles
-					row.Sessions = make([]Session, 0, len(observed.Sessions))
-					for _, session := range observed.Sessions {
-						row.Sessions = append(row.Sessions, session.project(selected.Machine))
-					}
-				}
+				row = result.Value.(Peer)
 			}
 			rows[index] = row
 		})
@@ -227,11 +197,11 @@ func (client *Client) list(ctx context.Context, label string) Result {
 			result.Partial = true
 		}
 	}
-	encoded := success(result)
-	if _, err := encoded.Encode("list"); err != nil {
+	reply := success(result)
+	if _, err := reply.Encode("list"); err != nil {
 		return Failed("output_limit", "not_sent")
 	}
-	return encoded
+	return reply
 }
 
 func (client *Client) resolve(ctx context.Context, request Request) (Reference, ObservedSession, *Result) {
@@ -260,10 +230,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 	if !result.OK {
 		return Reference{}, ObservedSession{}, &result
 	}
-	var listed Inventory
-	if json.Unmarshal(result.Value, &listed) != nil {
-		return fail("protocol_error")
-	}
+	listed := result.Value.(Inventory)
 	if listed.Partial {
 		return fail("inventory_incomplete")
 	}
@@ -412,11 +379,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 			return Failed("protocol_error", dispatch)
 		}
 		if operation == "space" {
-			return success(struct{}{})
+			return success(SpaceResult{})
 		}
-		return success(struct {
-			Terminal string `json:"terminal"`
-		}{"closed"})
+		return success(KillResult{Terminal: "closed"})
 	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -441,14 +406,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 		}
 		return Result{Error: failure}
 	}
-	if !validResponse(operation, encoded, target.Machine) {
+	value, ok := decodeResponse(operation, encoded, target)
+	if !ok {
 		return Failed("protocol_error", dispatch)
 	}
-	var compact bytes.Buffer
-	if json.Compact(&compact, encoded) != nil {
-		return Failed("protocol_error", dispatch)
-	}
-	return Result{OK: true, Value: compact.Bytes()}
+	return success(value)
 }
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
@@ -496,25 +458,21 @@ func (result Result) ExitCode(operation string) int {
 	}
 	switch operation {
 	case "list":
-		var value Inventory
-		if json.Unmarshal(result.Value, &value) != nil || value.Partial {
+		if result.Value.(Inventory).Partial {
 			return 1
 		}
 	case "send", "keys", "interrupt":
 		var value WriteResult
-		if json.Unmarshal(result.Value, &value) != nil || value.Outcome == "unknown" {
+		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil || value.Outcome == "unknown" {
 			return 1
 		}
 	case "stop":
 		var value StopResult
-		if json.Unmarshal(result.Value, &value) != nil || value.Agent == "unconfirmed" || value.Terminal != "closed" {
+		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil || value.Agent == "unconfirmed" || value.Terminal != "closed" {
 			return 1
 		}
 	case "kill":
-		var value struct {
-			Terminal string `json:"terminal"`
-		}
-		if json.Unmarshal(result.Value, &value) != nil || value.Terminal != "closed" {
+		if result.Value.(KillResult).Terminal != "closed" {
 			return 1
 		}
 	}
