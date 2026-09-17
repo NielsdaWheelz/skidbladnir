@@ -503,7 +503,7 @@ internal class SkidbladnirController(
     private var nextTerminalAttempt = 1
     private var nextWorkingDirectoryPickerInstance = 1L
     private var pendingFleetScan: String? = null
-    @Volatile private var pendingFleetPersistence: PendingFleetPersistence? = null
+    private var pendingFleetPersistence: PendingFleetPersistence? = null
 
     fun start() {
         if (foreground) return
@@ -704,24 +704,29 @@ internal class SkidbladnirController(
                 main.post { failFleetConnectionIfCurrent(activeGeneration, mode) }
                 return@whenComplete
             }
-            pendingFleetPersistence = PendingFleetPersistence(mode, connected)
-            executeCredentialOperation {
-                if (!isActiveGeneration(activeGeneration)) return@executeCredentialOperation
-                val disposition = persistConnectedFleet(mode, connected)
-                main.post {
-                    if (!isActiveGeneration(activeGeneration)) return@post
-                    val active = state as? SkidbladnirUiState.FleetConnect ?: return@post
-                    if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
-                    pendingFleetPersistence = null
-                    when (disposition) {
-                        FleetPersistenceDisposition.Connected -> acceptConnectedFleet(connected, activeGeneration)
-                        FleetPersistenceDisposition.RetryWithFreshInvite ->
-                            state = active.copy(phase = FleetConnectPhase.Failed)
-                        FleetPersistenceDisposition.ResetRequired ->
-                            state = active.copy(
-                                phase = FleetConnectPhase.ResetRequired,
-                                resetReason = FleetResetReason.StoredFleetUnusable,
-                            )
+            main.post admission@{
+                if (!isActiveGeneration(activeGeneration)) return@admission
+                val connecting = state as? SkidbladnirUiState.FleetConnect ?: return@admission
+                if (connecting.mode != mode || connecting.phase != FleetConnectPhase.Connecting) return@admission
+                pendingFleetPersistence = PendingFleetPersistence(mode, connected)
+                executeCredentialOperation {
+                    if (!isActiveGeneration(activeGeneration)) return@executeCredentialOperation
+                    val disposition = persistConnectedFleet(mode, connected)
+                    main.post {
+                        if (!isActiveGeneration(activeGeneration)) return@post
+                        val active = state as? SkidbladnirUiState.FleetConnect ?: return@post
+                        if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
+                        pendingFleetPersistence = null
+                        when (disposition) {
+                            FleetPersistenceDisposition.Connected -> acceptConnectedFleet(connected, activeGeneration)
+                            FleetPersistenceDisposition.RetryWithFreshInvite ->
+                                state = active.copy(phase = FleetConnectPhase.Failed)
+                            FleetPersistenceDisposition.ResetRequired ->
+                                state = active.copy(
+                                    phase = FleetConnectPhase.ResetRequired,
+                                    resetReason = FleetResetReason.StoredFleetUnusable,
+                                )
+                        }
                     }
                 }
             }
