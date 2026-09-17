@@ -128,27 +128,14 @@ func TestSpaceAssignmentKeepsEmptyFilterAndCreateFollowsObservedMembership(t *te
 	}
 }
 
-func TestSpaceHeadingViewportCountsLinesAndKeepsLifetimeAcrossRegroup(t *testing.T) {
+func TestTabSelectionSurvivesSpaceRegroup(t *testing.T) {
 	m := newModel(context.Background(), testFleetClient(t), nil, nil)
-	m.height = 15
 	m.Update(observation(spaceRow(t, "one", "$1", "alpha"), spaceRow(t, "two", "$2", "beta"), spaceRow(t, "three", "$3", "gamma")))
-	m.Update(key("j"))
-	m.Update(key("j"))
-	start, end := m.viewport()
-	if end-start != 4 || m.items[end-1].row != m.cursor {
-		t.Fatal("heading rows displaced selected session from viewport")
-	}
+	m.Update(key("l"))
+	m.Update(key("l"))
 	m.Update(observation(spaceRow(t, "one", "$1", "zulu"), spaceRow(t, "two", "$2", "beta"), spaceRow(t, "three", "$3", "gamma")))
-	if m.selectedRow() == nil || m.selectedRow().session.Name != "three" {
-		t.Fatal("regroup moved selection by presentation index")
-	}
-	start, end = m.viewport()
-	found := false
-	for _, item := range m.items[start:end] {
-		found = found || item.row == m.cursor
-	}
-	if !found {
-		t.Fatal("semantic viewport hid retained selection")
+	if m.selectedRow() == nil || m.selectedRow().session.Name != "three" || !strings.Contains(m.View().Content, "[three]") {
+		t.Fatal("regroup lost or hid selected session lifetime")
 	}
 }
 
@@ -274,7 +261,7 @@ func TestInvalidSpaceDraftEscapesDisplayWithoutChangingInput(t *testing.T) {
 		draft := "a\u202eb"
 		m.Update(tea.PasteMsg{Content: draft})
 		content := m.View().Content
-		if strings.Contains(content, draft) || !strings.Contains(content, `\u202e`) || !strings.Contains(content, "display controls") {
+		if strings.Contains(content, draft) || !strings.Contains(content, `\u202e`) || !strings.Contains(content, "display") || !strings.Contains(content, "controls.") {
 			t.Errorf("invalid draft affected display: page=%s", page)
 		}
 		if page == "create" && m.form[4] != draft || page == "space-edit" && m.spaceDraft != draft {

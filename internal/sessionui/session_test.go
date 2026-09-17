@@ -54,7 +54,7 @@ func key(value string) tea.KeyPressMsg {
 func TestRefreshRetainsSelectionAndPinsConfirmation(t *testing.T) {
 	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.Update(observation(row("bravo", "$2", 22), row("charlie", "$3", 33)))
-	m.Update(key("j"))
+	m.Update(key("l"))
 	m.Update(key("s"))
 	before := m.View().Content
 	if !strings.Contains(before, "charlie") || !strings.Contains(before, "stop") {
@@ -74,13 +74,13 @@ func TestRefreshRetainsSelectionAndPinsConfirmation(t *testing.T) {
 	}
 }
 
-func TestCollectionHeadingsAndRemovedSelection(t *testing.T) {
+func TestTabRemovalRetainsClampedSelection(t *testing.T) {
 	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.Update(observation(row("alpha", "$1", 11), row("bravo", "$2", 22), row("charlie", "$3", 33)))
 	if !strings.Contains(m.View().Content, "unassigned") {
-		t.Error("unassigned group has no heading")
+		t.Error("unassigned space has no selector")
 	}
-	m.Update(key("j"))
+	m.Update(key("l"))
 	m.Update(observation(row("alpha", "$1", 11), row("charlie", "$3", 33)))
 	if m.selectedRow() == nil || m.selectedRow().session.Name != "charlie" {
 		t.Error("removed selection did not retain its clamped visible session index")
@@ -121,7 +121,7 @@ func TestCreatedSelectionSurvivesEarlierInventoryCompletion(t *testing.T) {
 	}
 }
 
-func TestDetailsWrapLongMetadataAndTableShowsDirectory(t *testing.T) {
+func TestDetailsWrapLongMetadataAndSummaryShowsDirectory(t *testing.T) {
 	m := newModel(context.Background(), testFleetClient(t), nil, nil)
 	m.width = 80
 	session := row("reviewer", "$1", 11)
@@ -186,7 +186,7 @@ func TestNormalWidthHintsAndFullMetadataRemainVisible(t *testing.T) {
 	observed := observation(row("reviewer", "$1", 11))
 	observed.value.Peers[0].ObservedAt = "2026-09-13T00:00:00Z"
 	m.Update(observed)
-	for _, hint := range []string{"enter attach", "space info", "r read", "i interrupt", "s stop", "x kill", "n new", "ctrl-r refresh", "q quit"} {
+	for _, hint := range []string{"enter attach", "space info", "r read", "i interrupt", "s stop", "x kill", "n new", "ctrl-r refresh", "q/escape quit"} {
 		if !strings.Contains(m.View().Content, hint) {
 			t.Errorf("normal-width hint missing: %s", hint)
 		}

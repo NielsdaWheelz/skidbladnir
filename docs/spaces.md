@@ -32,8 +32,8 @@ pr 1 delivers inventory projection, initial assignment during creation,
 set/change/clear on existing sessions, grouped cli/tui/phone collections,
 intersecting machine/space filters, and collection return continuity. ordinary
 shell-only sessions already in inventory participate in session operations.
-creating a new ordinary shell belongs to pr 2. additional agent/shell terminal
-switching and desktop composition belong to pr 3. add no scaffolding for either.
+creating a new ordinary shell belongs to pr 2. [pr 3](desktop-browser.md) owns
+desktop browser navigation; pr 4 investigates embedding. no later-pr scaffolding.
 
 ```text
 tmux session option                         authoritative membership
@@ -140,6 +140,8 @@ within each group, retain the client's present order: cli/tui configured peer
 order then host-published name/id order; android case-folded/exact machine label,
 machine handle, case-folded/exact tmux name, then tmux id. no urgency sorting,
 manual ordering, collapsing, nested groups, or completeness-implying counters.
+pr 3 retains this order for tabs; its separate global agent view has the
+[explicit status order](desktop-browser.md#3-selection-and-navigation).
 
 ### owned values
 
@@ -368,6 +370,10 @@ prevent declaring the selected machine's intersection empty.
   filter selected and its honest empty state. the phone gains no card-selection
   cursor; its viewport and existing exact dialog targets carry continuity.
 
+pr 3 changes only desktop explicit filter selection: keep the selected lifetime
+if it still matches, otherwise select the first tab. refresh/removal retains the
+clamped-neighbour rule. [desktop-browser.md](desktop-browser.md) owns those transitions.
+
 unchanged-save disabling compares the canonical draft with the latest accepted
 membership of that pinned lifetime, not an obsolete value from when the editor
 opened. a poll may update the displayed current membership, but never the draft.
@@ -403,11 +409,10 @@ must not overwrite a form the operator has already opened or edited.
 
 ## 8. tui interaction and return
 
-retain one bubble tea model, one collection, five-second refresh, and at most
-one inventory request in flight. add `g` for the space picker, `m` for the machine
-picker, and `e` for the selected session's space editor. keep spacebar for info
-and current control keys. picker arrows/j/k move; enter selects; escape cancels.
-include the additions in visible hints and `skid --help`.
+[pr 3](desktop-browser.md) owns the desktop layout/keymap and replaces the grouped
+table/space picker. retain one bubble tea model, five-second refresh, at most
+one inventory request in flight, and the boundary rules below. source and historical
+spaces evidence still describe the preceding table.
 
 the machine picker lists configured peers, including unavailable ones, plus all
 machines. expose only labels/handles from fleetclient configuration to this
@@ -445,12 +450,9 @@ counterpart of its existing select-created-session behavior. all-machines remain
 all. phone's existing post-create machine behavior is unchanged. cancelled or
 uncertain creation changes neither selector.
 
-group headings consume terminal lines but cannot receive the cursor. retain a
-semantic top item (session lifetime or heading label) alongside selected lifetime
-in the model, with no disk state. count headings when fitting content to height;
-keep selection visible, then preserve the top item when it still fits. attachment
-returns to this same model/filters; refresh re-resolves keys. resize may clamp
-viewport. no alternative renderer, per-space history, or terminal-composition state.
+pr 3 removes heading-aware collection geometry. one current selected lifetime and
+current region viewports live in the same model; detach resumes it and refresh
+reconciles inventory. no per-space history, disk state or terminal-composition state.
 
 ## 9. phone presentation and operation ownership
 

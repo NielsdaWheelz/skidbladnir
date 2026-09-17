@@ -21,8 +21,14 @@ accepted 2026-09-15 pr 2 target: [new terminal here](shells.md). standalone
 terminal creation and source-session create/attach extend the existing owners;
 source is implemented. [delivery and evidence](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
 are tracked separately from pr 1; current runtime evidence and gaps are recorded
-there. pr 3 retains additional navigation
-and composition.
+there.
+
+accepted 2026-09-17 pr 3 target: [organized desktop browser](desktop-browser.md).
+immediate local selection, spaces/agents/tabs, one current browser state and
+fullscreen direct attachment; no per-space history or special source return.
+source is implemented; [verification](roadmap.md#desktop-browser--source-implemented-runtime-acceptance-open)
+tracks native acceptance. [the delivery split](spaces-and-shells.md) leaves
+embedded-terminal feasibility to pr 4, with no accepted production terminal contract.
 
 the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
 scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
@@ -507,11 +513,11 @@ names the target and sends
 ownership, and h/d/p proof contracts. `POST /v1/sessions/{tmuxId}/shell` accepts
 only `{identityToken}`. the host samples current pane cwd and local space,
 guards creation by session lifetime, then returns a new independent session.
-tui `t` and the android attach-header action create once and attach the returned
+tui `T` (shift+t) and the android attach-header action create once and attach the returned
 reference; source name or agent replacement does not retarget the operation.
 one-shot launch failure may follow session creation; no shell-readiness promise,
-automatic retry, or persistent creation receipt exists. returning to the source
-uses the collection until pr 3.
+automatic retry, or persistent creation receipt exists. desktop detach leaves the
+created shell selected in the browser; return to the source is ordinary navigation.
 
 ### attach and handoff
 
@@ -603,7 +609,12 @@ of target, not semantic safety.
 
 ### desktop and agent controls
 
-`skid` opens one grouped fleet table; ordinary commands expose list, info, enter,
+the implemented [desktop browser](desktop-browser.md) replaces the preceding
+grouped table with spaces, global agents, session tabs and a browser-content area.
+it owns pr 3's exact selection, keys, geometry and return rules; no new public api
+or runtime owner. fullscreen direct attachment remains; persistent chrome during
+attachment belongs to pr 4's investigation.
+ordinary commands expose list, info, enter,
 read, send, keys, interrupt, stop, kill, start, shell, and space. `list --space LABEL` /
 `--unassigned`, `start --space LABEL`, and `space TARGET --set LABEL | --clear`
 use the [spaces contract](spaces.md#6-cli-and-shared-fleet-presentation).
@@ -1004,14 +1015,19 @@ enum values are defects, with no protocol branch or compatibility state.
 ## 8. Upgrade ladder (deliberately not in v0)
 
 the accepted [spaces target](spaces.md) adds optional session labels and grouped
-client views only. [the three-pr plan](spaces-and-shells.md) separates shell
+client views only. [the delivery plan](spaces-and-shells.md) separates shell
 creation and additional terminal navigation/composition; neither is part of pr 1.
 spaces add no execution ownership or lifecycle resource. source is implemented;
 the roadmap records its verification and remaining runtime boundaries.
 
 the accepted [new terminal here target](shells.md) closes pr 2's launch and
 create/attach contracts. it adds no persistent runtime owner, provider, or
-companion relationship. pr 3 navigation/composition remains deferred.
+companion relationship. the accepted [pr 3 desktop browser](desktop-browser.md)
+adds keyboard regions and status ordering in the global agent list. its one
+current model resumes after fullscreen attachment, without history or special
+source return. it changes no host or phone execution owner.
+pr 4 investigates terminal embedding separately; shipping that capability requires
+an explicit terminal contract and acceptance, not evidence from pr 3.
 
 the [agent-control target](agent-control.md) is the accepted upgrade shipped in v0.3.1
 for semantic status, provider reads, and cross-agent interaction. it owns its
@@ -1022,6 +1038,12 @@ history, durable receipts, and replay remain outside the target.
 ## 9. Verification
 
 Verification follows an 80/20 boundary shape:
+
+- desktop browser adds [a1–a5 acceptance](desktop-browser.md#7-acceptance-and-delivery):
+  focused transition/layout cases, the existing real browser/pty/gateway/isolated-
+  tmux journey on linux/darwin, manual fixture inspection, and routine verification.
+  no new gate or phone/provider-live matrix. unavailable/unapproved runtime
+  boundaries remain `NOT_RUN`; old attachment evidence does not prove pr 3;
 
 - shells adds [h/d/p acceptance](shells.md#6-acceptance-and-redgreenrefactor):
   one real host creation proof on linux/darwin, one desktop create/attach journey,

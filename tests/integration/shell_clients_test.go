@@ -92,27 +92,31 @@ func TestShellDesktopRealTTYCreateAttachDetachAndLostReply(t *testing.T) {
 	browser.waitFor(t, "empty collection", "no sessions in this view")
 	browser.write(t, "n")
 	browser.waitFor(t, "terminal launch form", "launch: terminal")
-	browser.write(t, "\t\tsource\r\rproject\r")
-	browser.waitFor(t, "created source selected", "created source")
+	browser.write(t, "\t\taaa-source\r\rproject\r")
+	browser.waitFor(t, "created source selected", "created aaa-source")
 	inventory := shellClientInventory(t, client)
-	if len(inventory) != 1 || inventory[0].Name != "source" || inventory[0].AttachedClients != 0 || inventory[0].LaunchProfile != "" || inventory[0].Space.String() != "project" {
+	if len(inventory) != 1 || inventory[0].Name != "aaa-source" || inventory[0].AttachedClients != 0 || inventory[0].LaunchProfile != "" || inventory[0].Space.String() != "project" {
 		t.Fatal("standalone terminal did not select one ordinary, unattached session")
 	}
 	source := inventory[0]
-	browser.write(t, "gjj\r")
-	browser.waitFor(t, "project filter", "space: project")
+	// The source sorts before generated shells, including the immediate create
+	// projection before the next inventory. One left arrow is therefore stable.
+	browser.write(t, "gj")
+	browser.waitFor(t, "immediate unassigned filter", "no sessions in this view")
+	browser.write(t, "j")
+	browser.waitFor(t, "immediate source selection", "session: "+source.Name)
+	browser.write(t, "\r")
 	browser.write(t, "mj\r")
-	browser.waitFor(t, "arch filter", "machine: arch")
-	browser.waitFor(t, "fresh scoped shell row", "—")
+	browser.waitFor(t, "fresh scoped shell row", "T terminal here")
 	// The first 201 exists at the actual gateway before duplicate input arrives.
 	holdReply.Store(true)
-	browser.write(t, "t")
+	browser.write(t, "T")
 	select {
 	case <-accepted:
 	case <-time.After(terminalIntegrationTimeout):
 		t.Fatal("new terminal here did not reach the production gateway")
 	}
-	browser.write(t, "t")
+	browser.write(t, "T")
 	browser.waitFor(t, "duplicate suppressed", "operation in flight")
 	releaseReply()
 	var created fleetclient.Session
@@ -133,16 +137,61 @@ func TestShellDesktopRealTTYCreateAttachDetachAndLostReply(t *testing.T) {
 	}
 	browser.write(t, "\x1dd")
 	browser.waitFor(t, "detached collection", "detached; work continues")
-	browser.waitFor(t, "arch filter", "machine: arch")
-	browser.waitFor(t, "project filter", "space: project")
 	browser.write(t, " ")
-	browser.waitFor(t, "confirmed terminal details", "session: "+created.Name)
 	browser.waitFor(t, "confirmed terminal reference", created.Ref)
 	browser.write(t, "q")
 	browser.waitFor(t, "collection controls", "enter attach")
+	checkShellBrowserFilters(t, browser)
+	browser.write(t, "l")
+	browser.waitFor(t, "created shell reselected", created.Name)
+
+	waitForTerminalCondition(t, "first attachment fully detached", func() bool {
+		inventory = shellClientInventory(t, client)
+		if len(inventory) != 2 {
+			return false
+		}
+		found := false
+		for _, row := range inventory {
+			found = found || row.Ref == created.Ref
+			if row.AttachedClients != 0 {
+				return false
+			}
+		}
+		return found
+	})
+	browser.write(t, "\r")
+	waitForTerminalCondition(t, "ordinary enter attaches the selected lifetime", func() bool {
+		inventory = shellClientInventory(t, client)
+		if len(inventory) != 2 {
+			return false
+		}
+		attached := false
+		for _, row := range inventory {
+			if row.Ref == created.Ref {
+				attached = row.AttachedClients == 1
+			} else if row.AttachedClients != 0 {
+				return false
+			}
+		}
+		return attached
+	})
+	browser.write(t, "\x1dd")
+	browser.waitFor(t, "ordinary detach", "detached; work continues")
+	browser.write(t, " ")
+	browser.waitFor(t, "ordinary detach retains selected lifetime", created.Ref)
+	browser.write(t, "q")
+	browser.waitFor(t, "ordinary detach controls", "enter attach")
+	browser.write(t, "h")
+	browser.waitFor(t, "first navigation key after detach", source.Name)
+	browser.write(t, " ")
+	browser.waitFor(t, "surviving source reference", source.Ref)
+	browser.write(t, "q")
+	checkShellBrowserFilters(t, browser)
+	browser.write(t, "l")
+	browser.waitFor(t, "created shell reselected", created.Name)
 
 	cutReply.Store(true)
-	browser.write(t, "t")
+	browser.write(t, "T")
 	browser.waitFor(t, "uncertain creation", "unknown")
 	browser.waitFor(t, "no automatic retry", "not repeated")
 	inventory = shellClientInventory(t, client)
@@ -150,7 +199,6 @@ func TestShellDesktopRealTTYCreateAttachDetachAndLostReply(t *testing.T) {
 		t.Fatalf("lost creation reply session count=%d want=3", len(inventory))
 	}
 	browser.write(t, "\x12 ")
-	browser.waitFor(t, "confirmed terminal details", "session: "+created.Name)
 	browser.waitFor(t, "confirmed terminal reference", created.Ref)
 	inventory = shellClientInventory(t, client)
 	foundSource := false
@@ -172,6 +220,18 @@ func TestShellDesktopRealTTYCreateAttachDetachAndLostReply(t *testing.T) {
 	case <-time.After(terminalIntegrationTimeout):
 		t.Fatal("detached browser did not regain keyboard ownership")
 	}
+}
+
+// Probe the current filters through navigation rather than assuming a terminal
+// repaint repeats the unchanged heading. Return with the first project tab selected.
+func checkShellBrowserFilters(t *testing.T, browser *shellBrowser) {
+	t.Helper()
+	browser.write(t, "m")
+	browser.waitFor(t, "retained machine selection", "> arch")
+	browser.write(t, "qgk")
+	browser.waitFor(t, "retained project precedes unassigned", "no sessions in this view")
+	browser.write(t, "j\r")
+	browser.waitFor(t, "project tabs restored", "enter attach")
 }
 
 func shellClientInventory(t *testing.T, client *fleetclient.Client) []fleetclient.Session {
@@ -272,6 +332,8 @@ func (browser *shellBrowser) waitFor(t *testing.T, description, text string) {
 	waitForTerminalCondition(t, "browser presentation: "+description, func() bool {
 		browser.mutex.Lock()
 		defer browser.mutex.Unlock()
-		return strings.Contains(strings.Join(strings.Fields(ansi.Strip(browser.output.String())), ""), strings.Join(strings.Fields(text), ""))
+		// Omit chrome separators and padding between wrapped metadata lines.
+		output := strings.ReplaceAll(ansi.Strip(browser.output.String()), "│", "")
+		return strings.Contains(strings.Join(strings.Fields(output), ""), strings.Join(strings.Fields(text), ""))
 	})
 }

@@ -129,35 +129,16 @@ preserve partial stop results even with exit 1; nonzero never authorizes replay.
 
 ## one small tui
 
-one model and grouped table: machine, name, provider/profile or shell, state/source,
-cwd. named spaces precede unassigned; within groups retain configured peer order
-then name. selection follows session lifetime, not row number. show offline peers
-explicitly, outside group headings. refresh every five seconds with
-at most one inventory in flight; manual refresh is available. retain stale rows
-only as visibly unavailable, with actions disabled.
+the accepted [pr 3 desktop browser](desktop-browser.md) owns presentation, keys,
+selection and bounded acceptance. it replaces the grouped table and space picker
+with spaces/agents/tabs and immediate local selection. source is implemented;
+the roadmap records its verification. historical release proofs do not prove pr 3.
 
-- arrows/j/k select; enter attaches; space shows full metadata; r opens bounded
-  output with source/scope/truncation; i interrupts; s stops; x kills; n creates;
-  ctrl-r refreshes; q/escape returns or quits. key hints remain visible.
-- `g` chooses space, `m` chooses machine, and `e` edits the selected session's
-  membership. the [spaces contract](spaces.md#8-tui-interaction-and-return) owns
-  filtering, scoped refresh, exact editing, and heading-aware return behavior.
-- stop/kill require one confirmation naming session, host, and effect. pin the
-  reference when the action starts; refresh cannot change its target. cli commands
-  are explicit actions and require no additional confirmation.
-- creation is one form: machine, launch (terminal or advertised profile), name,
-  cwd, space. terminal works with zero profiles. named
-  space selection prefills visibly/editably; use the spaces contract for its
-  confirmed post-create filter transition. reuse server validation and display
-  errors inline. select the returned session. shell rows disable
-  agent-only read/send/keys/interrupt/stop; info/enter/kill still work.
-- `t` creates a terminal from the selected session and attaches the returned
-  exact reference. use [shells.md](shells.md#4-client-ownership-and-completion)
-  for pending/late outcomes and attachment failure. direct source return is pr 3.
-- use [bubble tea](https://github.com/charmbracelet/bubbletea) v2 for input/rendering
-  and one local model. no component framework or handwritten escape parser.
-  attachment exclusively owns tty input/output while active; restore tui and refresh
-  on return. use [x/term](https://pkg.go.dev/golang.org/x/term) for raw-mode handling.
+retain one bubble tea model, existing fleetclient operations, exact pinned
+confirmations, scoped five-second refresh, creation/membership rules and direct
+attachment below. the new key for terminal-here is `T` (shift+t); detach leaves
+the new shell selected. no source-return exception or per-space history.
+cli commands remain explicit actions without additional confirmation.
 
 ## direct terminal and session actions
 

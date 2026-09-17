@@ -8,6 +8,10 @@ inheritance, duplicate suppression, independent lifetime, attachment and
 restoration. the complete released platform gate remains failed, and hands-on
 acceptance remains `NOT_RUN`. [the roadmap](roadmap.md#v050-deployment-and-runtime-acceptance)
 owns the distinct immutable, corrected-test and unreleased-development evidence.
+
+2026-09-17: [pr 3](desktop-browser.md) changes only desktop presentation and the
+shortcut to `T` (shift+t); detach retains the newly created shell selection.
+historical pr 2 evidence uses its original `t` binding and proves no pr 3 layout.
 [architecture.md](architecture.md) owns scope; [roadmap.md](roadmap.md) owns
 delivery; this document owns the contracts below. read [AGENTS.md](../AGENTS.md),
 [agent-control.md](agent-control.md), [agent-control-ux.md](agent-control-ux.md),
@@ -23,7 +27,7 @@ separate ordinary tmux session, never a window, split, or linked session group.
 | surface | target behavior |
 | --- | --- |
 | tui `n` | existing five-field form: machine, launch, required name, cwd, space. launch offers terminal alongside advertised agent profiles. create selects/reveals the result; enter attaches. |
-| tui `t` | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
+| tui `T` (shift+t) | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
 | android forge | terminal in the launch picker; existing name/cwd/space/objective fields and automatic post-create attachment. |
 | android attach header | one-tap terminal-plus action, spoken “new terminal here”, minimum 48dp target; same create-here behavior for any attached session. fit the existing header height and visual language. |
 
@@ -33,8 +37,8 @@ session. name and space remain editable afterward. closing either session
 preserves the other; detach preserves both. source objective and profile
 environment are not copied. a space is copied once, including unassigned.
 
-pr 3 owns direct return to the source, quick switching, and desktop composition.
-pr 2 returns through the existing session collection. no companion registry,
+pr 3 provides browser navigation, with no special source return: detach keeps
+the created shell selected; reaching the source is ordinary navigation. no companion registry,
 parent link, automatic reuse/cleanup, saved launch request, readiness protocol,
 provider work, arbitrary command endpoint, shell profiles, or new runtime owner.
 
@@ -259,5 +263,5 @@ the host fixture owns gateway/socket cleanup. no production pairing is changed.
   dispatch from tmux's human stderr or later inventory.
 - compact detach/menu/text-size glyphs make room in the header; the title may
   truncate. retain its existing height behavior at each font scale; no extra row.
-- returning to the agent takes the session list until pr 3.
+- returning to the agent requires browser navigation, including in pr 3.
 - strict wire cutover requires coordinated host/cli/android updates and rollback.
