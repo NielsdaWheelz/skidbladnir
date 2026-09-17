@@ -48,15 +48,15 @@ internal fun encodeAgentControlRequest(target: SessionTarget): String {
 }
 
 @Serializable
-internal data class AgentInterruptResult(val method: AgentMethod, val outcome: String, val turnId: String? = null)
+internal data class AgentInterruptResult(val method: AgentMethod, val outcome: String)
 
 @Serializable
 internal data class AgentStopResult(val agent: String, val terminal: String, val reason: String? = null)
 
 internal fun decodeAgentInterruptResult(encoded: String): AgentInterruptResult = decodeProtocol {
     productJson.decodeFromJsonElement<AgentInterruptResult>(strictJsonObject(encoded)).also {
-        require(it.method != AgentMethod.Unavailable)
-        require(it.outcome in setOf("accepted", "written", "interrupted", "finished", "unknown"))
+        require(it.method == AgentMethod.Terminal)
+        require(it.outcome in setOf("written", "unknown"))
     }
 }
 
@@ -74,5 +74,5 @@ internal fun agentStopMessage(machine: MachineLabel, result: AgentStopResult): S
 internal fun agentInterruptMessage(machine: MachineLabel, result: AgentInterruptResult): String = when (result.outcome) {
     "written" -> "${machine.text}: interrupt key sent; stopping is not yet confirmed."
     "unknown" -> "${machine.text}: interrupt outcome unknown."
-    else -> "${machine.text}: ${result.outcome}."
+    else -> error("unrecognized agent interrupt outcome") // justify-defect: the decoder accepts only written or unknown.
 }
