@@ -72,7 +72,9 @@ func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTa
 	if !present || inspected.paneID != target.PaneID {
 		return Session{}, ErrAgentTargetStale
 	}
-	return manager.enrichSession(ctx, inspected), nil
+	session := inspected.session
+	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	return session, nil
 }
 
 func (manager *Manager) CaptureAgent(ctx context.Context, target AgentTarget, maxBytes int) (tmuxclient.Capture, error) {
