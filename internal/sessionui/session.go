@@ -82,8 +82,8 @@ func (m *model) fetch() tea.Cmd {
 	return func() tea.Msg {
 		result := m.client.Execute(m.ctx, fleetclient.Request{Operation: "list", Machine: machine})
 		message := inventoryMsg{machine: machine, failure: result.Error}
-		if result.OK && json.Unmarshal(result.Value, &message.value) != nil {
-			message.failure = &fleetclient.Failure{Code: "protocol_error", Dispatch: "not_sent"}
+		if result.OK {
+			message.value = result.Value.(fleetclient.Inventory)
 		}
 		return message
 	}
@@ -197,7 +197,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch message.operation {
 		case "read":
 			var read fleetclient.ReadResult
-			if json.Unmarshal(message.result.Value, &read) != nil {
+			if json.Unmarshal(message.result.Value.(json.RawMessage), &read) != nil {
 				m.notice = "invalid read response"
 				break
 			}
@@ -207,11 +207,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.outputCoverage = fmt.Sprintf("%s · %s · truncated: %t", read.Source, read.Scope, read.Truncated)
 			m.text = strings.Split(read.Text, "\n")
 		case "start", "shell":
-			var value fleetclient.ObservedSession
-			if json.Unmarshal(message.result.Value, &value) != nil {
-				m.notice = "invalid creation response"
-				break
-			}
+			value := message.result.Value.(fleetclient.ObservedSession)
 			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
 				m.machine = value.Label
@@ -270,7 +266,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "stop":
 			var value fleetclient.StopResult
-			if json.Unmarshal(message.result.Value, &value) != nil {
+			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
 				m.notice = "invalid stop response"
 				break
 			}
@@ -279,7 +275,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "terminal closed; shared work may continue"
 		default:
 			var value fleetclient.WriteResult
-			if json.Unmarshal(message.result.Value, &value) != nil {
+			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
 				m.notice = "invalid control response"
 				break
 			}

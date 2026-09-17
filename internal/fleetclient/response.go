@@ -1,6 +1,7 @@
 package fleetclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -73,14 +74,6 @@ func (value *spaceField) UnmarshalJSON(encoded []byte) error {
 func (s Session) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sessionJSON{s.Name, s.Ref, s.CWD, s.ActiveCommand, s.LaunchProfile, s.AttachedClients, s.Agent, spaceField{s.Space}})
 }
-func (s *Session) UnmarshalJSON(encoded []byte) error {
-	var value sessionJSON
-	if err := strictjson.Decode(encoded, &value); err != nil {
-		return err
-	}
-	*s = Session{Name: value.Name, Ref: value.Ref, CWD: value.CWD, ActiveCommand: value.ActiveCommand, LaunchProfile: value.LaunchProfile, AttachedClients: value.AttachedClients, Agent: value.Agent, Space: value.Space.label}
-	return nil
-}
 
 type Profile struct {
 	Key      string `json:"key"`
@@ -143,6 +136,12 @@ type StopResult struct {
 	Terminal string `json:"terminal"`
 	Reason   string `json:"reason,omitempty"`
 }
+type KillResult struct {
+	Terminal string `json:"terminal"`
+}
+type SpaceResult struct {
+	Space string `json:"space"`
+}
 
 type hostAgent struct {
 	Provider        string           `json:"provider"`
@@ -195,34 +194,38 @@ func (s hostSession) project(machine string) Session {
 	return row
 }
 
-func validResponse(operation string, encoded []byte, machine string) bool {
+func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 	switch operation {
 	case "list":
 		var value *hostInventory
-		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Machine.Handle != machine || !slices.Contains([]string{"Linux", "Darwin"}, value.Machine.Platform) || value.Profiles == nil || value.Sessions == nil {
-			return false
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Machine.Handle != target.Machine || !slices.Contains([]string{"Linux", "Darwin"}, value.Machine.Platform) || value.Profiles == nil || value.Sessions == nil {
+			return nil, false
 		}
 		if _, err := time.Parse(time.RFC3339Nano, value.ObservedAt); err != nil {
-			return false
+			return nil, false
 		}
 		for _, p := range value.Profiles {
 			if p.Key == "" || p.Label == "" || !slices.Contains([]string{"Codex", "Claude"}, p.Provider) {
-				return false
+				return nil, false
 			}
 		}
+		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: value.Profiles, Sessions: make([]Session, 0, len(value.Sessions))}
 		for _, s := range value.Sessions {
 			if !validSession(s) {
-				return false
+				return nil, false
 			}
+			observed.Sessions = append(observed.Sessions, s.project(target.Machine))
 		}
-		return true
+		return observed, true
 	case "start", "shell":
 		var value *hostObservedSession
 		if strictjson.Decode(encoded, &value) != nil || value == nil || !validSession(value.Session) {
-			return false
+			return nil, false
 		}
-		_, err := time.Parse(time.RFC3339Nano, value.ObservedAt)
-		return err == nil
+		if _, err := time.Parse(time.RFC3339Nano, value.ObservedAt); err != nil {
+			return nil, false
+		}
+		return ObservedSession{Label: target.Label, Machine: target.Machine, ObservedAt: value.ObservedAt, Session: value.Session.project(target.Machine)}, true
 	case "read":
 		var value *struct {
 			Text      *string `json:"text"`
@@ -230,16 +233,27 @@ func validResponse(operation string, encoded []byte, machine string) bool {
 			Scope     string  `json:"scope"`
 			Truncated *bool   `json:"truncated"`
 		}
-		return strictjson.Decode(encoded, &value) == nil && value != nil && value.Text != nil && value.Truncated != nil && slices.Contains([]string{"native", "terminal"}, value.Source) && slices.Contains([]string{"recent_messages", "latest_turn", "terminal_history", "visible"}, value.Scope)
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Text == nil || value.Truncated == nil || !slices.Contains([]string{"native", "terminal"}, value.Source) || !slices.Contains([]string{"recent_messages", "latest_turn", "terminal_history", "visible"}, value.Scope) {
+			return nil, false
+		}
 	case "send", "keys", "interrupt":
 		var value *WriteResult
-		return strictjson.Decode(encoded, &value) == nil && value != nil && slices.Contains([]string{"native", "terminal"}, value.Method) && slices.Contains([]string{"accepted", "written", "interrupted", "finished", "unknown"}, value.Outcome)
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !slices.Contains([]string{"native", "terminal"}, value.Method) || !slices.Contains([]string{"accepted", "written", "interrupted", "finished", "unknown"}, value.Outcome) {
+			return nil, false
+		}
 	case "stop":
 		var value *StopResult
-		return strictjson.Decode(encoded, &value) == nil && value != nil && slices.Contains([]string{"stopped", "interrupted", "idle", "unconfirmed"}, value.Agent) && slices.Contains([]string{"closed", "unconfirmed"}, value.Terminal) && slices.Contains([]string{"", "stale", "unavailable"}, value.Reason)
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !slices.Contains([]string{"stopped", "interrupted", "idle", "unconfirmed"}, value.Agent) || !slices.Contains([]string{"closed", "unconfirmed"}, value.Terminal) || !slices.Contains([]string{"", "stale", "unavailable"}, value.Reason) {
+			return nil, false
+		}
 	default:
-		return false
+		return nil, false
 	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, encoded) != nil {
+		return nil, false
+	}
+	return json.RawMessage(compact.Bytes()), true
 }
 
 func validSession(s hostSession) bool {
