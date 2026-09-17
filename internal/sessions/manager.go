@@ -515,13 +515,10 @@ func (manager *Manager) inspectRequired(
 	if len(fields) != 4 || fields[0] != observed.id {
 		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
 	}
-	if !paneIDPattern.MatchString(fields[1]) {
-		return inspected, true, nil
-	}
 	panePID, paneErr := strconv.Atoi(fields[2])
 	attached, attachedErr := strconv.Atoi(fields[3])
-	if paneErr != nil || panePID <= 0 || attachedErr != nil || attached < 0 {
-		return inspected, true, nil
+	if !paneIDPattern.MatchString(fields[1]) || paneErr != nil || panePID < 0 || attachedErr != nil || attached < 0 {
+		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
 	}
 	inspected.paneID = fields[1]
 	inspected.panePID = processinfo.PID(panePID)
@@ -534,9 +531,6 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
 	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.SpaceOption); err == nil {
 		session.Space = decodeSpaceMetadata(encoded)
-	}
-	if inspected.paneID == "" {
-		return session
 	}
 	session.AttachedClients = inspected.attachedClients
 	// justify-ignore-error: optional pane metadata does not suppress an ordinary terminal.
