@@ -607,9 +607,9 @@ internal fun reconcileStoredMachines(
 internal class SkidbladnirController(
     context: Context,
     private val dashboardEntry: DashboardEntryState,
-    storage: MachineStorage = MachineStorage.production,
-    private val client: GatewayClient = GatewayClient(),
 ) {
+    private val client = GatewayClient()
+
     var state: SkidbladnirUiState by mutableStateOf(SkidbladnirUiState.Booting)
         private set
 
@@ -624,7 +624,7 @@ internal class SkidbladnirController(
     private val credentialOperations = Executors.newSingleThreadExecutor { task ->
         Thread(task, "skidbladnir-machine-store").apply { isDaemon = true }
     }
-    private val store = MachineStore(context.applicationContext, storage)
+    private val store = MachineStore(context.applicationContext)
     private val textSizeStore = TerminalTextSizeStore(context)
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()

@@ -89,8 +89,8 @@ internal fun decodePairingResponse(encoded: String): PairingResponse = decodePro
     )
 }
 
-internal class GatewayClient(
-    internal val http: OkHttpClient = OkHttpClient.Builder()
+internal class GatewayClient {
+    internal val http = OkHttpClient.Builder()
         .retryOnConnectionFailure(false)
         .followRedirects(false)
         .followSslRedirects(false)
@@ -98,8 +98,8 @@ internal class GatewayClient(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
-        .build(),
-) {
+        .build()
+
     private val closeScheduled = AtomicBoolean(false)
 
     fun closeAsync() {
