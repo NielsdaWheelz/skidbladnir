@@ -2,8 +2,8 @@
 
 2026-09-15 target amendment: [spaces](spaces.md) extends this retained-entry
 contract with independent space selection, heading-aware viewport keys, and the
-exact schema-2 task capsule. source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
-records verification and open device acceptance. the delivery evidence
+exact schema-2 task capsule. source is implemented; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains open. the delivery evidence
 immediately below is historical.
 
 Status: source implemented, 2026-08-31. The JVM, real-Compose, and real-registry

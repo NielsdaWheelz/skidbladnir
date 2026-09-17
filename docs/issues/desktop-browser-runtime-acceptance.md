@@ -10,9 +10,9 @@ ssh authentication initially failed, and the user explicitly instructed skipping
 darwin. access was later restored for publication; the browser's native proof
 remains `NOT_RUN`, not a pass. the user's skip instruction still stands.
 
-when darwin verification resumes with approval and a usable access route, run
-`TestShellDesktopRealTTYCreateAttachDetachAndLostReply` with the existing integration
-capability and isolated-socket harness on that host. it must prove exact creation/attachment, retained filters
-and selection, the first navigation key after detach, source survival, and no
-creation replay after a lost reply. record content-free results in the roadmap;
-delete this issue when the darwin proof passes.
+when approved darwin verification resumes with a usable access route, use a
+temporary real browser → pty → gateway → isolated tmux journey under
+[testing policy](../rules/testing.md). prove exact creation/attachment, retained
+filters and selection, the first navigation key after detach, source survival,
+and no creation replay after a lost reply. record content-free results in the
+change; delete this issue when that boundary passes.

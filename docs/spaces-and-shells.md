@@ -1,12 +1,8 @@
 # spaces, shells, and client composition
 
-2026-09-15: user-approved direction. pr 1's [implementation spec](spaces.md) is
-implemented in source,
-including the approved restoration and post-create selection decisions.
-[the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open) records
-verification and open runtime acceptance. this document owns the delivery
-boundary; pr 2 is [implemented in source](shells.md), with separately attributed
-runtime evidence and remaining gaps in the roadmap.
+[spaces](spaces.md) and [terminal creation](shells.md) are implemented.
+[the roadmap](roadmap.md) indexes delivery; [hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains open. this document owns the delivery boundary.
 
 2026-09-17: approved navigation direction, split into two further prs: pr 3
 implements the [organized desktop browser](desktop-browser.md) with existing fullscreen attachment;

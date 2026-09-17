@@ -2,18 +2,20 @@
 
 Status: reviewed design reference, updated 2026-08-31. This document owns visual
 identity: color, shape, ornament, typography, iconography, motion, and the
-terminal theme. The tmux terminal-activity hard cut is incorporated.
+terminal theme. [agent control](agent-control.md) owns current sampled status
+and its presentation; no terminal-activity field remains.
 [`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
-order. This document changes no source. Adopting any section into the app is a
-delta slice with its own red/green plan; §17 names the deltas.
+order. §17 links the implemented component contracts. changes follow the
+current [testing policy](rules/testing.md).
 
 2026-09-15 accepted [spaces](spaces.md) target reuses these visual primitives for
 one compact dashboard selector, quiet full-span group headings, a literal card
 action, and a shared editor/forge field. no new palette, icon family, ornament,
 animation, or terminal chrome. space labels retain authored case and use the
 existing body/data typography, never display-face capitalisation. this target's
-source is implemented; device acceptance remains `NOT_RUN`. historical design
+source is implemented; [hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains `NOT_RUN`. historical design
 proofs do not establish it. spaces owns its interaction and accessibility
 acceptance, with current delivery evidence in the roadmap.
 
@@ -44,10 +46,10 @@ architecture §2.
 4. **Engineering over magic.** The angular Key to Erebor was designed to
    suggest a race relying on engineering and mechanical skill rather than magic
    (same source). Visual honesty is the app's existing law — chips name their
-   signal and age, absence is displayed rather than guessed — and the
-   aesthetic must reinforce it: activity is named literally, freshness stays a
-   separate fact, absence is displayed rather than guessed, no glow or motion
-   implies activity that tmux did not report, no ornament reads as an
+   sampled facts and freshness, absence is displayed rather than guessed — and the
+   aesthetic must reinforce it: sampled status is named literally, freshness stays
+   separate, absence is displayed rather than guessed, no glow or motion implies
+   unsampled work, no ornament reads as an
    affordance, and errors or destructive copy receive no decoration.
 5. **Carved, not printed.** Surfaces are rock strata: elevation is a tonal
    step computed from one formula (§5), never a drop shadow. Ornament reads as
@@ -111,9 +113,8 @@ Ink (5% and ~9% white; verified `#18191B` / `#222325` against actuals); the
 four accents fill the 2–4 accent-hue budget a small app can carry. The Nord
 palette's near-identical structure (dark ladder + cool accents) confirms this
 is the established Nordic-terminal convention. What was missing is the system
-around them. The terminal-activity cut spends one existing accent on recent
-tmux activity and keeps quiet or stale knowledge visually quiet. The terminal
-ANSI table's One-Dark defaults remain the separate defect corrected below.
+around them. sampled status uses the existing palette; freshness remains a
+separate fact. the terminal uses the derived ansi table below.
 
 ## 4. Voice
 
@@ -148,11 +149,12 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Muted | `#AAA69D` | 8.01 | Secondary text |
 | Gold | `#D6A85F` | 8.91 | Primary accent; cursor; selected/armed states |
 | Ember | `#E46C55` | 6.09 | Error; destructive; `HOT` |
-| Moss | `#76B082` | 7.69 | `ACTIVE`; healthy |
+| Moss | `#76B082` | 7.69 | working; healthy |
 | Frost | `#78A9C6` | 7.67 | Informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-Activity mapping is `ACTIVE` Moss · `QUIET` Muted. Pressure history and detail rows keep Normal
+sampled status mapping is working Moss, blocked/failed Ember, all other states
+and a plain terminal Muted. Pressure history and detail rows keep Normal
 Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
 collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
 Muted, informational/normal values are Bone, and only Warm/Hot values and marks
@@ -171,8 +173,9 @@ a surface may reach for; it is what one tone resolves to.
 
 Two rules follow, and both are load-bearing:
 
-- **Staleness is absence, not failure.** Degraded knowledge is Muted, matching
-  `QUIET` while remaining a separate machine-freshness fact under the honesty
+- **Staleness is absence, not failure.** degraded machine-freshness notices use
+  Muted; stale cards retain their sampled status color with motion/actions off.
+  freshness remains separate from status under the honesty
   law (§1.4): absence is displayed, not alarmed.
   Ember spent on routine staleness is Ember spent on nothing — in a federation
   one host is out often enough that the alarm becomes the resting state.
@@ -180,10 +183,8 @@ Two rules follow, and both are load-bearing:
   Failure even when that machine's inventory is perfectly current, because
   what failed is knowing who we are talking to.
 
-The bare `Ember` token survives in exactly two places in the app: its
-definition beside `noticeToneColor`, and `pressureColor`, where the table
-above assigns Ember to `HOT`. Host load is a genuinely separate axis with its
-own owner; every other Ember arrives through a tone.
+notice severity, sampled agent status and host pressure have separate semantic
+color owners. surfaces consume those owners rather than assigning raw colors.
 
 ### Gem fills (cloisonné)
 
@@ -354,7 +355,7 @@ catalogue casing.
   the two surfaces.
 - **Work-first hierarchy** on the session card: tmux name (Data, largest and
   highest contrast) → dwarf display-name signature (Display, smaller and
-  quieter) → named activity bay → objective → directory and conditional
+  quieter) → named status bay → objective → directory and conditional
   machine/profile context (Data, smallest, ≥ 11sp). A stepped decay around the
   operator's work label, not a flat metadata stack.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
@@ -362,8 +363,7 @@ catalogue casing.
 
 ## 10. Terminal theme
 
-The current `terminal.js` theme is One Dark's ANSI table on brand chrome —
-an inherited default. Replaced by a derived table. Design: **bright slots are
+the implemented `terminal.js` theme uses a derived ansi table: **bright slots are
 the four brand accents verbatim** (bold=bright is the emphasis signal
 git/pytest/ripgrep rely on — the reason Nord's bright=base collapse is
 rejected); **base slots are the same hues systematically darkened** (S−6pp,
@@ -411,7 +411,7 @@ theme: {
   output; the designed table already exceeds it, so it never mutates
   designed colors. xterm.js halves the requirement for SGR-dim cells by
   design.
-- `fontFamily` becomes vendored JetBrains Mono (the WebView CSP must admit
+- `fontFamily` uses vendored JetBrains Mono (the WebView CSP must admit
   the bundled font asset; scripts stay bundle-only).
 - Spot-check on the physical S22+ panel: WCAG's formula has a documented bias
   near black (APCA critique), so ratios here are floors, not proof of
@@ -419,9 +419,8 @@ theme: {
 
 ## 11. Dwarf seals (procedural portraits)
 
-The portrait becomes a **seal**: the octagonal frame (§6), a mineral field, a
-bind-rune maker's mark, and angular figure geometry — replacing the current
-circle-arc face. Deterministic, pure function of the catalogue key, per the
+the portrait is a **seal**: the octagonal frame (§6), a mineral field, a
+bind-rune maker's mark and angular figure geometry. Deterministic, pure function of the catalogue key, per the
 [automatic dwarf identity](automatic-dwarf-identity.md) contract (no color
 fields on the wire; Android derives everything from `character.key`).
 
@@ -465,29 +464,30 @@ it as a red test, not an assumption.
   cut-corner outline at pressed-state alpha (the documented custom-indication
   path since `rememberRipple` deprecation). One implementation, used
   everywhere.
-- **Activity motion is literal and bounded by state.** Only a fresh `ACTIVE`
-  facet may run one restrained angular spinner. `QUIET`, retained stale cards,
-  and reduced-motion mode are static. The named label remains fixed; no pulse,
-  glow, countdown, or unread-result motion exists.
+- **status motion is literal and bounded.** only a fresh working observation
+  may run the restrained angular spinner. retained stale cards, other states
+  and reduced-motion mode are static. the named label stays fixed; no pulse,
+  glow, countdown or unread-result motion exists.
 - **The forge breathes once.** Exactly one ambient decorative animation is
   budgeted in the whole app: the Forge sheet's ForgeGlow surface may warm from
-  DeepSurface to ForgeGlow over 400ms when opened. The functional activity
+  DeepSurface to ForgeGlow over 400ms when opened. the functional status
   spinner above is state-bound, not ambient ornament. Everything else moves
   only when state moves.
 
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  work-first text stack (§9), fixed 12dp activity facet at top right, then 48dp
-  seal beside the named activity bay. Machine/profile form one quiet unbadged footer line;
+  work-first text stack (§9), fixed 12dp status facet at top right, then 48dp
+  seal beside the named status bay. Machine/profile form one quiet unbadged footer line;
   machine renders there only in `All`.
   Global grid order is architecture-owned.
-- **Activity bay**: 4dp cut corners, fill = activity color at 18% over surface,
-  1dp hairline + literal `ACTIVE` or `QUIET` label in the activity color,
-  JetBrains Mono caps ≥ 11sp. It has no age or evidence subline. Colors per §5.
-- **Activity facet**: 12dp `Chip` shape, solid activity color, no border, text,
-  or semantics. It uses the §12 spinner only for fresh `ACTIVE`; the named bay
-  owns meaning and accessibility.
+- **status bay**: 4dp cut corners, fill = status color at 18% over surface,
+  1dp hairline, literal sampled status label and terminal-inference qualifier,
+  JetBrains Mono caps ≥ 11sp. no transition age or unread signal. a plain pane
+  reads `TERMINAL`; stale accessibility names the last observation.
+- **status facet**: 12dp `Chip` shape, solid status color, no border, text or
+  semantics. the §12 spinner requires fresh working status; the named bay owns
+  meaning and accessibility.
 - **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
   ends, transparent track, horizontally inset 12dp at the collection's top
   edge. Determinate while pulling and indeterminate while checking; absent at
@@ -555,40 +555,20 @@ GPL knot code; fonts outside §9's table without a license entry here.
 | jdenticon (channel-slicing model) | MIT (LICENSE verified) | Model only; own implementation |
 | Berkeley Mono, Norse (Carrouché), Cirth fonts, Book of Kells facsimile imagery, WETA/film artwork | Restricted or unusable | Never embed |
 
-## 17. Adoption deltas (not scheduled here)
+## 17. component contracts
 
-Each is a separate slice with its own red proofs; roadmap owns ordering.
-The grain: **(1) terminal theme** ([terminal-theme.md](terminal-theme.md) —
-`terminal.js` table §10 + vendored mono + CSP admit); **(2) chrome tokens**
-([chrome-tokens.md](chrome-tokens.md) — shape grammar, historical status-token
-delivery, state layers, angular indication, fonts); **(3) seals**
-([dwarf-seals.md](dwarf-seals.md) — §11 generator + distinguishability red
-test); **(4) ornament** ([ornament-pipeline.md](ornament-pipeline.md) —
-build-time fret pipeline, Forge/empty-state art, app icon);
-**(5) the Forge seal** ([forge-seal.md](forge-seal.md) — §8's unstruck seal and
-the bottom-anchored create control, on the octagon geometry it extracts);
-**(6) destructive and notice chrome**
-([destructive-chrome.md](destructive-chrome.md) — the §5 severity tones, the
-`Cleft` kill geometry, one shared notice panel, and `AngularIndication`
-generalized to the component's own shape as §12 already required);
-**(7) the launcher mark** ([launcher-mark.md](launcher-mark.md) — Skíðblaðnir
-under sail, replacing D4's prow icon, with the whole adaptive-icon set
-generated and drift-gated); **(8) the Hlíðskjálf mark**
-([hlidskjalf-mark.md](hlidskjalf-mark.md) — §8's stroke rule and legibility
-invariants, the mark on every Dwarves surface); **(9) detach chrome**
-([detach-chrome.md](detach-chrome.md) — the stock long terminal action hard-cut
-to one symmetric, literal `Detach` control using the existing D2/D6 grammar).
-The numbers are delta numbers, not positions; D1–D9 each have one owner, and
-the roadmap's D-numbers and these agree.
-The non-numbered dashboard refresh-boundary correction is owned by
-[`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md); it does not
-create D10 or reopen another component.
-Until a delta lands, this document binds nothing; after it lands, this
-document is the review reference for that surface.
+the implemented component contracts are [terminal theme](terminal-theme.md),
+[chrome tokens](chrome-tokens.md), [dwarf seals](dwarf-seals.md),
+[ornament](ornament-pipeline.md), [forge seal](forge-seal.md),
+[destructive and notice chrome](destructive-chrome.md),
+[launcher mark](launcher-mark.md), [hlíðskjálf mark](hlidskjalf-mark.md),
+[detach chrome](detach-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
+this document owns their common visual values. historical delivery recipes in
+those plans do not override current testing policy or claim human acceptance.
 
 ## 18. Open questions
 
-- Seal distinguishability at 48dp across the full catalogue (§11) — red test.
+- hands-on seal distinguishability at 48dp across the full catalogue (§11).
 - On-panel comfort of `brightBlack #5c6370` for agent dim-text on the S22+
   at night brightness; WCAG bias near black is documented.
 - Whether Junicode's subset ships in v0 at all, or waits for the About/

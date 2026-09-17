@@ -9,16 +9,16 @@ evidence remains historical. no compatibility path survives the cutover.
 
 2026-09-15 accepted target amendment: [spaces](spaces.md) adds optional session
 labels, one exact membership route, grouped human collections, machine/space
-filters, and space-aware creation/return. source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
-records verification and open acceptance. the shipped a1–a9 evidence below does
+filters, and space-aware creation/return. source is implemented; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains open. the shipped a1–a9 evidence below does
 not prove that amendment.
 its detailed contracts supersede only the affected collection/create surfaces.
 
 2026-09-15 accepted pr 2 amendment: [shells.md](shells.md) adds standalone
 terminal creation and source-session create/attach. it owns the hard-cut launch
 schema, session-level source operation, and completion guards. source is
-implemented; [the roadmap](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
-records linux proof and open darwin/phone acceptance. provider controls and
+implemented; [the roadmap](roadmap.md) indexes delivery and
+[spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md) remains open. provider controls and
 attachment transport retain their contracts.
 
 ## outcome and limits

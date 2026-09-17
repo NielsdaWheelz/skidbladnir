@@ -1,12 +1,5 @@
 # Public Fleet Distribution And Connect
 
-v0.5.0 deployment, devbox reboot persistence, and the human-operated s22+ product
-journey are recorded in the [current delivery evidence](roadmap.md#v050-deployment-and-runtime-acceptance).
-that record separately reports release-bound failures, corrected real phone
-proofs, and the unreleased card fix. exact public apk recovery and pairing
-preservation pass; no new version or pin was published. historical passes below
-do not establish current feature acceptance.
-
 historical v0.2.29 acceptance follows; current release and rollout status live
 in [the roadmap](roadmap.md). this remains the accepted contract with the
 Skíðblaðnir side of the host-installer/operator hard cut implemented. The complete upstream pin names
@@ -250,10 +243,13 @@ missing/broken/noncanonical configured tmux prevents startup. `testedVersion`
 records the last acceptance target; a different canonical installed version
 does not block apply, gateway startup, the agent-hook adapter, or fleet
 verification. Profiles reuse `agentruntime.Profile` validation. Every
-host config declares exactly `personal`, `work`, `work2`, and `claude-work` under
+host config declares either no launch profiles or exactly the ordered
+`personal`, `work`, `work2`, and `claude-work` table under
 the accepted [agent-control target](agent-control.md). provider commands and
 explicit account wrappers come from the host config. claude arguments load its
-identity plugin; no unattended permission bypass enters a gateway launch. Platform adapters
+identity plugin; deployment-owned permission bypass flags follow
+[architecture §2](architecture.md#2-fixed-contract). callers supply no commands
+or permission arguments. platform adapters
 retain only native observation/process/pressure behavior; they no longer choose
 paths, runtime versions, commands, or profiles.
 
@@ -547,8 +543,8 @@ Skíðblaðnir additions/changes are limited to:
   `devbox`, one Ansible role/playbook inclusion, and their tests;
 - a pinned release tag, source SHA, and exact two-host-bundle digests, never
   copied source or committed credentials; and
-- explicit safe AI wrappers and host-config rows with no hidden-path routing,
-  personal alias, or unattended permission argument.
+- explicit provider wrappers and host-config rows with no hidden-path routing
+  or personal alias; launch flags follow [architecture §2](architecture.md#2-fixed-contract).
 
 `dev-server` contains no fleet operator command, origins manifest, fleet
 invitation aggregation, acceptance, reboot, outage, or compatibility fallback.

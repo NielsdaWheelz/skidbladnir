@@ -1,7 +1,7 @@
 # organized desktop browser — pr 3
 
-2026-09-17: source implemented; [verification](roadmap.md#desktop-browser--source-implemented-runtime-acceptance-open)
-tracks the remaining native acceptance. [architecture](architecture.md)
+implemented; [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md)
+remains skipped. [the roadmap](roadmap.md) indexes delivery. [architecture](architecture.md)
 owns scope; [roadmap](roadmap.md) owns delivery/evidence. this spec replaces the
 desktop table/picker layout and affected navigation rules in [spaces](spaces.md)
 and [agent-control ux](agent-control-ux.md). phone behavior is unchanged.

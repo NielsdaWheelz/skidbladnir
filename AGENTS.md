@@ -1,22 +1,21 @@
 # Implementation guidance
 
 Before changing this repository, read [the architecture](docs/architecture.md),
-[the v0 roadmap](docs/roadmap.md), and
-[the codebase rules](docs/rules/index.md). The architecture was scope-reset on
-2026-08-25: tmux is the database, the agent is an opaque terminal program, and
-the phone is a tmux client. Do not reintroduce retired machinery (general hook
-runtimes, provenance, SQLite lifecycle facts, contract codegen, proof ledgers).
-The sole hook exception is the content-free, process-lifetime-bound
-SessionStart runtime-identity projection in architecture §4. Hooks never
-publish activity, track threads, or parse prompt payloads. Terminal activity is
-derived only from tmux's built-in current-window activity timestamp. A Codex
-completion notifier may emit BEL as terminal-local presentation, but it stores
-no state and has no privileged product meaning. The architecture's §8 upgrade
-ladder governs everything else.
+[the roadmap](docs/roadmap.md), and
+[the codebase rules](docs/rules/index.md). tmux owns terminal sessions and pane
+processes; providers own execution and history.
+the phone and desktop are tmux clients. read [agent control](docs/agent-control.md)
+for the accepted sampled status, bounded reads and explicit controls: codex is
+terminal-only; claude may use native status/history/stop. do not reintroduce
+retired machinery: generalized hook runtimes, provenance, sqlite lifecycle facts,
+contract codegen or proof ledgers.
 
-for the accepted agent-control upgrade, read [its spec](docs/agent-control.md)
-and apply only its explicit v1 deltas to the v0 target. unrelated v0 requirements
-remain. a new capability requires an explicit scope and acceptance-criterion change.
+the sole hook exception is the content-free, process-lifetime-bound SessionStart
+identity registration in architecture §4. hooks never publish status/activity,
+track history or parse prompt payloads. a codex completion notifier may emit BEL
+as terminal-local presentation; it stores no state and has no privileged product
+meaning. architecture §8 governs further upgrades: a new capability requires an
+explicit scope and acceptance-criterion change.
 
 2026-09-17 test retirement: behavioral suites and their harnesses are removed.
 `scripts/check verify` retains engineering checks only. cleanup uses temporary

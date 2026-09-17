@@ -1,15 +1,9 @@
 # spaces
 
-2026-09-15: accepted implementation target for pr 1 of
-[spaces-and-shells.md](spaces-and-shells.md). the product decisions and the
-restoration/creation edge cases are approved. source implementation and owner
-behavioral reds are complete on `spaces-pr1`. current verification and the
-remaining runtime boundaries are recorded in [roadmap.md](roadmap.md#spaces--source-implemented-runtime-acceptance-open).
-v0.6.0 ships spaces and the narrow-card repair to the three hosts and s22+.
-[current delivery evidence](roadmap.md#v060-publication-and-deployment) is
-separate from [historical v0.5.0 results](roadmap.md#v050-deployment-and-runtime-acceptance),
-including its failed platform gate. spaces-specific hands-on acceptance remains
-`NOT_RUN`.
+implemented: session labels, grouping/filtering, restoration and space-aware
+creation under [the composition plan](spaces-and-shells.md).
+[the roadmap](roadmap.md) indexes delivery; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains `NOT_RUN`. automated phone results do not establish that human review.
 
 [architecture.md](architecture.md) incorporates this scope and acceptance;
 [roadmap.md](roadmap.md) owns delivery. this document owns the detailed spaces
