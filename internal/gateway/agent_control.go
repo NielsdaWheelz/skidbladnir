@@ -18,7 +18,6 @@ import (
 
 var (
 	errorAgentTargetStale  = apiError{Code: "AgentTargetStale", Message: "The agent changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorAgentTargetStale, Dispatch: "not_sent"}
-	errorAgentUnavailable  = apiError{Code: "AgentUnavailable", Message: "That agent method is unavailable.", Status: http.StatusServiceUnavailable, logCode: logging.ErrorAgentUnavailable, Dispatch: "not_sent"}
 	errorAgentBlocked      = apiError{Code: "AgentBlocked", Message: "Inspect the terminal and send a deliberate reply.", Status: http.StatusConflict, logCode: logging.ErrorAgentBlocked, Dispatch: "not_sent"}
 	errorAgentInputInvalid = apiError{Code: "AgentInputInvalid", Message: "The agent input is not valid.", Status: http.StatusBadRequest, logCode: logging.ErrorAgentInputInvalid, Dispatch: "not_sent"}
 )
@@ -96,10 +95,6 @@ func (gateway *Gateway) agentOperation(writer http.ResponseWriter, request *http
 	}
 	if !input.valid(operation) {
 		writeError(writer, errorAgentInputInvalid)
-		return
-	}
-	if gateway.agents == nil {
-		writeError(writer, errorAgentUnavailable)
 		return
 	}
 	target := sessions.AgentTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value, PID: processinfo.PID(*input.PID), StartIdentity: processinfo.StartIdentity(input.StartIdentity.value)}

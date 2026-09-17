@@ -529,7 +529,6 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
     ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentBlocked -> 409
-    ApiErrorCode.AgentUnavailable -> 503
     ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
     ApiErrorCode.InternalError -> 500
@@ -544,7 +543,7 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
     if ("dispatch" !in value) return@decodeProtocol decodeKillHttpFailure(status, encoded)
     val error = productJson.decodeFromJsonElement<AgentErrorResponse>(value)
     val code = parseApiErrorCode(error.code)
-    require(code in setOf(ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid))
+    require(code in setOf(ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid))
     require(error.dispatch == "not_sent" && status == apiErrorHttpStatus(code) && error.message == apiErrorMessage(code))
     GatewayFailure.Api(code)
 }
