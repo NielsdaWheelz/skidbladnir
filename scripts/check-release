@@ -102,12 +102,16 @@ find_apkanalyzer() {
 }
 
 verify_archive_metadata() {
-  local archive="$1"
-  if gzip -cd "$archive" | LC_ALL=C \
-    grep -aE '[0-9]+ (LIBARCHIVE|SCHILY)[.]xattr[.][^=[:space:]]+=' >/dev/null; then
-    printf '%s contains forbidden extended-attribute metadata\n' "$(basename "$archive")" >&2
-    return 1
-  fi
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+import tarfile
+
+with tarfile.open(sys.argv[1], "r:gz") as archive:
+    for member in archive:
+        if any(key.startswith(("LIBARCHIVE.xattr.", "SCHILY.xattr.")) for key in member.pax_headers):
+            sys.exit(f"{pathlib.Path(sys.argv[1]).name} contains forbidden extended-attribute metadata")
+PY
 }
 
 verify_archive() (
