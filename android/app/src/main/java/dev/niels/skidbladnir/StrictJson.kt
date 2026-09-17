@@ -4,6 +4,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 private const val MAXIMUM_PROTOCOL_JSON_DEPTH = 12
 
@@ -23,6 +24,18 @@ internal fun JsonObject.requiredObject(key: String): JsonObject =
 
 internal fun JsonObject.requireAbsentOrNonNull(optionalKeys: Set<String>) {
     if (optionalKeys.any { this[it] is JsonNull }) throw SerializationException("same-system optional field was null")
+}
+
+// Explicit type checks keep the object/string requirement at this boundary and
+// report one owned SerializationException for every wrong JSON kind.
+internal fun JsonObject.requiredString(key: String): String {
+    val member = this[key]
+    if (member !is JsonPrimitive || !member.isString) throw SerializationException("missing or non-string $key")
+    return member.content
+}
+
+internal fun JsonObject.requireExactKeys(expected: Set<String>) {
+    if (keys != expected) throw SerializationException("unexpected protocol fields")
 }
 
 private class UniqueJsonObjectKeyScanner(private val encoded: String) {

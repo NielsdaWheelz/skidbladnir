@@ -20,7 +20,6 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 
@@ -867,72 +866,6 @@ internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean): Session
     return SessionStatusContent(label, spoken)
 }
 
-internal sealed interface TerminalServerEvent {
-    data class Hello(val attachedClients: Int) : TerminalServerEvent
-    data class Presence(val attachedClients: Int) : TerminalServerEvent
-    data class Error(val code: ApiErrorCode) : TerminalServerEvent
-}
-@Serializable private data class TerminalErrorPayload(val code: String, val message: String)
-@Serializable private data class TerminalErrorEnvelope(val kind: String, val error: TerminalErrorPayload)
-@Serializable private data class TerminalResize(val kind: String, val columns: Int, val rows: Int)
-@Serializable private data class TerminalDetach(val kind: String)
-
-internal fun decodeTerminalServerEvent(encoded: String): TerminalServerEvent = decodeProtocol {
-    val objectValue = strictJsonObject(encoded)
-    when (val kind = objectValue.requiredString("kind")) {
-        "Hello", "Presence" -> {
-            objectValue.requireExactKeys(setOf("kind", "attachedClients"))
-            val attachedClients = objectValue.requiredPositiveInt("attachedClients")
-            if (kind == "Hello") TerminalServerEvent.Hello(attachedClients)
-            else TerminalServerEvent.Presence(attachedClients)
-        }
-        "Error" -> {
-            objectValue.requireExactKeys(setOf("kind", "error"))
-            objectValue.requiredObject("error").requireExactKeys(setOf("code", "message"))
-            val payload = productJson.decodeFromJsonElement<TerminalErrorEnvelope>(objectValue).error
-            val code = parseApiErrorCode(payload.code)
-            if (code !in setOf(ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge, ApiErrorCode.ReconnectRequired, ApiErrorCode.TerminalConfigurationUnsupported, ApiErrorCode.InternalError)) {
-                throw SerializationException("error code is outside the terminal protocol")
-            }
-            if (payload.message != apiErrorMessage(code)) throw SerializationException("incorrect API error message")
-            TerminalServerEvent.Error(code)
-        }
-        else -> throw SerializationException("unknown terminal event kind")
-    }
-}
-
-// One geometry bound: the page publishes only fitted whole-cell grids inside it
-// (and ViewportTooSmall below it), and the resize transport carries nothing else.
-internal val TERMINAL_COLUMNS_RANGE = 20..1024
-internal val TERMINAL_ROWS_RANGE = 5..512
-
-internal fun encodeTerminalResize(columns: Int, rows: Int): String {
-    if (columns !in TERMINAL_COLUMNS_RANGE || rows !in TERMINAL_ROWS_RANGE) {
-        throw IllegalArgumentException("terminal geometry out of bounds")
-    }
-    return productJson.encodeToString(TerminalResize("Resize", columns, rows))
-}
-internal fun encodeTerminalDetach(): String = productJson.encodeToString(TerminalDetach("Detach"))
-
-// Explicit type checks keep the object/string requirement at this boundary and
-// report one owned SerializationException for every wrong JSON kind.
-private fun JsonObject.requiredString(key: String): String {
-    val member = this[key]
-    if (member !is JsonPrimitive || !member.isString) throw SerializationException("missing or non-string $key")
-    return member.content
-}
-
-// kotlinx's tree decoder coerces quoted digits into numbers; presence counts stay JSON numbers.
-private fun JsonObject.requiredPositiveInt(key: String): Int {
-    val member = this[key]
-    if (member !is JsonPrimitive || member.isString) throw SerializationException("missing or non-number $key")
-    return member.content.toIntOrNull()?.takeIf { it >= 1 }
-        ?: throw SerializationException("$key is not a positive integer")
-}
-
-private fun JsonObject.requireExactKeys(expected: Set<String>) {
-    if (keys != expected) throw SerializationException("unexpected protocol fields")
-}
 private fun JsonObject.requireSessionOptionalFields() {
     if ("space" in this) requiredString("space")
     requireAbsentOrNonNull(setOf("launchProfile", "objective", "space", "cwd", "activeCommand", "agent"))
