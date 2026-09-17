@@ -558,21 +558,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 			session.Objective = string(objective)
 		}
 	}
-	registration := ""
-	if observedRegistration, optionErr := manager.paneOption(ctx, inspected.paneID, agentruntime.PaneOption); optionErr == nil {
-		registration = observedRegistration
-	}
-	// justify-ignore-error: an exited or unstable foreground process omits optional agent identity.
-	foreground, observeErr := processinfo.ObserveForeground(inspected.panePID)
-	if observeErr != nil {
-		foreground = processinfo.Observation{}
-	} else {
-		session.foreground = &foreground
-	}
-	session.Agent = deriveAgent(manager.profiles, foreground, registration)
-	if session.Agent != nil {
-		session.Agent.PaneID = inspected.paneID
-	}
+	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
 	return session
 }
 
