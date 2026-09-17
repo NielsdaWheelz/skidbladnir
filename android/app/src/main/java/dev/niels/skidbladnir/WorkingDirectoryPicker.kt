@@ -653,18 +653,3 @@ private fun WorkingDirectoryPickerState.actionableDirectoryView(): DirectoryView
         }
     }
 }
-
-internal fun retainedWorkingDirectoryView(picker: WorkingDirectoryPickerState): DirectoryView? {
-    val load = (picker.page as? WorkingDirectoryPage.Browsing)?.load ?: return null
-    return when (load) {
-        is DirectoryLoad.Loaded -> load.view
-        is DirectoryLoad.Loading -> when (val retained = load.retained) {
-            RetainedDirectoryView.None -> null
-            is RetainedDirectoryView.Present -> retained.view
-        }
-        is DirectoryLoad.Failed -> when (val retained = load.retained) {
-            RetainedDirectoryView.None -> null
-            is RetainedDirectoryView.Present -> retained.view
-        }
-    }
-}
