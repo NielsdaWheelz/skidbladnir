@@ -110,13 +110,11 @@ private object MachineStorage {
     }
 }
 
-internal data class UnreadableStoredMachine(
-    val collectionWide: Boolean = false,
-)
+internal enum class FleetQuarantine { Index, Pairings }
 
 internal data class MachineStoreRead(
     val credentials: List<MachineCredential>,
-    val unreadable: List<UnreadableStoredMachine>,
+    val quarantine: FleetQuarantine?,
 )
 
 internal fun parseStoredMachineOrigin(encoded: String): MachineOrigin? =
@@ -155,7 +153,7 @@ internal class MachineStore(context: Context) {
         synchronized(persistenceLock) {
             if (preferences.all.isNotEmpty()) return@synchronized FleetInstallation.StoreNotEmpty
             if (!isExactFleet(credentials)) return@synchronized FleetInstallation.InvalidFleet
-            if (!commitFleet(credentials, MachineStoreRead(emptyList(), emptyList()))) {
+            if (!commitFleet(credentials, MachineStoreRead(emptyList(), null))) {
                 return@synchronized FleetInstallation.StorageUnavailable
             }
             FleetInstallation.Installed
@@ -165,7 +163,7 @@ internal class MachineStore(context: Context) {
     fun reconnectFixedFleet(credentials: List<MachineCredential>): FleetReconnection = synchronized(persistenceLock) {
         val stored = readLocked()
         if (
-            stored.unreadable.isNotEmpty() ||
+            stored.quarantine != null ||
             stored.credentials.size != FLEET_LABELS.size ||
             !isExactFleet(credentials) ||
             stored.credentials.map { it.machine } != credentials.map { it.machine }
@@ -175,22 +173,22 @@ internal class MachineStore(context: Context) {
     }
 
     private fun readLocked(): MachineStoreRead {
-        if (preferences.all.isEmpty()) return MachineStoreRead(emptyList(), emptyList())
+        if (preferences.all.isEmpty()) return MachineStoreRead(emptyList(), null)
         val storedHandles = try {
             handles()
         } catch (_: IOException) {
             // justify-ignore-error: an unreadable persisted index is the modeled collection-wide
             // quarantine, not a defect or an invitation to trust partial fields.
-            return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
+            return MachineStoreRead(emptyList(), FleetQuarantine.Index)
         }
         if (storedHandles.size != FLEET_LABELS.size) {
-            return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
+            return MachineStoreRead(emptyList(), FleetQuarantine.Index)
         }
         val expectedFields = setOf(MACHINE_HANDLES_FIELD) + storedHandles.flatMap { handle ->
             listOf("label", "origin", "ciphertext", "nonce").map { name -> MachineStorage.field(handle, name) }
         }
         if (preferences.all.keys != expectedFields) {
-            return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
+            return MachineStoreRead(emptyList(), FleetQuarantine.Index)
         }
         val readable = mutableListOf<MachineCredential>()
         var quarantined = 0
@@ -198,13 +196,13 @@ internal class MachineStore(context: Context) {
             val credential = try {
                 readCredential(readMachine(encodedHandle))
             } catch (_: IOException) {
-                // justify-ignore-error: a stored entry that does not parse is an opaque quarantine
-                // slot; its untrusted plaintext must never reach the product or a request.
+                // justify-ignore-error: an invalid stored entry quarantines the whole fleet;
+                // untrusted plaintext must never reach the product or a request.
                 quarantined += 1
                 return@forEach
             } catch (_: GeneralSecurityException) {
-                // justify-ignore-error: a bearer that fails its handle/origin-bound AAD is exactly
-                // the same opaque quarantine slot.
+                // justify-ignore-error: a bearer that fails its handle/origin-bound AAD also
+                // quarantines the whole fleet.
                 quarantined += 1
                 return@forEach
             }
@@ -217,11 +215,11 @@ internal class MachineStore(context: Context) {
             unique.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }.map { it.machine.label.text } !=
             FLEET_LABELS
         ) {
-            return MachineStoreRead(emptyList(), List(storedHandles.size) { UnreadableStoredMachine() })
+            return MachineStoreRead(emptyList(), FleetQuarantine.Pairings)
         }
         return MachineStoreRead(
             unique.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) },
-            emptyList(),
+            null,
         )
     }
 
@@ -289,17 +287,17 @@ internal class MachineStore(context: Context) {
         val committed = replacePreferencesWithVerifiedRollback(
             preferences = preferences,
             target = target,
-            verifyTarget = { readLocked() == MachineStoreRead(credentials, emptyList()) },
+            verifyTarget = { readLocked() == MachineStoreRead(credentials, null) },
             onUnconfirmedRollback = MachineStorage::destroyBearerKeyForQuarantine,
         )
         if (committed) return true
 
         val recovered = readLocked()
-        val safe = if (priorRead.credentials.isEmpty() && priorRead.unreadable.isEmpty()) {
+        val safe = if (priorRead.credentials.isEmpty() && priorRead.quarantine == null) {
             recovered.credentials.isEmpty()
         } else {
             recovered == priorRead ||
-                (recovered.credentials.isEmpty() && recovered.unreadable.isNotEmpty())
+                (recovered.credentials.isEmpty() && recovered.quarantine != null)
         }
         if (!safe) forceFleetQuarantine(preferences)
         val proven = readLocked()
@@ -307,10 +305,10 @@ internal class MachineStore(context: Context) {
         // documented process-visible editor mutation; reaching this branch means the platform
         // neither restored the exact prior fleet nor exposed the quarantine we just wrote.
         check(
-            if (priorRead.credentials.isEmpty() && priorRead.unreadable.isEmpty()) {
+            if (priorRead.credentials.isEmpty() && priorRead.quarantine == null) {
                 proven.credentials.isEmpty()
             } else {
-                proven == priorRead || (proven.credentials.isEmpty() && proven.unreadable.isNotEmpty())
+                proven == priorRead || (proven.credentials.isEmpty() && proven.quarantine != null)
             },
         ) { "failed fleet transaction did not fail closed" }
         return false

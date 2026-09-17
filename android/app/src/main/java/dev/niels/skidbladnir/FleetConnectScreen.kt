@@ -36,42 +36,50 @@ internal data class FleetConnectContent(
     val tailscaleActionVisible: Boolean,
 )
 
-internal fun fleetConnectContent(mode: FleetConnectMode, phase: FleetConnectPhase): FleetConnectContent =
+internal fun fleetConnectContent(state: SkidbladnirUiState.FleetConnect): FleetConnectContent =
     FleetConnectContent(
-        title = if (phase == FleetConnectPhase.ResetRequired) {
+        title = if (state.phase == FleetConnectPhase.ResetRequired) {
             "Fleet reset required"
-        } else when (mode) {
+        } else when (state.mode) {
             FleetConnectMode.Install -> "Connect your fleet"
             FleetConnectMode.Reconnect -> "Reconnect fleet"
         },
-        body = if (phase == FleetConnectPhase.ResetRequired) {
-            "Saved fleet credentials cannot be repaired in this app. Reset the app’s data, then connect again."
-        } else when (mode) {
-            FleetConnectMode.Install ->
-                "Sign in to Tailscale, then scan a fresh fleet invite from your MacBook."
-            FleetConnectMode.Reconnect ->
-                "Scan a fresh fleet invite from your MacBook to reconnect the exact installed machines."
+        body = when (state.resetReason) {
+            FleetResetReason.StoredIndexUnreadable ->
+                "The saved machine list is unreadable. Reset the app’s data, then connect again."
+            FleetResetReason.StoredPairingsUnreadable ->
+                "Saved pairing details are unreadable. Reset the app’s data, then connect again."
+            FleetResetReason.InviteIdentityMismatch ->
+                "This invite names different machines. Go back to keep the installed fleet, or reset the app’s data to replace it."
+            FleetResetReason.StoredFleetUnusable ->
+                "Saved fleet credentials cannot be repaired in this app. Reset the app’s data, then connect again."
+            null -> when (state.mode) {
+                FleetConnectMode.Install ->
+                    "Sign in to Tailscale, then scan a fresh fleet invite from your MacBook."
+                FleetConnectMode.Reconnect ->
+                    "Scan a fresh fleet invite from your MacBook to reconnect the exact installed machines."
+            }
         },
-        primaryAction = if (phase == FleetConnectPhase.ResetRequired) null else when (mode) {
+        primaryAction = if (state.phase == FleetConnectPhase.ResetRequired) null else when (state.mode) {
             FleetConnectMode.Install -> "Connect"
             FleetConnectMode.Reconnect -> "Reconnect fleet"
         },
-        externalBoundary = if (phase == FleetConnectPhase.ResetRequired) null else
+        externalBoundary = if (state.phase == FleetConnectPhase.ResetRequired) null else
             "Skíðblaðnir opens Tailscale but cannot sign in or control the VPN for you.",
-        progress = when (phase) {
+        progress = when (state.phase) {
             FleetConnectPhase.Scanning -> "Scanning a fresh fleet invite…"
             FleetConnectPhase.Connecting -> "Connecting to 3 machines…"
             FleetConnectPhase.Ready, FleetConnectPhase.Failed, FleetConnectPhase.ResetRequired -> null
         },
-        failure = when (phase) {
+        failure = when (state.phase) {
             FleetConnectPhase.Failed ->
                 "Couldn’t connect the whole fleet. Nothing was saved. Create and scan a new fleet invite."
             FleetConnectPhase.Ready, FleetConnectPhase.Scanning, FleetConnectPhase.Connecting,
             FleetConnectPhase.ResetRequired,
             -> null
         },
-        primaryEnabled = phase == FleetConnectPhase.Ready || phase == FleetConnectPhase.Failed,
-        tailscaleActionVisible = phase != FleetConnectPhase.ResetRequired,
+        primaryEnabled = state.phase == FleetConnectPhase.Ready || state.phase == FleetConnectPhase.Failed,
+        tailscaleActionVisible = state.phase != FleetConnectPhase.ResetRequired,
     )
 
 @Composable
@@ -81,7 +89,7 @@ internal fun FleetConnectScreen(
     onConnect: () -> Unit,
     onTailscale: () -> Unit,
 ) {
-    val content = fleetConnectContent(state.mode, state.phase)
+    val content = fleetConnectContent(state)
     val pending = state.phase == FleetConnectPhase.Scanning || state.phase == FleetConnectPhase.Connecting
     Column(
         modifier = Modifier

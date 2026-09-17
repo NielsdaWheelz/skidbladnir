@@ -171,7 +171,6 @@ internal fun DashboardMain(
                     )
                 }
             }
-            state.unreadableMachines.forEach { UnreadableMachineStrip(it) }
 
             state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
 
@@ -393,21 +392,14 @@ private fun DashboardDwarfGrid(
                     span = { GridItemSpan(maxLineSpan) },
                 ) {
                     Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
-                        when {
-                            state.machines.isEmpty() && state.unreadableMachines.isNotEmpty() -> EmptyState(
-                                "Fleet reset required",
-                                "Saved fleet credentials are unreadable. Reset the app data, then connect again.",
-                                tone = NoticeTone.Failure,
-                            )
-                            else -> dashboardInventoryWaitCopy(machines)?.let {
-                                EmptyState("no matching sessions in available inventory", it.message, tone = it.tone)
-                            } ?: EmptyState(
-                                "no sessions in this view",
-                                "Create a dwarf here, or launch tmux on the visible " +
-                                    if (machines.size == 1) "machine." else "machines.",
-                                ornament = true,
-                            )
-                        }
+                        dashboardInventoryWaitCopy(machines)?.let {
+                            EmptyState("no matching sessions in available inventory", it.message, tone = it.tone)
+                        } ?: EmptyState(
+                            "no sessions in this view",
+                            "Create a dwarf here, or launch tmux on the visible " +
+                                if (machines.size == 1) "machine." else "machines.",
+                            ornament = true,
+                        )
                     }
                 }
             } else {
@@ -485,21 +477,6 @@ internal fun DashboardTopBar(
             Text("Reconnect fleet", maxLines = 1)
         }
     }
-}
-
-@Composable
-internal fun UnreadableMachineStrip(
-    machine: UnreadableStoredMachine,
-) {
-    NoticePanel(
-        tone = NoticeTone.Failure,
-        title = if (machine.collectionWide) "Unreadable pairing index" else "Unreadable pairing",
-        body = if (machine.collectionWide) {
-            "Saved machines cannot be identified safely. Reset the app data, then connect again."
-        } else {
-            "Its saved identity and destination are untrusted. Reset the app data, then connect again."
-        },
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

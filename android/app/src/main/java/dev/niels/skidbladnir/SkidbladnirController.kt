@@ -16,7 +16,9 @@ import java.util.concurrent.TimeUnit
 
 private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
-internal enum class FleetResetReason { InviteIdentityMismatch, StoredFleetUnusable }
+internal enum class FleetResetReason {
+    InviteIdentityMismatch, StoredIndexUnreadable, StoredPairingsUnreadable, StoredFleetUnusable,
+}
 
 internal sealed interface SkidbladnirUiState {
     data object Booting : SkidbladnirUiState
@@ -40,7 +42,6 @@ internal sealed interface SkidbladnirUiState {
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
         val kill: KillState?,
-        val unreadableMachines: List<UnreadableStoredMachine> = emptyList(),
         val spaceEditor: SpaceEditor? = null,
     ) : Workspace
 
@@ -485,7 +486,6 @@ internal class SkidbladnirController(
     private val textSizeStore = TerminalTextSizeStore(context)
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
-    private val unreadableMachines = mutableListOf<UnreadableStoredMachine>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
     private val inventoryOperations = ConcurrentHashMap<MachineHandle, InventoryOperationLane>()
     private val pendingMetadataFences = mutableMapOf<MachineHandle, Long>()
@@ -548,25 +548,23 @@ internal class SkidbladnirController(
                     credentials[entry.credential.machine.handle] = entry.credential
                     machineStates[entry.machine.machine.handle] = entry.machine
                 }
-                unreadableMachines.clear()
-                unreadableMachines += stored.unreadable
                 dashboardEntry.acceptFleet(machineStates.keys.toSet())
                 val interruptedDisposition = interruptedPersistence?.let {
                     resumedFleetPersistenceDisposition(it.mode, it.credentials, stored)
                 }
                 if (pendingFleetPersistence == interruptedPersistence) pendingFleetPersistence = null
-                val storageNotice = stored.unreadable.takeIf { it.isNotEmpty() }?.let {
-                    "Saved fleet credentials are unreadable. Fleet reset is required outside this app."
-                }
-                if (machineStates.isEmpty() && unreadableMachines.isNotEmpty()) {
+                if (stored.quarantine != null) {
                     state = SkidbladnirUiState.FleetConnect(
                         mode = interruptedPersistence?.mode ?: connectState?.mode ?: FleetConnectMode.Install,
                         phase = FleetConnectPhase.ResetRequired,
-                        resetReason = FleetResetReason.StoredFleetUnusable,
+                        resetReason = when (stored.quarantine) {
+                            FleetQuarantine.Index -> FleetResetReason.StoredIndexUnreadable
+                            FleetQuarantine.Pairings -> FleetResetReason.StoredPairingsUnreadable
+                        },
                     )
                     return@post
                 }
-                if (machineStates.isEmpty() && unreadableMachines.isEmpty()) {
+                if (machineStates.isEmpty()) {
                     state = SkidbladnirUiState.FleetConnect(
                         mode = FleetConnectMode.Install,
                         phase = if (
@@ -584,7 +582,7 @@ internal class SkidbladnirController(
                     startPolling(it.credential.machine.handle, activeGeneration)
                 }
                 if (interruptedDisposition == FleetPersistenceDisposition.Connected) {
-                    publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
+                    publishDashboard(carry = reconciliation.forgeCarry)
                     return@post
                 }
                 if (interruptedDisposition == FleetPersistenceDisposition.ResetRequired) {
@@ -605,7 +603,7 @@ internal class SkidbladnirController(
                     )
                     return@post
                 }
-                publishDashboard(notice = storageNotice, carry = reconciliation.forgeCarry)
+                publishDashboard(carry = reconciliation.forgeCarry)
             }
         }
     }
@@ -650,10 +648,6 @@ internal class SkidbladnirController(
 
     fun requestFleetReconnect() {
         if (state !is SkidbladnirUiState.Dashboard) return
-        if (unreadableMachines.isNotEmpty() || credentials.size != 3 || machineStates.size != 3) {
-            publishDashboard(notice = "The installed fleet is incomplete. Fleet reset is required outside this app.")
-            return
-        }
         state = SkidbladnirUiState.FleetConnect(FleetConnectMode.Reconnect, FleetConnectPhase.Scanning)
     }
 
@@ -743,7 +737,7 @@ internal class SkidbladnirController(
             val durable = if (result == FleetInstallation.StorageUnavailable) {
                 store.read()
             } else {
-                MachineStoreRead(emptyList(), emptyList())
+                MachineStoreRead(emptyList(), null)
             }
             fleetInstallationDisposition(result, durable, connected)
         }
@@ -752,7 +746,7 @@ internal class SkidbladnirController(
             val durable = if (result == FleetReconnection.StorageUnavailable) {
                 store.read()
             } else {
-                MachineStoreRead(emptyList(), emptyList())
+                MachineStoreRead(emptyList(), null)
             }
             fleetReconnectionDisposition(result, durable, connected)
         }
@@ -770,7 +764,6 @@ internal class SkidbladnirController(
         polling.keys.toList().forEach(::stopPolling)
         credentials.clear()
         machineStates.clear()
-        unreadableMachines.clear()
         connected.forEach { credential ->
             credentials[credential.machine.handle] = credential
             machineStates[credential.machine.handle] = MachineState(
@@ -2018,7 +2011,6 @@ internal class SkidbladnirController(
             forge = carry.forge,
             forgeRecovery = carry.recovery,
             kill = null,
-            unreadableMachines = unreadableMachines.toList(),
         )
     }
 
