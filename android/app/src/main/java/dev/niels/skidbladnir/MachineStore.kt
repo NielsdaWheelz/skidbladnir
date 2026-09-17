@@ -19,40 +19,24 @@ import javax.crypto.spec.GCMParameterSpec
 private const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
 private const val GCM_TAG_BITS = 128
 private const val BEARER_KEY_BITS = 256
+private const val BEARER_KEY_ALIAS = "skidbladnir.machine-bearers.v1"
 private const val MACHINE_HANDLES_FIELD = "machine.handles"
 private const val BEARER_ASSOCIATED_CONTEXT = "dev.niels.skidbladnir.machine.bearer.v1"
 internal const val FLEET_QUARANTINE_FIELD = "machine.collection.quarantined"
 
 /** The at-rest form of one bearer: base64 AES-GCM ciphertext plus its base64 nonce. */
-internal data class SealedBearer(val ciphertext: String, val nonce: String)
-
-internal fun sealFleetOrNull(
-    credentials: List<MachineCredential>,
-    seal: (PairedMachine, GatewayBearer) -> SealedBearer,
-): List<Pair<MachineCredential, SealedBearer>>? = try {
-    credentials.map { credential -> credential to seal(credential.machine, credential.bearer) }
-} catch (_: GeneralSecurityException) {
-    null
-} catch (_: IOException) {
-    null
-}
+private data class SealedBearer(val ciphertext: String, val nonce: String)
 
 /**
  * Single owner of the paired-fleet at-rest format: which preference file holds the
  * collection, how a machine's fields are keyed inside it, which Android Keystore entry protects the
  * bearers, and the AES-256-GCM sealing whose AAD binds every bearer to its handle and origin.
  *
- * The production read path, atomic Connect/Reconnect writers, and the instrumented persistence
- * gate all speak this one definition.
+ * The read path and atomic Connect/Reconnect writers share this definition.
  */
-internal class MachineStorage(
-    private val preferencesName: String,
-    private val keyAlias: String,
-) {
-    val handlesField: String = MACHINE_HANDLES_FIELD
-
+private object MachineStorage {
     fun preferences(context: Context): SharedPreferences =
-        context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
+        context.getSharedPreferences("skidbladnir.machines", Context.MODE_PRIVATE)
 
     fun field(encodedHandle: String, name: String): String = "machine.$encodedHandle.$name"
 
@@ -83,10 +67,10 @@ internal class MachineStorage(
     fun destroyBearerKeyForQuarantine() {
         try {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
+            if (keyStore.containsAlias(BEARER_KEY_ALIAS)) keyStore.deleteEntry(BEARER_KEY_ALIAS)
             // justify-service-invariant-check: Android Keystore exposes deletion only through this
             // synchronous query/delete/query boundary; the alias is private to this storage owner.
-            check(!keyStore.containsAlias(keyAlias)) { "fleet credential key survived quarantine" }
+            check(!keyStore.containsAlias(BEARER_KEY_ALIAS)) { "fleet credential key survived quarantine" }
         } catch (_: GeneralSecurityException) {
             // justify-defect: returning with this alias present could resurrect a disk-confirmed
             // credential target after restart, so Keystore failure cannot become a UI outcome.
@@ -109,11 +93,11 @@ internal class MachineStorage(
 
     private fun key(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (keyStore.getKey(keyAlias, null) as? SecretKey)?.let { return it }
+        (keyStore.getKey(BEARER_KEY_ALIAS, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
             init(
                 KeyGenParameterSpec.Builder(
-                    keyAlias,
+                    BEARER_KEY_ALIAS,
                     KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
                 )
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -123,10 +107,6 @@ internal class MachineStorage(
             )
             generateKey()
         }
-    }
-
-    companion object {
-        val production = MachineStorage("skidbladnir.machines", "skidbladnir.machine-bearers.v1")
     }
 }
 
@@ -155,8 +135,8 @@ internal sealed interface FleetReconnection {
     data object StorageUnavailable : FleetReconnection
 }
 
-internal class MachineStore(context: Context, private val storage: MachineStorage) {
-    private val preferences = storage.preferences(context)
+internal class MachineStore(context: Context) {
+    private val preferences = MachineStorage.preferences(context)
 
     /**
      * Reads the paired collection. This is the app's ingress for machine
@@ -206,8 +186,8 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         if (storedHandles.size != 3) {
             return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
         }
-        val expectedFields = setOf(storage.handlesField) + storedHandles.flatMap { handle ->
-            listOf("label", "origin", "ciphertext", "nonce").map { name -> storage.field(handle, name) }
+        val expectedFields = setOf(MACHINE_HANDLES_FIELD) + storedHandles.flatMap { handle ->
+            listOf("label", "origin", "ciphertext", "nonce").map { name -> MachineStorage.field(handle, name) }
         }
         if (preferences.all.keys != expectedFields) {
             return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
@@ -272,7 +252,7 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
 
     private fun readCredential(machine: PairedMachine): MachineCredential = MachineCredential(
         machine,
-        storage.open(
+        MachineStorage.open(
             machine,
             SealedBearer(
                 ciphertext = requireField(machine.handle.encoded, "ciphertext"),
@@ -293,16 +273,24 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
     ): Boolean {
         // Every seal happens before preference mutation. Android Keystore can fail through either
         // its security API or KeyStore.load I/O, and both leave the prior collection observable.
-        val sealed = sealFleetOrNull(credentials, storage::seal) ?: return false
+        val sealed = try {
+            credentials.map { credential ->
+                credential to MachineStorage.seal(credential.machine, credential.bearer)
+            }
+        } catch (_: GeneralSecurityException) {
+            return false
+        } catch (_: IOException) {
+            return false
+        }
         val target = linkedMapOf<String, Any>(
-            storage.handlesField to credentials.map { it.machine.handle.encoded }.toSet(),
+            MACHINE_HANDLES_FIELD to credentials.map { it.machine.handle.encoded }.toSet(),
         )
         sealed.forEach { (credential, bearer) -> putEncodedCredential(target, credential, bearer) }
         val committed = replacePreferencesWithVerifiedRollback(
             preferences = preferences,
             target = target,
             verifyTarget = { readLocked() == MachineStoreRead(credentials, emptyList()) },
-            onUnconfirmedRollback = storage::destroyBearerKeyForQuarantine,
+            onUnconfirmedRollback = MachineStorage::destroyBearerKeyForQuarantine,
         )
         if (committed) return true
 
@@ -334,15 +322,15 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
         sealed: SealedBearer,
     ) {
         val handle = credential.machine.handle.encoded
-        encoded[storage.field(handle, "label")] = credential.machine.label.text
-        encoded[storage.field(handle, "origin")] = credential.machine.origin.encoded
-        encoded[storage.field(handle, "ciphertext")] = sealed.ciphertext
-        encoded[storage.field(handle, "nonce")] = sealed.nonce
+        encoded[MachineStorage.field(handle, "label")] = credential.machine.label.text
+        encoded[MachineStorage.field(handle, "origin")] = credential.machine.origin.encoded
+        encoded[MachineStorage.field(handle, "ciphertext")] = sealed.ciphertext
+        encoded[MachineStorage.field(handle, "nonce")] = sealed.nonce
     }
 
     private fun handles(): Set<String> {
         val stored = try {
-            preferences.getStringSet(storage.handlesField, null)
+            preferences.getStringSet(MACHINE_HANDLES_FIELD, null)
         } catch (failure: ClassCastException) {
             // justify-ignore-error: a wrongly typed persisted index is unreadable input and must
             // remain quarantined rather than becoming request authority.
@@ -353,7 +341,7 @@ internal class MachineStore(context: Context, private val storage: MachineStorag
 
     private fun requireField(encodedHandle: String, name: String): String {
         val value = try {
-            preferences.getString(storage.field(encodedHandle, name), null)
+            preferences.getString(MachineStorage.field(encodedHandle, name), null)
         } catch (failure: ClassCastException) {
             // justify-ignore-error: a wrongly typed persisted field quarantines the collection.
             throw IOException("stored machine field is not text", failure)
