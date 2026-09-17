@@ -35,6 +35,87 @@ and coverage remain visible; full metadata stays in details. other accepted cost
 remain those in the spec. pr 3 is independent of pr 4. prior release evidence
 below proves only its original targets.
 
+## v0.5.0 deployment and runtime acceptance
+
+2026-09-15–16: macbook, devbox, arch, and the s22+ run public v0.5.0. the
+release-bound platform result remains **failed**. its real narrow-card defect
+is fixed on unreleased main and verified separately; the user explicitly
+requested no new version, release, or pin. hands-on spaces/shells acceptance
+remains `NOT_RUN` by user direction.
+
+immutable release source is `df7ad499d87f96e9ca79336ef0632a9d23ef072d`;
+the original pin/operator commit is `261796bea039a857eb64fdc5e6814658e03fb3d7`;
+the clean declared dev-server candidate is
+`545af0c98d9fa2e5f25884efded1b6ae0552577a`. both tracked pins agree and remain
+unchanged. all five retained public artifacts match their tracked sha256 values.
+the separate exact-source checkout remains clean. earlier linux/publication
+proofs retain their original attribution.
+
+| boundary | actual result |
+| --- | --- |
+| hosts | **passed**: all three installed binaries report exact v0.5.0/source; public `scripts/fleet verify` passes. prior macbook/devbox public apply/reapply and credential/reference preservation remain accepted. arch was applied by the user; this run did not measure its apply/reapply preservation. |
+| devbox reboot | **passed**: public `verify-reboot devbox --allow-reboot-acceptance` used the original checkpoint and verified changed boot, unchanged release/credentials, automatic gateway startup, and service intent. separate system-service observations show all three codex services enabled/running from boot. the checkpoint was consumed normally; no reboot or replacement checkpoint was created. old session refs may be stale across reboot. |
+| macbook shared services | all three retain their prior accepted pids. no shared codex restart occurred. |
+| physical product | **passed**, human-operated canonical gate exit 0: real pre-update fleet confirmation, signed 0.4.1/4001 → 0.5.0/5000 preservation before reconnect, scanner reconnect, machine pressure/routing, existing-session attach/detach, recreation, and bounded macbook gateway outage/recovery. fleet lifetime digests and final apk digest/signer match. a mistyped pre-install confirmation exited 1; installed 0.4.1 was inspected before the requested retry. |
+| darwin integration | unchanged release test **failed** because it required tmux's kernel command name to be `sh`; macos selects `bash` for `/bin/sh`. corrected canonical isolated integration **passed** (control-plane package 130.054s, tmux 3.7c), asserting exact cwd and the existing configured login argv `[-sh]`. production was unchanged. the original result remains failed. |
+| original release-bound platform | **failed**, 80 started, 73 passed, 7 failed, no skips, exit 1. clean `261796b` policy/pin invoked clean `df7ad49` source. six stale ui assertions failed; the shell fixture reused a bearer across three peers and failed fleet admission before its behavior checks. |
+| corrected tests, unchanged release runtime | **failed**, complete canonical gate: 80 started, 78 passed, 2 failed, no skips, exit 1. test source `d6b342f8e13778b130f884120328cdc6d8027afe`; runtime remained exact `df7ad49`. the complete real spaces/shells phone journey passed. failures were the actual 170dp/2x card target defect and pressure-sheet back synchronization. a successful go fixture process exit never overrides instrumentation failures. |
+| unreleased card/dashboard development proof | **passed**, all 11 tests in `SessionCardInstrumentedTest` and `MultiMachineUiInstrumentedTest`, no skips, exit 0, source `9dc53f4451bb0617280c9bba4553d391af321cc8`. the sole production change wraps card actions while retaining complete labels, 48dp targets, and 8dp separation. the back test now waits for the native dialog to own focus. this signed same-version component proof uses the canonical signing, bounded-runner, pairing and restoration helpers; it is not a full platform gate or a v0.5.0 pass. |
+| restoration and pairing | **passed**: every mutating repair run restored the exact public 0.5.0/5000 apk. final independent pull/digest, signer, and metadata checks agree; test package and fixture reverse port are absent; public app launched. repair runs compare encrypted pairing bytes even when assertions fail. the original immutable run's final byte comparison was `NOT_RUN`; the user's subsequent all-three-host reconnect without another invite remains its functional preservation evidence. no production-package uninstall, data clear, downgrade, or debug signer was used. |
+| routine | local `GOTOOLCHAIN=local scripts/test verify` passes after the production fix. final hosted verification and merge are tracked by [pr 97](https://github.com/NielsdaWheelz/skidbladnir/pull/97). |
+
+proof sensitivity: a separate test-only candidate canceled the first membership
+save while retaining the expected host change; the real-gateway membership
+assertion failed as intended. further device execution exposed fixture defects:
+a selector matched both a heading and button; a deliberately held response
+threw an uncaught interruption when the controller closed; terminal control
+setup cleared two acknowledgment queues before both deliveries completed. the
+corrections select the action, propagate transport cancellation, and consume the
+exact acknowledgment on both queues. no runtime prerequisite was bypassed.
+
+the interrupted fixture run started 29 of 80 tests and passed 27 before process
+failure; its remaining 51 tests were `NOT_RUN`. the later complete run above
+supersedes that incomplete coverage without erasing its result. the pressure
+failure supports a window-focus race diagnosis; the original log does not prove
+where the back event landed. the focused development run passes the same real
+back, dismissal, and returned-focus assertions. complete platform execution of
+the unreleased production change remains `NOT_RUN`; its 11-test component proof
+is the bounded validation for that change.
+
+| spaces/shells behavior | automated evidence | hands-on evidence |
+| --- | --- | --- |
+| membership set/change/clear | **passed**: real phone editor → controller → https gateway → isolated tmux; inventory confirms each write, unchanged exact lifetimes/source facts, and no writes for invalid/canceled drafts | `NOT_RUN` |
+| intersecting filters | **passed**: real machine/space selectors, named/unassigned empty intersections, and actual visible session identities | `NOT_RUN` |
+| restoration | **passed**: real filtered attach/detach/back and activity recreation preserve the content-free viewport capsule; component tests cover nonzero heading offsets and reset-to-top | product machine selection/recreation passed; spaces-specific return position `NOT_RUN` |
+| forge/header terminal creation | **passed**: real zero-profile forge creation and header creation/attachment | `NOT_RUN` |
+| cwd/space inheritance and independent lifetime | **passed**: phone verifies requested/inherited cwd and space, source survival, then exact source closure with four created terminals surviving; host proofs additionally cover changed source cwd/space | `NOT_RUN` |
+| duplicate submission and completion | **passed**: disabled pending controls, duplicate suppression, late completion after detach/credential rotation, and no replay after recreation | `NOT_RUN` |
+| attach/back | **passed**: real new-terminal attachment, detach and android back with exact lifetime/filter preservation | product existing-session attach/detach passed; new-terminal journey `NOT_RUN` |
+| narrow/enlarged text | phone header **passed** at 320dp/2x; public card **failed** at 170dp/2x (kill width 30.33dp); unreleased card fix and dashboard component checks **passed** | `NOT_RUN` |
+
+remaining actions: [deploy the card fix in a future authorized release](issues/spaces-card-large-text.md)
+and [perform the hands-on journey](issues/spaces-shells-hands-on.md). the current
+instruction forbids a new release/pin and leaves hands-on acceptance unperformed,
+not waived. linux `live` retains its earlier result. provider-live, a second
+phone, and other-host reboot proofs were not run in this completion scope.
+no pr 3 work was introduced; existing user sessions were not killed, resized,
+or retargeted.
+
+the public apk sha256 remains
+`1b050bde3bd91a4bbff7f4608c408b2313753200ac25f2127512f9c97d0c1591`;
+production signer sha256 is
+`7b2ba254e9d3cb18044b723fe124dec87b727ab56e817860bb48e056eddc47bf`.
+the observed old apk matched exact public v0.4.1
+(`8ee72da268e00002fc9fb827aefcd7b88176d42fb06ad01e2fc94de47e6dc760`).
+the product gate owned the forward install; no manual install preceded it.
+
+content-free evidence is retained under
+`/tmp/skid-release-v050-z3j4orxg/runtime-completion/` and `test-repairs/`, with
+earlier rollout evidence in `deploy/`. qr payloads and human terminal content
+were not retained. original reports remain at `/tmp/skid-release-v050-report.md`
+and `/tmp/skid-release-v050-deploy-report.md`; the current runtime report is
+`/tmp/skid-release-v050-runtime-report.md`.
+
 ## new terminal here — source implemented, runtime acceptance open
 
 2026-09-15: pr 2 of [the delivery plan](spaces-and-shells.md), implemented on
@@ -42,8 +123,9 @@ below proves only its original targets.
 implementation worktree: `/home/niels/src/personal/skidbladnir-shells-pr2`.
 on 2026-09-15 the user authorized committing, pushing, merging prs 1 and 2, and
 cleaning up their worktrees while retaining darwin/phone proofs as `NOT_RUN`.
-merge authorization does not establish those runtime proofs. release pins and
-deployed installations remain unchanged.
+merge authorization did not establish those runtime proofs. the subsequent
+v0.5.0 deployment and runtime results are recorded above; the implementation-stage
+evidence below retains its original attribution.
 
 outcome: standalone terminal creation in cli/tui/android; `skid shell`, tui `t`,
 and the android attach-header action create an independent terminal using the
@@ -57,7 +139,7 @@ profile-only request/error paths across host/desktop/android. empty-profile
 blocking is removed. no terminal provider/profile, persisted launch request,
 parent link, compatibility path, or pr 3 scaffolding was added.
 
-verification on this candidate:
+implementation-stage verification, before the completion run above:
 
 | boundary | evidence |
 | --- | --- |
@@ -95,7 +177,8 @@ file-ownership, cutover, cost, and a1–a9 acceptance contracts. the host, cli/t
 and android source is implemented together on `spaces-pr1`, based on `73aeb26`.
 the isolated worktree is `/home/niels/src/personal/skidbladnir-spaces-pr1`;
 the original checkout and its uncommitted specification remain untouched.
-this candidate changes no release version, pin, or deployed installation.
+that implementation stage changed no release version, pin, or deployed
+installation. subsequent v0.5.0 delivery is recorded above.
 
 outcome: one optional host-owned label per session; cross-host grouping and
 intersecting machine/space views; create/set/change/clear through cli/tui/phone.
@@ -110,7 +193,7 @@ restoration. flat human rendering, four-field tui assumptions, schema-1 capsule
 paths, and rename-only fence bookkeeping are removed. existing controls retain
 their original references and runtime ownership.
 
-verification for this candidate:
+implementation-stage verification, before the completion run above:
 
 - owner behavioral reds were observed before implementation: host request
   rejection against unchanged source on isolated tmux; desktop grammar, wire,
@@ -174,7 +257,7 @@ split above. neither is part of pr 1.
 
 ## released baseline and historical evidence
 
-current release: [usable agent client and direct attachment](agent-control-ux.md),
+previous release: [usable agent client and direct attachment](agent-control-ux.md),
 immutable v0.4.1 at `bd4983f9ea23589283dac67c89d3b83cbe7cde8a`, pinned in both
 repositories and installed on all three gateways/clis, jarvis's executable copy,
 and the phone. normal cli/tui and direct attachment replace the old json client
@@ -1351,9 +1434,15 @@ historical results remain historical.
 
 ## Status
 
+older release results below retain their historical attribution, including
+wording that called a platform run current at that time. the v0.5.0 result at
+the top governs current delivery and acceptance; earlier greens do not override
+its release-bound failures or missing hands-on acceptance.
+
 | Slice | Status |
 | --- | --- |
-| spaces, pr 1 | source implemented; owner reds, complete routine verification, focused race/unicode checks and approved linux integration/live pass; 122 android jvm tests pass; darwin and phone runtime acceptance `NOT_RUN`; unpublished |
+| spaces, pr 1 | deployed in v0.5.0; host/desktop and corrected real phone membership/filter/restoration proofs pass. original platform 73/80; corrected release runtime 78/80. unreleased card/dashboard fix passes 11/11; deployed card defect and hands-on acceptance remain open |
+| new terminal here, pr 2 | deployed in v0.5.0; linux/darwin host/desktop and corrected real phone creation, inheritance, independent lifetime, duplicate suppression, attach/back and recreation proofs pass. complete released platform remains failed; hands-on acceptance is `NOT_RUN` |
 | v0 readable terminal sizing | Historical 2026-09-10 snapshot: implemented 2026-09-08 and published in immutable `v0.2.30`; routine and publication checks green; three hosts and the phone deployed; fleet generation-digest mismatch subsequently fixed by agent control; this slice's owner runtime proofs and hands-on acceptance `NOT_RUN` |
 | S1 tmux control plane | Implemented; the terminal-activity hard cut now owns current session activity and its gate status is recorded below |
 | S2 shared terminal | Implemented; corrective RGB command shape and isolated integration/live proof green; renewed concurrent physical handoff `NOT_RUN` |
