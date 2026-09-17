@@ -162,17 +162,24 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | none | native executable basename `codex`; or `node` with exact configured argv[1] |
-| `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | none | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | none | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | none | exact configured Claude argv[0] |
+| `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex`; or `node` with exact configured argv[1] |
+| `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | `--yolo` | same |
+| `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | `--yolo` | same |
+| `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
+
+2026-09-17 accepted launch policy: new agent sessions use the explicit provider
+permission bypasses above on all three hosts. deployment owns these arguments;
+callers supply no permission setting. acceptance requires every declared profile
+to retain its bypass flag through validation and launch, with claude's identity
+plugin and managed name preserved. existing sessions retain their launch policy;
+remaining provider trust/setup dialogs and project instructions still apply.
 
 Adding a launch profile is adding one host-local row — a config change, not a
 design event; the app renders exactly the rows each gateway declares. The
 gateway execs the row's command with its flags in the requested
 cwd. The gateway does not gate launch on binary or configuration inspection;
-the agent sees exactly what a laptop launch would see. Deployment owns the
-exact Codex hook files and one local Claude hook plugin, while absent/unloaded
+the agent retains its ordinary provider configuration and terminal. deployment
+owns the exact Codex hook files and one local Claude hook plugin, while absent/unloaded
 hooks omit registered identity without blocking launch. Plain personal commands
 remain upstream commands. Explicit work wrappers select only their fixed
 provider home and, for Claude, add the deployment-owned plugin directory; they
@@ -508,7 +515,8 @@ names the target and sends
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
    an unproven cleanup kill. No prompt is sent; the opaque agent's own
-   permission and trust flows appear in the terminal like any laptop launch.
+   remaining permission, trust, and setup flows appear in the terminal under
+   the explicit launch policy above.
 
 ### new terminal here
 
@@ -709,8 +717,8 @@ history item is `current`.
   lifetimes. Sleep, logout, Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
   Codex and Claude are installed from exact reviewable npm locks; tmux follows
-  each platform's native stable package channel. No agent launcher enables an
-  unsafe unattended permission mode.
+  each platform's native stable package channel. new skid agent sessions use
+  the deployment-owned permission bypasses in §2.
 - `scripts/fleet` in this repository exclusively owns three-host verification,
   invitation, apply acceptance, lifetime digests, reboot checkpoints, and
   bounded outage/recovery. It requires one explicit absolute

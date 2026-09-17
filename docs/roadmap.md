@@ -16,6 +16,27 @@ are historical; product requirements and recorded failures remain. current
 behavioral acceptance is unverified by automation. see the
 [coverage issue](issues/test-system-reset.md) and [interim commands](rules/testing.md).
 
+## unattended agent launches — deployed
+
+2026-09-17: [dev-server pr 95](https://github.com/NielsdaWheelz/dev-server/pull/95),
+merged as `d97a3a225d462a0b19883bf0b287e1583b094bf7`, declares codex `--yolo`
+and claude-work `--dangerously-skip-permissions` on macbook, arch, and devbox.
+all twelve installed profile rows match the merged host configs; claude retains
+its identity plugin and managed-name launch composition.
+
+the profile contract was observed red before implementation. the full local
+installer suite passes (10 contract suites, including 20 skid installer cases),
+and both macos and linux ci pass. deployment used the existing skid installer
+as each host user. both applies succeeded on every host; the second was quiescent.
+gateway credentials and the original provider/tmux process identities survived.
+post-deployment fleet verification passes.
+
+macbook and devbox retain v0.6.0. arch was observed on v0.5.0 during deployment
+and was updated to the existing v0.6.0 pin. all three now report source
+`2d6184c63d62396f69342200e4229cc902ca140c`. no release pin changed.
+new provider launches were not exercised; provider-live acceptance is `NOT_RUN`.
+existing agents retain their original launch policy.
+
 ## v0.6.0 publication and deployment
 
 2026-09-17: immutable [v0.6.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.6.0)
