@@ -7,16 +7,13 @@ S22+ (devbox debug-signed run — the signed deviceDebug platform gate is
 MacBook-owned); the hands-on pass (incl. the Forge warm-in) stays
 `NOT_RUN`.
 
-Historical boundary: the accepted 2026-08-31
-[`terminal-activity.md`](terminal-activity.md) hard cut supersedes this
-delivery plan's status labels/colors and pulsing attention badge. The single
-token owner, shapes, typography, target sizes, and non-state chrome remain
-current. Every superseded status or attention example below is historical,
-not an active contract.
+current [agent control](agent-control.md) owns sampled status and its presentation.
+this delivery plan's earlier status labels/colors and attention badge are
+historical. the token owner, shapes, typography, target sizes and non-state
+chrome remain current.
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
-including literal labels, 48dp targets, and the current terminal-activity
-contract; [`design-language.md`](design-language.md) owns the visual values
+including literal labels, 48dp targets and current agent status; [`design-language.md`](design-language.md) owns the visual values
 (§5 color, §6 shape, §9 type, §12 motion, §13 components); this document owns
 the implementation boundary and delivery plan.
 

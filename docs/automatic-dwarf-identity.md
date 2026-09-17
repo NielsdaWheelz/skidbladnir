@@ -1,16 +1,15 @@
 # Automatic dwarf identity
 
 Status: implemented, 2026-08-26; routine verification and isolated real-tmux
-acceptance green (see [`roadmap.md`](roadmap.md)). The final behavior is cut
+acceptance green on that source. The final behavior is cut
 into [`architecture.md`](architecture.md); this document remains the
 historical scope and red/green plan.
 
-Historical boundary: the accepted 2026-08-31
-[`terminal-activity.md`](terminal-activity.md) hard cut supersedes this plan's
-gateway-owned product ordering and status-era names. Android owns the one
-global freshness/activity order; the gateway derives the flat activity fact
-and otherwise orders only by tmux name/id. Conflicting examples below are
-historical, not active contracts.
+[agent control](agent-control.md) owns sampled status; the phone grid orders by
+machine/name/id within space groups. [desktop ordering](desktop-browser.md)
+has its own contract. dwarf assignment remains independent of
+provider status. older gateway-owned product ordering and status-era names
+below are historical.
 
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md). Architecture guardrails remain binding.

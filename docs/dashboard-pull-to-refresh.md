@@ -5,8 +5,8 @@ manual verification still snapshots machine scope and reads every live machine
 in it, including hosts with no previously observed membership in the selected
 space. space filtering changes neither refresh targets nor request/completion
 ordering or pressure polling. its selector stays outside the pull owner. the
-evidence below predates spaces. its source is implemented; [the roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open)
-records spaces verification and open device acceptance.
+evidence below predates spaces. its source is implemented; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+remains open.
 
 Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and
 routine verification is green on the merged tree. The feature-tree signed

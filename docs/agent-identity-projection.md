@@ -1,10 +1,9 @@
 # Optional agent runtime identity
 
-Status: **current retained capability**. This document defines only the
-optional process-lifetime identity metadata incorporated by
-[`architecture.md`](architecture.md). [`terminal-activity.md`](terminal-activity.md)
-owns the required `Active | Quiet` capability. Identity never supplies,
-changes, ranks, colours, animates, or qualifies activity.
+this document owns optional process-lifetime registration. [agent control](agent-control.md)
+owns the current foreground target, sampled status and controls. only claude
+registration contributes projected runtime profile/provider-session id;
+codex registration is ignored by the current terminal-only projection.
 
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md).
@@ -12,7 +11,9 @@ Normative rules: [`rules/index.md`](rules/index.md), especially
 ## Outcome
 
 For the active pane of each visible ordinary tmux session, inventory may expose
-an exact current foreground-agent observation:
+an exact current foreground-agent observation. these are only its
+registration-related identity fields; [agent control](agent-control.md) owns the
+complete required shape:
 
 ```text
 AgentRuntime {
@@ -92,7 +93,7 @@ current pane foreground observation
 ```
 
 Provider and PID may be projected from one unique configured foreground
-signature. Registration contributes profile and provider session id only when
+signature. claude registration contributes profile and provider session id only when
 its provider, PID, start identity, and pane origin match that same observation.
 Claude's explicit live `-n`, `--name value`, or `--name=value` argument may
 contribute a provider session name. Codex has no accepted name source.
@@ -102,10 +103,10 @@ does not change a valid process identity. Missing hooks, raw launches, absent
 provider names, and unproven profiles are successful omission. A concrete
 process matching more than one provider predicate is omitted fail-closed.
 
-Inventory never reads another process's environment, provider files, provider
-APIs, transcripts, terminal bytes, or non-current panes. It never rewrites a
-registration and adds no worker, poller, database, or provider-specific
-activity branch.
+identity registration acceptance reads no other process environment, provider
+files/apis, transcripts or terminal bytes. it never rewrites a registration or
+adds a worker, poller or database. subsequent status/read enrichment belongs to
+[agent control](agent-control.md).
 
 ## Host configuration
 
@@ -136,20 +137,10 @@ bypasses the plugin remains honestly unregistered.
 
 ## API and presentation
 
-The strict session shape contains optional identity directly:
-
-```json
-{
-  "launchProfile": "work",
-  "agent": {
-    "provider": "Codex",
-    "pid": 1234,
-    "profile": "work",
-    "providerSession": {"id": "019..."}
-  },
-  "activity": "Active"
-}
-```
+the strict session shape contains optional `agent` identity. its complete
+current fields are owned by [agent control](agent-control.md#identity-state-and-dispatch),
+including pane/start identity, status and methods; the old codex registration
+projection and flat activity field are absent.
 
 `agent` is omitted when no supported exact foreground runtime is proven. No
 alias, nullable member, alternate registration, dual decoder, schema version,
@@ -159,13 +150,14 @@ the provider/profile relationship exhaustively.
 The compact card footer renders the runtime profile when proven, otherwise
 `<provider> · profile unknown`; without an agent it renders the launch profile
 when known, otherwise `profile unknown`. Provider ids, provider names, and PID
-stay in the typed API/model and add no badge, state bay, raw-id UI, or action.
+stay off android cards; they add no badge, state bay, raw-id label or action
+there. desktop details may show the accepted provider-session facts.
 
 ## Acceptance
 
 1. Managed and laptop Codex/Claude sessions expose provider and PID only from
    one exact configured foreground observation.
-2. A matching installed `SessionStart` registration can add the exact runtime
+2. a matching installed claude `SessionStart` registration can add the exact runtime
    profile and provider session id; absence remains successful omission.
 3. Managed Claude may expose its explicit provider name; Codex honestly omits
    a name.
@@ -177,16 +169,14 @@ stay in the typed API/model and add no badge, state bay, raw-id UI, or action.
    never treated as unique addresses.
 7. Gateway, Android, deployment, and the CLI admit exactly this one shape and
    one event. Active source and configuration contain no alternate writer.
-8. Identity presence, absence, provider, profile, registration failure, or
-   observation failure cannot alter session activity or its presentation.
+8. missing or failed optional identity observation preserves an otherwise valid
+   session row; it never fabricates an agent or authorizes a control target.
 9. Logs and evidence contain no provider input, identifiers, argv, environment
    values, prompts, objectives, terminal bytes, credentials, or account data.
 
-Routine verification covers pure validation, projection, strict mapping, and
-installed byte topology. Isolated tmux, provider-live, deployment, release,
-platform, and device gates require their own approval and evidence; an unrun
-boundary is `NOT_RUN`, never a pass. Provider-live proves optional identity
-only and cannot prove terminal activity.
+[testing policy](rules/testing.md) owns current verification. required external
+boundaries need their applicable approval and evidence; unexecuted checks are
+`NOT_RUN`, never passes. identity evidence alone proves no status or control behavior.
 
 ## Explicit trade-offs
 
@@ -197,12 +187,12 @@ only and cannot prove terminal activity.
 | No cross-process environment read | Raw launches may expose provider/PID but omit runtime profile and provider session id. |
 | Ignore stale registration | A harmless pane option can remain until pane death; inventory stays read-only. |
 | Fail open on projection failure | Optional identity can disappear temporarily; provider startup is not held hostage by phone metadata. |
-| Keep raw identifiers off the card | The typed model retains them, but v0 has no inspection UI. |
 | Atomic strict schema | Gateway, app, binary, and installed hooks must converge together; mixed versions are unsupported. |
 
-## Non-goals
+## registration boundary
 
-Provider work state, input or message transport, prompt sending, scheduling,
+this registration owner does not implement provider work state, input or message
+transport, prompt sending, scheduling,
 wake/resume, provider discovery outside tmux, non-current-pane enumeration,
 provider configuration or transcript parsing, provider-name synchronization,
 history, provenance, receipts, durable orchestration, new routes, card-detail

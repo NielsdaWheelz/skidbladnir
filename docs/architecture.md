@@ -1,161 +1,69 @@
-# Skíðblaðnir v0: product and architecture
+# skíðblaðnir: product and architecture
 
-current public release: v0.6.0, [organized desktop browser](desktop-browser.md),
-source `2d6184c63d62396f69342200e4229cc902ca140c`, including the narrow-card action
-repair. all three hosts and the s22+ run this release; host acceptance, fleet
-verification and the physical phone product journey pass. release-bound platform
-verification passes all 80 tests with a corrected background-selection assertion
-and unchanged release runtime.
-[delivery and acceptance](roadmap.md#v060-publication-and-deployment) distinguish
-published artifacts from installed versions. historical v0.5.0 platform failures
-and missing hands-on acceptance remain attributed to that release; publication
-does not establish the new release's device acceptance.
+tmux owns terminal sessions and pane processes. providers own execution and history.
+each gateway controls one host; clients compose gateways directly. there is no
+application database or coordinator.
 
-accepted 2026-09-15 target: [spaces](spaces.md), pr 1 of
-[spaces, shells, and client composition](spaces-and-shells.md). its contracts
-are incorporated below; source is implemented, with verification and open
-runtime acceptance recorded in the [roadmap](roadmap.md#spaces--source-implemented-runtime-acceptance-open).
-this is an optional session-label and client-collection upgrade, with no new
-runtime owner. shell creation and additional terminal composition are separate
-prs. this document's release evidence remains attributed to its original
-source; it does not prove spaces.
+this document owns shared mechanisms, invariants, and scope. the accepted
+[agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
+[spaces](spaces.md), [terminal creation](shells.md), and
+[desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[design language](design-language.md) owns visual values; [codebase rules](rules/index.md)
+own implementation conventions. a platform fact that contradicts a premise
+reopens the responsible contract.
 
-accepted 2026-09-15 pr 2 target: [new terminal here](shells.md). standalone
-terminal creation and source-session create/attach extend the existing owners;
-source is implemented. [delivery and evidence](roadmap.md#new-terminal-here--source-implemented-runtime-acceptance-open)
-are tracked separately from pr 1; current runtime evidence and gaps are recorded
-there.
-
-accepted 2026-09-17 pr 3 target: [organized desktop browser](desktop-browser.md).
-immediate local selection, spaces/agents/tabs, one current browser state and
-fullscreen direct attachment; no per-space history or special source return.
-source is implemented; [verification](roadmap.md#desktop-browser--source-implemented-runtime-acceptance-open)
-tracks native acceptance. [the delivery split](spaces-and-shells.md) leaves
-embedded-terminal feasibility to pr 4, with no accepted production terminal contract.
-
-the accepted 2026-09-12 [agent-control target](agent-control.md) specifies the
-scoped upgrade shipped in v0.3.1. its explicit v1 deltas supersede conflicting v0 restrictions
-for that target; runtime acceptance is recorded in the [roadmap](roadmap.md).
-unrelated terminal/platform rules and historical evidence retain their meaning.
-the 2026-09-13 amendment keeps codex terminal-only and claude-work as the sole
-claude launch profile; native codex binding is deferred.
-
-The 2026-09-08 [readable terminal sizing](terminal-readable-sizing.md) target
-replaces the 80-column/protected-desktop sizing contract with chosen phone text
-size and tmux latest-client sizing. Its implementation landed 2026-09-08 and is
-published in immutable `v0.2.30`; its runtime acceptance is `NOT_RUN`, and
-historical evidence below does not prove this target.
-
-Status: accepted implementation target after the 2026-08-25 scope reset, the
-2026-08-26 multi-machine hard cut, the 2026-08-27 public-fleet hard cut, the
-2026-08-28 agent-identity projection hard cut, the 2026-08-28 dashboard
-refresh-boundary correction, the 2026-08-28 tmux-session rename delta, and the
-accepted 2026-08-31 tmux terminal-activity hard cut, and the 2026-08-31
-dashboard-return-continuity target, and the 2026-08-31 working-directory
-chooser target, plus the accepted 2026-09-01 terminal touch-scroll target, the
-accepted 2026-09-04 host-installer/operator hard cut, the accepted 2026-09-04
-phone-local terminal selection-copy target, the accepted 2026-09-06 terminal
-input-intent arbitration correction, and the accepted 2026-09-07 terminal
-tap-to-IME correction. The terminal-activity and
-touch-scroll changes are merged; exact `v0.2.27` publication, historical
-three-host deployment/doctor evidence, and the complete 60-test release-bound
-S22+ platform gate are green. The touch-scroll final targeted mutation rerun,
-final-candidate hands-on journey, and live tmux/Claude Code journey were
-explicitly waived for shipment on 2026-09-04, not passed. The
-host-installer/operator cut makes `dev-server` the machine-local installer and
-this repository's `scripts/fleet` the sole fixed-fleet workflow owner; the
-complete upstream pin names exact `v0.2.30`. Its owner red and hermetic green
-are recorded separately. Historical convergence/doctor evidence does not prove
-the new ownership boundary. Cross-repository host-pin agreement, all three host
-applies, and live one-host outage/recovery are green with exact tmux lifetime
-sets preserved. Reboot, second-phone, Linux isolated tmux, broader S22+
-hands-on, and provider-live acceptance remain `NOT_RUN` for this cut. The
-physical product gate failed and remains unclaimed because installed exact
-`v0.2.29` cannot re-enter its byte-distinct-newer update boundary. The
-selection-copy source and its input-intent correction were published as
-immutable `v0.2.28`, pinned across both repositories, verified on all three
-gateways, and installed on the S22+. Hands-on use then exposed the unfocused
-tap-to-IME regression. Its correction has an executed unchanged-runtime S22+
-red, a focused `5/5` signed same-version green, routine verification, preserved
-pairing, exact `v0.2.28` restoration, a complete `75/75` signed candidate, and
-hands-on IME acceptance. Immutable `v0.2.29` is published and upstream-pinned.
-Cross-repository deployment and the release-bound S22+ platform gate are green
-at `OK (75 tests)`, with the exact public APK restored.
-The rejected 2026-08-28 agent-interaction-state candidate and its evidence
-prove no active target.
-
-This document supersedes the audited-orchestration architecture (git history
-through `6f2d697`). That design was internally consistent and is preserved in
-history, but it built an audited Codex runtime system where the product is a
-specialized Android remote for tmux. Its platform evidence — tmux 3.4 grouped
-sessions, the pane-steal hazard, the Android terminal harness, profile
-isolation, TUI key behavior — remains valid and is carried forward. Its
-contract, provenance, and durable lifecycle machinery is retired. The
-2026-08-28 identity cut retains one narrow pane-local SessionStart registration:
-it projects only exact current runtime identity facts and never parses content,
-tracks history, or creates authority. The terminal-activity cut removes
-lifecycle, interaction, and attention projection entirely. It reads only
-tmux's built-in current-window activity timestamp and makes no claim about who
-owns the next move.
-
-Specification precedence: this document owns product behavior, architecture,
-scope, and acceptance; [`roadmap.md`](roadmap.md) owns delivery order;
-[`design-language.md`](design-language.md) owns visual identity — color,
-typography, shape, ornament, motion, and the terminal theme — subordinate to
-this document;
-[`docs/rules`](rules/index.md) applies where it does not conflict with the
-v0 scope. A platform fact that contradicts a premise reopens this document.
+[the roadmap](roadmap.md) indexes delivery and open acceptance.
+[the codebase map](codebase-map.md) locates implementation owners.
+[testing policy](rules/testing.md) supersedes retired test recipes in older
+feature plans; those recipes do not recreate removed gates.
 
 ## 1. Philosophy
 
 - **tmux is the database and the process supervisor.** Session list, pane
-  facts, and user options are the only durable state. Gateway restart means
+  facts, and user options are the durable session state. Gateway restart means
   "list tmux again", never a recovery protocol.
-- **The agent is an opaque terminal program.** Codex and Claude own their
-  conversations, approvals, git, configuration, and in-TUI commands.
-  Skíðblaðnir never reads prompts, transcripts, results, or provider stores. A
-  closed pane-local SessionStart adapter registers a bounded provider session id
-  and runtime profile for the exact foreground process lifetime. Process
-  observation proves optional identity only. A required `Active | Quiet` card
-  fact reports recent tmux activity in the session's current window; it is
-  independent of provider identity and never claims agent semantics. Missing
-  registration never blocks or changes activity.
+- **providers own execution and history.** skid observes the exact foreground
+  process, samples its status, and offers bounded reads and explicit controls.
+  codex is terminal-only; claude may use native status/history/stop through a
+  short-lived helper. no history is copied into a skid store, and no helper
+  owns the provider's lifetime. identity hooks never publish status or content.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
   capability over one local tmux server. Android composes paired gateways; an
   attachment still means one process, one screen, and one draft shared with
   that machine's laptop.
 
-From either trusted Android 16 phone, Niels can see every tmux session on the
-paired Devbox, MacBook, and Arch host in one collection, with an honest
-machine, optional exact agent identity, and recent terminal activity;
+from the android phone, the user can see every tmux session on the paired
+devbox, macbook, and arch host in one collection, with machine identity,
+optional exact foreground-agent identity and sampled status;
 create on an explicit machine and directory using terminal or that host's
 allowlisted agent profiles; create an independent terminal from a session's
 current host/cwd/space; attach the same stock TUI that host's laptop sees; type, paste, and
 dictate through Gboard; select rendered terminal text and explicitly copy it to
 that phone's Android clipboard; detach without stopping anything; and kill an
-exact machine-bound confirmed session. One unavailable machine does not block
-or authorize action against the other.
+exact machine-bound confirmed session. phone interrupt/stop and desktop
+read/text/key controls follow [agent control](agent-control.md). one unavailable
+machine does not block or authorize action against another.
 
 ## 2. Fixed contract
 
 | Concern | Decision |
 | --- | --- |
-| Product | Skíðblaðnir; ASCII namespace `skidbladnir`; public source/release, two trusted users/phones on one tailnet, three acceptance hosts |
-| Phone | Galaxy S22+ `SM-S906W` plus one named second phone before its gate; Android 16/API 36 |
+| Product | Skíðblaðnir; ASCII namespace `skidbladnir`; public source/release, one user on one tailnet, three hosts |
+| Phone | Android 16/API 36; historical device evidence uses Galaxy S22+ `SM-S906W` |
 | Hosts | Devbox and Arch: Linux/systemd user service. MacBook: Darwin/LaunchAgent. Exact tmux and command paths come from deployment-owned strict host config |
 | Topology | Android talks directly to three independent loopback gateways; there is no coordinator or gateway-to-gateway link |
 | Network | One pinned Tailscale Serve TLS `:8443` origin per machine; Funnel/public ingress forbidden |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
-| Auth | One independently minted bearer per gateway, shared by the two trusted phones; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
+| Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
-| Runtime and activity | Opaque terminal programs in ordinary tmux sessions; optional process-lifetime-bound pane identity registration plus one required `Active \| Quiet` fact derived only from the current tmux window's built-in activity timestamp; no provider state lookup, lifecycle/attention projection, provenance, history, payload parsing, or pin enforcement |
+| agent control | ordinary tmux sessions; exact foreground identity, sampled native/terminal status, bounded reads and explicit controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
 | State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
 | spaces | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/space filters; no space registry or lifecycle |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/space, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
 | Host app | Go, tmux/PTY, platform-native process and pressure observation; standard library HTTP |
-| Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, fallback, or smaller-fleet branch |
+| Cutover | One GitHub release carries the signed APK and exact host bundles; gateway and APK contracts move in lockstep with no negotiation, range, legacy envelope, reader, migration, compatibility fallback, or smaller-fleet branch |
 | Trust | Each agent is trusted as its host user; no hostile same-UID containment claim |
 
 Nonempty profile mapping is one ordered, closed, host-local gateway-config table:
@@ -174,10 +82,10 @@ to retain its bypass flag through validation and launch, with claude's identity
 plugin and managed name preserved. existing sessions retain their launch policy;
 remaining provider trust/setup dialogs and project instructions still apply.
 
-Adding a launch profile is adding one host-local row — a config change, not a
-design event; the app renders exactly the rows each gateway declares. The
-gateway execs the row's command with its flags in the requested
-cwd. The gateway does not gate launch on binary or configuration inspection;
+the app renders the closed profile table declared by each gateway. changing
+that table changes the contract; callers cannot invent a profile. the gateway
+execs the selected row's command with its flags in the requested cwd. the
+gateway does not gate launch on binary or configuration inspection;
 the agent retains its ordinary provider configuration and terminal. deployment
 owns the exact Codex hook files and one local Claude hook plugin, while absent/unloaded
 hooks omit registered identity without blocking launch. Plain personal commands
@@ -203,7 +111,7 @@ session lifetime. The key independently seeds the card landmark and never
 defines the operator-owned tmux name. Generated names use the smallest free
 `skidbladnir-<profile>-<N>`; Dvergatal does not cap the number of sessions. A
 visible session persona is a dwarf in product and navigation language;
-`agent` is reserved for the opaque foreground terminal program, while
+`agent` is reserved for the foreground provider program, while
 lifecycle, recovery, error, and destructive-action language stays literal and
 names the tmux session when relevant. v0 owns no raster portrait pack or
 portrait manifest.
@@ -220,8 +128,8 @@ portrait manifest.
 
 ### Non-goals
 
-Provider conversation lookup, uniqueness, addressing, history, agent work or
-next-move state, unread-result attention, transcript-derived semantic state, a
+provider conversation search/registry, unread-result attention, arbitrary
+transcript-derived semantic state, chat ui, copied provider history, a
 generalized hook runtime or trust-store editor, git/project-root
 resolution, router-owned provider payload interception, SQLite lifecycle facts,
 durable command receipts and replay,
@@ -290,26 +198,29 @@ outside space filtering. [spaces](spaces.md) owns the exact grouping, editing,
 creation, and content-free restoration contracts:
 
 - One card anchors to the session's current window and that window's active
-  pane. Cwd, command, runtime registration, and the built-in
-  `window_activity` timestamp all come from that anchor.
+  pane. cwd, command, foreground process, and runtime registration come
+  from that anchor.
   attached clients are the selected session's `session_attached` count.
 
 - **Card facts:** machine label, exact local tmux id, tmux name, an opaque
   server-lifetime identity token, required dwarf icon portrait, launch profile
   (`@skid_profile` when present), optional exact foreground agent provider/PID,
-  registered runtime profile and provider session id, observable explicit
-  Claude name, objective (optional; URL-safe base64 in
+  pane id/start identity, sampled status and methods; for a proven claude
+  registration, runtime profile and provider session id; independently observed
+  explicit claude name; objective (optional; URL-safe base64 in
   `@skid_objective_b64`, decoded by the gateway), optional space label
   (`@skid_space_b64`), pane cwd and active command when tmux exposes them,
-  attached-client count, and required flat `Active | Quiet` activity.
+  attached-client count. `agent` is optional; when present its provider, pid,
+  pane/start identity, status and methods are required. no flat activity remains.
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
 - **Card presentation:** the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
-  A colour/motion-only activity facet occupies one fixed top-right position but
-  is redundant decoration: an adjacent named activity bay remains the semantic and
-  accessible source. The machine label is quiet footer context in
+  a fixed status facet is redundant decoration; the adjacent named status
+  bay remains the semantic and accessible source. inferred terminal observations
+  are labelled as such; a pane without an agent is `TERMINAL`. the machine label
+  is quiet footer context in
   `All`; a selected-machine filter supplies that visible context once, so its
   cards omit the repeated visual machine label while retaining machine identity
   in accessibility and every routed or destructive action. The quiet footer
@@ -324,35 +235,31 @@ creation, and content-free restoration contracts:
   write. A concurrent valid writer is accepted after reread; a changed or
   vanished session is never overwritten, and non-convergence fails the
   inventory instead of fabricating a card.
-- **Activity is exactly `Active | Quiet`.** The gateway derives it from the
-  current window's positive canonical `window_activity` and the host projection
-  clock: `Active` through the inclusive ten-second boundary and `Quiet`
-  afterward. Tmux output from any pane in that window, window creation, and
-  making the window current count exactly because tmux updates that timestamp.
-  Other windows, client-input `session_activity`, alert flags, hooks, process
-  facts, CPU, terminal parsing, provider state, and Android time do not.
-- The visible labels are `ACTIVE` and `QUIET`, spoken as recent or no recent
-  tmux activity at the last check. Neither label means agent work, readiness,
-  next-move ownership, completion, unread result, liveness, or safety.
-- A missing, malformed, zero, overflowing, or future required activity
-  timestamp is never mapped to either state. A vanished session reconciles out;
-  a still-present session with an invalid required fact fails that machine's
-  inventory. Failure of the inventory-wide `list-sessions` command is likewise
-  an `InternalError`, not a fabricated cached card.
+- **agent status is sampled, never authority.** states are
+  `working | blocked | idle | done | failed | stopped | unknown`, with source
+  `native | terminal | unavailable`. claude uses a valid native observation when
+  available; otherwise explicit provider chrome may supply an inferred terminal
+  observation. codex uses terminal chrome only. unfamiliar chrome is unknown.
+  status is distinct from inventory freshness, unread attention and liveness;
+  every command revalidates its full target.
+- a vanished session reconciles out. failed required tmux
+  snapshot collection fails that machine's request; optional agent-observation
+  failure omits identity or reports unavailable status, never fabricated facts.
 - Laptop-created sessions use the same current-pane observation and hook
   registration path. Their character is normalized as above; absent hooks,
   unnamed provider sessions, raw launches, and unproven profiles are successful
   omission, never guessed.
-- Activity carries no timestamp or age on the wire. The current poll is never
-  presented as state age; only top-level inventory freshness carries a clock.
-  Android never counts down or locally decays a host-projected value.
+- status carries no transition time or age. only top-level inventory freshness
+  carries a clock; android does not locally decay the sampled status.
 - The agent registration is exactly
   `v1:<pid>:<kernel-start-id>:<Codex|Claude>:<profile-key|->:<session-id-b64url>`
   in pane option `@skid_agent_runtime`. Inventory accepts its registered fields
   only when provider, PID, start id, pane, and foreground origin match the same
   observation used for optional identity. Stale, malformed, nested, ambiguous, or
   wrong-provider registrations are ignored and never repaired. Provider ids and
-  names are bounded facts, not unique keys, addresses, or authority.
+  names are bounded facts, not unique keys, addresses, or authority. only claude
+  registration supplies projected profile/provider-session id; codex's old
+  hook registration is not used for native binding or projected identity.
 - grid order: named space headings in the shared ascii-folded/exact utf-8 label
   order, then unassigned. within each group use the current agent-control order:
   case-folded/exact machine label, machine handle, case-folded/exact tmux name,
@@ -398,10 +305,10 @@ fresh inventory. Polls may overlap across machines but coalesce per
 machine/resource; mutations and terminal input are never retried or replayed.
 The session service captures one projection clock after collecting and
 validating the tmux snapshot. Inventory and create expose that exact value as
-`observedAt`; the same host clock and the accepted `window_activity` second
-derive every card's activity. The gateway never substitutes a handler clock,
-Android never rederives activity, and host clocks are never compared to each
-other.
+`observedAt`, before optional process enrichment. agent-control enrichment
+runs after releasing the session lock
+and does not replace that timestamp. the result is a sampled observation, not
+an atomic provider snapshot. host clocks are never compared to each other.
 The dashboard header is one compact row carrying the title and machine
 summary. The primary `New dwarf` action is the Forge seal, a
 bottom-trailing octagonal control over the grid; it is lit when a machine
@@ -439,31 +346,26 @@ snapshot and performs no request or mutation. Pressure freshness is independent
 of inventory freshness. Stale pressure preserves and labels its last snapshot;
 missing and unsupported remain distinct in the protocol.
 
-### Activity and optional identity
+### agent observation and identity hooks
 
-[`terminal-activity.md`](terminal-activity.md) owns the exact two-state
-derivation. Inventory reads the current window's built-in
-`#{window_activity}` without enabling a monitor, setting an option, installing
-a tmux hook, or clearing anything. The host projects `Active` through the
-inclusive ten-second boundary and `Quiet` afterward. The existing five-second
-inventory schedule is the only poller. A generic terminal program is the full
-integration fixture; no provider-live behavior is needed to establish activity.
+[agent control](agent-control.md) owns status and bounded reads/controls.
+`agentcontrol` enriches the collected tmux inventory outside the session lock,
+using terminal capture and one claude native inspection per selected profile.
+enrichment is bounded to two seconds and reuses the foreground five-second
+inventory schedule. pressure has its own coalesced polling lane.
 
-Each Codex profile has one deployment-owned `SessionStart` identity hook, while
-all Claude profiles use the one deployment-owned local `SessionStart` plugin;
-both call the closed `agent-hook` command. A bounded decoder reads only the
-documented provider session id and writes `@skid_agent_runtime` after the exact
-foreground PID/start/tty/profile validation defined by the agent-identity cut.
-Missing, untrusted, unloaded, stale, malformed, nested, or ambiguous hooks omit
-optional identity and never change activity. No prompt, stop, lifecycle,
-interaction, attention, or result event is accepted.
+[identity registration](agent-identity-projection.md) is content-free and bound
+to the exact foreground process lifetime. deployment-owned codex SessionStart
+hooks and the claude-work plugin call the closed `agent-hook` command. its
+bounded decoder reads only the documented session id and writes
+`@skid_agent_runtime` after PID/start/tty/profile validation. the current
+projection consumes claude registration only. missing, stale, malformed,
+nested or ambiguous registration does not prevent terminal observation/control.
+hooks never publish status, activity, lifecycle, attention, prompts or results.
 
-Codex may retain `skid-notify` only as a terminal-local desktop convenience: it
-resolves the inherited exact pane and writes BEL. It stores no option, calls no
-gateway, carries no content, and has no privileged product meaning. If tmux
-observes that byte it is ordinary window activity, identical to output from any
-other program. Claude and raw launches remain fully activity-capable without a
-notifier.
+`skid-notify` may emit BEL to its inherited exact pane as terminal-local
+presentation. it stores no state, calls no gateway and has no privileged
+product meaning.
 
 ### Start (The Forge)
 
@@ -683,8 +585,8 @@ history item is `current`.
   gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
-  an exact tmux path, an advisory `testedVersion`, and the four
-  closed profile rows. Every row has exactly one `Codex | Claude` provider and
+  an exact tmux path, an advisory `testedVersion`, an absolute
+  `nativeControlPath`, and either no profiles or the four closed profile rows. Every row has exactly one `Codex | Claude` provider and
   exactly one absolute provider-home environment value: `CODEX_HOME` for Codex
   or `CLAUDE_CONFIG_DIR` for Claude. Provider-home values are unique within a
   provider. Identical foreground-signature rows cannot be shared across
@@ -695,15 +597,20 @@ history item is `current`.
   fail startup. A canonical installed version that differs from `testedVersion`
   remains runnable; `scripts/fleet verify` reports functional fleet health
   without turning advisory tmux-version drift into failure.
-  `internal/process` is the single native observer consumed once per pane by
-  optional agent identity projection and by the content-free SessionStart hook
-  adapter. It never derives activity. `internal/agentruntime` owns provider/profile validation,
+  `internal/process` owns native foreground and ancestry observation for
+  runtime identity, command revalidation and the content-free SessionStart hook
+  adapter. it establishes process identity, not work state.
+  `internal/agentruntime` owns provider/profile validation,
   foreground classification, registration encoding/acceptance, and
   provider-specific argv rules. Linux process and
   pressure collection stays behind Linux build constraints; Darwin uses
   `KERN_PROC`, `KERN_PROCARGS2`, `proc_pidinfo`, `proc_pidpath`, processor
   ticks, native memory pressure, `vm.swapusage`, and `statfs`, never parsed
   `ps` output or a Linux fallback.
+  `internal/agentcontrol` depends on sessions and the configured native helper;
+  sessions never imports agentcontrol. the gateway composes both. short-lived
+  claude helpers inspect/read/stop using the selected profile environment;
+  neither helper nor client owns the provider runtime.
 - Public `dev-server` is the sole machine-local install owner. It pins one immutable
   GitHub release, source SHA, and two host-bundle digests, while this repository
   owns the complete five-asset release pin. It renders the exact Devbox/MacBook/Arch host
@@ -723,8 +630,8 @@ history item is `current`.
   and `provision-clients`. apply acceptance, lifetime digests, reboot checkpoints,
   and outage/recovery commands are retired. `dev-server` owns installation,
   idempotence, credential/session preservation, service lifecycle, and autostart;
-  their verification belongs to the replacement test system. historical results
-  remain attributed to their original source.
+  behavioral verification follows the current [testing policy](rules/testing.md).
+  historical results remain attributed to their original source.
   `scripts/fleet invite` is independent of deployment and verification: on linux or
   macos it reads the existing private `~/.config/skidbladnir/client.json`, selects
   arch/devbox/macbook, requests fresh invitations directly over their authenticated
@@ -774,6 +681,7 @@ history item is `current`.
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
+| `POST /v1/sessions/{tmuxId}/agent/{operation}` | `read`, `send`, `keys`, `interrupt`, or `stop`; strict full foreground target plus operation inputs, [agent-control contract](agent-control.md#capability-and-api-contract) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 
 errors use `{code,message}` and the existing optional `dispatch` for operations
@@ -822,7 +730,7 @@ enum values are defects, with no protocol branch or compatibility state.
   20–1024 × 5–512. Named, not schema-frozen.
 - Hand-written DTOs; no generated clients, contract digests, or lock files.
   Optional JSON fields are omitted, never `null`; old `id`, flat `profile`,
-  providerless profile rows, `status`, `runtime`, `interaction`, `attention`,
+  providerless profile rows, flat `activity`/`status`, `runtime`, `interaction`, `attention`,
   and compatibility decoders do not exist.
 
 ## 6. Android surface
@@ -872,7 +780,8 @@ enum values are defects, with no protocol branch or compatibility state.
   tokens. Tailscale installation/login stays an explicit external action; the
   app neither embeds nor claims to control the VPN.
 - The app redeems all three one-use tokens concurrently, awaits every result,
-  and writes only after every returned handle matches. It seals all bearers
+  and writes only after every returned handle and platform match and all
+  bearer values are distinct. It seals all bearers
   before one synchronous preference commit and exact readback. Failure,
   cancellation, process death, partial success, pre-existing data, or
   quarantine leaves no new readable collection and requires a new QR. There is
@@ -911,7 +820,7 @@ enum values are defects, with no protocol branch or compatibility state.
   smart punctuation disabled; IME Done uses the path and never creates a
   session. Picker state, inventory snapshots, and drafts are process-memory
   only.
-- Terminal: the proven harness. Vendored pinned xterm.js in a locked WebView
+- terminal renderer: Vendored pinned xterm.js in a locked WebView
   (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
   network/file access; Kotlin owns WSS/auth; bearer never enters WebView).
   The CSP admits xterm's generated style elements and attributes, which are
@@ -985,9 +894,8 @@ enum values are defects, with no protocol branch or compatibility state.
   automatically opens an attachment.
 - Near-black tonal surfaces, deterministic procedural dwarf icons as landmarks,
   and semantic labels on all controls. [`design-language.md`](design-language.md)
-  is the reviewed future visual target for palette, typography, shape,
-  ornament, motion, and terminal theme; roadmap D1–D4 remain unimplemented and
-  do not describe the current source. The key deck has stable row-major
+  owns the implemented palette, typography, shape, ornament, motion and
+  terminal theme. The key deck has stable row-major
   traversal and spoken Ctrl/Alt state; terminal scroll exposes reviewed custom
   accessibility actions. Copy is accessible after a trusted touch selection;
   end-to-end screen-reader selection construction is not claimed.
@@ -1000,7 +908,7 @@ enum values are defects, with no protocol branch or compatibility state.
 - Each gateway owns an independently minted 256-bit bearer. Every `/v1`
   request supplies exactly one Authorization header and uses constant-time
   comparison; re-minting one host revokes only that token and closes that
-  host's live streams on both phones. Tailnet admission belongs to loopback binding plus
+  host's live streams on its trusted clients. Tailnet admission belongs to loopback binding plus
   Tailscale Serve, not a caller-supplied identity header.
 - Each gateway has at most one in-memory five-minute pairing invitation.
   Creating another replaces it; restart or bearer rotation invalidates it;
@@ -1031,328 +939,26 @@ enum values are defects, with no protocol branch or compatibility state.
 - YOLO agents share their host UID; containment requires a separate UID/VM and
   is explicitly out of scope.
 
-## 8. Upgrade ladder (deliberately not in v0)
+## 8. Upgrade ladder
 
-the accepted [spaces target](spaces.md) adds optional session labels and grouped
-client views only. [the delivery plan](spaces-and-shells.md) separates shell
-creation and additional terminal navigation/composition; neither is part of pr 1.
-spaces add no execution ownership or lifecycle resource. source is implemented;
-the roadmap records its verification and remaining runtime boundaries.
+agent control, spaces, terminal creation and the organized desktop browser are
+accepted and implemented. their detailed specifications own their limits.
+[the composition plan](spaces-and-shells.md) leaves terminal embedding as a
+separate feasibility experiment; shipping it requires an accepted production
+contract and its own evidence.
 
-the accepted [new terminal here target](shells.md) closes pr 2's launch and
-create/attach contracts. it adds no persistent runtime owner, provider, or
-companion relationship. the accepted [pr 3 desktop browser](desktop-browser.md)
-adds keyboard regions and status ordering in the global agent list. its one
-current model resumes after fullscreen attachment, without history or special
-source return. it changes no host or phone execution owner.
-pr 4 investigates terminal embedding separately; shipping that capability requires
-an explicit terminal contract and acceptance, not evidence from pr 3.
-
-the [agent-control target](agent-control.md) is the accepted upgrade shipped in v0.3.1
-for semantic status, provider reads, and cross-agent interaction. it owns its
-scope and acceptance criteria; opaque-agent and activity-only rules describe v0,
-not that target. push, unread-result attention, provenance, copied provider
-history, durable receipts, and replay remain outside the target.
+push, unread-result attention, provenance, copied provider history, durable
+receipts and replay remain excluded. any new capability requires an explicit
+scope and acceptance-criterion change; removing old code does not authorize it.
 
 ## 9. Verification
 
-2026-09-17 test retirement supersedes the test plans and required red/green
-procedures below and in feature specifications. all repository-owned behavioral
-suites and their runners are removed. product contracts and behavioral acceptance
-criteria remain; deleting their checks does not establish acceptance or erase
-earlier failures. historical results retain their original source attribution.
+[testing policy](rules/testing.md) owns the temporary-test cleanup workflow and
+retained engineering commands. `scripts/check verify` runs static checks and
+builds, with no behavioral tests or live tmux/provider/device boundary.
+release integrity is separate from behavioral acceptance.
 
-current verification is `scripts/check verify`: formatting, syntax, lint,
-dependency integrity, catalogue/generated-asset checks, and go/android builds.
-`scripts/release TAG` builds and verifies signed artifacts once before creating a
-draft. `scripts/check-release` verifies existing artifacts with the public signing
-certificate; only signing needs private key configuration.
-`scripts/check published-release TAG SOURCE_SHA` downloads and verifies the public
-release without approval flags or environment tokens. the current checker uses
-`--source` to validate the clean exact published source, catalogue, and certificate
-asset; it does not run the historical release checker. source/version/platform,
-signing, archive, checksum, pin, and hosted-verification checks remain.
-release-note formatting is not release identity. host binary reproduction is
-an explicit `scripts/check-release --reproduce` audit, not routine verification.
-without that audit, release checks do not independently prove source-to-binary
-equivalence. dependency pins live in their lockfile; catalogue validation owns
-data, not a second implementation of icon rendering. these commands establish
-only their named engineering properties. routine verification runs no behavioral
-tests and touches no tmux, provider, or device boundary. the removed unit, integration, provider-live,
-live, platform, product, second-phone, and full gates have no replacement in this pr.
-
-the subsequent cleanup uses temporary integration/live tests removed before
-commit. [testing policy](rules/testing.md) owns that workflow and the retained
-commands; the [coverage issue](issues/test-system-reset.md) records the lack of
-automatic regression protection. [the codebase map](codebase-map.md) identifies
-the existing owners for sequential cleanup.
-
-### retired verification plan and retained behavioral criteria
-
-Verification follows an 80/20 boundary shape:
-
-- desktop browser adds [a1–a5 acceptance](desktop-browser.md#7-acceptance-and-delivery):
-  focused transition/layout cases, the existing real browser/pty/gateway/isolated-
-  tmux journey on linux/darwin, manual fixture inspection, and routine verification.
-  no new gate or phone/provider-live matrix. unavailable/unapproved runtime
-  boundaries remain `NOT_RUN`; old attachment evidence does not prove pr 3;
-
-- shells adds [h/d/p acceptance](shells.md#6-acceptance-and-redgreenrefactor):
-  one real host creation proof on linux/darwin, one desktop create/attach journey,
-  and one phone create/attach journey with real platform completion/restoration
-  cases. small pure contract tables supplement these boundaries; no mocked
-  internal api or historical result establishes them. the roadmap records each
-  executed boundary; unavailable or unapproved boundaries remain `NOT_RUN`;
-
-- spaces adds its [a1–a9 acceptance](spaces.md#12-acceptance-and-bounded-proof-plan):
-  compact go/android label/transport/navigation proofs, approved linux/darwin
-  isolated-tmux membership/lifetime acceptance, and approved real-compose/registry
-  plus phone-to-isolated-host editing/filter/return acceptance. runtime boundaries
-  require current-turn approval; missing boundaries are `NOT_RUN`. existing
-  routine gates are reused and historical release proofs do not satisfy these
-  new criteria;
-
-- pure table tests own handle/origin/strict DTO and host-config validation,
-  pressure signal and recovery classification, pressure capability partitions,
-  Android pressure presentation, fleet-QR parsing, federation
-  reduction/routing/sort, admission decisions, provider/profile validation,
-  foreground classification, registration acceptance, strict terminal-activity
-  parsing/derivation, Android activity presentation/order, and provider argv;
-- a gateway service test owns invitation replacement/expiry/bearer-rotation
-  invalidation and proves exactly one winner under concurrent redemption,
-  without invoking tmux;
-- one real-temp-tree workdir proof owns cwd grammar, Home containment,
-  one-level ordering, omissions, symlinks, cancellation, and bounds; one normal
-  authenticated Gateway `httptest` owns the strict listing transport without
-  tmux; one Android JVM fixture matrix owns protocol and picker state; with
-  separately approved device capability, one production-owned Compose semantic
-  journey owns picker interaction and accessibility without posting Create;
-- the same approved isolated-socket integration runs on Linux and Darwin and
-  owns real gateway + tmux list/create/activity/agent identity/attach/
-  detach/exact kill plus authentication and machine-binding rejection before
-  mutation;
-- approved live publication owns Devbox and Arch systemd plus Mac LaunchAgent
-  install, restart, exact Serve and host-config state, a functional configured
-  tmux runtime, local re-list, isolated
-  bearers, and identity-preserving reinstall;
-- a pre-publication release gate owns public-repository state, exact clean-main
-  SHA, exact-SHA hosted verification, unused monotonic tag, signer, APK, two
-  host bundles and checksums;
-  missing signing or GitHub evidence is `NOT_RUN`;
-- a separate post-publication read-only gate downloads the release and owns the
-  final non-draft immutable tag target, exact five assets, their contents, and
-  this repository's byte-exact five-asset pin; product verification separately
-  binds the `dev-server` tag, source, and two host-bundle digests;
-- approved S22+ instrumentation owns exact-three encrypted collection
-  install/reconnect, atomic failure/quarantine, activity presentation/order, the
-  absence of pressure rails in `All`, the selected machine's compact pressure
-  rail and local details disclosure, terminal behavior, and visible
-  stale-action admission;
-- a separately approved API-36 terminal selection-copy component matrix owns
-  trusted touch selection with mouse reporting off/on, native contextual Back
-  ordering, exact bounded Unicode snapshot transfer, the real Android primary
-  clip, composition-first touch arbitration and fresh-gesture recovery,
-  lifecycle clearing, and zero terminal/network/tmux/provider traffic;
-- one approved physical S22+ product journey owns the real scanner,
-  three-host federation/routing, per-machine pressure disclosure,
-  process recreation, machine-local outage/recovery, and preserved pairings
-  and production tmux lifetimes. Its explicit capability permits only the
-  gateway's bounded inventory reconciliation of gateway-owned character
-  metadata;
-  it proves the machine-local session lifetime set is unchanged. Host
-  lifecycle mutation coverage stays in isolated gates.
-- one separately approved named second-phone gate installs the same public APK
-  and connects with a fresh QR; until the device is named it is `NOT_RUN`.
-
-The terminal/identity proofs additionally cover latest-client shared sizing and
-shared window/pane navigation, client-only detach, bounded backpressure, exact
-foreground process lifetime, inherited nested-Codex rejection,
-Gboard/IME/dictation, stable text size with fully fitted rotation geometry,
-true color, the reviewed key-deck inputs and atomic one-shot Ctrl/Alt lifecycle,
-and reconnect without replay. The
-retired proof-ledger/acceptance matrix does not return. Existing
-`evidence/live/` records remain historical platform evidence.
-
-Agent-identity acceptance additionally owns one separately approved
-`provider-live` installed-hook sample per provider and launch origin across
-Linux and Darwin: Linux managed Codex plus laptop Claude, and Darwin managed
-Claude plus laptop Codex. It requires a clean exact released checkout, the
-fixed installed binary/config/catalogue with exact ownership and modes, and
-the installed version matching the declared tag and source SHA before tmux or
-a provider is launched. That sample proves provider/PID from the one foreground
-observation and accepts registered profile/id only for the exact current
-process lifetime; managed Claude name equals its initial tmux name and Codex
-names remain absent. The sample never dispatches provider input: Codex receives
-generated opaque stdin only through ephemeral `exec` with
-`--dangerously-bypass-hook-trust` while a test-owned, project-local synchronous
-`SessionStart` hold blocks the agent loop until the exact private tmux server
-dies; Claude runs `-p --no-session-persistence </dev/null>` with a separate
-test-owned hold-only plugin while the installed router plugin performs identity
-registration. Independently of hook loading, Codex selects a test-only,
-unauthenticated provider whose model traffic terminates at a content-free
-loopback sentinel. The sentinel never reads bytes and counts accepted
-connections; the gate requires zero. CLI-owned provider selection disables
-retries, WebSockets, and telemetry, and the launcher scrubs ambient proxies. A
-missing Codex hold therefore makes the gate red without exposing input to an
-external provider. Claude receives no input and cannot persist a session.
-Holds, input, and provider output remain content-free in evidence; input
-reaches neither an external provider API nor a provider session store. The
-separately approved isolated session integration gate owns process replacement,
-tmux-server restart, and tmux rename behavior. No provider API, transcript
-parser, background worker, or communication action exists. The sample proves
-optional identity only; it proves no terminal-activity behavior.
-
-Routine `scripts/test verify` is static analysis, compile/build, and pure unit
-tests only; it never invokes tmux, a provider, or ADB. `integration`,
-`provider-live`, `live`, host publication, `release`, `published-release`,
-`platform`, and `product` remain `NOT_RUN` without
-explicit user approval in the current turn and their exact
-command/environment capabilities.
-Tmux tests refuse inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`, own one
-private explicit `-L` or `-S` socket, and clean up only identities they created.
-A skipped external boundary is never a pass.
-
-Acceptance additionally requires: Devbox, MacBook, and Arch sessions remain distinct
-and route only by machine target; `All` cards, exceptional machine notices,
-Forge, terminal, and kill confirmation visibly name their machine; `All`
-renders no pressure rail, while a selected machine filter renders exactly that
-machine's rail and replaces only the card's repeated visual machine label; the
-card remains machine-named to accessibility; one host outage leaves the
-other fresh and actionable while only the failed snapshot becomes stale and
-non-mutating; origin/handle or bearer failure cannot cross machines; each
-Forge uses only local profiles/paths; laptop and phone share one pane/PID/draft
-with tmux latest-client geometry and shared navigation; detach leaves work
-alive; kill removes only the exact machine-local session lifetime; stale
-identities mutate nothing and grouped deletion preserves sibling links; every fresh card exposes exactly one required
-`Active | Quiet` value from the current window's built-in activity timestamp;
-`ACTIVE` and `QUIET` are distinguishable without color and are spoken only as
-recent or no recent tmux activity at the last check; the inclusive ten-second
-host threshold, existing five-second poll, current-window/sibling-pane/window-
-selection semantics, stale qualification, Quiet-first ordering, reduced-motion
-fallback, and required-observation failure behavior match
-[`terminal-activity.md`](terminal-activity.md); no provider, hook, process fact,
-terminal parser, alert flag, phone clock, or user option derives it; every row
-exposes `tmuxId` and `tmuxName`, exact foreground Codex or
-Claude exposes provider/PID, valid hooks add only bounded runtime profile and
-provider session id, explicit Claude name flags map exactly, and launch profile
-never substitutes for an unknown runtime profile; first inventory persists one valid dwarf for every visible ordinary
-session and preserves concurrent valid assignment; the terminal key deck exposes only its reviewed terminal inputs;
-Ctrl/Alt never alter literal IME, dictation-shaped, Unicode, multi-character,
-or paste input or survive a lifecycle boundary; and leaving through the top detach action or Back detaches
-only the phone; both pressure capability sets are honest, host statuses drive
-every metric mark and exception accent, missing evidence stays visible,
-recovery is explicit, and pressure
-disclosure adds no network or mutation; app, gateway, and LaunchAgent restart
-converge to each local
-`tmux list-sessions` truth.
-
-Rename acceptance additionally requires: one fresh exact request changes only
-the tmux name; the active terminal stays attached and adopts the reread
-same-id/token target; invalid, unchanged, conflicting, stale, missing,
-restarted-server, and concurrent-loser requests mutate nothing; an unknown
-transport outcome is never replayed and converges through inventory; and no
-provider rename, alias, history, second name owner, or content-bearing log is
-introduced. [`session-renaming.md`](session-renaming.md) owns the detailed
-delivery boundary and red/green proof shape.
-
-Working-directory chooser acceptance additionally requires: Home or a current
-machine-local cwd is selectable without a keyboard; a six-level Home path is
-reachable by touch with truthful machine, location, Parent, Back, and explicit
-Use semantics; exact entry still reaches every valid cwd; listing reveals only
-bounded immediate folders and never mutates; create revalidates; stale or late
-responses cannot cross machine or chooser lifetime; and no path, folder name,
-filter, payload, size, or selection enters logs or evidence. The hard cut leaves
-no primary raw cwd editor, duplicate validator, compatibility route, fallback,
-durable chooser state, or filesystem machinery. The full contract and owner
-proofs are [`working-directory-chooser.md`](working-directory-chooser.md).
-
-Terminal touch-scroll acceptance additionally requires: a trusted one-finger
-vertical drag and truthful custom accessibility wheel actions traverse xterm's
-single normalized wheel owner; a scrollback-capable buffer attempts exact
-phone-local line movement even at its bounds, a buffer with no scrollback
-capability emits only xterm's cursor sequence, and negotiated mouse tracking
-emits only xterm's mouse report. Gesture arbitration, direction, bounded
-amplification, cancellation, selection/focus/IME coexistence,
-composition-first whole-stream ownership, and outer viewport containment match
-[`terminal-touch-scroll.md`](terminal-touch-scroll.md).
-The hard cut leaves no transcript, application-side `scrollLines`, mode branch,
-escape encoder, synthetic wheel event, tmux command, fallback, or compatibility
-path. The sole dependency delta is one source-pinned, digest-locked,
-reproducibly generated xterm patch/API whose physical and semantic callers
-share one internal router. Its declared Darwin arm64 audit build uses pinned
-Node/npm and an integrity-checked platform esbuild package with install scripts
-disabled; it pins the upstream source/lock and post-patch manifest/lock
-separately, including the reviewed build-only remediation for the tag's stale
-lock metadata and executable development dependency advisories. It audits the
-complete executable build lock with no severity or development-dependency
-omission. Another build platform requires its own explicit pin and
-identical-output proof.
-
-Terminal selection-copy acceptance additionally requires: trusted long-press
-and hold-drag select the intended xterm cells with mouse reporting off or on;
-the native floating `Copy` action is discoverable and invocable after touch
-selection; the phone's real primary plain-text clip then equals the immutable
-release snapshot once and selection clears. Back first clears selection and
-then retains detach through a selected-only view-resolved overlay-priority
-callback; no key or Activity/Compose-specific interception exists. Empty,
-oversize, malformed, cancelled, dismissed,
-backgrounded, disabled, rotated, unavailable, and disposed paths never write;
-selection and copy emit no terminal input, WSS, network, tmux, or provider
-traffic. An unfocused below-slop tap emits one content-free intent after xterm's
-semantic tap succeeds; native lifecycle/selection authorization then acquires
-WebView focus and requests the Android IME through `WindowInsets`. An unfocused
-drag emits no such intent. The hard cut leaves one generic source-pinned xterm
-patch/artifact, one prevented TouchEvent owner, one native
-selection/clipboard/IME-presentation boundary, exact generation-correlated
-version-3 packaged messages, no DOM/browser clipboard writer, and no
-compatibility or fallback path. The full contract and owner proofs are
-[`terminal-selection-copy.md`](terminal-selection-copy.md).
-
-Distribution acceptance additionally requires: the public release has the
-five owned immutable assets and one signer; `dev-server` pins and applies the
-same version on all three hosts, and `scripts/fleet verify` accepts them without
-changing existing credentials or tmux lifetimes; a fresh phone needs only APK install, one-time Tailscale login,
-`Connect`, and one fresh five-minute QR; concurrent double redemption has one
-winner; Android commits all three encrypted credentials or none; reconnect
-changes bearers only for exact installed identities; and no coordinator,
-public ingress, credential in source/release/logs/argv, legacy provisioning,
-host defaults, compatibility fallback, or partial retry remains.
-
-The Android platform gate uses two explicit trust roots. The post-publication
-checkout running `scripts/test` owns policy and a `release-pin.json` that is
-tracked and byte-exact at `HEAD`. The required absolute, non-symlink
-`SKIDBLADNIR_RELEASE_SOURCE_CHECKOUT` is clean at the release's exact source SHA
-and owns metadata and signing behavior. It also owns build inputs/outputs and
-test enumeration by default. An explicit `--test-source-checkout` may select a
-clean descendant with the same tracked pin and changes confined to documentation,
-`scripts/test`, Go integration tests, and Android instrumentation. Runtime,
-dependency, build, and signing inputs must remain byte-identical to the release;
-full-suite enforcement, pairing comparison, and exact public APK restoration
-still apply. Record the corrected test SHA separately from the unchanged runtime
-SHA and preserve the original failed result. The later pin commit is never
-treated as release source. [public-fleet-distribution.md](public-fleet-distribution.md)
-owns this test-correction procedure.
-
-Dashboard acceptance additionally requires: a threshold pull at the top of an
-empty, short, stale, reading, or populated dwarf collection verifies only the
-current filter's live machine targets; a below-threshold release, a release
-while the collection remains away from the top, or a pull while verification
-is already active adds no work; a pull
-racing an ordinary inventory read requires exactly one later coalesced read;
-the shared indicator retains content and ends only after every targeted read
-lands or its poller stops; and manual verification performs no pressure,
-mutation, or terminal-input operation. The collection's first content begins
-`12dp` below its viewport in live and inert scopes; the active progress line is
-confined to `y = 0..2dp`, horizontally inset `12dp`, and does not change card,
-empty-content, focus, or scroll bounds.
-
-dashboard-return acceptance additionally requires: from any machine/space
-intersection, leaving a scrolled collection for terminal and returning through
-detach or android back restores both filters and the surviving first-visible
-session/heading at the same offset without an intermediate all/top frame;
-post-detach verification uses machine scope, never observed space membership;
-reorder, deletion, empty, unavailable, background, and same-task saved-state cases follow the
-rules in [`dashboard-return-continuity.md`](dashboard-return-continuity.md);
-fresh task/reset starts all machines/all spaces at top; process restoration never
-retains a terminal target, attachment, bytes, or input; and no inventory snapshot/payload,
-raw identity token, raw space label, or terminal content enters saved state.
+accepted feature specifications retain their product acceptance criteria.
+removed suites, unavailable boundaries and unexecuted checks are never passes.
+[the roadmap](roadmap.md) points to open issues and source-attributed historical
+evidence. deleting old test recipes does not erase failures or satisfy gaps.
