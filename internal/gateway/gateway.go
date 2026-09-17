@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
-	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
@@ -33,24 +32,9 @@ const (
 	machineHeader          = "Skidbladnir-Machine"
 )
 
-type sessionManager interface {
-	Profiles() []agentruntime.Profile
-	List(context.Context) (sessions.Inventory, error)
-	Create(context.Context, sessions.CreateInput) (sessions.ObservedSession, error)
-	CreateShell(context.Context, sessions.ShellInput) (sessions.ObservedSession, error)
-	Rename(context.Context, sessions.RenameInput) error
-	SetSpace(context.Context, sessions.SetSpaceInput) error
-	ValidateKill(context.Context, sessions.KillInput) error
-	Kill(context.Context, sessions.KillInput) error
-	AgentTerminalKillInput(context.Context, sessions.AgentTarget) (sessions.KillInput, error)
-	KillAgentTerminal(context.Context, sessions.AgentTarget) error
-	ValidateTerminal(context.Context, string, string) error
-	OpenTerminal(context.Context, sessions.OpenTerminalInput) (*sessions.TerminalAttachment, error)
-}
-
 type Config struct {
 	Agents   *agentcontrol.Service
-	Sessions sessionManager
+	Sessions *sessions.Manager
 	Workdir  *workdir.Service
 	Pressure *pressure.Monitor
 	Bearer   auth.FileVerifier
@@ -62,7 +46,7 @@ type Config struct {
 
 type Gateway struct {
 	agents   *agentcontrol.Service
-	sessions sessionManager
+	sessions *sessions.Manager
 	workdir  *workdir.Service
 	pressure *pressure.Monitor
 	bearer   auth.FileVerifier
@@ -427,13 +411,11 @@ func requireEmptyRequest(request *http.Request) bool {
 func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.Request) {
 	startedAt := time.Now()
 	inventory, err := gateway.sessions.List(request.Context())
-	if err == nil && gateway.agents != nil {
-		gateway.agents.Enrich(request.Context(), &inventory)
-	}
 	if err != nil {
 		writeError(writer, errorInternal)
 		return
 	}
+	gateway.agents.Enrich(request.Context(), &inventory)
 	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
 	if err != nil {
 		writeError(writer, errorInternal)

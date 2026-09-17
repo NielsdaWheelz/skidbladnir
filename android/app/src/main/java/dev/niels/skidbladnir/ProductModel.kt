@@ -820,7 +820,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
     ReconnectRequired("ReconnectRequired"),
     TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
-    AgentTargetStale("AgentTargetStale"), AgentUnavailable("AgentUnavailable"),
+    AgentTargetStale("AgentTargetStale"),
     AgentBlocked("AgentBlocked"), AgentInputInvalid("AgentInputInvalid"),
 }
 
@@ -848,7 +848,6 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.TerminalConfigurationUnsupported ->
         "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
     ApiErrorCode.AgentTargetStale -> "The agent changed. Refresh and try again."
-    ApiErrorCode.AgentUnavailable -> "That agent method is unavailable."
     ApiErrorCode.AgentBlocked -> "Inspect the terminal and send a deliberate reply."
     ApiErrorCode.AgentInputInvalid -> "The agent input is not valid."
 }

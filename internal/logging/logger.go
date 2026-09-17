@@ -63,7 +63,6 @@ type ErrorCode string
 
 const (
 	ErrorAgentTargetStale            ErrorCode = "AgentTargetStale"
-	ErrorAgentUnavailable            ErrorCode = "AgentUnavailable"
 	ErrorAgentBlocked                ErrorCode = "AgentBlocked"
 	ErrorAgentInputInvalid           ErrorCode = "AgentInputInvalid"
 	ErrorNone                        ErrorCode = ""
@@ -88,7 +87,7 @@ const (
 
 func (code ErrorCode) valid() bool {
 	switch code {
-	case ErrorAgentTargetStale, ErrorAgentUnavailable, ErrorAgentBlocked, ErrorAgentInputInvalid, ErrorUnauthenticated,
+	case ErrorAgentTargetStale, ErrorAgentBlocked, ErrorAgentInputInvalid, ErrorUnauthenticated,
 		ErrorInvalidRequest,
 		ErrorRequestTooLarge,
 		ErrorWorkingDirectoryInvalid,

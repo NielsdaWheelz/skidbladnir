@@ -312,8 +312,8 @@ internal fun completeWorkingDirectoryRequest(
                 ApiErrorCode.PairingInviteRejected,
                 ApiErrorCode.ReconnectRequired,
                 ApiErrorCode.TerminalConfigurationUnsupported,
-            ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable,
-            ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
+                ApiErrorCode.AgentTargetStale,
+                ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
                 -> throw ProtocolDecodeException("directory-listing completion error set")
             }
         }
@@ -618,8 +618,8 @@ internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean = when (this) {
         ApiErrorCode.InternalError,
         ApiErrorCode.ReconnectRequired,
         ApiErrorCode.TerminalConfigurationUnsupported,
-            ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable,
-            ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
+        ApiErrorCode.AgentTargetStale,
+        ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
         -> false
     }
 }
