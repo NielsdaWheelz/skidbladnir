@@ -129,7 +129,6 @@ type ReadResult struct {
 type WriteResult struct {
 	Method  string `json:"method"`
 	Outcome string `json:"outcome"`
-	TurnID  string `json:"turnId,omitempty"`
 }
 type StopResult struct {
 	Agent    string `json:"agent"`
@@ -238,7 +237,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		}
 	case "send", "keys", "interrupt":
 		var value *WriteResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !slices.Contains([]string{"native", "terminal"}, value.Method) || !slices.Contains([]string{"accepted", "written", "interrupted", "finished", "unknown"}, value.Outcome) {
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Method != "terminal" || !slices.Contains([]string{"written", "unknown"}, value.Outcome) {
 			return nil, false
 		}
 	case "stop":
