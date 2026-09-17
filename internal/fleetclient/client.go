@@ -77,6 +77,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			}
 			result = success(value)
 		}
+		return result
 	case "start":
 		selected, ok := client.peerByLabel(request.Machine)
 		if !ok {
