@@ -166,7 +166,7 @@ internal class MachineStore(context: Context) {
         val stored = readLocked()
         if (
             stored.unreadable.isNotEmpty() ||
-            stored.credentials.size != 3 ||
+            stored.credentials.size != FLEET_LABELS.size ||
             !isExactFleet(credentials) ||
             stored.credentials.map { it.machine } != credentials.map { it.machine }
         ) return@synchronized FleetReconnection.FleetMismatch
@@ -183,7 +183,7 @@ internal class MachineStore(context: Context) {
             // quarantine, not a defect or an invitation to trust partial fields.
             return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
         }
-        if (storedHandles.size != 3) {
+        if (storedHandles.size != FLEET_LABELS.size) {
             return MachineStoreRead(emptyList(), listOf(UnreadableStoredMachine(collectionWide = true)))
         }
         val expectedFields = setOf(MACHINE_HANDLES_FIELD) + storedHandles.flatMap { handle ->
@@ -213,9 +213,9 @@ internal class MachineStore(context: Context) {
         val unique = uniqueCredentials(readable)
         if (
             quarantined != 0 ||
-            unique.size != 3 ||
+            unique.size != FLEET_LABELS.size ||
             unique.sortedBy { it.machine.label.text.lowercase(Locale.ROOT) }.map { it.machine.label.text } !=
-            listOf("Arch", "Devbox", "MacBook")
+            FLEET_LABELS
         ) {
             return MachineStoreRead(emptyList(), List(storedHandles.size) { UnreadableStoredMachine() })
         }
@@ -262,9 +262,9 @@ internal class MachineStore(context: Context) {
     )
 
     private fun isExactFleet(credentials: List<MachineCredential>): Boolean =
-        credentials.map { it.machine.label.text } == listOf("Arch", "Devbox", "MacBook") &&
-            uniqueCredentials(credentials).size == 3 &&
-            credentials.map { it.machine.handle }.distinct().size == 3
+        credentials.map { it.machine.label.text } == FLEET_LABELS &&
+            uniqueCredentials(credentials).size == FLEET_LABELS.size &&
+            credentials.map { it.machine.handle }.distinct().size == FLEET_LABELS.size
 
     @SuppressLint("UseKtx") // justify-override: this credential transaction must observe commit.
     private fun commitFleet(

@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 
 private const val FLEET_INVITE_KIND = "skidbladnir.fleet-invite.v1"
 private const val MAXIMUM_FLEET_INVITE_BYTES = 4_096
-private val FLEET_LABELS = listOf("Arch", "Devbox", "MacBook")
+internal val FLEET_LABELS = listOf("Arch", "Devbox", "MacBook")
 
 internal class PairingInviteToken private constructor(internal val encoded: String) {
     companion object {
