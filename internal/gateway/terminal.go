@@ -114,16 +114,14 @@ func (gateway *Gateway) runTerminal(
 ) (cleanupErr error) {
 	runtimeContext, cancel := context.WithCancel(ctx)
 	queue := terminal.NewOutboundQueue()
-	cleanup := terminal.NewCleanup(terminal.OwnedResources{
-		ClosePTY:    attachment.ClosePTY,
-		CloseClient: attachment.CloseClient,
-	})
 	var workers sync.WaitGroup
 	defer func() {
 		cancel()
 		queue.Close()
 		_ = connection.CloseNow() // justify-ignore-error: owned terminal cleanup must not wait for a WebSocket close handshake.
-		cleanupErr = cleanup.Close()
+		ptyErr := attachment.ClosePTY()
+		clientErr := attachment.CloseClient()
+		cleanupErr = errors.Join(ptyErr, clientErr)
 		workers.Wait()
 	}()
 
