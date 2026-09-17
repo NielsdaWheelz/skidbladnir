@@ -1,5 +1,48 @@
 # Skíðblaðnir v0 roadmap
 
+## script simplification — 2026-09-17
+
+`scripts/fleet` now has three commands: `verify`, `invite`, and
+`provision-clients`. host acceptance, reboot checkpoints, lifetime snapshots,
+outage/recovery commands, and their locks are removed. `dev-server` retains
+machine-local installation and its preservation/idempotence guarantees.
+provisioning validates the complete fleet configuration before distributing it
+to macbook, devbox, arch, and jarvis; release/runtime checks belong to `verify`.
+distribution is sequential; rerunning repairs a partial distribution.
+
+the unused codex-config checker and redundant `scripts/check release` are gone.
+`scripts/release TAG` builds and verifies artifacts once before creating a draft.
+artifact verification uses the public certificate. the read-only published check
+is `scripts/check published-release TAG SOURCE_SHA`, with no approval tokens;
+the current checker reads the immutable release's clean exact source.
+ornament drift checking is `scripts/gen-ornament --check`; the separate checker
+is removed. generated geometry is unchanged.
+
+temporary fake-tool checks cover fleet provisioning and failures, retained
+service inspection, public artifact verification against separate exact source,
+release-policy failures, command admission, and read-only ornament drift checks.
+`scripts/check verify` passes, including shell checks and go/android builds.
+live fleet operations, phone installation, and published-release verification
+are `NOT_RUN`. no replacement behavioral test harness is added.
+
+## installation and pairing — 2026-09-17
+
+`scripts/install-android <apk>` now checks the public signer/package and installs
+in place on one authorized device, including same-version replacement. no human
+confirmation, app launch, reconnect, or product journey accompanies installation.
+`scripts/fleet invite` uses the existing private skid client configuration on
+linux or macos and calls only the three pairing endpoints. the dev-server
+checkout, ssh, release/health verification, and operator lock leave that path.
+gateway clocks own invitation expiry. this supersedes the invitation prerequisites
+in the older delivery records below; protocol and release compatibility stay intact.
+
+temporary fake-tool checks cover installation/reinstallation, failure propagation,
+device selection, direct invitation, canonical qr output, invalid/incomplete fleet
+rejection, response failures, and host clock differences. `scripts/check verify`
+passes, including shell checks and go/android builds. no replacement test harness
+is added. real phone installation and live fleet invitation are `NOT_RUN`;
+the commands' success does not claim visual or behavioral product acceptance.
+
 ## test retirement — 2026-09-17
 
 the user chose to remove all behavioral tests and their harnesses, retaining
@@ -1061,8 +1104,8 @@ Outcome: a trusted API-36 user installs one signed public GitHub APK, signs
 into Tailscale once, taps `Connect`, scans one five-minute QR, and receives the
 exact Devbox/MacBook/Arch fleet atomically. Public `dev-server` pins the same
 release and applies each machine-local gateway as an auto-started service;
-upstream `scripts/fleet invite` generates a fresh QR per phone without copying
-durable bearers off-host.
+upstream `scripts/fleet invite` generates a fresh QR per phone. its current
+prerequisites and credential source are in the 2026-09-17 operator change above.
 
 - One release publishes the APK, Linux-amd64 and Darwin-arm64 host bundles,
   checksums, and Android signer fingerprint from one tag/SHA.
@@ -1093,20 +1136,16 @@ non-overlapping ownership are [public-fleet-distribution.md](public-fleet-distri
 
 Outcome: `dev-server` has only machine-local `workstation apply` and
 `devbox apply`; this repository owns fleet behavior through `scripts/fleet`.
-The operator performs verification, invitation, two-apply acceptance,
-lifetime digests, reboot checkpoints, and bounded outage/recovery. It names
-one absolute dev-server checkout explicitly and uses the installer-owned
-DevServer SSH config with `ssh -F`; there is no repository-level installer
-fleet command, compatibility alias, or fallback path. Its public health and
-invitation commands are `scripts/fleet verify` and `scripts/fleet invite`, each
-with an explicit absolute `SKIDBLADNIR_DEV_SERVER_CHECKOUT`.
-Arch acceptance alone opens one SSH TTY for normal operator sudo; the streamed
-internal host protocol has no apply action. The deliberate trade-off is a
-human prompt instead of blanket unattended root for the user/agent account.
+the 2026-09-17 simplification narrows that operator to verification, invitation,
+and client configuration distribution. only verification requires an absolute
+`SKIDBLADNIR_DEV_SERVER_CHECKOUT`; verification and provisioning use the managed
+devbox ssh config. installer acceptance, reboot checkpoints, lifetime snapshots,
+and outage/recovery wrappers are retired. the streamed host protocol has no
+apply action; no installer or privilege policy changes accompany this cut.
 
-Gate: `scripts/fleet-test` is part of routine verification. Physical host,
-reboot, outage, product, and device gates remain separately approved and are
-never inferred from the hermetic proof.
+the former fleet test harness is retired under [testing status](rules/testing.md).
+engineering checks do not establish live installation or device behavior;
+historical host acceptance remains attributed to its original release.
 
 ## v0 design delta D9 — detach chrome
 

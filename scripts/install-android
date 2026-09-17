@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == '--help' && "$#" -eq 1 ]]; then
+  printf 'usage: scripts/install-android <apk>\ninstall in place on the only connected, authorized android device; preserve app data.\n'
+  exit
+fi
+if [[ "$#" -ne 1 ]]; then
+  printf 'usage: scripts/install-android <apk>\n' >&2
+  exit 64
+fi
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+apk="$1"
+[[ "$apk" == /* ]] || apk="$PWD/$apk"
+[[ -f "$apk" ]] || {
+  printf 'apk is unavailable: %s\n' "$apk" >&2
+  exit 1
+}
+
+case "$(uname -s)" in
+Darwin) android_sdk="${ANDROID_HOME:-$HOME/Library/Android/sdk}" ;;
+Linux) android_sdk="${ANDROID_HOME:-$HOME/Android/Sdk}" ;;
+*)
+  printf 'android installation supports linux and darwin\n' >&2
+  exit 1
+  ;;
+esac
+aapt="$android_sdk/build-tools/36.1.0/aapt"
+[[ -x "$aapt" ]] || {
+  printf 'android build-tools 36.1.0 are required; set ANDROID_HOME to the sdk directory\n' >&2
+  exit 1
+}
+adb="$android_sdk/platform-tools/adb"
+if [[ ! -x "$adb" ]]; then
+  adb="$(command -v adb || true)"
+fi
+[[ -x "$adb" ]] || {
+  printf 'adb is unavailable; install android platform-tools or add adb to PATH\n' >&2
+  exit 1
+}
+
+ANDROID_HOME="$android_sdk" "$repo_dir/scripts/check-android-signing" --public-apk "$apk"
+package="$("$aapt" dump badging "$apk" | awk -F "'" '/^package: / { print $2 }')"
+[[ "$package" == 'dev.niels.skidbladnir' ]] || {
+  printf 'apk must contain package dev.niels.skidbladnir\n' >&2
+  exit 1
+}
+
+devices="$("$adb" devices)"
+device="$(printf '%s\n' "$devices" | awk '
+  NR > 1 && NF { count++; serial = $1; state = $2 }
+  END {
+    if (count != 1) {
+      print "connect exactly one android device" > "/dev/stderr"
+      exit 1
+    }
+    if (state != "device") {
+      print "android device is not ready; authorize usb debugging and check its connection" > "/dev/stderr"
+      exit 1
+    }
+    print serial
+  }
+')"
+"$adb" -s "$device" install -r "$apk" </dev/null
+printf 'android installation complete\n'

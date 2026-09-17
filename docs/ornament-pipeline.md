@@ -67,7 +67,7 @@ phone at runtime beyond drawing pre-built paths.
      Kotlin constant, because nothing at runtime reads it (no dead code
      ships). [`launcher-mark.md`](launcher-mark.md) owns its constants and
      proofs.
-- the generated files are checked in. `scripts/check-ornament` imports
+- the generated files are checked in. `scripts/gen-ornament --check` calls
   `build_outputs()` once and byte-compares each result with its checked-in file.
   `scripts/check static` runs this drift check. no repeated generation or
   behavioral test suite is part of this check.
@@ -106,17 +106,20 @@ phone at runtime beyond drawing pre-built paths.
 
 | Slice | Owner | Paths | Owned proof |
 | --- | --- | --- | --- |
-| Generator + gate | Root integrator | `scripts/gen-ornament` (new), `scripts/check-ornament` (new), `scripts/test` (static composition only) | Drift red below |
+| Generator + gate | Root integrator | `scripts/gen-ornament` (including `--check`), `scripts/check` (static composition only) | Drift check |
 | Compose surfaces | Compose UI builder | `Ornament.kt` (generated), `DashboardScreen.kt` (empty state and Forge) | Compose proofs below |
 | Icon | Compose UI builder (same slice) | `res/mipmap*/` (new), `res/drawable/ic_launcher.xml` (replaced), `AndroidManifest.xml` (icon refs only) | Build proof |
 | Verification | Read-only verifier | none | Review only |
 
 ## Red / green / refactor
 
+historical implementation plan; [testing status](rules/testing.md) owns current
+checks. only generated-file drift checking remains from the proof plan below.
+
 Red (each observed failing first):
 
 1. Drift gate: mutate one byte of the checked-in `Ornament.kt`;
-   `scripts/check-ornament` fails; regeneration restores green.
+   `scripts/gen-ornament --check` fails; regeneration restores green.
 2. Determinism: two consecutive generator runs produce identical bytes.
 3. Compose test: ornament nodes expose no semantics and are not clickable;
    the existing accessibility traversal proofs for Forge and grid still pass
@@ -127,7 +130,7 @@ Red (each observed failing first):
    compiles with the new manifest refs).
 
 Green: implement only enough to pass; routine `scripts/test verify`
-(static now including `check-ornament`, build, unit) stays green.
+(static now including `gen-ornament --check`, build, unit) stays green.
 
 Refactor: ensure every Forge width uses one tile-drawing helper rather than
 parallel renderers; nothing else.

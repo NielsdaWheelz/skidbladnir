@@ -4,29 +4,6 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 repo_name='NielsdaWheelz/skidbladnir'
 
-immutable_release_policy_file_enabled() {
-  local policy_file="$1"
-  local policy_bytes
-  local observed_keys
-  [[ -f "$policy_file" && ! -L "$policy_file" ]] || return 1
-  policy_bytes="$(LC_ALL=C wc -c <"$policy_file" | tr -d '[:space:]')" || return 1
-  [[ "$policy_bytes" =~ ^[1-9][0-9]{0,3}$ && "$policy_bytes" -le 4096 ]] || return 1
-  observed_keys="$(
-    jq --stream -er '
-      if length == 1 then empty
-      elif length == 2 and (.[0] | length) == 1 then .[0][0]
-      else "__SKIDBLADNIR_INVALID_NESTING__"
-      end
-    ' "$policy_file" 2>/dev/null | LC_ALL=C sort
-  )" || return 1
-  [[ "$observed_keys" == $'enabled\nenforced_by_owner' ]] || return 1
-  jq -e '
-    type == "object" and
-    .enabled == true and
-    (.enforced_by_owner | type == "boolean")
-  ' "$policy_file" >/dev/null 2>&1
-}
-
 if [[ "$#" -ne 1 ]]; then
   printf 'usage: %s vMAJOR.MINOR.PATCH\n' "$0" >&2
   exit 64
@@ -68,30 +45,13 @@ repo_identity="$(gh repo view "$repo_name" --json nameWithOwner,visibility \
   printf 'Release requires the public %s repository\n' "$repo_name" >&2
   exit 1
 }
-immutable_release_policy_dir="$(mktemp -d /tmp/skidbladnir-release-policy.XXXXXX)"
-case "$immutable_release_policy_dir" in
-  /tmp/skidbladnir-release-policy.* | /private/tmp/skidbladnir-release-policy.*) ;;
-  *)
-    printf 'Could not create a private immutable-release policy directory\n' >&2
-    exit 1
-    ;;
-esac
-trap 'rm -R -- "$immutable_release_policy_dir"' EXIT HUP INT TERM
-immutable_release_policy_file="$immutable_release_policy_dir/policy.json"
-install -m 0600 /dev/null "$immutable_release_policy_file"
 gh api --method GET \
   -H 'Accept: application/vnd.github+json' \
   -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/$repo_name/immutable-releases" | head -c 4097 >"$immutable_release_policy_file" || {
-  printf 'GitHub immutable-release policy is unavailable for %s\n' "$repo_name" >&2
-  exit 1
-}
-immutable_release_policy_file_enabled "$immutable_release_policy_file" || {
+  "repos/$repo_name/immutable-releases" | jq -e '.enabled == true' >/dev/null || {
   printf 'Release requires GitHub immutable releases to be enabled for %s\n' "$repo_name" >&2
   exit 1
 }
-rm -R -- "$immutable_release_policy_dir"
-trap - EXIT HUP INT TERM
 
 git fetch --quiet origin main --tags
 sha="$(git rev-parse HEAD)"

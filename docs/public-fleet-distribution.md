@@ -25,6 +25,23 @@ detailed capability and work split.
 Normative code and proof rules remain [docs/rules](rules/index.md), especially
 [testing.md](rules/testing.md). Do not create a second testing standard.
 
+2026-09-17 operator simplification: installation and qr pairing are independent
+commands. `scripts/install-android <apk>` performs a noninteractive, data-preserving
+installation or same-version replacement after package/signature checks. it
+requires one connected device with usb debugging already authorized, android sdk
+build-tools 36.1.0, and adb. `ANDROID_HOME` may select the sdk; defaults are
+`~/Library/Android/sdk` on macos and `~/Android/Sdk` on linux. no visual acceptance,
+app launch, fleet verification, or reconnect is part of installation. the retired
+product journey below is historical evidence, not an installation prerequisite.
+
+the same simplification retires fleet apply acceptance, lifetime digests, reboot
+checkpoints, and outage/recovery commands. `fleet` retains verification, invitation,
+and client provisioning. installation guarantees remain with `dev-server`; old
+acceptance results below remain historical. `provision-clients` validates the
+complete three-host identity/origin/credential set and distributes private client
+files without release or runtime-health prerequisites. only `fleet verify` needs
+the explicit dev-server checkout.
+
 ## 1. Decision
 
 Ship one public GitHub Release and one fixed personal fleet:
@@ -55,7 +72,7 @@ Goals:
    taps `Connect`, scans one QR, and sees all three machines.
 2. `dev-server` owns repeatable machine-local installation, configuration,
    autostart, and Serve publication; upstream `scripts/fleet` owns fixed-fleet
-   verification, invitation, and acceptance.
+   verification, invitation, and client provisioning.
 3. Releases are signed, attributable, checksummed, version-locked, and easy to
    update without introducing an app store or hosted control plane.
 4. Setup and repair are create-only or identity-preserving, fail closed, and
@@ -88,25 +105,23 @@ Android phone -- Tailscale tailnet --> Devbox gateway --> local tmux
        |                             --> Arch gateway ----> local tmux
        |
        +-- scan one QR <-- Skíðblaðnir `scripts/fleet invite`
-                             | local fixed gateway call
-                             + SSH fixed call to Devbox
-                             + SSH fixed call to Arch
+                             | existing private skid client configuration
+                             + HTTPS invitation call to each gateway
 ```
 
 | Owner | Owns | Must not own |
 |---|---|---|
 | Skíðblaðnir | Android product, gateway/API, strict host-config parser, pairing protocol, release artifacts, protocol tests | Machine-local installation policy, durable host secrets |
-| `dev-server` | Pinned release/checksums, per-host configs, services, Tailscale Serve desired state, and machine-local apply | Fleet verification/invitation/acceptance, app behavior, API semantics, release signing key, copied gateway source |
-| `scripts/fleet` | Exact three-host topology, verification, invitation, apply acceptance, lifetime digests, reboot checkpoints, and bounded outage/recovery | Machine-local desired state, arbitrary hosts/commands, durable credentials |
-| Each host | One immutable machine handle and one mode-0600 bearer; local tmux truth | Other hosts' credentials or runtime state |
+| `dev-server` | Pinned release/checksums, per-host configs, services, Tailscale Serve desired state, machine-local apply and its preservation/idempotence guarantees | Fleet verification/invitation/provisioning, app behavior, API semantics, release signing key, copied gateway source |
+| `scripts/fleet` | Exact three-host verification, invitation, and private client configuration distribution | Host installation, service lifecycle, acceptance exercises, arbitrary hosts/commands |
+| Each gateway | One immutable machine handle and one mode-0600 bearer; local tmux truth | Other gateways' credentials or runtime state |
 | Phone | One encrypted fixed fleet and ephemeral scan/redeem state | Host administration, Tailscale credentials, terminal content outside the terminal boundary |
 
 There is no runtime dependency on GitHub, `dev-server`, the MacBook operator,
 or another gateway after pairing.
 
-Arch apply acceptance uses one attached SSH TTY and normal operator sudo. The
-streamed internal host protocol has no apply action; unattended user/agent root
-is not an accepted automation dependency.
+host installation uses the existing `dev-server` entrypoints and ordinary operator
+privileges. the fleet script has no apply or service-lifecycle operation.
 
 ## 4. Capability Contract
 
@@ -140,7 +155,12 @@ identity. hosted verification is looked up by source sha, not parsed from notes.
 host binary reproduction is an optional `scripts/check-release --reproduce`
 audit under the [current verification policy](rules/testing.md). ordinary checks
 verify declared identity and integrity, not independent source-to-binary
-equivalence. the retired product gate separately required the
+equivalence. `scripts/release TAG` builds once, checks artifacts, and creates a
+draft; the duplicate build-and-discard `scripts/check release` is removed.
+`scripts/check published-release TAG SOURCE_SHA` uses the current artifact checker
+with the exact downloaded source via `--source`. artifact verification needs the
+public certificate, never private signing material. the read-only published check
+requires no approval flag or environment token. the retired product gate separately required the
 `dev-server` pin's tag, source, and two host-bundle digests to match it. Both
 pins must be tracked and byte-exact at their declared checkout `HEAD`; a dirty
 working-tree pin is not release authority.
@@ -191,22 +211,11 @@ Machine-local apply:
    one summary. Upstream `scripts/fleet verify` separately proves functional
    health for the fixed three-host fleet.
 
-Fleet apply acceptance requires an immediately repeated apply to be quiescent.
-With no first-apply deferral facts, its complete result is exactly `UP TO DATE`
-for the host. Otherwise it repeats those exact ordered facts followed by the
-canonical deferral-only host summary. A mutation, activation, action, error, or
-added, removed, reordered, or rewritten deferral fails acceptance. Evidence
-retains only a bounded, content-free result stream while all apply output is
-drained. This strict equality deliberately turns transient deferral changes
-into an explicit rerun instead of guessing that two pending states are equal.
-
-Darwin gateway outage validates durable installer intent before one
-`launchctl bootout`, then reconciles only the strict absent-service result on a
-self-bounded 30-second schedule. Transitional or unrecognized launchd output
-is never accepted as inactivity; exhaustion fails closed for convergent
-recovery. Polling is required because ordinary `bootout` may return before
-removal is observable and launchd exposes no completion signal with an
-operator-owned bound.
+apply remains idempotent and preserves credentials and existing tmux lifetimes.
+service autostart and deliberate lifecycle changes belong to the installer and
+native service manager. fleet's former two-apply parser, reboot checkpoint, and
+outage/recovery exercises are retired; their removal establishes no new runtime
+acceptance.
 
 Tailscale authentication is a one-time human boundary per host and phone.
 On macOS, App Store installation and upgrades are also human-owned boundaries;
@@ -306,23 +315,29 @@ to stderr.
 
 ### 4.4 Fleet invitation
 
-From the MacBook, this repository exposes `scripts/fleet invite`. The operator
-supplies the dev-server checkout explicitly, for example
-`SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite`.
-Its release pin must be tracked and byte-exact at that checkout's `HEAD`.
-It maps only the fixed MacBook/Devbox/Arch topology to fixed local/SSH invocations; no config
-field may contain a command. Each verified host supplies its canonical origin
-from its authoritative Tailscale identity and exact private Serve mapping;
-there is no second origins manifest. Bearers never leave their host.
+run `scripts/fleet invite` on any linux or macos computer with the existing
+mode-0600 `~/.config/skidbladnir/client.json` used by `skid`, a tailnet connection,
+`jq`, `curl`, and `qrencode`. select the arch, devbox, and macbook peers by their
+case-insensitive labels; additional cli peers are excluded. the existing
+`scripts/fleet provision-clients` owns initial configuration and credential
+refresh after rotation; invitation never provisions or rewrites that file.
 
-The command requests all three invitations, awaits every result, validates the
-fixed labels/origins/handles, and emits no QR unless all succeed. It renders the
-payload to `qrencode` through stdin, never an argument or file. It persists
-nothing and prints no machine secret outside the QR. A failed/uncertain attempt
-requires a new command and new QR; there is no retry or partial reuse.
+the command uses the configured origins, handles, and bearers to request
+`POST /v1/pairing-invites` directly from each gateway. no dev-server checkout,
+ssh connection, installed local gateway binary, release pin, health check, or
+operator lock is required. requests are sequential, bounded, and never retried.
+each response must name the expected machine and platform. origins are normalized
+to the phone's canonical form; identities and tokens remain unique. gateways own
+the five-minute expiry; the operator does not compare clocks across hosts.
 
-Each request executes the verified `current` release generation directly, and
-each response is stream-bounded before it can enter shell memory.
+only a complete valid fleet produces a qr. bearers pass to curl through stdin;
+the qr payload passes to `qrencode` through stdin. neither enters arguments or
+temporary files. the command persists nothing and prints no secret outside the
+qr. a failed or uncertain attempt requires rerunning the command; partial success
+needs no cleanup. each new invitation replaces that host's previous invitation,
+including one from a concurrent invocation. scan the latest qr once per phone.
+on an installed app, choose `Reconnect fleet` only when reconnection is wanted;
+ordinary apk installation preserves the existing pairing.
 
 The QR is UTF-8 JSON, at most 4096 bytes, with no null or unknown members:
 
@@ -432,6 +447,10 @@ Reuse and centralize:
 
 ## 7. Non-Overlapping Implementation Edges
 
+sections 7–8 record the original implementation and proof plan. the current
+script scope above and [testing status](rules/testing.md) supersede their retired
+commands and test harnesses.
+
 Every builder writes its own behavioral red, observes the intended failure,
 implements only its paths, then refactors green. A verifier is read-only. Root
 alone edits architecture, roadmap, catalogue, composition, and integration
@@ -468,7 +487,7 @@ GitHub mutation, ADB, or physical device.
 | Connect content/state | fresh install shows legacy administration; it shows the frozen Connect flow and failure saves nothing | Android component |
 | Release | an unsigned/mis-versioned/unlisted or deployment-incompatible asset can stage, or a draft can be mistaken for distribution; exact public repo, clean-main SHA/hosted verify, signer, tag/SHA, two matching bundles, checksums, then immutable public exact-five download are mandatory | routine manifest proof, pre-publication release, and post-publication read-only gates; external evidence is `NOT_RUN` without those runs |
 | `dev-server` rendering | pin/config/service drift passes; fixtures fail on drift and apply mutation/action output is stable and credential-free | `dev-server` routine |
-| Fleet operator | a duplicate topology source or partial invitation can misroute credentials; `scripts/fleet` derives the exact fixed fleet from verified hosts, prints no partial QR, and exposes no legacy installer command | Skíðblaðnir routine |
+| Fleet operator | a partial or misbound invitation can misroute credentials; `scripts/fleet invite` selects the exact fleet from the existing private client configuration, validates each invitation against it, and prints no partial QR | operator command |
 | Native tmux composition | fixture behavior is mistaken for tmux behavior; configured binary performs existing inventory/create/attach/kill semantics on one isolated `-L` socket | separately approved integration |
 | Host apply | an install changes identity/session lifetime or needs a manual daemon; repeat apply preserves handle/bearer/tmux lifetime and service survives login/reboot | separately approved live gate on each host |
 | Physical product | injected scan/network is mistaken for product; signed release update preserves the fleet before reconnect, real scanner pairs, process recreation preserves routing, all hosts render, and one-host outage/recovery stays isolated while lifetime digests remain unchanged | separately approved S22+ product gate with bounded inventory-reconciliation capability for gateway-owned character metadata |

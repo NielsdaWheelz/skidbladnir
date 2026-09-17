@@ -85,8 +85,8 @@ visible, which it was not at any size the app previously drew it.
 
 `_VALKNUT_GAP = 0.36` becomes a named module constant carrying the derivation
 above; `_valknut(gap: float = _VALKNUT_GAP)`. Nothing else in the pipeline
-changes, and `scripts/check-ornament` gates the regenerated `Ornament.kt` for
-drift and determinism exactly as before.
+changes, and `scripts/gen-ornament --check` gates the regenerated `Ornament.kt` for
+drift. the generator remains deterministic.
 
 ### Drawing (`Theme.kt`)
 
@@ -161,7 +161,7 @@ Red (each observed failing first, at the shipped `gap = 0.10`):
    stroke of 0.055`.
 3. `DashboardChromeInstrumentedTest`: the top-bar mark leads the literal title
    on one row and offers neither content description nor text.
-4. Drift: `scripts/check-ornament` fails against the stale `Ornament.kt` until
+4. Drift: `scripts/gen-ornament --check` fails against the stale `Ornament.kt` until
    it is regenerated.
 5. `OrnamentTest`: the interior-break count is pinned. Of the six crossings,
    `gap = 0.36` bakes three interior breaks and cuts three out to a vertex.

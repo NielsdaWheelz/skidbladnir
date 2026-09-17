@@ -719,34 +719,31 @@ history item is `current`.
   Codex and Claude are installed from exact reviewable npm locks; tmux follows
   each platform's native stable package channel. new skid agent sessions use
   the deployment-owned permission bypasses in §2.
-- `scripts/fleet` in this repository exclusively owns three-host verification,
-  invitation, apply acceptance, lifetime digests, reboot checkpoints, and
-  bounded outage/recovery. It requires one explicit absolute
-  `SKIDBLADNIR_DEV_SERVER_CHECKOUT`; its release pin must be tracked and
-  byte-exact at that checkout's `HEAD`. It uses that checkout only for
-  `workstation apply`, `devbox apply`, and release admission, and reaches
-  DevServer through the installer-owned `~/.ssh/config.d/dev-server` with
-  explicit `ssh -F`.
-  Invitation executes each verified `current` generation directly and
-  stream-bounds every response before aggregation. Outage/recovery validates
-  the installed launcher and service definition against the installer's
-  durable `skid.unit.sha256` intent, plus the exact loaded service path, before
-  any lifecycle mutation. Darwin outage then reconciles `launchctl bootout` to
-  the strict absent-service fact on one self-bounded 30-second schedule;
-  transitional or unrecognized launchd output is never inactivity.
-  Arch apply acceptance opens one SSH TTY for normal operator sudo, validates
-  the exact clean remote candidate before and after two applies, and requires
-  the second apply to be quiescent. If the first apply reports no deferral
-  facts, the second result is exactly `UP TO DATE`; otherwise it repeats those
-  exact ordered facts followed by the canonical deferral-only host summary.
-  Any mutation, activation, action, error, or changed deferral fails
-  acceptance. Result evidence is content-free and bounded while apply output is
-  drained to completion. The streamed internal host protocol exposes no apply
-  action. Trade-off: Arch acceptance is
-  deliberately interactive rather than granting the user/agent account
-  unattended root, and transiently changing deferrals require a clean rerun
-  rather than being guessed equivalent.
-  Machine-local installers own no fleet command or acceptance fallback.
+- accepted 2026-09-17 operator scope: `scripts/fleet` owns only `verify`, `invite`,
+  and `provision-clients`. apply acceptance, lifetime digests, reboot checkpoints,
+  and outage/recovery commands are retired. `dev-server` owns installation,
+  idempotence, credential/session preservation, service lifecycle, and autostart;
+  their verification belongs to the replacement test system. historical results
+  remain attributed to their original source.
+  `scripts/fleet invite` is independent of deployment and verification: on linux or
+  macos it reads the existing private `~/.config/skidbladnir/client.json`, selects
+  arch/devbox/macbook, requests fresh invitations directly over their authenticated
+  https endpoints, and prints one qr only after all three succeed. no ssh, local
+  gateway binary, dev-server checkout, release comparison, pressure check, or
+  operator lock is required. a new invite replaces the previous one; rerun after
+  failure. pairing does not alter installed phone data until the user scans it.
+  invitation stream-bounds every response before aggregation.
+  `provision-clients` collects each host's existing handle, private Serve origin,
+  and bearer, validates the complete unique fleet before distribution, and
+  installs mode-0600 client files on macbook, devbox, arch, and jarvis. each user
+  file is replaced atomically; distribution is sequential and may partially
+  complete. repair the transport and rerun. it requires no release pin, checkout,
+  runtime-generation or pressure check. verification and provisioning run from
+  the macbook and reach devbox through the installer-owned
+  `~/.ssh/config.d/dev-server` with explicit `ssh -F`.
+  only `verify` requires an absolute `SKIDBLADNIR_DEV_SERVER_CHECKOUT`, whose
+  release pin must be tracked and byte-exact at `HEAD`. it retains release,
+  runtime, service, private Serve, and authenticated pressure checks.
 - Host apply atomically initializes and then preserves
   `~/.config/skidbladnir/machine-handle` as a mode-`0600` regular file. The
   handle is 128 random bits encoded as `mh-` plus 32 lowercase hexadecimal
@@ -832,6 +829,18 @@ enum values are defects, with no protocol branch or compatibility state.
 
 - Compile/target/min SDK 36; one manually installed package distributed as the
   public GitHub Release asset `skidbladnir-android.apk`.
+- accepted 2026-09-17 installation contract: `scripts/install-android <apk>`
+  validates the package and pinned public signer, requires exactly one connected
+  authorized device, runs `adb install -r`, and exits with the installation result.
+  same-version replacement is supported. it preserves app data, never uninstalls
+  or clears storage, and has no app launch, reconnect, visual confirmation, host
+  verification, or acceptance journey. package-manager failure is a command
+  failure, never an automatic uninstall or downgrade. sdk build-tools 36.1.0 and
+  platform-tools are required; optional `ANDROID_HOME` selects the sdk, defaulting
+  to `~/Library/Android/sdk` on macos or `~/Android/Sdk` on linux. adb may also be
+  on `PATH`. usb debugging authorization is a one-time device setup prerequisite.
+  installation, optional qr pairing, and behavioral verification are separate
+  operations. success establishes installation only.
 - Device and release artifacts use one dedicated Skidbladnir signing key held
   outside Git; builds never read either host's ambient Android debug keystore.
   The repository pins its public certificate digest. Device gates use an
@@ -1056,8 +1065,14 @@ earlier failures. historical results retain their original source attribution.
 
 current verification is `scripts/check verify`: formatting, syntax, lint,
 dependency integrity, catalogue/generated-asset checks, and go/android builds.
-`scripts/check release` and `scripts/check published-release` retain source,
-version/platform, signing, archive, checksum, pin, and hosted-verification checks.
+`scripts/release TAG` builds and verifies signed artifacts once before creating a
+draft. `scripts/check-release` verifies existing artifacts with the public signing
+certificate; only signing needs private key configuration.
+`scripts/check published-release TAG SOURCE_SHA` downloads and verifies the public
+release without approval flags or environment tokens. the current checker uses
+`--source` to validate the clean exact published source, catalogue, and certificate
+asset; it does not run the historical release checker. source/version/platform,
+signing, archive, checksum, pin, and hosted-verification checks remain.
 release-note formatting is not release identity. host binary reproduction is
 an explicit `scripts/check-release --reproduce` audit, not routine verification.
 without that audit, release checks do not independently prove source-to-binary

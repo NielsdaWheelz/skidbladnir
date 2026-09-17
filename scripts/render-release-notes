@@ -69,16 +69,19 @@ render_notes() {
     '2. From that pin-control checkout, run' \
     '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
     '3. On the phone, download `skidbladnir-android.apk` from this release and' \
-    '   approve installation from the browser when Android asks.' \
+    '   approve installation from the browser when Android asks. Or, with USB debugging' \
+    '   already authorized, run `scripts/install-android /path/to/skidbladnir-android.apk`.' \
+    '   The script installs in place without prompts and preserves app data.' \
     '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
     '5. Open Skíðblaðnir and tap **Connect**.' \
-    '6. On the MacBook, run' \
-    '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet invite`' \
-    '   from that checkout, then scan the fresh QR within five minutes. It works once.' "" \
+    '6. On a computer configured for `skid`, run `scripts/fleet invite`,' \
+    '   then scan the fresh QR within five minutes. It works once.' "" \
     '## Update order' "" \
     'Apply and verify all three hosts first; update the phone second. Mixed' \
-    'versions and ordinary APK downgrade are not supported.' "" \
+    'versions and ordinary APK downgrade are not supported. Same-version reinstall' \
+    'is supported. Updates retain pairing; use **Reconnect fleet** and a fresh' \
+    '`scripts/fleet invite` only when reconnection is wanted.' "" \
     '## Assets' "" \
     '| Asset | SHA-256 |' \
     '|---|---|' \
