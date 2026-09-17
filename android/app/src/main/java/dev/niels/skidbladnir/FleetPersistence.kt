@@ -45,7 +45,7 @@ internal fun resumedFleetPersistenceDisposition(
             FleetPersistenceDisposition.ResetRequired
         }
         FleetConnectMode.Reconnect -> if (
-            durable.credentials.size == 3 && pending.size == 3 &&
+            durable.credentials.size == FLEET_LABELS.size && pending.size == FLEET_LABELS.size &&
             durable.credentials.map { it.machine }.toSet() == pending.map { it.machine }.toSet()
         ) {
             FleetPersistenceDisposition.RetryWithFreshInvite
@@ -58,8 +58,5 @@ internal fun resumedFleetPersistenceDisposition(
 internal fun reconnectInviteMatchesInstalled(
     invite: FleetInvite,
     installed: Collection<MachineCredential>,
-): Boolean {
-    val labelOrder = mapOf("Arch" to 0, "Devbox" to 1, "MacBook" to 2)
-    val ordered = installed.sortedBy { labelOrder[it.machine.label.text] ?: Int.MAX_VALUE }
-    return ordered.size == 3 && ordered.map { it.machine } == invite.machines.map { it.machine }
-}
+): Boolean = installed.size == FLEET_LABELS.size &&
+    installed.map { it.machine }.toSet() == invite.machines.map { it.machine }.toSet()
