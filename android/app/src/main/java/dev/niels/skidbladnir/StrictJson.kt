@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 
 private const val MAXIMUM_PROTOCOL_JSON_DEPTH = 12
@@ -15,6 +16,13 @@ internal fun strictJsonObject(encoded: String): JsonObject {
     // than depending on a library accessor's exception type.
     return productJson.parseToJsonElement(encoded) as? JsonObject
         ?: throw SerializationException("protocol payload is not a JSON object")
+}
+
+internal fun JsonObject.requiredObject(key: String): JsonObject =
+    this[key] as? JsonObject ?: throw SerializationException("missing or non-object $key")
+
+internal fun JsonObject.requireAbsentOrNonNull(optionalKeys: Set<String>) {
+    if (optionalKeys.any { this[it] is JsonNull }) throw SerializationException("same-system optional field was null")
 }
 
 private class UniqueJsonObjectKeyScanner(private val encoded: String) {
