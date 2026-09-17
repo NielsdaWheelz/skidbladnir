@@ -51,7 +51,7 @@ This directory is the canonical home for repository documentation.
 - [codebase.md](codebase.md): technology ownership, repo structure, imports, and module boundaries
 - [database.md](database.md): relational schema, queries, and transactions
 - [frontend.md](frontend.md): browser-facing UI state, boundaries, and route-owned data
-- [testing.md](testing.md): behavior-focused testing standards and test tiers
+- [testing.md](testing.md): test retirement status and retained engineering checks
 - [timing.md](timing.md): schedules and timing constants
 - [polling.md](polling.md): polling rules
 

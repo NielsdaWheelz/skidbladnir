@@ -29,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -53,7 +52,6 @@ internal fun MachinePressureRail(
 ) {
     val content = pressureRailContent(machine.label.text, state)
     val response = state.response()
-    val handle = machine.handle.encoded
     Surface(
         color = RaisedSurface,
         shape = NidavellirShapes.Card,
@@ -67,7 +65,6 @@ internal fun MachinePressureRail(
                 onClick = onOpenDetails,
             )
             .clearAndSetSemantics {
-                this[SemanticsProperties.TestTag] = "machine-strip-$handle"
                 this[SemanticsProperties.Role] = Role.Button
                 contentDescription = content.accessibilitySummary
                 onClick(label = content.actionLabel) {
@@ -96,14 +93,12 @@ internal fun MachinePressureRail(
                 fontFamily = NidavellirType.Data,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("machine-strip-label-$handle"),
             )
             if (response != null) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .testTag("pressure-metrics-$handle"),
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -139,7 +134,7 @@ internal fun MachinePressureRail(
                         )
                     }
                 }
-                Box(Modifier.testTag("pressure-history-band-$handle")) {
+                Box {
                     PressureHistoryBand(response.history)
                 }
             }
@@ -200,8 +195,7 @@ internal fun MachinePressureDetailsSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
-                .testTag("pressure-details-sheet-${machine.handle.encoded}"),
+                .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(

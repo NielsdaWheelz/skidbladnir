@@ -55,10 +55,7 @@ case "$target" in
   android-static)
     cd "$repo_dir"
     node --check android/app/src/main/assets/terminal/terminal.js
-    android_gradle :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin lintDebug
-    ;;
-  android-unit)
-    android_gradle :app:testDebugUnitTest
+    android_gradle :app:compileDebugKotlin lintDebug
     ;;
   release-assets)
     [[ "$#" -eq 4 ]] || {

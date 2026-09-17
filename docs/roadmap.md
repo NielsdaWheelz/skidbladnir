@@ -1,5 +1,21 @@
 # Skíðblaðnir v0 roadmap
 
+## test retirement — 2026-09-17
+
+the user chose to remove all behavioral tests and their harnesses, retaining
+build, lint, generated-asset, and release-integrity checks. go/android suites,
+shell self-tests, owned xterm assertions, device fixtures, and the old test
+runner are removed. `scripts/check verify` now runs engineering checks only;
+release checks retain artifact identity/integrity while dropping release-note
+formatting, duplicate dependency pins, and the copied icon algorithm. host binary
+reproduction is an explicit audit; ordinary checks no longer rebuild binaries.
+
+the next pr owns the replacement test policy and implementation. no replacement
+behavioral suite is introduced here. older test commands and proof plans below
+are historical; product requirements and recorded failures remain. current
+behavioral acceptance is unverified by automation. see the
+[coverage issue](issues/test-system-reset.md) and [interim commands](rules/testing.md).
+
 ## v0.6.0 publication and deployment
 
 2026-09-17: immutable [v0.6.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.6.0)

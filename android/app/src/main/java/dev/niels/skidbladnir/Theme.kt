@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -215,7 +214,7 @@ internal fun DrawScope.drawFretBand(color: Color) {
 // but 11% of an 18dp one, so as the mark shrinks the stroke swallows the
 // crossing gaps `scripts/gen-ornament` baked in and the weave reads as a solid
 // clot. Held against `_VALKNUT_GAP`, this keeps break and strand in the same
-// proportion at every rendered size (design-language.md §8; OrnamentTest).
+// proportion at every rendered size (design-language.md §8).
 internal const val ValknutStrokeRatio = 0.055f
 
 // The Hlíðskjálf mark (design-language.md §8): a single, non-repeating draw
@@ -238,13 +237,13 @@ internal fun DrawScope.drawValknut(color: Color) {
 // Every rendering of the mark in the app. It is decoration wherever it appears:
 // it clears its own subtree semantics so the literal label beside it carries
 // the whole meaning (ornament-pipeline.md "Ornament is silent and
-// subordinate"), and `tag` exists only so tests can prove that silence.
+// subordinate").
 @Composable
-internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: Modifier = Modifier) {
+internal fun HlidskjalfMark(color: Color, markSize: Dp, modifier: Modifier = Modifier) {
     Canvas(
         modifier = modifier
             .size(markSize)
-            .clearAndSetSemantics { testTag = tag },
+            .clearAndSetSemantics {},
     ) {
         drawValknut(color)
     }
@@ -254,13 +253,12 @@ internal fun HlidskjalfMark(color: Color, markSize: Dp, tag: String, modifier: M
 // the terminal reconnect panel's label and mark cannot drift apart. The
 // mark takes `LocalContentColor` rather than a fixed accent so it dims with the
 // button when the button is disabled — a drawn glyph gets no disabled state for
-// free (design-language.md §12). The tag makes the site's silence provable.
+// free (design-language.md §12).
 @Composable
-internal fun BackToDwarvesContent(tag: String) {
+internal fun BackToDwarvesContent() {
     HlidskjalfMark(
         color = LocalContentColor.current,
         markSize = 18.dp,
-        tag = tag,
         modifier = Modifier.padding(end = ButtonDefaults.IconSpacing),
     )
     Text("Back to Dwarves")

@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+gate="${1:-}"
+if [[ "$#" -gt 0 ]]; then
+  shift
+fi
+
+case "$(uname -s)" in
+  Darwin) digest_command=(shasum -a 256) ;;
+  Linux) digest_command=(sha256sum) ;;
+  *)
+    printf 'engineering checks require linux or darwin\n' >&2
+    exit 2
+    ;;
+esac
+
+run() {
+  printf '==> %s\n' "$1"
+  shift
+  "$@"
+}
+
+not_run() {
+  printf '{"gate":"%s","status":"NOT_RUN","reason":"%s"}\n' "$1" "$2"
+  exit 2
+}
+
+case "$gate" in
+  static)
+    cd "$repo_dir"
+    run diff-check git diff --check
+    # shellcheck disable=SC2016 # The inner shell owns this variable.
+    run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
+    shell_scripts=(
+      scripts/build scripts/build-host-archive scripts/build-host-binary
+      scripts/check scripts/check-android-signing scripts/check-go-toolchain
+      scripts/check-release scripts/check-release-source scripts/fleet
+      scripts/release scripts/render-release-notes
+    )
+    for script in "${shell_scripts[@]}"; do
+      run bash-syntax bash -n "$script"
+    done
+    run shell-indentation awk \
+      '/^[[:blank:]]*\t/ { printf "%s:%d: tab indentation\n", FILENAME, FNR; found = 1 }
+       END { exit found ? 1 : 0 }' "${shell_scripts[@]}"
+    for script in scripts/*; do
+      [[ -x "$script" ]] || { printf '%s is not executable\n' "$script" >&2; exit 1; }
+    done
+    run shellcheck shellcheck "${shell_scripts[@]}"
+    run python-syntax python3 -c \
+      'import pathlib, sys
+for name in sys.argv[1:]:
+    compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
+      scripts/build-terminal-xterm scripts/check-catalogue scripts/check-codex-config \
+      scripts/check-ornament scripts/check-terminal-assets scripts/gen-ornament
+    run catalogue ./scripts/check-catalogue
+    run terminal-assets ./scripts/check-terminal-assets
+    run ornament ./scripts/check-ornament
+    run go-mod-verify go mod verify
+    run go-vet go vet ./...
+    run android-static ./scripts/build android-static
+    ;;
+  release)
+    if [[ "${1:-}" != '--allow-release-verification' || -z "${2:-}" || "$#" -ne 2 ]]; then
+      not_run release 'Pass --allow-release-verification TAG only after explicit current-turn approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_RELEASE_VERIFICATION:-}" != 'signed-assets-v1' ]]; then
+      not_run release 'Set SKIDBLADNIR_ALLOW_RELEASE_VERIFICATION=signed-assets-v1 after explicitly approving the signed release build'
+    fi
+    release_tag="$2"
+    release_source_evidence="$("$repo_dir/scripts/check-release-source" "$release_tag")" ||
+      not_run release 'Public-repository, exact-main, unused-tag, or exact-SHA hosted verify evidence is unavailable'
+    IFS=$'\t' read -r release_sha release_run_id <<<"$release_source_evidence"
+    [[ "$release_sha" =~ ^[0-9a-f]{40}$ && "$release_run_id" =~ ^[0-9]+$ ]] || {
+      printf 'Release source preflight returned invalid evidence.\n' >&2
+      exit 1
+    }
+    release_staging="$(mktemp -d /tmp/skidbladnir-release-gate.XXXXXX)"
+    case "$release_staging" in
+      /tmp/skidbladnir-release-gate.* | /private/tmp/skidbladnir-release-gate.*) ;;
+      *) printf 'Unexpected release-gate staging directory\n' >&2; exit 1 ;;
+    esac
+    trap 'rm -R -- "$release_staging"' EXIT HUP INT TERM
+    run signed-release-assets "$repo_dir/scripts/build" release-assets \
+      "$release_tag" "$release_sha" "$release_staging/assets"
+    ;;
+  published-release)
+    if [[ "${1:-}" != '--allow-public-release-read' || -z "${2:-}" ||
+      -z "${3:-}" || "$#" -ne 3 ]]; then
+      not_run published-release \
+        'Pass --allow-public-release-read TAG SOURCE_SHA only after explicit current-turn approval'
+    fi
+    if [[ "${SKIDBLADNIR_ALLOW_PUBLIC_RELEASE_READ:-}" != 'public-release-v1' ]]; then
+      not_run published-release \
+        'Set SKIDBLADNIR_ALLOW_PUBLIC_RELEASE_READ=public-release-v1 after explicit approval'
+    fi
+    published_tag="$2"
+    published_sha="$3"
+    "$repo_dir/scripts/check-release" --android-version "$published_tag" >/dev/null || {
+      printf 'Published release tag is not canonical.\n' >&2
+      exit 1
+    }
+    [[ "$published_sha" =~ ^[0-9a-f]{40}$ ]] || {
+      printf 'Published release source must be one exact lowercase SHA.\n' >&2
+      exit 1
+    }
+    for command in gh git jq; do
+      command -v "$command" >/dev/null ||
+        not_run published-release "Required public-release command is unavailable: $command"
+    done
+    gh auth status >/dev/null 2>&1 ||
+      not_run published-release 'GitHub authentication is unavailable'
+    published_repo='NielsdaWheelz/skidbladnir'
+    [[ "$(gh repo view "$published_repo" --json nameWithOwner,visibility \
+      --jq '[.nameWithOwner,.visibility] | join(" ")')" == "$published_repo PUBLIC" ]] || {
+      printf 'Published-release repository is not the exact public repository.\n' >&2
+      exit 1
+    }
+    published_metadata="$(gh release view "$published_tag" --repo "$published_repo" \
+      --json tagName,targetCommitish,isDraft,isPrerelease,isImmutable,assets)" ||
+      not_run published-release 'The named public release is unavailable'
+    jq -e --arg tag "$published_tag" --arg sha "$published_sha" '
+      .tagName == $tag and .targetCommitish == $sha and
+      .isDraft == false and .isPrerelease == false and .isImmutable == true and
+      ([.assets[].name] | sort) == [
+        "SHA256SUMS",
+        "android-signing-cert.sha256",
+        "skidbladnir-android.apk",
+        "skidbladnir-darwin-arm64.tar.gz",
+        "skidbladnir-linux-amd64.tar.gz"
+      ]
+    ' <<<"$published_metadata" >/dev/null || {
+      printf 'Public release is not immutable, final, exact-SHA, and exact-five-assets.\n' >&2
+      exit 1
+    }
+    remote_tags="$(git ls-remote --tags "https://github.com/$published_repo.git" \
+      "refs/tags/$published_tag" "refs/tags/$published_tag^{}")"
+    remote_tag_sha="$(awk -v base="refs/tags/$published_tag" \
+      '$2 == base { direct = $1 } $2 == base "^{}" { peeled = $1 }
+       END { print (peeled != "" ? peeled : direct) }' <<<"$remote_tags")"
+    [[ "$remote_tag_sha" == "$published_sha" ]] || {
+      printf 'Public Git tag does not resolve to the declared exact source SHA.\n' >&2
+      exit 1
+    }
+    published_staging="$(mktemp -d /tmp/skidbladnir-published-release.XXXXXX)"
+    case "$published_staging" in
+      /tmp/skidbladnir-published-release.* | /private/tmp/skidbladnir-published-release.*) ;;
+      *) printf 'Unexpected published-release staging directory\n' >&2; exit 1 ;;
+    esac
+    trap 'rm -R -- "$published_staging"' EXIT HUP INT TERM
+    published_source="$published_staging/source"
+    published_assets="$published_staging/assets"
+    mkdir "$published_assets"
+    run public-release-source env \
+      GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+      git clone --quiet --depth 1 --single-branch \
+      --branch "$published_tag" "https://github.com/$published_repo.git" \
+      "$published_source"
+    [[ "$(git -C "$published_source" rev-parse HEAD)" == "$published_sha" &&
+      -z "$(git -C "$published_source" status --porcelain=v1 --untracked-files=all)" &&
+      "$(git -C "$published_source" config --get remote.origin.url)" == \
+        "https://github.com/$published_repo.git" ]] || {
+      printf 'Public release source checkout is not the clean exact published SHA.\n' >&2
+      exit 1
+    }
+    "$published_source/scripts/check-release" --android-version "$published_tag" \
+      >/dev/null || {
+      printf 'Exact public source rejects the published release tag.\n' >&2
+      exit 1
+    }
+    run public-release-download gh release download "$published_tag" \
+      --repo "$published_repo" --dir "$published_assets"
+    run public-release-assets "$published_source/scripts/check-release" \
+      --public-assets "$published_assets" "$published_tag" "$published_sha"
+    published_pin_relative='release-pin.json'
+    published_pin="$repo_dir/$published_pin_relative"
+    [[ -f "$published_pin" && ! -L "$published_pin" ]] || {
+      printf 'Published release requires one regular upstream release pin.\n' >&2
+      exit 1
+    }
+    [[ "$(git -C "$repo_dir" rev-parse --show-toplevel)" == "$repo_dir" ]] || {
+      printf 'Published release requires the root of the upstream Git checkout.\n' >&2
+      exit 1
+    }
+    if ! git -C "$repo_dir" cat-file -e \
+      "HEAD:$published_pin_relative" 2>/dev/null ||
+      ! git -C "$repo_dir" diff --quiet HEAD -- \
+        "$published_pin_relative" ||
+      ! cmp -s "$published_pin" \
+        <(git -C "$repo_dir" show "HEAD:$published_pin_relative"); then
+      printf 'Upstream release pin must be tracked and byte-exact at its current HEAD.\n' >&2
+      exit 1
+    fi
+    published_expected_pin="$(
+      jq -nS \
+        --arg version "$published_tag" \
+        --arg sourceSha "$published_sha" \
+        --arg androidApkSha256 "$(awk '$2 == "skidbladnir-android.apk" { print $1 }' "$published_assets/SHA256SUMS")" \
+        --arg androidSigningCertAssetSha256 "$(awk '$2 == "android-signing-cert.sha256" { print $1 }' "$published_assets/SHA256SUMS")" \
+        --arg darwinArm64Sha256 "$(awk '$2 == "skidbladnir-darwin-arm64.tar.gz" { print $1 }' "$published_assets/SHA256SUMS")" \
+        --arg linuxAmd64Sha256 "$(awk '$2 == "skidbladnir-linux-amd64.tar.gz" { print $1 }' "$published_assets/SHA256SUMS")" \
+        --arg sha256SumsAssetSha256 "$("${digest_command[@]}" "$published_assets/SHA256SUMS" | awk '{ print $1 }')" \
+        '{
+          androidApkSha256: $androidApkSha256,
+          androidSigningCertAssetSha256: $androidSigningCertAssetSha256,
+          darwinArm64Sha256: $darwinArm64Sha256,
+          linuxAmd64Sha256: $linuxAmd64Sha256,
+          sha256SumsAssetSha256: $sha256SumsAssetSha256,
+          sourceSha: $sourceSha,
+          version: $version
+        }'
+    )"
+    jq -se --argjson expected "$published_expected_pin" '
+      length == 1 and .[0] == $expected
+    ' "$published_pin" >/dev/null || {
+      printf 'Upstream does not pin the exact public tag, source, and all five asset digests.\n' >&2
+      exit 1
+    }
+    published_run_id="$(
+      gh run list --repo "$published_repo" --workflow verify.yml \
+        --branch main --commit "$published_sha" --status success --limit 1 \
+        --json databaseId --jq '.[0].databaseId // empty'
+    )" || not_run published-release 'Hosted verify evidence is unavailable'
+    [[ "$published_run_id" =~ ^[1-9][0-9]*$ ]] || {
+      printf 'No successful hosted verify run exists for the published source SHA.\n' >&2
+      exit 1
+    }
+    ;;
+  verify)
+    "$0" static
+    "$repo_dir/scripts/build"
+    printf 'engineering checks passed; behavioral tests are absent\n'
+    ;;
+  '')
+    printf 'usage: %s {static|verify|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA}\n' "$0" >&2
+    exit 64
+    ;;
+  *)
+    printf 'unknown check: %s\n' "$gate" >&2
+    exit 64
+    ;;
+esac

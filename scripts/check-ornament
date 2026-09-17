@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drift- and determinism-gate the generated ornament geometry (Ornament.kt and
+"""Check the generated ornament geometry (Ornament.kt and
 the adaptive icon's background, foreground, monochrome and descriptor) against
 scripts/gen-ornament."""
 
@@ -34,14 +34,6 @@ def load_generator():
     return module
 
 
-def check_determinism(build_outputs) -> dict[str, bytes]:
-    first = build_outputs()
-    second = build_outputs()
-    if first != second:
-        fail("two consecutive scripts/gen-ornament runs produced different bytes")
-    return first
-
-
 def check_no_drift(outputs: dict[str, bytes]) -> None:
     for relative, expected in outputs.items():
         checked_in_path = ROOT / relative
@@ -55,7 +47,7 @@ def check_no_drift(outputs: dict[str, bytes]) -> None:
 def main() -> int:
     try:
         generator = load_generator()
-        outputs = check_determinism(generator.build_outputs)
+        outputs = generator.build_outputs()
         check_no_drift(outputs)
     except (OSError, ValueError) as error:
         print(f"ornament check failed: {error}", file=sys.stderr)

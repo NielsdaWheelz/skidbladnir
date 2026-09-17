@@ -4,11 +4,5 @@
             android:name=".SealGalleryActivity"
             android:exported="true"
             android:theme="@android:style/Theme.Material.NoActionBar" />
-        <activity
-            android:name=".TerminalTestActivity"
-            android:configChanges="keyboardHidden|orientation|screenSize"
-            android:exported="false"
-            android:theme="@android:style/Theme.Material.NoActionBar"
-            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

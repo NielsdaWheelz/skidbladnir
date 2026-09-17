@@ -44,7 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -132,7 +131,7 @@ private sealed interface PickerAction {
 
 private sealed interface PickerRowLabel {
     data class Text(val visual: String) : PickerRowLabel
-    data class Path(val raw: String, val tag: String) : PickerRowLabel
+    data class Path(val raw: String) : PickerRowLabel
 }
 
 private sealed interface BrowseStatus {
@@ -166,7 +165,6 @@ private sealed interface PickerRow {
         val label: PickerRowLabel,
         val contentDescription: String,
         val action: PickerAction,
-        val tag: String? = null,
     ) : PickerRow
 
     data class Heading(
@@ -268,13 +266,12 @@ internal fun WorkingDirectoryPickerScreen(
     Column(
         modifier
             .fillMaxSize()
-            .imePadding()
-            .testTag("working-directory-picker"),
+            .imePadding(),
     ) {
         PickerHeader(content.chrome, actions.back, actions.cancel)
         browse?.let { BrowseContext(it.context, actions.retry) }
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f).testTag("working-directory-list"),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             state = listState,
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -306,16 +303,14 @@ private fun PickerHeader(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(
                 onClick = onBack,
-                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()
-                    .testTag("working-directory-back"),
+                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
             ) {
                 Text(chrome.backLabel)
             }
             Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = onCancel,
-                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()
-                    .testTag("working-directory-cancel"),
+                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
             ) {
                 Text(chrome.cancelLabel)
             }
@@ -355,7 +350,6 @@ private fun PickerRow(
                 PickerAction.Exact,
                 -> true
             },
-            tag = row.tag,
             onClick = when (val action = row.action) {
                 PickerAction.BrowseHome -> actions.browseHome
                 is PickerAction.Active -> ({ actions.chooseActive(action.directory) })
@@ -375,7 +369,7 @@ private fun PickerRow(
         is PickerRow.Filter -> OutlinedTextField(
             value = row.value,
             onValueChange = actions.updateFilter,
-            modifier = Modifier.fillMaxWidth().testTag("working-directory-filter"),
+            modifier = Modifier.fillMaxWidth(),
             label = { Text(row.label) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
@@ -385,8 +379,7 @@ private fun PickerRow(
             onClick = { actions.setHidden(!row.shown) },
             label = { Text(row.label) },
             shape = NidavellirShapes.Chip,
-            modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize()
-                .testTag("working-directory-hidden"),
+            modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
         )
         is PickerRow.Notice -> NoticePanel(
             tone = row.tone,
@@ -406,7 +399,6 @@ private fun PickerActionRow(
     description: String,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    tag: String? = null,
 ) {
     Surface(
         color = RaisedSurface,
@@ -415,7 +407,6 @@ private fun PickerActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .then(if (tag == null) Modifier else Modifier.testTag(tag))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = AngularIndication(NidavellirShapes.Chip),
@@ -442,7 +433,7 @@ private fun PickerActionRow(
                 is PickerRowLabel.Path -> WorkingDirectoryPathLine(
                     path = label.raw,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().testTag(label.tag),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -458,7 +449,6 @@ private fun BrowseContext(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("working-directory-live-region")
             .semantics { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -470,7 +460,7 @@ private fun BrowseContext(
         WorkingDirectoryPathLine(
             path = content.directory.encoded,
             contentDescription = content.locationSpoken,
-            modifier = Modifier.fillMaxWidth().testTag("working-directory-location"),
+            modifier = Modifier.fillMaxWidth(),
         )
         when (val status = content.status) {
             BrowseStatus.Ready -> Unit
@@ -519,8 +509,7 @@ private fun ExactPathField(
         OutlinedTextField(
             value = content.draft,
             onValueChange = onChange,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
-                .testTag("working-directory-exact-field"),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             label = { Text(content.label) },
             supportingText = { Text(content.guidance) },
             isError = content.validation == ExactPathValidation.Invalid,
@@ -544,7 +533,7 @@ private fun ExactPathField(
         )
         if (content.validation == ExactPathValidation.Invalid) {
             Box(
-                Modifier.testTag("working-directory-live-region")
+                Modifier
                     .semantics { liveRegion = LiveRegionMode.Polite },
             ) {
                 NoticePanel(
@@ -572,7 +561,6 @@ private fun PickerUseAction(
         enabled = enabled && use.enabled,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             .fillMaxWidth().heightIn(min = 48.dp).minimumInteractiveComponentSize()
-            .testTag("working-directory-use")
             .then(
                 use.contentDescription?.let { description ->
                     Modifier.semantics { contentDescription = description }
@@ -708,10 +696,7 @@ private fun workingDirectoryPickerContent(picker: WorkingDirectoryPickerState): 
                         add(
                             PickerRow.Action(
                                 key = PickerRowKey.Active(directory, ordinal),
-                                label = PickerRowLabel.Path(
-                                    directory.encoded,
-                                    "working-directory-active-path-scroll",
-                                ),
+                                label = PickerRowLabel.Path(directory.encoded),
                                 contentDescription = "Working directory ${directory.encoded}. " +
                                     "Selects this directory on ${picker.machine.label.text}.",
                                 action = PickerAction.Active(directory),
@@ -861,7 +846,6 @@ private fun browseContent(
                     label = PickerRowLabel.Text("Parent folder"),
                     contentDescription = "Parent folder. Opens the parent folder.",
                     action = PickerAction.Parent,
-                    tag = "working-directory-parent",
                 ),
             )
         }
@@ -906,7 +890,6 @@ private fun browseContent(
                             DirectoryEntryKind.SymbolicLink -> "Linked folder $name. Opens folder."
                         },
                         action = PickerAction.Folder(entry.directory),
-                        tag = "working-directory-folder-row",
                     ),
                 )
             }

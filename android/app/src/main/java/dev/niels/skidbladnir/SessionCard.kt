@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -71,7 +70,6 @@ internal fun SessionCard(
         color = DeepSurface,
         shape = NidavellirShapes.Card,
         modifier = Modifier
-            .testTag("session-card-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}")
             .minimumInteractiveComponentSize()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -93,8 +91,6 @@ internal fun SessionCard(
                 working = session.agent?.status?.state == AgentState.Working,
                 activityTone = tone,
                 animateActivity = machine.canMutate && motionEnabled,
-                activityFacetTag =
-                    "session-activity-facet-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -117,10 +113,7 @@ internal fun SessionCard(
                 Text(
                     text = it,
                     modifier = Modifier
-                        .padding(top = 8.dp)
-                        .testTag(
-                            "session-objective-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
-                        ),
+                        .padding(top = 8.dp),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
@@ -131,9 +124,6 @@ internal fun SessionCard(
                     text = abbreviatedDirectory(directory),
                     modifier = Modifier
                         .padding(top = 8.dp)
-                        .testTag(
-                            "session-directory-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
-                        )
                         .semantics { contentDescription = "Directory $directory" },
                     color = Muted,
                     maxLines = 1,
@@ -155,9 +145,6 @@ internal fun SessionCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag(
-                            "session-context-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
-                        )
                         .semantics {
                             contentDescription =
                                 "Machine ${visibleSession.machine.label.text}. Profile $profile."
@@ -178,9 +165,6 @@ internal fun SessionCard(
                         target = visibleSession.target,
                         enabled = machine.canMutate,
                         onClick = onKill,
-                        modifier = Modifier.testTag(
-                            "session-kill-${visibleSession.target.machineHandle.encoded}-${session.tmuxId}",
-                        ),
                     )
                 }
             }
@@ -216,7 +200,6 @@ private fun SessionIdentityHeader(
     working: Boolean,
     activityTone: Color,
     animateActivity: Boolean,
-    activityFacetTag: String,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(modifier = Modifier.weight(1f)) {
@@ -239,7 +222,7 @@ private fun SessionIdentityHeader(
             )
         }
         Spacer(Modifier.width(8.dp))
-        ActivityFacet(working, activityTone, animateActivity, activityFacetTag)
+        ActivityFacet(working, activityTone, animateActivity)
     }
 }
 
@@ -248,13 +231,11 @@ private fun ActivityFacet(
     working: Boolean,
     tone: Color,
     animate: Boolean,
-    tag: String,
 ) {
     val active = working
     val modifier = Modifier
         .size(12.dp)
         .clip(NidavellirShapes.Chip)
-        .testTag(tag)
     if (!active || !animate) {
         Box(modifier.background(tone))
         return

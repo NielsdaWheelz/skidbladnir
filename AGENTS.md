@@ -16,17 +16,21 @@ ladder governs everything else.
 
 for the accepted agent-control upgrade, read [its spec](docs/agent-control.md)
 and apply only its explicit v1 deltas to the v0 target. unrelated v0 requirements
-and the red/green proof shape remain. a new capability requires an explicit scope
-and acceptance-criterion change.
+remain. a new capability requires an explicit scope and acceptance-criterion change.
+
+2026-09-17 test retirement: behavioral suites and their harnesses are removed.
+`scripts/check verify` retains engineering checks only. the next pr owns the
+replacement test policy and system; do not recreate the retired gates or treat
+engineering checks as behavioral acceptance. [testing status](docs/rules/testing.md)
+supersedes earlier test-tier, mandatory red/green, and gate instructions.
 
 Unconditional guardrails, regardless of assignment:
 
 - Act only inside the paths your assignment names; never edit another slice's
   paths.
-- Only the root integrator changes `catalog/`, `scripts/test` composition,
+- Only the root integrator changes `catalog/`, `scripts/check` composition,
   `docs/architecture.md`, or `docs/roadmap.md`.
-- A builder owns its red proof and observes it fail before implementing; a
-  verifier writes no test and no production file.
+- A verifier writes no test and no production file.
 - A gate with no device or no live boundary is `NOT_RUN`, and `NOT_RUN` is
   never a pass.
 - Never kill, resize, or retarget a tmux session/pane other than the exact

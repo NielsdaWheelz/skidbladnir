@@ -152,43 +152,9 @@ def accepts(source: str) -> bool:
     return True
 
 
-def self_test() -> int:
-    cases = (
-        ("no hook configuration", 'model = "gpt-5"\n', True),
-        ("explicit hook enablement", "[features]\nhooks = true\n", True),
-        ("dotted hook enablement", "features.hooks = true\n", True),
-        ("opaque native state", '[hooks.state]\nanything = ["opaque", 1]\n', True),
-        ("nested opaque native state", '[hooks.state."opaque identity"]\nfuture = { shape = 2 }\n', True),
-        ("disabled hooks", "[features]\nhooks = false\n", False),
-        ("invalid hook feature", '[features]\nhooks = "yes"\n', False),
-        ("duplicate hook feature", "features.hooks = true\nfeatures.hooks = true\n", False),
-        ("deprecated enabled hook feature", "[features]\ncodex_hooks = true\n", False),
-        ("deprecated disabled hook feature", "[features]\ncodex_hooks = false\n", False),
-        ("inline features table", "features = { hooks = true }\n", False),
-        ("inline hooks table", "hooks = { state = {} }\n", False),
-        ("root hooks table", "[hooks]\nstate = {}\n", False),
-        ("inline event hook table", "[hooks.SessionStart]\n", False),
-        ("array hook table", "[[hooks.state.identity]]\n", False),
-        ("multiline string", 'instructions = """\n[hooks.SessionStart]\n"""\n', False),
-        ("malformed header", "[hooks.state\n", False),
-    )
-    for name, source, expected in cases:
-        observed = accepts(source)
-        if observed != expected:
-            print(
-                "Codex config policy case {!r} = {}, want {}".format(name, observed, expected),
-                file=sys.stderr,
-            )
-            return 1
-    print("Codex config policy passed: {} cases".format(len(cases)))
-    return 0
-
-
 def main(arguments: list) -> int:
-    if arguments == ["--self-test"]:
-        return self_test()
     if len(arguments) != 1:
-        print("usage: check-codex-config {--self-test|CONFIG_PATH}", file=sys.stderr)
+        print("usage: check-codex-config CONFIG_PATH", file=sys.stderr)
         return 64
     try:
         with open(arguments[0], encoding="utf-8") as stream:

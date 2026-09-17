@@ -1,5 +1,10 @@
 # Design delta D3: dwarf seals
 
+2026-09-17: the copied python seal formula and static collision check are retired.
+`scripts/check-catalogue` validates catalogue data and source inventory only.
+rendering requirements remain; the proof plan below is historical under the
+[test retirement](rules/testing.md).
+
 Status: implemented 2026-08-26; golden-vector and catalogue-distinctness
 gates green; the 33-test instrumented suite green on the physical S22+
 (devbox debug-signed run); the hands-on 48dp gallery pass stays `NOT_RUN`.
