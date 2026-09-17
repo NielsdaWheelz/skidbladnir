@@ -841,14 +841,12 @@ enum values are defects, with no protocol branch or compatibility state.
   on `PATH`. usb debugging authorization is a one-time device setup prerequisite.
   installation, optional qr pairing, and behavioral verification are separate
   operations. success establishes installation only.
-- Device and release artifacts use one dedicated Skidbladnir signing key held
-  outside Git; builds never read either host's ambient Android debug keystore.
-  The repository pins its public certificate digest. Device gates use an
-  explicit debuggable build variant signed by that identity, validate
-  mode-0600 key configuration, validate both candidate APKs and any installed
-  package against the pin, and stop before ADB mutation on any mismatch.
-  Routine debug builds remain an untrusted compile/test lane and are never
-  installed by an acceptance gate. The private identity and password file are
+- release artifacts use one dedicated Skidbladnir signing key held outside git;
+  release builds never use the ambient android debug keystore. the repository
+  pins the public certificate digest. ordinary debug builds use android's debug
+  identity and are a compile/development lane; there is no signed debug variant
+  or device acceptance gate. `scripts/install-android` accepts only the pinned
+  release identity. the private identity and password file are
   an operator backup obligation; losing them requires reinstall rather than a
   trust bypass. A release tag also carries Linux-amd64 and Darwin-arm64 host
   bundles, `SHA256SUMS`, and the public signing-certificate digest; signing

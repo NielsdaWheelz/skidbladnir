@@ -82,11 +82,10 @@ case "$target" in
     }
     mkdir -m 0700 "$output_dir"
     require_android_signing
-    SKIDBLADNIR_VERSION_NAME="$version_name" SKIDBLADNIR_VERSION_CODE="$version_code" \
-      android_gradle \
-        -Pskidbladnir.versionName="$version_name" \
-        -Pskidbladnir.versionCode="$version_code" \
-        :app:assembleRelease
+    android_gradle \
+      -Pskidbladnir.versionName="$version_name" \
+      -Pskidbladnir.versionCode="$version_code" \
+      :app:assembleRelease
     install -m 0644 \
       "$repo_dir/android/app/build/outputs/apk/release/app-release.apk" \
       "$output_dir/skidbladnir-android.apk"

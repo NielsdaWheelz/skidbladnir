@@ -100,23 +100,6 @@ android {
             isMinifyEnabled = false
             signingConfig = skidbladnirSigning
         }
-        if (skidbladnirSigning != null) {
-            create("deviceDebug") {
-                initWith(getByName("debug"))
-                signingConfig = skidbladnirSigning
-                matchingFallbacks += listOf("debug")
-            }
-        }
-    }
-
-    if (skidbladnirSigning != null) {
-        sourceSets.getByName("deviceDebug") {
-            java.srcDir("src/debug/java")
-            manifest.srcFile("src/debug/AndroidManifest.xml")
-            // The seal gallery ships in every debug-like build; without the
-            // catalogue assets it would install but crash on launch.
-            assets.srcDir(rootProject.file("../catalog"))
-        }
     }
 
     compileOptions {
@@ -134,7 +117,7 @@ android {
 
 gradle.taskGraph.whenReady {
     val requestsProtectedArtifact = allTasks.any { task ->
-        task.project == project && (task.name.contains("Release") || task.name.contains("DeviceDebug"))
+        task.project == project && task.name.contains("Release")
     }
     if (requestsProtectedArtifact && signingMaterial == null) {
         throw GradleException("Protected Android artifacts require SKIDBLADNIR_ANDROID_SIGNING_CONFIG")
@@ -147,7 +130,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.datastore:datastore:1.2.1")
     implementation("androidx.webkit:webkit:1.17.0")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
