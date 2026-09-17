@@ -15,11 +15,12 @@ current commands:
   integrity, and catalogue/generated-asset checks.
 - `scripts/build`: go and android debug builds.
 - `scripts/check verify`: static checks and builds; also the hosted ci command.
-- `scripts/check release --allow-release-verification TAG`: signed release asset
-  verification under the existing release approval and environment requirements.
-- `scripts/check published-release --allow-public-release-read TAG SOURCE_SHA`:
-  published source, assets, pin, and hosted-check verification under its existing
-  approval and environment requirements.
+- `scripts/release TAG`: build and verify signed artifacts once, then create a
+  draft release. signing uses the private key; publication remains a separate action.
+- `scripts/check-release [--source SOURCE_DIRECTORY] RELEASE_DIRECTORY TAG SOURCE_SHA`:
+  verify existing artifacts with the public certificate and clean exact source.
+- `scripts/check published-release TAG SOURCE_SHA`: read-only published source,
+  assets, pin, and hosted-check verification; no approval flag or environment token.
 
 there is no current behavioral test command. the former unit, integration,
 provider-live, live, platform, product, second-phone, and full gates are removed.
@@ -30,8 +31,9 @@ tmux and phone operations still require explicit current-turn approval under
 
 retained checks have narrow owners:
 
-- ornament outputs must match one regeneration; terminal assets and their patch
-  must match `android/terminal.lock`. the lock owns dependency pins; validators
+- `scripts/gen-ornament --check` compares one regeneration without writing files;
+  terminal assets and their patch must match `android/terminal.lock`.
+  the lock owns dependency pins; validators
   check agreement with actual inputs rather than duplicate those pins in code.
 - catalogue checks validate data and source inventory. icon behavior belongs to
   the renderer; no second icon implementation remains in the checker.
@@ -42,8 +44,9 @@ retained checks have narrow owners:
   the foreign binary's source/version are not independently observed.
   release-note prose and json whitespace are not artifact identity.
 - ordinary release checks do not reproduce host binaries. run
-  `scripts/check-release --public-assets --reproduce RELEASE_DIRECTORY TAG SOURCE_SHA`
+  `scripts/check-release --reproduce RELEASE_DIRECTORY TAG SOURCE_SHA`
   from the clean exact source checkout for an explicit byte-comparison audit with
   the original build environment. without it, declared identity and checksums do
   not independently prove source-to-binary equivalence. published-release uses
-  the immutable release's checker, so older releases retain their original checks.
+  the current checker with the immutable release's exact source, catalogue, and
+  certificate asset. its source certificate must also match the current signer pin.

@@ -205,8 +205,8 @@ mark at all: at that height the sail's left boundary is the cut corner at
 
 ### Emitted files
 
-`build_outputs()` gains four paths. `scripts/check-ornament` already iterates
-that dict, so it gates them with no change, and `scripts/test static` already
+`build_outputs()` gains four paths. `scripts/gen-ornament --check` iterates
+that dict, so it gates them with no change, and `scripts/check static`
 runs it.
 
 ```text
@@ -275,8 +275,8 @@ scripts/gen-ornament
    |- _vector(_path_data(...))  x3
    `- the <adaptive-icon> descriptor  (a plain string, not a VectorDrawable)
 
-scripts/check-ornament     (unchanged — iterates build_outputs())
-scripts/test static        (unchanged — already runs ornament-static)
+scripts/gen-ornament --check     (unchanged — iterates build_outputs())
+scripts/check static       (runs the generator with --check)
 ```
 
 No HTTP, WSS, tmux, gateway, DTO, persistence, credential, controller-intent,
@@ -343,15 +343,15 @@ and "App icon"); roadmap (D7 entry and status row).
 
 ## Red / green / refactor
 
-One proof per invariant, split at the ownership boundary. Drift and
-determinism already exist in `check-ornament` and are re-run unchanged, not
-re-authored.
+the historical proof plan below predates [test retirement](rules/testing.md).
+the retained `scripts/gen-ornament --check` generates once and checks drift;
+it does not repeat generation as a determinism test.
 
 **Generator (static gate, `ornament-static`)**
 
 1. **Legibility.** Move the seams to `_SEAM_T = (0.25, 0.75)`, which narrows
    the derived slit to 2.0 units — `_SLIT_W` is not settable directly.
-   `scripts/check-ornament` fails with `ornament check failed: gore-slit width
+   `scripts/gen-ornament --check` fails with `ornament check failed: gore-slit width
    is 2.00 units = 1.33dp at 48dp, below the 2dp floor`. Restoring
    `(0.27, 0.73)` returns the slit to 3.44 and it passes.
 2. **Envelope.** Raise the yard to `_YARD_Y = 29.5`. The check fails with

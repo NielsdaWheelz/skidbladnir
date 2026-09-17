@@ -37,7 +37,7 @@ case "$gate" in
       scripts/build scripts/build-host-archive scripts/build-host-binary
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
       scripts/check-release scripts/check-release-source scripts/fleet
-      scripts/release scripts/render-release-notes
+      scripts/install-android scripts/release scripts/render-release-notes
     )
     for script in "${shell_scripts[@]}"; do
       run bash-syntax bash -n "$script"
@@ -53,51 +53,22 @@ case "$gate" in
       'import pathlib, sys
 for name in sys.argv[1:]:
     compile(pathlib.Path(name).read_text(encoding="utf-8"), name, "exec")' \
-      scripts/build-terminal-xterm scripts/check-catalogue scripts/check-codex-config \
-      scripts/check-ornament scripts/check-terminal-assets scripts/gen-ornament
+      scripts/build-terminal-xterm scripts/check-catalogue \
+      scripts/check-terminal-assets scripts/gen-ornament
     run catalogue ./scripts/check-catalogue
     run terminal-assets ./scripts/check-terminal-assets
-    run ornament ./scripts/check-ornament
+    run ornament ./scripts/gen-ornament --check
     run go-mod-verify go mod verify
     run go-vet go vet ./...
     run android-static ./scripts/build android-static
     ;;
-  release)
-    if [[ "${1:-}" != '--allow-release-verification' || -z "${2:-}" || "$#" -ne 2 ]]; then
-      not_run release 'Pass --allow-release-verification TAG only after explicit current-turn approval'
-    fi
-    if [[ "${SKIDBLADNIR_ALLOW_RELEASE_VERIFICATION:-}" != 'signed-assets-v1' ]]; then
-      not_run release 'Set SKIDBLADNIR_ALLOW_RELEASE_VERIFICATION=signed-assets-v1 after explicitly approving the signed release build'
-    fi
-    release_tag="$2"
-    release_source_evidence="$("$repo_dir/scripts/check-release-source" "$release_tag")" ||
-      not_run release 'Public-repository, exact-main, unused-tag, or exact-SHA hosted verify evidence is unavailable'
-    IFS=$'\t' read -r release_sha release_run_id <<<"$release_source_evidence"
-    [[ "$release_sha" =~ ^[0-9a-f]{40}$ && "$release_run_id" =~ ^[0-9]+$ ]] || {
-      printf 'Release source preflight returned invalid evidence.\n' >&2
-      exit 1
-    }
-    release_staging="$(mktemp -d /tmp/skidbladnir-release-gate.XXXXXX)"
-    case "$release_staging" in
-      /tmp/skidbladnir-release-gate.* | /private/tmp/skidbladnir-release-gate.*) ;;
-      *) printf 'Unexpected release-gate staging directory\n' >&2; exit 1 ;;
-    esac
-    trap 'rm -R -- "$release_staging"' EXIT HUP INT TERM
-    run signed-release-assets "$repo_dir/scripts/build" release-assets \
-      "$release_tag" "$release_sha" "$release_staging/assets"
-    ;;
   published-release)
-    if [[ "${1:-}" != '--allow-public-release-read' || -z "${2:-}" ||
-      -z "${3:-}" || "$#" -ne 3 ]]; then
-      not_run published-release \
-        'Pass --allow-public-release-read TAG SOURCE_SHA only after explicit current-turn approval'
-    fi
-    if [[ "${SKIDBLADNIR_ALLOW_PUBLIC_RELEASE_READ:-}" != 'public-release-v1' ]]; then
-      not_run published-release \
-        'Set SKIDBLADNIR_ALLOW_PUBLIC_RELEASE_READ=public-release-v1 after explicit approval'
-    fi
-    published_tag="$2"
-    published_sha="$3"
+    [[ "$#" -eq 2 ]] || {
+      printf 'usage: scripts/check published-release TAG SOURCE_SHA\n' >&2
+      exit 64
+    }
+    published_tag="$1"
+    published_sha="$2"
     "$repo_dir/scripts/check-release" --android-version "$published_tag" >/dev/null || {
       printf 'Published release tag is not canonical.\n' >&2
       exit 1
@@ -165,15 +136,10 @@ for name in sys.argv[1:]:
       printf 'Public release source checkout is not the clean exact published SHA.\n' >&2
       exit 1
     }
-    "$published_source/scripts/check-release" --android-version "$published_tag" \
-      >/dev/null || {
-      printf 'Exact public source rejects the published release tag.\n' >&2
-      exit 1
-    }
     run public-release-download gh release download "$published_tag" \
       --repo "$published_repo" --dir "$published_assets"
-    run public-release-assets "$published_source/scripts/check-release" \
-      --public-assets "$published_assets" "$published_tag" "$published_sha"
+    run public-release-assets "$repo_dir/scripts/check-release" \
+      --source "$published_source" "$published_assets" "$published_tag" "$published_sha"
     published_pin_relative='release-pin.json'
     published_pin="$repo_dir/$published_pin_relative"
     [[ -f "$published_pin" && ! -L "$published_pin" ]] || {
@@ -234,7 +200,7 @@ for name in sys.argv[1:]:
     printf 'engineering checks passed; behavioral tests are absent\n'
     ;;
   '')
-    printf 'usage: %s {static|verify|release --allow-release-verification TAG|published-release --allow-public-release-read TAG SOURCE_SHA}\n' "$0" >&2
+    printf 'usage: %s {static|verify|published-release TAG SOURCE_SHA}\n' "$0" >&2
     exit 64
     ;;
   *)

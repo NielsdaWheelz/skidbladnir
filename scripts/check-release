@@ -151,14 +151,14 @@ verify_archive() (
     printf '%s has an invalid release manifest\n' "$(basename "$archive")" >&2
     return 1
   }
-  cmp -s "$repo_dir/catalog/characters.json" "$staging_dir/characters.json" || {
+  cmp -s "$source_dir/catalog/characters.json" "$staging_dir/characters.json" || {
     printf '%s catalogue differs from the exact release source\n' "$(basename "$archive")" >&2
     return 1
   }
   if [[ -n "$reproduce" ]]; then
     expected_binary="$staging_dir/expected-skidbladnir"
     "$repo_dir/scripts/build-host-binary" \
-      "$repo_dir" "$tag" "$sha" "$goos" "$goarch" "$expected_binary" || {
+      "$source_dir" "$tag" "$sha" "$goos" "$goarch" "$expected_binary" || {
       printf '%s exact-source binary reproduction failed\n' "$(basename "$archive")" >&2
       return 1
     }
@@ -194,19 +194,26 @@ if [[ "${1:-}" == '--android-version' && "$#" -eq 2 ]]; then
   exit
 fi
 
-public_assets=''
 reproduce=''
+source_dir="$repo_dir"
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
-    --public-assets) public_assets=1; shift ;;
     --reproduce) reproduce=1; shift ;;
+    --source)
+      [[ "$#" -ge 2 ]] || {
+        printf '%s requires a source directory\n' "$1" >&2
+        exit 64
+      }
+      source_dir="$2"
+      shift 2
+      ;;
     --) shift; break ;;
     -*) printf 'Unknown release-check option: %s\n' "$1" >&2; exit 64 ;;
     *) break ;;
   esac
 done
 if [[ "$#" -ne 3 ]]; then
-  printf 'usage: %s [--public-assets] [--reproduce] RELEASE_DIRECTORY TAG SOURCE_SHA\n' "$0" >&2
+  printf 'usage: %s [--reproduce] [--source SOURCE_DIRECTORY] RELEASE_DIRECTORY TAG SOURCE_SHA\n' "$0" >&2
   exit 64
 fi
 
@@ -217,17 +224,17 @@ parse_tag "$tag" || {
   printf 'Release tag must be canonical vMAJOR.MINOR.PATCH with a monotonic Android code\n' >&2
   exit 1
 }
-if [[ -n "$reproduce" ]]; then
-  GOTOOLCHAIN=local "$repo_dir/scripts/check-go-toolchain" >/dev/null
-fi
 validate_sha "$sha" || {
   printf 'Release source SHA must be one full lowercase Git SHA-1\n' >&2
   exit 1
 }
-validate_release_source "$repo_dir" "$sha" || {
-  printf 'Release checker must run from a clean repository root at the exact source SHA\n' >&2
+validate_release_source "$source_dir" "$sha" || {
+  printf 'Release source must be a clean repository root at the exact source SHA\n' >&2
   exit 1
 }
+if [[ -n "$reproduce" ]]; then
+  GOTOOLCHAIN=local "$source_dir/scripts/check-go-toolchain" >/dev/null
+fi
 [[ -d "$release_dir" ]] || {
   printf 'Release directory is unavailable\n' >&2
   exit 1
@@ -244,8 +251,12 @@ observed_assets="$(find "$release_dir" -mindepth 1 -maxdepth 1 -exec basename {}
   exit 1
 }
 
-cmp -s "$repo_dir/android/app-signing-cert.sha256" "$release_dir/android-signing-cert.sha256" || {
+cmp -s "$source_dir/android/app-signing-cert.sha256" "$release_dir/android-signing-cert.sha256" || {
   printf 'Release signer fingerprint differs from the repository pin\n' >&2
+  exit 1
+}
+cmp -s "$source_dir/android/app-signing-cert.sha256" "$repo_dir/android/app-signing-cert.sha256" || {
+  printf 'Release source signer differs from the current certificate pin\n' >&2
   exit 1
 }
 
@@ -271,13 +282,8 @@ verify_archive "$release_dir/skidbladnir-linux-amd64.tar.gz" "$tag" "$sha" \
   'linux-amd64' linux amd64
 verify_archive "$release_dir/skidbladnir-darwin-arm64.tar.gz" "$tag" "$sha" \
   'darwin-arm64' darwin arm64
-if [[ -n "$public_assets" ]]; then
-  "$repo_dir/scripts/check-android-signing" --public-apk \
-    "$release_dir/skidbladnir-android.apk"
-else
-  SKIDBLADNIR_ANDROID_SIGNING_CONFIG="${SKIDBLADNIR_ANDROID_SIGNING_CONFIG:-}" \
-    "$repo_dir/scripts/check-android-signing" "$release_dir/skidbladnir-android.apk"
-fi
+"$repo_dir/scripts/check-android-signing" --public-apk \
+  "$release_dir/skidbladnir-android.apk"
 
 apkanalyzer="$(find_apkanalyzer | tail -n 1)"
 [[ -x "$apkanalyzer" ]] || {

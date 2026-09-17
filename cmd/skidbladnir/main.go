@@ -111,8 +111,7 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		config, configErr := loadRuntimeHostConfig(ctx, *hostConfigPath, platform.Current().Kind)
 		if configErr != nil {
 			// A host-configuration defect is the deployment's to fix, not the
-			// provider's to pay for: doctor and check-codex-config own that
-			// validation. This command stays out of the provider's way.
+			// provider's to pay for. This command stays out of the provider's way.
 			_, _ = io.WriteString(stderr, "agent-hook did not publish\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return 0
 		}
