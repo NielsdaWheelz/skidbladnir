@@ -19,9 +19,9 @@ and apply only its explicit v1 deltas to the v0 target. unrelated v0 requirement
 remain. a new capability requires an explicit scope and acceptance-criterion change.
 
 2026-09-17 test retirement: behavioral suites and their harnesses are removed.
-`scripts/check verify` retains engineering checks only. the next pr owns the
-replacement test policy and system; do not recreate the retired gates or treat
-engineering checks as behavioral acceptance. [testing status](docs/rules/testing.md)
+`scripts/check verify` retains engineering checks only. cleanup uses temporary
+integration/live tests removed before commit; do not recreate the retired gates
+or treat engineering checks as behavioral acceptance. [testing status](docs/rules/testing.md)
 supersedes earlier test-tier, mandatory red/green, and gate instructions.
 
 Unconditional guardrails, regardless of assignment:

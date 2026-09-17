@@ -458,6 +458,21 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorInvalidRequest)
 		return
 	}
+	switch input.Kind {
+	case sessions.LaunchAgent:
+		if !input.Profile.present {
+			writeError(writer, errorInvalidRequest)
+			return
+		}
+	case sessions.LaunchTerminal:
+		if input.Profile.present {
+			writeError(writer, errorInvalidRequest)
+			return
+		}
+	default:
+		writeError(writer, errorInvalidRequest)
+		return
+	}
 	optionalTmuxName := ""
 	if input.OptionalTmuxName.present {
 		if input.OptionalTmuxName.value == "" {
@@ -620,7 +635,7 @@ func (gateway *Gateway) setSessionSpace(writer http.ResponseWriter, request *htt
 		writeError(writer, *failure)
 		return
 	}
-	if input.IdentityToken.value == "" {
+	if input.IdentityToken.value == "" || !input.Space.present {
 		writeError(writer, errorInvalidRequest)
 		return
 	}

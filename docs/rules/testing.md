@@ -1,9 +1,17 @@
 # testing status
 
 2026-09-17: the user retired all behavioral tests and their harnesses. this
-interim policy supersedes the former test tiers, mandatory red/green workflow,
-and test-gate prescriptions throughout the repository. the next pr defines the
-replacement system; this pr adds no behavioral tests or replacement framework.
+policy supersedes the former test tiers, mandatory red/green workflow,
+and test-gate prescriptions throughout the repository.
+
+the subsequent cleanup uses temporary tests at the affected integration/live
+boundary. run them against the original and changed implementation; a bug fix
+must demonstrate the intended failure first. review the implementation and the
+test's sensitivity, then delete the temporary test before committing. this is
+change-specific evidence, with no retained automatic regression protection.
+do not rebuild the retired harness or add production seams for these tests.
+unreachable-code and documentation deletions use caller/build/link checks when
+a behavioral test would exercise no changed behavior.
 
 product requirements remain. a successful build or static check does not prove
 product behavior. historical test results apply only to their recorded source;
@@ -27,7 +35,8 @@ provider-live, live, platform, product, second-phone, and full gates are removed
 tmux and phone operations still require explicit current-turn approval under
 `AGENTS.md`. release integrity is independent of behavioral acceptance.
 
-[the coverage gap](../issues/test-system-reset.md) tracks the follow-up.
+[the coverage gap](../issues/test-system-reset.md) remains explicit; temporary
+tests do not close it.
 
 retained checks have narrow owners:
 

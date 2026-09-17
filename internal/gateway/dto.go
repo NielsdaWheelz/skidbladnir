@@ -15,7 +15,6 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/space"
-	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -120,22 +119,6 @@ type directoryListingRequest struct {
 	Directory stringField `json:"directory"`
 }
 
-func (request *directoryListingRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	if len(members) != 1 || members["directory"] == nil {
-		return errors.New("directory listing request does not have its exact field")
-	}
-	var decoded directoryListingRequest
-	if err := json.Unmarshal(members["directory"], &decoded.Directory); err != nil {
-		return err
-	}
-	*request = decoded
-	return nil
-}
-
 type directoryListingResponseDTO struct {
 	Machine         machineDTO                      `json:"machine"`
 	Directory       string                          `json:"directory"`
@@ -191,71 +174,12 @@ type createSessionRequest struct {
 	Space            stringField         `json:"space"`
 }
 
-func (request *createSessionRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	if len(members) < 2 || len(members) > 6 || members["cwd"] == nil || members["kind"] == nil {
-		return errors.New("create request does not have its exact required fields")
-	}
-	for member := range members {
-		switch member {
-		case "kind", "cwd", "profile", "optionalTmuxName", "objective", "space":
-		default:
-			return errors.New("create request has an unknown field")
-		}
-	}
-	var decoded createSessionRequest
-	if err := json.Unmarshal(members["kind"], &decoded.Kind); err != nil {
-		return err
-	}
-	switch decoded.Kind {
-	case sessions.LaunchAgent:
-		if members["profile"] == nil {
-			return errors.New("agent creation requires a profile")
-		}
-		if err := json.Unmarshal(members["profile"], &decoded.Profile); err != nil {
-			return err
-		}
-	case sessions.LaunchTerminal:
-		if members["profile"] != nil {
-			return errors.New("terminal creation forbids a profile")
-		}
-	default:
-		return errors.New("unknown launch kind")
-	}
-	if err := json.Unmarshal(members["cwd"], &decoded.CWD); err != nil {
-		return err
-	}
-	if optionalTmuxName, present := members["optionalTmuxName"]; present {
-		if err := json.Unmarshal(optionalTmuxName, &decoded.OptionalTmuxName); err != nil {
-			return err
-		}
-	}
-	if objective, present := members["objective"]; present {
-		if err := json.Unmarshal(objective, &decoded.Objective); err != nil {
-			return err
-		}
-	}
-	if label, present := members["space"]; present {
-		if err := json.Unmarshal(label, &decoded.Space); err != nil {
-			return err
-		}
-	}
-	*request = decoded
-	return nil
-}
-
 type stringField struct {
 	present bool
 	value   string
 }
 
 func (field *stringField) UnmarshalJSON(encoded []byte) error {
-	if field.present {
-		return errors.New("duplicate string field")
-	}
 	field.present = true
 	if bytes.Equal(encoded, []byte("null")) {
 		return errors.New("null is not a string")
@@ -277,48 +201,6 @@ type renameSessionRequest struct {
 type setSessionSpaceRequest struct {
 	IdentityToken stringField `json:"identityToken"`
 	Space         stringField `json:"space"`
-}
-
-func (request *setSessionSpaceRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	if len(members) != 2 || members["identityToken"] == nil || members["space"] == nil {
-		return errors.New("space request does not have its exact fields")
-	}
-	var decoded setSessionSpaceRequest
-	if err := json.Unmarshal(members["identityToken"], &decoded.IdentityToken); err != nil {
-		return err
-	}
-	if err := json.Unmarshal(members["space"], &decoded.Space); err != nil {
-		return err
-	}
-	*request = decoded
-	return nil
-}
-
-func (request *renameSessionRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	if len(members) != 3 || members["tmuxName"] == nil ||
-		members["newTmuxName"] == nil || members["identityToken"] == nil {
-		return errors.New("rename request does not have its exact fields")
-	}
-	var decoded renameSessionRequest
-	if err := json.Unmarshal(members["tmuxName"], &decoded.TmuxName); err != nil {
-		return err
-	}
-	if err := json.Unmarshal(members["newTmuxName"], &decoded.NewTmuxName); err != nil {
-		return err
-	}
-	if err := json.Unmarshal(members["identityToken"], &decoded.IdentityToken); err != nil {
-		return err
-	}
-	*request = decoded
-	return nil
 }
 
 type pressureResponseDTO struct {
@@ -664,15 +546,4 @@ func pressureLogValues(sample pressure.Sample) (logging.PressureLevel, []logging
 // Shell creation addresses only the source session lifetime.
 type shellSessionRequest struct {
 	IdentityToken stringField `json:"identityToken"`
-}
-
-func (request *shellSessionRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	if len(members) != 1 || members["identityToken"] == nil {
-		return errors.New("shell request does not have its exact field")
-	}
-	return json.Unmarshal(members["identityToken"], &request.IdentityToken)
 }
