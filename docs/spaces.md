@@ -518,8 +518,8 @@ submit through the machine's existing `inventoryOperation.submitMutation`:
 
 centralize rename-specific metadata fences into `pendingMetadataFences` and
 semantic require/clear helpers used by rename and space. retain
-`MachineInventoryOperations`, `AwaitedInventoryReads`, generations, and credentials
-as current owners. no copied lane logic, second fence map, or generic mutation
+the controller's per-machine `InventoryOperationLane` map, `AwaitedInventoryReads`,
+generations, and credentials as current owners. no copied lane logic, second fence map, or generic mutation
 framework. rename retains its name-conflict reconciliation; space uses last-write
 semantics. recreation discards editor/network state and re-lists without sending.
 
