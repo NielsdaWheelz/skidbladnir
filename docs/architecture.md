@@ -853,19 +853,18 @@ enum values are defects, with no protocol branch or compatibility state.
   remains local and release publication remains a reviewed draft action.
 - `MachineStore` persists the exact three-machine collection in app-private
   preferences; handles, case-insensitive labels, origins, and bearer bytes are
-  each unique, enforced at the store read boundary — every member of a
-  colliding group is quarantined. Every bearer is
+  each unique, enforced at the store read boundary. an incomplete, invalid,
+  or colliding collection quarantines the whole fleet. every bearer is
   AES-256-GCM encrypted by Android
   Keystore with a fresh nonce and AAD bound to handle and origin. Origins are
   pinned HTTPS `:8443` endpoints with hostname and no user-info, path, query,
   or fragment. Labels, origins, and handles are immutable in the app; bearer
-  repair re-authenticates the same handle. An unreadable entry is an opaque
-  quarantine slot:
-  its plaintext metadata is never trusted or used as a request destination,
-  exposes no in-app destructive recovery, and blocks bearer repair while the
-  collection is incomplete. If the authoritative collection index itself is
-  unreadable, a separately labeled collection quarantine exposes the same
-  fail-closed state. There is no old store reader or migration.
+  repair re-authenticates the same handle. quarantine admits no credentials
+  and opens the fleet-reset screen before any dashboard or machine requests.
+  that screen distinguishes an unreadable collection index from unreadable
+  pairings. neither trusts partial plaintext metadata, permits bearer repair,
+  or offers in-app destructive recovery. reset app data outside the app, then
+  connect again. there is no old store reader or migration.
 - An empty valid store opens `Connect your fleet`. `Connect` uses Google Code
   Scanner without camera permission and strictly parses one exact
   `skidbladnir.fleet-invite.v1` QR containing ordered Arch, Devbox, and MacBook
@@ -884,9 +883,11 @@ enum values are defects, with no protocol branch or compatibility state.
 - `Reconnect fleet` replaces manual bearer entry. It may rotate bearers in one
   commit only when labels, origins, and handles exactly equal the complete
   readable installed fleet. Quarantine or identity replacement cannot be
-  repaired in-app. Ordinary upgrades preserve the collection; app-data loss
-  returns to Connect. There is no old store reader, ADB provisioning path, or
-  smaller-fleet branch.
+  repaired in-app. an invite naming different machines leaves the installed
+  fleet unchanged; the reset screen explains that back keeps it, while replacing
+  it requires an external app-data reset. ordinary upgrades preserve the
+  collection; app-data loss returns to Connect. there is no old store reader,
+  ADB provisioning path, or smaller-fleet branch.
 - Grid, selected-machine pressure rail/details sheet, filters, Forge, and
   terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
   destination switch and exclusively owns machine/space selection, the live lazy-grid

@@ -34,7 +34,7 @@ internal fun resumedFleetPersistenceDisposition(
     pending: List<MachineCredential>,
     durable: MachineStoreRead,
 ): FleetPersistenceDisposition {
-    if (durable.unreadable.isNotEmpty()) return FleetPersistenceDisposition.ResetRequired
+    if (durable.quarantine != null) return FleetPersistenceDisposition.ResetRequired
     if (durable.credentials.size == pending.size &&
         durable.credentials.toSet() == pending.toSet()
     ) return FleetPersistenceDisposition.Connected
