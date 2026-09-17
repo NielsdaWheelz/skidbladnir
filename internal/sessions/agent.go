@@ -8,6 +8,10 @@ import (
 )
 
 func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation) {
+	// An empty tmux pane has no process to observe or registered identity to accept.
+	if panePID == 0 {
+		return nil, nil
+	}
 	registration := ""
 	if observedRegistration, optionErr := manager.paneOption(ctx, paneID, agentruntime.PaneOption); optionErr == nil {
 		registration = observedRegistration
