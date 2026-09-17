@@ -2,7 +2,10 @@
 
 ## Role
 
-This directory is the canonical home for repository documentation.
+this directory owns codebase rules. product behavior and accepted scope belong
+to the [architecture](../architecture.md), [roadmap](../roadmap.md), and the
+feature specifications they accept. rules do not authorize new runtime machinery
+or override those contracts.
 
 ## Goals
 
@@ -15,7 +18,6 @@ This directory is the canonical home for repository documentation.
 ### Correctness and concurrency
 
 - [correctness.md](correctness.md): abnormality classification and system invariants
-- [operation-types.md](operation-types.md): managed-operation model, replay, durable workflows, and composition rules
 - [concurrency.md](concurrency.md): linearization and concurrent execution
 - [mutation-ordering.md](mutation-ordering.md): ordering mutations across systems and module boundaries
 - [retries.md](retries.md): retry policies and exhaustion handling
@@ -24,17 +26,14 @@ This directory is the canonical home for repository documentation.
 
 - [boundaries.md](boundaries.md): data representation at ingress, internal, and egress edges
 - [errors.md](errors.md): error and defect modeling, null classification
-- [keys-and-identities.md](keys-and-identities.md): identity naming, validated types, and sealing
+- [keys-and-identities.md](keys-and-identities.md): identity, authority, and canonical values
 - [json-values.md](json-values.md): structured JSON values
-- [resource-lifecycle.md](resource-lifecycle.md): resource publication, reservations, setup state, and lifecycle row shapes
 - [tagged-unions.md](tagged-unions.md): tagged variants versus domain-record shapes
 - [generated-text.md](generated-text.md): escaping and quoting at generated-text boundaries
 
 ### Runtime composition
 
 - [effect.md](effect.md): effectful work, background tasks, and scoped values
-- [effect-services.md](effect-services.md): services versus helpers
-- [layers.md](layers.md): runtime layer kinds and wiring rules
 
 ### Code style
 
@@ -44,15 +43,14 @@ This directory is the canonical home for repository documentation.
 - [function-parameters.md](function-parameters.md): parameter conventions
 - [control-flow.md](control-flow.md): exhaustive branching and race-safety
 - [overrides.md](overrides.md): justified escape hatches and type assertions
-- [conventions.md](conventions.md): small conventions (constants, generics, encodings)
+- [conventions.md](conventions.md): named constants and protocol encodings
 
 ### Platform
 
 - [codebase.md](codebase.md): technology ownership, repo structure, imports, and module boundaries
-- [database.md](database.md): relational schema, queries, and transactions
-- [frontend.md](frontend.md): browser-facing UI state, boundaries, and route-owned data
+- [frontend.md](frontend.md): client UI state, navigation, and data boundaries
 - [testing.md](testing.md): test retirement status and retained engineering checks
-- [timing.md](timing.md): schedules and timing constants
+- [timing.md](timing.md): clocks, expiry, deadlines, and recurring work
 - [polling.md](polling.md): polling rules
 
 ## Placement Rules

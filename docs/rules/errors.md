@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document covers error and defect modeling, `null` normalization, and runtime invariant checks.
+error and defect modeling, absence classification, and runtime invariant checks.
 
 ## Errors and Defects
 
@@ -11,45 +11,40 @@ This document covers error and defect modeling, `null` normalization, and runtim
 - Use errors for expected, modelable failures.
 - Use defects for broken invariants, impossible states, internal corruption,
   schema or code mismatch, and similar "should never happen" conditions.
-- Persistent failure of a dependency beyond its applicable retry budget is a defect by default.
-- Classify persistent dependency failure by the invariant or result the owning operation is expected to establish when our code and its dependencies are operating correctly.
-- Do not downgrade a persistent dependency outage to a normal product-facing error just because the current feature or request can continue without success.
-- Do not invent synthetic product-facing "Unavailable", "TransientFailure", or similar middle-ground errors for a required dependency unless persistent dependency unavailability is itself an intended modeled outcome.
+- classify dependency failure by the operation contract. the current product
+  models unavailable peers/providers and stale targets explicitly; duration or
+  retry exhaustion alone does not make those outcomes defects.
+- do not invent fallback output or convert an invariant failure into a modeled
+  unavailable result merely to continue.
 - Do not classify provider failures into domain errors by coarse HTTP class or transport shape alone.
 - Only map a provider response to a modeled domain error when the provider contract or our adapter normalization identifies that exact condition.
-- Unknown non-transient provider failures defect.
+- preserve unexpected provider failures as errors for investigation; do not
+  guess a domain outcome from an unrecognized response.
 - Do not soften a required follow-up dependency observation because an earlier irreversible external side effect already succeeded.
 - If the provider contract says a follow-up fact should exist after that side effect, missing or inconsistent follow-up data is a defect after the applicable retry/classification path.
 - If the provider contract says the follow-up fact is expected to be absent sometimes, model that absence explicitly at the adapter boundary.
-- Only treat retry exhaustion as a handleable error when dependency unavailability is itself part of the operation's intended modeled outcome.
+- preserve the owning result and dispatch classification when attempts end;
+  see [retries.md](retries.md).
 - Handle errors as deeply as possible and propagate them upward only when needed.
 - Defects are not normal application control flow.
 - Do not convert defects into UI states, retryable business branches, persisted domain status fields, or other product-facing recovery paths.
 - Do not mask unexpected internal failures with synthetic fallback output, placeholder summaries, or "best effort" persisted state just to keep a workflow moving.
-- For durable-operation dead-letter repair and ownership-state rules, follow
-  [operation-types.md](operation-types.md#dead-letters-and-ownership-state).
 - Observing a defect in production should trigger a code or operational change.
 - Any intentional defect classification must include `justify-defect`.
 - Any branch that discards an error must first narrow it to a named or tagged error and include `justify-ignore-error`.
 
-## Absence And Null
+## absence and null
 
-- Do not use nullable values or owned successful-absence wrappers in service or
-  domain APIs to represent absence that still requires classification.
-- Classify such absence immediately as a typed error or a defect.
-- Raw `null` is only for null-speaking boundaries: nullable database columns,
-  third-party SDK/API payloads, browser/framework interop, local frontend
-  component state, intentional public JSON protocols, and library/service
-  contracts we do not control.
-- Normalize raw nullable input at the boundary. See [boundaries.md](boundaries.md) for the general ingress rule.
-- Use the owned absence representation when optionality is itself the
-  successful result.
-- Use a typed error when absence is an expected application-level failure.
-- Use a defect when absence violates an invariant.
-- Our own helpers, services, boundary schemas, durable payloads, replayed
-  results, and internal state should not accept or return raw `null` for
-  semantic absence unless interop makes a better representation materially
-  worse.
+- classify absence where its meaning becomes known. use native optional values
+  when absence is a successful result, an error when it is an expected failure,
+  and a defect when it violates an invariant.
+- do not make callers guess whether an empty value means absent, unavailable,
+  invalid, or failed. use an explicit result variant when those states differ.
+- native nullable domain fields are valid. preserve field-specific wire
+  omission and null semantics; see [boundaries.md](boundaries.md).
+- loss of confirmation after dispatch is not absence or proof of failure.
+  preserve the unknown or partial outcome specified by
+  [agent control](../agent-control.md#capability-and-api-contract).
 
 ## Service Invariants
 
@@ -61,8 +56,9 @@ This document covers error and defect modeling, `null` normalization, and runtim
 - Renderers, quoters, and encoders should assume already-owned local types and only perform boundary-specific escaping or formatting.
 - Do not use runtime service-boundary guards for parameter validity that should
   be encoded in types, validated wrappers, or parsed canonical values.
-- Runtime checks in service code should enforce remaining invariants that cannot be expressed cleanly in the type system.
-- Such checks must include `justify-service-invariant-check` explaining why the
-  invariant is not represented in types, validated wrappers, or parsed
-  canonical values.
-- Violations of such invariants are defects.
+- runtime checks enforce remaining local invariants and reobserve mutable
+  external state where required by the operation contract.
+- checks for internal invariants not represented in types must include
+  `justify-service-invariant-check` explaining that choice. their violation is a
+  defect. this does not turn expected external changes, such as a replaced
+  session or exited process, into defects.

@@ -1,29 +1,32 @@
-# Correctness
+# correctness
 
-## Scope
+## scope
 
-This document covers system abnormality classification and repository-wide correctness invariants.
+failure classification and repository-wide correctness invariants.
 
-## Abnormalities
+## failures
 
-- Expected system-level abnormalities must be modeled and handled in code.
-- Unexpected abnormalities indicate a broken invariant and should trigger investigation.
-- Expected abnormalities include server restarts and transient service failures within the applicable retry budget.
-- Unexpected abnormalities include service failures that persist beyond the applicable retry budget.
-- Retry budgets define the boundary between expected transient failure and unexpected persistent failure.
-- See [retries.md](retries.md) for retry policies and exhaustion handling.
+- model expected conditions explicitly: invalid requests, missing or replaced
+  sessions, process exit, unavailable peers, and uncertain delivery are part of
+  the current product contracts.
+- a broken internal invariant is a defect. preserve evidence and repair its
+  cause; do not hide it behind plausible output or silent normalization.
+- classify dependency failures by the owning operation's contract, not by how
+  long a dependency has been unavailable. see [errors.md](errors.md) and
+  [retries.md](retries.md).
 
-## Invariants
+## invariants
 
-- If concurrent execution or crash-and-replay can produce an incorrect result, it is a bug.
-- Every operation must correspond to some valid sequential ordering of all concurrent operations, including across crash-and-replay.
-- Every committed external side effect must be discoverable during normal recovery; volatile reads alone are not sufficient. For replayable and durable work, retained coordination replay state is recovery state. Do not duplicate memoized step inputs or outputs into domain tables solely to recover an in-flight workflow after coordination state expiry; expiry is a defect and operator repair boundary, not a normal replay path.
-- Projection drift is a broken invariant, not a user-facing branch. If one subsystem still owns a local projection or reference and the authoritative subsystem says the resource is missing at a boundary where it is expected to exist, treat that as a defect and investigate rather than silently reconciling or downgrading it to `NotFound`.
-- This applies equally to provider-backed resources. If we still store a local row, ref, or handle for a provider-owned object and a later provider read says the object is missing where our model expects it to exist, defect by default. Only soften that into a typed outcome when external disappearance is intentionally modeled end-to-end as part of the product behavior.
-- Read-only operations that span multiple systems must handle transient inconsistency from concurrent modification.
-- Prefer compile-time enforcement of correctness invariants where possible.
-- See [operation-types.md](operation-types.md) for the managed-operation replay model, [concurrency.md](concurrency.md) for linearization strategy, and [mutation-ordering.md](mutation-ordering.md) for cross-system ordering.
-
-## Untrusted Data
-
-- See [boundaries.md](boundaries.md) for parsing, validation, and trusted-vs-untrusted rules.
+- concurrent execution must preserve the operation's promised ordering and
+  target identity. see [concurrency.md](concurrency.md).
+- a successful parse proves a value's shape, not the continued existence of the
+  session, process, or path it identified. reobserve changing external state at
+  the boundary responsible for using it.
+- inventory is an observation of tmux, not a durable claim on a session. handle
+  later disappearance and replacement through the existing stale-target rules.
+- after dispatch, loss of confirmation does not prove that no effect occurred.
+  preserve the [agent-control outcomes](../agent-control.md#identity-state-and-dispatch)
+  and the [architecture's mutation contracts](../architecture.md).
+- keep cross-boundary ordering explicit; see [mutation-ordering.md](mutation-ordering.md).
+- use types to enforce local invariants where they make the code simpler. parse
+  external data at ingress; see [boundaries.md](boundaries.md).

@@ -1,19 +1,29 @@
-# Timing
+# timing
 
-## Scope
+## scope
 
-This document covers timing parameters and schedule-shape rules.
+clocks, expiry, deadlines, and recurring work.
 
-## Schedules
+## clocks and intervals
 
-- Retry and polling schedules should be self-bounding.
-- Keep a schedule's cadence and termination behavior in the same schedule definition.
-- Do not apply time or attempt limits externally with a separate timeout when the schedule itself should own them.
-- `retryOrDieTag` and `retryOrExhaustTag` with `activateBoundedSchedule` are standard ways to keep bounded retry behavior explicit.
+- use the clock owned by the fact being measured. do not compare host clocks to
+  each other or replace host observations with a client receipt time.
+- represent stored or transmitted instants with an explicit time zone. use a
+  monotonic elapsed clock for local durations and freshness where available.
+- expiry is the first invalid instant: valid while `now < expiresAt`, expired
+  once `now >= expiresAt`. pairing's gateway owns both issuance and redemption.
+- other threshold inclusivity follows its product contract. the
+  [architecture](../architecture.md) owns activity and freshness clocks;
+  activity's inclusive threshold is not an expiry rule.
 
-## Constants
+## deadlines and recurring work
 
-- Timing parameters such as retry intervals, backoff caps, timeouts, and polling periods should be named constants.
-- Represent timing parameters as `Duration` values or fully constructed `Schedule` objects.
-- Avoid raw numbers and anonymous inline `Duration` literals in business logic.
-- If a duration is only meaningful as part of one named schedule constant, it may be embedded inline inside that schedule constant.
+- express durations in native units: go `time.Duration`, kotlin duration values
+  or explicitly named millisecond values, and named millisecond values in js.
+- give reused timings or product limits meaningful names. keep a one-use value
+  inline when its operation and unit already explain it.
+- keep cadence, attempt limits, and termination behavior visible in the owning
+  loop. propagate cancellation and deadlines through blocking work.
+- a caller's overall deadline and a child operation's local timeout protect
+  different scopes. neither may silently extend the other.
+- stop timers and recurring work with their owner. see [effect.md](effect.md).
