@@ -42,7 +42,7 @@ render_notes() {
   darwin_digest="$(manifest_digest "$manifest" skidbladnir-darwin-arm64.tar.gz)" || return 1
   linux_digest="$(manifest_digest "$manifest" skidbladnir-linux-amd64.tar.gz)" || return 1
   [[ "$(wc -l <"$manifest" | tr -d ' ')" == 4 ]] || return 1
-  checksums_digest="$("${digest_command[@]}" "$manifest" | awk 'NF == 2 { print $1 }')" || return 1
+  checksums_digest="$("${digest_command[@]}" <"$manifest" | awk 'NF == 2 { print $1 }')" || return 1
   [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
 
   # shellcheck disable=SC2016 # Literal Markdown code spans must not invoke shell expansion.
