@@ -41,7 +41,7 @@ type model struct {
 	peers                                     []fleetclient.Peer
 	rows                                      []listedRow
 	cursor                                    int
-	initialized, refreshing, busy             bool
+	refreshing, busy                          bool
 	refreshAfterAction                        bool
 	width, height                             int
 	notice, page                              string
@@ -118,7 +118,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.refresh()
 		}
 		m.scopeReady = true
-		m.initialized = true
 		if message.failure != nil {
 			for index := range m.peers {
 				if m.machine == "" || m.peers[index].Label == m.machine {
