@@ -352,7 +352,7 @@ func (m *model) mainLines(width, height int) []string {
 				partial = partial || !peer.OK
 			}
 			switch {
-			case !m.initialized || !m.scopeReady:
+			case !m.scopeReady:
 				add("checking inventory")
 			case partial:
 				add("no matching sessions in available inventory")
