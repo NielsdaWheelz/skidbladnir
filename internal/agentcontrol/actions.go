@@ -88,7 +88,7 @@ func (service *Service) Stop(parent context.Context, target sessions.AgentTarget
 			Agent  string `json:"agent"`
 			Reason string `json:"reason,omitempty"`
 		}
-		if service.native(haltContext, profile, "stop", []nativeTarget{native}, nil, &halted) == nil {
+		if service.native(haltContext, profile, "stop", []nativeTarget{native}, nil, &halted) {
 			switch halted.Agent {
 			case "stopped", "interrupted", "idle":
 				result.Agent = halted.Agent

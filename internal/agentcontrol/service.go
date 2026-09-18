@@ -81,7 +81,7 @@ func (service *Service) Enrich(parent context.Context, inventory *sessions.Inven
 				_, targets[i], _ = service.nativeIdentity(inventory.Sessions[index])
 			}
 			var results []nativeEnvelope
-			if service.native(ctx, profile, "inspect", targets, nil, &results) != nil || len(results) != len(indices) {
+			if !service.native(ctx, profile, "inspect", targets, nil, &results) || len(results) != len(indices) {
 				return
 			}
 			for i, result := range results {
@@ -136,7 +136,7 @@ func (service *Service) inspect(ctx context.Context, session sessions.Session) (
 	inspectionContext, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	var results []nativeEnvelope
-	if service.native(inspectionContext, profile, "inspect", []nativeTarget{target}, nil, &results) != nil || len(results) != 1 || !results[0].OK {
+	if !service.native(inspectionContext, profile, "inspect", []nativeTarget{target}, nil, &results) || len(results) != 1 || !results[0].OK {
 		return profile, target, nativeInspection{}, false
 	}
 	var inspected nativeInspection
@@ -173,7 +173,7 @@ func (service *Service) Read(parent context.Context, target sessions.AgentTarget
 			}
 			if service.native(nativeContext, profile, "read", []nativeTarget{native}, struct {
 				MaxBytes int `json:"maxBytes"`
-			}{maxBytes}, &result) == nil && validRead(result) {
+			}{maxBytes}, &result) && validRead(result) {
 				boundRead(&result, maxBytes)
 				return result, nil
 			}
