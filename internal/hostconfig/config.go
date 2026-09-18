@@ -12,6 +12,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
 const maximumConfigBytes = 64 * 1024
@@ -26,24 +27,13 @@ var expectedProfiles = [...]struct {
 	{key: "claude-work", provider: agentruntime.ProviderClaude},
 }
 
-type Tmux struct {
-	Path string
-}
-
 type Config struct {
 	NativeControlPath string
-	Platform          platform.Kind
-	Tmux              Tmux
+	TmuxPath          string
 	Profiles          []agentruntime.Profile
 }
 
-type hostConfigFile interface {
-	io.Reader
-	Stat() (os.FileInfo, error)
-	Close() error
-}
-
-func Load(path string, runtime platform.Kind) (Config, error) {
+func Load(path string, runtime platform.Kind) (config Config, resultErr error) {
 	if path == "" {
 		return Config{}, errors.New("host config path is empty")
 	}
@@ -55,10 +45,6 @@ func Load(path string, runtime platform.Kind) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read host config: %w", err)
 	}
-	return loadOpenedHostConfig(file, runtime)
-}
-
-func loadOpenedHostConfig(file hostConfigFile, runtime platform.Kind) (config Config, resultErr error) {
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
 			config = Config{}
@@ -90,9 +76,9 @@ func parse(encoded []byte, runtime platform.Kind) (Config, error) {
 	if runtime != platform.KindLinux && runtime != platform.KindDarwin {
 		return Config{}, errors.New("runtime platform is unsupported")
 	}
-	wire, err := decodeConfig(encoded)
-	if err != nil {
-		return Config{}, err
+	var wire *configDTO
+	if err := strictjson.Decode(encoded, &wire); err != nil || wire == nil {
+		return Config{}, errors.New("host config is not canonical JSON")
 	}
 	return wire.validate(runtime)
 }
@@ -166,8 +152,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	}
 	return Config{
 		NativeControlPath: wire.NativeControlPath.value,
-		Platform:          kind,
-		Tmux:              Tmux{Path: filepath.Clean(wire.Tmux.Path.value)},
+		TmuxPath:          wire.Tmux.Path.value,
 		Profiles:          profiles,
 	}, nil
 }

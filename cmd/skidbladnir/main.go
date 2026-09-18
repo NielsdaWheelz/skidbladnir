@@ -116,7 +116,7 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 			return 0
 		}
 		if err := agenthook.Run(ctx, agenthook.Config{
-			TmuxPath: config.Tmux.Path,
+			TmuxPath: config.TmuxPath,
 			Profiles: config.Profiles,
 		}, prepared); err != nil {
 			// The hook is a passive projection of pane-local facts. Publication
@@ -306,7 +306,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		return fmt.Errorf("initialize working directories: %w", err)
 	}
 	manager, err := sessions.New(sessions.Config{
-		TmuxPath:      host.Tmux.Path,
+		TmuxPath:      host.TmuxPath,
 		Workdir:       workingDirectories,
 		CataloguePath: cataloguePath,
 		Profiles:      host.Profiles,
@@ -344,7 +344,7 @@ func loadRuntimeHostConfig(ctx context.Context, path string, runtime platform.Ki
 	if err != nil {
 		return hostconfig.Config{}, err
 	}
-	tmuxVersion, err := observedTmuxVersion(ctx, config.Tmux.Path)
+	tmuxVersion, err := observedTmuxVersion(ctx, config.TmuxPath)
 	if err != nil {
 		return hostconfig.Config{}, err
 	}
