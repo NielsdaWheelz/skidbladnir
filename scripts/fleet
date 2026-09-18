@@ -489,7 +489,7 @@ remote_host() {
   esac
 }
 
-fleet_evidence() {
+verify_fleet() {
   local expected_darwin_release="$1"
   local expected_linux_release="$2"
   local local_result='' devbox_result='' arch_result=''
@@ -524,16 +524,6 @@ fleet_evidence() {
     "$devbox_handle" != "$arch_handle" ]] || die 'fixed-fleet machine handles are not unique'
   [[ "$local_origin" != "$devbox_origin" && "$local_origin" != "$arch_origin" &&
     "$devbox_origin" != "$arch_origin" ]] || die 'fixed-fleet Serve origins are not unique'
-  printf '%s\t%s\n%s\t%s\n%s\t%s\n' \
-    "$local_handle" "$local_origin" \
-    "$devbox_handle" "$devbox_origin" \
-    "$arch_handle" "$arch_origin"
-}
-
-verify_fleet() {
-  local expected_darwin_release="$1"
-  local expected_linux_release="$2"
-  fleet_evidence "$expected_darwin_release" "$expected_linux_release" >/dev/null || return
   printf 'PASS  fleet.verify macbook gateway available\n'
   printf 'PASS  fleet.verify devbox gateway available\n'
   printf 'PASS  fleet.verify arch gateway available\n'
