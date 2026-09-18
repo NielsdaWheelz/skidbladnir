@@ -10,7 +10,8 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 tag="$1"
-"$repo_dir/scripts/check-release" --android-version "$tag" >/dev/null
+candidate_version="$("$repo_dir/scripts/check-release" --android-version "$tag")"
+read -r _ candidate_version_code <<<"$candidate_version"
 for command in gh git jq; do
   command -v "$command" >/dev/null || {
     printf 'Required release command is unavailable: %s\n' "$command" >&2
@@ -59,7 +60,6 @@ sha="$(git rev-parse HEAD)"
   printf 'Release HEAD is not exact origin/main\n' >&2
   exit 1
 }
-read -r _ candidate_version_code < <("$repo_dir/scripts/check-release" --android-version "$tag")
 while IFS= read -r existing_tag; do
   if read -r _ existing_version_code < <(
     "$repo_dir/scripts/check-release" --android-version "$existing_tag" 2>/dev/null

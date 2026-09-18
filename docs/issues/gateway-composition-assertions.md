@@ -9,7 +9,13 @@ linux/darwin constants. startup passes the unconditional `pairing.NewSlot`
 result directly. these guards neither admit new external input nor reobserve
 changing runtime state.
 
-resolved when: remove only these four constructor assertions, retaining all
+`agentcontrol.New` also repeats the manager/nonempty absolute-path guarantees
+and returns an error no current caller can receive. its sole caller has checked
+`sessions.New` and uses the unchanged path admitted by `hostconfig.Load`; the
+constructor acquires no resource or live fact. return the service directly and
+make startup's assignment linear. retain the constructor's private-field owner.
+
+resolved when: remove these repeated composition checks, retaining all
 actual file, home, platform and session admission. verify the complete supplier
 and constructor paths and builds. no replacement guards or wrapper types.
 the cost is losing immediate, specific diagnostics for a future composition
