@@ -47,13 +47,14 @@ type nativeInspection struct {
 	TerminalOwnsAgent bool                 `json:"terminalOwnsAgent,omitempty"`
 }
 
-type outputBuffer struct{ bytes.Buffer }
+// Keep the buffer named so io.Copy cannot bypass Write through bytes.Buffer.ReadFrom.
+type outputBuffer struct{ data bytes.Buffer }
 
 func (buffer *outputBuffer) Write(contents []byte) (int, error) {
-	if len(contents) > 65536-buffer.Len() {
+	if len(contents) > 65536-buffer.data.Len() {
 		return 0, errors.New("native output limit")
 	}
-	return buffer.Buffer.Write(contents)
+	return buffer.data.Write(contents)
 }
 
 func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) *nativeFailure {
@@ -71,7 +72,7 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	command.Env = service.nativeEnvironment(profile)
 	err = command.Run()
 	var envelope nativeEnvelope
-	if strictjson.Decode(output.Bytes(), &envelope) != nil {
+	if strictjson.Decode(output.data.Bytes(), &envelope) != nil {
 		return &nativeFailure{Code: "unknown", Dispatch: "unknown"}
 	}
 	if !envelope.OK {
