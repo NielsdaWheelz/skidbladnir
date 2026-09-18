@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
 case "$(uname -s)" in
   Darwin) digest_command=(shasum -a 256) ;;
   Linux) digest_command=(sha256sum) ;;
   *) printf 'Release notes support only Linux and Darwin\n' >&2; exit 1 ;;
 esac
-
-valid_tag() {
-  local tag="$1"
-  local major
-  local minor
-  local patch
-  [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-  major="${BASH_REMATCH[1]}"
-  minor="${BASH_REMATCH[2]}"
-  patch="${BASH_REMATCH[3]}"
-  ((${#major} <= 4 && ${#minor} <= 3 && ${#patch} <= 3)) || return 1
-  ((10#$major <= 2100 && 10#$minor <= 999 && 10#$patch <= 999))
-}
 
 manifest_digest() {
   local manifest="$1"
@@ -42,7 +31,7 @@ render_notes() {
   local darwin_digest
   local linux_digest
   local checksums_digest
-  valid_tag "$tag" || return 1
+  "$repo_dir/scripts/check-release" --android-version "$tag" >/dev/null 2>&1 || return 1
   [[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[1-9][0-9]*$ ]] || return 1
   [[ -f "$manifest" && ! -L "$manifest" && -f "$signer_file" && ! -L "$signer_file" ]] || return 1
   [[ "$(wc -l <"$signer_file" | tr -d ' ')" == 1 ]] || return 1
