@@ -57,34 +57,25 @@ func (buffer *outputBuffer) Write(contents []byte) (int, error) {
 	return buffer.data.Write(contents)
 }
 
-func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) *nativeFailure {
+func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) bool {
 	encoded, err := json.Marshal(nativeRequest{Operation: operation, Provider: profile.Provider, ProfileKey: profile.Key, Targets: targets, Input: input})
 	if err != nil {
-		return &nativeFailure{Code: "rejected", Dispatch: "not_sent"}
+		return false
 	}
 	command := exec.CommandContext(ctx, service.nativePath)
 	command.Cancel = func() error { return command.Process.Signal(syscall.SIGTERM) }
 	command.WaitDelay = 250 * time.Millisecond
-	command.Stdin = strings.NewReader(string(encoded))
+	command.Stdin = bytes.NewReader(encoded)
 	var output outputBuffer
 	command.Stdout = &output
 	// Provider stderr can contain prompts/account paths; it is never surfaced.
 	command.Env = service.nativeEnvironment(profile)
-	err = command.Run()
+	if command.Run() != nil {
+		return false
+	}
 	var envelope nativeEnvelope
-	if strictjson.Decode(output.data.Bytes(), &envelope) != nil {
-		return &nativeFailure{Code: "unknown", Dispatch: "unknown"}
-	}
-	if !envelope.OK {
-		if envelope.Error == nil {
-			return &nativeFailure{Code: "unknown", Dispatch: "unknown"}
-		}
-		return envelope.Error
-	}
-	if err != nil || envelope.Error != nil || len(envelope.Result) == 0 || strictjson.Decode(envelope.Result, result) != nil {
-		return &nativeFailure{Code: "unknown", Dispatch: "unknown"}
-	}
-	return nil
+	return strictjson.Decode(output.data.Bytes(), &envelope) == nil && envelope.OK &&
+		envelope.Error == nil && len(envelope.Result) > 0 && strictjson.Decode(envelope.Result, result) == nil
 }
 
 func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string {
@@ -100,8 +91,9 @@ func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string
 	for _, entry := range profile.Environment {
 		values[entry.Name] = entry.Value
 	}
-	paths := make([]string, 0, len(service.sessions.Profiles())+1)
-	for _, entry := range service.sessions.Profiles() {
+	profiles := service.sessions.Profiles()
+	paths := make([]string, 0, len(profiles)+1)
+	for _, entry := range profiles {
 		paths = append(paths, filepath.Dir(entry.Command))
 	}
 	paths = append(paths, values["PATH"])
