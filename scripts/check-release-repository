@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo='NielsdaWheelz/skidbladnir'
+repo_id=1386409483
+
+case "${1:-}" in
+  identity) [[ "$#" -eq 1 ]] ;;
+  immutable) [[ "$#" -eq 1 ]] ;;
+  run)
+    [[ "$#" -eq 3 && "$2" =~ ^[0-9a-f]{40}$ && "$3" =~ ^[1-9][0-9]*$ ]] ;;
+  *)
+    printf 'usage: %s {identity|immutable|run SOURCE_SHA RUN_ID}\n' "$0" >&2
+    exit 64
+    ;;
+esac || exit 64
+
+for command in gh jq; do
+  command -v "$command" >/dev/null || {
+    printf 'Required release command is unavailable: %s\n' "$command" >&2
+    exit 1
+  }
+done
+
+gh api --method GET "repos/$repo" |
+  jq -e --arg name "$repo" --argjson id "$repo_id" \
+    '.id == $id and .full_name == $name and .private == false and .archived == false' \
+    >/dev/null || {
+  printf 'GitHub repository name does not identify the original public Skidbladnir repository (id %s)\n' "$repo_id" >&2
+  exit 1
+}
+
+if [[ "$1" == immutable ]]; then
+  gh api --method GET \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    "repos/$repo/immutable-releases" | jq -e '.enabled == true' >/dev/null || {
+    printf 'GitHub immutable releases are not enabled for repository id %s\n' "$repo_id" >&2
+    exit 1
+  }
+elif [[ "$1" == run ]]; then
+  gh api --method GET "repos/$repo/actions/runs/$3" |
+    jq -e --arg sha "$2" --argjson id "$repo_id" '
+      .repository.id == $id and .head_repository.id == $id and
+      .head_sha == $sha and .head_branch == "main" and
+      .event == "push" and .status == "completed" and
+      .conclusion == "success" and
+      (.path | test("(^|/)\\.github/workflows/verify\\.yml(@.*)?$"))
+    ' >/dev/null || {
+    printf 'Hosted verify run does not belong to the exact source in repository id %s\n' "$repo_id" >&2
+    exit 1
+  }
+fi

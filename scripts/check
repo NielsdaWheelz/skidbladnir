@@ -36,8 +36,12 @@ case "$gate" in
     shell_scripts=(
       scripts/build scripts/build-host-archive scripts/build-host-binary
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
-      scripts/check-release scripts/check-release-source scripts/fleet
+      scripts/check-release scripts/check-release-source scripts/check-release-repository scripts/fleet
       scripts/install-android scripts/release scripts/render-release-notes
+      deployment/providers/provider-command deployment/providers/shell-init
+      deployment/providers/claude-agent-identity/bin/agent-hook
+      deployment/native-control/claude
+      deployment/native-control/skidbladnir-provider-runtime-control
     )
     for script in "${shell_scripts[@]}"; do
       run bash-syntax bash -n "$script"
@@ -84,11 +88,7 @@ for name in sys.argv[1:]:
     gh auth status >/dev/null 2>&1 ||
       not_run published-release 'GitHub authentication is unavailable'
     published_repo='NielsdaWheelz/skidbladnir'
-    [[ "$(gh repo view "$published_repo" --json nameWithOwner,visibility \
-      --jq '[.nameWithOwner,.visibility] | join(" ")')" == "$published_repo PUBLIC" ]] || {
-      printf 'Published-release repository is not the exact public repository.\n' >&2
-      exit 1
-    }
+    "$repo_dir/scripts/check-release-repository" immutable
     published_metadata="$(gh release view "$published_tag" --repo "$published_repo" \
       --json tagName,targetCommitish,isDraft,isPrerelease,isImmutable,assets)" ||
       not_run published-release 'The named public release is unavailable'
@@ -193,6 +193,7 @@ for name in sys.argv[1:]:
       printf 'No successful hosted verify run exists for the published source SHA.\n' >&2
       exit 1
     }
+    "$repo_dir/scripts/check-release-repository" run "$published_sha" "$published_run_id"
     ;;
   verify)
     "$0" static

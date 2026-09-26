@@ -107,13 +107,15 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 		if !filepath.IsAbs(profile.Command) {
 			return nil, fmt.Errorf("profile %s command must be absolute", profile.Key)
 		}
-
 		homeName := providerHomeEnvironment(profile.Provider)
 		home := ""
 		environmentNames := make(map[string]struct{}, len(profile.Environment))
 		for _, variable := range profile.Environment {
 			if !environmentPattern.MatchString(variable.Name) || !utf8.ValidString(variable.Value) || strings.ContainsRune(variable.Value, 0) {
 				return nil, fmt.Errorf("profile %s environment is invalid", profile.Key)
+			}
+			if strings.HasPrefix(variable.Name, "HERDR_") || variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" {
+				return nil, fmt.Errorf("profile %s environment belongs to another launch context", profile.Key)
 			}
 			if _, found := environmentNames[variable.Name]; found {
 				return nil, fmt.Errorf("profile %s environment name is duplicated", profile.Key)

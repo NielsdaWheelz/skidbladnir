@@ -1,5 +1,12 @@
 # new terminal here
 
+2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
+adds product-scoped personal homes and `SKIDBLADNIR_SHELL=1` to new terminal
+startup, with final bash/zsh startup integration for bare/account provider
+commands. inherited herdr context is removed at the pane boundary; the existing
+tmux server and unrelated sessions are unchanged. this supersedes ordinary
+provider-environment inheritance below. shell readiness remains unpromised.
+
 implemented: standalone terminal and new terminal here, following [spaces](spaces.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected
 real-phone journeys passed on their recorded sources; [hands-on acceptance](issues/spaces-shells-hands-on.md)

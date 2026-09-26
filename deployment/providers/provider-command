@@ -1,0 +1,29 @@
+#!/bin/bash
+set -euo pipefail
+
+# dev-server renders these three assignments with shell quoting, then installs
+# this file at current/providers/provider-command. never resolve shared wrappers.
+provider_root=@ROOT_SHELL@
+codex_command=@CODEX_SHELL@
+claude_command=@CLAUDE_SHELL@
+
+account="${1:-}"
+[[ "$#" -gt 0 ]] || { printf 'provider account is required\n' >&2; exit 64; }
+shift
+for name in "${!HERDR_@}"; do
+  unset "$name"
+done
+unset CODEX_HOME CLAUDE_CONFIG_DIR SKIDBLADNIR_SHELL SKIDBLADNIR_CLAUDE_COMMAND
+
+case "$account" in
+  codex-personal | codex-work | codex-work2)
+    export CODEX_HOME="$provider_root/.local/share/skidbladnir/providers/$account"
+    exec "$codex_command" --yolo "$@"
+    ;;
+  claude-personal | claude-work)
+    export CLAUDE_CONFIG_DIR="$provider_root/.local/share/skidbladnir/providers/$account"
+    exec "$claude_command" --dangerously-skip-permissions \
+      --plugin-dir "$provider_root/.local/share/skidbladnir/claude-agent-identity" "$@"
+    ;;
+  *) printf 'provider account is invalid\n' >&2; exit 64 ;;
+esac

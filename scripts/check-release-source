@@ -40,19 +40,7 @@ esac
   exit 1
 }
 gh auth status >/dev/null 2>&1
-repo_identity="$(gh repo view "$repo_name" --json nameWithOwner,visibility \
-  --jq '[.nameWithOwner,.visibility] | join(" ")')"
-[[ "$repo_identity" == "$repo_name PUBLIC" ]] || {
-  printf 'Release requires the public %s repository\n' "$repo_name" >&2
-  exit 1
-}
-gh api --method GET \
-  -H 'Accept: application/vnd.github+json' \
-  -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/$repo_name/immutable-releases" | jq -e '.enabled == true' >/dev/null || {
-  printf 'Release requires GitHub immutable releases to be enabled for %s\n' "$repo_name" >&2
-  exit 1
-}
+"$repo_dir/scripts/check-release-repository" immutable
 
 git fetch --quiet origin main --tags
 sha="$(git rev-parse HEAD)"
@@ -91,5 +79,6 @@ run_id="$(
   printf 'No successful verify run exists for exact origin/main SHA %s\n' "$sha" >&2
   exit 1
 }
+"$repo_dir/scripts/check-release-repository" run "$sha" "$run_id"
 
 printf '%s\t%s\n' "$sha" "$run_id"

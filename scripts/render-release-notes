@@ -61,6 +61,9 @@ render_notes() {
     '   approve installation from the browser when Android asks. Or, with USB debugging' \
     '   already authorized, run `scripts/install-android /path/to/skidbladnir-android.apk`.' \
     '   The script installs in place without prompts and preserves app data.' \
+    '   When replacing the former herdr-backed build under this package, first' \
+    '   install and pair herdr-mobile separately. Force-stop Skíðblaðnir and clear only its app data' \
+    '   before this installation, then pair Skíðblaðnir with a fresh invitation.' \
     '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
     '5. Open Skíðblaðnir and tap **Connect**.' \

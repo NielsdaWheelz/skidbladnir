@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 )
 
@@ -100,7 +101,7 @@ func (client Client) CreateSession(ctx context.Context, directory, sourceID stri
 		commandName = "-N" // A vanished source must never start a replacement server.
 		args = []string{"if-shell", "-F", "-t", sourceID, andFormatConditions(sessionLifetimeConditions(sourceID, server)),
 			branch.String(), "display-message -p -l '" + identityMismatchMarker + "'"}
-	} else if directory != "" {
+	} else {
 		// cmd_parse_from_arguments consumes a trailing semicolon even in direct
 		// argv. Escape that delimiter once; all other bytes remain literal.
 		for index, argument := range args {
@@ -404,7 +405,7 @@ func tmuxEnvironment() []string {
 
 func filterTmuxEnvironment(environment []string) []string {
 	filtered := make([]string, 0, len(environment))
-	for _, entry := range environment {
+	for _, entry := range runtimeenv.WithoutHerdr(environment) {
 		if strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "TMUX_PANE=") {
 			continue
 		}

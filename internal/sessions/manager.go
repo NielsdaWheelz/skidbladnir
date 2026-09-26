@@ -230,8 +230,25 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		for _, variable := range profile.Environment {
 			commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
 		}
-		commandArgs = append(commandArgs, "--", profile.Command)
-		commandArgs = append(commandArgs, agentruntime.LaunchArguments(profile, name)...)
+		executable, err := os.Executable()
+		if err != nil {
+			return ObservedSession{}, err
+		}
+		homeName := "CODEX_HOME"
+		if profile.Provider == agentruntime.ProviderClaude {
+			homeName = "CLAUDE_CONFIG_DIR"
+		}
+		home := ""
+		for _, variable := range profile.Environment {
+			if variable.Name == homeName {
+				home = variable.Value
+				break
+			}
+		}
+		commandArgs = append(commandArgs, "--", executable, "agent-exec")
+		for _, argument := range append([]string{profile.Command, homeName, home}, agentruntime.LaunchArguments(profile, name)...) {
+			commandArgs = append(commandArgs, base64.RawURLEncoding.EncodeToString([]byte(argument)))
+		}
 	} else {
 		terminal, err := manager.tmux.TerminalCommand(cwd.String())
 		if err != nil {

@@ -7,12 +7,12 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -80,7 +80,7 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 
 func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string {
 	values := make(map[string]string)
-	for _, value := range os.Environ() {
+	for _, value := range runtimeenv.WithoutHerdr(os.Environ()) {
 		name, contents, ok := strings.Cut(value, "=")
 		if ok {
 			values[name] = contents
@@ -91,13 +91,8 @@ func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string
 	for _, entry := range profile.Environment {
 		values[entry.Name] = entry.Value
 	}
-	profiles := service.sessions.Profiles()
-	paths := make([]string, 0, len(profiles)+1)
-	for _, entry := range profiles {
-		paths = append(paths, filepath.Dir(entry.Command))
-	}
-	paths = append(paths, values["PATH"])
-	values["PATH"] = strings.Join(paths, string(os.PathListSeparator))
+	delete(values, "SKIDBLADNIR_SHELL")
+	values["SKIDBLADNIR_CLAUDE_COMMAND"] = profile.Command
 	result := make([]string, 0, len(values))
 	for name, value := range values {
 		result = append(result, name+"="+value)

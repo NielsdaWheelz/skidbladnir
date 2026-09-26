@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -50,6 +51,13 @@ func main() {
 }
 
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(arguments) != 0 && arguments[0] == "agent-exec" {
+		if err := agentExec(arguments[1:]); err != nil {
+			_, _ = io.WriteString(stderr, "agent startup failed\n") // justify-ignore-error: a broken pane output cannot be recovered.
+			return exitFailure
+		}
+		return 0
+	}
 	if len(arguments) != 0 && arguments[0] == "terminal-exec" {
 		if err := terminalExec(arguments[1:]); err != nil {
 			_, _ = io.WriteString(stderr, "terminal startup failed\n") // justify-ignore-error: a broken terminal output cannot be recovered.
@@ -59,6 +67,25 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 	}
 	if len(arguments) == 0 {
 		return agentcli.Run(context.Background(), arguments, stdin, stdout, stderr)
+	}
+	if arguments[0] == "validate-host-config" {
+		path, found := "", false
+		if len(arguments) == 2 {
+			path, found = strings.CutPrefix(arguments[1], "--host-config=")
+		}
+		if !found || !filepath.IsAbs(path) {
+			_, _ = io.WriteString(stderr, "usage: skidbladnir validate-host-config --host-config=ABSOLUTE_PATH\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitUsage
+		}
+		if _, err := hostconfig.Load(path, platform.Current().Kind); err != nil {
+			_, _ = io.WriteString(stderr, "host config invalid\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+			return exitFailure
+		}
+		if _, err := io.WriteString(stdout, "host config valid\n"); err != nil {
+			_, _ = io.WriteString(stderr, "write validation: output failed\n") // justify-ignore-error: both CLI output streams are unavailable.
+			return exitFailure
+		}
+		return 0
 	}
 	switch arguments[0] {
 	case "version", "gateway", "machine", "bearer", "pairing-invite", "agent-hook":
@@ -290,6 +317,14 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	for _, name := range []string{"TMUX", "TMUX_PANE", "TMUX_TMPDIR"} {
 		if err := os.Unsetenv(name); err != nil {
 			return fmt.Errorf("clear inherited tmux environment: %w", err)
+		}
+	}
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(name, "HERDR_") || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" {
+			if err := os.Unsetenv(name); err != nil {
+				return errors.New("clear inherited product environment")
+			}
 		}
 	}
 	handle, err := machine.Load(machineHandlePath)

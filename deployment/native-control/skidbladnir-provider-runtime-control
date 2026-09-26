@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+# The installer replaces this shell-quoted value with the frozen venv path.
+environment=@ENVIRONMENT_SHELL@
+
+if [ ! -x "$environment/bin/claude" ]; then
+  printf '%s\n' 'native control shim unavailable' >&2
+  exit 1
+fi
+
+PATH="$environment/bin${PATH:+:$PATH}"
+export PATH
+exec "$environment/bin/provider-runtime-control" "$@"

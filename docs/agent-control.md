@@ -1,5 +1,11 @@
 # agent control
 
+2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
+selects private skid provider homes and the skid-owned
+`skidbladnir-provider-runtime-control` installation. its frozen source/dependency
+pins and live qualification status supersede the historical installation names
+and baselines below. provider operations and wire contracts remain unchanged.
+
 2026-09-12 · accepted v1 implementation target; 2026-09-13 terminal-codex/profile amendment.
 implemented and deployed in v0.3.1; [acceptance and limitations](roadmap.md).
 current client/attachment contract: [usable client and direct attachment](agent-control-ux.md).

@@ -4,6 +4,12 @@ tmux owns terminal sessions and pane processes. providers own execution and hist
 each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
+2026-09-25 restoration scope: this original tmux product coexists independently
+with herdr-mobile. [the deployment handoff](dev-server-handoff.md) owns the
+namespace handback, private provider homes, shell setup, helper pins, and
+qualification status. source preparation does not authorize publication,
+installation, or modification of the other product's runtime.
+
 this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [spaces](spaces.md), [terminal creation](shells.md), and
@@ -70,10 +76,10 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | `<home>/.local/bin/codex` | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex`; or `node` with exact configured argv[1] |
-| `work` / `Codex · Work` | `Codex` | all | `<home>/bin/codex-work` | `CODEX_HOME=<home>/.codex-work` | `--yolo` | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | `<home>/bin/codex-work2` | `CODEX_HOME=<home>/.codex-work2` | `--yolo` | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | `<home>/bin/claude-work` | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
+| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-personal` | `--yolo` | native executable basename `codex` |
+| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-work` | `--yolo` | same |
+| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-work2` | `--yolo` | same |
+| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.local/share/skidbladnir/providers/claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
 
 2026-09-17 accepted launch policy: new agent sessions use the explicit provider
 permission bypasses above on all three hosts. deployment owns these arguments;
@@ -84,14 +90,20 @@ remaining provider trust/setup dialogs and project instructions still apply.
 
 the app renders the closed profile table declared by each gateway. changing
 that table changes the contract; callers cannot invent a profile. the gateway
-execs the selected row's command with its flags in the requested cwd. the
+launches its one-shot `agent-exec` boundary in the new pane, clears inherited
+`HERDR_*` and provider homes, then execs the selected row's native command with
+its exact home/flags in the requested cwd. existing tmux server/session
+environments remain untouched. the
 gateway does not gate launch on binary or configuration inspection;
 the agent retains its ordinary provider configuration and terminal. deployment
 owns the exact Codex hook files and one local Claude hook plugin, while absent/unloaded
-hooks omit registered identity without blocking launch. Plain personal commands
-remain upstream commands. Explicit work wrappers select only their fixed
-provider home and, for Claude, add the deployment-owned plugin directory; they
-never infer from cwd or read or forward hook payloads. Direct raw-provider
+hooks omit registered identity without blocking launch. new skid shell terminals
+use private personal homes; deployment-owned bash/zsh startup functions select
+those homes for bare commands and exact private homes for account commands.
+manual claude-personal has its own home but no forge row. these functions call
+native providers through one closed product launcher, load the identity plugin
+for claude, and never infer from cwd or read hook payloads. shared account
+wrappers are not used. direct raw-provider
 launches bypass that plugin and remain honestly unregistered. A row also owns exact
 foreground-process signatures for honest
 presence detection; the shared observer resolves the pane tty's foreground
@@ -582,7 +594,10 @@ history item is `current`.
   `/v1` through its exact Tailscale Serve `:8443` mapping, keeps `/healthz`
   loopback-only, and observes and mutates only the local default tmux server.
   Gateway restart never kills tmux or changes the stock agent runtime. Every
-  gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, and `TMUX_TMPDIR`.
+  gateway entrypoint drops inherited `TMUX`, `TMUX_PANE`, `TMUX_TMPDIR`,
+  `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux/helper child environments also drop
+  `HERDR_*`; pane exec boundaries repeat that removal because existing tmux
+  servers have their own inherited environment.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
   an exact tmux path, an advisory `testedVersion`, an absolute
@@ -594,7 +609,10 @@ history item is `current`.
   unclassified.
   Unknown/null members, relative paths, duplicate keys,
   runtime platform mismatch, or a missing/broken/noncanonical tmux executable
-  fail startup. A canonical installed version that differs from `testedVersion`
+  fail startup. `skidbladnir validate-host-config --host-config=ABSOLUTE_PATH`
+  checks strict config/platform admission without invoking tmux or providers;
+  executable availability and live behavior remain separate checks.
+  a canonical installed version that differs from `testedVersion`
   remains runnable; `scripts/fleet verify` reports functional fleet health
   without turning advisory tmux-version drift into failure.
   `internal/process` owns native foreground and ancestry observation for
@@ -616,12 +634,15 @@ history item is `current`.
   owns the complete five-asset release pin. It renders the exact Devbox/MacBook/Arch host
   configs, SessionStart identity hook files, the local Claude identity plugin,
   and the BEL-only Codex notify asset; the
-  explicit Claude work wrapper loads that plugin without editing user settings. It
+  product-local Claude shell commands load that plugin without editing user settings.
+  hooks are installed only in skid's private provider homes. it
   owns user systemd services with lingering on Linux and one RunAtLoad
   LaunchAgent on macOS, and applies only its dedicated
   Tailscale Serve `:8443/v1` mapping. It removes only the retired owned root
   handler and never resets unrelated Serve state. Reinstall preserves credentials and tmux
-  lifetimes. Sleep, logout, Tailscale loss, or service absence is ordinary
+  lifetimes after the first restoration handback, which requires fresh skid
+  identities and excludes old herdr-backed rollback generations. sleep, logout,
+  Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
   Codex and Claude are installed from exact reviewable npm locks; tmux follows
   each platform's native stable package channel. new skid agent sessions use

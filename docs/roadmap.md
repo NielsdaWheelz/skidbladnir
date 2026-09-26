@@ -5,6 +5,19 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## original-product restoration
+
+2026-09-25: [the dev-server handoff](dev-server-handoff.md) specifies independent
+coexistence with herdr-mobile. source now isolates provider homes and inherited
+herdr context, adds a read-only host-config validator and shell templates, pins
+the original native helper, and guards releases by numeric github repository
+identity. the obsolete `v0.6.0` pin was removed; its artifacts belong to the other
+repository. no new release, installation, or live fleet/phone acceptance is
+claimed. github name transfer and immutable-release configuration are verified.
+open boundaries: [release preparation](issues/restoration-release.md),
+[runtime coexistence](issues/restoration-runtime.md), and
+[native control](issues/restoration-native-control.md).
+
 ## implemented scope
 
 | capability | contract owner |
@@ -24,10 +37,10 @@ criterion. feature specs retain their detailed acceptance requirements.
 
 ## release and operations
 
-[release-pin.json](../release-pin.json) is the single committed owner of the
-published version, source and artifact digests. it does not assert the currently
-installed version of any host or phone. this cleanup changes source only;
-it does not publish or deploy a release.
+after restoration publication, `release-pin.json` will again be the single
+committed owner of the published version, source and artifact digests. it is
+currently absent; no valid original-product release pin exists. that future
+pin will not assert the installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.
 `scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.
@@ -37,7 +50,7 @@ and [§6](architecture.md#6-android-surface) own those boundaries.
 
 new agent launches use deployment-owned permission bypass flags under
 [architecture §2](architecture.md#2-fixed-contract). deployed configuration was
-verified; new provider launches were not exercised in that change. existing
+verified historically; restored private-home launches need qualification. existing
 sessions retain their original launch policy.
 
 ## open work and acceptance

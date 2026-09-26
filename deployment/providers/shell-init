@@ -1,0 +1,25 @@
+# shellcheck shell=bash
+# source after normal bash/zsh login and interactive setup, only in skid shells.
+[[ "${SKIDBLADNIR_SHELL:-}" == 1 && "${HERDR_ENV:-}" != 1 ]] || return 0
+
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  unset -m 'HERDR_*'
+else
+  for _skid_environment_name in "${!HERDR_@}"; do
+    unset "$_skid_environment_name"
+  done
+  unset _skid_environment_name
+fi
+
+# reset shared aliases after startup; explicit account commands always win.
+unalias codex codex-personal codex-work codex-work2 claude claude-personal claude-work 2>/dev/null || :
+export CODEX_HOME="$HOME/.local/share/skidbladnir/providers/codex-personal"
+export CLAUDE_CONFIG_DIR="$HOME/.local/share/skidbladnir/providers/claude-personal"
+
+function codex { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-personal "$@"; }
+function codex-personal { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-personal "$@"; }
+function codex-work { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-work "$@"; }
+function codex-work2 { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-work2 "$@"; }
+function claude { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-personal "$@"; }
+function claude-personal { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-personal "$@"; }
+function claude-work { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-work "$@"; }

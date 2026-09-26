@@ -77,6 +77,8 @@ notes_file="$staging_dir/release-notes.md"
 "$source_worktree/scripts/render-release-notes" \
   "$tag" "$sha" "$run_id" "$release_dir" >"$notes_file"
 
+"$repo_dir/scripts/check-release-repository" immutable
+"$repo_dir/scripts/check-release-repository" run "$sha" "$run_id"
 gh release create "$tag" \
   "$release_dir/skidbladnir-android.apk" \
   "$release_dir/skidbladnir-linux-amd64.tar.gz" \

@@ -126,7 +126,14 @@ release_identity_digest() {
 
 active_runtime_is_current() {
   local share="$HOME/.local/share/skidbladnir"
-  local relative generation name expected active
+  local relative generation name mode digest expected active
+  local -a files=(
+    skidbladnir characters.json release.json host-config.json
+    providers/native-control providers/provider-command providers/shell-init
+    providers/claude-agent-identity/.claude-plugin/plugin.json
+    providers/claude-agent-identity/hooks/hooks.json
+    providers/claude-agent-identity/bin/agent-hook
+  )
   [[ -L "$share/current" ]] || return 1
   relative="$(readlink "$share/current")" || return
   [[ "$relative" =~ ^releases/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-[0-9a-f]{64}$ ]] ||
@@ -134,21 +141,24 @@ active_runtime_is_current() {
   generation="$share/$relative"
   [[ -d "$generation" && ! -L "$generation" ]] || return 1
   [[ "$(file_mode "$generation" 2>/dev/null)" == 700 ]] || return 1
-  for name in skidbladnir characters.json release.json host-config.json; do
+  for name in "${files[@]}"; do
     [[ -f "$generation/$name" && ! -L "$generation/$name" ]] || return 1
+    case "$name" in
+    skidbladnir | providers/native-control | providers/provider-command | providers/claude-agent-identity/bin/agent-hook) mode=755 ;;
+    host-config.json) mode=600 ;;
+    *) mode=644 ;;
+    esac
+    [[ "$(file_mode "$generation/$name" 2>/dev/null)" == "$mode" ]] || return 1
   done
-  [[ "$(file_mode "$generation/skidbladnir" 2>/dev/null)" == 755 &&
-  "$(file_mode "$generation/characters.json" 2>/dev/null)" == 644 &&
-  "$(file_mode "$generation/release.json" 2>/dev/null)" == 644 &&
-  "$(file_mode "$generation/host-config.json" 2>/dev/null)" == 600 ]] || return 1
   expected="$({
-    for name in skidbladnir characters.json release.json host-config.json; do
-      printf '%s\0%s\n' "$name" "$(sha256_file "$generation/$name")" || return
+    for name in "${files[@]}"; do
+      digest="$(sha256_file "$generation/$name")" || return
+      printf '%s\0%s\n' "$name" "$digest" || return
     done
   } | sha256_stream)" || return
   active="$(secret_value "$HOME/.local/state/dev-server/active/skid.runtime.sha256" \
     '^[0-9a-f]{64}$')" || return
-  [[ "$active" == "$expected" ]]
+  [[ "$active" == "$expected" && "${relative##*-}" == "$expected" ]]
 }
 
 candidate_release_digest() {

@@ -1,0 +1,43 @@
+{
+  "platform": "@PLATFORM@",
+  "tmux": {"path": "@TMUX@", "testedVersion": "@TMUX_VERSION@"},
+  "nativeControlPath": "@ROOT@/.local/bin/skidbladnir-provider-runtime-control",
+  "profiles": [
+    {
+      "key": "personal",
+      "label": "Codex · Personal",
+      "provider": "Codex",
+      "command": "@CODEX@",
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-personal"}],
+      "foregroundSignatures": [{"executableBase": "codex"}],
+      "arguments": ["--yolo"]
+    },
+    {
+      "key": "work",
+      "label": "Codex · Work",
+      "provider": "Codex",
+      "command": "@CODEX@",
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-work"}],
+      "foregroundSignatures": [{"executableBase": "codex"}],
+      "arguments": ["--yolo"]
+    },
+    {
+      "key": "work2",
+      "label": "Codex · Work 2",
+      "provider": "Codex",
+      "command": "@CODEX@",
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-work2"}],
+      "foregroundSignatures": [{"executableBase": "codex"}],
+      "arguments": ["--yolo"]
+    },
+    {
+      "key": "claude-work",
+      "label": "Claude · Work",
+      "provider": "Claude",
+      "command": "@CLAUDE@",
+      "environment": [{"name": "CLAUDE_CONFIG_DIR", "value": "@ROOT@/.local/share/skidbladnir/providers/claude-work"}],
+      "foregroundSignatures": [{"argument0": "@CLAUDE@"}],
+      "arguments": ["--dangerously-skip-permissions", "--plugin-dir", "@ROOT@/.local/share/skidbladnir/claude-agent-identity"]
+    }
+  ]
+}
