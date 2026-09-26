@@ -20,7 +20,7 @@ the local signing configuration passes `scripts/check-android-signing
 --config-only` against the retained public certificate; this does not observe
 the phone. `scripts/check-release --android-version v0.9.0` yields `0.9.0 9000`.
 
-dev-server's ten-file contract acknowledgment and admission correction are
+dev-server's ten-file contract acknowledgment and admission correction
 introduced in `94931a13c045fa9c9b294080149524501ff30b68` remain complete in
 pushed source `1296309c8350930befeb62e02479a8a6cf2a819c`;
 [the handoff](../dev-server-handoff.md) records the bounded rollback evidence.

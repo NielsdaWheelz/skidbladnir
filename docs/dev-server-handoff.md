@@ -198,10 +198,8 @@ dev-server introduced its acknowledgment and admission correction in
 and [validation](https://github.com/NielsdaWheelz/dev-server/blob/1296309c8350930befeb62e02479a8a6cf2a819c/docs/gateway-separation-validation.md).
 its owner confirmed agreement with this corrected handoff. the stale six-file
 note is removed and the directory-mode/digest-suffix discrepancy is closed.
-withdrawing private
-herdr homes changes neither the ten-file sequence nor its digest or mode rules.
-a disposable fixture
-used dev-server's actual `gateway_runtime_identity` and
+withdrawing private herdr homes changes neither the ten-file sequence nor its
+digest or mode rules. a disposable fixture used dev-server's actual `gateway_runtime_identity` and
 `gateway_restore_runtime` with this fleet verifier. the producer matched the
 specified byte encoding; an intact receipt passed, alterations to each of the
 four added files failed, and wrong modes on all ten files failed. generation
