@@ -394,6 +394,13 @@ above; no home is inferred from cwd.
 
 ## qualification and remaining work
 
+the root operator's immutable
+[separation qualification](https://github.com/NielsdaWheelz/herdr-mobile/blob/0dd92df41090c156b53bc8632c4b34281d3b32ce/docs/separation-qualification.md)
+records the final installed receipts, live evidence and limits. linux provider
+probes used selected deployed assets through isolated gateways; macbook used
+exact owned production test sessions under the owner's exception. phone checks
+used production gateways.
+
 source/no-auth qualification for the provider continuity correction: disposable
 fake-provider probes first demonstrated the former five private-home redirects,
 then verified all existing account selections, personal claude's unset home,
@@ -474,7 +481,9 @@ unrelated workers were preserved. native agents also removed their probes.
 
 these results close runtime separation qualification. herdr-mobile had no prior
 release available, so its prior-release rollback was not exercised; repeat-apply
-is recorded as such. prior-conversation resumption was not claimed. broader ux
+is recorded as such. the opposite-attachment lifecycle matrix was exercised on
+arch, not repeated in full on macbook/devbox; live removal was not performed.
+prior-conversation resumption was not claimed. broader ux
 waivers in the roadmap remain unchanged. no live acceptance is inferred from
 engineering checks. the root operator owns the live evidence; this source work
 performed no live tmux, device or service mutation. the corrected plugin bytes
