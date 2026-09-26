@@ -241,10 +241,16 @@ if it changes provider setup, the later `.zlogin`; bash requires the actual
 login file (`.bash_profile`, `.bash_login`, or `.profile`) and `.bashrc` for
 interactive subshells. do not assume bash login reads `.bashrc`. current fleet
 shell support is bash/zsh; configure and qualify its actual startup path.
-skid apply owns this prerequisite. shared provider installation and managed
-ordinary dotfiles must not install skid-specific sources or fail because skid
-is absent. preserve startup-file symlinks and user content; resolve a missing
-or unsupported skid startup path within skid setup, without replacing dotfiles.
+skid apply owns startup validation and edits. shared provider installation must
+not edit or validate startup files for skid, or fail because skid is absent.
+the fully managed zshrc may retain its optional source line, guarded by the
+skid shell marker and absence of herdr context before any file access. this
+small static dependency preserves skid support when ordinary dotfile maintenance
+replaces that whole managed file. no general extension renderer is introduced.
+preserve startup-file symlinks and user content; resolve a missing or unsupported
+skid startup path within skid setup, without replacing dotfiles. shell-init is
+idempotent: source it after each relevant startup file, without a once-only flag
+that would allow later login files to override skid's functions or defaults.
 
 within marked skid terminals, bare `codex`/`claude` select the existing personal
 homes; `codex-personal`, `codex-work`, `codex-work2`, `claude-personal`,
