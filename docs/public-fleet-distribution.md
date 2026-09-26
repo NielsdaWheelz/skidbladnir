@@ -31,8 +31,10 @@ the same simplification retires fleet apply acceptance, lifetime digests, reboot
 checkpoints, and outage/recovery commands. `fleet` retains verification, invitation,
 and client provisioning. installation guarantees remain with `dev-server`; old
 acceptance results below remain historical. `provision-clients` validates the
-complete three-host identity/origin/credential set and distributes private client
-files without release or runtime-health prerequisites. only `fleet verify` needs
+complete three-host identity/origin/credential set and distributes private user
+client files on macbook, devbox and arch, without release or runtime-health
+prerequisites. jarvis's independent herdr configuration is never provisioned by
+skid. only `fleet verify` needs
 the explicit dev-server checkout.
 
 ## 1. Decision

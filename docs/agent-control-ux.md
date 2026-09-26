@@ -1,5 +1,10 @@
 # agent control: usable client, direct attachment
 
+restoration amendment: jarvis's current herdr integration and credentials are
+independent of skid. jarvis-specific routing, rollout and acceptance below are
+historical; skid's cli/tui/phone contracts remain in force. see the current
+[deployment boundary](dev-server-handoff.md#owned-installation-and-runtime).
+
 2026-09-13 spec · shipped in v0.4.1; a1–a9 verified on 2026-09-14.
 baseline: skid `919e3d2`, dev-server `453d72c`, jarvis `1dbeee3`.
 this document supersedes only the cli, attachment, and grouped-kill contracts in

@@ -1,5 +1,11 @@
 # Jarvis: shared local Codex control
 
+restoration amendment: this document and its subsequent skid integration are
+historical. jarvis now uses herdr directly; original skid must not provision
+jarvis's configuration or credentials or change its services. the current
+[deployment boundary](dev-server-handoff.md#owned-installation-and-runtime)
+supersedes the old integration and cutover directions below.
+
 the accepted [agent-control target](agent-control.md) supersedes this document's
 worker routing, tools, launcher, and worker permission rules. workers now use
 direct peer `agent.*` controls; codex uses terminal state/history/control, and

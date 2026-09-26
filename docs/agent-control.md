@@ -5,6 +5,10 @@ selects existing provider account homes and the skid-owned
 `skidbladnir-provider-runtime-control` installation. its frozen source/dependency
 pins and live qualification status supersede the historical installation names
 and baselines below. provider operations and wire contracts remain unchanged.
+jarvis now uses herdr directly and owns its own configuration. skid's fleet
+provisioning targets only the macbook, devbox and arch user configs. historical
+jarvis integration and coupled-rollout instructions below do not apply to this
+restoration and do not authorize changing jarvis services or credentials.
 
 2026-09-12 · accepted v1 implementation target; 2026-09-13 terminal-codex/profile amendment.
 implemented and deployed in v0.3.1; [acceptance and limitations](roadmap.md).

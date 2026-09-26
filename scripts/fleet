@@ -395,20 +395,12 @@ install_client_config() (
   umask 077
   local config temporary
   config="$HOME/.config/skidbladnir"
-  if [[ "$1" == jarvis ]]; then
-    config="${TMPDIR:-/tmp}"
-  else
-    mkdir -p "$config" || return
-  fi
+  mkdir -p "$config" || return
   temporary="$(mktemp "$config/.client.XXXXXX")" || return
   trap 'rm -f -- "$temporary"' EXIT
   cat >"$temporary" || return
   chmod 0600 "$temporary" || return
-  if [[ "$1" == jarvis ]]; then
-    sudo -n install -o jarvis -g jarvis -m 0600 "$temporary" /etc/jarvis/agent-client.json || return
-  else
-    mv -f -- "$temporary" "$config/client.json"
-  fi
+  mv -f -- "$temporary" "$config/client.json"
 )
 
 provision_clients() (
@@ -431,18 +423,14 @@ provision_clients() (
     (.peers | map(.origin) | unique | length) == 3 and
     (.peers | map(.bearer) | unique | length) == 3
   ' "$temporary" >/dev/null 2>&1 || die 'fleet client identities, origins, or credentials are invalid or not unique'
-  install_client_config user <"$temporary" || return
+  install_client_config <"$temporary" || return
   for label in devbox arch; do
     command="$(declare -f install_client_config)"
-    command+=$'\ninstall_client_config user'
+    command+=$'\ninstall_client_config'
     printf -v command 'bash -c %q' "$command"
     fleet_ssh "$label" "$command" <"$temporary" || return
   done
-  command="$(declare -f install_client_config)"
-  command+=$'\ninstall_client_config jarvis'
-  printf -v command 'bash -c %q' "$command"
-  fleet_ssh devbox-deploy "$command" <"$temporary" || return
-  printf 'private peer configuration installed on macbook, devbox, arch, and jarvis\n'
+  printf 'private peer configuration installed on macbook, devbox, and arch\n'
 )
 
 host_main() {
@@ -467,15 +455,13 @@ fleet_ssh() {
   local label="$1"
   shift
   case "$label" in
-  devbox | devbox-deploy)
-    local target=dev-server
-    [[ "$label" != devbox-deploy ]] || target=dev-server-deploy
+  devbox)
     local config="$HOME/.ssh/config.d/dev-server"
     [[ -f "$config" && ! -L "$config" && -O "$config" &&
       "$(file_mode "$config" 2>/dev/null)" == 600 ]] ||
       die 'managed devbox SSH config is unavailable or not mode 0600'
     ssh -F "$config" -T -o BatchMode=yes -o RequestTTY=no -o ConnectTimeout=10 \
-      -o ConnectionAttempts=1 "$target" "$@"
+      -o ConnectionAttempts=1 dev-server "$@"
     ;;
   arch)
     ssh -T -o BatchMode=yes -o RequestTTY=no -o ConnectTimeout=10 -o ConnectionAttempts=1 \
@@ -642,7 +628,7 @@ curl, qrencode, and a tailnet connection. it prints one qr and exits.
 
 verify and provision-clients run on the macbook and use the managed devbox
 ssh config. provision-clients copies private credentials to macbook, devbox,
-arch, and jarvis; it requires tailscale and ssh, not a deployment checkout.
+and arch; it requires tailscale and ssh, not a deployment checkout.
 
 verify requires SKIDBLADNIR_DEV_SERVER_CHECKOUT naming the exact local dev-server
 checkout with its release pin tracked and byte-exact at HEAD.

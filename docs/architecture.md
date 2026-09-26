@@ -555,8 +555,8 @@ use the [spaces contract](spaces.md#6-cli-and-shared-fleet-presentation).
 default private peer configuration
 is `~/.config/skidbladnir/client.json`. exact names select across complete live
 inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
-identity. cli, tui, and jarvis consume one fleetclient projection. jarvis's nine
-noninteractive tools invoke `skid --json`, with prompt text through stdin.
+identity. cli and tui consume one fleetclient projection. jarvis uses herdr
+directly; skid does not provision or alter jarvis's configuration or credentials.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
 interrupt retains the session; stop attempts provider halt then closes it; kill
 closes the session alone. halt and closure remain separately observed outcomes.
@@ -673,7 +673,8 @@ history item is `current`.
   invitation stream-bounds every response before aggregation.
   `provision-clients` collects each host's existing handle, private Serve origin,
   and bearer, validates the complete unique fleet before distribution, and
-  installs mode-0600 client files on macbook, devbox, arch, and jarvis. each user
+  installs mode-0600 user client files on macbook, devbox, and arch. jarvis is
+  outside this distribution; no privileged deployment ssh target is used. each user
   file is replaced atomically; distribution is sequential and may partially
   complete. repair the transport and rerun. it requires no release pin, checkout,
   runtime-generation or pressure check. verification and provisioning run from

@@ -70,6 +70,19 @@ ordinary later skid reinstalls preserve these new skid identities and workers.
 removal is an explicit allowlist of skid files/services and its own serve
 mapping; no provider-binary, tailscale, herdr, shared-home, or jarvis removal.
 
+`scripts/fleet provision-clients` distributes skid's private client config only
+to the macbook, devbox and arch users. jarvis uses herdr directly; its service
+configuration and credentials are not skid inputs or provisioning targets.
+use the corrected operator script from current source: the immutable `v0.9.0`
+tag's script still contains the obsolete jarvis write and must not be used for
+client provisioning. this source-only correction changes no published binary,
+archive, checksum or pin; operator scripts are not shipped in the host archives.
+disposable before/after probes reproduced the old privileged call and verified
+three identical mode-0600 user configs, rejection of invalid identities before
+writes, preserved ordinary ssh routes and rejection of the retired deployment
+target. syntax, shellcheck and independent source review passed; no live config
+or transport was used.
+
 gateway argv remains:
 
 ```text
