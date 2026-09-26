@@ -1,6 +1,6 @@
 {
   "description": "Skíðblaðnir agent identity projection",
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/agent-hook\"", "args": [], "timeout": 5, "async": false}]}]
+    "SessionStart": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/agent-hook", "args": [], "timeout": 5, "async": false}]}]
   }
 }

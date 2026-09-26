@@ -303,6 +303,14 @@ the generation's `providers/claude-agent-identity`, with its public path supplie
 by the stable symlink above. its `bin/agent-hook` is 0755, json files 0644.
 both scoped manual claude commands and the forge explicitly load it. the plugin
 does not edit shared claude settings. `agent-hook` accepts only `Claude SessionStart`.
+the command hook uses direct exec form: `command` is
+`${CLAUDE_PLUGIN_ROOT}/bin/agent-hook`, with `args: []` and no embedded quotes.
+claude substitutes the path as one executable name; shell quoting would become
+literal filename characters and prevent invocation; see claude's
+[exec-form contract](https://code.claude.com/docs/en/hooks#exec-form-and-shell-form).
+this corrects the original
+`v0.9.0` source template; stage a new generation and receipt from the corrected
+deployment asset. no published host binary or android artifact changes.
 after argv validation it returns without reading input or host config unless
 `SKIDBLADNIR_AGENT=1` and `HERDR_ENV` is not `1`. the marker is set only at skid's
 provider exec boundaries; it does not replace exact pane/tty/pid/start checks.
@@ -401,7 +409,8 @@ produced the agreed generation digest. the former shared installer failed on a
 valid symlinked startup file; the correction passed without changing that file.
 skid-owned shell setup preserved links, unrelated contents and modes across
 repeat installs; bash/zsh login and interactive fixtures covered late overrides
-and ordinary/herdr guards. actual provider hook loading remains a live boundary.
+and ordinary/herdr guards. these fixture checks did not prove actual provider
+hook loading.
 
 prior candidate `f967ac307873f0d326ea5483d74f6683c8a4c7c0` passed complete
 engineering checks and exact-source [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36210567657).
@@ -414,8 +423,20 @@ and rollback evidence above remains applicable because that code is unchanged.
 the published source and exact hosted check are recorded above. source and
 release verification are not fleet acceptance.
 
-`NOT_RUN`: three-host forge/manual-provider authentication and hook isolation;
-native live status/history/stop; concurrent products; independent restart,
+the root operator's approved macbook copied-plugin probe isolated the quoted
+exec-form defect: the original command never entered the callback; changing
+only that command, with `args: []` retained, invoked it once, passed its guards,
+published pane identity and produced gateway `claude-work` native idle status.
+the gateway selected native reading; an empty saved history still fell back to
+the terminal. stop closed the test terminal but reported an unconfirmed agent
+halt, so this proves hook invocation and binding, not complete native control.
+the corrected deployment asset still needs selected generation application and
+qualification on all three hosts. its existing receipt input covers the changed
+bytes; published archives and pins remain unchanged.
+
+at source preflight, the following were `NOT_RUN`: three-host
+forge/manual-provider authentication and hook isolation; native live
+status/history/stop; concurrent products; independent restart,
 reinstall, rollback, disposable removal; both apps' complete
 pairing/launch/attach/control acceptance. live host gates require handback of
 occupied paths, installation, and applicable current-turn tmux/device approval.
