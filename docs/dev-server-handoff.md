@@ -52,7 +52,7 @@ herdr-mobile is an input to skid installation or verification.
 
 ## owned installation and runtime
 
-retain binary `skidbladnir` and optional `skid` cli, linux user unit
+retain binary `skidbladnir` and the required `skid` cli, linux user unit
 `skidbladnir.service`, macos label `dev.niels.skidbladnir`, and private roots
 `~/.config/skidbladnir`, `~/.local/share/skidbladnir`,
 `~/.local/state/skidbladnir`. bind `127.0.0.1:7341`; tailscale serve owns only
@@ -61,6 +61,14 @@ https `8443` `/v1`. upstream herdr, its socket/service, and herdr-mobile's
 from skid's restored unit. gateway stop must not kill tmux workers; preserve
 the historical linux `KillMode=process` arrangement. never reset tailscale
 serve or modify the default tmux server's environment.
+
+install both `~/.local/bin/skid` and `~/.local/bin/skidbladnir` as symlinks to
+`../share/skidbladnir/current/skidbladnir`. bare `skid` opens the desktop session
+browser; `skid --help` documents the same cli used by automation. these public
+links belong to installer validation, repeat apply, rollback and removal, and
+are outside the unchanged ten-file generation digest. the earlier optional-cli
+wording was wrong: [the accepted client contract](agent-control-ux.md#public-commands)
+requires this command.
 
 after explicit handback, mint fresh bearer and machine-handle files using the
 existing skid commands; mode `0600`. generate a fresh private
@@ -73,6 +81,20 @@ mapping; no provider-binary, tailscale, herdr, shared-home, or jarvis removal.
 `scripts/fleet provision-clients` distributes skid's private client config only
 to the macbook, devbox and arch users. jarvis uses herdr directly; its service
 configuration and credentials are not skid inputs or provisioning targets.
+run this once after all three gateways have fresh identities, and again after
+rotating a host bearer. desktop setup is incomplete until every host has the
+mode-0600 three-peer config. `scripts/fleet verify` checks both public links and
+uses each installed `skid list --json` to exercise real config admission and
+complete fleet inventory, discarding its contents. this is a bounded read of
+live sessions; no session is created, attached, resized or closed. native desktop
+smoke qualification additionally opens and quits bare `skid` in a login tty.
+dev-server `223bc5f` restores the required command across ownership validation,
+apply, recovery and removal. disposable before/after checks proved the original
+fleet verifier accepted absent commands and a failing client; the correction
+rejects those cases, wrong/nonexecutable links, partial inventories, missing
+peers and a mismatched local machine. fixtures were removed; syntax, shellcheck
+and independent review passed. live entry-point results are tracked in
+[the command issue](issues/missing-skid-command.md) until root qualification.
 use the corrected operator script from current source: the immutable `v0.9.0`
 tag's script still contains the obsolete jarvis write and must not be used for
 client provisioning. this source-only correction changes no published binary,

@@ -55,7 +55,8 @@ render_notes() {
     '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
     '   Pin the same tag, source, and two host-bundle' \
     '   digests in `dev-server`, then apply Devbox, Arch, and MacBook.' \
-    '2. From that pin-control checkout, run' \
+    '2. From that pin-control checkout on the MacBook, run' \
+    '   `scripts/fleet provision-clients` to configure the desktop client on all three hosts, then' \
     '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
     '3. On the phone, download `skidbladnir-android.apk` from this release and' \
     '   approve installation from the browser when Android asks. Or, with USB debugging' \

@@ -35,7 +35,11 @@ complete three-host identity/origin/credential set and distributes private user
 client files on macbook, devbox and arch, without release or runtime-health
 prerequisites. jarvis's independent herdr configuration is never provisioned by
 skid. only `fleet verify` needs
-the explicit dev-server checkout.
+the explicit dev-server checkout. run provisioning after initial gateway setup
+and before fleet verification. the installer must publish both `skid` and
+`skidbladnir`; verification checks their exact links and uses each installed
+desktop client to read the fixed three-peer inventory. session contents are
+discarded; this live read creates or changes no sessions.
 
 ## 1. Decision
 

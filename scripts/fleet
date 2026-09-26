@@ -311,7 +311,7 @@ validate_host_platform() {
 verify_host() {
   local platform="$1"
   local label="$2"
-  local expected_handle origin pressure pressure_bytes runtime
+  local expected_handle origin pressure pressure_bytes runtime name command_path
   validate_host_platform "$platform" "$label" || return 64
   [[ "$(uname -s)" == "$platform" ]] || {
     printf 'error: %s runtime platform does not match %s\n' "$label" "$platform" >&2
@@ -334,6 +334,14 @@ verify_host() {
     printf 'error: %s active runtime identity does not match the current generation\n' "$label" >&2
     return 1
   }
+  for name in skid skidbladnir; do
+    command_path="$HOME/.local/bin/$name"
+    [[ -L "$command_path" && -x "$command_path" &&
+      "$(readlink "$command_path")" == ../share/skidbladnir/current/skidbladnir ]] || {
+      printf 'error: %s %s command does not target the current runtime\n' "$label" "$name" >&2
+      return 1
+    }
+  done
   runtime="$(release_identity_digest "$platform")" || {
     printf 'error: %s installed release identity is invalid\n' "$label" >&2
     return 1
@@ -370,6 +378,16 @@ verify_host() {
       (.unsupported | type == "array" and all(.[]; type == "string"))
     ' >/dev/null 2>&1; then
     printf 'error: %s pressure response is invalid\n' "$label" >&2
+    return 1
+  fi
+  if ! "$HOME/.local/bin/skid" list --json 2>/dev/null |
+    jq -e --arg label "$label" --arg machine "$expected_handle" '
+      .ok == true and .result.partial == false and
+      ([.result.peers[].label] | sort) == ["arch", "devbox", "macbook"] and
+      all(.result.peers[]; .ok == true) and
+      any(.result.peers[]; .label == $label and .machine == $machine)
+    ' >/dev/null 2>&1; then
+    printf 'error: %s desktop client cannot read the complete fleet; check client configuration and peer availability\n' "$label" >&2
     return 1
   fi
   printf '%s\t%s\t%s\t%s\n' "$expected_handle" "$platform" "$runtime" "$origin"
@@ -498,7 +516,7 @@ verify_fleet() {
   devbox_result="$(remote_host verify devbox)" || failures=$((failures + 1))
   arch_result="$(remote_host verify arch)" || failures=$((failures + 1))
   if ((failures > 0)); then
-    printf 'error: fleet gateway verification failed on %d host%s\n' \
+    printf 'error: fleet gateway or desktop verification failed on %d host%s\n' \
       "$failures" "$([[ "$failures" == 1 ]] || printf s)" >&2
     return 1
   fi
@@ -520,10 +538,10 @@ verify_fleet() {
     "$devbox_handle" != "$arch_handle" ]] || die 'fixed-fleet machine handles are not unique'
   [[ "$local_origin" != "$devbox_origin" && "$local_origin" != "$arch_origin" &&
     "$devbox_origin" != "$arch_origin" ]] || die 'fixed-fleet Serve origins are not unique'
-  printf 'PASS  fleet.verify macbook gateway available\n'
-  printf 'PASS  fleet.verify devbox gateway available\n'
-  printf 'PASS  fleet.verify arch gateway available\n'
-  printf 'Fleet gateway verification: pass.\n'
+  printf 'PASS  fleet.verify macbook gateway and desktop client available\n'
+  printf 'PASS  fleet.verify devbox gateway and desktop client available\n'
+  printf 'PASS  fleet.verify arch gateway and desktop client available\n'
+  printf 'Fleet gateway and desktop verification: pass.\n'
 }
 
 invite_response_is_valid() {
@@ -632,6 +650,8 @@ and arch; it requires tailscale and ssh, not a deployment checkout.
 
 verify requires SKIDBLADNIR_DEV_SERVER_CHECKOUT naming the exact local dev-server
 checkout with its release pin tracked and byte-exact at HEAD.
+it checks both public commands and runs a read-only fleet inventory through each
+installed desktop client; inventory contents are discarded.
 EOF
 }
 
