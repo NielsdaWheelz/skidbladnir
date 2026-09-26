@@ -12,17 +12,20 @@ coexistence with herdr-mobile. source isolates original-skid launches and marked
 terminals while reusing existing provider accounts, histories and memories.
 skid's unused codex hook is retired; the explicitly loaded claude plugin is
 launch-scoped. skid apply owns shell setup independently of shared provider
-maintenance. actual hook interaction
-still needs integration qualification. source adds a read-only host-config
+maintenance. deployed hook interaction is qualified at the integration boundary.
+source adds a read-only host-config
 validator and shell templates, pins the original native helper, and guards
 releases by numeric github repository
 identity. the obsolete `v0.6.0` pin was removed; its artifacts belong to the other
 repository. immutable `v0.9.0` is published from `580e099` and pinned upstream
 and in dev-server; [the handoff](dev-server-handoff.md#release-and-namespace)
-records source, signer and publication verification. live original-product
-installation and fleet/phone acceptance remain pending.
-open boundaries: [runtime coexistence](issues/restoration-runtime.md), and
-[native control](issues/restoration-native-control.md).
+records source, signer and publication verification. the root operator completed
+three-host coexistence and the recorded fleet/phone cutover checks, including
+arch prior-generation rollback/restore, opposite-product repeat-apply, both apk
+reinstalls and exact probe cleanup. [live qualification](dev-server-handoff.md#qualification-and-remaining-work)
+states the evidence and its limits; prior-conversation resumption is not claimed.
+[native background-job stop](issues/restoration-native-control.md) remains
+`NOT_RUN`, separate from namespace separation. broader ux waivers below remain.
 
 ## implemented scope
 

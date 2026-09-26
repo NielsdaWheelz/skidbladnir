@@ -254,10 +254,11 @@ former failures and verified corrected intact/wrong-mode/wrong-suffix cases
 against the actual fleet verifier. our independent rerun also rejected each
 of the four added-file alterations. dev-server verified that invalid prior
 generations fail admission and an intact prior restores the runtime/unit pair
-and helper/plugin selection. contract agreement is complete; native rollback on macbook,
-devbox, and arch remains `NOT_RUN`; after the approved live window, record that
-the restored receipt/pair, `current`, public helper/plugin links and unrelated
-workers/attachments all match the intended prior deployment.
+and helper/plugin selection. contract agreement is complete. the root operator
+subsequently verified actual prior-generation rollback and corrected restore on
+arch while herdr-mobile remained attached; owned identities/files, ingress and
+opposite workers were preserved, and phone input passed afterward. see the
+live qualification below; fixture results alone do not establish live rollback.
 
 new skid terminals set `SKIDBLADNIR_SHELL=1`, select `CODEX_HOME=HOME/.codex`, and
 clear inherited `CLAUDE_CONFIG_DIR` before the configured login shell.
@@ -337,7 +338,8 @@ and only publish identity to its owning runtime. exercise herdr entry from a
 marked skid terminal too. trace any wrong-runtime hook execution to its
 registration or launch boundary and fix it there. do not relocate providers,
 remove native herdr integrations, add a shared dispatcher, or suppress project
-settings to mask an interaction. this live integration evidence remains `NOT_RUN`.
+settings to mask an interaction. the root-reported live qualification below
+records the restored deployment's boundary checks.
 
 ## native helper
 
@@ -460,9 +462,21 @@ macbook sessions were preserved. both directions of arch gateway restart kept
 the opposite phone attachment/input working; original apk reinstall preserved
 herdr-mobile. these are root-reported live results, separate from source probes.
 
-remaining cutover closure: root-owned rollback verification and final phone
-cleanup. no live acceptance is inferred from engineering checks. the root
-operator owns live operations and content-free evidence; this source work
+cutover closure: original skid on arch passed actual prior-generation rollback
+and corrected restore with herdr-mobile attached and accepting input afterward.
+herdr-mobile's selected repeat-apply reported up-to-date with original skid
+attached; identities, owned files and ingress remained intact, and focused phone
+input passed afterward. both apps' phone interrupt actions produced success
+events; phone stop removed the exact owned targets. both apk reinstalls preserved
+opposite-app pairing and use. all root-owned phone probe resources were absent
+from all six inventories after cleanup; the four original macbook sessions and
+unrelated workers were preserved. native agents also removed their probes.
+
+these results close runtime separation qualification. herdr-mobile had no prior
+release available, so its prior-release rollback was not exercised; repeat-apply
+is recorded as such. prior-conversation resumption was not claimed. broader ux
+waivers in the roadmap remain unchanged. no live acceptance is inferred from
+engineering checks. the root operator owns the live evidence; this source work
 performed no live tmux, device or service mutation. the corrected plugin bytes
 are covered by the generation receipt; published archives and pins are unchanged.
 
@@ -472,8 +486,8 @@ exec boundary per agent launch; explicit bash/zsh startup integration; private
 helper download/disk per revision; one private claude exec shim; native cli
 requalification on provider upgrades. no separate provider login is introduced.
 ordinary/herdr account state is retained; future provider or project-hook changes
-need integration qualification. tmux ownership is unchanged. open evidence belongs in
-[native-control](issues/restoration-native-control.md) and
-[runtime](issues/restoration-runtime.md) issue records. the receipt admission
-correction, provider continuity and shell installer agreement are complete in
-the pushed sources above. these source checks do not assert live acceptance.
+need integration qualification. tmux ownership is unchanged. remaining native
+background-job stop qualification is recorded in
+[native-control](issues/restoration-native-control.md). receipt admission,
+provider continuity, shell installation and runtime separation are complete;
+source checks and root-reported live results are distinguished above.
