@@ -191,13 +191,14 @@ independent dependency switch during rollback. published archive contents and
 checksums are unaffected.
 
 contract agreement, 2026-09-25: both owners acknowledge this ten-file contract.
-dev-server records its acknowledgment and admission correction in local commit
-`94931a13c045fa9c9b294080149524501ff30b68`,
-[runbook](/Users/nnandal/Documents/code/dev-server/docs/gateway-separation-runbook.md#generation-receipt-contract)
-and [validation](/Users/nnandal/Documents/code/dev-server/docs/gateway-separation-validation.md).
-that deployment commit is not yet pushed. its stale six-file note is removed.
-the revised dev-server runbook and issue record retain this acknowledgment
-and close the directory-mode/digest-suffix discrepancy. withdrawing private
+dev-server introduced its acknowledgment and admission correction in
+`94931a13c045fa9c9b294080149524501ff30b68`, retained in pushed source
+`1296309c8350930befeb62e02479a8a6cf2a819c`:
+[runbook](https://github.com/NielsdaWheelz/dev-server/blob/1296309c8350930befeb62e02479a8a6cf2a819c/docs/gateway-separation-runbook.md#generation-receipt-contract)
+and [validation](https://github.com/NielsdaWheelz/dev-server/blob/1296309c8350930befeb62e02479a8a6cf2a819c/docs/gateway-separation-validation.md).
+its owner confirmed agreement with this corrected handoff. the stale six-file
+note is removed and the directory-mode/digest-suffix discrepancy is closed.
+withdrawing private
 herdr homes changes neither the ten-file sequence nor its digest or mode rules.
 a disposable fixture
 used dev-server's actual `gateway_runtime_identity` and
