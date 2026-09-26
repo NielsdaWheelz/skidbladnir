@@ -93,8 +93,17 @@ apply, recovery and removal. disposable before/after checks proved the original
 fleet verifier accepted absent commands and a failing client; the correction
 rejects those cases, wrong/nonexecutable links, partial inventories, missing
 peers and a mismatched local machine. fixtures were removed; syntax, shellcheck
-and independent review passed. live entry-point results are tracked in
-[the command issue](issues/missing-skid-command.md) until root qualification.
+and independent review passed. original source
+`bbe9619e0c471072ec8d4d8320d926a20183bad3` passed
+[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36219699779).
+the root operator restored the exact link and provisioned client configs on all
+three hosts; macbook's peer records remained unchanged. login-shell resolution,
+successful nonpartial three-peer inventory, and bare-browser rendering followed
+by `q` exit zero passed on macbook, devbox and arch in private ptys at least
+80 by 24. repeat apply reported up-to-date on every host, and the tightened
+fleet verifier passed all three. gateway, herdr, provider and cognition process
+identities were preserved; receipts were unchanged. this closes the missing
+desktop entry point and configuration gap, not the broader desktop ux waivers.
 use the corrected operator script from current source: the immutable `v0.9.0`
 tag's script still contains the obsolete jarvis write and must not be used for
 client provisioning. this source-only correction changes no published binary,
