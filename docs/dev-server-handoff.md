@@ -202,9 +202,13 @@ and [validation](https://github.com/NielsdaWheelz/dev-server/blob/1296309c835093
 its owner confirmed agreement with this corrected handoff. the stale six-file
 note is removed and the directory-mode/digest-suffix discrepancy is closed.
 using existing provider accounts changes neither the ten-file sequence nor its
-digest or mode rules. the acknowledgment above covers the receipt contract;
-the new shared-account and skid-owned shell installation correction still
-requires reviewed dev-server source and its owner acknowledgment. a disposable fixture used dev-server's actual `gateway_runtime_identity` and
+digest or mode rules. dev-server subsequently implemented and acknowledged
+the existing-account, claude-only hook and skid-owned shell contract in pushed
+source `ae70f2b78ad9b02a7dbccfd79d53be5bcfd11b50`. its
+[validation](https://github.com/NielsdaWheelz/dev-server/blob/ae70f2b78ad9b02a7dbccfd79d53be5bcfd11b50/docs/gateway-separation-validation.md)
+records installer and shell evidence; no source contract discrepancy remains.
+
+a disposable fixture used dev-server's actual `gateway_runtime_identity` and
 `gateway_restore_runtime` with this fleet verifier. the producer matched the
 specified byte encoding; an intact receipt passed, alterations to each of the
 four added files failed, and wrong modes on all ten files failed. generation
@@ -368,6 +372,20 @@ confirmed identical results with absent, matching and stale registrations.
 all temporary probes were removed; none invoked tmux or authenticated providers.
 review and `scripts/check verify` passed for this correction: go build/vet,
 android lint/debug build, dependencies, generated assets and shell checks.
+implementation `3bd0ae468c8feefc1e2eac5ee72085d23ec445e2` and shell-contract
+clarification `0bb7e2a521aade3dadec5795fc5c4a726b566c5c` passed exact-source
+hosted runs [36211959613](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36211959613)
+and [36212232289](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36212232289).
+
+both owners reviewed the six byte-identical provider/config/plugin templates.
+dev-server's real render and provider installer, with helper installation
+stubbed, preserved all 21 disposable account sentinels and their modes, created
+no private accounts or codex hooks, passed the real app config validator, and
+produced the agreed generation digest. the former shared installer failed on a
+valid symlinked startup file; the correction passed without changing that file.
+skid-owned shell setup preserved links, unrelated contents and modes across
+repeat installs; bash/zsh login and interactive fixtures covered late overrides
+and ordinary/herdr guards. actual provider hook loading remains a live boundary.
 
 prior candidate `f967ac307873f0d326ea5483d74f6683c8a4c7c0` passed complete
 engineering checks and exact-source [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36210567657).
@@ -377,8 +395,9 @@ routing, missing-native/missing-shim no-fallback checks and native claude
 those helper checks prove dispatch, not installed-account behavior. its
 validator and generation receipt probes also passed; the receipt alteration
 and rollback evidence above remains applicable because that code is unchanged.
-the current correction needs its own clean commit and exact-source hosted run.
-source preparation is not fleet acceptance.
+use `scripts/check-release-source v0.9.0` to obtain the exact final clean source
+and its successful hosted run before release. source preparation is not fleet
+acceptance.
 
 `NOT_RUN`: three-host forge/manual-provider authentication and hook isolation;
 native live status/history/stop; concurrent products; independent restart,
@@ -404,6 +423,5 @@ integration qualification. tmux ownership is unchanged. open evidence belongs in
 [release](issues/restoration-release.md),
 [native-control](issues/restoration-native-control.md) and
 [runtime](issues/restoration-runtime.md) issue records. the receipt admission
-correction and receipt acknowledgment are complete. the provider continuity
-and shell installer corrections remain pending in dev-server; neither the
-receipt agreement nor source probes assert live acceptance.
+correction, provider continuity and shell installer agreement are complete in
+the pushed sources above. these source checks do not assert live acceptance.

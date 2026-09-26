@@ -22,18 +22,18 @@ the phone. `scripts/check-release --android-version v0.9.0` yields `0.9.0 9000`.
 
 dev-server's ten-file contract acknowledgment and admission correction
 introduced in `94931a13c045fa9c9b294080149524501ff30b68` remain complete in
-pushed source `1296309c8350930befeb62e02479a8a6cf2a819c`;
+pushed source `ae70f2b78ad9b02a7dbccfd79d53be5bcfd11b50`;
 [the handoff](../dev-server-handoff.md) records the bounded rollback evidence.
-the generation receipt contract is unchanged. the subsequent correction to
-existing skid provider accounts and skid-owned shell installation still needs
-reviewed dev-server source and owner acknowledgment; prior receipt agreement
-does not imply completion of that installer change.
+the generation receipt contract is unchanged. that source also implements and
+acknowledges existing skid accounts, no codex hook installation, scoped claude
+identity and skid-owned shell setup. both source discrepancy records are closed;
+actual shared-account behavior remains live qualification.
 
-prior candidate `f967ac307873f0d326ea5483d74f6683c8a4c7c0` passed
-[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36210567657)
-and release-source preflight. the provider continuity and hook correction needs its
-own reviewed commit and exact-source hosted run; the prior pass does not cover
-later source changes.
+the provider continuity and hook correction, including its shell contract,
+passed [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36212232289)
+at `0bb7e2a521aade3dadec5795fc5c4a726b566c5c`. subsequent source changes require
+their own exact-source hosted check; use the preflight below for the final
+reviewed commit rather than assuming an earlier pass applies.
 
 resolution requires a successful `verify.yml` push check at the exact reviewed
 release source sha and a fresh installed phone version/signer observation.
