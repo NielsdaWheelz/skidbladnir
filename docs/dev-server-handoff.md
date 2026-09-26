@@ -223,6 +223,14 @@ the existing-account, claude-only hook and skid-owned shell contract in pushed
 source `ae70f2b78ad9b02a7dbccfd79d53be5bcfd11b50`. its
 [validation](https://github.com/NielsdaWheelz/dev-server/blob/ae70f2b78ad9b02a7dbccfd79d53be5bcfd11b50/docs/gateway-separation-validation.md)
 records installer and shell evidence; no source contract discrepancy remains.
+the direct-exec hook correction in original source
+`ca9bcf67ddc771368f9d44052a2bdbc775a71ec8` passed
+[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36217100830).
+dev-server acknowledged the identical asset in
+`7c4500dd256065c637986d2a042a96825eb73338`; its
+[validation](https://github.com/NielsdaWheelz/dev-server/blob/7c4500dd256065c637986d2a042a96825eb73338/docs/gateway-separation-validation.md)
+records generation admission, plugin selection and rollback, including failed
+stop preserving the candidate and successful restore preserving prior receipts.
 
 a disposable fixture used dev-server's actual `gateway_runtime_identity` and
 `gateway_restore_runtime` with this fleet verifier. the producer matched the
@@ -430,32 +438,41 @@ published pane identity and produced gateway `claude-work` native idle status.
 the gateway selected native reading; an empty saved history still fell back to
 the terminal. stop closed the test terminal but reported an unconfirmed agent
 halt, so this proves hook invocation and binding, not complete native control.
-the corrected deployment asset still needs selected generation application and
-qualification on all three hosts. its existing receipt input covers the changed
-bytes; published archives and pins remain unchanged.
+the root operator subsequently selected dev-server `7c4500d` on macbook, devbox
+and arch. deployed claude SessionStart/profile binding, native idle status and
+bounded saved-history reading after a minimal turn passed on all three hosts.
+macbook also proved truncation at an eight-byte bound. interactive stop returned
+terminal closed with agent halt unconfirmed; the exact provider processes were
+absent at the subsequent check. this is permitted by the stop contract: native
+halt applies to matched background jobs, and the interactive exit shortcut
+checks the foreground lifetime once immediately after terminal closure. later
+exit does not justify reporting earlier confirmation. background-job stop is
+`NOT_RUN`, a separate native-control qualification, not a separation prerequisite.
 
-at source preflight, the following were `NOT_RUN`: three-host
-forge/manual-provider authentication and hook isolation; native live
-status/history/stop; concurrent products; independent restart,
-reinstall, rollback, disposable removal; both apps' complete
-pairing/launch/attach/control acceptance. live host gates require handback of
-occupied paths, installation, and applicable current-turn tmux/device approval.
-the root operator owns live progress and evidence. this source work performed
-no live tmux, device or service mutation; publication and phone preflight were
-completed separately by the root operator as recorded above.
+the live macbook herdr guard returned without reading hook stdin. linux herdr
+launches excluded skid context and plugin arguments. two concurrent providers
+per product stayed in their respective inventories on all three hosts. existing
+history files for all three codex accounts and claude-work remained accessible;
+personal claude had no history root to preserve. both installed phone apps paired
+and accepted input on all three hosts. original phone interrupt was invoked and
+stop removed only its test sessions on macbook and devbox; the four original
+macbook sessions were preserved. both directions of arch gateway restart kept
+the opposite phone attachment/input working; original apk reinstall preserved
+herdr-mobile. these are root-reported live results, separate from source probes.
 
-phone transition belongs to the root operator: install/pair distinct
-`dev.niels.herdr.mobile` first, force-stop and clear ONLY obsolete
-`dev.niels.skidbladnir` data, install the increasing-code signed skid apk, pair
-fresh. no downgrade or stored-data compatibility assumption.
+remaining cutover closure: root-owned rollback verification and final phone
+cleanup. no live acceptance is inferred from engineering checks. the root
+operator owns live operations and content-free evidence; this source work
+performed no live tmux, device or service mutation. the corrected plugin bytes
+are covered by the generation receipt; published archives and pins are unchanged.
 
 costs accepted: shared provider configuration, history and memories across apps;
 changing provider account state in either app is visible in the other. one small
 exec boundary per agent launch; explicit bash/zsh startup integration; private
 helper download/disk per revision; one private claude exec shim; native cli
 requalification on provider upgrades. no separate provider login is introduced.
-ordinary/herdr account state is retained. shared project hooks still need
-integration qualification. tmux ownership is unchanged. open evidence belongs in
+ordinary/herdr account state is retained; future provider or project-hook changes
+need integration qualification. tmux ownership is unchanged. open evidence belongs in
 [native-control](issues/restoration-native-control.md) and
 [runtime](issues/restoration-runtime.md) issue records. the receipt admission
 correction, provider continuity and shell installer agreement are complete in

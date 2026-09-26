@@ -1,11 +1,24 @@
-# native control live qualification
+# claude background-job stop qualification
 
-problem: the restored pinned helper lacks complete installed three-host native control qualification. macbook's copied-plugin probe now proves live claude identity registration and native status; selected generation application, saved-history reading and confirmed stop remain open.
+problem: matched claude background-job stop remains `NOT_RUN` on the restored
+fleet. this is a native-control coverage gap, not a namespace-separation blocker.
 
-impact: claude native status, saved-message reading, and background stop may be unavailable or differ across installed provider versions. terminal fallback must report its actual coverage and methods; an unexecuted live gate is `NOT_RUN`.
+impact: interactive native status, bounded history and terminal closure are
+qualified, but native halt confirmation for a background job is unproved. terminal closure
+must never be treated as proof that an attached background job stopped.
 
-evidence: `llm-calling@ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f`, uv 0.11.28, python 3.12.13, and frozen `claude-agent-sdk==0.2.130` synced in a disposable macbook checkout. content-free inspection probes proved exact native executable and disposable `CLAUDE_CONFIG_DIR` dispatch through the skid launcher/shim, including missing-native and missing-shim failures without shared-command fallback. claude 2.1.282 exposed `agents --json --all` and `stop <id>`, and an empty disposable home returned an empty agents list.
+evidence: the root operator selected dev-server `7c4500d`, with the corrected
+plugin from original source `ca9bcf6`, on macbook, devbox and arch. live claude
+SessionStart/profile binding, native idle status and bounded saved-history reads
+passed on all three hosts. interactive stop returned terminal closed and agent
+halt unconfirmed; the exact provider processes were absent at the later check.
+that response is contract-valid: the gateway checks foreground exit once after
+closure, and later absence does not establish earlier confirmation. the pinned
+helper `ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f` uses native stop only for a
+matched background job. see [the handoff](../dev-server-handoff.md#qualification-and-remaining-work)
+and [stop contract](../agent-control.md).
 
-the root operator's subsequent approved live macbook probe found that shell quotes in the plugin's direct-exec command prevented callback entry. changing only that command produced one callback, matching pane identity and gateway native idle status with the existing account. native reading was selected, but empty saved history fell back to the terminal; stop closed the test terminal with agent halt unconfirmed. the source template is corrected; root owns selected generation application and remaining qualification. the immutable release is unchanged. see [the deployment handoff](../dev-server-handoff.md#qualification-and-remaining-work).
-
-resolved when: the installed skid-owned helper, absolute native provider and selected existing account are verified on macbook, devbox, and arch; approved live claude sessions on each host show correct native inspection, bounded history and matched stop behavior; helper failures retain honest terminal fallback; no unrelated provider process is controlled and no herdr control service is used. account history is intentionally shared. record content-free results and remove this file.
+resolved when: an approved disposable background claude job on each host is
+matched and halted through the installed helper; native confirmation and
+terminal closure remain separate, and unrelated jobs survive. record
+content-free results and remove this file. no provider-home relocation is needed.

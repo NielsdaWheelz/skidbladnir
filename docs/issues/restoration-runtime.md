@@ -1,33 +1,25 @@
-# restored runtime boundary needs live qualification
+# restored runtime cutover closure
 
-the source now strips inherited `HERDR_*` variables at gateway child boundaries and
-immediately before new provider or terminal execution. the helper's private
-claude shim execs the selected absolute native executable. shell templates reset
-existing account defaults and command functions after bash/zsh startup, only in skid shells.
-private provider homes are withdrawn for both products. ordinary/herdr providers retain their
-existing binaries, account homes, histories and native integrations. source
-review confirms that the shell guard returns for unmarked shells and herdr panes.
+problem: root-owned live rollback verification and final phone cleanup remain
+in progress. source receipt/rollback fixtures passed; they do not prove native
+supervisor recovery or preservation of live attachments.
 
-impact: compilation and disposable subprocess checks do not prove that the
-three installed tmux servers, provider binaries, shell startup files, identity
-hooks, and native helper compose correctly. no tmux, provider, fleet, or phone
-authenticated operation was authorized for this source pass. those gates are
-`NOT_RUN`. disposable shell and helper subprocess probes and engineering checks
-passed; their temporary harnesses were removed.
+evidence: the root operator selected dev-server `7c4500d` on all three hosts.
+native claude binding/status/bounded history passed; simultaneous providers from
+both products stayed in their own inventories. existing codex/claude-work
+histories remained accessible. macbook's herdr hook guard left stdin unread;
+linux herdr launches excluded skid context/plugin arguments. both phone apps
+paired and accepted input on all hosts. both directions of arch gateway restart
+preserved opposite-product attachment/input, and original apk reinstall preserved
+herdr-mobile. phone stop removed only its own macbook/devbox test sessions;
+the four original macbook sessions survived. no probe harness remains.
 
-resolve after namespace handback and deployment on each host: check every forge
-profile and each bare/account provider command in a new skid terminal at home
-and a shared project. observe the intended existing account and native executable,
-including personal claude with `CLAUDE_CONFIG_DIR` unset; verify that no `HERDR_*` reaches
-either skid provider child. also verify ordinary/herdr bare and account commands
-retain their existing homes, histories and native hooks, including herdr entry
-from a marked skid terminal. observe inline/project/plugin hook interactions at
-the integration boundary; remove only proven obsolete skid registrations.
-provider relocation and removal of native herdr integrations are not fixes.
-skid must leave codex account hooks untouched. its explicitly loaded claude
-plugin must return before reading input/config outside a marked skid provider
-launch or inside herdr. verify that skid-owned shell setup preserves symlinked
-dotfiles and that shared provider maintenance has no skid prerequisite.
-use only an approved isolated tmux socket for probes. then confirm
-that herdr and skid can restart and roll back independently and remove this
-record once the live evidence is recorded.
+impact: shared-account continuity and deployed identity binding are qualified.
+rollback still needs live confirmation that receipts, selected runtime/unit,
+helper/plugin links and unrelated workers/attachments remain coherent.
+
+resolved when: the root operator records approved rollback verification on each
+host and final phone cleanup, preserving unrelated sessions and account state.
+record content-free outcomes in [the handoff](../dev-server-handoff.md#qualification-and-remaining-work)
+and remove this file. background-job stop is tracked separately in
+[native-control](restoration-native-control.md).
