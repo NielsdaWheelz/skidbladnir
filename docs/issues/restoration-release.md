@@ -24,12 +24,14 @@ dev-server's ten-file contract acknowledgment and admission correction
 introduced in `94931a13c045fa9c9b294080149524501ff30b68` remain complete in
 pushed source `1296309c8350930befeb62e02479a8a6cf2a819c`;
 [the handoff](../dev-server-handoff.md) records the bounded rollback evidence.
-the revised dev-server runbook retains that closure after the provider-home
-correction; the generation receipt contract is unchanged.
+the generation receipt contract is unchanged. the subsequent correction to
+existing skid provider accounts and skid-owned shell installation still needs
+reviewed dev-server source and owner acknowledgment; prior receipt agreement
+does not imply completion of that installer change.
 
-prior candidate `4eeba152bc4e37cc36eaa9a367c27efcb47aba20` passed
-[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36204088437)
-and release-source preflight. the provider-home contract correction needs its
+prior candidate `f967ac307873f0d326ea5483d74f6683c8a4c7c0` passed
+[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36210567657)
+and release-source preflight. the provider continuity and hook correction needs its
 own reviewed commit and exact-source hosted run; the prior pass does not cover
 later source changes.
 

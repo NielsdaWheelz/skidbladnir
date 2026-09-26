@@ -50,13 +50,19 @@ Tmux remains the database. The sole identity registration is the pane option:
 The sole writer command is:
 
 ```text
-skidbladnir agent-hook --host-config=PATH {Codex|Claude} SessionStart
+skidbladnir agent-hook --host-config=PATH Claude SessionStart
 ```
 
 Every other provider/event pair is rejected before provider input or host
 configuration is read. The bounded decoder retains only the documented
 provider session id. It never retains or logs a prompt, objective, cwd, model,
 transcript path, token, credential, or arbitrary provider payload.
+
+the current writer emits only `Claude`; the decoder still accepts old codex
+registrations, which projection ignores. a valid invocation outside a skid
+provider launch (`SKIDBLADNIR_AGENT=1`), or inside herdr (`HERDR_ENV=1`), returns
+without reading input or host configuration. the marker scopes the hook; exact
+process lifetime and pane identity still determine whether it can publish.
 
 Publication is permitted only when all of these describe one exact lifetime:
 
@@ -130,10 +136,11 @@ absolute, provider-unique `CODEX_HOME`; each Claude profile does the same for
 Profile-home values are compared only inside the hook process and are never
 returned or logged.
 
-Deployment atomically installs one `SessionStart` command for each Codex
-profile and one deployment-owned local Claude plugin for Claude profiles.
-Neither path edits a provider trust store. A direct Claude binary launch that
-bypasses the plugin remains honestly unregistered.
+deployment installs one explicitly loaded local claude plugin. it installs no
+codex hook and leaves existing account hook files and provider state untouched.
+a direct claude binary launch that bypasses the plugin remains honestly
+unregistered. accounts are shared with existing ordinary/herdr commands;
+provider-home separation is not an identity boundary.
 
 ## API and presentation
 

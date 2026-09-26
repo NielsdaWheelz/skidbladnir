@@ -92,6 +92,7 @@ func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string
 		values[entry.Name] = entry.Value
 	}
 	delete(values, "SKIDBLADNIR_SHELL")
+	delete(values, "SKIDBLADNIR_AGENT")
 	values["SKIDBLADNIR_CLAUDE_COMMAND"] = profile.Command
 	result := make([]string, 0, len(values))
 	for name, value := range values {

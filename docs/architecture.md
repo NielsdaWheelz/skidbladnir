@@ -6,11 +6,11 @@ application database or coordinator.
 
 2026-09-25 restoration scope: this original tmux product coexists independently
 with herdr-mobile. [the deployment handoff](dev-server-handoff.md) owns the
-namespace handback, skid-only private provider homes, shell setup, helper pins, and
+namespace handback, existing provider accounts, scoped shell setup, helper pins, and
 qualification status. source preparation does not authorize publication,
 installation, or modification of the other product's runtime.
-herdr and ordinary shells retain their existing providers, account homes,
-histories and native integrations. the private herdr-home plan is withdrawn;
+all products retain the existing providers, account homes, histories, memories
+and native integrations. neither product provisions separate provider homes;
 hook coexistence is qualified at the actual integration boundary.
 
 this document owns shared mechanisms, invariants, and scope. the accepted
@@ -79,10 +79,10 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-personal` | `--yolo` | native executable basename `codex` |
-| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-work` | `--yolo` | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.local/share/skidbladnir/providers/codex-work2` | `--yolo` | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.local/share/skidbladnir/providers/claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
+| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex` |
+| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | `--yolo` | same |
+| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | `--yolo` | same |
+| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
 
 2026-09-17 accepted launch policy: new agent sessions use the explicit provider
 permission bypasses above on all three hosts. deployment owns these arguments;
@@ -99,13 +99,15 @@ its exact home/flags in the requested cwd. existing tmux server/session
 environments remain untouched. the
 gateway does not gate launch on binary or configuration inspection;
 the agent retains its ordinary provider configuration and terminal. deployment
-owns the exact Codex hook files and one local Claude hook plugin, while absent/unloaded
-hooks omit registered identity without blocking launch. new skid shell terminals
-use private personal homes; deployment-owned bash/zsh startup functions select
-those homes for bare commands and exact private homes for account commands,
+owns one explicitly loaded Claude hook plugin; skid installs no codex hook and
+leaves existing provider hook files untouched. absent/unloaded hooks omit
+registered identity without blocking launch. new skid shell terminals use
+existing personal accounts; skid-owned bash/zsh startup functions select
+those accounts for bare commands and existing homes for account commands,
 only in marked skid terminals. ordinary shells and herdr panes retain their
 existing commands and account state; no global provider rerouting is installed.
-manual claude-personal has its own home but no forge row. these functions call
+manual claude-personal leaves `CLAUDE_CONFIG_DIR` unset to preserve native
+defaults, including `~/.claude.json`; it has no forge row. these functions call
 native providers through one closed product launcher, load the identity plugin
 for claude, and never infer from cwd or read hook payloads. shared account
 wrappers are not used. direct raw-provider
@@ -372,11 +374,13 @@ enrichment is bounded to two seconds and reuses the foreground five-second
 inventory schedule. pressure has its own coalesced polling lane.
 
 [identity registration](agent-identity-projection.md) is content-free and bound
-to the exact foreground process lifetime. deployment-owned codex SessionStart
-hooks and the claude-work plugin call the closed `agent-hook` command. its
+to the exact foreground process lifetime. the explicitly loaded claude plugin
+calls `agent-hook Claude SessionStart`. only a skid provider launch marked
+`SKIDBLADNIR_AGENT=1` outside a herdr pane may reach input/config admission. its
 bounded decoder reads only the documented session id and writes
 `@skid_agent_runtime` after PID/start/tty/profile validation. the current
-projection consumes claude registration only. missing, stale, malformed,
+projection consumes claude registration only; the unused codex writer is retired.
+missing, stale, malformed,
 nested or ambiguous registration does not prevent terminal observation/control.
 hooks never publish status, activity, lifecycle, attention, prompts or results.
 
@@ -637,10 +641,11 @@ history item is `current`.
 - Public `dev-server` is the sole machine-local install owner. It pins one immutable
   GitHub release, source SHA, and two host-bundle digests, while this repository
   owns the complete five-asset release pin. It renders the exact Devbox/MacBook/Arch host
-  configs, SessionStart identity hook files, the local Claude identity plugin,
-  and the BEL-only Codex notify asset; the
+  configs and the local Claude identity plugin; the
   product-local Claude shell commands load that plugin without editing user settings.
-  hooks are installed only in skid's private provider homes. it
+  skid apply owns shell startup integration; shared provider maintenance has
+  no skid-specific shell prerequisite. existing provider homes, settings,
+  instructions and hook files are not provisioned or replaced by skid. it
   owns user systemd services with lingering on Linux and one RunAtLoad
   LaunchAgent on macOS, and applies only its dedicated
   Tailscale Serve `:8443/v1` mapping. It removes only the retired owned root

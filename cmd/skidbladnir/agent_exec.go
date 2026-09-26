@@ -29,13 +29,13 @@ func agentExec(encoded []string) error {
 	if !filepath.IsAbs(command) || !filepath.IsAbs(home) || (homeName != "CODEX_HOME" && homeName != "CLAUDE_CONFIG_DIR") {
 		return errors.New("invalid agent invocation")
 	}
-	environment := make([]string, 0, len(os.Environ())+1)
+	environment := make([]string, 0, len(os.Environ())+2)
 	for _, entry := range runtimeenv.WithoutHerdr(os.Environ()) {
 		name, _, _ := strings.Cut(entry, "=")
-		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_CLAUDE_COMMAND" {
+		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_CLAUDE_COMMAND" && name != "SKIDBLADNIR_AGENT" {
 			environment = append(environment, entry)
 		}
 	}
-	environment = append(environment, homeName+"="+home)
+	environment = append(environment, homeName+"="+home, "SKIDBLADNIR_AGENT=1")
 	return syscall.Exec(command, append([]string{command}, arguments[3:]...), environment)
 }

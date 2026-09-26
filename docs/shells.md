@@ -1,13 +1,17 @@
 # new terminal here
 
 2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
-adds product-scoped personal homes and `SKIDBLADNIR_SHELL=1` to new terminal
+selects existing personal accounts and adds `SKIDBLADNIR_SHELL=1` to new terminal
 startup, with final bash/zsh startup integration for bare/account provider
 commands. inherited herdr context is removed at the pane boundary; the existing
 tmux server and unrelated sessions are unchanged. this supersedes
 provider-environment inheritance below only for new skid terminals. ordinary
 shells and herdr panes keep their existing provider commands, homes, histories
-and native integrations. shell readiness remains unpromised.
+and native integrations. skid apply owns the guarded shell source installation;
+shared provider maintenance has no skid startup-file prerequisite. inherited
+`SKIDBLADNIR_AGENT` is cleared; only the final provider exec sets it. personal
+claude uses its native unset `CLAUDE_CONFIG_DIR` default. shell readiness remains
+unpromised.
 
 implemented: standalone terminal and new terminal here, following [spaces](spaces.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected

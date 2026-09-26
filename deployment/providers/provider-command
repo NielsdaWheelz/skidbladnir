@@ -13,15 +13,24 @@ shift
 for name in "${!HERDR_@}"; do
   unset "$name"
 done
-unset CODEX_HOME CLAUDE_CONFIG_DIR SKIDBLADNIR_SHELL SKIDBLADNIR_CLAUDE_COMMAND
+unset CODEX_HOME CLAUDE_CONFIG_DIR SKIDBLADNIR_SHELL SKIDBLADNIR_AGENT SKIDBLADNIR_CLAUDE_COMMAND
 
 case "$account" in
-  codex-personal | codex-work | codex-work2)
-    export CODEX_HOME="$provider_root/.local/share/skidbladnir/providers/$account"
+  codex-personal)
+    export CODEX_HOME="$provider_root/.codex" SKIDBLADNIR_AGENT=1
     exec "$codex_command" --yolo "$@"
     ;;
-  claude-personal | claude-work)
-    export CLAUDE_CONFIG_DIR="$provider_root/.local/share/skidbladnir/providers/$account"
+  codex-work | codex-work2)
+    export CODEX_HOME="$provider_root/.$account" SKIDBLADNIR_AGENT=1
+    exec "$codex_command" --yolo "$@"
+    ;;
+  claude-personal)
+    export SKIDBLADNIR_AGENT=1
+    exec "$claude_command" --dangerously-skip-permissions \
+      --plugin-dir "$provider_root/.local/share/skidbladnir/claude-agent-identity" "$@"
+    ;;
+  claude-work)
+    export CLAUDE_CONFIG_DIR="$provider_root/.claude-work" SKIDBLADNIR_AGENT=1
     exec "$claude_command" --dangerously-skip-permissions \
       --plugin-dir "$provider_root/.local/share/skidbladnir/claude-agent-identity" "$@"
     ;;

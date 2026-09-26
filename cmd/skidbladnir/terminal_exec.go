@@ -65,17 +65,15 @@ func terminalExec(arguments []string) error {
 	if err != nil || !filepath.IsAbs(home) {
 		return errors.New("terminal home is unavailable")
 	}
-	environment := make([]string, 0, len(os.Environ())+3)
+	environment := make([]string, 0, len(os.Environ())+2)
 	for _, entry := range runtimeenv.WithoutHerdr(os.Environ()) {
 		name, _, _ := strings.Cut(entry, "=")
-		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_CLAUDE_COMMAND" {
+		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_AGENT" && name != "SKIDBLADNIR_CLAUDE_COMMAND" {
 			environment = append(environment, entry)
 		}
 	}
-	providerRoot := filepath.Join(home, ".local", "share", "skidbladnir", "providers")
 	environment = append(environment,
 		"SKIDBLADNIR_SHELL=1",
-		"CODEX_HOME="+filepath.Join(providerRoot, "codex-personal"),
-		"CLAUDE_CONFIG_DIR="+filepath.Join(providerRoot, "claude-personal"))
+		"CODEX_HOME="+filepath.Join(home, ".codex"))
 	return syscall.Exec(shell, []string{"-" + filepath.Base(shell)}, environment)
 }

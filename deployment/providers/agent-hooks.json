@@ -1,6 +1,0 @@
-{
-  "description": "Skíðblaðnir agent identity projection",
-  "hooks": {
-    "SessionStart": [{"matcher": "^(startup|resume|clear)$", "hooks": [{"type": "command", "command": "@HOOK_COMMAND@", "timeout": 5, "async": false}]}]
-  }
-}

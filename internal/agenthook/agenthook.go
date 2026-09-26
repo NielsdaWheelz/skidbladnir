@@ -94,8 +94,7 @@ func parseInvocation(providerText, eventText string) (invocation, error) {
 	if err != nil {
 		return invocation{}, ErrInvocationRejected
 	}
-	if eventText != hookSessionStart ||
-		(provider != agentruntime.ProviderCodex && provider != agentruntime.ProviderClaude) {
+	if eventText != hookSessionStart || provider != agentruntime.ProviderClaude {
 		return invocation{}, ErrInvocationRejected
 	}
 	return invocation{provider: provider}, nil

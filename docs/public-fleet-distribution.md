@@ -435,8 +435,8 @@ Reuse and centralize:
 - `machine.Handle`, canonical origins, `GatewayBearer`, strict JSON helpers,
   API error mapping, and controller machine-isolation primitives;
 - `MachineStore` sealing/quarantine and bearer-rotation rules;
-- the content-free, process-lifetime Codex and Claude `SessionStart` identity
-  adapters and optional Codex BEL notifier without retaining payloads, adding
+- the content-free, process-lifetime claude `SessionStart` identity
+  adapter and optional codex BEL notifier without retaining payloads, adding
   thread tracking, or authoring activity;
 - one auth credential-file reader for verify, canonical read, and
   domain-separated digest instead of re-reading bearer files in pairing code.

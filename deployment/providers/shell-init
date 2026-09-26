@@ -13,8 +13,8 @@ fi
 
 # reset shared aliases after startup; explicit account commands always win.
 unalias codex codex-personal codex-work codex-work2 claude claude-personal claude-work 2>/dev/null || :
-export CODEX_HOME="$HOME/.local/share/skidbladnir/providers/codex-personal"
-export CLAUDE_CONFIG_DIR="$HOME/.local/share/skidbladnir/providers/claude-personal"
+export CODEX_HOME="$HOME/.codex"
+unset CLAUDE_CONFIG_DIR SKIDBLADNIR_AGENT
 
 function codex { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-personal "$@"; }
 function codex-personal { "$HOME/.local/share/skidbladnir/current/providers/provider-command" codex-personal "$@"; }

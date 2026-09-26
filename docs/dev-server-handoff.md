@@ -6,12 +6,13 @@ operator; live installation waits for host namespace handback. this file's
 containing commit owns the source contract. dev-server is the sole installation owner. this file
 is the contract for its separation agent; the other product is herdr-mobile.
 
-owner correction: isolation belongs only to original-skid launches and its
-marked terminals. herdr and ordinary shells retain their existing provider
-binaries, account commands, homes and histories. the private herdr-home plan
-is withdrawn. preserve `.codex`, `.codex-work`, `.codex-work2`, `.claude`,
-`.claude-work`, their native herdr integrations, and existing user state.
-only skid's five homes below start fresh; no provider relocation is required.
+provider continuity correction: all products use the existing provider accounts.
+preserve `.codex`, `.codex-work`, `.codex-work2`, native personal claude's default
+state, and `.claude-work`, including authentication, configuration, history,
+memories, trust and native herdr/user integrations. no provider-home provisioning,
+relocation or copy is part of skid installation. gateway credentials and helper
+dependencies remain skid-owned. command overrides remain scoped to skid launches
+and marked terminals; ordinary/herdr account selection is unchanged.
 
 ## release and namespace
 
@@ -100,7 +101,7 @@ exact schema (all named members required unless marked optional):
 - each row: `key`, `label`, `provider`, `command`, `environment`,
   `foregroundSignatures`, `arguments`.
 - environment entry: `{name,value}` strings. exactly one absolute provider home;
-  names unique, no other provider's home, `HERDR_*`, `SKIDBLADNIR_SHELL`, or
+  names unique, no other provider's home, `HERDR_*`, `SKIDBLADNIR_SHELL`, `SKIDBLADNIR_AGENT`, or
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
   within each provider. other explicitly configured environment values retain
   their existing meaning.
@@ -126,20 +127,22 @@ the installer separately checks the declared executables and helper pins.
 
 ## profiles and shell defaults
 
-all homes are private regular directories beneath
-`HOME/.local/share/skidbladnir/providers/`, created `0700`. initialize empty and
-authenticate/trust normally. no account-tree, socket, cache, or credential copy.
+select the existing account directories below. skid does not create account
+trees, replace instructions/settings, reset trust, or copy credentials/history.
+the user's existing provider setup owns those files and its normal login flow.
 
-| forge key | provider home basename | native argv after executable |
+| forge key | provider home relative to `HOME` | native argv after executable |
 | --- | --- | --- |
-| `personal` | `codex-personal` | `--yolo` |
-| `work` | `codex-work` | `--yolo` |
-| `work2` | `codex-work2` | `--yolo` |
-| `claude-work` | `claude-work` | `--name <tmuxName> --dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
+| `personal` | `.codex` | `--yolo` |
+| `work` | `.codex-work` | `--yolo` |
+| `work2` | `.codex-work2` | `--yolo` |
+| `claude-work` | `.claude-work` | `--name <tmuxName> --dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
 
 codex rows set only their `CODEX_HOME`; claude sets `CLAUDE_CONFIG_DIR`.
-`claude-personal` is a fifth home for manually typed commands, never a forge
-profile. its unconfigured runtime profile remains unknown and uses terminal
+manual `claude`/`claude-personal` leave `CLAUDE_CONFIG_DIR` unset to retain native
+default behavior, including `~/.claude.json`; setting it to `~/.claude` is not
+assumed equivalent. personal claude is never a forge profile. its unconfigured
+runtime profile remains unknown and uses terminal
 observation/control; it does not add a fifth native-helper account. permission
 bypass is preserved; provider trust/setup may still prompt.
 
@@ -198,8 +201,10 @@ dev-server introduced its acknowledgment and admission correction in
 and [validation](https://github.com/NielsdaWheelz/dev-server/blob/1296309c8350930befeb62e02479a8a6cf2a819c/docs/gateway-separation-validation.md).
 its owner confirmed agreement with this corrected handoff. the stale six-file
 note is removed and the directory-mode/digest-suffix discrepancy is closed.
-withdrawing private herdr homes changes neither the ten-file sequence nor its
-digest or mode rules. a disposable fixture used dev-server's actual `gateway_runtime_identity` and
+using existing provider accounts changes neither the ten-file sequence nor its
+digest or mode rules. the acknowledgment above covers the receipt contract;
+the new shared-account and skid-owned shell installation correction still
+requires reviewed dev-server source and its owner acknowledgment. a disposable fixture used dev-server's actual `gateway_runtime_identity` and
 `gateway_restore_runtime` with this fleet verifier. the producer matched the
 specified byte encoding; an intact receipt passed, alterations to each of the
 four added files failed, and wrong modes on all ten files failed. generation
@@ -226,8 +231,9 @@ devbox, and arch remains `NOT_RUN`; after the approved live window, record that
 the restored receipt/pair, `current`, public helper/plugin links and unrelated
 workers/attachments all match the intended prior deployment.
 
-new skid terminals set `SKIDBLADNIR_SHELL=1` and both private personal home defaults
-before the configured login shell. at the END of that shell's ordinary startup,
+new skid terminals set `SKIDBLADNIR_SHELL=1`, select `CODEX_HOME=HOME/.codex`, and
+clear inherited `CLAUDE_CONFIG_DIR` before the configured login shell.
+at the END of that shell's ordinary startup,
 source the installed `shell-init` when that marker is `1`. it removes any
 `HERDR_*` introduced during startup and replaces shared aliases with product-local
 functions. zsh requires the end of `.zshrc` and,
@@ -235,8 +241,12 @@ if it changes provider setup, the later `.zlogin`; bash requires the actual
 login file (`.bash_profile`, `.bash_login`, or `.profile`) and `.bashrc` for
 interactive subshells. do not assume bash login reads `.bashrc`. current fleet
 shell support is bash/zsh; configure and qualify its actual startup path.
+skid apply owns this prerequisite. shared provider installation and managed
+ordinary dotfiles must not install skid-specific sources or fail because skid
+is absent. preserve startup-file symlinks and user content; resolve a missing
+or unsupported skid startup path within skid setup, without replacing dotfiles.
 
-within marked skid terminals, bare `codex`/`claude` select the private personal
+within marked skid terminals, bare `codex`/`claude` select the existing personal
 homes; `codex-personal`, `codex-work`, `codex-work2`, `claude-personal`,
 `claude-work` select those exact homes. explicit account selection wins over
 inherited home variables. functions
@@ -258,15 +268,18 @@ provider-home variable before selecting their own.
 
 ## hooks
 
-render [`agent-hooks.json`](../deployment/providers/agent-hooks.json) into each
-of the three private codex homes as `hooks.json` (0600). `@HOOK_COMMAND@` is the
-shell-quoted command `HOME/.local/bin/skidbladnir agent-hook
---host-config=HOME/.local/share/skidbladnir/current/host-config.json Codex SessionStart`,
-serialized as a json string. stage the supplied
+skid installs no codex hooks. codex projection already ignores registrations and
+uses the foreground process and terminal controls. the unused codex writer and
+template are retired; existing `hooks.json` remains untouched by skid setup.
+no hook merger is needed. stage the supplied
 [`claude-agent-identity`](../deployment/providers/claude-agent-identity) tree at
 the generation's `providers/claude-agent-identity`, with its public path supplied
 by the stable symlink above. its `bin/agent-hook` is 0755, json files 0644.
-both manual claude commands and the forge explicitly load it.
+both scoped manual claude commands and the forge explicitly load it. the plugin
+does not edit shared claude settings. `agent-hook` accepts only `Claude SessionStart`.
+after argv validation it returns without reading input or host config unless
+`SKIDBLADNIR_AGENT=1` and `HERDR_ENV` is not `1`. the marker is set only at skid's
+provider exec boundaries; it does not replace exact pane/tty/pid/start checks.
 
 these hooks register process-lifetime identity only. preserve normal provider
 project instructions/trust and native herdr integrations in existing accounts.
@@ -313,7 +326,7 @@ success is `{ok:true,result:...}`; errors use
 owns the complete result and bounded-read semantics. there is no native send,
 daemon, provider lifetime ownership, or copied history store.
 
-the gateway sets the selected private `CLAUDE_CONFIG_DIR` before import and
+the gateway sets the selected existing account's `CLAUDE_CONFIG_DIR` before import and
 sets `SKIDBLADNIR_CLAUDE_COMMAND` to that profile's exact native executable.
 the installed launcher checks its shim and puts its venv bin first in `PATH`.
 the pinned adapter executes bare `claude agents --json --all` and
@@ -323,9 +336,12 @@ wrappers. the sdk reader consults the same home. output is capped at 64 kib; ins
 shares the two-second enrichment budget, controls the ten-second operation
 budget. helper termination does not cancel a provider turn.
 
-new internal environment contract: `SKIDBLADNIR_SHELL` is optional, absent
+internal environment contract: `SKIDBLADNIR_SHELL` is optional, absent
 outside product terminals, and exactly `1` to activate shell startup; callers
-do not use it to select an account. `SKIDBLADNIR_CLAUDE_COMMAND` is required only
+do not use it to select an account. `SKIDBLADNIR_AGENT=1` identifies a skid
+provider launch, set by `agent-exec` or `provider-command` only after inherited
+values are cleared. gateway, terminal and helper boundaries remove inherited
+copies; marked shells do not set it. `SKIDBLADNIR_CLAUDE_COMMAND` is required only
 for native helper dispatch, has no default, is set by the gateway from validated
 profile config, and is removed before exec of claude. inherited values are
 cleared at gateway/forge/terminal boundaries. `HERDR_*` is never a skid input.
@@ -334,24 +350,29 @@ above; no home is inferred from cwd.
 
 ## qualification and remaining work
 
-source/no-auth qualification so far: pinned helper frozen installation, selected
-absolute-command/private-home subprocess routing, missing-native/missing-shim
-no-fallback checks, and native claude `2.1.282` command availability passed on
-macbook; no authenticated sessions were touched. runtime exec environment and
-validator valid/invalid/usage probes passed. 28 disposable bash/zsh command
-selection cases preserved ordinary unmarked aliases, selected every private
-account, and preserved quoted arguments; both shells cleared context after
-startup. both also left genuine herdr panes unchanged with an inherited skid
-marker. codex `0.157.0` reported hooks enabled in an empty disposable home;
-hook execution itself remains unqualified. release identity checks reject the
-former wrong repository; the reclaimed name now has the required numeric id.
-complete engineering checks passed with `scripts/check verify` (go build/vet, android
-lint/debug build, dependency/generated-asset and shell checks). a disposable
-generation probe demonstrated the former verifier's omissions and confirmed
-that altered shell assets, helper launcher and plugin files are rejected under
-the ten-file receipt contract above. the actual gateway helper subprocess
-received the selected private home/native command with foreign context absent.
-temporary probes were removed. source preparation is not fleet acceptance.
+source/no-auth qualification for the provider continuity correction: disposable
+fake-provider probes first demonstrated the former five private-home redirects,
+then verified all existing account selections, personal claude's unset home,
+original flags, quoted arguments and launch marker/environment cleanup. bash
+and zsh probes covered marked skid shells, ordinary shells and herdr panes.
+claude hook probes with open stdin returned silently outside skid and inside
+herdr before reading input/config; marked malformed input reached admission.
+codex hook invocation returned usage failure. a separate codex projection probe
+confirmed identical results with absent, matching and stale registrations.
+all temporary probes were removed; none invoked tmux or authenticated providers.
+review and `scripts/check verify` passed for this correction: go build/vet,
+android lint/debug build, dependencies, generated assets and shell checks.
+
+prior candidate `f967ac307873f0d326ea5483d74f6683c8a4c7c0` passed complete
+engineering checks and exact-source [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36210567657).
+its pinned helper frozen installation, selected absolute-command/disposable-home
+routing, missing-native/missing-shim no-fallback checks and native claude
+`2.1.282` command availability passed on macbook without authenticated sessions.
+those helper checks prove dispatch, not installed-account behavior. its
+validator and generation receipt probes also passed; the receipt alteration
+and rollback evidence above remains applicable because that code is unchanged.
+the current correction needs its own clean commit and exact-source hosted run.
+source preparation is not fleet acceptance.
 
 `NOT_RUN`: three-host forge/manual-provider authentication and hook isolation;
 native live status/history/stop; concurrent products; independent restart,
@@ -367,13 +388,16 @@ phone transition belongs to the root operator: install/pair distinct
 `dev.niels.skidbladnir` data, install the increasing-code signed skid apk, pair
 fresh. no downgrade or stored-data compatibility assumption.
 
-costs accepted: new authentication/trust setup for five private homes; one small
+costs accepted: shared provider configuration, history and memories across apps;
+changing provider account state in either app is visible in the other. one small
 exec boundary per agent launch; explicit bash/zsh startup integration; private
 helper download/disk per revision; one private claude exec shim; native cli
-requalification on provider upgrades. these costs belong to original skid;
+requalification on provider upgrades. no separate provider login is introduced.
 ordinary/herdr account state is retained. shared project hooks still need
 integration qualification. tmux ownership is unchanged. open evidence belongs in
 [release](issues/restoration-release.md),
 [native-control](issues/restoration-native-control.md) and
 [runtime](issues/restoration-runtime.md) issue records. the receipt admission
-correction and contract acknowledgment are complete; neither asserts live acceptance.
+correction and receipt acknowledgment are complete. the provider continuity
+and shell installer corrections remain pending in dev-server; neither the
+receipt agreement nor source probes assert live acceptance.

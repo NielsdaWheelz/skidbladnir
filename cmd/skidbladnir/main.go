@@ -112,9 +112,12 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		flags := flag.NewFlagSet("agent-hook", flag.ContinueOnError)
 		flags.SetOutput(stderr)
 		hostConfigPath := flags.String("host-config", "", "required host config")
-		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || *hostConfigPath == "" {
-			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH {Codex|Claude} SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		if err := flags.Parse(arguments[1:]); err != nil || flags.NArg() != 2 || *hostConfigPath == "" || flags.Arg(0) != "Claude" || flags.Arg(1) != "SessionStart" {
+			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH Claude SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
+		}
+		if os.Getenv("SKIDBLADNIR_AGENT") != "1" || os.Getenv("HERDR_ENV") == "1" {
+			return 0
 		}
 		preparedInput := prepareAgentHookInput(flags.Arg(0), flags.Arg(1), stdin)
 		prepared, prepareErr := awaitAgentHookInput(ctx, stdin, preparedInput)
@@ -257,7 +260,7 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 		}
 		return 0
 	default:
-		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook PROVIDER EVENT}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
+		_, _ = io.WriteString(stderr, "usage: skidbladnir {version|gateway|machine init|bearer mint|pairing-invite create|agent-hook Claude SessionStart}\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 		return exitUsage
 	}
 }
@@ -321,7 +324,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(name, "HERDR_") || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" {
+		if strings.HasPrefix(name, "HERDR_") || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
 			if err := os.Unsetenv(name); err != nil {
 				return errors.New("clear inherited product environment")
 			}

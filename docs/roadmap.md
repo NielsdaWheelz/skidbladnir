@@ -9,8 +9,10 @@ this index records present scope and open work, not a release diary.
 
 2026-09-25: [the dev-server handoff](dev-server-handoff.md) specifies independent
 coexistence with herdr-mobile. source isolates original-skid launches and marked
-terminals, preserving ordinary/herdr provider homes, histories and native
-integrations. the private herdr-home plan is withdrawn; actual hook interaction
+terminals while reusing existing provider accounts, histories and memories.
+skid's unused codex hook is retired; the explicitly loaded claude plugin is
+launch-scoped. skid apply owns shell setup independently of shared provider
+maintenance. actual hook interaction
 still needs integration qualification. source adds a read-only host-config
 validator and shell templates, pins the original native helper, and guards
 releases by numeric github repository
@@ -53,7 +55,7 @@ and [§6](architecture.md#6-android-surface) own those boundaries.
 
 new agent launches use deployment-owned permission bypass flags under
 [architecture §2](architecture.md#2-fixed-contract). deployed configuration was
-verified historically; restored private-home launches need qualification. existing
+verified historically; restored shared-account launches need qualification. existing
 sessions retain their original launch policy.
 
 ## open work and acceptance

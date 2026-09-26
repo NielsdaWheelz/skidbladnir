@@ -8,7 +8,7 @@
       "label": "Codex · Personal",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-personal"}],
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex"}],
       "foregroundSignatures": [{"executableBase": "codex"}],
       "arguments": ["--yolo"]
     },
@@ -17,7 +17,7 @@
       "label": "Codex · Work",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-work"}],
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work"}],
       "foregroundSignatures": [{"executableBase": "codex"}],
       "arguments": ["--yolo"]
     },
@@ -26,7 +26,7 @@
       "label": "Codex · Work 2",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.local/share/skidbladnir/providers/codex-work2"}],
+      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work2"}],
       "foregroundSignatures": [{"executableBase": "codex"}],
       "arguments": ["--yolo"]
     },
@@ -35,7 +35,7 @@
       "label": "Claude · Work",
       "provider": "Claude",
       "command": "@CLAUDE@",
-      "environment": [{"name": "CLAUDE_CONFIG_DIR", "value": "@ROOT@/.local/share/skidbladnir/providers/claude-work"}],
+      "environment": [{"name": "CLAUDE_CONFIG_DIR", "value": "@ROOT@/.claude-work"}],
       "foregroundSignatures": [{"argument0": "@CLAUDE@"}],
       "arguments": ["--dangerously-skip-permissions", "--plugin-dir", "@ROOT@/.local/share/skidbladnir/claude-agent-identity"]
     }
