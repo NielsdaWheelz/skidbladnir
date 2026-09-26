@@ -6,9 +6,12 @@ application database or coordinator.
 
 2026-09-25 restoration scope: this original tmux product coexists independently
 with herdr-mobile. [the deployment handoff](dev-server-handoff.md) owns the
-namespace handback, private provider homes, shell setup, helper pins, and
+namespace handback, skid-only private provider homes, shell setup, helper pins, and
 qualification status. source preparation does not authorize publication,
 installation, or modification of the other product's runtime.
+herdr and ordinary shells retain their existing providers, account homes,
+histories and native integrations. the private herdr-home plan is withdrawn;
+hook coexistence is qualified at the actual integration boundary.
 
 this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
@@ -99,7 +102,9 @@ the agent retains its ordinary provider configuration and terminal. deployment
 owns the exact Codex hook files and one local Claude hook plugin, while absent/unloaded
 hooks omit registered identity without blocking launch. new skid shell terminals
 use private personal homes; deployment-owned bash/zsh startup functions select
-those homes for bare commands and exact private homes for account commands.
+those homes for bare commands and exact private homes for account commands,
+only in marked skid terminals. ordinary shells and herdr panes retain their
+existing commands and account state; no global provider rerouting is installed.
 manual claude-personal has its own home but no forge row. these functions call
 native providers through one closed product launcher, load the identity plugin
 for claude, and never infer from cwd or read hook payloads. shared account

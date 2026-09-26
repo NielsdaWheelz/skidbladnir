@@ -6,6 +6,13 @@ operator; live installation waits for host namespace handback. this file's
 containing commit owns the source contract. dev-server is the sole installation owner. this file
 is the contract for its separation agent; the other product is herdr-mobile.
 
+owner correction: isolation belongs only to original-skid launches and its
+marked terminals. herdr and ordinary shells retain their existing provider
+binaries, account commands, homes and histories. the private herdr-home plan
+is withdrawn. preserve `.codex`, `.codex-work`, `.codex-work2`, `.claude`,
+`.claude-work`, their native herdr integrations, and existing user state.
+only skid's five homes below start fresh; no provider relocation is required.
+
 ## release and namespace
 
 original github repository id: `1386409483`; reclaimed name:
@@ -189,6 +196,9 @@ dev-server records its acknowledgment and admission correction in local commit
 [runbook](/Users/nnandal/Documents/code/dev-server/docs/gateway-separation-runbook.md#generation-receipt-contract)
 and [validation](/Users/nnandal/Documents/code/dev-server/docs/gateway-separation-validation.md).
 that deployment commit is not yet pushed. its stale six-file note is removed.
+the revised dev-server runbook and issue record retain this acknowledgment
+and close the directory-mode/digest-suffix discrepancy. withdrawing private
+herdr homes changes neither the ten-file sequence nor its digest or mode rules.
 a disposable fixture
 used dev-server's actual `gateway_runtime_identity` and
 `gateway_restore_runtime` with this fleet verifier. the producer matched the
@@ -217,7 +227,7 @@ devbox, and arch remains `NOT_RUN`; after the approved live window, record that
 the restored receipt/pair, `current`, public helper/plugin links and unrelated
 workers/attachments all match the intended prior deployment.
 
-new skid terminals set `SKIDBLADNIR_SHELL=1` and both personal home defaults
+new skid terminals set `SKIDBLADNIR_SHELL=1` and both private personal home defaults
 before the configured login shell. at the END of that shell's ordinary startup,
 source the installed `shell-init` when that marker is `1`. it removes any
 `HERDR_*` introduced during startup and replaces shared aliases with product-local
@@ -227,13 +237,17 @@ login file (`.bash_profile`, `.bash_login`, or `.profile`) and `.bashrc` for
 interactive subshells. do not assume bash login reads `.bashrc`. current fleet
 shell support is bash/zsh; configure and qualify its actual startup path.
 
-bare `codex`/`claude` select the private personal homes; `codex-personal`,
-`codex-work`, `codex-work2`, `claude-personal`, `claude-work` select those exact
-homes. explicit account selection wins over inherited home variables. functions
+within marked skid terminals, bare `codex`/`claude` select the private personal
+homes; `codex-personal`, `codex-work`, `codex-work2`, `claude-personal`,
+`claude-work` select those exact homes. explicit account selection wins over
+inherited home variables. functions
 call the absolute installed launcher, so startup PATH and shared work wrappers
 cannot redirect them. no changes apply to ordinary unmarked shells or existing
 tmux sessions. a real herdr pane (`HERDR_ENV=1`) makes this integration a no-op
 even if it inherited skid's shell marker; upstream herdr owns that pane's setup.
+ordinary/herdr commands retain their existing account selection, provider homes,
+histories, trust and integrations. do not install global account replacements,
+provider-home exports, or a private herdr-home layout for skid's restoration.
 arbitrary absolute commands remain deliberate user overrides.
 
 gateway, tmux client startup, native helper, and the new pane's one-shot exec
@@ -256,12 +270,20 @@ by the stable symlink above. its `bin/agent-hook` is 0755, json files 0644.
 both manual claude commands and the forge explicitly load it.
 
 these hooks register process-lifetime identity only. preserve normal provider
-project instructions/trust. the separation integrator removes obsolete skid
-registrations from ordinary `~/.codex*` and `~/.claude*` without replacing user
-settings or jarvis cognition. inspect inline hooks and enabled plugin sources:
-a private home alone does not prove that cwd/project settings cannot load an
-old hook. qualify at `cwd=$HOME` and a shared project. do not add a dispatcher,
-change upstream herdr integration, or suppress project settings to mask leaks.
+project instructions/trust and native herdr integrations in existing accounts.
+the separation integrator may remove only proven obsolete skid registrations
+and scripts, matched to the exact historical command or file contents. preserve
+unrelated entries in the same hook group, user settings, histories, trust,
+plugins and jarvis cognition; an unknown reference stays for its owner to resolve.
+
+qualify actual hook interaction at `cwd=$HOME` and a shared project, including
+inline and enabled plugin sources. check skid forge/marked-terminal launches
+and ordinary/herdr bare/account launches: each must keep its intended account
+and only publish identity to its owning runtime. exercise herdr entry from a
+marked skid terminal too. trace any wrong-runtime hook execution to its
+registration or launch boundary and fix it there. do not relocate providers,
+remove native herdr integrations, add a shared dispatcher, or suppress project
+settings to mask an interaction. this live integration evidence remains `NOT_RUN`.
 
 ## native helper
 
@@ -349,8 +371,9 @@ fresh. no downgrade or stored-data compatibility assumption.
 costs accepted: new authentication/trust setup for five private homes; one small
 exec boundary per agent launch; explicit bash/zsh startup integration; private
 helper download/disk per revision; one private claude exec shim; native cli
-requalification on provider upgrades. these avoid shared runtime state without changing tmux ownership or
-building a runtime-selection framework. open evidence belongs in
+requalification on provider upgrades. these costs belong to original skid;
+ordinary/herdr account state is retained. shared project hooks still need
+integration qualification. tmux ownership is unchanged. open evidence belongs in
 [release](issues/restoration-release.md),
 [native-control](issues/restoration-native-control.md) and
 [runtime](issues/restoration-runtime.md) issue records. the receipt admission

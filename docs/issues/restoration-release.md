@@ -23,6 +23,14 @@ the phone. `scripts/check-release --android-version v0.9.0` yields `0.9.0 9000`.
 dev-server's ten-file contract acknowledgment and admission correction are
 complete in its local commit `94931a13c045fa9c9b294080149524501ff30b68`;
 [the handoff](../dev-server-handoff.md) records the bounded rollback evidence.
+the revised dev-server runbook retains that closure after the provider-home
+correction; the generation receipt contract is unchanged.
+
+prior candidate `4eeba152bc4e37cc36eaa9a367c27efcb47aba20` passed
+[hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36204088437)
+and release-source preflight. the provider-home contract correction needs its
+own reviewed commit and exact-source hosted run; the prior pass does not cover
+later source changes.
 
 resolution requires a successful `verify.yml` push check at the exact reviewed
 release source sha and a fresh installed phone version/signer observation.

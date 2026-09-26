@@ -4,8 +4,10 @@
 adds product-scoped personal homes and `SKIDBLADNIR_SHELL=1` to new terminal
 startup, with final bash/zsh startup integration for bare/account provider
 commands. inherited herdr context is removed at the pane boundary; the existing
-tmux server and unrelated sessions are unchanged. this supersedes ordinary
-provider-environment inheritance below. shell readiness remains unpromised.
+tmux server and unrelated sessions are unchanged. this supersedes
+provider-environment inheritance below only for new skid terminals. ordinary
+shells and herdr panes keep their existing provider commands, homes, histories
+and native integrations. shell readiness remains unpromised.
 
 implemented: standalone terminal and new terminal here, following [spaces](spaces.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected

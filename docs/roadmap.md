@@ -8,9 +8,12 @@ this index records present scope and open work, not a release diary.
 ## original-product restoration
 
 2026-09-25: [the dev-server handoff](dev-server-handoff.md) specifies independent
-coexistence with herdr-mobile. source now isolates provider homes and inherited
-herdr context, adds a read-only host-config validator and shell templates, pins
-the original native helper, and guards releases by numeric github repository
+coexistence with herdr-mobile. source isolates original-skid launches and marked
+terminals, preserving ordinary/herdr provider homes, histories and native
+integrations. the private herdr-home plan is withdrawn; actual hook interaction
+still needs integration qualification. source adds a read-only host-config
+validator and shell templates, pins the original native helper, and guards
+releases by numeric github repository
 identity. the obsolete `v0.6.0` pin was removed; its artifacts belong to the other
 repository. no new release, installation, or live fleet/phone acceptance is
 claimed. github name transfer and immutable-release configuration are verified.
