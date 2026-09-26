@@ -17,35 +17,38 @@ and marked terminals; ordinary/herdr account selection is unchanged.
 ## release and namespace
 
 original github repository id: `1386409483`; reclaimed name:
-`NielsdaWheelz/skidbladnir`. read-only github verification on 2026-09-25 confirms
-the other repository, `1342599607`, is now `NielsdaWheelz/herdr-mobile`.
-`scripts/check-release-repository immutable` passes: the original public
-repository has immutable releases enabled. neither github name transfer nor
-that setting remains a blocker. no original-product release or tag exists yet.
-the local checkout remains `skid-v1`. live namespace handback still belongs to
-the root operator; the github rename does not authorize installing into occupied
-skid paths.
+`NielsdaWheelz/skidbladnir`. the other repository, `1342599607`, is
+`NielsdaWheelz/herdr-mobile`. github names and immutable-release settings are
+verified; neither remains a blocker. the local checkout remains `skid-v1`.
+live original-skid installation still waits for the root operator's namespace
+handback.
 
-published release-pin reference: **unavailable**. the stale `v0.6.0` pin was
-removed because its artifacts belong to the other repository. do not recover
-it from history for installation or rollback. after publication this repository
-will add `release-pin.json` containing the exact version, source sha, and five
-asset digests; update this section with its immutable source reference then.
-planned release: `v0.9.0`, android `0.9.0` / `9000`, subject to a fresh installed
-version observation and tag availability. package: `dev.niels.skidbladnir`.
-the local signing configuration passed `scripts/check-android-signing --config-only`;
-the installed phone signer/version observation remains pending. retained
-signing certificate sha-256:
+published release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
+immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
+android `0.9.0` / `9000`; package `dev.niels.skidbladnir`.
+published upstream pin: [release-pin.json at 50a688b](https://github.com/NielsdaWheelz/skidbladnir/blob/50a688bf92080428bcb9543b1654c28eff81213f/release-pin.json),
+containing the exact source and all five published asset digests.
+deployment host pin: [release-pin.json at ce6b96b](https://github.com/NielsdaWheelz/dev-server/blob/ce6b96bc0aacd6ab23506a38cd4e014061c3f103/assets/skidbladnir/release-pin.json).
+read-only verification confirms that the immutable release metadata matches
+all five upstream digests and both deployment archive urls/digests. the stale
+`v0.6.0` artifacts belong to the other repository and remain excluded from
+installation and rollback.
+
+the root operator's fresh usb preflight before publication observed the old
+`dev.niels.skidbladnir` package at `0.8.0` / `8000`; build-tools `36.1.0`
+`apksigner` verified its retained signing certificate sha-256:
 `7b2ba254e9d3cb18044b723fe124dec87b727ab56e817860bb48e056eddc47bf`.
+the operator reports the signed draft reviewed, all five published digests
+verified, and `scripts/check published-release v0.9.0
+580e0992d1ee0d7334cefc6561e7f55a5836baf5` passed using the android-studio jdk.
+these publication prerequisites are closed; they do not qualify live cutover.
 
-before publication require the reclaimed name's numeric id, immutable releases,
-and a successful `verify.yml` push run for the exact release source. the source
-tools enforce these through `scripts/check-release-repository`.
-`scripts/check-release-source v0.9.0` returns the clean `origin/main` source sha
-and its successful hosted run id once the pushed commit passes. obtain that
-fresh result before the root operator prepares the draft; publication does
-not wait for live host handback. no signer or state from herdr-mobile is an
-input to skid installation or verification.
+the released source passed [hosted verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36212743764)
+and `scripts/check-release-source v0.9.0` before publication. that preflight
+checks clean main, repository identity, immutable releases, tag availability,
+and the exact hosted run; use an unused increasing tag for a future release.
+publication did not depend on live host handback. no signer or state from
+herdr-mobile is an input to skid installation or verification.
 
 ## owned installation and runtime
 
@@ -395,18 +398,17 @@ routing, missing-native/missing-shim no-fallback checks and native claude
 those helper checks prove dispatch, not installed-account behavior. its
 validator and generation receipt probes also passed; the receipt alteration
 and rollback evidence above remains applicable because that code is unchanged.
-use `scripts/check-release-source v0.9.0` to obtain the exact final clean source
-and its successful hosted run before release. source preparation is not fleet
-acceptance.
+the published source and exact hosted check are recorded above. source and
+release verification are not fleet acceptance.
 
 `NOT_RUN`: three-host forge/manual-provider authentication and hook isolation;
 native live status/history/stop; concurrent products; independent restart,
-reinstall, rollback, disposable removal; phone version/signer observation and
-both apps' pairing/launch/attach/control. live host gates require handback of
+reinstall, rollback, disposable removal; both apps' complete
+pairing/launch/attach/control acceptance. live host gates require handback of
 occupied paths, installation, and applicable current-turn tmux/device approval.
-the phone version/signer preflight needs current-turn device approval and does
-not depend on host handback. no live user
-tmux, device, release publication, or service mutation occurred here.
+the root operator owns live progress and evidence. this source work performed
+no live tmux, device or service mutation; publication and phone preflight were
+completed separately by the root operator as recorded above.
 
 phone transition belongs to the root operator: install/pair distinct
 `dev.niels.herdr.mobile` first, force-stop and clear ONLY obsolete
@@ -420,7 +422,6 @@ helper download/disk per revision; one private claude exec shim; native cli
 requalification on provider upgrades. no separate provider login is introduced.
 ordinary/herdr account state is retained. shared project hooks still need
 integration qualification. tmux ownership is unchanged. open evidence belongs in
-[release](issues/restoration-release.md),
 [native-control](issues/restoration-native-control.md) and
 [runtime](issues/restoration-runtime.md) issue records. the receipt admission
 correction, provider continuity and shell installer agreement are complete in

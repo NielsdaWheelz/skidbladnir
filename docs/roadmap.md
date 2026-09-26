@@ -17,10 +17,11 @@ still needs integration qualification. source adds a read-only host-config
 validator and shell templates, pins the original native helper, and guards
 releases by numeric github repository
 identity. the obsolete `v0.6.0` pin was removed; its artifacts belong to the other
-repository. no new release, installation, or live fleet/phone acceptance is
-claimed. github name transfer and immutable-release configuration are verified.
-open boundaries: [release preparation](issues/restoration-release.md),
-[runtime coexistence](issues/restoration-runtime.md), and
+repository. immutable `v0.9.0` is published from `580e099` and pinned upstream
+and in dev-server; [the handoff](dev-server-handoff.md#release-and-namespace)
+records source, signer and publication verification. live original-product
+installation and fleet/phone acceptance remain pending.
+open boundaries: [runtime coexistence](issues/restoration-runtime.md), and
 [native control](issues/restoration-native-control.md).
 
 ## implemented scope
