@@ -1,23 +1,22 @@
 # remote terminal continuity qualification
 
-problem: source and installer changes are prepared, but the actual paired
-hosts have not installed this generation or qualified forwarding of
-`SKIDBLADNIR_CONNECTION` through stock ssh/mosh. the required `SendEnv` and
-`AcceptEnv` or tailscale ssh `acceptEnv` settings are external deployment
-prerequisites.
+problem: the matching `v0.10.3` generation and scoped forwarding are installed
+on macbook, arch, and devbox. ordinary macbook-to-devbox ssh/mosh works, but
+the broader remote lifecycle has not been qualified.
 
-impact: a remote terminal may show `remote context unknown`; nested hops,
-reconnect, and remote provider swaps are unclaimed on the fleet.
+impact: nested hops, suspension, reconnect, gateway restart, and source loss
+may expose stale or unavailable remote context. those paths remain unclaimed.
 
-evidence: isolated linux tmux registration and shell proofs and fake-gateway
-client integration tests passed on the feature source. `ssh -G` for the three
-configured target labels currently reports only `LANG` and `LC_*` as `SendEnv`;
-it does not forward the marker. no live fleet ssh/mosh boundary was run.
-`docs/terminal-continuity.md` names the full acceptance set.
+evidence: published-release and fleet checks passed. an isolated mac gateway
+proved ssh/mosh markers, remote registration and cwd changes, configured stock
+codex identity, `/exit` retaining the remote shell, and source shell rejection
+while connected. the physical phone reached devbox over mosh, changed remote
+cwd, observed the configured codex profile, retained the shell after `/exit`,
+replaced the provider, detached/reopened, and closed its exact source terminal.
+macbook-to-devbox `SendEnv` and destination `AcceptEnv` remain scoped; sshd
+configuration validated before reload. no devbox-to-macbook ssh route was
+added. distinct simultaneous connections, nested hops, suspension/resume,
+reconnect, gateway restart, and source loss are `NOT_RUN`.
 
-resolved when: install the matching host generation and forwarding settings on
-the intended outbound and inbound routes without adding devbox-to-macbook ssh
-access; prove distinct simultaneous connections, nested hops,
-cwd and provider changes, suspension/resume, reconnect, gateway restart,
-source loss, and source-only controls with credential-free evidence. remove this
-record then.
+resolved when: prove those six unqualified lifecycle paths on intended routes
+with content-free evidence. remove this record then.

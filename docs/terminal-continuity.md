@@ -1,8 +1,13 @@
 # terminal continuity
 
-status: source implemented on `feat/terminal-continuity`. linux isolated tmux
-proofs and engineering checks passed; fleet ssh/mosh, darwin, and physical-phone
-acceptance remain `NOT_RUN` in [the issue records](issues/terminal-continuity-remote-qualification.md).
+status: shipped in immutable `v0.10.3` from source
+`e5906e4df4244c166eb868e678f738f47b893e86`. matching gateways run on
+macbook, arch, and devbox. isolated mac zsh/bash, ssh/mosh, and the named
+physical-phone journey passed. broader remote lifecycle paths remain
+`NOT_RUN` in the [remote](issues/terminal-continuity-remote-qualification.md)
+issue. one unrelated session lifetime disappeared during the phone test window;
+its cause remains unknown in the
+[phone](issues/terminal-continuity-phone-qualification.md) issue.
 
 ## 1. scope and decisions
 
@@ -105,7 +110,7 @@ mechanism; no guessed prompt delays or injected keystrokes.
 ### observed codex home
 
 keep the existing agent wire schema and native-method fields. after classification
-identifies codex and executable basename is `codex`, `sessions/agent.go` calls:
+identifies codex, `sessions/agent.go` calls:
 
 ```go
 ObserveForegroundEnvironment(terminalPID PID, expected Observation) (map[string]string, error)
@@ -125,10 +130,11 @@ absolute home. empty/relative/unlisted is unknown. an absent home may use observ
 absolute `HOME/.codex` only after a complete successful read. never use the
 gateway's home, launch metadata, ancestors, provider files or terminal text.
 qualify linux and darwin separately. retain claude registration unchanged.
-managed native commands are supported; raw npm wrappers remain unqualified and
-unknown unless separately proven. retain the profile catalogue: it also supplies
-foreground signatures. this narrowly supersedes the current ban on codex home
-projection and other-process environment observation; it adds no codex hook.
+managed native commands and the exact configured stock node launcher are
+supported. other wrappers remain unknown unless separately proven. retain the
+profile catalogue: it also supplies foreground signatures. this narrowly
+supersedes the current ban on codex home projection and other-process
+environment observation; it adds no codex hook.
 
 ### directory search
 

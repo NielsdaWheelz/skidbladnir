@@ -1,17 +1,23 @@
-# phone terminal continuity qualification
+# phone session-preservation uncertainty
 
-problem: the changed android surface has compiled but has not run on the
-physical phone. the source qualification did not include adb or the platform
-gate.
+problem: one unrelated source session lifetime in the hashed baseline was
+absent after the extended physical-phone test window. its cause is unknown.
 
-impact: forge directory search, current remote labels, attachment continuity,
-and source-only controls remain `NOT_RUN` on the device.
+impact: the named phone journey passed, but preservation of every unrelated
+session across that window cannot be claimed.
 
-evidence: android kotlin compilation and the repository engineering gate
-passed; an independent source review found no concrete defect. neither result
-is a device observation.
+evidence: the installed phone apk matched the published signed `v0.10.3`
+asset. the phone created a non-home terminal from `z` search, changed local and
+remote cwd, entered mosh to devbox, observed remote provider and configured
+home profile, used `/exit` to retain the remote shell, replaced the provider,
+detached/reopened, and displayed source and destination labels. the remote
+header opened a source-scoped terminal form; source-only close removed the
+exact test session. the three named phone test sessions present in the final
+window were closed through their exact phone dialogs. a baseline of 12
+unrelated hashed session ids had 11 survivors afterward. no direct tmux
+command targeted the production
+socket. the missing lifetime was not identified, so causation is unproven.
 
-resolved when: with explicit current-turn approval, install a matching apk on
-the physical phone and prove the mobile journeys in
-`docs/terminal-continuity.md` against the paired gateways. remove this record
+resolved when: attribute the missing lifetime or repeat preservation proof on
+a quiescent baseline with all unrelated lifetimes retained. remove this record
 then.
