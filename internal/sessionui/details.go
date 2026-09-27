@@ -1,10 +1,13 @@
 package sessionui
 
 import (
-	"fmt"
+	"strconv"
+
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 )
 
+// current is where the session's work runs: this host, a resolved remote host,
+// or an unresolved remote connection.
 func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 	if !row.available && row.session.Connection != nil {
 		return fleetclient.ExecutionContext{Kind: "remoteUnknown"}
@@ -17,53 +20,57 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 	return row.session.Current(fleetclient.Peer{Label: row.label, Machine: row.machine})
 }
 
-func (m *model) details(row *listedRow) string {
+func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
-	cwd := current.CWD
-	if cwd == "" {
-		cwd = "directory unavailable"
+	facts := [][2]string{{"session", value.Name}, {"terminal on", row.label}, {"machine id", row.machine}}
+	switch current.Kind {
+	case "remote":
+		facts = append(facts, [2]string{"running on", current.Label})
+	case "remoteUnknown":
+		facts = append(facts, [2]string{"running on", "remote context unknown"})
 	}
-	details := fmt.Sprintf("session: %s\nterminal on: %s\nmachine id: %s\n", value.Name, row.label, row.machine)
-	if current.Kind == "remote" {
-		details += "running on: " + current.Label + "\n"
+	if current.Kind != "remoteUnknown" {
+		cwd := current.CWD
+		if cwd == "" {
+			cwd = "directory unavailable"
+		}
+		facts = append(facts, [2]string{"directory", cwd})
 	}
-	if current.Kind == "remoteUnknown" {
-		details += "remote context unknown\n"
-	} else {
-		details += "directory: " + cwd + "\n"
+	facts = append(facts, [2]string{"command", value.ActiveCommand},
+		[2]string{"attached clients", strconv.Itoa(value.AttachedClients)},
+		[2]string{"membership", fleetclient.GroupHeading(value.Group)})
+	if current.Agent == nil && current.Kind != "remoteUnknown" {
+		facts = append(facts, [2]string{"agent", "not detected"})
 	}
-	details += fmt.Sprintf("command: %s\nattached clients: %d\n", value.ActiveCommand, value.AttachedClients)
-	details += fleetclient.GroupHeading(value.Group) + "\n"
-	if current.Kind != "remoteUnknown" && current.Agent == nil {
-		details += "agent: not detected\n"
-	} else if current.Agent != nil {
-		a := current.Agent
+	if a := current.Agent; a != nil {
 		profile := a.Label
 		if profile == "" {
 			profile = "profile unknown"
 		}
-		details += fmt.Sprintf("provider: %s\nprofile: %s\nstate: %s\n", a.Provider, profile, a.State)
+		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile}, [2]string{"state", a.State})
 		if current.Kind == "local" && value.Agent != nil {
-			details += fmt.Sprintf("read: %s; send: %s; interrupt: %s\n", value.Agent.Methods.Read, value.Agent.Methods.Send, value.Agent.Methods.Interrupt)
-			if value.Agent.ProviderSession != nil {
-				details += fmt.Sprintf("provider session: %s %s\n", value.Agent.ProviderSession.ID, value.Agent.ProviderSession.Name)
+			local := value.Agent
+			facts[len(facts)-1][1] = local.Status.State + " (" + local.Status.Source + ")"
+			facts = append(facts, [2]string{"reason", local.Status.Reason},
+				[2]string{"methods", "read " + local.Methods.Read + " · send " + local.Methods.Send + " · interrupt " + local.Methods.Interrupt})
+			if local.ProviderSession != nil {
+				facts = append(facts, [2]string{"provider session", local.ProviderSession.ID + " " + local.ProviderSession.Name})
 			}
 		}
 	}
 	if value.LaunchProfile != "" {
-		details += "started with: " + value.LaunchProfile + "\n"
+		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
 	for _, peer := range m.peers {
 		if peer.Machine == row.machine {
-			details += "observed: " + peer.ObservedAt + "\n"
+			facts = append(facts, [2]string{"observed", peer.ObservedAt})
 			break
 		}
 	}
-	details += "reference: " + value.Ref
-
+	facts = append(facts, [2]string{"reference", value.Ref})
 	if !row.available {
-		details += "\navailability: unavailable"
+		facts = append(facts, [2]string{"availability", "unavailable"})
 	}
-	return details
+	return facts
 }

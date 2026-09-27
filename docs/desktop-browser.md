@@ -1,28 +1,33 @@
-# organized desktop browser — pr 3
+# desktop browser
 
-[terminal continuity](terminal-continuity.md) supersedes `n` creation, adds the
-`N` advanced form and current remote execution context, and keeps the browser's
-source-owned attachment and controls.
-
-implemented; [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md)
-remains skipped. [the roadmap](roadmap.md) indexes delivery. [architecture](architecture.md)
-owns scope; [roadmap](roadmap.md) owns delivery/evidence. this spec replaces the
-desktop table/picker layout and affected navigation rules in [groups](groups.md)
-and [agent-control ux](agent-control-ux.md). phone behavior is unchanged.
-[pr 4](groups-and-shells.md) separately investigates terminal embedding.
+implemented. 2026-09-27: one table with an agents view and group views replaces
+pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
+[darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
+skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
+delivery/evidence; [the design language](design-language.md#19-terminal-browser)
+owns visual values. this spec replaces the desktop table/picker layout and affected
+navigation rules in [groups](groups.md) and [agent-control ux](agent-control-ux.md).
+phone behavior is unchanged. [terminal continuity](terminal-continuity.md) owns
+creation (`n`, `N`, directory search) and the current execution context rows
+display. [pr 4](groups-and-shells.md) separately investigates terminal embedding.
 
 ## 1. outcome and limits
 
-one keyboard-only browser: groups above agents in a left sidebar, session tabs
-above a main area containing summary, forms, details, or explicitly requested
-output. entering a session still replaces the whole screen. detach resumes the
-same browser state and refreshes.
+one keyboard-only browser: one table, one cursor, one scope. a header states the
+scope, the table lists every session in it, and one rule names the session the
+keys act on. forms, confirmations, details and explicitly requested output take
+the table's place. entering a session still replaces the whole screen. detach
+resumes the same browser state and refreshes.
+
+the agents view answers the most frequent question, which agents may be waiting
+on the operator, across every group. group views answer where work lives. both
+are the same table over the same observations.
 
 design for a half-screen terminal: 3–4 groups, 6–7 agents, about 3 sessions per
 group; fully usable at 80 columns × 24 rows. no mouse interaction, embedding,
 new dependency, host/android change, search, saved empty groups, manual ordering,
-collapsing, resizable panes, counters, new status semantics, or navigation history.
-one current selection and current scroll positions; no disk state.
+collapsing, panes, attention counters, unread state, new status semantics, or
+navigation history. one current selection and scroll position; no disk state.
 
 ## 2. composition and data contract
 
@@ -34,153 +39,182 @@ sessionui (one bubble tea model)
 
 no new public api, route, dto, config, or persisted schema. reuse `Peer`, `Session`,
 `Reference.SessionEqual`, `group.Filter`, `fleetclient.Groups` and `ObservedGroups`.
-retain fleetclient's cli ordering; only the tui agent view adds status ordering.
-tmux still owns processes; groups are labels, tabs present sessions, agents are
-current observations. names and row positions are never control identities.
+retain fleetclient's cli ordering; only the agents view adds status ordering.
+tmux still owns processes; groups are labels, rows present sessions, agent status
+is a sampled property of a session. names and row positions are never control
+identities.
 
-the model owns scoped peer observations, machine/group filters, selected session
-lifetime (or none), focused region (`groups | agents | tabs`), current viewport
-positions, and existing modal/pending-operation state. region rows derive from
-those observations. retain only the current agent order while its region is focused.
-no independent highlighted-session/preview-session/open-tab state.
+the model owns scoped peer observations, the machine filter, the view (agents, or
+a group filter), the selected session lifetime (or none), the table's scroll
+position, and existing modal/pending-operation state. rows derive from those
+observations. no independent highlighted-session, preview-session or open-tab state.
 
 keep five-second refresh, one inventory in flight, scoped-result admission,
 post-write read fences, stale-row retention, and existing operation timeouts.
-machine changes require a fresh scoped read before remote actions; group changes
+machine changes require a fresh scoped read before remote actions; view changes
 are local. refresh cannot rewrite a draft, captured action reference, or read snapshot.
 
 ## 3. selection and navigation
 
-initial state: all machines, all groups, tabs focused; select the first tab after
-inventory, or none. filters intersect; the agent list ignores only the group filter.
+initial state: all machines, agents view; select the first row after inventory,
+or none. the machine filter applies to every view.
 
-| region | contents/order | arrows | enter |
-| --- | --- | --- | --- |
-| groups | all groups, unassigned, sorted named observations; preserve the selected empty named label | select/filter immediately; keep current session if it matches, otherwise first tab | focus tabs |
-| agents | one row per observed agent in machine scope, including retained unavailable rows | select that session, set its exact named/unassigned group, update tabs/summary | attach selected agent's session |
-| tabs | all matching sessions, including shells; existing `Groups` order | select session and update summary | attach selected session |
+| view | rows and order |
+| --- | --- |
+| agents | one row per agent in its current execution context across all groups, including resolved remote agents (always unknown) and retained unavailable rows: blocked, failed, done, idle, unknown, working, stopped; unavailable hosts last; ties keep configured peer then host-published name/id order |
+| all groups | every session, including terminals, in existing `Groups` order, each group under a heading |
+| unassigned, `group: <label>` | that group's sessions in `Groups` order; named views are the sorted observations, preserving a selected empty label |
 
-named labels use `group: <label>` to distinguish names from special selectors.
-arrows clamp at ends; up/down (also j/k) for lists, left/right (also h/l) for tabs.
-movement never attaches or fetches output. changing machine uses the same
-keep-if-matching/otherwise-first selection rule as changing group.
+left/right (also h/l) step through agents, all groups, unassigned, then named
+groups, clamping at the ends. a new view keeps the current session if it contains
+it, otherwise selects its first row. up/down (also j/k) move the cursor, clamping.
+`a` opens the agents view on its first row from anywhere, so after handling one
+agent the next is one key away. movement never attaches or fetches output.
+changing machine uses the same keep-if-matching/otherwise-first rule.
 
-`g/a/t` or tab/shift-tab move focus without changing selection. focus aligns with
-the active group/session. if the selected session has no agent row, agents focus
-has no active row; the first down/up selects the first/last agent. show that hint.
-session actions require an active agent/tab row and target exactly the session
-identified by the main summary. groups focus admits no session actions.
+the agents view puts what may be waiting on the operator first. codex reports a
+finished turn as idle, and unknown can be an unrecognized dialog; only working
+affirmatively needs nothing. the order updates on every refresh. the cursor follows
+its session's lifetime, never a row position, so a reorder moves rows but never
+retargets a key. done keeps its native-completion meaning, never unread state;
+unknown is not offline. the contract publishes no transition age, so nothing is
+ordered by time.
 
-status order: blocked, failed, done, working, idle, stopped, unknown; unavailable
-hosts last. ties retain configured peer then host-published name/id order. while
-agents has focus, retain survivors' relative order, update facts, remove confirmed
-departures, and append arrivals; sort again on leaving. unknown is not offline;
-done retains its existing native-completion meaning, never unread state.
+named labels read `group: <label>` wherever a label could be mistaken for a special
+selector: the header, group headings, and details. the agents view's group column
+shows bare labels and stays blank for unassigned sessions; a label cannot be empty.
 
-refresh retains selected lifetime while it matches the filters; otherwise use
-its previous tab index clamped to the surviving tabs, or none. never auto-attach.
-an agent disappearing while its session remains does not change session selection;
-agents may then have no active row. external membership changes never change the
-group filter. unavailable rows retain last-observed facts, labelled unavailable;
-remote actions stay disabled. show scoped unavailable-host notices independently
-of group filtering, even with no retained rows. reuse existing honest empty copy.
+session actions require a selected row and target exactly the session named by
+the rule. refresh retains the selected lifetime while it stays in the view;
+otherwise it uses the previous index clamped to the surviving rows, or none.
+never auto-attach. external membership changes never change the view.
+unavailable rows retain last-observed facts, labelled unavailable; remote
+actions stay disabled. once a scoped host fails a read, its notice names the
+failure and shows in every view, even with no retained rows; an unobserved host
+is not announced as unavailable. inventory failures never replace an action's
+outcome notice, so an unknown outcome stays visible. reuse existing honest empty
+copy.
 
 ## 4. actions and return
 
 | context | keys/behavior |
 | --- | --- |
-| ordinary navigation | `n` create; `m` existing machine picker; `ctrl-r` refresh; `q/escape` quit |
-| selected agent/tab | spacebar full metadata; `r` bounded read; `i` interrupt; `s` stop; `x` kill; `e` change group; `T` (shift+t) terminal-here; existing remote capability/availability guards; local metadata remains readable when unavailable |
-| modal page | owns input while chrome remains visible/inactive; forms keep field/paste/validation keys; details/read scroll; existing confirm/cancel keys; no global navigation mnemonics |
+| ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q/escape` quit |
+| selected row | spacebar full metadata; `r` bounded read, `i` interrupt and `s` stop agent and close terminal for local agents only; `x` close terminal; `e` change group; `T` (shift+t) terminal-here, refused for remote connections; existing remote capability/availability guards; local metadata remains readable when unavailable |
+| modal page | owns input while the header and rule stay visible; forms keep field/paste/validation keys; details/read scroll; existing confirm/cancel keys; no global navigation mnemonics |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; no new prefix commands |
 
 stop/kill name and pin their target/effect before confirmation. inventory cannot
 substitute a replacement process. keep the existing single pending-operation lane,
 duplicate suppression, completion guards, and unknown-outcome/no-replay behavior.
-modal close returns to its initiating region; refresh reconciliation still applies.
+modal close returns to the table; refresh reconciliation still applies.
 
-`n` retains the five-field machine/launch/name/cwd/group form, including terminal
-with zero profiles and existing defaults. confirmed creation reveals/selects the
-returned session and focuses tabs; it does not attach. `T` uses the same
-completion path, then attaches that exact new shell. detach or attachment failure
-leaves the shell selected; retry attachment, never creation. failure/unknown
-creation changes no filters/selection. reuse [shell completion](shells.md#4-client-ownership-and-completion)
-and [membership/creation rules](groups.md#7-collection-behavior-and-creation).
+`n` creates a terminal at home on the target machine (the machine filter,
+otherwise the configured default; never the first reachable peer) in the selected
+named group. `N` opens the five-field machine/launch/name/cwd/group form; `z
+<words>` in its directory field searches visited directories on that machine, and
+a chosen path only edits the draft. `n`, `N` and `T` share one completion path:
+it reveals and selects the returned session in its group view, leaving the agents
+view, then attaches it. the pending request and page adopt the completion: `n`
+and `T` from the table, `N` from its form. detach or attachment failure leaves
+the new terminal selected; retry attachment, never creation.
+failure/unknown creation changes no filters/selection. reuse
+[shell completion](shells.md#4-client-ownership-and-completion) and
+[membership/creation rules](groups.md#7-collection-behavior-and-creation).
 
-ordinary detach resumes summary with current filters/session/focus/scroll, then
-refreshes. it does not reset to all/all, restore a source, or recall earlier groups.
-changing filters retains no old viewport history; keep the new selection visible.
+ordinary detach resumes the table with the current view, session and scroll, then
+refreshes. it does not reset the view, restore a source, or recall earlier groups.
+changing views retains no old scroll history; keep the new selection visible.
 restarting skid begins fresh. unchanged attachment still owns tty restoration,
 input-reader cancellation/joining, geometry, and session preservation.
 
 ## 5. presentation
 
-use a 26-column sidebar and a single divider. groups use only needed rows, capped
-at half the sidebar; agents use the remainder, one row per agent. reserve notices
-and contextual key hints before laying out content. four named groups plus the
-two special choices and seven agents fit at 80×24 without sidebar scrolling.
-overflow lists scroll independently; tabs remain one horizontally scrolling row,
-with selected tab visible and overflow indicated. no wrapping tab bar.
+the header is the reversed `skid` wordmark, then the scope (`agents`, `all groups`,
+`unassigned` or `group: <label>`) and the machine scope (`all machines` or
+`machine: <label>`), then one blank row.
 
-summary: session name, machine, group, cwd, provider/profile or shell,
-state/source/reason, attached clients, availability, relevant actions. narrow rows
-and summary values truncate by display cells; spacebar opens complete scrollable
-metadata. no summary scrolling mode or fourth navigation region.
-forms, suggestions, metadata and notices wrap/scroll within the main area; the
-focused field and confirm/cancel controls stay visible. bounded output remains
-an explicit snapshot with its captured machine/session header and
-source/scope/truncation; refresh cannot relabel it as the newly selected tab's output.
-long captured names/machines truncate independently; coverage, confirmation effects,
-and a scrollable output body keep their space. page scrolling uses the visible body height.
+the table's two-cell gutter carries the cursor mark. columns follow: name,
+status, agent (the configured profile label, else `<provider> · profile
+unknown`), group (agents view only), machine (the terminal's owner, only when all
+machines are in scope), and the current directory in the remaining width,
+truncated from the left and omitted below 8 cells; remote work reads `host:path`
+and an unresolved connection `remote context unknown`. columns shrink
+widest-first to fit. in all groups a faint heading precedes each group. status is
+the literal state of the current context (a resolved remote agent is always
+`unknown`), `terminal` without a recognized agent, `unavailable` once its host has
+failed a read, or `checking` while a scoped read is still outstanding.
 
-distinguish focus, selected state and unavailable state without relying on color.
-reuse existing ansi width/sanitization and restrained design-language emphasis;
-no fonts, icons, ornament or motion required. below 80×24, show a resize notice,
-retain state, and accept only resize and existing cancel/quit input. pending
-operations still complete normally. do not change fullscreen terminal geometry/admission.
+below the table, top to bottom: scoped notices; the rule, with the target set into
+it and, only when the table scrolls, the cursor position at its end; the selected
+session's state, source and reason, attached clients and full directory; the keys.
+while an action is in flight the rule names that action's captured target instead.
+observed text is sanitized for display: controls, format characters such as bidi
+overrides, and line separators become spaces.
 
-## 6. ownership, reuse and hard cut
+hints list actions, not navigation: the selected session's verbs, then `a`,
+left/right, `m`, `n` (naming its target machine), `N`, `q`. each set of hints
+stays on one line when it fits and otherwise wraps by whole hints; the key is
+bold, the label plain. arrows, `ctrl-r` and the vim aliases are documented in
+`--help`.
 
-| owner | exclusive implementation files/responsibility |
-| --- | --- |
-| browser builder | `internal/sessionui/**`: state, projections, layout, existing actions, colocated behavioral reds/greens; keep this cohesive, not parallel model/view builders |
-| help builder | `internal/agentcli/run.go`, `internal/agentcli/run_test.go`: browser usage and matching help assertions only |
-| journey builder | `tests/integration/shell_clients_test.go`: adapt existing real browser/pty/gateway/isolated-tmux journey and its file-local helpers |
-| root integrator | this spec and affected docs; shared integration fixtures only if required; final composition/review; no new gate/dependency/catalog changes |
-| verifier | read-only review and authorized checks; writes no production/test files |
+pages keep the header and rule. the page title is bold, and labels right-align on
+one axis. the rule names the captured target (pending action, details or output
+snapshot), never the live selection. focused choice fields show `‹ value ›`,
+focused text fields a caret. confirmation names its effect: `enter close terminal`
+or `enter stop agent and close terminal`.
+bounded output remains an explicit snapshot; its title and source/scope/truncation
+stay pinned while the body scrolls, and refresh cannot relabel it. page scrolling
+uses the visible body height; forms keep the focused field visible.
 
-builders own their reds and observe failure before implementation. help/journey
-work can proceed alongside the browser against this contract; final green needs
-the composed tree. shared edits go through root. use small cohesive files inside
-sessionui when useful, with no new public component api or presentation framework.
+cursor, unavailability and failure never rely on color: the cursor is a glyph
+plus bold, and every status and unavailable row carries a word. nothing that must be
+read is faint. below 80×24, show a resize notice, retain state, and accept only
+resize and existing cancel/quit input. pending operations still complete normally.
+do not change fullscreen terminal geometry/admission.
 
-reuse the machine picker, form/editor validation, scoped refresh, exact-reference
-dispatch, common create/shell completion, summary/detail facts, and `tea.Exec`.
-replace the grouped table and group-picker page outright; delete their exclusive
-branches, `collectionItem`/heading keys, heading-aware viewport, obsolete hints,
-and superseded assertions. retain substantive lifetime/freshness/uncertainty tests.
-one browser, one keymap: no old-mode toggle, alias for old `t`, compatibility path,
-compact alternative renderer, or pr 4 scaffolding. unrelated cleanup is excluded.
+## 6. implementation boundary
+
+`internal/sessionui` owns state, projection, layout and existing actions as one
+cohesive bubble tea model; `internal/agentcli` owns the browser's help text.
+styles are `x/ansi` values over the sixteen basic colors. bubble tea downsamples
+per detected profile and honours NO_COLOR. layout works on plain sanitized text
+and styles only finished fragments, each closing its own style. styled text never
+passes back through sanitization, which would turn escapes into spaces. no public
+component api, presentation framework or new dependency: lipgloss 2.0.6 would pull
+an ultraviolet revision that bubble tea 2.0.9 was not released with.
 
 ## 7. acceptance and delivery
 
 | criterion | proof |
 | --- | --- |
-| a1: local arrows/focus/empty lists/modal keys and displayed action target agree; no arrow attaches | focused model interaction cases; verify resulting views and captured exact requests |
-| a2: filters, rename/process change, regrouping, removal, frozen ordering, arrivals and unavailable peers preserve the rules above | small deterministic observation/transition cases; pending target/draft never rebound |
-| a3: 80×24 ordinary layout fits the stated working set; long labels, overflow, empty/offline states, forms and resize notice remain usable | row/column bounds and meaningful controls asserted; manually inspect existing sessionui fixture renders; no new fixture/golden framework |
-| a4: create → select, shell-here → exact fullscreen attach → detach on new shell; ordinary enter → detach preserves current context and first subsequent navigation key; source survives; lost reply never repeats creation | extend `TestShellDesktopRealTTYCreateAttachDetachAndLostReply` with both attachment paths through the real production boundary on linux and darwin |
-| a5: old paths/keys gone; help and browser agree; unchanged contracts remain green | diff review and `./scripts/test verify` |
+| a1: arrows, `a`, modal keys and the displayed target agree; no arrow attaches | model interaction cases; verify resulting views and captured exact requests |
+| a2: agents order, identity under reorder, view stepping, unavailable peers, and captured targets under refresh preserve the rules above | small deterministic observation/transition cases |
+| a3: 80×24 fits the stated working set; long labels, overflow, empty/offline states, forms and resize notice stay usable in color and under NO_COLOR | rendered fixture inspection |
+| a4: create → select, shell-here → exact fullscreen attach → detach on new shell; ordinary enter → detach preserves context and the first subsequent navigation key; source survives; lost reply never repeats creation | the real browser → pty → gateway → isolated tmux journey on linux and darwin |
+| a5: old keys gone; help and browser agree | diff review and `scripts/check verify` |
 
-adversarial review at contract, owner red/green, and composed-diff stages; fix
-contradictions at their owner. existing simulated-gateway pty tests are local
-regressions, not a4 evidence. no new phone or provider-live matrix for this desktop
-change. tmux/integration/live requires explicit current-turn approval and exact
-test-owned sessions on isolated sockets; missing boundaries are `NOT_RUN`, never
-pass. evidence is content-free. unresolved defects go in `docs/issues/`.
+2026-09-27: a1–a3 were shown with temporary out-of-tree fixture renders and
+model checks, removed afterwards; they provide no retained regression protection.
+a5 passed `scripts/check verify`. attachment and return code is unchanged, and a4
+remains with [the runtime acceptance issue](issues/desktop-browser-runtime-acceptance.md).
 
 accepted costs: chrome/status disappear while attached; navigation requires
-detach; no past-group/source-return convenience; temporary unsorted agent rows
-while focused; narrow labels truncate; smaller browser windows require resizing;
-terminal-here changes key. no endpoint or deployment capability changes. publish
-only through the existing release process; prior evidence does not prove this pr.
+detach; a group view hides agents elsewhere, though the agents view is one key
+away; group views do not sort by urgency; appearance follows the operator's
+terminal theme, and a bright-yellow cursor is weak on light themes; faint rendering
+varies and disappears under mosh; refresh, including `ctrl-r`, shows no progress
+indicator; hints are written per page and can drift from dispatch; `▌` and `‹ ›`
+have east-asian-ambiguous width.
+
+## 8. why one table
+
+pr 3 put the few short things, 3–4 group labels, on the long vertical axis and the
+many long things, sessions, on one horizontal strip. at 80 columns the default view
+showed 3 of 11 sessions. its agent list was a sorted projection of sessions rather
+than a concept, so one session had two cursors. arrows meant different things
+per region, selecting an agent silently rewrote the group filter, and the sort
+needed a freeze-while-focused rule. the agents view keeps that list's purpose
+as a view of the same table. its status color gives a single-feature target that
+the eye finds in parallel, so group views need no urgency sort and keep their rows
+still.

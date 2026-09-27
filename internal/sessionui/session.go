@@ -40,38 +40,39 @@ type searchMsg struct {
 }
 type attachedMsg struct{ err error }
 type model struct {
-	ctx                                       context.Context
-	client                                    *fleetclient.Client
-	input, output                             *os.File
-	peers                                     []fleetclient.Peer
-	rows                                      []listedRow
-	cursor                                    int
-	refreshing, busy                          bool
-	refreshAfterAction                        bool
-	width, height                             int
-	notice, page                              string
-	text                                      []string
-	offset                                    int
-	pending                                   fleetclient.Request
-	pendingLabel, pendingName                 string
-	form                                      [5]string
-	field                                     int
-	machine                                   string
-	groupFilter                               group.Filter
-	scopeReady                                bool
-	picker                                    int
-	groupDraft                                string
-	groupChecking, groupAcknowledged          bool
-	groupFailure                              *fleetclient.Failure
-	focus                                     region
-	agents                                    []listedRow
-	groupsTop, agentsTop, tabsTop             int
-	outputName, outputMachine, outputCoverage string
-	searchRevision                            int
-	searching                                 bool
-	searchDirectories                         []string
-	searchCursor                              int
-	searchOmitted                             bool
+	ctx                                   context.Context
+	client                                *fleetclient.Client
+	input, output                         *os.File
+	peers                                 []fleetclient.Peer
+	rows                                  []listedRow
+	cursor                                int
+	refreshing, busy                      bool
+	refreshAfterAction                    bool
+	width, height                         int
+	notice, page                          string
+	noticeFailure                         bool
+	text                                  []string
+	facts                                 [][2]string
+	offset                                int
+	pending                               fleetclient.Request
+	pendingLabel, pendingName             string
+	form                                  [5]string
+	field                                 int
+	machine                               string
+	groupFilter                           group.Filter
+	scopeReady                            bool
+	picker                                int
+	groupDraft                            string
+	groupChecking, groupAcknowledged      bool
+	groupFailure                          *fleetclient.Failure
+	agentsView                            bool
+	top                                   int
+	pageName, pageMachine, outputCoverage string
+	searchRevision                        int
+	searching                             bool
+	searchDirectories                     []string
+	searchCursor                          int
+	searchOmitted                         bool
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -83,7 +84,7 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 	for _, machine := range client.Machines() {
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 	}
-	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true}
+	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true, agentsView: true}
 }
 func (m *model) Init() tea.Cmd { return tea.Batch(m.fetch(), tick()) }
 func tick() tea.Cmd            { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
@@ -105,30 +106,24 @@ func (m *model) refresh() tea.Cmd {
 	m.refreshing = true
 	return m.fetch()
 }
+
+// creationPeer is the machine filter, otherwise the configured default; never the first reachable peer.
+func (m *model) creationPeer() *fleetclient.Peer {
+	handle := m.client.DefaultMachine().Handle
+	for index := range m.peers {
+		if m.machine != "" && m.peers[index].Label == m.machine || m.machine == "" && m.peers[index].Machine == handle {
+			return &m.peers[index]
+		}
+	}
+	return nil
+}
+
 func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	m.pending = request
 	m.busy = true
 	return func() tea.Msg {
 		return actionMsg{operation: request.Operation, result: m.client.Execute(m.ctx, request)}
 	}
-}
-
-func (m *model) creationPeer() *fleetclient.Peer {
-	handle := m.client.DefaultMachine().Handle
-	if m.machine != "" {
-		for index := range m.peers {
-			if m.peers[index].Label == m.machine {
-				return &m.peers[index]
-			}
-		}
-		return nil
-	}
-	for index := range m.peers {
-		if m.peers[index].Machine == handle {
-			return &m.peers[index]
-		}
-	}
-	return nil
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -153,7 +148,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.peers[index].Error = message.failure
 				}
 			}
-			m.notice = "inventory unavailable: " + message.failure.Code
 		} else {
 			for _, received := range message.value.Peers {
 				found := false
@@ -180,14 +174,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if target == nil && m.pendingPeerAvailable() {
 				m.page = ""
 				m.groupChecking = false
-				m.notice = "session unavailable; editor closed"
+				m.inform("session unavailable; editor closed")
 			} else if target != nil && target.available && m.groupChecking {
 				m.groupChecking = false
 				if m.groupAcknowledged {
 					m.page = ""
-					m.notice = "group assigned"
+					m.inform("group assigned")
 					if m.pending.Group.IsUnassigned() {
-						m.notice = "group cleared"
+						m.inform("group cleared")
 					}
 				}
 			}
@@ -198,8 +192,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Keyboard navigation is blocked while busy, so this pending request
-			// and page identify the only interaction allowed to adopt creation.
-			if !m.busy || m.pending.Operation != message.operation || message.operation == "start" && m.page != "create" || message.operation == "shell" && m.page != "" {
+			// and page identify the only interaction allowed to adopt creation:
+			// n and T from the table, N from its form.
+			if !m.busy || m.pending.Operation != message.operation || m.page != "" && !(message.operation == "start" && m.page == "create") {
 				return m, m.refresh()
 			}
 		}
@@ -208,7 +203,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshAfterAction = true
 		}
 		if !message.result.OK {
-			m.notice = message.result.Error.Code + " (" + message.result.Error.Dispatch + "); not repeated"
+			m.fail(message.result.Error.Code + " (" + message.result.Error.Dispatch + "); not repeated")
 			failure := message.result.Error
 			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
 				m.groupChecking = true
@@ -225,17 +220,18 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "read":
 			var read fleetclient.ReadResult
 			if json.Unmarshal(message.result.Value.(json.RawMessage), &read) != nil {
-				m.notice = "invalid read response"
+				m.fail("invalid read response")
 				break
 			}
 			m.page = "output"
 			m.offset = 0
-			m.outputName, m.outputMachine = m.pendingName, m.pendingLabel
+			m.pageName, m.pageMachine = m.pendingName, m.pendingLabel
 			m.outputCoverage = fmt.Sprintf("%s · %s · truncated: %t", read.Source, read.Scope, read.Truncated)
 			m.text = strings.Split(read.Text, "\n")
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
-			m.page = ""
+			// Confirmed creation reveals the new session in its group.
+			m.page, m.agentsView = "", false
 			if m.machine != "" && m.machine != value.Label {
 				m.machine = value.Label
 				m.scopeReady = false
@@ -276,35 +272,34 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			m.setFocus(tabs)
-			m.notice = "opening terminal on " + value.Label + "…"
+			m.inform("opening terminal on " + value.Label + "…")
 			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
 			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
 		case "group":
 			m.groupChecking = true
 			m.groupAcknowledged = true
 			m.invalidatePendingPeer()
-			m.notice = "group assigned; checking inventory"
+			m.inform("group assigned; checking inventory")
 			if m.pending.Group.IsUnassigned() {
-				m.notice = "group cleared; checking inventory"
+				m.inform("group cleared; checking inventory")
 			}
 
 		case "stop":
 			var value fleetclient.StopResult
 			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
-				m.notice = "invalid stop response"
+				m.fail("invalid stop response")
 				break
 			}
-			m.notice = "agent halt: " + value.Agent + "; terminal: " + value.Terminal
+			m.inform("agent halt: " + value.Agent + "; terminal: " + value.Terminal)
 		case "kill":
-			m.notice = "terminal closed; shared work may continue"
+			m.inform("terminal closed; shared work may continue")
 		default:
 			var value fleetclient.WriteResult
 			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
-				m.notice = "invalid control response"
+				m.fail("invalid control response")
 				break
 			}
-			m.notice = value.Method + ": " + value.Outcome
+			m.inform(value.Method + ": " + value.Outcome)
 		}
 		return m, m.refresh()
 	case searchMsg:
@@ -313,24 +308,24 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.searching = false
 		if !message.result.OK {
-			m.notice = "directory search unavailable on " + message.machine
+			m.fail("directory search unavailable on " + message.machine)
 			if message.result.Error != nil {
 				switch message.result.Error.Code {
 				case "DirectorySearchTooLarge":
-					m.notice = "too many results; narrow your search"
+					m.inform("too many results; narrow your search")
 				case "invalid_input":
-					m.notice = "enter 1–8 search words"
+					m.inform("enter 1–8 search words")
 				}
 			}
 			return m, nil
 		}
 		value := message.result.Value.(fleetclient.DirectorySearchResult)
 		m.searchDirectories, m.searchOmitted, m.searchCursor = value.Directories, value.Omitted, 0
-		m.notice = ""
+		m.inform("")
 		if len(value.Directories) == 0 {
-			m.notice = "no matching directories"
+			m.inform("no matching directories")
 		} else if value.Omitted {
-			m.notice = "some directories are not shown"
+			m.inform("some directories are not shown")
 		}
 		return m, nil
 	case attachedMsg:
@@ -338,9 +333,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshAfterAction = true
 		}
 		if message.err != nil {
-			m.notice = message.err.Error()
+			m.fail(message.err.Error())
 		} else {
-			m.notice = "detached; work continues"
+			m.inform("detached; work continues")
 		}
 		return m, m.refresh()
 	case tea.PasteMsg:
@@ -359,7 +354,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := message.String()
 		if m.busy {
-			m.notice = "operation in flight; delivery will be reported"
+			m.inform("operation in flight; delivery will be reported")
 			return m, nil
 		}
 		if m.width < 80 || m.height < 24 {
@@ -388,12 +383,12 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "y", "enter":
 				current := m.pendingRow()
 				if current == nil || !current.available || !m.scopeReady {
-					m.notice = "session unavailable; refresh before confirming"
+					m.inform("session unavailable; refresh before confirming")
 					return m, nil
 				}
 				request := m.pending
 				m.page = ""
-				m.notice = request.Operation + " in progress"
+				m.inform(request.Operation + " in progress")
 				return m, m.execute(request)
 			case "n", "q", "esc":
 				m.page = ""
@@ -415,7 +410,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if !m.searching && len(m.searchDirectories) > 0 {
 					m.form[3] = m.searchDirectories[m.searchCursor]
-					m.field, m.page, m.notice = 3, "create", ""
+					m.field, m.page = 3, "create"
+					m.inform("")
 				}
 			}
 			return m, nil
@@ -427,34 +423,31 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "up", "k":
 				m.offset = max(0, m.offset-1)
 			case "down", "j":
-				m.offset = min(max(0, len(m.detailLines())-1), m.offset+1)
+				m.offset = min(max(0, len(m.detailLines())-m.pageCapacity()), m.offset+1)
 			case "pgup":
 				m.offset = max(0, m.offset-m.pageCapacity())
 			case "pgdown":
-				m.offset = min(max(0, len(m.detailLines())-1), m.offset+m.pageCapacity())
+				m.offset = min(max(0, len(m.detailLines())-m.pageCapacity()), m.offset+m.pageCapacity())
 			}
 			return m, nil
 		}
 		switch key {
 		case "q", "esc":
 			return m, tea.Quit
-		case "g":
-			m.setFocus(groups)
-			return m, nil
 		case "a":
-			m.setFocus(agents)
+			m.showAgents()
 			return m, nil
-		case "t":
-			m.setFocus(tabs)
+		case "up", "k":
+			m.move(-1)
 			return m, nil
-		case "tab":
-			m.setFocus((m.focus + 1) % 3)
+		case "down", "j":
+			m.move(1)
 			return m, nil
-		case "shift+tab":
-			m.setFocus((m.focus + 2) % 3)
+		case "left", "h":
+			m.step(-1)
 			return m, nil
-		case "up", "k", "down", "j", "left", "h", "right", "l":
-			m.move(key)
+		case "right", "l":
+			m.step(1)
 			return m, nil
 		case "m":
 			m.picker = 0
@@ -469,61 +462,58 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			peer := m.creationPeer()
 			if peer == nil || !peer.OK || !m.scopeReady {
-				m.notice = "target unavailable; refresh before creating"
+				m.inform("target unavailable; refresh before creating")
 				if peer != nil {
-					m.notice = peer.Label + " unavailable"
+					m.inform(peer.Label + " unavailable")
 				}
 				return m, nil
 			}
-			m.notice = "opening terminal on " + peer.Label + "…"
+			m.inform("opening terminal on " + peer.Label + "…")
 			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.groupFilter.Label()})
 		case "N":
 			peer := m.creationPeer()
 			if peer == nil {
-				m.notice = "target unavailable; refresh before creating"
+				m.inform("target unavailable; refresh before creating")
 				return m, nil
 			}
 			m.page, m.field = "create", 0
 			m.form = [5]string{peer.Label, "terminal", "", "~", m.groupFilter.Label().String()}
-			m.notice = ""
-			return m, nil
-		}
-		if m.focus == groups {
-			if key == "enter" {
-				m.setFocus(tabs)
-			}
+			m.inform("")
 			return m, nil
 		}
 		row := m.selectedRow()
-		if row == nil || m.focus == agents && m.agentIndex() < 0 {
+		if row == nil {
 			return m, nil
 		}
 		if key == "space" || key == " " {
 			m.page, m.offset = "details", 0
-			m.text = strings.Split(m.details(row), "\n")
+			m.pageName, m.pageMachine = row.session.Name, row.label
+			m.facts = m.details(row)
 			return m, nil
 		}
 		if !row.available {
 			return m, nil
 		}
 		request := fleetclient.Request{Ref: row.session.Ref}
+		// The rule names this captured target until the action completes.
+		m.pendingName, m.pendingLabel = row.session.Name, row.label
 		switch key {
 		case "T":
 			if row.session.Connection != nil {
-				m.notice = "new terminal on " + row.label + ": use n or N"
+				m.inform("new terminal on " + row.label + ": use n or N")
 				return m, nil
 			}
 			request.Operation = "shell"
-			m.notice = "creating terminal here"
+			m.inform("creating terminal here")
 			return m, m.execute(request)
 		case "e":
 			request.Operation = "group"
 			m.pending = request
-			m.pendingLabel, m.pendingName = row.label, row.session.Name
 			m.groupDraft = row.session.Group.String()
 			m.groupChecking, m.groupAcknowledged = false, false
 			m.groupFailure = nil
-			m.page, m.notice = "group-edit", ""
+			m.page = "group-edit"
+			m.inform("")
 			return m, nil
 		case "enter":
 			request.Operation = "enter"
@@ -546,18 +536,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			request.Operation = "read"
-			m.pendingName, m.pendingLabel = row.session.Name, row.label
 			return m, m.execute(request)
 		}
 		if request.Operation == "stop" || request.Operation == "kill" {
 			m.pending = request
-			m.pendingName = row.session.Name
-			m.pendingLabel = row.label
 			m.page = "confirm"
 		}
 	}
 	return m, nil
 }
+
+// A notice's tone travels with its text: failures read as ember, all else plain.
+func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
+func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
 func filterFor(label group.Label) group.Filter {
 	if label.IsUnassigned() {
@@ -678,12 +669,12 @@ func (m *model) editGroup(key tea.KeyPressMsg) tea.Cmd {
 	case "enter", "ctrl+s":
 		label, err := group.ParseDraft(m.groupDraft)
 		if err != nil {
-			m.notice = group.ErrInvalid.Error()
+			m.inform(group.ErrInvalid.Error())
 			return nil
 		}
 		current := m.pendingRow()
 		if current == nil || !current.available {
-			m.notice = "session unavailable; refresh before saving"
+			m.inform("session unavailable; refresh before saving")
 			return nil
 		}
 		if current.session.Group == label {
@@ -742,28 +733,19 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	case "shift+tab":
 		m.field = (m.field + 4) % 5
 	case "enter":
-		if m.field == 3 {
-			if m.form[3] == "z" {
-				m.notice = "enter 1–8 search words"
+		if m.field == 3 && (m.form[3] == "z" || strings.HasPrefix(m.form[3], "z ")) {
+			terms := strings.Fields(strings.TrimPrefix(m.form[3], "z"))
+			if len(terms) == 0 || len(terms) > 8 {
+				m.inform("enter 1–8 search words")
 				return nil
 			}
-			if strings.HasPrefix(m.form[3], "z ") {
-				terms := strings.Fields(m.form[3][2:])
-				if len(terms) == 0 || len(terms) > 8 {
-					m.notice = "enter 1–8 search words"
-					return nil
-				}
-				m.searchRevision++
-				m.searching = true
-				m.searchDirectories = nil
-				m.searchCursor = 0
-				m.searchOmitted = false
-				m.notice = "searching…"
-				m.page = "search"
-				machine, revision := m.form[0], m.searchRevision
-				return func() tea.Msg {
-					return searchMsg{machine: machine, revision: revision, result: m.client.SearchDirectories(m.ctx, machine, terms)}
-				}
+			m.searchRevision++
+			m.searching, m.searchDirectories, m.searchCursor, m.searchOmitted = true, nil, 0, false
+			m.page = "search"
+			m.inform("searching…")
+			machine, revision := m.form[0], m.searchRevision
+			return func() tea.Msg {
+				return searchMsg{machine: machine, revision: revision, result: m.client.SearchDirectories(m.ctx, machine, terms)}
 			}
 		}
 		if m.field < 4 {
@@ -771,12 +753,12 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if !m.createAvailable() {
-			m.notice = "host unavailable; refresh before creating"
+			m.inform("host unavailable; refresh before creating")
 			return nil
 		}
 		label, err := group.ParseDraft(m.form[4])
 		if err != nil {
-			m.notice = group.ErrInvalid.Error()
+			m.inform(group.ErrInvalid.Error())
 			return nil
 		}
 		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Group: label}
@@ -784,7 +766,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
 		}
 		if !request.Valid() {
-			m.notice = "machine, launch, and directory are required"
+			m.inform("machine, launch, and directory are required")
 			return nil
 		}
 		return m.execute(request)
@@ -860,9 +842,12 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// singleLine replaces controls, invisible format characters such as bidi
+// overrides, and line/paragraph separators, so observed text cannot reorder or
+// break what the screen shows.
 func singleLine(text string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return ' '
 		}
 		return r

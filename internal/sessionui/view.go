@@ -2,7 +2,6 @@ package sessionui
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -12,422 +11,388 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-const sidebarWidth = 26
+// The browser speaks only the sixteen-colour protocol, so the operator's
+// terminal theme owns the actual colours; the design language maps these slots
+// to its accents. Layout works on plain sanitized text, then styles wrap the
+// finished fragments. Each fragment resets itself, so styles never nest.
+var (
+	plain    = ansi.Style{}
+	bold     = ansi.Style{}.Bold()
+	faint    = ansi.Style{}.Faint()
+	wordmark = ansi.Style{}.Reverse(true)
+	here     = ansi.Style{}.ForegroundColor(ansi.BrightYellow)
+	alive    = ansi.Style{}.ForegroundColor(ansi.BrightGreen)
+	alarm    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
+	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
+)
+
+type hint struct{ key, label string }
 
 func (m *model) View() tea.View {
-	if m.width < 80 || m.height < 24 {
-		view := tea.NewView(ansi.Truncate("resize browser to at least 80 × 24; escape cancels or quits", max(1, m.width), "…"))
-		view.AltScreen = true
-		return view
-	}
-	footer := m.footerLines()
-	notices := m.noticeLines()
-	height := m.mainHeight() + 1
-	width := m.width - sidebarWidth - 1
-	left := m.sidebarLines(height)
-	right := append([]string{m.tabLine(width)}, m.mainLines(width, height-1)...)
-	heading := "skid · " + m.machineHeading() + " · " + fleetclient.GroupFilterHeading(m.groupFilter)
-	if m.refreshing {
-		heading += " · refreshing…"
-	}
-	lines := []string{cell(heading, m.width)}
-	for i := 0; i < height; i++ {
-		l, r := "", ""
-		if i < len(left) {
-			l = left[i]
+	content := ansi.Truncate("resize to at least 80 × 24; escape cancels or quits", max(1, m.width), "…")
+	if m.width >= 80 && m.height >= 24 {
+		footer := m.footerLines()
+		lines := append([]string{m.header(), ""}, m.bodyLines(m.height-2-len(footer))...)
+		for len(lines) < m.height-len(footer) {
+			lines = append(lines, "")
 		}
-		if i < len(right) {
-			r = right[i]
+		lines = append(lines, footer...)
+		for index, line := range lines {
+			lines[index] = " " + line
 		}
-		lines = append(lines, cell(l, sidebarWidth)+"│"+cell(r, width))
+		content = strings.Join(lines, "\n")
 	}
-	lines = append(lines, notices...)
-	lines = append(lines, footer...)
-	view := tea.NewView(strings.Join(lines, "\n"))
+	view := tea.NewView(content)
 	view.AltScreen = true
 	return view
 }
 
-func (m *model) footerLines() []string {
-	var text string
-	switch m.page {
-	case "confirm":
-		text = "y/enter confirms · n/escape cancels"
-	case "machine-picker":
-		text = "up/down/j/k choose · enter selects · escape cancels"
-	case "group-edit":
-		text = "left/right fill suggestion · ctrl-u unassigned\nenter/ctrl-s saves · ctrl-r refresh · escape cancels"
-		if m.groupChecking {
-			text = "checking inventory · ctrl-r refresh · escape cancels"
-		}
-	case "create":
-		text = "left/right choose machine/launch/group · tab/enter next\nenter on group creates · ctrl-u unassigned · escape cancels"
-	case "search":
-		text = "up/down select directory · enter uses it · escape returns to options"
-	case "output", "details":
-		text = "up/down/page-up/page-down scroll · q/escape returns"
-	default:
-		target := m.client.DefaultMachine().Label
-		if m.machine != "" {
-			target = m.machine
-		}
-		text = "g groups · a agents · t tabs · tab/shift-tab focus · n terminal on " + target + " · N options · m machine\n"
-		switch m.focus {
-		case tabs:
-			text += "left/right/h/l select"
-		case groups:
-			text += "up/down/j/k select · enter tabs"
-		case agents:
-			text += "up/down/j/k select"
-		}
-		text += " · ctrl-r refresh · q/escape quit"
-		row := m.selectedRow()
-		if m.focus == agents && m.agentIndex() < 0 {
-			text += "\nno active agent · down/up selects first/last"
-		} else if m.focus != groups && row != nil {
-			if row.available {
-				text += "\nenter attach · spacebar info"
-				if row.session.Agent != nil {
-					text += " · r read · i interrupt · s stop agent and close terminal"
-				}
-				text += " · x kill\ne edit group"
-				if row.session.Connection == nil {
-					text += " · T terminal here"
-				}
-			} else {
-				text += "\nspacebar info · session unavailable; remote actions disabled"
-			}
-		}
+func (m *model) header() string {
+	scope := "agents"
+	if !m.agentsView {
+		scope = fleetclient.GroupFilterHeading(m.groupFilter)
 	}
-	return wrapped(text, m.width)
+	machine := "all machines"
+	if m.machine != "" {
+		machine = "machine: " + m.machine
+	}
+	return wordmark.Styled(" skid ") + "  " + ansi.Truncate(singleLine(scope), 40, "…") + faint.Styled(" · ") + ansi.Truncate(singleLine(machine), 24, "…")
 }
 
-func (m *model) noticeLines() []string {
+// footerLines holds notices, the rule naming the session the keys act on, that
+// session's facts, and the keys.
+func (m *model) footerLines() []string {
+	width := m.width - 2
+	notices := m.noticeLines(width)
+	keys := keyLines(width, m.hints()...)
+	legend, detail, position := "", []string{}, ""
+	switch m.page {
+	case "":
+		if m.busy {
+			legend = target(m.pendingName, m.pendingLabel, width)
+		} else if row := m.selectedRow(); row != nil {
+			legend = target(row.session.Name, row.label, width)
+			detail = []string{faint.Styled(ansi.Truncate(m.rowDetail(*row), width, "…"))}
+			if m.tableLength() > m.height-3-len(notices)-len(detail)-len(keys) {
+				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
+			}
+		}
+	case "confirm", "group-edit":
+		legend = target(m.pendingName, m.pendingLabel, width)
+	case "output", "details":
+		legend = target(m.pageName, m.pageMachine, width)
+	case "create", "search":
+		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
+	}
+	lines := append(notices, rule(legend, position, width))
+	lines = append(lines, detail...)
+	return append(lines, keys...)
+}
+
+func (m *model) noticeLines(width int) []string {
 	lines := []string{}
 	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
 	if m.notice != "" {
-		lines = append(lines, wrapped(m.notice, m.width)...)
-	}
-	for _, peer := range m.scopedPeers() {
-		if !peer.OK {
-			lines = append(lines, ansi.Truncate(singleLine(peer.Label), max(1, m.width-13), "…")+": unavailable")
+		style := plain
+		if m.noticeFailure {
+			style = alarm
+		}
+		for _, line := range wrapped(m.notice, width) {
+			lines = append(lines, style.Styled(line))
 		}
 	}
-	limit := max(1, m.height-len(m.footerLines())-9)
-	if len(lines) > limit {
+	// A peer without an error is unobserved or being checked, not unavailable.
+	for _, peer := range m.scopedPeers() {
+		if !peer.OK && peer.Error != nil {
+			suffix := " unavailable (" + singleLine(peer.Error.Code) + "); showing its last observation"
+			lines = append(lines, ansi.Truncate(ansi.Truncate(singleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
+		}
+	}
+	if limit := max(1, m.height-16); len(lines) > limit {
 		lines = append(lines[:limit-1], "…")
 	}
 	return lines
 }
 
-func (m *model) mainHeight() int {
-	return m.height - 2 - len(m.footerLines()) - len(m.noticeLines())
-}
-func (m *model) pageCapacity() int {
-	height := m.mainHeight()
-	if m.page == "output" {
-		height -= 2
-	}
-	return max(1, height)
-}
-
-func capturedHeading(name, machine string, width int) string {
-	return ansi.Truncate(singleLine(name), (width-4)/2, "…") + " on " + ansi.Truncate(singleLine(machine), (width-4)/2, "…")
-}
-
-func (m *model) sidebarHeights(height int) (int, int) {
-	groups := min(len(m.groupOptions())+1, height/2)
-	return groups, height - groups
-}
-
-func fitList(top, index, length, height int) int {
-	top = min(top, max(0, length-height))
-	if index >= 0 {
-		if index < top {
-			top = index
+func (m *model) hints() [][]hint {
+	switch m.page {
+	case "confirm":
+		effect := "close terminal"
+		if m.pending.Operation == "stop" {
+			effect = "stop agent and close terminal"
 		}
-		if index >= top+height {
-			top = index - height + 1
+		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
+	case "machine-picker":
+		return [][]hint{{{"↑↓", "choose"}, {"enter", "select"}, {"escape", "cancel"}}}
+	case "group-edit":
+		if m.groupChecking {
+			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "close"}}}
 		}
-	}
-	return max(0, top)
-}
-
-func (m *model) fitViewports() {
-	if m.width < 80 || m.height < 24 {
-		return
-	}
-	height := m.mainHeight() + 1
-	groupsHeight, agentsHeight := m.sidebarHeights(height)
-	options := m.groupOptions()
-	m.groupsTop = fitList(m.groupsTop, slices.Index(options, m.groupFilter), len(options), groupsHeight-1)
-	m.agentsTop = fitList(m.agentsTop, m.agentIndex(), len(m.agents), agentsHeight-1)
-	m.tabsTop = min(m.tabsTop, max(0, len(m.rows)-1))
-	if m.cursor < 0 {
-		m.tabsTop = 0
-		return
-	}
-	if m.cursor < m.tabsTop {
-		m.tabsTop = m.cursor
-	}
-	width := m.width - sidebarWidth - 1
-	for m.tabsTop < m.cursor {
-		used := 9
-		for index := m.tabsTop; index <= m.cursor; index++ {
-			used += ansi.StringWidth(m.tabText(index, width))
+		return [][]hint{{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}, {"enter", "save"}, {"escape", "cancel"}}}
+	case "create":
+		enter := hint{"enter", "next"}
+		if m.field == 4 {
+			enter.label = "create"
 		}
-		if used <= width {
-			break
+		hints := []hint{{"tab", "next"}, {"shift-tab", "back"}, {"←→", "choose"}, enter, {"ctrl-u", "unassigned"}, {"escape", "cancel"}}
+		if m.field == 3 {
+			hints = append(hints, hint{"z words", "search visited directories"})
 		}
-		m.tabsTop++
+		return [][]hint{hints}
+	case "search":
+		return [][]hint{{{"↑↓", "choose"}, {"enter", "use directory"}, {"escape", "back"}}}
+	case "output", "details":
+		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}}
 	}
+	session := []hint{}
+	if row := m.selectedRow(); row != nil && row.available {
+		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
+		if row.session.Agent != nil {
+			session = append(session, hint{"r", "read"}, hint{"i", "interrupt"})
+		}
+		session = append(session, hint{"e", "group"})
+		if row.session.Connection == nil {
+			session = append(session, hint{"T", "here"})
+		}
+		if row.session.Agent != nil {
+			session = append(session, hint{"s", "stop"})
+		}
+		session = append(session, hint{"x", "kill"})
+	} else if row != nil {
+		session = append(session, hint{"space", "info"})
+	}
+	target := m.machine
+	if target == "" {
+		target = m.client.DefaultMachine().Label
+	}
+	return [][]hint{session, {{"a", "agents"}, {"←→", "group"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
-func (m *model) sidebarLines(height int) []string {
-	groupsHeight, agentsHeight := m.sidebarHeights(height)
-	title := func(label string, focus region, top, end, total int) string {
-		marker := "  "
-		if m.page == "" && m.focus == focus {
-			marker = "> "
+// keyLines keeps each group on one line when it fits, otherwise wraps it by
+// whole hints, so a key never separates from its label.
+func keyLines(width int, groups ...[]hint) []string {
+	lines := []string{}
+	for _, group := range groups {
+		items := []string{}
+		for _, hint := range group {
+			items = append(items, bold.Styled(hint.key)+" "+hint.label)
 		}
-		text := marker + label
-		if top > 0 {
-			text += " ↑"
+		if len(items) == 0 {
+			continue
 		}
-		if end < total {
-			text += " ↓"
+		joined := strings.Join(items, "  ")
+		if last := len(lines) - 1; last >= 0 && ansi.StringWidth(lines[last])+4+ansi.StringWidth(joined) <= width {
+			lines[last] += "    " + joined
+			continue
 		}
-		return text
-	}
-	options := m.groupOptions()
-	end := min(len(options), m.groupsTop+groupsHeight-1)
-	lines := []string{title("groups", groups, m.groupsTop, end, len(options))}
-	for index := m.groupsTop; index < end; index++ {
-		marker := "  "
-		if options[index] == m.groupFilter {
-			marker = "* "
+		line := ""
+		for _, item := range items {
+			if line != "" && ansi.StringWidth(line)+2+ansi.StringWidth(item) > width {
+				lines, line = append(lines, line), ""
+			}
+			if line != "" {
+				line += "  "
+			}
+			line += item
 		}
-		lines = append(lines, marker+fleetclient.GroupFilterHeading(options[index]))
-	}
-	for len(lines) < groupsHeight {
-		lines = append(lines, "")
-	}
-	end = min(len(m.agents), m.agentsTop+agentsHeight-1)
-	lines = append(lines, title("agents", agents, m.agentsTop, end, len(m.agents)))
-	selected := m.agentIndex()
-	for index := m.agentsTop; index < end; index++ {
-		row := m.agents[index]
-		marker := "  "
-		if index == selected {
-			marker = "* "
-		}
-		state := m.current(&row).Agent.State
-		if !row.available {
-			state = "unavailable"
-		}
-		suffix := " " + state
-		name := ansi.Truncate(singleLine(row.session.Name), max(1, sidebarWidth-2-ansi.StringWidth(suffix)), "…")
-		lines = append(lines, marker+name+suffix)
-	}
-	if len(m.agents) == 0 {
-		lines = append(lines, "  no agents")
+		lines = append(lines, line)
 	}
 	return lines
 }
 
-func (m *model) tabText(index, width int) string {
-	name := ansi.Truncate(singleLine(m.rows[index].session.Name), max(4, (width-9)/2-3), "…")
-	if index == m.cursor {
-		return "[" + name + "] "
+// rule is the one boundary between content and controls; its legend names the
+// target, and a scrolled table reports the cursor position at its end.
+func rule(legend, position string, width int) string {
+	if position != "" {
+		position = faint.Styled(" " + position + " ──")
 	}
-	return " " + name + "  "
+	fill := width - ansi.StringWidth(position)
+	if legend == "" {
+		return faint.Styled(strings.Repeat("─", fill)) + position
+	}
+	legend = ansi.Truncate(legend, max(1, fill-5), "…")
+	return faint.Styled("── ") + legend + " " + faint.Styled(strings.Repeat("─", max(0, fill-4-ansi.StringWidth(legend)))) + position
 }
 
-func (m *model) tabLine(width int) string {
-	marker := "  tabs "
-	if m.page == "" && m.focus == tabs {
-		marker = "> tabs "
+func target(name, machine string, width int) string {
+	half := max(1, (width-10)/2)
+	return bold.Styled(ansi.Truncate(singleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(singleLine(machine), half, "…")
+}
+
+func (m *model) rowDetail(row listedRow) string {
+	current := m.current(&row)
+	facts := "terminal"
+	if row.session.ActiveCommand != "" {
+		facts += ": " + row.session.ActiveCommand
 	}
-	if len(m.rows) == 0 {
-		return marker + "(none)"
-	}
-	if m.tabsTop > 0 {
-		marker += "<"
-	} else {
-		marker += " "
-	}
-	for index := m.tabsTop; index < len(m.rows); index++ {
-		text := m.tabText(index, width)
-		if ansi.StringWidth(marker)+ansi.StringWidth(text) > width-1 {
-			marker += ">"
-			break
+	if agent := current.Agent; agent != nil {
+		facts = agent.State
+		if local := row.session.Agent; current.Kind == "local" && local != nil {
+			facts = local.Status.State + " (" + local.Status.Source + ")"
+			if local.Status.Reason != "" {
+				facts += ": " + local.Status.Reason
+			}
 		}
-		marker += text
 	}
-	return marker
+	if !row.available {
+		facts = m.rowStatus(row) + "; last observed " + facts
+	}
+	where := current.CWD
+	if where == "" {
+		where = "directory unavailable"
+	}
+	switch current.Kind {
+	case "remote":
+		where = "running on " + current.Label + ": " + where
+	case "remoteUnknown":
+		where = "remote context unknown"
+	}
+	return singleLine(fmt.Sprintf("%s  ·  %d attached  ·  %s", facts, row.session.AttachedClients, where))
 }
 
-func (m *model) mainLines(width, height int) []string {
-	var lines []string
-	focusStart, focusEnd := -1, -1
-	add := func(text string) { lines = append(lines, wrapped(text, width)...) }
+func (m *model) bodyLines(height int) []string {
+	width := m.width - 2
 	switch m.page {
 	case "confirm":
+		action, effect := "close terminal", "close this session. work shared through another session may survive."
 		if m.pending.Operation == "stop" {
-			add("stop agent and close terminal " + capturedHeading(m.pendingName, m.pendingLabel, width-32) + "?")
-			add("attempt agent halt, then close this session. shared work may be affected.")
-		} else {
-			add("close terminal " + capturedHeading(m.pendingName, m.pendingLabel, width-18) + "?")
-			add("close this session. work shared through another session may survive.")
+			action, effect = "stop agent and close terminal", "attempt agent halt, then close this session. shared work may be affected."
 		}
+		lines := []string{}
+		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {
+			lines = append(lines, danger.Styled(line))
+		}
+		return window(append(lines, wrapped(effect, width)...), 0, 0, height)
 	case "machine-picker":
-		add(m.machineHeading())
+		lines := []string{bold.Styled("machine"), ""}
 		for index, option := range m.pickerOptions() {
-			marker := "  "
+			text := ansi.Truncate(singleLine(option), width-2, "…")
 			if index == m.picker {
-				marker = "> "
-				focusStart = len(lines)
+				text = here.Styled("▌") + " " + bold.Styled(text)
+			} else {
+				text = "  " + text
 			}
-			add(marker + option)
-			if index == m.picker {
-				focusEnd = len(lines)
-			}
+			lines = append(lines, text)
 		}
+		return window(lines, m.picker+2, m.picker+3, height)
 	case "group-edit":
-		add("group for " + m.pendingName + " on " + m.pendingLabel)
+		lines := []string{bold.Styled("group"), ""}
 		if m.groupFailure != nil {
-			add(m.groupFailure.Code + " (unknown); not repeated")
+			lines = append(lines, alarm.Styled(singleLine(m.groupFailure.Code)+" (unknown); not repeated"), "")
 		}
 		current := m.pendingRow()
 		if current != nil {
-			add("current: " + fleetclient.GroupHeading(current.session.Group))
+			lines = append(lines, field("current", fleetclient.GroupHeading(current.session.Group), false, false, 7, width)...)
 		}
-		focusStart = len(lines)
-		add("> group: " + groupDraftDisplay(m.groupDraft))
-		focusEnd = len(lines)
+		focusStart := len(lines)
+		lines = append(lines, field("group", groupDraftDisplay(m.groupDraft), !m.groupChecking, false, 7, width)...)
+		focusEnd := len(lines)
 		label, err := group.ParseDraft(m.groupDraft)
+		status := "enter saves"
 		switch {
 		case m.groupChecking:
-			add("checking inventory; escape returns")
+			status = "checking inventory; escape returns"
 		case err != nil:
-			add(group.ErrInvalid.Error())
+			status = group.ErrInvalid.Error()
 		case current == nil || !current.available:
-			add("session unavailable; save disabled")
+			status = "session unavailable; save disabled"
 		case current.session.Group == label:
-			add("unchanged; save disabled")
-		default:
-			add("enter/ctrl-s saves")
+			status = "unchanged; save disabled"
 		}
-		add(m.groupSuggestions())
+		lines = append(lines, "")
+		lines = append(lines, wrapped(status, width)...)
+		lines = append(lines, "")
+		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
 	case "create":
+		lines := []string{bold.Styled("new session"), ""}
+		focusStart, focusEnd := 0, 0
 		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
-			marker := "  "
+			value := m.form[index]
+			if index == 4 {
+				value = groupDraftDisplay(value)
+			}
 			if index == m.field {
-				marker = "> "
 				focusStart = len(lines)
 			}
-			text := m.form[index]
-			if index == 4 {
-				text = groupDraftDisplay(text)
-			}
-			add(marker + label + ": " + text)
+			lines = append(lines, field(label, value, index == m.field, index < 2, 9, width)...)
 			if index == m.field {
 				focusEnd = len(lines)
 			}
 		}
+		lines = append(lines, "")
 		if !m.createAvailable() {
-			add("host unavailable; create disabled")
+			lines = append(lines, "host unavailable; create disabled")
 		}
 		if _, err := group.ParseDraft(m.form[4]); err != nil {
-			add(group.ErrInvalid.Error())
+			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
-		add(m.groupSuggestions())
+		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
 	case "search":
-		add("directory search on " + m.form[0])
-		if m.searching {
-			add("searching…")
-		} else if len(m.searchDirectories) == 0 {
-			add("no matching directories")
-		} else {
-			for index, directory := range m.searchDirectories {
-				marker := "  "
-				if index == m.searchCursor {
-					marker = "> "
-					focusStart = len(lines)
+		lines := []string{bold.Styled("directory search on " + ansi.Truncate(singleLine(m.form[0]), width-24, "…")), ""}
+		switch {
+		case m.searching:
+			lines = append(lines, "searching…")
+		case len(m.searchDirectories) == 0:
+			lines = append(lines, "no matching directories")
+		}
+		focusStart, focusEnd := 0, 0
+		for index, directory := range m.searchDirectories {
+			if index == m.searchCursor {
+				focusStart = len(lines)
+			}
+			// Ranked paths show in full, wrapped under their marker.
+			for part, text := range strings.Split(ansi.Hardwrap(singleLine(directory), width-2, true), "\n") {
+				switch {
+				case index == m.searchCursor && part == 0:
+					text = here.Styled("▌") + " " + bold.Styled(text)
+				case index == m.searchCursor:
+					text = "  " + bold.Styled(text)
+				default:
+					text = "  " + text
 				}
-				add(marker + directory)
-				if index == m.searchCursor {
-					focusEnd = len(lines)
-				}
+				lines = append(lines, text)
+			}
+			if index == m.searchCursor {
+				focusEnd = len(lines)
 			}
 		}
+		return window(lines, focusStart, focusEnd, height)
 	case "output", "details":
+		title := bold.Styled(m.page)
 		if m.page == "output" {
-			// Identity and coverage stay pinned and leave room for the snapshot.
-			header := []string{capturedHeading(m.outputName, m.outputMachine, width), cell(m.outputCoverage, width)}
-			body := m.detailLines()
-			offset := min(m.offset, max(0, len(body)-1))
-			lines = append(header, body[offset:min(len(body), offset+max(0, height-len(header)))]...)
-			return lines[:min(len(lines), height)]
+			title += "  " + faint.Styled(ansi.Truncate(singleLine(m.outputCoverage), width-8, "…"))
 		}
-		lines = m.detailLines()
-		offset := min(m.offset, max(0, len(lines)-1))
-		return lines[offset:min(len(lines), offset+height)]
-	default:
-		row := m.selectedRow()
-		if row == nil {
-			partial := false
-			for _, peer := range m.scopedPeers() {
-				partial = partial || !peer.OK
-			}
-			switch {
-			case !m.scopeReady:
-				add("checking inventory")
-			case partial:
-				add("no matching sessions in available inventory")
-			default:
-				add("no sessions in this view")
-			}
-			break
-		}
-		session := row.session
-		current := m.current(row)
-		lines = []string{"session: " + session.Name, "terminal on: " + row.label, fleetclient.GroupHeading(session.Group)}
-		if current.Kind == "remote" {
-			lines = append(lines, "running on: "+current.Label)
-		}
-		if current.Kind == "remoteUnknown" {
-			lines = append(lines, "remote context unknown")
-		} else {
-			cwd := current.CWD
-			if cwd == "" {
-				cwd = "directory unavailable"
-			}
-			lines = append(lines, "directory: "+cwd)
-			if current.Agent == nil {
-				lines = append(lines, "agent: not detected")
-			} else {
-				profile := current.Agent.Label
-				if profile == "" {
-					profile = "profile unknown"
-				}
-				lines = append(lines, "provider: "+current.Agent.Provider, "profile: "+profile, "state: "+current.Agent.State)
-			}
-		}
-		lines = append(lines, fmt.Sprintf("attached clients: %d", session.AttachedClients))
-		availability := "available"
-		if !row.available {
-			availability = "unavailable"
-		}
-		lines = append(lines, "availability: "+availability)
-		for i, line := range lines {
-			lines[i] = cell(line, width)
-		}
+		// The title stays pinned; only the captured snapshot scrolls.
+		body := m.detailLines()
+		offset := min(m.offset, max(0, len(body)-(height-2)))
+		return append([]string{title, ""}, body[offset:min(len(body), offset+max(0, height-2))]...)
 	}
+	if len(m.rows) == 0 {
+		partial := false
+		for _, peer := range m.scopedPeers() {
+			partial = partial || !peer.OK
+		}
+		switch {
+		case !m.scopeReady:
+			return []string{"checking inventory"}
+		case partial:
+			return []string{"no matching sessions in available inventory"}
+		case m.agentsView:
+			return []string{"no agents in this view"}
+		}
+		return []string{"no sessions in this view"}
+	}
+	lines := m.tableLines(width)
+	top := min(m.top, max(0, len(lines)-height))
+	return lines[top:min(len(lines), top+height)]
+}
+
+// window keeps a form's focused field visible; a field taller than the page
+// keeps its label and current tail, without a second editor.
+func window(lines []string, focusStart, focusEnd, height int) []string {
 	start := 0
 	if focusEnd > height {
 		start = focusEnd - height
-		// A long field keeps its label and current tail visible, without a second editor.
 		if focusEnd-focusStart > height {
 			return append([]string{lines[focusStart]}, lines[focusEnd-height+1:focusEnd]...)
 		}
@@ -435,32 +400,244 @@ func (m *model) mainLines(width, height int) []string {
 	return lines[start:min(len(lines), start+height)]
 }
 
-func (m *model) machineHeading() string {
-	if m.machine == "" {
-		return "all machines"
+// field right-aligns its label so a form reads down one axis; long values wrap
+// under the value column. focused choices show ‹ › and focused text a caret.
+func field(label, value string, focused, choice bool, labelWidth, width int) []string {
+	gutter, name := "  ", faint.Styled(fmt.Sprintf("%*s", labelWidth, label))
+	if focused {
+		gutter, name = here.Styled("▌")+" ", bold.Styled(fmt.Sprintf("%*s", labelWidth, label))
 	}
-	return "machine: " + m.machine
+	indent := strings.Repeat(" ", labelWidth+4)
+	valueWidth := max(1, width-labelWidth-4-4)
+	if focused && choice {
+		return []string{gutter + name + "  " + faint.Styled("‹ ") + bold.Styled(ansi.Truncate(singleLine(value), valueWidth, "…")) + faint.Styled(" ›")}
+	}
+	if value == "" && !focused {
+		return []string{gutter + name + "  " + faint.Styled("—")}
+	}
+	parts := strings.Split(ansi.Hardwrap(singleLine(value), valueWidth, true), "\n")
+	if focused {
+		parts[len(parts)-1] += wordmark.Styled(" ")
+	}
+	lines := []string{gutter + name + "  " + parts[0]}
+	for _, part := range parts[1:] {
+		lines = append(lines, indent+part)
+	}
+	return lines
 }
+
+func (m *model) suggestions(width int) []string {
+	labels := []string{}
+	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
+		labels = append(labels, fleetclient.GroupHeading(label))
+	}
+	return wrapped("observed groups: "+strings.Join(labels, " · "), width)
+}
+
+func (m *model) detailLines() []string {
+	width := m.width - 2
+	lines := []string{}
+	if m.page == "details" {
+		for _, fact := range m.facts {
+			lines = append(lines, field(fact[0], fact[1], false, false, 16, width)...)
+		}
+		return lines
+	}
+	for _, line := range m.text {
+		lines = append(lines, strings.Split(ansi.Hardwrap(singleLine(line), max(1, width), true), "\n")...)
+	}
+	return lines
+}
+
+func (m *model) pageCapacity() int {
+	return max(1, m.height-4-len(m.footerLines()))
+}
+
+func (m *model) headings() bool {
+	return !m.agentsView && m.groupFilter.Kind() == group.FilterAll
+}
+
+// opensGroup reports whether a group heading precedes this row.
+func (m *model) opensGroup(index int) bool {
+	return m.headings() && (index == 0 || m.rows[index].session.Group != m.rows[index-1].session.Group)
+}
+
+func (m *model) tableLength() int {
+	length := len(m.rows)
+	for index := range m.rows {
+		if m.opensGroup(index) {
+			length++
+		}
+	}
+	return length
+}
+
+func (m *model) fitViewports() {
+	if m.width < 80 || m.height < 24 || m.page != "" || m.cursor < 0 {
+		return
+	}
+	height := m.height - 2 - len(m.footerLines())
+	// anchor is the cursor's group heading when its row opens a group.
+	line, anchor := 0, 0
+	for index := range m.rows {
+		anchor = line
+		if m.opensGroup(index) {
+			line++
+		}
+		if index == m.cursor {
+			break
+		}
+		line++
+	}
+	m.top = min(m.top, max(0, m.tableLength()-height), anchor)
+	m.top = max(m.top, line-height+1, 0)
+}
+
+// tableLines lays out one line per row, with a quiet heading wherever the
+// all-groups view enters another group. the agents view names each row's group
+// in a column instead; machine appears only when all machines are in scope.
+func (m *model) tableLines(width int) []string {
+	name, status, agent, label, machine := 4, 0, 0, 0, 0
+	for _, row := range m.rows {
+		name = max(name, ansi.StringWidth(singleLine(row.session.Name)))
+		status = max(status, len(m.rowStatus(row)))
+		agent = max(agent, ansi.StringWidth(m.agentText(row)))
+		if m.agentsView {
+			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
+		}
+		if m.machine == "" {
+			machine = max(machine, ansi.StringWidth(singleLine(row.label)))
+		}
+	}
+	name, agent, label, machine = min(name, 24), min(agent, 20), min(label, 16), min(machine, 12)
+	span := func(width int) int {
+		if width == 0 {
+			return 0
+		}
+		return width + 2
+	}
+	for 2+name+span(status)+span(agent)+span(label)+span(machine) > width && max(name, agent, label, machine) > 8 {
+		switch max(name, agent, label, machine) {
+		case name:
+			name--
+		case agent:
+			agent--
+		case label:
+			label--
+		default:
+			machine--
+		}
+	}
+	directory := width - 2 - name - span(status) - span(agent) - span(label) - span(machine) - 2
+	lines := []string{}
+	for index, row := range m.rows {
+		if m.opensGroup(index) {
+			lines = append(lines, faint.Styled(ansi.Truncate(singleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
+		}
+		gutter, nameStyle, statusStyle := "  ", plain, plain
+		switch state := m.rowStatus(row); {
+		case !row.available:
+			nameStyle, statusStyle = faint, faint
+		case state == "working":
+			statusStyle = alive
+		case state == "blocked" || state == "failed":
+			statusStyle = alarm
+		}
+		if index == m.cursor {
+			gutter, nameStyle = here.Styled("▌")+" ", bold
+		}
+		facts := []string{}
+		for _, column := range []struct {
+			text  string
+			width int
+		}{{m.agentText(row), agent}, {singleLine(row.session.Group.String()), label}, {singleLine(row.label), machine}} {
+			if column.width > 0 {
+				facts = append(facts, cell(column.text, column.width))
+			}
+		}
+		if directory >= 8 {
+			facts = append(facts, m.whereText(row, directory))
+		}
+		line := gutter + nameStyle.Styled(cell(row.session.Name, name)) + "  " + statusStyle.Styled(cell(m.rowStatus(row), status))
+		if len(facts) > 0 {
+			line += "  " + faint.Styled(strings.Join(facts, "  "))
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// rowStatus names a row without remote actions by why: its host failed a read,
+// or a scoped read is still checking it.
+func (m *model) rowStatus(row listedRow) string {
+	switch {
+	case !row.available:
+		for _, peer := range m.peers {
+			if peer.Machine == row.machine && peer.Error != nil {
+				return "unavailable"
+			}
+		}
+		return "checking"
+	}
+	current := m.current(&row)
+	switch {
+	case current.Kind == "remoteUnknown":
+		return "unknown"
+	case current.Agent == nil:
+		return "terminal"
+	}
+	return current.Agent.State
+}
+
+// agentText is the configured profile label, per terminal continuity's identity copy.
+func (m *model) agentText(row listedRow) string {
+	agent := m.current(&row).Agent
+	switch {
+	case agent == nil:
+		return ""
+	case agent.Label == "":
+		return singleLine(agent.Provider + " · profile unknown")
+	}
+	return singleLine(agent.Label)
+}
+
+// whereText is the directory where the work runs; remote work reads host:path.
+func (m *model) whereText(row listedRow, width int) string {
+	current := m.current(&row)
+	switch current.Kind {
+	case "remote":
+		host := ansi.Truncate(singleLine(current.Label), width/3, "…") + ":"
+		return host + tail(singleLine(current.CWD), width-ansi.StringWidth(host))
+	case "remoteUnknown":
+		return ansi.Truncate("remote context unknown", width, "…")
+	}
+	return tail(singleLine(current.CWD), width)
+}
+
+// tail keeps the end of a path, where directories differ.
+func tail(text string, width int) string {
+	if ansi.StringWidth(text) <= width {
+		return text
+	}
+	// TruncateLeft keeps a wide character that straddles the cut, so widen it.
+	cut := ansi.StringWidth(text) - width + 1
+	for ansi.StringWidth(ansi.TruncateLeft(text, cut, "")) > width-1 {
+		cut++
+	}
+	return "…" + ansi.TruncateLeft(text, cut, "")
+}
+
+func capturedHeading(name, machine string, width int) string {
+	return ansi.Truncate(singleLine(name), (width-4)/2, "…") + " on " + ansi.Truncate(singleLine(machine), (width-4)/2, "…")
+}
+
 func groupDraftDisplay(draft string) string {
 	if _, err := group.ParseDraft(draft); err != nil {
 		return strconv.QuoteToASCII(draft)
 	}
 	return draft
 }
-func (m *model) groupSuggestions() string {
-	options := []string{}
-	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
-		options = append(options, fleetclient.GroupHeading(label))
-	}
-	return "observed groups: " + strings.Join(options, " · ")
-}
-func (m *model) detailLines() []string {
-	lines := []string{}
-	for _, line := range m.text {
-		lines = append(lines, strings.Split(ansi.Hardwrap(singleLine(line), max(1, m.width-sidebarWidth-1), true), "\n")...)
-	}
-	return lines
-}
+
 func wrapped(text string, width int) []string {
 	lines := strings.Split(text, "\n")
 	for index, line := range lines {
@@ -468,6 +645,7 @@ func wrapped(text string, width int) []string {
 	}
 	return strings.Split(strings.Join(lines, "\n"), "\n")
 }
+
 func cell(text string, width int) string {
 	text = ansi.Truncate(singleLine(text), width, "…")
 	return text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))

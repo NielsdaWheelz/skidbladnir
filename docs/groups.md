@@ -135,7 +135,7 @@ within each group, retain the client's present order: cli/tui configured peer
 order then host-published name/id order; android case-folded/exact machine label,
 machine handle, case-folded/exact tmux name, then tmux id. no urgency sorting,
 manual ordering, collapsing, nested groups, or completeness-implying counters.
-pr 3 retains this order for tabs; its separate global agent view has the
+desktop group views retain this order; the desktop agents view has the
 [explicit status order](desktop-browser.md#3-selection-and-navigation).
 
 ### owned values
@@ -411,10 +411,10 @@ must not overwrite a form the operator has already opened or edited.
 
 ## 8. tui interaction and return
 
-[pr 3](desktop-browser.md) owns the desktop layout/keymap and replaces the grouped
-table/group picker. retain one bubble tea model, five-second refresh, at most
-one inventory request in flight, and the boundary rules below. source and historical
-groups evidence still describe the preceding table.
+the [desktop browser](desktop-browser.md) owns the desktop layout/keymap; it
+replaced the grouped table/group picker. retain one bubble tea model, five-second
+refresh, at most one inventory request in flight, and the boundary rules below.
+source and historical groups evidence still describe the preceding table.
 
 the machine picker lists configured peers, including unavailable ones, plus all
 machines. expose only labels/handles from fleetclient configuration to this

@@ -42,11 +42,12 @@ existing targets: use NAME [--machine HOST] or --ref VALUE
 --json: one structured envelope for noninteractive commands
 --: remaining operands are literal; --help: this guide
 browser (80x24 minimum)
-  g groups; a agents; t tabs; tab/shift-tab cycles focus
-  up/down (j/k) lists; left/right (h/l) tabs; arrows select locally
+  opens on agents, most urgent first: blocked, failed, done, idle, unknown
+  a returns to the top agent; up/down (j/k) select a session
+  left/right (h/l) step through agents, all groups, unassigned, each group
   n opens terminal on selected/default machine; N options; m chooses machine
   ctrl-r refreshes; q/escape quits
-  selected agent/tab: enter attaches fullscreen; spacebar shows details
+  selected session: enter attaches fullscreen; spacebar shows details
   T (shift+t) creates and attaches a terminal here; e edits membership
   r reads; i interrupts; s stops agent and closes terminal; x kills
   ctrl-] d returns to the browser; forms and details own their keys
