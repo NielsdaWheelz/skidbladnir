@@ -1,8 +1,8 @@
 # phone terminal continuity qualification
 
 problem: the changed android surface has compiled but has not run on the
-physical phone. current-turn approval covered isolated tmux tests only; adb
-and the platform gate are not approved.
+physical phone. the source qualification did not include adb or the platform
+gate.
 
 impact: forge directory search, current remote labels, attachment continuity,
 and source-only controls remain `NOT_RUN` on the device.
