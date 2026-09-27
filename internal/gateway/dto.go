@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -38,7 +38,7 @@ var (
 	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
 	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
 	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
-	errorSpaceInvalid                = apiError{Code: "SpaceInvalid", Message: space.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSpaceInvalid}
+	errorGroupInvalid                = apiError{Code: "GroupInvalid", Message: group.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorGroupInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
 	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
 	errorPairingInviteRejected       = apiError{Code: "PairingInviteRejected", Message: "This fleet invite is invalid, expired, or already used.", Status: http.StatusUnauthorized, logCode: logging.ErrorPairingInviteRejected}
@@ -81,7 +81,7 @@ type sessionDTO struct {
 	LaunchProfile   string       `json:"launchProfile,omitempty"`
 	Agent           *agentDTO    `json:"agent,omitempty"`
 	Objective       string       `json:"objective,omitempty"`
-	Space           string       `json:"space,omitempty"`
+	Group           string       `json:"group,omitempty"`
 	CWD             string       `json:"cwd,omitempty"`
 	ActiveCommand   string       `json:"activeCommand,omitempty"`
 	AttachedClients int          `json:"attachedClients"`
@@ -171,7 +171,7 @@ type createSessionRequest struct {
 	Profile          stringField         `json:"profile"`
 	OptionalTmuxName stringField         `json:"optionalTmuxName"`
 	Objective        stringField         `json:"objective"`
-	Space            stringField         `json:"space"`
+	Group            stringField         `json:"group"`
 }
 
 type stringField struct {
@@ -198,9 +198,9 @@ type renameSessionRequest struct {
 	IdentityToken stringField `json:"identityToken"`
 }
 
-type setSessionSpaceRequest struct {
+type setSessionGroupRequest struct {
 	IdentityToken stringField `json:"identityToken"`
-	Space         stringField `json:"space"`
+	Group         stringField `json:"group"`
 }
 
 type pressureResponseDTO struct {
@@ -302,7 +302,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
 		Objective:       session.Objective,
-		Space:           session.Space.String(),
+		Group:           session.Group.String(),
 		CWD:             session.CWD,
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,

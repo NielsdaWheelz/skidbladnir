@@ -102,14 +102,14 @@ internal fun DashboardScreen(
             ),
         )
     }
-    state.spaceEditor?.let { editor ->
-        SpaceSheet(
+    state.groupEditor?.let { editor ->
+        GroupSheet(
             editor = editor,
             machine = state.machines.single { it.machine.handle == editor.target.machineHandle },
-            labels = observedSpaces(state.machines),
-            onChange = controller::updateSpaceDraft,
-            onDismiss = controller::dismissSpaceEditor,
-            onSubmit = controller::submitSpace,
+            labels = observedGroups(state.machines),
+            onChange = controller::updateGroupDraft,
+            onDismiss = controller::dismissGroupEditor,
+            onSubmit = controller::submitGroup,
         )
     }
     state.kill?.let { kill ->
@@ -150,7 +150,7 @@ internal fun DashboardMain(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val sessions = visibleSessions(state.machines, scope).filter { entry.space.matches(it.target.session.space) }
+    val sessions = visibleSessions(state.machines, scope).filter { entry.group.matches(it.target.session.group) }
     val canForge = machines.any(MachineState::canForge)
     val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
@@ -161,7 +161,7 @@ internal fun DashboardMain(
             )
 
             MachineFilters(state.machines, scope, entry::selectScope)
-            SpaceSelector(entry.space, observedSpaces(state.machines), entry::selectSpace)
+            GroupSelector(entry.group, observedGroups(state.machines), entry::selectGroup)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     MachineStrip(
@@ -196,7 +196,7 @@ internal fun DashboardMain(
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
                 onKill = controller::requestKill,
-                onSpace = controller::openSpaceEditor,
+                onGroup = controller::openGroupEditor,
             )
         }
 
@@ -229,7 +229,7 @@ internal fun DashboardDwarfCollection(
     onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
-    onSpace: (SessionTarget) -> Unit,
+    onGroup: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
     val machines = state.machines.filter { machine ->
@@ -238,7 +238,7 @@ internal fun DashboardDwarfCollection(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val items = dashboardItems(state.machines, scope, entry.space)
+    val items = dashboardItems(state.machines, scope, entry.group)
     val keys = items.map(DashboardItem::key)
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)
@@ -264,7 +264,7 @@ internal fun DashboardDwarfCollection(
                 motionEnabled,
                 onOpen,
                 onKill,
-                onSpace,
+                onGroup,
             )
         }
     } else {
@@ -277,7 +277,7 @@ internal fun DashboardDwarfCollection(
             motionEnabled,
             onOpen,
             onKill,
-            onSpace,
+            onGroup,
         )
     }
 }
@@ -367,7 +367,7 @@ private fun DashboardDwarfGrid(
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
     onKill: (SessionTarget) -> Unit,
-    onSpace: (SessionTarget) -> Unit,
+    onGroup: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
     val bottomPadding = 84.dp
@@ -410,7 +410,7 @@ private fun DashboardDwarfGrid(
                 ) { item ->
                     when (item) {
                         is DashboardItem.Heading -> {
-                            val label = item.label?.let { "space: ${it.text}" } ?: "unassigned"
+                            val label = item.label?.let { "group: ${it.text}" } ?: "unassigned"
                             Text(label, fontFamily = NidavellirType.Data, color = Muted,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics {
                                     heading()
@@ -427,7 +427,7 @@ private fun DashboardDwarfGrid(
                                 motionEnabled = motionEnabled,
                                 onOpen = { onOpen(visible.target) },
                                 onKill = { onKill(visible.target) },
-                                onSpace = { onSpace(visible.target) },
+                                onGroup = { onGroup(visible.target) },
                             )
                         }
                     }

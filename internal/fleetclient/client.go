@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
 )
@@ -30,7 +30,7 @@ type Failure struct {
 }
 type Result struct {
 	OK bool `json:"ok"`
-	// Success values are Inventory, ObservedSession, KillResult, or SpaceResult.
+	// Success values are Inventory, ObservedSession, KillResult, or GroupResult.
 	// Read/write/stop retain json.RawMessage; list peer calls return Peer.
 	Value      any      `json:"result,omitempty"`
 	Error      *Failure `json:"error,omitempty"`
@@ -60,7 +60,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	switch request.Operation {
 	case "list":
 		result = client.list(ctx, request.Machine)
-		if result.OK && request.SpaceFilter.Kind() != space.FilterAll {
+		if result.OK && request.GroupFilter.Kind() != group.FilterAll {
 			value := result.Value.(Inventory)
 			for index := range value.Peers {
 				peer := &value.Peers[index]
@@ -69,7 +69,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 				}
 				rows := make([]Session, 0, len(peer.Sessions))
 				for _, row := range peer.Sessions {
-					if request.SpaceFilter.Matches(row.Space) {
+					if request.GroupFilter.Matches(row.Group) {
 						rows = append(rows, row)
 					}
 				}
@@ -92,8 +92,8 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			CWD     string     `json:"cwd"`
 			Profile string     `json:"profile,omitempty"`
 			Name    string     `json:"optionalTmuxName"`
-			Space   string     `json:"space,omitempty"`
-		}{request.Kind, cwd, request.Profile, request.Name, request.Space.String()})
+			Group   string     `json:"group,omitempty"`
+		}{request.Kind, cwd, request.Profile, request.Name, request.Group.String()})
 		if len(body) > MaximumInputBytes {
 			return Failed("input_limit", "not_sent")
 		}
@@ -118,9 +118,9 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		path := "/v1/sessions/" + ref.TmuxID
 		if request.Operation == "shell" {
 			path += "/shell"
-		} else if request.Operation == "space" {
-			body["space"] = request.Space.String()
-			path += "/space"
+		} else if request.Operation == "group" {
+			body["group"] = request.Group.String()
+			path += "/group"
 		} else if request.Operation == "kill" {
 			body["tmuxName"] = observed.Session.Name
 		} else {
@@ -156,13 +156,13 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, request.Operation, path, encoded)
-		if result.OK && request.Operation == "space" {
-			result = success(SpaceResult{Space: request.Space.String()})
+		if result.OK && request.Operation == "group" {
+			result = success(GroupResult{Group: request.Group.String()})
 		}
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "space" {
+		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "group" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
@@ -337,7 +337,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "list" {
 		method = http.MethodGet
 	} else {
-		if operation == "space" {
+		if operation == "group" {
 			method = http.MethodPut
 		}
 		if operation == "kill" {
@@ -375,12 +375,12 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if (operation == "kill" || operation == "space") && response.StatusCode == http.StatusNoContent {
+	if (operation == "kill" || operation == "group") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
 		}
-		if operation == "space" {
-			return success(SpaceResult{})
+		if operation == "group" {
+			return success(GroupResult{})
 		}
 		return success(KillResult{Terminal: "closed"})
 	}
@@ -392,12 +392,12 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
-	if operation == "kill" || operation == "space" {
+	if operation == "kill" || operation == "group" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {
 		var failure *Failure
-		if operation == "space" || operation == "start" || operation == "shell" {
+		if operation == "group" || operation == "start" || operation == "shell" {
 			failure = decodeMutationFailure(operation, encoded, response.StatusCode)
 		} else {
 			failure = decodeFailure(encoded, dispatch)
@@ -431,7 +431,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "SpaceInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch":
+	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch":
 		return true
 	default:
 		return false

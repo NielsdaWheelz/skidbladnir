@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -41,7 +41,7 @@ type Session struct {
 	LaunchProfile   string      `json:"launchProfile,omitempty"`
 	AttachedClients int         `json:"attachedClients"`
 	Agent           *Agent      `json:"agent,omitempty"`
-	Space           space.Label `json:"-"`
+	Group           group.Label `json:"-"`
 }
 
 // sessionJSON is the string-speaking boundary for the owned session label.
@@ -53,18 +53,18 @@ type sessionJSON struct {
 	LaunchProfile   string     `json:"launchProfile,omitempty"`
 	AttachedClients int        `json:"attachedClients"`
 	Agent           *Agent     `json:"agent,omitempty"`
-	Space           spaceField `json:"space,omitzero"`
+	Group           groupField `json:"group,omitzero"`
 }
-type spaceField struct{ label space.Label }
+type groupField struct{ label group.Label }
 
-func (value spaceField) IsZero() bool                 { return value.label.IsUnassigned() }
-func (value spaceField) MarshalJSON() ([]byte, error) { return json.Marshal(value.label.String()) }
-func (value *spaceField) UnmarshalJSON(encoded []byte) error {
+func (value groupField) IsZero() bool                 { return value.label.IsUnassigned() }
+func (value groupField) MarshalJSON() ([]byte, error) { return json.Marshal(value.label.String()) }
+func (value *groupField) UnmarshalJSON(encoded []byte) error {
 	var text *string
 	if strictjson.Decode(encoded, &text) != nil || text == nil || *text == "" {
-		return errors.New("invalid space response")
+		return errors.New("invalid group response")
 	}
-	label, err := space.Parse(*text)
+	label, err := group.Parse(*text)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (value *spaceField) UnmarshalJSON(encoded []byte) error {
 	return nil
 }
 func (s Session) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sessionJSON{s.Name, s.Ref, s.CWD, s.ActiveCommand, s.LaunchProfile, s.AttachedClients, s.Agent, spaceField{s.Space}})
+	return json.Marshal(sessionJSON{s.Name, s.Ref, s.CWD, s.ActiveCommand, s.LaunchProfile, s.AttachedClients, s.Agent, groupField{s.Group}})
 }
 
 type Profile struct {
@@ -138,8 +138,8 @@ type StopResult struct {
 type KillResult struct {
 	Terminal string `json:"terminal"`
 }
-type SpaceResult struct {
-	Space string `json:"space"`
+type GroupResult struct {
+	Group string `json:"group"`
 }
 
 type hostAgent struct {
@@ -166,7 +166,7 @@ type hostSession struct {
 	CWD             string     `json:"cwd,omitempty"`
 	ActiveCommand   string     `json:"activeCommand,omitempty"`
 	AttachedClients *int       `json:"attachedClients"`
-	Space           spaceField `json:"space,omitzero"`
+	Group           groupField `json:"group,omitzero"`
 }
 type hostInventory struct {
 	Machine struct {
@@ -184,7 +184,7 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken}
-	row := Session{Space: s.Space.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients}
+	row := Session{Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients}
 	if s.Agent != nil {
 		ref.Agent = &ProcessReference{PaneID: s.Agent.PaneID, PID: s.Agent.PID, StartIdentity: s.Agent.StartIdentity}
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, Status: s.Agent.Status, Methods: s.Agent.Methods}
@@ -287,14 +287,14 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 		wantStatus, wantMessage = http.StatusBadRequest, "The request is not valid."
 	case "RequestTooLarge":
 		wantStatus, wantMessage = http.StatusRequestEntityTooLarge, "The request is too large."
-	case "SpaceInvalid":
-		wantStatus, wantMessage = http.StatusUnprocessableEntity, space.ErrInvalid.Error()
+	case "GroupInvalid":
+		wantStatus, wantMessage = http.StatusUnprocessableEntity, group.ErrInvalid.Error()
 	case "SessionNotFound":
 		wantStatus, wantMessage = http.StatusNotFound, "That session no longer exists."
 	case "SessionIdentityMismatch":
 		wantStatus, wantMessage = http.StatusConflict, "The session changed. Refresh and try again."
 	case "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "SessionNameConflict", "ObjectiveInvalid":
-		if operation == "space" {
+		if operation == "group" {
 			return nil
 		}
 		wantStatus = http.StatusUnprocessableEntity

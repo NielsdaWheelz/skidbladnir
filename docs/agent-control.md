@@ -22,14 +22,14 @@ for the new cross-provider controls.
 2026-09-15 pr 2 amendment: [shells.md](shells.md) owns terminal launch and
 source-session creation. its explicit deltas permit zero launch profiles and
 extend the create schema. source is implemented; [the roadmap](roadmap.md) indexes delivery and
-[spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md) remains open.
+[groups/shells hands-on acceptance](issues/groups-shells-hands-on.md) remains open.
 agent controls, provider behavior, and attachment retain their contracts;
 historical evidence does not prove this new target.
 
-2026-09-15 accepted extension: [spaces](spaces.md) adds optional session labels,
+2026-09-15 accepted extension: [groups](groups.md) adds optional session labels,
 session-lifetime-only assignment, and grouped/filterable client collections.
 its source is implemented; [the roadmap](roadmap.md) indexes delivery and
-[spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md) remains open. this is the sole new
+[groups/shells hands-on acceptance](issues/groups-shells-hands-on.md) remains open. this is the sole new
 exception to the placement restriction below; provider operations, opaque
 references, runtime owners, and their historical evidence remain unchanged.
 
@@ -307,7 +307,7 @@ jarvis consumes that projection directly without a second inventory adapter.
 
 android replaces active/quiet labels with semantic status, marking inferred
 status unobtrusively. use machine/name/id ordering within the accepted
-[space groups](spaces.md); no urgency sorting, search, or manual saved ordering.
+[groups](groups.md); no urgency sorting, search, or manual saved ordering.
 shell-only sessions remain visible as terminals. add interrupt
 and stop to existing actions; stop reuses existing destructive confirmation.
 read/send/keys remain available to tools; phone interaction uses its native

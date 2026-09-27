@@ -1,5 +1,5 @@
-// Package space owns session membership and collection selection.
-package space
+// Package group owns session membership and collection selection.
+package group
 
 import (
 	"errors"
@@ -157,6 +157,6 @@ func (filter Filter) Matches(label Label) bool {
 	case FilterNamed:
 		return label == filter.label
 	default:
-		panic("invalid space filter") // justify-defect: only the closed constructors populate filter kinds.
+		panic("invalid group filter") // justify-defect: only the closed constructors populate filter kinds.
 	}
 }

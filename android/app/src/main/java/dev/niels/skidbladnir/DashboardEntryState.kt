@@ -14,7 +14,7 @@ internal sealed interface DashboardScope {
 
 internal sealed interface DashboardItemKey {
     val encoded: String
-    data class Space(val fingerprint: String) : DashboardItemKey {
+    data class Group(val fingerprint: String) : DashboardItemKey {
         init { require(DashboardCardKey.isFingerprint(fingerprint)) }
         override val encoded: String get() = "space:$fingerprint"
     }
@@ -25,7 +25,7 @@ internal sealed interface DashboardItemKey {
             DashboardCardKey.isFingerprint(encoded) -> DashboardCardKey(encoded)
             encoded == "space:unassigned" -> Unassigned
             encoded.startsWith("space:") && DashboardCardKey.isFingerprint(encoded.substringAfter(':')) ->
-                Space(encoded.substringAfter(':'))
+                Group(encoded.substringAfter(':'))
             else -> null
         }
     }
@@ -67,7 +67,7 @@ internal data class DashboardEntrySnapshot(
     val schemaVersion: Int,
     val scope: DashboardScope,
     val viewport: DashboardViewport,
-    val space: DashboardSpaceKey = DashboardSpaceKey.All,
+    val group: DashboardGroupKey = DashboardGroupKey.All,
 ) {
     init {
         // justify-service-invariant-check: the task capsule's exact wire version is a
@@ -80,14 +80,14 @@ internal class DashboardEntryState(
     restoredSnapshot: DashboardEntrySnapshot? = null,
 ) {
     private var currentScope by mutableStateOf(restoredSnapshot?.scope ?: DashboardScope.All)
-    private var currentSpace by mutableStateOf(restoredSnapshot?.space?.selection() ?: DashboardSpaceSelection.All)
+    private var currentGroup by mutableStateOf(restoredSnapshot?.group?.selection() ?: DashboardGroupSelection.All)
     private var pendingSnapshot by mutableStateOf(restoredSnapshot)
     private var ownedGridState by mutableStateOf(LazyGridState())
     private var acceptedHandles: Set<MachineHandle>? = null
     private var installed = false
 
     val scope: DashboardScope get() = currentScope
-    val space: DashboardSpaceSelection get() = currentSpace
+    val group: DashboardGroupSelection get() = currentGroup
     val gridState: LazyGridState get() = ownedGridState
     val restorationPending: Boolean get() = pendingSnapshot != null
 
@@ -112,23 +112,23 @@ internal class DashboardEntryState(
         pendingSnapshot = null
     }
 
-    fun selectSpace(space: DashboardSpaceSelection) {
-        if (space.key == currentSpace.key) return
-        currentSpace = space
+    fun selectGroup(group: DashboardGroupSelection) {
+        if (group.key == currentGroup.key) return
+        currentGroup = group
         pendingSnapshot = null
     }
 
-    fun resolveSpace(labels: List<SpaceLabel>) {
-        val selected = currentSpace as? DashboardSpaceSelection.Named ?: return
+    fun resolveGroup(labels: List<GroupLabel>) {
+        val selected = currentGroup as? DashboardGroupSelection.Named ?: return
         if (selected.label != null) return
-        val label = labels.firstOrNull { spaceFingerprint(it) == selected.fingerprint } ?: return
-        currentSpace = selected.copy(label = label)
+        val label = labels.firstOrNull { groupFingerprint(it) == selected.fingerprint } ?: return
+        currentGroup = selected.copy(label = label)
     }
 
-    fun followCreatedMembership(label: SpaceLabel?) {
-        if (currentSpace.matches(label)) return
-        selectSpace(label?.let { DashboardSpaceSelection.Named(spaceFingerprint(it), it) }
-            ?: DashboardSpaceSelection.Unassigned)
+    fun followCreatedMembership(label: GroupLabel?) {
+        if (currentGroup.matches(label)) return
+        selectGroup(label?.let { DashboardGroupSelection.Named(groupFingerprint(it), it) }
+            ?: DashboardGroupSelection.Unassigned)
         ownedGridState = LazyGridState()
     }
 
@@ -143,7 +143,7 @@ internal class DashboardEntryState(
 
     fun resetAll() {
         currentScope = DashboardScope.All
-        currentSpace = DashboardSpaceSelection.All
+        currentGroup = DashboardGroupSelection.All
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
@@ -169,7 +169,7 @@ internal class DashboardEntryState(
         return DashboardEntrySnapshot(
             schemaVersion = SCHEMA_VERSION,
             scope = currentScope,
-            space = currentSpace.key,
+            group = currentGroup.key,
             viewport = if (anchor == null) {
                 TOP_VIEWPORT
             } else {
@@ -189,7 +189,7 @@ internal class DashboardEntryState(
                 resetAll()
             } else {
                 currentScope = restored.scope
-                currentSpace = restored.space.selection()
+                currentGroup = restored.group.selection()
                 pendingSnapshot = restored
             }
         }
@@ -197,6 +197,7 @@ internal class DashboardEntryState(
     }
 
     private companion object {
+        // Schema 2 persists the original membership and anchor spellings; keep one reader and writer.
         const val SCHEMA_VERSION = 2
         const val REGISTRY_KEY = "dev.niels.skidbladnir.dashboard-entry"
         val TOP_VIEWPORT = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0)
@@ -210,12 +211,12 @@ internal class DashboardEntryState(
                     putString("scopeMachine", scope.handle.encoded)
                 }
             }
-            when (val space = snapshot.space) {
-                DashboardSpaceKey.All -> putString("spaceKind", "all")
-                DashboardSpaceKey.Unassigned -> putString("spaceKind", "unassigned")
-                is DashboardSpaceKey.Named -> {
+            when (val group = snapshot.group) {
+                DashboardGroupKey.All -> putString("spaceKind", "all")
+                DashboardGroupKey.Unassigned -> putString("spaceKind", "unassigned")
+                is DashboardGroupKey.Named -> {
                     putString("spaceKind", "named")
-                    putString("spaceLabelSha256", space.fingerprint)
+                    putString("spaceLabelSha256", group.fingerprint)
                 }
             }
             when (val anchor = snapshot.viewport.anchor) {
@@ -224,7 +225,7 @@ internal class DashboardEntryState(
                     putString("anchorKind", "session")
                     putString("anchorSha256", anchor.lifetimeFingerprint)
                 }
-                is DashboardItemKey.Space -> {
+                is DashboardItemKey.Group -> {
                     putString("anchorKind", "space")
                     putString("anchorSha256", anchor.fingerprint)
                 }
@@ -247,16 +248,16 @@ internal class DashboardEntryState(
                 }
                 else -> error("invalid dashboard machine scope")
             }
-            val space = when (encoded.requiredString("spaceKind")) {
-                "all" -> DashboardSpaceKey.All
-                "unassigned" -> DashboardSpaceKey.Unassigned
+            val group = when (encoded.requiredString("spaceKind")) {
+                "all" -> DashboardGroupKey.All
+                "unassigned" -> DashboardGroupKey.Unassigned
                 "named" -> {
                     requiredKeys += "spaceLabelSha256"
                     val fingerprint = encoded.requiredString("spaceLabelSha256")
                     check(DashboardCardKey.isFingerprint(fingerprint))
-                    DashboardSpaceKey.Named(fingerprint)
+                    DashboardGroupKey.Named(fingerprint)
                 }
-                else -> error("invalid dashboard space scope")
+                else -> error("invalid dashboard group scope")
             }
             val anchor = when (encoded.requiredString("anchorKind")) {
                 "none" -> null
@@ -266,7 +267,7 @@ internal class DashboardEntryState(
                     val fingerprint = encoded.requiredString("anchorSha256")
                     check(DashboardCardKey.isFingerprint(fingerprint))
                     if (encoded.requiredString("anchorKind") == "session") DashboardCardKey(fingerprint)
-                    else DashboardItemKey.Space(fingerprint)
+                    else DashboardItemKey.Group(fingerprint)
                 }
                 else -> error("invalid dashboard anchor kind")
             }
@@ -274,7 +275,7 @@ internal class DashboardEntryState(
             val index = encoded.requiredInt("fallbackIndex")
             val offset = encoded.requiredInt("offsetPx")
             check(index >= 0 && offset >= 0 && (anchor != null || index == 0 && offset == 0))
-            return DashboardEntrySnapshot(version, scope, DashboardViewport(anchor, index, offset), space)
+            return DashboardEntrySnapshot(version, scope, DashboardViewport(anchor, index, offset), group)
         }
 
         fun Bundle.requiredInt(key: String): Int {

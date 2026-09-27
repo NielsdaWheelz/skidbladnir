@@ -58,7 +58,7 @@ internal fun SessionCard(
     motionEnabled: Boolean,
     onOpen: () -> Unit,
     onKill: () -> Unit,
-    onSpace: () -> Unit,
+    onGroup: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
@@ -155,10 +155,10 @@ internal fun SessionCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    SpaceTextAction(
-                        label = "space", enabled = machine.canMutate, onClick = onSpace,
-                        description = "space for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
-                            (session.space?.let { "space: ${it.text}" } ?: "unassigned"),
+                    GroupTextAction(
+                        label = "change group", enabled = machine.canMutate, onClick = onGroup,
+                        description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
+                            (session.group?.let { "group: ${it.text}" } ?: "unassigned"),
                     )
                     KillButton(
                         machineLabel = visibleSession.machine.label,

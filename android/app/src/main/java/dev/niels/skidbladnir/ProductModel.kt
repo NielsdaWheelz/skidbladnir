@@ -246,7 +246,7 @@ internal data class TmuxSession(
     val character: CharacterSummary,
     val launchProfile: ProfileKey? = null,
     val objective: String? = null,
-    val space: SpaceLabel? = null,
+    val group: GroupLabel? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -300,7 +300,7 @@ private data class WireTmuxSession(
     val character: CharacterSummary,
     val launchProfile: String? = null,
     val objective: String? = null,
-    val space: String? = null,
+    val group: String? = null,
     val cwd: String? = null,
     val activeCommand: String? = null,
     val attachedClients: Int,
@@ -318,7 +318,7 @@ internal data class ForgeDraft(
     val launch: LaunchChoice,
     val optionalTmuxName: String,
     val objective: String,
-    val space: SpaceLabel? = null,
+    val group: GroupLabel? = null,
 )
 
 internal const val MAXIMUM_WORKING_DIRECTORY_BYTES = 4_096
@@ -479,7 +479,7 @@ internal data class ForgeForm(
     val launch: LaunchChoice?,
     val optionalTmuxName: String,
     val objective: String,
-    val space: SpaceDraft = SpaceDraft.Chosen(""),
+    val group: GroupDraft = GroupDraft.Chosen(""),
 ) {
     constructor(draft: ForgeDraft) : this(
         draft.machineHandle,
@@ -487,13 +487,13 @@ internal data class ForgeForm(
         draft.launch,
         draft.optionalTmuxName,
         draft.objective,
-        SpaceDraft.Chosen(draft.space?.text.orEmpty()),
+        GroupDraft.Chosen(draft.group?.text.orEmpty()),
     )
 
     fun submission(): ForgeDraft? {
         if (machineHandle == null || launch == null || cwd.isBlank()) return null
-        val chosen = space as? SpaceDraft.Chosen ?: return null
-        val label = if (chosen.text.isEmpty()) null else SpaceLabel.fromDraft(chosen.text) ?: return null
+        val chosen = group as? GroupDraft.Chosen ?: return null
+        val label = if (chosen.text.isEmpty()) null else GroupLabel.fromDraft(chosen.text) ?: return null
         return ForgeDraft(machineHandle, cwd, launch, optionalTmuxName, objective, label)
     }
 }
@@ -525,7 +525,7 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, t
     val profile: String? = null,
     val optionalTmuxName: String? = null,
     val objective: String? = null,
-    val space: String? = null,
+    val group: String? = null,
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
 @Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
@@ -590,7 +590,7 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
         (draft.launch as? LaunchChoice.Agent)?.profile?.encoded,
         draft.optionalTmuxName.ifEmpty { null },
         draft.objective.ifEmpty { null },
-        draft.space?.text,
+        draft.group?.text,
     ),
 )
 internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
@@ -813,7 +813,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
     DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
-    ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), SpaceInvalid("SpaceInvalid"),
+    ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
     PairingInviteRejected("PairingInviteRejected"),
@@ -836,7 +836,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
         "This directory has too many folders to show. Enter the path instead."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
-    ApiErrorCode.SpaceInvalid -> SPACE_INVALID
+    ApiErrorCode.GroupInvalid -> GROUP_INVALID
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
     ApiErrorCode.SessionNameConflict -> "A session with that name already exists."
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
@@ -866,8 +866,8 @@ internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean): Session
 }
 
 private fun JsonObject.requireSessionOptionalFields() {
-    if ("space" in this) requiredString("space")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "space", "cwd", "activeCommand", "agent"))
+    if ("group" in this) requiredString("group")
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent"))
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireAbsentOrNonNull(setOf("profile", "providerSession"))
         (agent["status"] as? JsonObject)?.requireAbsentOrNonNull(setOf("reason"))
@@ -893,7 +893,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     character = session.character,
     launchProfile = session.launchProfile?.let { requireNotNull(ProfileKey.parse(it)) },
     objective = session.objective,
-    space = session.space?.let { requireNotNull(SpaceLabel.parse(it)) },
+    group = session.group?.let { requireNotNull(GroupLabel.parse(it)) },
     cwd = session.cwd,
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,

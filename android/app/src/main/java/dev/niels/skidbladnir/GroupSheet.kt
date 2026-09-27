@@ -42,7 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SpaceTextAction(
+internal fun GroupTextAction(
     label: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -64,40 +64,40 @@ internal fun SpaceTextAction(
 }
 
 @Composable
-internal fun SpaceField(
-    draft: SpaceDraft,
-    labels: List<SpaceLabel>,
+internal fun GroupField(
+    draft: GroupDraft,
+    labels: List<GroupLabel>,
     enabled: Boolean,
     onChange: (String) -> Unit,
 ) {
     val text = when (draft) {
-        SpaceDraft.Unresolved -> ""
-        is SpaceDraft.Chosen -> draft.text
+        GroupDraft.Unresolved -> ""
+        is GroupDraft.Chosen -> draft.text
     }
-    val invalid = text.isNotEmpty() && SpaceLabel.fromDraft(text) == null
+    val invalid = text.isNotEmpty() && GroupLabel.fromDraft(text) == null
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (draft == SpaceDraft.Unresolved) Text("choose a space for this new session", color = Gold)
+        if (draft == GroupDraft.Unresolved) Text("choose a group for this new session", color = Gold)
         OutlinedTextField(
             value = text,
             onValueChange = onChange,
             enabled = enabled,
             singleLine = true,
-            label = { Text("space") },
+            label = { Text("group") },
             isError = invalid,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
-        if (invalid) Text(SPACE_INVALID, color = Ember)
-        SpaceTextAction("unassigned", enabled, { onChange("") })
+        if (invalid) Text(GROUP_INVALID, color = Ember)
+        GroupTextAction("unassigned", enabled, { onChange("") })
         if (labels.isNotEmpty()) {
             var expanded by remember { mutableStateOf(false) }
             Box {
-                SpaceTextAction("observed spaces", enabled, { expanded = true })
+                GroupTextAction("observed groups", enabled, { expanded = true })
                 DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false },
                     shape = NidavellirShapes.Card, containerColor = DeepSurface,
                     tonalElevation = 0.dp, shadowElevation = 0.dp) {
                     labels.forEach { label ->
-                        SpaceTextAction("space: ${label.text}", enabled,
+                        GroupTextAction("group: ${label.text}", enabled,
                             { onChange(label.text); expanded = false }, Modifier.fillMaxWidth())
                     }
                 }
@@ -108,15 +108,15 @@ internal fun SpaceField(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SpaceSheet(
-    editor: SpaceEditor,
+internal fun GroupSheet(
+    editor: GroupEditor,
     machine: MachineState,
-    labels: List<SpaceLabel>,
+    labels: List<GroupLabel>,
     onChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
 ) {
-    val sending = editor.phase == SpacePhase.Sending
+    val sending = editor.phase == GroupPhase.Sending
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -129,18 +129,18 @@ internal fun SpaceSheet(
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()
             .padding(horizontal = 20.dp).padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("space", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
+            Text("change group", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
             Text("${editor.target.session.tmuxName} on ${machine.machine.label.text}", fontFamily = NidavellirType.Data)
-            Text("current: ${editor.target.session.space?.let { "space: ${it.text}" } ?: "unassigned"}", color = Muted)
-            SpaceField(SpaceDraft.Chosen(editor.draft), labels, editor.phase == SpacePhase.Editing, onChange)
-            if (sending) Text("assigning space", color = Gold)
-            if (editor.phase is SpacePhase.Checking) Text("checking current membership", color = Gold)
+            Text("current: ${editor.target.session.group?.let { "group: ${it.text}" } ?: "unassigned"}", color = Muted)
+            GroupField(GroupDraft.Chosen(editor.draft), labels, editor.phase == GroupPhase.Editing, onChange)
+            if (sending) Text("changing group", color = Gold)
+            if (editor.phase is GroupPhase.Checking) Text("checking current membership", color = Gold)
             editor.error?.let { Text(it, color = Ember) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 OutlinedButton(onClick = onDismiss, enabled = !sending, modifier = Modifier.padding(end = 8.dp)) {
                     Text("cancel")
                 }
-                Button(onClick = onSubmit, enabled = spaceSubmissionAdmissible(editor, machine)) { Text("save") }
+                Button(onClick = onSubmit, enabled = groupSubmissionAdmissible(editor, machine)) { Text("save") }
             }
         }
     }
@@ -148,26 +148,26 @@ internal fun SpaceSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SpaceSelector(
-    selected: DashboardSpaceSelection,
-    labels: List<SpaceLabel>,
-    onSelect: (DashboardSpaceSelection) -> Unit,
+internal fun GroupSelector(
+    selected: DashboardGroupSelection,
+    labels: List<GroupLabel>,
+    onSelect: (DashboardGroupSelection) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    SpaceTextAction(selected.displayLabel(), true, { expanded = true },
+    GroupTextAction(selected.displayLabel(), true, { expanded = true },
         modifier = Modifier.fillMaxWidth())
     if (!expanded) return
     ModalBottomSheet(onDismissRequest = { expanded = false }, shape = NidavellirShapes.Sheet, containerColor = DeepSurface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("spaces", modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-            val choices = listOf(DashboardSpaceSelection.All, DashboardSpaceSelection.Unassigned) +
-                labels.map { DashboardSpaceSelection.Named(spaceFingerprint(it), it) }
+            Text("groups", modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+            val choices = listOf(DashboardGroupSelection.All, DashboardGroupSelection.Unassigned) +
+                labels.map { DashboardGroupSelection.Named(groupFingerprint(it), it) }
             choices.forEach { choice ->
-                if (choice is DashboardSpaceSelection.Named && choice == choices.getOrNull(2)) {
-                    Text("observed spaces", color = Muted, style = MaterialTheme.typography.labelSmall)
+                if (choice is DashboardGroupSelection.Named && choice == choices.getOrNull(2)) {
+                    Text("observed groups", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }
-                SpaceTextAction(choice.displayLabel(), true, { onSelect(choice); expanded = false },
+                GroupTextAction(choice.displayLabel(), true, { onSelect(choice); expanded = false },
                     modifier = Modifier.fillMaxWidth().semantics { this.selected = choice.key == selected.key },
                     color = if (choice.key == selected.key) Gold else Bone,
                 )

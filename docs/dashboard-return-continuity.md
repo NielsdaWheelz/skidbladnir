@@ -1,8 +1,8 @@
 # dashboard return continuity
 
-2026-09-15 target amendment: [spaces](spaces.md) extends this retained-entry
-contract with independent space selection, heading-aware viewport keys, and the
-exact schema-2 task capsule. source is implemented; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+2026-09-15 target amendment: [groups](groups.md) extends this retained-entry
+contract with independent group selection, heading-aware viewport keys, and the
+exact schema-2 task capsule. source is implemented; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
 remains open. the delivery evidence
 immediately below is historical.
 
@@ -27,7 +27,7 @@ or is added.
 ## Outcome
 
 Attaching is a drill-in from one retained Dashboard entry. Top `Detach` and
-Android Back return to that same entry: same machine and space filters, same
+Android Back return to that same entry: same machine and group filters, same
 semantic viewport (session or group heading). live tmux inventory revalidates in
 place. a return never constructs all/all at the top.
 
@@ -52,7 +52,7 @@ owns this bounded navigation/spatial context.
 
 ## Capability contract
 
-given a machine/space intersection, first-visible session or heading `K`, and
+given a machine/group intersection, first-visible session or heading `K`, and
 offset `O`:
 
 1. Attach to any visible card, then top `Detach` or Android Back: the first
@@ -70,13 +70,13 @@ offset `O`:
    task retain the Dashboard entry. If Terminal was visible, recreation lands
    on Dashboard and never restores an attachment, terminal target, or bytes.
 8. A fresh task, app-data reset, or restored machine absent from the accepted
-   fleet starts all machines/all spaces at top. temporary outage never clears
-   either filter. an unresolved named space retains its fingerprint selection.
+   fleet starts all machines/all groups at top. temporary outage never clears
+   either filter. an unresolved named group retains its fingerprint selection.
 9. Selecting a different filter cancels pending restoration and uses normal
    stable-key clamping; selecting the active filter is a no-op. No per-filter
    viewport history is created.
 10. Terminal access loss remains the explicit exception: atomically select the
-   affected machine, retain the space filter, cancel saved restoration, reset
+   affected machine, retain the group filter, cancel saved restoration, reset
    its viewport to top, and
    show the existing notice. Dashboard-side pending Forge/kill access loss keeps
    its existing affected-machine selection and live-grid clamping behavior.
@@ -95,7 +95,7 @@ tmux truth wins over frozen ordering.
 MainActivity (task/saved-state owner)
 |- DashboardEntryState                 retained above destination switch
 |  |- scope: DashboardScope            machine dimension
-|  |- space selection                   named display label is memory-only
+|  |- group selection                   named display label is memory-only
 |  |- gridState: LazyGridState
 |  `- pending saved restoration
 |- SkidbladnirController               inventory/terminal/action owner
@@ -106,7 +106,7 @@ MainActivity (task/saved-state owner)
 
 `DashboardEntryState` is created/restored before the controller, passed to the
 controller and app shell, and retained while Dashboard leaves composition. It
-is the sole mutable owner of machine/space selection and viewport. controller
+is the sole mutable owner of machine/group selection and viewport. controller
 commands read or change it only through semantic methods; dashboard supplies ordered safe
 keys for one-shot restoration, while snapshots read the owned grid directly.
 
@@ -123,13 +123,13 @@ the entry or saved capsule.
 ## state schema
 
 the exact current capsule is schema 2 in
-[spaces §10](spaces.md#10-android-navigation-and-content-free-restoration).
+[groups §10](groups.md#10-android-navigation-and-content-free-restoration).
 that section owns its primitive keys, closed variants, fingerprint framing,
 unresolved-name rules, and one-time schema cut. do not implement the historical
 schema-1 capsule or keep a compatibility reader.
 
 - retain `DashboardScope.All | Machine(handle)` as the machine dimension.
-- the live entry owns the independent space selection and may retain its known
+- the live entry owns the independent group selection and may retain its known
   label in memory. the saved selection contains only all/unassigned/named and a
   fingerprint for named; no raw label is accepted into the saved representation.
 - `DashboardCardKey` retains its current machine/id/lifetime fingerprint and
@@ -143,7 +143,7 @@ schema-1 capsule or keep a compatibility reader.
   index now counts rendered items, including headings; its offset keeps the
   existing nonnegative platform meaning. no anchor requires index/offset zero.
 - `DashboardEntrySnapshot` contains exact schema version 2, machine scope,
-  comparison-only space selection, and viewport. it contains no inventory,
+  comparison-only group selection, and viewport. it contains no inventory,
   raw label, name, objective, cwd, raw lifetime token, editor, destination,
   connection, attachment, input, or credential.
 - use only the existing activity-owned saved-state registry key and adapter.
@@ -157,7 +157,7 @@ schema-1 capsule or keep a compatibility reader.
    `acceptFleet` with every handle accepted from `MachineStore`, before its
    first Dashboard publication. Reachability, access, polling, and snapshot
    freshness do not affect membership. A missing pairing resets scope, viewport,
-   and pending anchor together to all machines/all spaces/top; temporary outage
+   and pending anchor together to all machines/all groups/top; temporary outage
    does not.
 2. Keep the live `LazyGridState` object for ordinary Terminal round trips; the
    existing stable lazy key owns in-process insert/reorder anchoring.
@@ -168,7 +168,7 @@ schema-1 capsule or keep a compatibility reader.
    remains pending; an unexplained foreground poller stop is a defect.
 4. dashboard projects ordered `DashboardItemKey` values from the same grouped
    item sequence it renders, including retained stale rows and headings. the
-   entry receives keys, not session snapshots. resolve the saved selected-space
+   entry receives keys, not session snapshots. resolve the saved selected-group
    name from observations without changing its comparison key; an absent label
    remains selected with generic copy and does not block settled rendering. if
    the saved key survives, use its new index and saved offset; otherwise clamp
@@ -196,12 +196,12 @@ The state holder exposes only the behavior the two current consumers need:
 
 ```kotlin
 val scope: DashboardScope
-val space: DashboardSpaceSelection
+val group: DashboardGroupSelection
 val gridState: LazyGridState
 val restorationPending: Boolean
 fun acceptFleet(handles: Set<MachineHandle>)
 fun selectScope(scope: DashboardScope)
-fun selectSpace(space: DashboardSpaceSelection)
+fun selectGroup(group: DashboardGroupSelection)
 fun selectTerminalAccessLoss(handle: MachineHandle)
 fun resetAll()
 fun restoreOnce(keys: List<DashboardItemKey>)
@@ -222,12 +222,12 @@ normalization boundary; after it, invalid scope selection is a caller defect.
   cancels pending restoration, and lets the live keyed grid clamp. The current
   scope is a no-op.
 - `selectTerminalAccessLoss` always selects that machine, cancels restoration,
-  and schedules top while preserving space selection. `resetAll` clears both
+  and schedules top while preserving group selection. `resetAll` clears both
   filters, pending state, and viewport to all/all/top. these are semantic
   operations, not a boolean viewport policy.
 - session grouping consumes both filters. inventory targets, pressure visibility,
-  and refresh routing read machine scope only. forge adds the explicit space
-  prefill/unresolved-choice rules from the spaces spec.
+  and refresh routing read machine scope only. forge adds the explicit group
+  prefill/unresolved-choice rules from the groups spec.
 - The controller is the sole restoration-readiness oracle: background lifecycle
   stop leaves pending state untouched; a foreground Ready/Reading machine with
   no owned poller is a defect; modeled non-live outcomes may resolve empty.
@@ -252,7 +252,7 @@ normalization boundary; after it, invalid scope selection is a caller defect.
   pass-through selection command.
 - lazy item identity and restoration use the same `DashboardItemKey` projection.
   session keys remain the existing `DashboardCardKey` strings; headings have
-  the comparison-only keys defined in spaces. test tags remain selectors, not
+  the comparison-only keys defined in groups. test tags remain selectors, not
   another lifetime identity.
 - Extract one production `DashboardTerminalHost` in `MainActivity.kt`. It owns
   the closed destination switch and Terminal Back, renders the actual screens,
@@ -266,7 +266,7 @@ normalization boundary; after it, invalid scope selection is a caller defect.
   Dashboard, then verifies `entry.scope`.
 
 this navigation owner adds no public api, terminal protocol, credential store,
-or dependency. the spaces feature owns its separate host membership operation;
+or dependency. the groups feature owns its separate host membership operation;
 its presence does not make terminal navigation a host responsibility.
 
 ```kotlin
@@ -302,7 +302,7 @@ control, highlight animation, haptic, telemetry, or explanatory copy.
 
 the following delivery instructions describe the original return-continuity
 implementation. they are retained as context for its evidence, not a new
-assignment. spaces uses its own [file and removal contract](spaces.md#11-reuse-removals-and-files),
+assignment. groups uses its own [file and removal contract](groups.md#11-reuse-removals-and-files),
 which supersedes the old path exclusions and card-only capsule design.
 
 Delete in the same implementation:

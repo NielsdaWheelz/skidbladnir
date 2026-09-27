@@ -248,28 +248,28 @@ internal class GatewayClient {
             .build()
     }
 
-    fun setSessionSpace(
+    fun setSessionGroup(
         credential: MachineCredential,
         target: SessionTarget,
-        label: SpaceLabel?,
+        label: GroupLabel?,
     ): GatewayResult<Unit> {
-        val request = spaceRequest(credential, target, label)
+        val request = groupRequest(credential, target, label)
         return try {
-            executeBodyless(request, ::decodeSpaceHttpFailure)
+            executeBodyless(request, ::decodeGroupHttpFailure)
         } catch (_: ProtocolDecodeException) {
             // A malformed completion after dispatch cannot establish that the write failed.
             GatewayResult.Failure(GatewayFailure.Transport)
         }
     }
 
-    internal fun spaceRequest(
+    internal fun groupRequest(
         credential: MachineCredential,
         target: SessionTarget,
-        label: SpaceLabel?,
+        label: GroupLabel?,
     ): Request {
         require(target.machineHandle == credential.machine.handle)
-        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "space"))
-            .put(productJson.encodeToString(SpaceRequest(target.session.identityToken, label?.text.orEmpty()))
+        return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "group"))
+            .put(productJson.encodeToString(GroupRequest(target.session.identityToken, label?.text.orEmpty()))
                 .toRequestBody(jsonMediaType))
             .build()
     }
@@ -440,7 +440,7 @@ internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailu
         ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
         ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable,
         ApiErrorCode.ProfileUnknown, ApiErrorCode.SessionNameInvalid, ApiErrorCode.ObjectiveInvalid,
-        ApiErrorCode.SpaceInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
+        ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
         ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
     ))
 }
@@ -522,7 +522,7 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.ProfileUnknown,
     ApiErrorCode.SessionNameInvalid,
     ApiErrorCode.ObjectiveInvalid,
-        ApiErrorCode.SpaceInvalid,
+        ApiErrorCode.GroupInvalid,
     -> 422
     ApiErrorCode.SessionNameConflict,
     ApiErrorCode.SessionIdentityMismatch,
@@ -548,14 +548,14 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
     GatewayFailure.Api(code)
 }
 
-@Serializable private data class SpaceRequest(val identityToken: String, val space: String)
+@Serializable private data class GroupRequest(val identityToken: String, val group: String)
 @Serializable private data class SessionIdentityRequest(val identityToken: String)
 @Serializable private data class MutationErrorResponse(val code: String, val message: String, val dispatch: String)
 
-internal fun decodeSpaceHttpFailure(status: Int, encoded: String): GatewayFailure =
+internal fun decodeGroupHttpFailure(status: Int, encoded: String): GatewayFailure =
     decodeMutationHttpFailure(status, encoded, setOf(
         ApiErrorCode.Unauthenticated, ApiErrorCode.MachineIdentityMismatch, ApiErrorCode.InvalidRequest,
-        ApiErrorCode.RequestTooLarge, ApiErrorCode.SpaceInvalid, ApiErrorCode.SessionNotFound,
+        ApiErrorCode.RequestTooLarge, ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNotFound,
         ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
     ))
 

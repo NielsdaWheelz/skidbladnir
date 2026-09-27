@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -32,8 +32,8 @@ type Request struct {
 	Keys        []string
 	Mode        string
 	MaxBytes    int
-	Space       space.Label
-	SpaceFilter space.Filter
+	Group       group.Label
+	GroupFilter group.Filter
 }
 
 type ProcessReference struct {
@@ -91,7 +91,7 @@ func (ref Reference) SessionEqual(other Reference) bool {
 }
 
 func (request Request) Valid() bool {
-	if request.Operation != "start" && request.Operation != "space" && !request.Space.IsUnassigned() || request.Operation != "list" && request.SpaceFilter.Kind() != space.FilterAll {
+	if request.Operation != "start" && request.Operation != "group" && !request.Group.IsUnassigned() || request.Operation != "list" && request.GroupFilter.Kind() != group.FilterAll {
 		return false
 	}
 	if request.Mode != "" && request.Mode != "auto" && request.Mode != "terminal" {
@@ -112,7 +112,7 @@ func (request Request) Valid() bool {
 	case "start":
 		return request.Name != "" && request.Machine != "" && request.Ref == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space", "shell":
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "group", "shell":
 	default:
 		return false
 	}
