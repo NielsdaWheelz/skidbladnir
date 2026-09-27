@@ -26,7 +26,7 @@ func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID
 	if !found {
 		return nil, &foreground
 	}
-	if agent.Provider == agentruntime.ProviderCodex && foreground.ExecutableBase() == "codex" {
+	if agent.Provider == agentruntime.ProviderCodex {
 		environment, readErr := processinfo.ObserveForegroundEnvironment(panePID, foreground)
 		if errors.Is(readErr, processinfo.ErrForegroundMismatch) {
 			return nil, nil
@@ -44,7 +44,7 @@ func observeRemoteAgent(foreground processinfo.Observation, environment map[stri
 	if !found {
 		return nil
 	}
-	if agent.Provider == agentruntime.ProviderCodex && foreground.ExecutableBase() == "codex" {
+	if agent.Provider == agentruntime.ProviderCodex {
 		agent.Profile = codexProfile(profiles, environment)
 	}
 	return &agent
