@@ -10,7 +10,7 @@
       "provider": "Codex",
       "command": "@CODEX@",
       "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex"}],
-      "foregroundSignatures": [{"executableBase": "codex"}],
+      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
       "arguments": ["--yolo"]
     },
     {
@@ -19,7 +19,7 @@
       "provider": "Codex",
       "command": "@CODEX@",
       "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work"}],
-      "foregroundSignatures": [{"executableBase": "codex"}],
+      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
       "arguments": ["--yolo"]
     },
     {
@@ -28,7 +28,7 @@
       "provider": "Codex",
       "command": "@CODEX@",
       "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work2"}],
-      "foregroundSignatures": [{"executableBase": "codex"}],
+      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
       "arguments": ["--yolo"]
     },
     {
