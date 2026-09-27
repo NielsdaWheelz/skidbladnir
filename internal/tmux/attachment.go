@@ -95,7 +95,7 @@ func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
 	}
 	options := "#{&&:#{==:#{window-size},latest},#{&&:#{==:#{destroy-unattached},off},#{==:#{detach-on-destroy},on}}}"
 	return []string{
-		"-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
+		"-u", "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
 		mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server),
 		"if-shell -F -t '" + spec.SourceID + "' '" + options + "' \"attach-session -E -t '" + spec.SourceID + "'\" \"display-message -p -l '" + attachmentConfigurationMarker + "'\"",
 		"display-message -p -l '" + identityMismatchMarker + "'",
