@@ -1,19 +1,23 @@
-# phone terminal continuity qualification
+# phone session-preservation uncertainty
 
-problem: the matching signed apk ran on the physical phone, but the final
-source-only control and test-session cleanup were interrupted before proof.
+problem: one unrelated source session lifetime in the hashed baseline was
+absent after the extended physical-phone test window. its cause is unknown.
 
-impact: the close and new-terminal actions have not yet been accepted on the
-phone while the current execution context is remote.
+impact: the named phone journey passed, but preservation of every unrelated
+session across that window cannot be claimed.
 
-evidence: the installed apk bytes matched the published `v0.10.2` asset.
-the physical phone created a terminal from `z` results, changed cwd, detached
-and reopened the same source session, entered mosh to devbox, displayed the
-remote cwd and configured codex home, returned to the remote shell on `/exit`,
-and replaced the provider. the phone dashboard showed the destination and
-source labels. source-only controls remain `NOT_RUN`; two test-created source
-sessions await cleanup.
+evidence: the installed phone apk matched the published signed `v0.10.3`
+asset. the phone created a non-home terminal from `z` search, changed local and
+remote cwd, entered mosh to devbox, observed remote provider and configured
+home profile, used `/exit` to retain the remote shell, replaced the provider,
+detached/reopened, and displayed source and destination labels. the remote
+header opened a source-scoped terminal form; source-only close removed the
+exact test session. the three named phone test sessions present in the final
+window were closed through their exact phone dialogs. a baseline of 12
+unrelated hashed session ids had 11 survivors afterward. no direct tmux
+command targeted the production
+socket. the missing lifetime was not identified, so causation is unproven.
 
-resolved when: with explicit current-turn approval, prove the source-owned
-new-terminal and close controls while remote, then close only test-created
-phone sessions and verify preexisting sessions remain. remove this record then.
+resolved when: attribute the missing lifetime or repeat preservation proof on
+a quiescent baseline with all unrelated lifetimes retained. remove this record
+then.

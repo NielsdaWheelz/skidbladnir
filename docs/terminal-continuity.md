@@ -1,12 +1,13 @@
 # terminal continuity
 
-status: shipped in immutable `v0.10.2` from source
-`492058f6433d106645779f09cc13dc3900b625fc`. matching gateways run on
-macbook, arch, and devbox. isolated mac ssh/mosh and physical-phone journeys
-have partial live acceptance; remaining boundaries are recorded in the
-[remote](issues/terminal-continuity-remote-qualification.md),
-[darwin](issues/terminal-continuity-darwin-qualification.md), and
-[phone](issues/terminal-continuity-phone-qualification.md) issues.
+status: shipped in immutable `v0.10.3` from source
+`e5906e4df4244c166eb868e678f738f47b893e86`. matching gateways run on
+macbook, arch, and devbox. isolated mac zsh/bash, ssh/mosh, and the named
+physical-phone journey passed. broader remote lifecycle paths remain
+`NOT_RUN` in the [remote](issues/terminal-continuity-remote-qualification.md)
+issue. one unrelated session lifetime disappeared during the phone test window;
+its cause remains unknown in the
+[phone](issues/terminal-continuity-phone-qualification.md) issue.
 
 ## 1. scope and decisions
 
