@@ -1,17 +1,19 @@
 # phone terminal continuity qualification
 
-problem: the changed android surface has compiled but has not run on the
-physical phone. the source qualification did not include adb or the platform
-gate.
+problem: the matching signed apk ran on the physical phone, but the final
+source-only control and test-session cleanup were interrupted before proof.
 
-impact: forge directory search, current remote labels, attachment continuity,
-and source-only controls remain `NOT_RUN` on the device.
+impact: the close and new-terminal actions have not yet been accepted on the
+phone while the current execution context is remote.
 
-evidence: android kotlin compilation and the repository engineering gate
-passed; an independent source review found no concrete defect. neither result
-is a device observation.
+evidence: the installed apk bytes matched the published `v0.10.2` asset.
+the physical phone created a terminal from `z` results, changed cwd, detached
+and reopened the same source session, entered mosh to devbox, displayed the
+remote cwd and configured codex home, returned to the remote shell on `/exit`,
+and replaced the provider. the phone dashboard showed the destination and
+source labels. source-only controls remain `NOT_RUN`; two test-created source
+sessions await cleanup.
 
-resolved when: with explicit current-turn approval, install a matching apk on
-the physical phone and prove the mobile journeys in
-`docs/terminal-continuity.md` against the paired gateways. remove this record
-then.
+resolved when: with explicit current-turn approval, prove the source-owned
+new-terminal and close controls while remote, then close only test-created
+phone sessions and verify preexisting sessions remain. remove this record then.

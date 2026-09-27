@@ -81,11 +81,12 @@ sessions retain their original launch policy.
   tests are removed before commit. no retained suite protects the important
   behavior automatically. [testing policy](rules/testing.md) owns the workflow;
   `scripts/check verify` runs engineering checks and builds only.
-- [terminal continuity](terminal-continuity.md): isolated linux tmux and static
-  build checks are source qualification only. actual [fleet ssh/mosh](issues/terminal-continuity-remote-qualification.md),
+- [terminal continuity](terminal-continuity.md): `v0.10.2` is published and
+  deployed on the three hosts. isolated mac ssh/mosh and physical-phone paths
+  passed the named live checks. the [remote](issues/terminal-continuity-remote-qualification.md),
   [darwin](issues/terminal-continuity-darwin-qualification.md), and
-  [phone](issues/terminal-continuity-phone-qualification.md) acceptance remain
-  `NOT_RUN` until deployment prerequisites and live gates are qualified.
+  [phone](issues/terminal-continuity-phone-qualification.md) issues retain the
+  unqualified boundaries; engineering checks alone do not close them.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 

@@ -1,14 +1,18 @@
 # darwin terminal continuity qualification
 
-problem: the changed native foreground environment, cwd, boot identity, and
-login shell paths have not run on a mac. the linux host cannot compile the
-darwin cgo process observer without an appropriate cross compiler.
+problem: isolated mac zsh, native foreground observation, and ssh/mosh routes
+passed. the explicit mac bash login-shell path remains unqualified.
 
-impact: mac terminal and remote context behavior remains `NOT_RUN`.
+impact: a mac bash startup path could omit the scoped integration or fail to
+return to its shell after provider exit.
 
-evidence: linux go engineering checks and isolated tmux proofs passed; no
-darwin executable or isolated mac tmux proof ran.
+evidence: the installed `v0.10.2` darwin binary on a test-owned `tmux -L`
+socket created a terminal, changed cwd, observed stock codex, returned to its
+zsh shell on `/exit`, replaced the provider, and resolved ssh/mosh remote
+contexts. the darwin observer read the marker from homebrew openssh; macos
+withheld environment bytes from its platform `/usr/bin/ssh`. mac bash is
+`NOT_RUN`.
 
-resolved when: on the mac, build the changed source and run isolated `tmux -L`
-live proofs for bash/zsh agent exit, cwd/home labels, remote tty registration,
-and provider replacement. remove this record then.
+resolved when: run the mac bash login-shell path on a test-owned isolated
+socket and verify cwd, provider home, exit to shell, and replacement. remove
+this record then.

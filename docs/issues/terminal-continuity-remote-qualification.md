@@ -1,23 +1,23 @@
 # remote terminal continuity qualification
 
-problem: source and installer changes are prepared, but the actual paired
-hosts have not installed this generation or qualified forwarding of
-`SKIDBLADNIR_CONNECTION` through stock ssh/mosh. the required `SendEnv` and
-`AcceptEnv` or tailscale ssh `acceptEnv` settings are external deployment
-prerequisites.
+problem: the matching `v0.10.2` generation and scoped forwarding are installed
+on macbook, arch, and devbox. ordinary macbook-to-devbox ssh/mosh works, but
+the broader remote lifecycle has not been qualified.
 
-impact: a remote terminal may show `remote context unknown`; nested hops,
-reconnect, and remote provider swaps are unclaimed on the fleet.
+impact: nested hops, suspension, reconnect, gateway restart, and source loss
+may expose stale or unavailable remote context. those paths remain unclaimed.
 
-evidence: isolated linux tmux registration and shell proofs and fake-gateway
-client integration tests passed on the feature source. `ssh -G` for the three
-configured target labels currently reports only `LANG` and `LC_*` as `SendEnv`;
-it does not forward the marker. no live fleet ssh/mosh boundary was run.
+evidence: `v0.10.2` source and published-release checks passed; fleet verify
+passed all three installed hosts. an isolated mac gateway on a test-owned tmux
+socket proved ssh/mosh source markers, remote registration, cwd change,
+configured stock codex home, `/exit` retaining the remote shell, and source
+shell rejection while connected. the physical phone also reached the devbox
+over mosh and displayed its live remote cwd and provider. no devbox-to-macbook
+ssh route was added. distinct simultaneous connections, nested hops,
+suspension/resume, reconnect, gateway restart, and source loss are `NOT_RUN`.
 `docs/terminal-continuity.md` names the full acceptance set.
 
-resolved when: install the matching host generation and forwarding settings on
-the intended outbound and inbound routes without adding devbox-to-macbook ssh
-access; prove distinct simultaneous connections, nested hops,
-cwd and provider changes, suspension/resume, reconnect, gateway restart,
-source loss, and source-only controls with credential-free evidence. remove this
-record then.
+resolved when: prove distinct simultaneous connections, nested hops,
+suspension/resume, reconnect, gateway restart, source loss, and source-only
+controls on the intended routes with content-free evidence. remove this record
+then.
