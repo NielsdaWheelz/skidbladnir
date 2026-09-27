@@ -1,5 +1,10 @@
 # agent control
 
+[terminal continuity](terminal-continuity.md) adds descriptive remote context
+and current codex home labels. remote facts never become this document's local
+agent control target; `stop` still halts the local agent and closes its terminal
+under the explicit client label `stop agent and close terminal`.
+
 2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
 selects existing provider account homes and the skid-owned
 `skidbladnir-provider-runtime-control` installation. its frozen source/dependency

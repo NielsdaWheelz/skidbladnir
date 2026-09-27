@@ -1,41 +1,39 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 )
 
-// The new pane may inherit environment from an already running tmux server.
-// Clear the other product's context at the last boundary before the provider.
-func agentExec(encoded []string) error {
-	if len(encoded) < 3 {
+// The shell invokes this as a foreground child. Its environment belongs to
+// exactly one provider; the parent shell keeps its own account environment.
+func agentExec(arguments []string) error {
+	if len(arguments) != 1 {
 		return errors.New("invalid agent invocation")
 	}
-	arguments := make([]string, len(encoded))
-	for index, value := range encoded {
-		decoded, err := base64.RawURLEncoding.DecodeString(value)
-		if err != nil || base64.RawURLEncoding.EncodeToString(decoded) != value || strings.ContainsRune(string(decoded), 0) {
-			return errors.New("invalid agent invocation")
-		}
-		arguments[index] = string(decoded)
+	launch, err := agentruntime.DecodeLaunch(arguments[0])
+	if err != nil {
+		return err
 	}
-	command, homeName, home := arguments[0], arguments[1], arguments[2]
-	if !filepath.IsAbs(command) || !filepath.IsAbs(home) || (homeName != "CODEX_HOME" && homeName != "CLAUDE_CONFIG_DIR") {
-		return errors.New("invalid agent invocation")
+	profileNames := make(map[string]bool, len(launch.Environment))
+	for _, variable := range launch.Environment {
+		profileNames[variable.Name] = true
 	}
-	environment := make([]string, 0, len(os.Environ())+2)
-	for _, entry := range runtimeenv.WithoutHerdr(os.Environ()) {
+	environment := make([]string, 0, len(os.Environ())+len(launch.Environment)+1)
+	for _, entry := range runtimeenv.WithoutLaunchContext(os.Environ()) {
 		name, _, _ := strings.Cut(entry, "=")
-		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_CLAUDE_COMMAND" && name != "SKIDBLADNIR_AGENT" {
+		if !profileNames[name] {
 			environment = append(environment, entry)
 		}
 	}
-	environment = append(environment, homeName+"="+home, "SKIDBLADNIR_AGENT=1")
-	return syscall.Exec(command, append([]string{command}, arguments[3:]...), environment)
+	for _, variable := range launch.Environment {
+		environment = append(environment, variable.Name+"="+variable.Value)
+	}
+	environment = append(environment, "SKIDBLADNIR_AGENT=1")
+	return syscall.Exec(launch.Command, append([]string{launch.Command}, launch.Arguments...), environment)
 }

@@ -66,7 +66,7 @@ install both `~/.local/bin/skid` and `~/.local/bin/skidbladnir` as symlinks to
 `../share/skidbladnir/current/skidbladnir`. bare `skid` opens the desktop session
 browser; `skid --help` documents the same cli used by automation. these public
 links belong to installer validation, repeat apply, rollback and removal, and
-are outside the unchanged ten-file generation digest. the earlier optional-cli
+are outside the generation digest. the earlier optional-cli
 wording was wrong: [the accepted client contract](agent-control-ux.md#public-commands)
 requires this command.
 
@@ -134,6 +134,7 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
 | `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
+| `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 codex's npm command may itself be a javascript launcher: select its packaged
 native `codex` executable, not `HOME/bin/codex` or an account wrapper. resolving
@@ -142,7 +143,7 @@ the native claude symlink target/executable; a same-name account wrapper is inva
 
 exact schema (all named members required unless marked optional):
 
-- root: `platform`, `tmux:{path,testedVersion}`, `nativeControlPath`, `profiles`.
+- root: `platform`, `tmux:{path,testedVersion}`, `nativeControlPath`, `zoxidePath`, `profiles`.
 - `profiles`: either `[]` for terminal-only operation or exactly the four rows
   below in that order. the restoration uses all four.
 - each row: `key`, `label`, `provider`, `command`, `environment`,
@@ -198,10 +199,24 @@ install [`provider-command`](../deployment/providers/provider-command) at
 `@CODEX_SHELL@`, and `@CLAUDE_SHELL@` as shell-quoted literals from the same
 deployment inputs as the json config. install
 [`shell-init`](../deployment/providers/shell-init) at `current/providers/shell-init`
-(0644). this is a closed five-account launcher, not a shared provider router.
+(0644), and [`terminal-context-init`](../deployment/providers/terminal-context-init)
+at `current/providers/terminal-context-init` (0644), rendering native ssh/mosh
+paths as shell-quoted literals. the latter is sourced independently on paired
+interactive bash/zsh hosts for inbound connection registration; it does not
+install provider aliases or change account homes.
 
-the original app adopts dev-server's ten-file
-[generation receipt contract](/Users/nnandal/Documents/code/dev-server/docs/gateway-separation-runbook.md:275).
+ordinary remote context additionally requires the paired hosts' ssh client to
+send only `SKIDBLADNIR_CONNECTION` and the destination ssh server to accept it,
+or the equivalent tailscale ssh `acceptEnv` policy. this is a deployment
+prerequisite, not a gateway setting. stock ssh/mosh forwarding, reconnect and
+native shell startup must be qualified on the actual fleet before remote
+tracking is accepted. no tailnet policy is changed by skid apply.
+
+terminal continuity changes the generation receipt to eleven files. the
+installer and fleet verifier must cut over together; older receipts are rejected.
+
+the original app extends dev-server's earlier
+[generation receipt contract](https://github.com/NielsdaWheelz/dev-server/blob/1296309c8350930befeb62e02479a8a6cf2a819c/docs/gateway-separation-runbook.md#generation-receipt-contract).
 this supersedes the earlier six-file proposal. `scripts/fleet` validates regular
 non-symlink files and these exact modes, in this exact hash order:
 
@@ -214,13 +229,14 @@ non-symlink files and these exact modes, in this exact hash order:
 | 5 | `providers/native-control` | `0755` |
 | 6 | `providers/provider-command` | `0755` |
 | 7 | `providers/shell-init` | `0644` |
-| 8 | `providers/claude-agent-identity/.claude-plugin/plugin.json` | `0644` |
-| 9 | `providers/claude-agent-identity/hooks/hooks.json` | `0644` |
-| 10 | `providers/claude-agent-identity/bin/agent-hook` | `0755` |
+| 8 | `providers/terminal-context-init` | `0644` |
+| 9 | `providers/claude-agent-identity/.claude-plugin/plugin.json` | `0644` |
+| 10 | `providers/claude-agent-identity/hooks/hooks.json` | `0644` |
+| 11 | `providers/claude-agent-identity/bin/agent-hook` | `0755` |
 
 for each file, encode `relative filename + 0x00 + lowercase hex sha256(file) +
 0x0a`. filenames are the literal ascii strings above; there are no spaces,
-leading `./`, mode bytes, or extra record separators. concatenate all ten
+leading `./`, mode bytes, or extra record separators. concatenate all eleven
 records in that order and compute their sha-256, expressed as 64 lowercase hex
 digits. modes are validated separately, not hashed. generation directories are
 `0700`; their basename is `VERSION-DIGEST`. the active receipt
@@ -240,7 +256,8 @@ cost: four more hashed files and retained private helper environments, with no
 independent dependency switch during rollback. published archive contents and
 checksums are unaffected.
 
-contract agreement, 2026-09-25: both owners acknowledge this ten-file contract.
+historical contract agreement, 2026-09-25: both owners acknowledged the ten-file
+baseline. the eleven-file cutover above requires fresh producer/consumer evidence.
 dev-server introduced its acknowledgment and admission correction in
 `94931a13c045fa9c9b294080149524501ff30b68`, retained in pushed source
 `1296309c8350930befeb62e02479a8a6cf2a819c`:

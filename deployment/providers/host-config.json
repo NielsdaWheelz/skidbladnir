@@ -2,6 +2,7 @@
   "platform": "@PLATFORM@",
   "tmux": {"path": "@TMUX@", "testedVersion": "@TMUX_VERSION@"},
   "nativeControlPath": "@ROOT@/.local/bin/skidbladnir-provider-runtime-control",
+  "zoxidePath": "@ZOXIDE@",
   "profiles": [
     {
       "key": "personal",

@@ -62,10 +62,16 @@ func (m *model) footerLines() []string {
 		}
 	case "create":
 		text = "left/right choose machine/launch/group · tab/enter next\nenter on group creates · ctrl-u unassigned · escape cancels"
+	case "search":
+		text = "up/down select directory · enter uses it · escape returns to options"
 	case "output", "details":
 		text = "up/down/page-up/page-down scroll · q/escape returns"
 	default:
-		text = "g groups · a agents · t tabs · tab/shift-tab focus · n new · m machine\n"
+		target := m.client.DefaultMachine().Label
+		if m.machine != "" {
+			target = m.machine
+		}
+		text = "g groups · a agents · t tabs · tab/shift-tab focus · n terminal on " + target + " · N options · m machine\n"
 		switch m.focus {
 		case tabs:
 			text += "left/right/h/l select"
@@ -82,9 +88,12 @@ func (m *model) footerLines() []string {
 			if row.available {
 				text += "\nenter attach · spacebar info"
 				if row.session.Agent != nil {
-					text += " · r read · i interrupt · s stop"
+					text += " · r read · i interrupt · s stop agent and close terminal"
 				}
-				text += " · x kill\ne change group · T terminal here"
+				text += " · x kill\ne edit group"
+				if row.session.Connection == nil {
+					text += " · T terminal here"
+				}
 			} else {
 				text += "\nspacebar info · session unavailable; remote actions disabled"
 			}
@@ -212,7 +221,7 @@ func (m *model) sidebarLines(height int) []string {
 		if index == selected {
 			marker = "* "
 		}
-		state := row.session.Agent.Status.State
+		state := m.current(&row).Agent.State
 		if !row.available {
 			state = "unavailable"
 		}
@@ -264,10 +273,11 @@ func (m *model) mainLines(width, height int) []string {
 	add := func(text string) { lines = append(lines, wrapped(text, width)...) }
 	switch m.page {
 	case "confirm":
-		add(m.pending.Operation + " " + capturedHeading(m.pendingName, m.pendingLabel, width-len(m.pending.Operation)-2) + "?")
 		if m.pending.Operation == "stop" {
+			add("stop agent and close terminal " + capturedHeading(m.pendingName, m.pendingLabel, width-32) + "?")
 			add("attempt agent halt, then close this session. shared work may be affected.")
 		} else {
+			add("close terminal " + capturedHeading(m.pendingName, m.pendingLabel, width-18) + "?")
 			add("close this session. work shared through another session may survive.")
 		}
 	case "machine-picker":
@@ -284,7 +294,7 @@ func (m *model) mainLines(width, height int) []string {
 			}
 		}
 	case "group-edit":
-		add("change group for " + m.pendingName + " on " + m.pendingLabel)
+		add("group for " + m.pendingName + " on " + m.pendingLabel)
 		if m.groupFailure != nil {
 			add(m.groupFailure.Code + " (unknown); not repeated")
 		}
@@ -332,6 +342,25 @@ func (m *model) mainLines(width, height int) []string {
 			add(group.ErrInvalid.Error())
 		}
 		add(m.groupSuggestions())
+	case "search":
+		add("directory search on " + m.form[0])
+		if m.searching {
+			add("searching…")
+		} else if len(m.searchDirectories) == 0 {
+			add("no matching directories")
+		} else {
+			for index, directory := range m.searchDirectories {
+				marker := "  "
+				if index == m.searchCursor {
+					marker = "> "
+					focusStart = len(lines)
+				}
+				add(marker + directory)
+				if index == m.searchCursor {
+					focusEnd = len(lines)
+				}
+			}
+		}
 	case "output", "details":
 		if m.page == "output" {
 			// Identity and coverage stay pinned and leave room for the snapshot.
@@ -362,12 +391,28 @@ func (m *model) mainLines(width, height int) []string {
 			break
 		}
 		session := row.session
-		lines = []string{"session: " + session.Name, "machine: " + row.label, fleetclient.GroupHeading(session.Group), "directory: " + session.CWD}
-		if session.Agent == nil {
-			lines = append(lines, "agent: none (shell)")
+		current := m.current(row)
+		lines = []string{"session: " + session.Name, "terminal on: " + row.label, fleetclient.GroupHeading(session.Group)}
+		if current.Kind == "remote" {
+			lines = append(lines, "running on: "+current.Label)
+		}
+		if current.Kind == "remoteUnknown" {
+			lines = append(lines, "remote context unknown")
 		} else {
-			agent := session.Agent
-			lines = append(lines, "provider: "+agent.Provider, "profile: "+agent.Profile, "state: "+agent.Status.State+" ("+agent.Status.Source+")", "reason: "+agent.Status.Reason)
+			cwd := current.CWD
+			if cwd == "" {
+				cwd = "directory unavailable"
+			}
+			lines = append(lines, "directory: "+cwd)
+			if current.Agent == nil {
+				lines = append(lines, "agent: not detected")
+			} else {
+				profile := current.Agent.Label
+				if profile == "" {
+					profile = "profile unknown"
+				}
+				lines = append(lines, "provider: "+current.Agent.Provider, "profile: "+profile, "state: "+current.Agent.State)
+			}
 		}
 		lines = append(lines, fmt.Sprintf("attached clients: %d", session.AttachedClients))
 		availability := "available"

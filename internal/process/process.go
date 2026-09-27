@@ -1,6 +1,7 @@
 package process
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ const coherentObservationAttempts = 8
 var (
 	ErrProcessAbsent       = errors.New("process is absent")
 	ErrProcessNotPermitted = errors.New("process is outside the caller's observation boundary")
+	ErrForegroundMismatch  = errors.New("foreground process changed")
 )
 
 type PID int
@@ -61,7 +63,7 @@ func Observe(pid PID) (Observation, error) {
 			hasPrevious = false
 			continue
 		}
-		if hasPrevious && equalObservation(previous, current) {
+		if hasPrevious && SameObservation(previous, current) {
 			return current, nil
 		}
 		previous, hasPrevious = current, true
@@ -72,7 +74,9 @@ func Observe(pid PID) (Observation, error) {
 	return Observation{}, errors.New("process observation did not stabilize")
 }
 
-func equalObservation(left, right Observation) bool {
+// SameObservation compares every process identity and foreground fact sampled
+// by Observe, including executable arguments across exec of the same path.
+func SameObservation(left, right Observation) bool {
 	return left.PID == right.PID &&
 		left.ParentPID == right.ParentPID &&
 		left.ProcessGroup == right.ProcessGroup &&
@@ -145,4 +149,60 @@ func ObserveForeground(panePID PID) (Observation, error) {
 		return Observation{}, err
 	}
 	return Observe(foreground)
+}
+
+// ObserveForegroundEnvironment reads only the fields needed for terminal
+// context. The caller's observation must still be the terminal foreground
+// process on both sides of the native read.
+func ObserveForegroundEnvironment(terminalPID PID, expected Observation) (map[string]string, error) {
+	before, err := ObserveForeground(terminalPID)
+	if err != nil || !SameObservation(before, expected) {
+		return nil, ErrForegroundMismatch
+	}
+	environment, readErr := observeEnvironment(expected.PID)
+	after, err := ObserveForeground(terminalPID)
+	if err != nil || !SameObservation(after, expected) {
+		return nil, ErrForegroundMismatch
+	}
+	return environment, readErr
+}
+
+// ObserveCurrentDirectory brackets the native cwd read with exact process
+// identity validation. A stable missing cwd is represented by the read error.
+func ObserveCurrentDirectory(pid PID, expected Observation) (string, error) {
+	before, err := Observe(pid)
+	if err != nil || !SameObservation(before, expected) {
+		return "", ErrForegroundMismatch
+	}
+	cwd, readErr := observeCurrentDirectory(pid)
+	after, err := Observe(pid)
+	if err != nil || !SameObservation(after, expected) {
+		return "", ErrForegroundMismatch
+	}
+	return cwd, readErr
+}
+
+func allowedEnvironment(contents []byte) (map[string]string, error) {
+	if len(contents) > 1<<20 || len(contents) > 0 && contents[len(contents)-1] != 0 {
+		return nil, errors.New("process environment is incomplete or too large")
+	}
+	result := make(map[string]string, 3)
+	if len(contents) == 0 {
+		return result, nil
+	}
+	for _, entry := range bytes.Split(contents[:len(contents)-1], []byte{0}) {
+		name, value, found := bytes.Cut(entry, []byte{'='})
+		if !found {
+			return nil, errors.New("process environment has an incomplete record")
+		}
+		key := string(name)
+		if key != "CODEX_HOME" && key != "HOME" && key != "SKIDBLADNIR_CONNECTION" {
+			continue
+		}
+		if _, exists := result[key]; exists {
+			return nil, errors.New("process environment has a duplicate requested key")
+		}
+		result[key] = string(value)
+	}
+	return result, nil
 }

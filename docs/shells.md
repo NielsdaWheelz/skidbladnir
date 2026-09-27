@@ -1,5 +1,12 @@
 # new terminal here
 
+[terminal continuity](terminal-continuity.md) supersedes the launch and desktop
+creation details below: every new session starts a persistent login shell;
+the initial agent runs once in its foreground and exit returns to that shell.
+desktop `n` creates and attaches a home terminal; `N` opens the advanced form.
+new-terminal-here is unavailable during a remote ssh/mosh connection. the older
+red/green evidence here does not qualify those changes.
+
 2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
 selects existing personal accounts and adds `SKIDBLADNIR_SHELL=1` to new terminal
 startup, with final bash/zsh startup integration for bare/account provider
@@ -35,7 +42,8 @@ separate ordinary tmux session, never a window, split, or linked session group.
 
 | surface | target behavior |
 | --- | --- |
-| tui `n` | existing five-field form: machine, launch, required name, cwd, group. launch offers terminal alongside advertised agent profiles. create selects/reveals the result; enter attaches. |
+| tui `n` | create and attach a home terminal on the selected or configured default machine. |
+| tui `N` | advanced machine, launch, optional name, cwd, and group form; create and attach. |
 | tui `T` (shift+t) | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
 | android forge | terminal in the launch picker; existing name/cwd/group/objective fields and automatic post-create attachment. |
 | android attach header | one-tap terminal-plus action, spoken “new terminal here”, minimum 48dp target; same create-here behavior for any attached session. fit the existing header height and visual language. |

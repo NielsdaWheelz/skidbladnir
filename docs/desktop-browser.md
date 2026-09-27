@@ -1,5 +1,9 @@
 # organized desktop browser — pr 3
 
+[terminal continuity](terminal-continuity.md) supersedes `n` creation, adds the
+`N` advanced form and current remote execution context, and keeps the browser's
+source-owned attachment and controls.
+
 implemented; [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md)
 remains skipped. [the roadmap](roadmap.md) indexes delivery. [architecture](architecture.md)
 owns scope; [roadmap](roadmap.md) owns delivery/evidence. this spec replaces the

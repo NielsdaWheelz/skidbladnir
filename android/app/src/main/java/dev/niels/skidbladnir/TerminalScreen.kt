@@ -65,6 +65,7 @@ internal fun TerminalScreen(
     }
     val inputAdmissible = terminalInputAdmissible(state.connection, state.viewport)
     val recovering = terminalPageLive(state.connection) && state.viewport == TerminalViewport.TooSmall
+    val execution = state.machine.executionContext(state.target.session)
 
     Column(
         modifier = Modifier
@@ -100,7 +101,7 @@ internal fun TerminalScreen(
                 terminalActionAdmissible(state.machine.canMutate, state.connection)
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                 HeaderChip(
-                    label = "", spokenName = "new terminal here", enabled = shellEnabled,
+                    label = "", spokenName = "new terminal on ${state.machine.machine.label.text}", enabled = shellEnabled,
                     onClick = controller::newTerminalHere, modifier = Modifier.fillMaxSize(),
                 )
                 Canvas(Modifier.size(24.dp)) {
@@ -133,11 +134,11 @@ internal fun TerminalScreen(
                         onClick = { expanded = true }, modifier = Modifier.width(48.dp),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(text = { Text("Interrupt") }, onClick = {
+                        DropdownMenuItem(text = { Text("Interrupt agent") }, onClick = {
                             expanded = false
                             controller.interruptAgent()
                         }, enabled = state.target.session.agent.methods.interrupt != AgentMethod.Unavailable)
-                        DropdownMenuItem(text = { Text("Stop") }, onClick = {
+                        DropdownMenuItem(text = { Text("Stop agent and close terminal") }, onClick = {
                             expanded = false
                             controller.requestKill(state.target)
                         })
@@ -154,6 +155,20 @@ internal fun TerminalScreen(
                     onClick = { controller.requestKill(state.target) },
                 )
             }
+        }
+        if (execution !is ExecutionContext.Local) {
+            val description = when (execution) {
+                is ExecutionContext.Remote ->
+                    "Running on ${execution.machine.label.text}. Terminal on ${state.machine.machine.label.text}. " +
+                        "${remoteAgentLabel(execution, state.machines)}. " +
+                        (execution.cwd?.let { "Directory $it." } ?: "Directory unavailable.")
+                ExecutionContext.RemoteUnknown ->
+                    "Remote context unknown. Terminal on ${state.machine.machine.label.text}."
+                is ExecutionContext.Local -> error("local execution already excluded")
+            }
+            Text(description, color = Muted, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    .semantics { contentDescription = description })
         }
 
         // The recovery overlay sits over the terminal area and the key deck

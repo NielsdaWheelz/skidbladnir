@@ -15,6 +15,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -34,6 +35,9 @@ var (
 	errorWorkingDirectoryUnavailable = apiError{Code: "WorkingDirectoryUnavailable", Message: "That directory does not exist or cannot be opened.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryUnavailable}
 	errorDirectoryListingUnavailable = apiError{Code: "DirectoryListingUnavailable", Message: "This directory cannot be browsed. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingUnavailable}
 	errorDirectoryListingTooLarge    = apiError{Code: "DirectoryListingTooLarge", Message: "This directory has too many folders to show. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingTooLarge}
+	errorDirectorySearchUnavailable  = apiError{Code: "DirectorySearchUnavailable", Message: "Directory search is unavailable on this machine.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectorySearchUnavailable}
+	errorDirectorySearchTooLarge     = apiError{Code: "DirectorySearchTooLarge", Message: "Too many directory search results. Narrow the search.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectorySearchTooLarge}
+	errorTerminalContextUnavailable  = apiError{Code: "TerminalContextUnavailable", Message: "Remote context is unavailable.", Status: http.StatusNotFound, logCode: logging.ErrorTerminalContextUnavailable}
 	errorProfileUnknown              = apiError{Code: "ProfileUnknown", Message: "Choose an available profile.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorProfileUnknown}
 	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
 	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
@@ -73,18 +77,24 @@ type agentDTO struct {
 	ProviderSession *providerSessionDTO  `json:"providerSession,omitempty"`
 }
 
+type connectionDTO struct {
+	Transport string `json:"transport"`
+	ID        string `json:"id,omitempty"`
+}
+
 type sessionDTO struct {
-	TmuxID          string       `json:"tmuxId"`
-	TmuxName        string       `json:"tmuxName"`
-	IdentityToken   string       `json:"identityToken"`
-	Character       characterDTO `json:"character"`
-	LaunchProfile   string       `json:"launchProfile,omitempty"`
-	Agent           *agentDTO    `json:"agent,omitempty"`
-	Objective       string       `json:"objective,omitempty"`
-	Group           string       `json:"group,omitempty"`
-	CWD             string       `json:"cwd,omitempty"`
-	ActiveCommand   string       `json:"activeCommand,omitempty"`
-	AttachedClients int          `json:"attachedClients"`
+	TmuxID          string         `json:"tmuxId"`
+	TmuxName        string         `json:"tmuxName"`
+	IdentityToken   string         `json:"identityToken"`
+	Character       characterDTO   `json:"character"`
+	LaunchProfile   string         `json:"launchProfile,omitempty"`
+	Agent           *agentDTO      `json:"agent,omitempty"`
+	Connection      *connectionDTO `json:"connection,omitempty"`
+	Objective       string         `json:"objective,omitempty"`
+	Group           string         `json:"group,omitempty"`
+	CWD             string         `json:"cwd,omitempty"`
+	ActiveCommand   string         `json:"activeCommand,omitempty"`
+	AttachedClients int            `json:"attachedClients"`
 }
 
 type machineDTO struct {
@@ -283,6 +293,13 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	if err != nil {
 		return sessionDTO{}, err
 	}
+	var connection *connectionDTO
+	if session.Connection != nil {
+		if agent != nil || session.CWD != "" || session.Connection.Transport != "ssh" && session.Connection.Transport != "mosh" || session.Connection.ID != "" && !terminalcontext.ValidConnectionID(session.Connection.ID) {
+			return sessionDTO{}, errors.New("invalid session connection")
+		}
+		connection = &connectionDTO{Transport: session.Connection.Transport, ID: session.Connection.ID}
+	}
 	if session.LaunchProfile != "" {
 		matches := 0
 		for _, profile := range profiles {
@@ -301,6 +318,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
+		Connection:      connection,
 		Objective:       session.Objective,
 		Group:           session.Group.String(),
 		CWD:             session.CWD,

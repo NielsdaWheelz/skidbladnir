@@ -84,6 +84,10 @@ internal fun DashboardScreen(
                 openWorkingDirectoryPicker = controller::openWorkingDirectoryPicker,
                 openExactWorkingDirectoryPicker = controller::openExactWorkingDirectoryPicker,
                 workingDirectory = WorkingDirectoryPickerActions(
+                    showSearch = controller::showDirectorySearch,
+                    updateSearch = controller::updateDirectorySearch,
+                    search = controller::searchDirectories,
+                    chooseSearch = controller::chooseSearchedWorkingDirectory,
                     browseHome = controller::browseWorkingDirectoryHome,
                     openChild = controller::openWorkingDirectoryChild,
                     openParent = controller::openWorkingDirectoryParent,
@@ -423,6 +427,7 @@ private fun DashboardDwarfGrid(
                             SessionCard(
                                 visible,
                                 machine,
+                                state.machines,
                                 showMachineLabel = scope == DashboardScope.All,
                                 motionEnabled = motionEnabled,
                                 onOpen = { onOpen(visible.target) },
@@ -577,7 +582,7 @@ internal fun KillConfirmation(
     onConfirm: () -> Unit,
 ) {
     val stoppingAgent = state.target.session.agent != null && !state.terminalOnly
-    val verb = if (stoppingAgent) "Stop" else "Kill"
+    val verb = if (stoppingAgent) "Stop agent and close terminal" else "Close terminal"
     // No ornament near destructive surfaces (design-language.md §7): the kill
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
@@ -589,7 +594,7 @@ internal fun KillConfirmation(
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "Try to halt this agent, then close its session. Halting shared work affects linked sessions; detached work may continue."
+                stoppingAgent -> "Try to halt this agent, then close its terminal. Halting shared work affects linked sessions; detached work may continue."
                 else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
             })
         },
@@ -603,7 +608,7 @@ internal fun KillConfirmation(
                 ),
                 shape = NidavellirShapes.Cleft,
             ) {
-                Text(if (state.pending) "$verb in progress…" else "$verb on ${state.machine.label.text}")
+                Text(if (state.pending) "$verb in progress…" else verb)
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !state.pending) { Text("Cancel") } },

@@ -1,5 +1,10 @@
 # Working-directory chooser
 
+[terminal continuity](terminal-continuity.md) extends this chooser with one
+ranked, host-local zoxide search action. `z <words>` in exact entry opens that
+search; a selected result still only fills the forge draft. the historical
+no-search language below describes the earlier implementation.
+
 Status: **implementation candidate, 2026-08-31**. All four owner reds are
 recorded and production source is hard-cut. On the pre-rebase feature tree,
 routine verification, the approved isolated Darwin and Linux real-tmux Create

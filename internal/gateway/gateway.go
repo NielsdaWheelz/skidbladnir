@@ -186,6 +186,10 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.createSession(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/directory-listings":
 		gateway.listDirectory(writer, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/v1/directory-searches":
+		gateway.searchDirectories(writer, request)
+	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/terminal-contexts/"):
+		gateway.readTerminalContext(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/pressure":
 		gateway.readPressure(writer)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/terminal"):
@@ -811,6 +815,10 @@ func requestRoute(path string) logging.Route {
 		return logging.RoutePressure
 	case path == "/v1/directory-listings":
 		return logging.RouteDirectoryListings
+	case path == "/v1/directory-searches":
+		return logging.RouteDirectorySearches
+	case strings.HasPrefix(path, "/v1/terminal-contexts/"):
+		return logging.RouteTerminalContexts
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
 		return logging.RouteAgentControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):

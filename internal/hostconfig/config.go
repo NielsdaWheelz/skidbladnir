@@ -30,6 +30,7 @@ var expectedProfiles = [...]struct {
 type Config struct {
 	NativeControlPath string
 	TmuxPath          string
+	ZoxidePath        string
 	Profiles          []agentruntime.Profile
 }
 
@@ -100,10 +101,11 @@ func ValidateTmuxVersion(version string) error {
 }
 
 type configDTO struct {
-	NativeControlPath stringField   `json:"nativeControlPath"`
-	Platform          stringField   `json:"platform"`
-	Tmux              *tmuxDTO      `json:"tmux"`
-	Profiles          *[]profileDTO `json:"profiles"`
+	NativeControlPath stringField       `json:"nativeControlPath"`
+	Platform          stringField       `json:"platform"`
+	Tmux              *tmuxDTO          `json:"tmux"`
+	ZoxidePath        nullablePathField `json:"zoxidePath"`
+	Profiles          *[]profileDTO     `json:"profiles"`
 }
 
 type tmuxDTO struct {
@@ -133,8 +135,15 @@ type foregroundSignatureDTO struct {
 }
 
 func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
-	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
+	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.ZoxidePath.present || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
 		return Config{}, errors.New("host config omits a required member")
+	}
+	zoxidePath := ""
+	if wire.ZoxidePath.value != nil {
+		zoxidePath = *wire.ZoxidePath.value
+		if !validAbsolutePath(zoxidePath) {
+			return Config{}, errors.New("host config zoxide path is invalid")
+		}
 	}
 	kind := platform.Kind(wire.Platform.value)
 	if kind != platform.KindLinux && kind != platform.KindDarwin {
@@ -153,6 +162,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	return Config{
 		NativeControlPath: wire.NativeControlPath.value,
 		TmuxPath:          wire.Tmux.Path.value,
+		ZoxidePath:        zoxidePath,
 		Profiles:          profiles,
 	}, nil
 }

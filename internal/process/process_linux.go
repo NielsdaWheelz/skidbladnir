@@ -5,6 +5,7 @@ package process
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,6 +13,39 @@ import (
 	"strings"
 	"syscall"
 )
+
+func BootIdentity() (string, error) {
+	contents, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return "", fmt.Errorf("read boot identity: %w", err)
+	}
+	identity := strings.TrimSpace(string(contents))
+	if identity == "" {
+		return "", errors.New("boot identity is empty")
+	}
+	return identity, nil
+}
+
+func observeEnvironment(pid PID) (map[string]string, error) {
+	file, err := os.Open(filepath.Join("/proc", strconv.Itoa(int(pid)), "environ"))
+	if err != nil {
+		return nil, classifyProcError(err, "open process environment")
+	}
+	defer file.Close()
+	contents, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	if err != nil {
+		return nil, classifyProcError(err, "read process environment")
+	}
+	return allowedEnvironment(contents)
+}
+
+func observeCurrentDirectory(pid PID) (string, error) {
+	cwd, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(int(pid)), "cwd"))
+	if err != nil {
+		return "", classifyProcError(err, "read process cwd")
+	}
+	return cwd, nil
+}
 
 func observeOnce(pid PID) (Observation, error) {
 	root := filepath.Join("/proc", strconv.Itoa(int(pid)))

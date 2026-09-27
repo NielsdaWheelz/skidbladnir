@@ -23,3 +23,70 @@ function codex-work2 { "$HOME/.local/share/skidbladnir/current/providers/provide
 function claude { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-personal "$@"; }
 function claude-personal { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-personal "$@"; }
 function claude-work { "$HOME/.local/share/skidbladnir/current/providers/provider-command" claude-work "$@"; }
+
+if [[ "${SKIDBLADNIR_STARTUP_PID:-}" == "$$" ]] && ! typeset -f _skid_startup >/dev/null 2>&1; then
+  function _skid_startup {
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+      (( ZSH_SUBSHELL == 0 )) || return 0
+      autoload -Uz add-zsh-hook
+      add-zsh-hook -d precmd _skid_startup
+    else
+      [[ "${BASHPID:-}" == "${SKIDBLADNIR_STARTUP_PID:-}" && "${BASH_SUBSHELL:-0}" == 0 ]] || return 0
+      if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a'* ]]; then
+        local -a _skid_prompt_commands=()
+        local _skid_command
+        for _skid_command in "${PROMPT_COMMAND[@]}"; do
+          [[ "$_skid_command" == _skid_startup ]] || _skid_prompt_commands+=("$_skid_command")
+        done
+        PROMPT_COMMAND=("${_skid_prompt_commands[@]}")
+      else
+        # PROMPT_COMMAND may be a scalar or array; this branch is scalar.
+        # shellcheck disable=SC2178
+        PROMPT_COMMAND="${PROMPT_COMMAND#_skid_startup;}"
+      fi
+    fi
+    local _skid_cwd="$SKIDBLADNIR_STARTUP_CWD"
+    local _skid_helper="$SKIDBLADNIR_STARTUP_HELPER"
+    local _skid_agent="$SKIDBLADNIR_STARTUP_AGENT"
+    unset SKIDBLADNIR_STARTUP_PID SKIDBLADNIR_STARTUP_CWD SKIDBLADNIR_STARTUP_HELPER SKIDBLADNIR_STARTUP_AGENT
+    unset -f _skid_startup
+    if ! builtin cd -- "$_skid_cwd" 2>/dev/null; then
+      printf 'skidbladnir: requested directory is unavailable\n' >&2
+      builtin cd -- "$HOME" 2>/dev/null || builtin cd -- / 2>/dev/null || :
+      return 0
+    fi
+    if [[ -n "$_skid_agent" ]]; then
+      if "$_skid_helper" agent-exec "$_skid_agent"; then
+        :
+      else
+        printf 'skidbladnir: initial agent exited or failed\n' >&2
+      fi
+    fi
+    return 0
+  }
+fi
+
+if [[ "${SKIDBLADNIR_STARTUP_PID:-}" == "$$" ]] && typeset -f _skid_startup >/dev/null 2>&1; then
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    autoload -Uz add-zsh-hook
+    add-zsh-hook -d precmd _skid_startup 2>/dev/null || :
+    add-zsh-hook precmd _skid_startup
+  elif [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a'* ]]; then
+    _skid_prompt_commands=()
+    for _skid_command in "${PROMPT_COMMAND[@]}"; do
+      [[ "$_skid_command" == _skid_startup ]] || _skid_prompt_commands+=("$_skid_command")
+    done
+    PROMPT_COMMAND=(_skid_startup "${_skid_prompt_commands[@]}")
+    unset _skid_prompt_commands _skid_command
+  else
+    if [[ "${PROMPT_COMMAND:-}" == _skid_startup\;* ]]; then
+      # shellcheck disable=SC2178
+      PROMPT_COMMAND="${PROMPT_COMMAND#_skid_startup;}"
+    fi
+    # shellcheck disable=SC2178
+    PROMPT_COMMAND="_skid_startup;${PROMPT_COMMAND:-}"
+  fi
+fi
+
+# shellcheck disable=SC1091
+source "$HOME/.local/share/skidbladnir/current/providers/terminal-context-init"

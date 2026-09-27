@@ -7,6 +7,8 @@ package process
 #include <errno.h>
 #include <libproc.h>
 #include <stdint.h>
+#include <string.h>
+#include <sys/proc_info.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
 
@@ -66,16 +68,98 @@ static int skid_foreground_process_group(int pid, int *foreground) {
   *foreground = kp.kp_eproc.e_tpgid;
   return 0;
 }
+
+static int skid_current_directory(int pid, char *path, int path_len) {
+  struct proc_vnodepathinfo info;
+  errno = 0;
+  if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, sizeof(info)) != sizeof(info)) return errno != 0 ? errno : EINVAL;
+  size_t length = strnlen(info.pvi_cdir.vip_path, sizeof(info.pvi_cdir.vip_path));
+  if (length == 0 || length >= sizeof(info.pvi_cdir.vip_path) || length >= (size_t)path_len) return EINVAL;
+  memcpy(path, info.pvi_cdir.vip_path, length + 1);
+  return 0;
+}
+
+static int skid_boot_identity(char *identity, size_t *length) {
+  errno = 0;
+  if (sysctlbyname("kern.bootsessionuuid", identity, length, NULL, 0) != 0) return errno != 0 ? errno : EINVAL;
+  return 0;
+}
 */
 import "C"
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
 	"syscall"
 	"unsafe"
 )
+
+func BootIdentity() (string, error) {
+	identity := make([]byte, 64)
+	size := C.size_t(len(identity))
+	if code := C.skid_boot_identity((*C.char)(unsafe.Pointer(&identity[0])), &size); code != 0 {
+		return "", classifyDarwinError(syscall.Errno(code), "read Darwin boot identity")
+	}
+	if size < 36 || size > 37 || identity[36] != 0 {
+		return "", errors.New("Darwin boot identity is invalid")
+	}
+	return string(identity[:36]), nil
+}
+
+func observeCurrentDirectory(pid PID) (string, error) {
+	path := make([]byte, C.PROC_PIDPATHINFO_MAXSIZE)
+	if code := C.skid_current_directory(C.int(pid), (*C.char)(unsafe.Pointer(&path[0])), C.int(len(path))); code != 0 {
+		return "", classifyDarwinError(syscall.Errno(code), "read Darwin process cwd")
+	}
+	return C.GoString((*C.char)(unsafe.Pointer(&path[0]))), nil
+}
+
+func observeEnvironment(pid PID) (map[string]string, error) {
+	mib := []C.int{C.CTL_KERN, C.KERN_ARGMAX}
+	var argmax C.int
+	size := C.size_t(unsafe.Sizeof(argmax))
+	if C.sysctl(&mib[0], 2, unsafe.Pointer(&argmax), &size, nil, 0) != 0 || argmax <= 0 {
+		return nil, errors.New("read Darwin argument limit")
+	}
+	buffer := make([]byte, int(argmax))
+	mib = []C.int{C.CTL_KERN, C.KERN_PROCARGS2, C.int(pid)}
+	size = C.size_t(len(buffer))
+	if result, err := C.sysctl(&mib[0], 3, unsafe.Pointer(&buffer[0]), &size, nil, 0); result != 0 {
+		return nil, classifyDarwinArgvError(err)
+	}
+	buffer = buffer[:int(size)]
+	if len(buffer) < int(unsafe.Sizeof(C.int(0))) {
+		return nil, errors.New("Darwin process arguments are incomplete")
+	}
+	argc := *(*C.int)(unsafe.Pointer(&buffer[0]))
+	if argc < 0 {
+		return nil, errors.New("Darwin process argument count is invalid")
+	}
+	boundary := int(unsafe.Sizeof(argc))
+	for boundary < len(buffer) && buffer[boundary] != 0 {
+		boundary++
+	}
+	for boundary < len(buffer) && buffer[boundary] == 0 {
+		boundary++
+	}
+	for argument := 0; argument < int(argc); argument++ {
+		end := bytes.IndexByte(buffer[boundary:], 0)
+		if end < 0 {
+			return nil, errors.New("Darwin process argument is incomplete")
+		}
+		boundary += end + 1
+	}
+	for boundary < len(buffer) && buffer[boundary] == 0 {
+		boundary++
+	}
+	environment := buffer[boundary:]
+	if end := bytes.Index(environment, []byte{0, 0}); end >= 0 {
+		environment = environment[:end+1]
+	}
+	return allowedEnvironment(environment)
+}
 
 func observeOnce(pid PID) (Observation, error) {
 	var info C.struct_proc_bsdinfo

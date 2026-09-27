@@ -40,7 +40,8 @@ func Open(path string) (*Client, error) {
 		return nil, errConfiguration
 	}
 	var config *struct {
-		Peers []peer `json:"peers"`
+		Peers          []peer `json:"peers"`
+		DefaultMachine string `json:"defaultMachine"`
 	}
 	if strictjson.Decode(encoded, &config) != nil || config == nil || len(config.Peers) == 0 {
 		return nil, errConfiguration
@@ -69,12 +70,16 @@ func Open(path string) (*Client, error) {
 		}
 		labels[labelKey], origins[originKey], handles[target.Machine] = true, true, true
 	}
+	if !handles[config.DefaultMachine] {
+		return nil, errConfiguration
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DisableKeepAlives = true
 	transport.Proxy = nil
 	return &Client{
-		peers: config.Peers,
-		http:  &http.Client{Transport: transport, Timeout: Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		peers:          config.Peers,
+		defaultMachine: config.DefaultMachine,
+		http:           &http.Client{Transport: transport, Timeout: Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}, nil
 }
 
@@ -88,3 +93,12 @@ func (client *Client) Machines() []Machine {
 }
 
 type Machine struct{ Label, Handle string }
+
+func (client *Client) DefaultMachine() Machine {
+	for _, peer := range client.peers {
+		if peer.Machine == client.defaultMachine {
+			return Machine{Label: peer.Label, Handle: peer.Machine}
+		}
+	}
+	panic("validated default machine is absent")
+}

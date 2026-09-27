@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -33,27 +37,48 @@ type Agent struct {
 	Status          Status           `json:"status"`
 	Methods         Methods          `json:"methods"`
 }
+type Connection struct {
+	Transport string `json:"transport"`
+	ID        string `json:"id,omitempty"`
+}
+type ExecutionAgent struct {
+	Provider string `json:"provider"`
+	Profile  string `json:"profile,omitempty"`
+	Label    string `json:"label,omitempty"`
+	State    string `json:"state"`
+}
+type ExecutionContext struct {
+	Kind    string          `json:"kind"`
+	Machine string          `json:"machine,omitempty"`
+	Label   string          `json:"label,omitempty"`
+	CWD     string          `json:"cwd,omitempty"`
+	Agent   *ExecutionAgent `json:"agent,omitempty"`
+}
 type Session struct {
-	Name            string      `json:"name"`
-	Ref             string      `json:"ref"`
-	CWD             string      `json:"cwd,omitempty"`
-	ActiveCommand   string      `json:"activeCommand,omitempty"`
-	LaunchProfile   string      `json:"launchProfile,omitempty"`
-	AttachedClients int         `json:"attachedClients"`
-	Agent           *Agent      `json:"agent,omitempty"`
-	Group           group.Label `json:"-"`
+	Name            string            `json:"name"`
+	Ref             string            `json:"ref"`
+	CWD             string            `json:"cwd,omitempty"`
+	ActiveCommand   string            `json:"activeCommand,omitempty"`
+	LaunchProfile   string            `json:"launchProfile,omitempty"`
+	AttachedClients int               `json:"attachedClients"`
+	Agent           *Agent            `json:"agent,omitempty"`
+	Connection      *Connection       `json:"connection,omitempty"`
+	Execution       *ExecutionContext `json:"execution,omitempty"`
+	Group           group.Label       `json:"-"`
 }
 
 // sessionJSON is the string-speaking boundary for the owned session label.
 type sessionJSON struct {
-	Name            string     `json:"name"`
-	Ref             string     `json:"ref"`
-	CWD             string     `json:"cwd,omitempty"`
-	ActiveCommand   string     `json:"activeCommand,omitempty"`
-	LaunchProfile   string     `json:"launchProfile,omitempty"`
-	AttachedClients int        `json:"attachedClients"`
-	Agent           *Agent     `json:"agent,omitempty"`
-	Group           groupField `json:"group,omitzero"`
+	Name            string            `json:"name"`
+	Ref             string            `json:"ref"`
+	CWD             string            `json:"cwd,omitempty"`
+	ActiveCommand   string            `json:"activeCommand,omitempty"`
+	LaunchProfile   string            `json:"launchProfile,omitempty"`
+	AttachedClients int               `json:"attachedClients"`
+	Agent           *Agent            `json:"agent,omitempty"`
+	Connection      *Connection       `json:"connection,omitempty"`
+	Execution       *ExecutionContext `json:"execution,omitempty"`
+	Group           groupField        `json:"group,omitzero"`
 }
 type groupField struct{ label group.Label }
 
@@ -72,7 +97,7 @@ func (value *groupField) UnmarshalJSON(encoded []byte) error {
 	return nil
 }
 func (s Session) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sessionJSON{s.Name, s.Ref, s.CWD, s.ActiveCommand, s.LaunchProfile, s.AttachedClients, s.Agent, groupField{s.Group}})
+	return json.Marshal(sessionJSON{Name: s.Name, Ref: s.Ref, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: s.AttachedClients, Agent: s.Agent, Connection: s.Connection, Execution: s.Execution, Group: groupField{s.Group}})
 }
 
 type Profile struct {
@@ -142,6 +167,11 @@ type GroupResult struct {
 	Group string `json:"group"`
 }
 
+type DirectorySearchResult struct {
+	Directories []string `json:"directories"`
+	Omitted     bool     `json:"omitted"`
+}
+
 type hostAgent struct {
 	Provider        string           `json:"provider"`
 	Profile         string           `json:"profile,omitempty"`
@@ -160,13 +190,14 @@ type hostSession struct {
 		Key         string `json:"key"`
 		DisplayName string `json:"displayName"`
 	} `json:"character"`
-	LaunchProfile   string     `json:"launchProfile,omitempty"`
-	Agent           *hostAgent `json:"agent,omitempty"`
-	Objective       string     `json:"objective,omitempty"`
-	CWD             string     `json:"cwd,omitempty"`
-	ActiveCommand   string     `json:"activeCommand,omitempty"`
-	AttachedClients *int       `json:"attachedClients"`
-	Group           groupField `json:"group,omitzero"`
+	LaunchProfile   string      `json:"launchProfile,omitempty"`
+	Agent           *hostAgent  `json:"agent,omitempty"`
+	Connection      *Connection `json:"connection,omitempty"`
+	Objective       string      `json:"objective,omitempty"`
+	CWD             string      `json:"cwd,omitempty"`
+	ActiveCommand   string      `json:"activeCommand,omitempty"`
+	AttachedClients *int        `json:"attachedClients"`
+	Group           groupField  `json:"group,omitzero"`
 }
 type hostInventory struct {
 	Machine struct {
@@ -184,7 +215,7 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken}
-	row := Session{Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients}
+	row := Session{Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
 	if s.Agent != nil {
 		ref.Agent = &ProcessReference{PaneID: s.Agent.PaneID, PID: s.Agent.PID, StartIdentity: s.Agent.StartIdentity}
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, Status: s.Agent.Status, Methods: s.Agent.Methods}
@@ -195,6 +226,40 @@ func (s hostSession) project(machine string) Session {
 
 func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 	switch operation {
+	case "terminal_context":
+		var value *RemoteContext
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Agent != nil && value.Connection != nil {
+			return nil, false
+		}
+		if _, err := time.Parse(time.RFC3339Nano, value.ObservedAt); err != nil {
+			return nil, false
+		}
+		if value.CWD != "" && (len(value.CWD) > 4096 || !filepath.IsAbs(value.CWD) || !utf8.ValidString(value.CWD) || strings.IndexFunc(value.CWD, unicode.IsControl) >= 0) {
+			return nil, false
+		}
+		if value.Connection != nil && (value.CWD != "" || !validConnection(*value.Connection)) {
+			return nil, false
+		}
+		if value.Agent != nil && value.Agent.Provider != "Codex" && value.Agent.Provider != "Claude" {
+			return nil, false
+		}
+		return *value, true
+	case "directory_search":
+		var value *struct {
+			Directories []string `json:"directories"`
+			Omitted     *bool    `json:"omitted"`
+		}
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Directories == nil || value.Omitted == nil || len(value.Directories) > 64 {
+			return nil, false
+		}
+		bytes := 0
+		for _, directory := range value.Directories {
+			bytes += len(directory)
+			if directory == "" || len(directory) > 4096 || bytes > 32*1024 || !filepath.IsAbs(directory) || !utf8.ValidString(directory) || strings.IndexFunc(directory, unicode.IsControl) >= 0 {
+				return nil, false
+			}
+		}
+		return DirectorySearchResult{Directories: value.Directories, Omitted: *value.Omitted}, true
 	case "list":
 		var value *hostInventory
 		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Machine.Handle != target.Machine || !slices.Contains([]string{"Linux", "Darwin"}, value.Machine.Platform) || value.Profiles == nil || value.Sessions == nil {
@@ -259,11 +324,21 @@ func validSession(s hostSession) bool {
 	if !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 {
 		return false
 	}
+	if s.Connection != nil && (s.Agent != nil || s.CWD != "" || !validConnection(*s.Connection)) {
+		return false
+	}
 	a := s.Agent
 	if a == nil {
 		return true
 	}
 	return slices.Contains([]string{"Codex", "Claude"}, a.Provider) && a.PID > 0 && tmuxAddress(a.PaneID, '%') && a.StartIdentity != "" && slices.Contains([]string{"working", "blocked", "idle", "done", "failed", "stopped", "unknown"}, a.Status.State) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Status.Source) && slices.Contains([]string{"", "permission", "input", "dialog", "provider_unavailable", "unrecognized"}, a.Status.Reason) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Read) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Send) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Interrupt)
+}
+
+func validConnection(connection Connection) bool {
+	if connection.Transport != "ssh" && connection.Transport != "mosh" {
+		return false
+	}
+	return connection.ID == "" || validConnectionID(connection.ID)
 }
 
 // Creation and membership errors carry required dispatch evidence. Malformed

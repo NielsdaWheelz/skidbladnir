@@ -43,6 +43,12 @@ internal data class WorkingDirectoryPickerState(
 
 internal sealed interface WorkingDirectoryPage {
     data object Places : WorkingDirectoryPage
+    data class Search(
+        val draft: String,
+        val sequence: Long? = null,
+        val result: DirectorySearchResult? = null,
+        val failure: DirectoryBrowseFailure? = null,
+    ) : WorkingDirectoryPage
     data class Browsing(val load: DirectoryLoad) : WorkingDirectoryPage
     data class ExactPath(
         val origin: ExactPathOrigin,
@@ -100,6 +106,59 @@ internal sealed interface DirectoryLoad {
 
 internal enum class DirectoryBrowseFailure { Transport, Unavailable, TooLarge, Internal }
 
+internal data class DirectorySearchRequest(
+    val generation: Long,
+    val pickerInstance: Long,
+    val machine: PairedMachine,
+    val sequence: Long,
+    val terms: List<String>,
+)
+
+internal fun directorySearchTerms(draft: String): List<String>? {
+    if (draft.hasDisplayUnsafeCodePoint()) return null
+    val terms = draft.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+    if (terms.size !in 1..8 || terms.any { it.hasDisplayUnsafeCodePoint() || it.any(Char::isWhitespace) }) return null
+    var bytes = 0
+    for (term in terms) {
+        bytes += term.utf8ByteCountWithin(256) ?: return null
+        if (bytes > 256) return null
+    }
+    return terms
+}
+
+internal fun beginDirectorySearch(picker: WorkingDirectoryPickerState, generation: Long): Pair<WorkingDirectoryPickerState, DirectorySearchRequest>? {
+    val page = picker.page as? WorkingDirectoryPage.Search ?: return null
+    val terms = directorySearchTerms(page.draft) ?: return null
+    val sequence = picker.nextSequence
+    return picker.copy(page = page.copy(sequence = sequence, result = null, failure = null), nextSequence = sequence + 1) to
+        DirectorySearchRequest(generation, picker.instance, picker.machine, sequence, terms)
+}
+
+internal fun completeDirectorySearch(
+    picker: WorkingDirectoryPickerState,
+    request: DirectorySearchRequest,
+    generation: Long,
+    result: GatewayResult<DirectorySearchResult>,
+): WorkingDirectoryPickerState? {
+    val page = picker.page as? WorkingDirectoryPage.Search ?: return null
+    if (generation != request.generation || picker.instance != request.pickerInstance ||
+        picker.machine != request.machine || page.sequence != request.sequence) return null
+    return when (result) {
+        is GatewayResult.Success -> picker.copy(page = page.copy(sequence = null, result = result.value))
+        is GatewayResult.Failure -> picker.copy(page = page.copy(
+            sequence = null,
+            failure = when (val failure = result.failure) {
+                GatewayFailure.Transport -> DirectoryBrowseFailure.Transport
+                is GatewayFailure.Api -> when (failure.code) {
+                    ApiErrorCode.DirectorySearchUnavailable -> DirectoryBrowseFailure.Unavailable
+                    ApiErrorCode.DirectorySearchTooLarge -> DirectoryBrowseFailure.TooLarge
+                    else -> DirectoryBrowseFailure.Internal
+                }
+            },
+        ))
+    }
+}
+
 internal data class WorkingDirectoryRequest(
     val generation: Long,
     val machine: MachineSummary,
@@ -128,6 +187,7 @@ internal fun openWorkingDirectoryPicker(
     if (forge.form.machineHandle != machine.machine.handle || machine.access != MachineAccess.Ready) return null
     val inventory = machine.inventory as? InventoryState.Fresh ?: return null
     val activeDirectories = inventory.snapshot.inventory.sessions.asSequence()
+        .filter { it.connection == null }
         .mapNotNull(TmuxSession::cwd)
         .map { cwd ->
             WorkingDirectoryPath.parse(cwd)
@@ -157,6 +217,21 @@ internal fun openExactWorkingDirectoryPicker(
     machine: MachineState,
     pickerInstance: Long,
 ): ForgeState? = openWorkingDirectoryPicker(forge, machine, pickerInstance)?.let(::showExactWorkingDirectory)
+
+internal fun showDirectorySearch(forge: ForgeState): ForgeState {
+    val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
+    if (surface.picker.page != WorkingDirectoryPage.Places) return forge
+    return forge.copy(surface = surface.copy(picker = surface.picker.copy(page = WorkingDirectoryPage.Search(""))))
+}
+
+internal fun updateDirectorySearch(forge: ForgeState, draft: String): ForgeState {
+    val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
+    val page = surface.picker.page as? WorkingDirectoryPage.Search ?: return forge
+    if (draft.utf8ByteCountWithin(256) == null) return forge
+    return forge.copy(surface = surface.copy(picker = surface.picker.copy(
+        page = page.copy(draft = draft, sequence = null, result = null, failure = null),
+    )))
+}
 
 internal fun browseWorkingDirectoryHome(
     picker: WorkingDirectoryPickerState,
@@ -303,6 +378,9 @@ internal fun completeWorkingDirectoryRequest(
                 ApiErrorCode.RequestTooLarge,
                 ApiErrorCode.WorkingDirectoryInvalid,
                 ApiErrorCode.WorkingDirectoryUnavailable,
+                ApiErrorCode.DirectorySearchUnavailable,
+                ApiErrorCode.DirectorySearchTooLarge,
+                ApiErrorCode.TerminalContextUnavailable,
                 ApiErrorCode.ProfileUnknown,
                 ApiErrorCode.SessionNameInvalid,
                 ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
@@ -457,6 +535,10 @@ internal fun workingDirectoryPickerAfterForegroundInvalidation(
         WorkingDirectoryPage.Places,
         is WorkingDirectoryPage.ExactPath,
         -> return forge
+        is WorkingDirectoryPage.Search -> {
+            if (current.sequence == null) return forge
+            current.copy(sequence = null, failure = DirectoryBrowseFailure.Transport)
+        }
         is WorkingDirectoryPage.Browsing -> when (val load = current.load) {
             is DirectoryLoad.Loaded,
             is DirectoryLoad.Failed,
@@ -478,6 +560,7 @@ internal fun workingDirectoryBack(forge: ForgeState): ForgeState {
     val picker = surface.picker
     val updated = when (val page = picker.page) {
         WorkingDirectoryPage.Places -> return forge.copy(surface = ForgeSurface.Form)
+        is WorkingDirectoryPage.Search -> picker.copy(page = WorkingDirectoryPage.Places)
         is WorkingDirectoryPage.ExactPath -> picker.copy(
             page = when (val origin = page.origin) {
                 ExactPathOrigin.Places -> WorkingDirectoryPage.Places
@@ -521,6 +604,7 @@ internal fun showExactWorkingDirectory(forge: ForgeState): ForgeState {
     val picker = surface.picker
     val origin = when (val page = picker.page) {
         WorkingDirectoryPage.Places -> ExactPathOrigin.Places
+        is WorkingDirectoryPage.Search -> ExactPathOrigin.Places
         is WorkingDirectoryPage.ExactPath -> return forge
         is WorkingDirectoryPage.Browsing -> when (val load = page.load) {
             is DirectoryLoad.Loading -> when (val retained = load.retained) {
@@ -552,6 +636,12 @@ internal fun updateExactWorkingDirectory(forge: ForgeState, draft: String): Forg
 internal fun useExactWorkingDirectory(forge: ForgeState): ForgeState {
     val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
     val page = surface.picker.page as? WorkingDirectoryPage.ExactPath ?: return forge
+    if (surface.picker.exactDraft.startsWith("z ")) {
+        val words = surface.picker.exactDraft.drop(2)
+        if (directorySearchTerms(words) != null) return forge.copy(surface = surface.copy(
+            picker = surface.picker.copy(page = WorkingDirectoryPage.Search(words)),
+        ))
+    }
     val path = WorkingDirectoryPath.parse(surface.picker.exactDraft)
     if (path == null) {
         return forge.copy(
@@ -573,6 +663,13 @@ internal fun chooseActiveWorkingDirectory(
     if (surface.picker.page != WorkingDirectoryPage.Places ||
         directory !in surface.picker.activeDirectories
     ) return forge
+    return selectWorkingDirectory(forge, surface.picker, directory)
+}
+
+internal fun chooseSearchedWorkingDirectory(forge: ForgeState, directory: WorkingDirectoryPath): ForgeState {
+    val surface = forge.surface as? ForgeSurface.DirectoryPicker ?: return forge
+    val page = surface.picker.page as? WorkingDirectoryPage.Search ?: return forge
+    if (page.sequence != null || directory !in page.result?.directories.orEmpty()) return forge
     return selectWorkingDirectory(forge, surface.picker, directory)
 }
 
@@ -607,6 +704,9 @@ internal fun ForgeFailure.isWorkingDirectoryRejection(): Boolean = when (this) {
         ApiErrorCode.RequestTooLarge,
         ApiErrorCode.DirectoryListingUnavailable,
         ApiErrorCode.DirectoryListingTooLarge,
+        ApiErrorCode.DirectorySearchUnavailable,
+        ApiErrorCode.DirectorySearchTooLarge,
+        ApiErrorCode.TerminalContextUnavailable,
         ApiErrorCode.ProfileUnknown,
         ApiErrorCode.SessionNameInvalid,
         ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
@@ -638,6 +738,7 @@ internal fun updateForgeState(forge: ForgeState, proposed: ForgeForm): ForgeStat
 
 private fun exactPathValidation(draft: String): ExactPathValidation = when {
     draft.isEmpty() -> ExactPathValidation.Pristine
+    draft.startsWith("z ") && directorySearchTerms(draft.drop(2)) != null -> ExactPathValidation.Valid
     WorkingDirectoryPath.parse(draft) != null -> ExactPathValidation.Valid
     else -> ExactPathValidation.Invalid
 }

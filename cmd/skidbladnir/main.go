@@ -51,6 +51,13 @@ func main() {
 }
 
 func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(arguments) != 0 && arguments[0] == "terminal-context" {
+		if err := terminalContext(arguments[1:]); err != nil {
+			_, _ = io.WriteString(stderr, "terminal context unavailable\n") // justify-ignore-error: a broken terminal cannot be repaired.
+			return exitFailure
+		}
+		return 0
+	}
 	if len(arguments) != 0 && arguments[0] == "agent-exec" {
 		if err := agentExec(arguments[1:]); err != nil {
 			_, _ = io.WriteString(stderr, "agent startup failed\n") // justify-ignore-error: a broken pane output cannot be recovered.
@@ -324,7 +331,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(name, "HERDR_") || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
+		if strings.HasPrefix(name, "HERDR_") || strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || name == "SKIDBLADNIR_CONNECTION" || name == "SKIDBLADNIR_TERMINAL_CONTEXT" || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
 			if err := os.Unsetenv(name); err != nil {
 				return errors.New("clear inherited product environment")
 			}
@@ -339,7 +346,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	if err != nil {
 		return fmt.Errorf("validate host configuration: %w", err)
 	}
-	workingDirectories, err := workdir.New(home)
+	workingDirectories, err := workdir.New(home, host.ZoxidePath)
 	if err != nil {
 		return fmt.Errorf("initialize working directories: %w", err)
 	}

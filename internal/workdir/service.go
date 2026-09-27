@@ -107,17 +107,21 @@ func (listing Listing) Children() []Entry {
 func (listing Listing) Omissions() Omissions { return listing.omissions }
 
 type Service struct {
-	home string
+	home       string
+	zoxidePath string
 }
 
-func New(home string) (*Service, error) {
+func New(home, zoxidePath string) (*Service, error) {
 	if !validPathText(home) || !filepath.IsAbs(home) || filepath.Clean(home) != home {
 		return nil, newError(Invalid)
 	}
 	if !searchableDirectory(home) {
 		return nil, newError(Unavailable)
 	}
-	return &Service{home: home}, nil
+	if zoxidePath != "" && (!validPathText(zoxidePath) || !filepath.IsAbs(zoxidePath) || filepath.Clean(zoxidePath) != zoxidePath) {
+		return nil, newError(Invalid)
+	}
+	return &Service{home: home, zoxidePath: zoxidePath}, nil
 }
 
 func (service *Service) ParseCandidate(value string) (WorkingDirectoryCandidate, error) {

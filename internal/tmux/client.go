@@ -70,14 +70,14 @@ func (client Client) Output(ctx context.Context, operation, commandName string, 
 
 // TerminalCommand crosses tmux's argv boundary without exposing launch data to
 // its format parser or to a shell interpreter.
-func (client Client) TerminalCommand(directory string) ([]string, error) {
+func (client Client) TerminalCommand(directory, launch string) ([]string, error) {
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
 	return []string{"--", executable, "terminal-exec",
 		base64.RawURLEncoding.EncodeToString([]byte(directory)),
-		base64.RawURLEncoding.EncodeToString([]byte(client.path)), client.socketName}, nil
+		base64.RawURLEncoding.EncodeToString([]byte(client.path)), client.socketName, launch}, nil
 }
 
 // CreateSession preserves the agent argv path. Terminal launches supply the

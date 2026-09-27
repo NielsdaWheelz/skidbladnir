@@ -10,9 +10,11 @@ import androidx.compose.runtime.setValue
 import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
@@ -47,6 +49,7 @@ internal sealed interface SkidbladnirUiState {
 
     data class Terminal(
         val machine: MachineState,
+        val machines: List<MachineState>,
         val target: SessionTarget,
         val attempt: Int,
         val connection: TerminalUiStatus,
@@ -878,6 +881,40 @@ internal class SkidbladnirController(
         updateForge(::showExactWorkingDirectory)
     }
 
+    fun showDirectorySearch() {
+        updateForge(::showDirectorySearch)
+    }
+
+    fun updateDirectorySearch(draft: String) {
+        updateForge { forge -> updateDirectorySearch(forge, draft) }
+    }
+
+    fun searchDirectories() {
+        val picker = activeWorkingDirectoryPicker() ?: return
+        val start = beginDirectorySearch(picker, generation) ?: return
+        val credential = credentials[start.second.machine.handle] ?: return
+        updateWorkingDirectoryPicker { current -> if (current.instance == picker.instance) start.first else current }
+        executeNetwork {
+            val result = client.searchDirectories(credential, start.second.terms)
+            main.post {
+                if (credentials[start.second.machine.handle] != credential) return@post
+                val active = activeWorkingDirectoryPicker() ?: return@post
+                val page = active.page as? WorkingDirectoryPage.Search ?: return@post
+                if (!isActiveGeneration(start.second.generation) || active.instance != start.second.pickerInstance ||
+                    active.machine != start.second.machine || page.sequence != start.second.sequence) return@post
+                if (result is GatewayResult.Failure && result.failure is GatewayFailure.Api &&
+                    acceptAccessFailure(start.second.machine.handle, result.failure)) return@post
+                updateWorkingDirectoryPicker { current ->
+                    completeDirectorySearch(current, start.second, generation, result) ?: current
+                }
+            }
+        }
+    }
+
+    fun chooseSearchedWorkingDirectory(directory: WorkingDirectoryPath) {
+        updateForge { forge -> chooseSearchedWorkingDirectory(forge, directory) }
+    }
+
     fun updateExactWorkingDirectory(draft: String) {
         updateForge { forge -> updateExactWorkingDirectory(forge, draft) }
     }
@@ -892,6 +929,7 @@ internal class SkidbladnirController(
 
     fun useExactWorkingDirectory() {
         updateForge(::useExactWorkingDirectory)
+        if (activeWorkingDirectoryPicker()?.page is WorkingDirectoryPage.Search) searchDirectories()
     }
 
     fun workingDirectoryBack() {
@@ -1180,6 +1218,7 @@ internal class SkidbladnirController(
         val attempt = nextTerminalAttempt++
         state = SkidbladnirUiState.Terminal(
             machine = machine,
+            machines = sortedMachineStates(),
             target = target,
             attempt = attempt,
             connection = TerminalUiStatus.Preparing,
@@ -1197,6 +1236,7 @@ internal class SkidbladnirController(
         val attempt = nextTerminalAttempt++
         state = SkidbladnirUiState.Terminal(
             machine = machine,
+            machines = sortedMachineStates(),
             target = target,
             attempt = attempt,
             connection = TerminalUiStatus.Verifying,
@@ -1733,6 +1773,7 @@ internal class SkidbladnirController(
         completedReadSequence: Long,
     ) {
         val result = client.listSessions(credential)
+        val remoteContexts = if (result is GatewayResult.Success) resolveRemoteContexts(result.value) else emptyMap()
         val receivedAt = SystemClock.elapsedRealtime()
         main.post {
             if (!isCredentialActive(activeGeneration, credential)) return@post
@@ -1752,6 +1793,7 @@ internal class SkidbladnirController(
                             it.copy(
                                 access = MachineAccess.Ready,
                                 inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
+                                remoteContexts = remoteContexts,
                             )
                         }
                         pendingMetadataFences[handle]?.let { fence ->
@@ -1765,6 +1807,53 @@ internal class SkidbladnirController(
                 advanceCreatedTerminalAdmission(handle, completedMutationFence)
             }
             publishDashboardIfVisible()
+        }
+    }
+
+    private fun resolveRemoteContexts(inventory: SessionsResponse): Map<String, ExecutionContext.Remote> {
+        val deadline = SystemClock.elapsedRealtime() + 2_000
+        val peers = credentials.values.toList()
+        val lookups = mutableMapOf<String, Pair<PairedMachine, TerminalContext>?>()
+        fun lookup(id: String): Pair<PairedMachine, TerminalContext>? {
+            if (id in lookups) return lookups[id]
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining <= 0) return null
+            val calls = peers.map { peer ->
+                CompletableFuture.supplyAsync<Pair<PairedMachine, TerminalContext>?>(
+                    {
+                        when (val result = client.readTerminalContext(peer, id, remaining)) {
+                            is GatewayResult.Success -> peer.machine to result.value
+                            is GatewayResult.Failure -> null
+                        }
+                    }, network,
+                )
+            }
+            try {
+                CompletableFuture.allOf(*calls.toTypedArray()).get(
+                    (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(1), TimeUnit.MILLISECONDS,
+                )
+            } catch (_: TimeoutException) {
+                // Completed peers still count; an offline peer does not erase a live match.
+            }
+            val match = calls.mapNotNull { if (it.isDone) it.getNow(null) else null }.singleOrNull()
+            lookups[id] = match
+            return match
+        }
+        return buildMap {
+            inventory.sessions.forEach { session ->
+                var connection = session.connection ?: return@forEach
+                val seen = mutableSetOf<String>()
+                repeat(8) {
+                    val id = connection.id ?: return@forEach
+                    if (!seen.add(id)) return@forEach
+                    val (machine, context) = lookup(id) ?: return@forEach
+                    if (context.connection == null) {
+                        put(session.identityToken, ExecutionContext.Remote(machine, context.cwd, context.agent))
+                        return@forEach
+                    }
+                    connection = context.connection
+                }
+            }
         }
     }
 
@@ -1948,10 +2037,10 @@ internal class SkidbladnirController(
                 it.tmuxId == terminal.target.session.tmuxId && it.identityToken == terminal.target.session.identityToken
             }
             val target = if (currentSession != null && terminal.kill == null && terminal.rename == null) {
-                terminal.target.copy(session = terminal.target.session.copy(agent = currentSession.agent))
+                terminal.target.copy(session = currentSession)
             } else terminal.target
-            state = terminal.copy(machine = updated, target = target)
-        }
+            state = terminal.copy(machine = updated, machines = sortedMachineStates(), target = target)
+        } else state = terminal.copy(machines = sortedMachineStates())
     }
 
     private fun publishDashboardIfVisible() {

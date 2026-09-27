@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -45,8 +47,9 @@ func success(value any) Result {
 }
 
 type Client struct {
-	peers []peer
-	http  *http.Client
+	peers          []peer
+	defaultMachine string
+	http           *http.Client
 }
 
 // Execute never retries a write, including after a lost acknowledgement.
@@ -77,6 +80,11 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			}
 			result = success(value)
 		}
+		if result.OK {
+			value := result.Value.(Inventory)
+			client.resolveContexts(ctx, value.Peers)
+			result = success(value)
+		}
 		return result
 	case "start":
 		selected, ok := client.peerByLabel(request.Machine)
@@ -91,7 +99,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			Kind    LaunchKind `json:"kind"`
 			CWD     string     `json:"cwd"`
 			Profile string     `json:"profile,omitempty"`
-			Name    string     `json:"optionalTmuxName"`
+			Name    string     `json:"optionalTmuxName,omitempty"`
 			Group   string     `json:"group,omitempty"`
 		}{request.Kind, cwd, request.Profile, request.Name, request.Group.String()})
 		if len(body) > MaximumInputBytes {
@@ -108,6 +116,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("machine_unknown", "not_sent")
 		}
 		if request.Operation == "info" {
+			client.resolveObserved(ctx, &observed)
 			result = success(observed)
 			break
 		}
@@ -168,6 +177,35 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		return Failed("output_limit", dispatch)
 	}
 	return result
+}
+
+func (client *Client) SearchDirectories(ctx context.Context, label string, terms []string) Result {
+	target, ok := client.peerByLabel(label)
+	if !ok {
+		return Failed("machine_unknown", "not_sent")
+	}
+	if len(terms) == 0 || len(terms) > 8 {
+		return Failed("invalid_input", "not_sent")
+	}
+	bytes := 0
+	for _, term := range terms {
+		if term == "" || !utf8.ValidString(term) || strings.IndexFunc(term, func(character rune) bool { return unicode.IsControl(character) || unicode.IsSpace(character) }) >= 0 {
+			return Failed("invalid_input", "not_sent")
+		}
+		bytes += len(term)
+	}
+	if bytes > 256 {
+		return Failed("invalid_input", "not_sent")
+	}
+	body, err := json.Marshal(struct {
+		Terms []string `json:"terms"`
+	}{terms})
+	if err != nil {
+		return Failed("invalid_input", "not_sent")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return client.call(ctx, target, "directory_search", "/v1/directory-searches", body)
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {
@@ -249,6 +287,10 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 			} else if row.Name != request.Name {
 				continue
 			}
+			if request.Operation == "info" && row.Connection == nil {
+				current := row.Current(peer)
+				row.Execution = &current
+			}
 			matches = append(matches, ObservedSession{Label: peer.Label, Machine: peer.Machine, ObservedAt: peer.ObservedAt, Session: row})
 		}
 	}
@@ -328,13 +370,13 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
-	writes := operation != "list" && operation != "read"
+	writes := operation != "list" && operation != "read" && operation != "directory_search" && operation != "terminal_context"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
 	method := http.MethodPost
 	var reader io.Reader
-	if operation == "list" {
+	if operation == "list" || operation == "terminal_context" {
 		method = http.MethodGet
 	} else {
 		if operation == "group" {
