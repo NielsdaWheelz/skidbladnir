@@ -6,7 +6,7 @@ into [`architecture.md`](architecture.md); this document remains the
 historical scope and red/green plan.
 
 [agent control](agent-control.md) owns sampled status; the phone grid orders by
-machine/name/id within space groups. [desktop ordering](desktop-browser.md)
+machine/name/id within groups. [desktop ordering](desktop-browser.md)
 has its own contract. dwarf assignment remains independent of
 provider status. older gateway-owned product ordering and status-era names
 below are historical.
@@ -214,7 +214,7 @@ change.
 6. A concurrent valid assignment is preserved. Server restart, session
    disappearance, or id mismatch cannot write to another session.
 7. Assignment changes only `@skid_character`; name, pane/window ids, pane PID,
-   group topology, clients, selection, geometry, and other options are
+   tmux session group topology, clients, selection, geometry, and other options are
    unchanged.
 8. every ordinary session is eligible regardless of its operator-owned name.
 9. Every successful session/create response uses `tmuxName` and a required

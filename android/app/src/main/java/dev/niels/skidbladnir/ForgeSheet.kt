@@ -246,11 +246,11 @@ private fun ForgeFormContent(
             minLines = 2,
             maxLines = 4,
         )
-        SpaceField(
-            draft = state.form.space,
-            labels = observedSpaces(machines),
+        GroupField(
+            draft = state.form.group,
+            labels = observedGroups(machines),
             enabled = !state.pending && (selected == null || selected.canMutate),
-            onChange = { text -> actions.updateDraft { it.copy(space = SpaceDraft.Chosen(text)) } },
+            onChange = { text -> actions.updateDraft { it.copy(group = GroupDraft.Chosen(text)) } },
         )
         when (val failure = state.failure) {
             ForgeFailure.None -> Unit

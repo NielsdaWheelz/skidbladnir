@@ -13,9 +13,9 @@ shared provider maintenance has no skid startup-file prerequisite. inherited
 claude uses its native unset `CLAUDE_CONFIG_DIR` default. shell readiness remains
 unpromised.
 
-implemented: standalone terminal and new terminal here, following [spaces](spaces.md).
+implemented: standalone terminal and new terminal here, following [groups](groups.md).
 [the roadmap](roadmap.md) indexes delivery. linux/darwin host/desktop and corrected
-real-phone journeys passed on their recorded sources; [hands-on acceptance](issues/spaces-shells-hands-on.md)
+real-phone journeys passed on their recorded sources; [hands-on acceptance](issues/groups-shells-hands-on.md)
 remains `NOT_RUN`.
 
 2026-09-17: [pr 3](desktop-browser.md) changes only desktop presentation and the
@@ -30,21 +30,21 @@ the requested testing standards live at [rules/testing.md](rules/testing.md).
 ## 1. outcome and limits
 
 one action opens an independent terminal on the source's host, in its current
-directory and space. it creates a
+directory and group. it creates a
 separate ordinary tmux session, never a window, split, or linked session group.
 
 | surface | target behavior |
 | --- | --- |
-| tui `n` | existing five-field form: machine, launch, required name, cwd, space. launch offers terminal alongside advertised agent profiles. create selects/reveals the result; enter attaches. |
+| tui `n` | existing five-field form: machine, launch, required name, cwd, group. launch offers terminal alongside advertised agent profiles. create selects/reveals the result; enter attaches. |
 | tui `T` (shift+t) | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
-| android forge | terminal in the launch picker; existing name/cwd/space/objective fields and automatic post-create attachment. |
+| android forge | terminal in the launch picker; existing name/cwd/group/objective fields and automatic post-create attachment. |
 | android attach header | one-tap terminal-plus action, spoken “new terminal here”, minimum 48dp target; same create-here behavior for any attached session. fit the existing header height and visual language. |
 
 the shortcut has no form: allocate the smallest free `skidbladnir-terminal-N`
 name and an ordinary dwarf identity. each deliberate invocation creates another
-session. name and space remain editable afterward. closing either session
+session. name and group remain editable afterward. closing either session
 preserves the other; detach preserves both. source objective and profile
-environment are not copied. a space is copied once, including unassigned.
+environment are not copied. a group is copied once, including unassigned.
 
 pr 3 provides browser navigation, with no special source return: detach keeps
 the created shell selected; reaching the source is ordinary navigation. no companion registry,
@@ -54,16 +54,16 @@ provider work, arbitrary command endpoint, shell profiles, or new runtime owner.
 ## 2. capability and wire contract
 
 keep existing authentication, machine binding, exact opaque references, bounds,
-directory/name/objective/space validation, inventory, and attachment transport.
+directory/name/objective/group validation, inventory, and attachment transport.
 launch is a closed choice; it is not a new provider or a profile named terminal.
 
 | operation | exact request | success |
 | --- | --- | --- |
-| `POST /v1/sessions` | `{kind:"agent", profile, cwd, optionalTmuxName?, objective?, space?}` or `{kind:"terminal", cwd, optionalTmuxName?, objective?, space?}` | existing `201 {observedAt,session}` |
+| `POST /v1/sessions` | `{kind:"agent", profile, cwd, optionalTmuxName?, objective?, group?}` or `{kind:"terminal", cwd, optionalTmuxName?, objective?, group?}` | existing `201 {observedAt,session}` |
 | `POST /v1/sessions/{tmuxId}/shell` | `{identityToken}` | same `201 {observedAt,session}` for the newly created session |
 
 `kind` is required. terminal forbids `profile`; shell-here forbids overrides,
-names, pane/process targets, and client-supplied cwd/space. reject unknown,
+names, pane/process targets, and client-supplied cwd/group. reject unknown,
 duplicate, missing required, null, and wrong-type fields through existing strict
 decoders. optional fields retain their existing omission/empty-value rules.
 the response is the existing strict session dto, with optional observed agent
@@ -74,7 +74,7 @@ zero profiles does not introduce a generic agent detector.
 cli:
 
 ```text
-skid start name --machine host (--profile key | --terminal) [--cwd path] [--space label] [--json]
+skid start name --machine host (--profile key | --terminal) [--cwd path] [--group label] [--json]
 skid shell name [--machine host] [--json]
 skid shell --ref reference [--json]
 ```
@@ -112,7 +112,7 @@ branch retains its exact command, arguments, environment, and identity behavior.
 source creation, in order:
 
 1. validate the source session lifetime, independent of its name or agent.
-2. pin its current pane once; read its required cwd directly and local space
+2. pin its current pane once; read its required cwd directly and local group
    through the existing pr 1 metadata reader. do not use best-effort inventory
    enrichment or a cached client row. absent/invalid metadata means unassigned;
    failed tmux observation fails creation. validate cwd through workdir.
@@ -167,7 +167,7 @@ logging permits an absent launch profile and stays content-free.
 reuse existing launch forms, result projection, mutation lane/read fence,
 confirmed-create filter reconciliation, and attachment owners. terminal remains
 available on an actionable host with zero profiles. machine changes retain the
-terminal choice and existing name/objective/space drafts; reset host-specific
+terminal choice and existing name/objective/group drafts; reset host-specific
 cwd and agent-profile choice. append terminal after the existing profile order.
 tui keeps its first-profile default, choosing terminal only with zero profiles;
 android keeps explicit launch selection. no persisted preferences or restoration
@@ -204,7 +204,7 @@ paths; shared-fixture edits go through root. reviewers write no production/tests
 
 delete superseded profile-only creation decoding/serialization, empty-profile
 disabling, and affected copy/tests. reuse required/local metadata reads, lifetime
-predicates, typed workdirs/spaces, allocation, strict json, and create-result
+predicates, typed workdirs/groups, allocation, strict json, and create-result
 projection. extract only the shared locked create core and genuinely repeated
 projection/completion logic; inline single-use work. no general launch framework.
 hard-cut host/cli/android together; old create bodies and mixed versions fail.
@@ -221,7 +221,7 @@ and compilation failures do not prove create/attach behavior.
 
 | proof / owner | acceptance |
 | --- | --- |
-| h / host: authenticated gateway + isolated tmux, linux and darwin | standalone creation with zero profiles and no server; source creation copies current cwd/local space to a new exact session; rename/agent replacement accepts the retained session ref; stale lifetime/auth/machine rejects without creation; later edits/closure stay independent. cover strict launch/error schemas, unassigned space, custom default-command bypass, invalid shell, directory loss, literal spaces/quotes/backslashes/format syntax/trailing semicolon, and unknown partial creation. assert responses and subsequent inventory/process outcomes. |
+| h / host: authenticated gateway + isolated tmux, linux and darwin | standalone creation with zero profiles and no server; source creation copies current cwd/local group to a new exact session; rename/agent replacement accepts the retained session ref; stale lifetime/auth/machine rejects without creation; later edits/closure stay independent. cover strict launch/error schemas, unassigned group, custom default-command bypass, invalid shell, directory loss, literal spaces/quotes/backslashes/format syntax/trailing semicolon, and unknown partial creation. assert responses and subsequent inventory/process outcomes. |
 | d / desktop: real tui/pty -> fleetclient -> gateway -> isolated tmux | `n` terminal works without profiles and selects the result; `t` creates once and attaches; detach reveals its exact row with the correct filters; source survives. a real connection cut after creation proves visible uncertainty and no duplicate session. pure cli/schema/state cases cover exclusive launch flags, retained refs, and late completion. |
 | p / phone: real compose/controller -> gateway -> isolated tmux | standalone forge and header action create/attach; duplicate tap creates once; source survives; back restores the collection. real platform cases cover failure/late completion, credential change, recreation without replay, and the header at narrow width/enlarged text without overlap or lost controls. |
 
@@ -264,7 +264,7 @@ the host fixture owns gateway/socket cleanup. no production pairing is changed.
 ## 7. accepted costs
 
 - one-tap creation uses a generated name; customization uses the existing form.
-- directory/space are host samples; later changes do not synchronize sessions.
+- directory/group are host samples; later changes do not synchronize sessions.
 - one small exec helper enforces startup correctness; success promises no ready
   prompt, and startup files may change the shell's initial state.
 - unknown creation may need manual inventory inspection; no durable receipts.

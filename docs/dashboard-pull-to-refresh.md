@@ -1,11 +1,11 @@
 # v0 dashboard pull-to-refresh delta
 
-2026-09-15 spaces amendment: [spaces](spaces.md) adds a presentation filter only.
+2026-09-15 groups amendment: [groups](groups.md) adds a presentation filter only.
 manual verification still snapshots machine scope and reads every live machine
 in it, including hosts with no previously observed membership in the selected
-space. space filtering changes neither refresh targets nor request/completion
+group. group filtering changes neither refresh targets nor request/completion
 ordering or pressure polling. its selector stays outside the pull owner. the
-evidence below predates spaces. its source is implemented; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+evidence below predates groups. its source is implemented; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
 remains open.
 
 Status: source integrated over D5/D6/D8, 2026-08-27. Red was observed and

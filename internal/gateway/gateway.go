@@ -16,13 +16,13 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pairing"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -102,7 +102,7 @@ func New(config Config) *Gateway {
 
 func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
-	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space") ||
+	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/group") ||
 		request.Method == http.MethodPost && (request.URL.Path == "/v1/sessions" || strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/shell")) {
 		tracked.errorDispatch = "not_sent"
 	}
@@ -176,8 +176,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 	switch {
 	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/shell"):
 		gateway.createShell(writer, request)
-	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/space"):
-		gateway.setSessionSpace(writer, request)
+	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/group"):
+		gateway.setSessionGroup(writer, request)
 	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
 		gateway.agentOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
@@ -471,9 +471,9 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		}
 		objective = input.Objective.value
 	}
-	label, err := space.Parse(input.Space.value)
-	if err != nil || input.Space.present && label.IsUnassigned() {
-		writeError(writer, errorSpaceInvalid)
+	label, err := group.Parse(input.Group.value)
+	if err != nil || input.Group.present && label.IsUnassigned() {
+		writeError(writer, errorGroupInvalid)
 		return
 	}
 	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
@@ -482,7 +482,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		Profile:          input.Profile.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
-		Space:            label,
+		Group:            label,
 	})
 	gateway.completeCreation(writer, created, err, startedAt)
 }
@@ -606,30 +606,30 @@ func parseSessionPath(path string) (string, bool) {
 	return tmuxID, tmuxID != "" && tmuxID != path && !strings.ContainsRune(tmuxID, '/')
 }
 
-func (gateway *Gateway) setSessionSpace(writer http.ResponseWriter, request *http.Request) {
-	id, valid := parseSessionPath(strings.TrimSuffix(request.URL.Path, "/space"))
+func (gateway *Gateway) setSessionGroup(writer http.ResponseWriter, request *http.Request) {
+	id, valid := parseSessionPath(strings.TrimSuffix(request.URL.Path, "/group"))
 	if !valid || len(id) < 2 || id[0] != '$' || strings.IndexFunc(id[1:], func(value rune) bool { return value < '0' || value > '9' }) >= 0 {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	input, failure := decodeJSON[setSessionSpaceRequest](writer, request)
+	input, failure := decodeJSON[setSessionGroupRequest](writer, request)
 	if failure != nil {
 		writeError(writer, *failure)
 		return
 	}
-	if input.IdentityToken.value == "" || !input.Space.present {
+	if input.IdentityToken.value == "" || !input.Group.present {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	label, err := space.Parse(input.Space.value)
+	label, err := group.Parse(input.Group.value)
 	if err != nil {
-		writeError(writer, errorSpaceInvalid)
+		writeError(writer, errorGroupInvalid)
 		return
 	}
-	err = gateway.sessions.SetSpace(request.Context(), sessions.SetSpaceInput{
-		TmuxID: id, IdentityToken: input.IdentityToken.value, Space: label,
+	err = gateway.sessions.SetGroup(request.Context(), sessions.SetGroupInput{
+		TmuxID: id, IdentityToken: input.IdentityToken.value, Group: label,
 	})
-	if errors.Is(err, sessions.ErrSpaceDispatchUnknown) {
+	if errors.Is(err, sessions.ErrGroupDispatchUnknown) {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
 		writeError(writer, failure)
@@ -815,11 +815,11 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteAgentControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):
 		return logging.RouteSessionShell
-	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/space"):
-		return logging.RouteSessionSpace
+	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/group"):
+		return logging.RouteSessionGroup
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/terminal"):
 		return logging.RouteTerminal
-	case strings.HasPrefix(path, "/v1/sessions/"):
+	case strings.HasPrefix(path, "/v1/sessions/") && !strings.ContainsRune(strings.TrimPrefix(path, "/v1/sessions/"), '/'):
 		return logging.RouteSession
 	default:
 		return logging.RouteUnmatched

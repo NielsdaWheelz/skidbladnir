@@ -8,7 +8,7 @@ import (
 func (m *model) details(row *listedRow) string {
 	value := row.session
 	details := fmt.Sprintf("session: %s\nmachine: %s\nmachine id: %s\ndirectory: %s\ncommand: %s\nattached clients: %d\n", value.Name, row.label, row.machine, value.CWD, value.ActiveCommand, value.AttachedClients)
-	details += fleetclient.SpaceHeading(value.Space) + "\n"
+	details += fleetclient.GroupHeading(value.Group) + "\n"
 	if value.Agent == nil {
 		details += "agent: none (shell)\n"
 	} else {

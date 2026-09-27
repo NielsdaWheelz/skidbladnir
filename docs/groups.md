@@ -1,12 +1,15 @@
-# spaces
+# groups
 
-implemented: session labels, grouping/filtering, restoration and space-aware
-creation under [the composition plan](spaces-and-shells.md).
-[the roadmap](roadmap.md) indexes delivery; [spaces/shells hands-on acceptance](issues/spaces-shells-hands-on.md)
+implemented: session labels, grouping/filtering, restoration and group-aware
+creation under [the composition plan](groups-and-shells.md).
+the groups cutover changes product and wire names in one coordinated release.
+the tmux option and phone saved-state encodings in sections 4 and 10 retain their
+old spelling because they are persistent formats, not compatibility paths.
+[the roadmap](roadmap.md) indexes delivery; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
 remains `NOT_RUN`. automated phone results do not establish that human review.
 
 [architecture.md](architecture.md) incorporates this scope and acceptance;
-[roadmap.md](roadmap.md) owns delivery. this document owns the detailed spaces
+[roadmap.md](roadmap.md) owns delivery. this document owns the detailed groups
 contract. [agent-control.md](agent-control.md) and
 [agent-control-ux.md](agent-control-ux.md) still own provider controls, references,
 transport, and attachment. their current status and machine/name ordering rules
@@ -16,13 +19,13 @@ supersede older activity-only descriptions. follow [../AGENTS.md](../AGENTS.md),
 ## 1. outcome, scope, and final state
 
 help the operator find related sessions across the fleet without changing their
-execution or control identity. **space** is the product term. its durable model
+execution or control identity. **group** is the product term. its durable model
 is one optional validated label on each tmux session. clients collect equal
-labels into groups; there is no space resource to create, rename, or delete.
+labels into groups; there is no group resource to create, rename, or delete.
 
 pr 1 delivers inventory projection, initial assignment during creation,
 set/change/clear on existing sessions, grouped cli/tui/phone collections,
-intersecting machine/space filters, and collection return continuity. ordinary
+intersecting machine/group filters, and collection return continuity. ordinary
 shell-only sessions already in inventory participate in session operations.
 creating a new ordinary shell belongs to pr 2. [pr 3](desktop-browser.md) owns
 desktop browser navigation; pr 4 investigates embedding. no later-pr scaffolding.
@@ -43,18 +46,18 @@ supplies a cwd, checkout, profile, machine, prompt, or agent context.
 
 ## 2. invariants and capability contract
 
-1. a session belongs to zero or one space. equal canonical labels group across
+1. a session belongs to zero or one group. equal canonical labels group across
    machines, with exact case-sensitive equality. the machine remains part of
    every session/control identity.
 2. membership lasts for the tmux session lifetime. session rename, cwd change,
    agent replacement, detach, and client/gateway restart preserve it. session
-   destruction leaves no space record. grouped tmux sessions have independent
+   destruction leaves no group record. members of a tmux session group have independent
    membership; it never follows their shared windows.
 3. assignment addresses `(machine, tmuxId, identityToken)`. it neither requires
    nor refreshes an agent reference. a retained reference remains usable after
    its agent changes; a replacement session rejects that reference.
 4. classification never selects a pane/window, attaches, changes geometry,
-   moves a process, creates a tmux group, sends input, interrupts, or stops work.
+   moves a process, creates a tmux session group, sends input, interrupts, or stops work.
    names, dwarf identities, provider facts, and existing controls retain their
    contracts. labels never appear inside opaque references.
 5. initial membership is part of the existing create queue. invalid input rejects
@@ -80,7 +83,7 @@ supplies a cwd, checkout, profile, machine, prompt, or agent context.
 
 ### canonical label
 
-a named space is 1–64 unicode scalar values in unicode-15 nfc, at most 256 utf-8 bytes.
+a named group is 1–64 unicode scalar values in unicode-15 nfc, at most 256 utf-8 bytes.
 emoji and non-ascii letters are allowed. reject:
 
 - invalid utf-8 or unpaired utf-16/escaped surrogates;
@@ -137,7 +140,7 @@ pr 3 retains this order for tabs; its separate global agent view has the
 
 ### owned values
 
-add one small pure go package `internal/space` for label parsing, human nfc draft
+add one small pure go package `internal/group` for label parsing, human nfc draft
 normalization, label comparison, and the closed all/unassigned/named filter.
 `Label` has private text; its zero value means unassigned. parsing empty accepts
 that absence, never a named label. the boundary enforces its required/optional
@@ -146,13 +149,13 @@ no service, registry, generic optional-value package, or persistence lives here.
 
 go session facts and create/set inputs carry that owned value. gateway and
 fleetclient decode their respective wire boundaries once; cli/tui share the
-parser and comparison. android owns the equivalent nonempty `SpaceLabel` and
+parser and comparison. android owns the equivalent nonempty `GroupLabel` and
 uses its existing nullable optional-session-field convention for unassigned.
 one phone parser serves draft validation and wire acceptance; composables consume
 accepted values. raw human drafts remain text until submission.
 
-`fleetclient.Request` gains separate typed membership input and space-filter
-fields: start uses membership or unassigned, space replaces membership including
+`fleetclient.Request` gains separate typed membership input and group-filter
+fields: start uses membership or unassigned, group replaces membership including
 clear, and list uses the filter. reject fields on unrelated operations. this is
 the existing internal request, not a new wire protocol. raw dto string conversion
 and omitted-field encoding happen only in boundary adapters; do not serialize a
@@ -160,7 +163,9 @@ private go label struct directly.
 
 ## 4. tmux storage and the exact write
 
-option: **`@skid_space_b64`**, session-local only. assigned value: canonical
+option: **`@skid_space_b64`**, session-local only. its spelling is the existing
+persistent key; renaming it would hide memberships written before this cutover.
+assigned value: canonical
 unpadded base64url of the label's nfc utf-8 bytes, maximum 342 ascii characters.
 unassigned: the local option is absent. clear unsets it. no empty-option writer,
 global default, pane/window option, alternate key, or versioned value is added.
@@ -182,14 +187,14 @@ containment is claimed.
 create validates membership with the other inputs before invoking tmux, then
 sets the encoded option in the existing `new-session` queue alongside
 profile/character/objective options, before its final identity observation.
-unassigned creation emits no space option. successful creation reports the
+unassigned creation emits no group option. successful creation reports the
 actually observed session, not a fabricated echo over a missing observation.
 
 existing-session assignment:
 
 1. gateway authenticates, binds the machine, decodes the exact body, and parses
    the label. no label enters a url, raw shell string, or tmux format.
-2. `sessions.Manager.SetSpace` takes the existing mutation lock and resolves the
+2. `sessions.Manager.SetGroup` takes the existing mutation lock and resolves the
    supplied id/token using session-lifetime validation. missing/replaced lifetime
    rejects. agent identity is irrelevant.
 3. one `if-shell -F -t <id>` queue checks server epoch, server pid/start time,
@@ -206,41 +211,41 @@ factor the common lifetime terms from the tmux identity predicates in
 as explicit wrappers over them, preserving behavior. reuse the lifetime-only
 validation currently named `terminalIdentity` in `internal/sessions/attachment.go`,
 giving it a session-oriented name and retaining existing callers. add one narrow
-`SetSessionSpaceIfIdentity` operation, not an arbitrary-option setter. use existing
+`SetSessionGroupIfIdentity` operation, not an arbitrary-option setter. use existing
 argv execution and encoded tokens for the nested tmux command; no shell or hook.
 
 ## 5. host api and projection
 
 existing bearer, pinned `Skidbladnir-Machine`, path, content-type, strict-json,
 deadline, size, and no-replay rules remain. optional response fields are omitted,
-never `null`. there is no `/spaces` inventory or membership-query endpoint.
+never `null`. there is no `/groups` inventory or membership-query endpoint.
 
 | boundary | exact addition / result |
 | --- | --- |
-| host session dto | optional `space: string`; present means canonical nonempty label |
-| `GET /v1/sessions` | unchanged envelope/order; project `space?` per session |
-| `POST /v1/sessions` | existing required `cwd, profile` and optional `optionalTmuxName, objective`, plus optional `space`; present empty is `SpaceInvalid`; null/wrong type is `InvalidRequest` |
+| host session dto | optional `group: string`; present means canonical nonempty label |
+| `GET /v1/sessions` | unchanged envelope/order; project `group?` per session |
+| `POST /v1/sessions` | existing required `cwd, profile` and optional `optionalTmuxName, objective`, plus optional `group`; present empty is `GroupInvalid`; null/wrong type is `InvalidRequest` |
 | create success | existing `201 {observedAt,session}`, using the same session dto |
-| `PUT /v1/sessions/{tmuxId}/space` | exactly `{identityToken: string, space: string}`; nonempty assigns, empty clears; both keys required |
+| `PUT /v1/sessions/{tmuxId}/group` | exactly `{identityToken: string, group: string}`; nonempty assigns, empty clears; both keys required |
 | membership success | bodyless `204`; no new observation time, receipt, agent, or refreshed reference |
-| fleetclient row | existing row plus optional `space`; opaque `ref` unchanged |
-| cli `info` / `start` | existing observed-session envelope with `session.space?` |
+| fleetclient row | existing row plus optional `group`; opaque `ref` unchanged |
+| cli `info` / `start` | existing observed-session envelope with `session.group?` |
 
 the mutation's empty string is the explicit whole-property clear value. omission
 does not mean clear; `null` is never accepted. reuse strict `stringField` without
 a second nullable request grammar. reject extra, duplicate, mis-cased, absent,
 wrongly typed fields and noncanonical paths before mutation. supplied `tmuxName`,
-agent fields, or expected old space are extra fields, not alternate contracts.
-route `/space` before generic session-path handling; reuse `parseSessionPath`
+agent fields, or expected old group are extra fields, not alternate contracts.
+route `/group` before generic session-path handling; reuse `parseSessionPath`
 after removing the exact suffix.
 
-response decoders must distinguish absent `space` from present empty/null/invalid
+response decoders must distinguish absent `group` from present empty/null/invalid
 text; only absence means unassigned on inventory. a pointer decoder that silently
 maps both null and omission to the same value is insufficient. reject malformed
 same-system fields as protocol failure, rather than applying the tmux-invalid-
 metadata omission rule after the transport boundary.
 
-new domain error: `422 SpaceInvalid`, literal message
+new domain error: `422 GroupInvalid`, literal message
 `use 1–64 nfc characters; only interior ordinary spaces, without display controls.`
 add it to host/client/phone closed error mappings. never echo the invalid label.
 
@@ -248,7 +253,7 @@ add it to host/client/phone closed error mappings. never echo the invalid label.
 | --- | --- |
 | malformed body/path, empty token | `400 InvalidRequest`, `not_sent` |
 | over existing body limit | `413 RequestTooLarge`, `not_sent` |
-| invalid nonempty label | `422 SpaceInvalid`, `not_sent` |
+| invalid nonempty label | `422 GroupInvalid`, `not_sent` |
 | bearer / machine rejection | existing `401 Unauthenticated` / `409 MachineIdentityMismatch`, `not_sent` |
 | original session absent before dispatch | `404 SessionNotFound`, `not_sent` |
 | invalid/replaced lifetime or conditional rejection | `409 SessionIdentityMismatch`, `not_sent` |
@@ -267,8 +272,12 @@ existing no-`GetBody`, no-redirect, bounded-read transport. android uses
 `authorizedRequest` and `executeBodyless`, with its existing disabled retry policy.
 http method idempotence does not authorize retry: repeating an assignment after
 another writer acts would overwrite that newer intent.
-add the normalized `/v1/sessions/{tmuxId}/space` log route, `PUT` method, and
-`SpaceInvalid` code. no new label-bearing event or raw request/response logging.
+add the normalized `/v1/sessions/{tmuxId}/group` log route, `PUT` method, and
+`GroupInvalid` code. no new label-bearing event or raw request/response logging.
+the former command, flag, json field, route, and error code are removed together.
+strict request and response decoders reject the old wire spelling, including a
+body containing both spellings; the old route is unmatched. no alias or fallback
+reader remains.
 
 retain bounds: host request and android response 64 kib; go control response
 64 kib; per-peer/final go inventory 1 mib; existing 15-second client deadline.
@@ -278,29 +287,30 @@ result first. do not increase bounds for this feature.
 ## 6. cli and shared fleet presentation
 
 ```text
-skid list [--machine host] [--space label | --unassigned] [--json]
-skid start name --machine host --profile profile [--cwd '~'] [--space label] [--json]
-skid space name [--machine host] (--set label | --clear) [--json]
-skid space --ref reference (--set label | --clear) [--json]
+skid list [--machine host] [--group label | --unassigned] [--json]
+skid start name --machine host --profile profile [--cwd '~'] [--group label] [--json]
+skid group name [--machine host] (--set label | --clear) [--json]
+skid group --ref reference (--set label | --clear) [--json]
 ```
 
-`--space` and `--set` require nonempty valid labels. exactly one of `--set` or
-`--clear` is required for `space`. filter flags are invalid on info, enter,
+`--group` and `--set` require nonempty valid labels. exactly one of `--set` or
+`--clear` is required for `group`. filter flags are invalid on info, enter,
 agent operations, kill, or assignment. `--unassigned` is list-only. omission
-means all spaces for list and unassigned for start. preserve current flag
+means all groups for list and unassigned for start. preserve current flag
 ordering, `--flag=value`, `--` literal operands, duplicate rejection, and usage
 exit 2. bare `skid` remains the tui; no initial-filter flags are added in this pr.
+all groups includes unassigned sessions.
 
-`space` reuses exact-name/machine/ref selection, timeout, and result envelopes.
-unqualified names still require complete fleet uniqueness, regardless of space.
+`group` reuses exact-name/machine/ref selection, timeout, and result envelopes.
+unqualified names still require complete fleet uniqueness, regardless of group.
 `--ref` routes directly by machine and retains supplied session identity; never
 fetch a replacement agent or require `ref.agent`. assignment uses the new host
 route, not `agent/{operation}` or the existing kill-name preparation.
 
 after host acknowledgement, json is exactly
-`{"ok":true,"result":{"space":"label"}}`, or the same shape with `"space":""`
+`{"ok":true,"result":{"group":"label"}}`, or the same shape with `"group":""`
 for clear. this acknowledges the requested write, not a fresh inventory. no ref
-is returned. normal text reports `space assigned` / `space cleared`. exit 0 means
+is returned. normal text reports `group assigned` / `group cleared`. exit 0 means
 acknowledged; 1 means operational failure/unknown; the failure envelope retains
 `dispatch`. inspect with `info --ref` after unknown, without automatic resend.
 
@@ -319,33 +329,33 @@ headings are presentation only. `info` includes membership with its other facts.
 
 ## 7. collection behavior and creation
 
-machine and space are independent selectors. each has an all state; space also
-has unassigned and named. display named picker entries as `space: <label>` to
+machine and group are independent selectors. each has an all state; group also
+has unassigned and named. display named picker entries as `group: <label>` to
 distinguish labels from selector states. selected empty labels remain in the
 selected control; other empty labels need not remain suggestions. no collapsed
 group state exists.
 
-named group headings also use `space: <label>`; the unassigned heading is
-`unassigned`. the unresolved selected control says `previously selected space`
+named group headings also use `group: <label>`; the unassigned heading is
+`unassigned`. the unresolved selected control says `previously selected group`
 without the named prefix. these distinctions apply in text and accessibility.
 
 suggestions are sorted distinct labels from currently retained observations,
-independent of the space filter. they may include stale evidence; they promise
+independent of the group filter. they may include stale evidence; they promise
 neither existence nor completeness and confer no action readiness. label the
-list `observed spaces`. no extra discovery request or durable suggestion cache.
+list `observed groups`. no extra discovery request or durable suggestion cache.
 a machine scope can expose fewer observed suggestions than all machines; free
 text always permits another valid label.
 
 retain unfiltered source inventories for refresh and stale-row retention.
 `list --machine` reads that host; phone manual verification snapshots machine
-scope; tui refresh reads its selected machine scope. a space filter never chooses
+scope; tui refresh reads its selected machine scope. a group filter never chooses
 hosts. phone's independent automatic pollers, pressure scope, and pull/read
 completion ordering remain unchanged.
 
 zero-row copy: `no sessions in this view` after complete fresh scoped reads;
 `no matching sessions in available inventory` with existing unavailable/stale
 notices when scoped hosts cannot establish current inventory. initial reads
-retain checking. never say a space was deleted. out-of-scope outages do not
+retain checking. never say a group was deleted. out-of-scope outages do not
 prevent declaring the selected machine's intersection empty.
 
 ### selection and edits
@@ -372,25 +382,25 @@ opened. a poll may update the displayed current membership, but never the draft.
 
 ### creation exception
 
-interactive creation from a resolved named space visibly prefills its label;
-all/unassigned defaults to unassigned. changing machine preserves the space draft
+interactive creation from a resolved named group visibly prefills its label;
+all/unassigned defaults to unassigned. changing machine preserves the group draft
 alongside name/objective; existing cwd/profile rules remain. editing or cancelling
 the draft never changes collection filters.
 
 after confirmed creation, use the returned session's observed membership. retain
-the current space filter if it admits that session; otherwise select the returned
-named space or unassigned, cancel saved restoration, and reset viewport to top.
+the current group filter if it admits that session; otherwise select the returned
+named group or unassigned, cancel saved restoration, and reset viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
 admission and returns to the resulting filter. existing post-create machine
-behavior is unchanged; space never silently chooses another host.
+behavior is unchanged; group never silently chooses another host.
 
 unknown/failed creation does not switch filters or assign separately. preserve
-its space draft in the existing in-memory create recovery, never android saved
+its group draft in the existing in-memory create recovery, never android saved
 state. no recovery path automatically resubmits.
 
 if a restored named filter has no recovered label, opening create displays
-`choose a space for this new session`. submission requires a deliberate named or
+`choose a group for this new session`. submission requires a deliberate named or
 unassigned choice. use a small `unresolved | unassigned | named draft` field state
 for this distinction: initial blank is unresolved; explicit unassigned, choosing
 a suggestion, or entering nonempty text resolves the choice. invalid text still
@@ -402,24 +412,24 @@ must not overwrite a form the operator has already opened or edited.
 ## 8. tui interaction and return
 
 [pr 3](desktop-browser.md) owns the desktop layout/keymap and replaces the grouped
-table/space picker. retain one bubble tea model, five-second refresh, at most
+table/group picker. retain one bubble tea model, five-second refresh, at most
 one inventory request in flight, and the boundary rules below. source and historical
-spaces evidence still describe the preceding table.
+groups evidence still describe the preceding table.
 
 the machine picker lists configured peers, including unavailable ones, plus all
 machines. expose only labels/handles from fleetclient configuration to this
 consumer, never origins/bearers. initial state is all/all. changing machine
 requests fresh inventory for that scope before enabling its actions. carry
 requested scope in the existing inventory message: an old-scope result cannot
-satisfy the new-scope read; coalesce one follow-up refresh if necessary. space
+satisfy the new-scope read; coalesce one follow-up refresh if necessary. group
 changes need no request. no second poll loop or request-generation framework.
 
-retain complete received session rows before space filtering. a failed scoped
+retain complete received session rows before group filtering. a failed scoped
 peer retains its previous rows as unavailable; an unqueried peer is not reported
 as freshly checked. no per-filter row histories. returning to all performs an
 all-machine read before enabling its collection.
 
-the space editor has the pinned machine/name, current membership, one text field,
+the group editor has the pinned machine/name, current membership, one text field,
 observed suggestions, explicit unassigned, and save/cancel. selecting a suggestion
 fills the draft, never submits. blank means unassigned in an ordinary editor.
 disable unchanged save and invalid input; direct api no-ops remain valid. after
@@ -433,7 +443,7 @@ validation rejection can leave the draft editable. invalid drafts display escape
 characters in the tui while retaining their original editable bytes; valid
 unicode labels retain their ordinary presentation.
 
-append one visible space field to the current create form. share its label input
+append one visible group field to the current create form. share its label input
 and suggestions with the editor. an explicit machine filter prefills the create
 machine visibly and editably, preserving the current machine/profile form rules.
 if successful creation is outside that machine filter, select the returned
@@ -444,17 +454,17 @@ uncertain creation changes neither selector.
 
 pr 3 removes heading-aware collection geometry. one current selected lifetime and
 current region viewports live in the same model; detach resumes it and refresh
-reconciles inventory. no per-space history, disk state or terminal-composition state.
+reconciles inventory. no per-group history, disk state or terminal-composition state.
 
 ## 9. phone presentation and operation ownership
 
-keep title, machine strip, pressure/notices, and card facts. add one compact space
+keep title, machine strip, pressure/notices, and card facts. add one compact group
 selector immediately below the machine selector, outside the pull owner. its
-sheet lists all spaces, unassigned, and observed named spaces. current unresolved
+sheet lists all groups, unassigned, and observed named groups. current unresolved
 or empty selection stays visible. add one full-span heading per nonempty group
 in the current lazy grid, including unassigned.
 
-each card gains an explicit `space` text action beside the existing stop/kill
+each card gains an explicit `group` text action beside the existing stop/kill
 action. preserve readable machine/profile footer text above actions if width
 requires; never shrink text/touch targets. card-body tap still opens terminal.
 the new action neither attaches nor invokes the card tap. its spoken name names
@@ -462,12 +472,12 @@ session, host, and membership. editing is dashboard-only; terminal chrome gains
 no control.
 
 use controller-owned drafts and ordinary transient compose state, never
-`rememberSaveable` for labels, space editors, or forge membership fields.
+`rememberSaveable` for labels, group editors, or forge membership fields.
 
 reuse rename/forge's cut-corner modal, field, buttons, validation copy, and angular
 indication. one field, unassigned, observed suggestions, save/cancel; no wizard,
-gesture-only editing, per-space colour/icon, counters, or decorative hierarchy.
-disable autocorrect/automatic capitalisation; permit unicode. one space-field
+gesture-only editing, per-group colour/icon, counters, or decorative hierarchy.
+disable autocorrect/automatic capitalisation; permit unicode. one group-field
 composable serves forge and the editor. suggestions only fill; clear saves
 unassigned and never deletes sessions.
 the observed suggestions open in one disclosure menu so a large observed set
@@ -491,7 +501,7 @@ submit through the machine's existing `inventoryOperation.submitMutation`:
 
 - reserve its fence and supersede inventory before dispatch, retaining visible
   non-actionable source rows;
-- send one `GatewayClient.setSessionSpace` using pinned session identity;
+- send one `GatewayClient.setSessionGroup` using pinned session identity;
 - definite validation rejection preserves draft, clears that exact fence, and
   displays the error; access errors use the current access-failure owner;
 - definite missing/replaced-session or internal failure retains the fence until
@@ -511,22 +521,22 @@ submit through the machine's existing `inventoryOperation.submitMutation`:
   remains dismissible, rather than trapping the user in an offline modal.
 
 centralize rename-specific metadata fences into `pendingMetadataFences` and
-semantic require/clear helpers used by rename and space. retain
+semantic require/clear helpers used by rename and group. retain
 the controller's per-machine `InventoryOperationLane` map, `AwaitedInventoryReads`,
 generations, and credentials as current owners. no copied lane logic, second fence map, or generic mutation
-framework. rename retains its name-conflict reconciliation; space uses last-write
+framework. rename retains its name-conflict reconciliation; group uses last-write
 semantics. recreation discards editor/network state and re-lists without sending.
 
 ## 10. android navigation and content-free restoration
 
 extend `DashboardEntryState`; no second owner. retain
 `DashboardScope.All | Machine(handle)` as the machine dimension and add separate
-space selection `all | unassigned | named`. named selection has a comparison
+group selection `all | unassigned | named`. named selection has a comparison
 fingerprint and optional resolved label. missing label explicitly means unresolved
 restoration. known selected labels stay only in process memory, even after their
-last membership disappears; this is navigation intent, not a space registry.
+last membership disappears; this is navigation intent, not a group registry.
 
-name the live value `DashboardSpaceSelection`. the saved representation carries
+name the live value `DashboardGroupSelection`. the saved representation carries
 only its all/unassigned/named key and optional named fingerprint, never its
 resolved label. keep that distinction in the snapshot type, not merely an
 instruction to omit a field during serialization. named constructors require
@@ -536,13 +546,15 @@ preserves the comparison key and is not a filter-change event.
 fingerprint: lowercase hex sha-256 over utf-8 `skidbladnir.space-label.v1`, then
 a four-byte unsigned big-endian byte length and the canonical label's utf-8
 bytes. no machine enters the hash. it is phone-local comparison data, never a
-host field, reference component, space id, control address, log, or credential.
+host field, reference component, group id, control address, log, or credential.
+the domain stays byte-for-byte stable so saved named selections match current
+inventory after the rename.
 reuse platform sha-256 and the existing card fingerprint framing pattern.
 this avoids raw content persistence, not dictionary guessing of likely labels.
 
 resolve a selected name by fingerprint from observed inventory, independently
 of machine filter. resolution does not change selection or cancel restoration.
-no match retains the filter as `previously selected space`; never switch to all
+no match retains the filter as `previously selected group`; never switch to all
 or unassigned. later polls may resolve it. initial unresolved host reads may
 show checking; a modeled unavailable outcome must allow restoration to settle.
 missing pairing retains the reset-to-all/top rule and resets both filters.
@@ -573,9 +585,13 @@ hard-cut to task schema **2**, under the same registry key
 | `spaceKind` | `all`, `unassigned`, or `named` |
 | `spaceLabelSha256` | iff named; 64 lowercase hex |
 | `anchorKind` | `none`, `session`, `space`, or `unassigned` |
-| `anchorSha256` | iff anchor is session or named space; 64 lowercase hex |
+| `anchorSha256` | iff anchor is session or named group; 64 lowercase hex |
 | `fallbackIndex` | nonnegative integer, now a rendered-item index |
 | `offsetPx` | nonnegative integer, existing scroll-offset meaning |
+
+the registry key, version, `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"`,
+and `space:` item-key prefix are the existing schema-2 encoding. one strict
+reader and writer continue to use them without migration.
 
 no anchor requires index/offset zero. extra keys, wrong primitive types,
 malformed current-version variants, and inconsistent fields are trusted-state
@@ -592,11 +608,11 @@ empty surface. a vanished session may clamp viewport to a heading, never an acti
 retain one live grid object across terminal round trips. no per-filter viewport
 history, saved inventory/order/label map, terminal/editor state, or attachment.
 a different filter cancels pending restoration; the same filter is a no-op.
-geometry clamps normally. reveal the selected machine chip; the compact space
+geometry clamps normally. reveal the selected machine chip; the compact group
 control always shows selection and needs no horizontal-offset persistence.
 
 terminal access loss still selects its affected machine and resets viewport to
-top; retain the space filter. machine notices are outside space filtering, so
+top; retain the group filter. machine notices are outside group filtering, so
 the reason stays visible. detach/back and supported task recreation preserve both
 filters; recreation lands on dashboard, never resumes attachment or mutation.
 
@@ -609,25 +625,24 @@ cross-owner adversarial reviews make no test or production edits.
 
 | paths | responsibility / reuse |
 | --- | --- |
-| `internal/space/space.go`, matching tests | pure shared go label/filter/order owner |
-| `internal/sessions/{types,manager,attachment,validation}.go`, new `space.go` if useful, matching tests | typed property/input, pane-independent metadata, create/set, lifetime validation reuse |
+| `internal/group/group.go`, matching tests | pure shared go label/filter/order owner |
+| `internal/sessions/{types,manager,attachment,validation}.go`, new `group.go` if useful, matching tests | typed property/input, pane-independent metadata, create/set, lifetime validation reuse |
 | `internal/tmux/client.go`, matching tests | common lifetime terms, conditional encoded set/unset; preserve name-sensitive wrappers |
 | `internal/gateway/{dto,gateway}.go`, matching tests | field, put route/body, error/dispatch; reuse strict decoding and session projection |
 | `internal/logging/logger.go`, matching tests | normalized route, put method, error code; no labels |
-| `internal/fleetclient/{request,response,client,config}.go`, new `spaces.go`, matching tests | request/projection/dispatch, bodyless result, shared grouping, safe machine-picker data |
+| `internal/fleetclient/{request,response,client,config}.go`, new `groups.go`, matching tests | request/projection/dispatch, bodyless result, shared grouping, safe machine-picker data |
 | `internal/agentcli/run.go`, matching tests | grammar, grouped text, info and help; same json envelope |
 | `internal/sessionui/session.go`, matching tests | full source rows, filters/editor, five-field creation, heading-aware cursor/viewport |
-| android `ProductModel.kt`, new `Spaces.kt` | session/draft/wire types, parser, grouping; reuse `hasDisplayUnsafeCodePoint` and `compareCaseInsensitiveUtf8` |
+| android `ProductModel.kt`, new `Groups.kt` | session/draft/wire types, parser, grouping; reuse `hasDisplayUnsafeCodePoint` and `compareCaseInsensitiveUtf8` |
 | `android/app/build.gradle.kts`; android `src/test/java/android/icu/text/Normalizers.kt` | test-only icu4j 76.1 and narrow sdk namespace forwarding for jvm tests; production uses platform icu, with no apk dependency or alternate algorithm |
 | android `GatewayClient.kt` | bodyless authenticated put and route errors |
-| android `WorkingDirectoryPicker.kt`, `TerminalConnection.kt` | only exhaustive error-enum consumers made necessary by `SpaceInvalid`; no route or behavior expansion |
-| android `SkidbladnirController.kt`, `SessionRename.kt` | space operation and shared metadata-fence bookkeeping; distinct rename semantics |
+| android `WorkingDirectoryPicker.kt`, `TerminalConnection.kt` | only exhaustive error-enum consumers made necessary by `GroupInvalid`; no route or behavior expansion |
+| android `SkidbladnirController.kt`, `SessionRename.kt` | group operation and shared metadata-fence bookkeeping; distinct rename semantics |
 | android `DashboardEntryState.kt`, `DashboardScreen.kt` | two filters, item projection, schema-2 capsule, selector and restoration |
-| android `SessionCard.kt`, `ForgeSheet.kt`, new `SpaceSheet.kt` | card action and shared space field using existing chrome |
+| android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action and shared group field using existing chrome |
 | android `MainActivity.kt` | thread events only as required; retain single saved-state owner |
-| go colocated tests; android `src/test/.../SpacesTest.kt` and current contract/entry tests | label/transport/group/filter/fence/restore behavior |
-| `tests/integration/spaces_test.go`, current isolated fixtures | authenticated host/tmux membership and lifetime boundaries |
-| android `src/androidTest/.../SpacesInstrumentedTest.kt`, current fixtures | real compose/registry editor, selector, heading anchor and return |
+| temporary boundary checks under [testing policy](rules/testing.md) | label/transport/group/filter/fence/restore behavior |
+| temporary integration/live checks under [testing policy](rules/testing.md) | authenticated host/tmux membership and phone restore/interaction boundaries |
 | this plan, canonical docs, directly superseded client/navigation specs | current contracts and historical evidence attribution |
 
 android production paths are relative to
@@ -656,47 +671,40 @@ required cleanup:
 
 ## 12. acceptance and bounded proof plan
 
-builders own an acceptance proof and observe its intended failure before
-implementing that owner. compile failure alone is not the intended behavioral
-red. test where behavior is owned. do not mock internal services/controllers to
-claim a live journey. reuse fixtures. pure tests never invoke tmux. synthetic
-labels may be inputs, but failures/evidence report case names and outcomes,
+use temporary boundary checks under [testing policy](rules/testing.md): observe
+the intended behavioral failure before changing each owner, then pass the same
+check and remove it before commit. compile failure is not a behavioral red.
+synthetic labels may be inputs, but evidence reports case names and outcomes,
 not label values, terminal bytes, prompts, credentials, or provider output.
 
 | criterion | observable proof |
 | --- | --- |
 | a1 · label/wire | canonical/decomposed distinction; 64/65 scalars including supplementary unicode; whitespace/controls; exact equality/order; optional omission and explicit clear; strict fields/types/nulls; both languages agree |
 | a2 · host membership | create assigned/unassigned; set/change/clear/no-op; list/create/info projection; invalid input mutates nothing; invalid/local-absent/global-only metadata projects unassigned without repair |
-| a3 · lifetime | old ref survives rename and pane/foreground replacement; stale session/server ref rejects; process identities, pane/window, cwd, name, character and attachment survive assignment; grouped sessions have independent labels |
+| a3 · lifetime | old ref survives rename and pane/foreground replacement; stale session/server ref rejects; process identities, pane/window, cwd, name, character and attachment survive assignment; members of a tmux session group have independent labels |
 | a4 · ordering/uncertainty | concurrent absolute assignments yield whole last-applied values; possible dispatch never permits replay; one client write; pre-mutation reads cannot clear phone fence; a later differing label is authoritative without a fabricated failed-write claim |
 | a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; intersecting filters; selector-looking labels distinguishable; peer json and partial status honest |
 | a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; filter changes reveal retained rows; refresh discovers new membership on any host in machine scope; old tui scope result cannot admit new scope |
 | a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed out-of-filter creation changes filters |
 | a8 · navigation | selection follows lifetime or specified clamped session index; heading/card viewport survives detach/back, insertion/reorder and recreation; missing anchor clamps rendered index; absent label stays selected; unavailable restore settles; capsule contains only exact schema-2 primitives |
-| a9 · regression/scope | unassigned terminals preserve controls/defaults/host rules; no shell launcher, tmux grouping, provider meaning, launch context, persistent space resource, or compatibility path |
+| a9 · regression/scope | unassigned terminals preserve controls/defaults/host rules; no shell launcher, tmux grouping, provider meaning, launch context, persistent group resource, or compatibility path |
 
 proof shape:
 
-1. compact pure fixture matrices per language for labels/schema and grouping,
-   filters, and restoration. centralize within each test language, with no new
-   fixture-ingestion framework. existing cli/tui and android jvm contract tests
-   cover their distinct boundaries; they do not substitute for real interaction.
-2. extend the approved isolated gateway/tmux journey on linux and darwin for
-   a2–a4. use only exact test-owned sessions. include plain shells, grouped-session
-   independence, rename, pane/foreground change, gateway reconstruction, and old
-   server references. compare content-free lifetime/geometry facts. do not launch
-   paid providers merely to test metadata.
-3. one approved real-compose/real-registry journey covers editing, both filters,
-   heading/card anchors, post-create transitions, detach/back and task restore.
-   a phone-to-approved-isolated-host sample proves the actual membership request;
-   a UI fixture alone does not prove host mutation. use synthetic sessions and
-   preserve existing pairing/release-recovery requirements.
-4. run applicable routine checks. `scripts/test verify` currently composes static,
-   build, and unit; static compiles integration/live tests without executing them.
-   inspect composition again before running. no new gate is needed, and compiling
-   a runtime test does not pass its boundary.
-5. publication/deployment follows coordinated release admission. historical release,
-   provider, and device evidence proves no new spaces claim.
+1. use small temporary host, fleet, and phone boundary checks for strict wire,
+   filtering, schema-2 restoration, and the updated copy. feed restoration a
+   capsule captured from the pre-rename code, rather than generating both sides
+   with the new code. remove the checks after green and review.
+2. use exact test-owned sessions on an isolated tmux socket for assignment,
+   inheritance, lifetime, and metadata continuity. linux and darwin live results
+   retain separate attribution. do not launch a paid provider for this rename.
+3. a real phone journey covers the editor, both filters, saved heading position,
+   detach/back, and the host request. a fixture or build cannot establish device
+   acceptance. phone/adb requires explicit current-turn approval.
+4. run `scripts/check verify` for engineering checks. it contains no behavioral
+   suite. unavailable live boundaries are `NOT_RUN`, never passes. publication
+   and installation remain separately owned, and historical runtime results do
+   not establish this cutover.
 
 tmux invocation and integration/live execution require explicit current-turn
 approval. platform/adb and phone mutation require their own current-turn approval.
@@ -728,7 +736,7 @@ release and runtime workflows.
 | session-only assignment | agent replacement deliberately does not block filing; agent controls retain process validation |
 | last applied write, no replay | edits can overwrite and acknowledgements can be lost; no versions, receipts, conflict subsystem, or repair daemon |
 | observed suggestions | incomplete/stale names are typing assistance, not a catalogue or readiness claim |
-| filtering source inventory locally | no source payload reduction or space-derived host scope; preserve discovery and honest partial results |
+| filtering source inventory locally | no source payload reduction or group-derived host scope; preserve discovery and honest partial results |
 | confirmed creation can change filters | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the created machine when needed |
 | phone editing on dashboard | detach to refile; no terminal-chrome cost or added terminal navigation |
 | phone suggestions and action row | one extra tap opens suggestions; cards gain height to preserve readable context and 48dp actions |

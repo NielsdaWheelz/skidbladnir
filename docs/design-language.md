@@ -9,14 +9,14 @@ acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. §17 links the implemented component contracts. changes follow the
 current [testing policy](rules/testing.md).
 
-2026-09-15 accepted [spaces](spaces.md) target reuses these visual primitives for
+2026-09-15 accepted [groups](groups.md) target reuses these visual primitives for
 one compact dashboard selector, quiet full-span group headings, a literal card
 action, and a shared editor/forge field. no new palette, icon family, ornament,
-animation, or terminal chrome. space labels retain authored case and use the
+animation, or terminal chrome. group labels retain authored case and use the
 existing body/data typography, never display-face capitalisation. this target's
-source is implemented; [hands-on acceptance](issues/spaces-shells-hands-on.md)
+source is implemented; [hands-on acceptance](issues/groups-shells-hands-on.md)
 remains `NOT_RUN`. historical design
-proofs do not establish it. spaces owns its interaction and accessibility
+proofs do not establish it. groups owns its interaction and accessibility
 acceptance, with current delivery evidence in the roadmap.
 
 The name: *Vǫluspá* 37 places a hall of gold of Sindri's line on Niðavellir,

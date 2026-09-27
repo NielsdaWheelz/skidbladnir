@@ -5,8 +5,8 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
@@ -31,7 +31,7 @@ type CreateInput struct {
 	Profile          string
 	OptionalTmuxName string
 	Objective        string
-	Space            space.Label
+	Group            group.Label
 }
 
 type ShellInput struct {
@@ -39,10 +39,10 @@ type ShellInput struct {
 	IdentityToken string
 }
 
-type SetSpaceInput struct {
+type SetGroupInput struct {
 	TmuxID        string
 	IdentityToken string
-	Space         space.Label
+	Group         group.Label
 }
 
 type KillInput struct {
@@ -73,7 +73,7 @@ type Session struct {
 	LaunchProfile   agentruntime.ProfileKey
 	Agent           *agentruntime.AgentRuntime
 	Objective       string
-	Space           space.Label
+	Group           group.Label
 	Character       catalog.Character
 	CWD             string
 	ActiveCommand   string

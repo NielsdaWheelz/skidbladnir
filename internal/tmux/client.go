@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 )
 
 var (
@@ -25,8 +25,9 @@ const (
 	ServerEpochOption      = "@skid_server_epoch"
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
 	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
-	SpaceOption            = "@skid_space_b64"
-	spaceSuccessMarker     = "SKIDBLADNIR_SPACE_SUCCESS_V1"
+	// GroupOption retains the persisted tmux key so existing memberships remain visible.
+	GroupOption        = "@skid_space_b64"
+	groupSuccessMarker = "SKIDBLADNIR_GROUP_SUCCESS_V1"
 )
 
 var (
@@ -298,29 +299,29 @@ func (client Client) AssignCharacterIfUnchanged(
 	}
 }
 
-func (client Client) SetSessionSpaceIfIdentity(ctx context.Context, id string, label space.Label, server ServerIdentity) (bool, error) {
+func (client Client) SetSessionGroupIfIdentity(ctx context.Context, id string, label group.Label, server ServerIdentity) (bool, error) {
 	if !sessionIDPattern.MatchString(id) || !server.valid() {
-		return false, errors.New("tmux space assignment identity is invalid")
+		return false, errors.New("tmux group assignment identity is invalid")
 	}
-	assignment := "set-option -u -t '" + id + "' -- " + SpaceOption
+	assignment := "set-option -u -t '" + id + "' -- " + GroupOption
 	if !label.IsUnassigned() {
 		encoded := base64.RawURLEncoding.EncodeToString([]byte(label.String()))
-		assignment = "set-option -t '" + id + "' -- " + SpaceOption + " " + encoded
+		assignment = "set-option -t '" + id + "' -- " + GroupOption + " " + encoded
 	}
-	output, err := client.Output(ctx, "set-space-if-identity", "if-shell", "-F", "-t", id,
+	output, err := client.Output(ctx, "set-group-if-identity", "if-shell", "-F", "-t", id,
 		andFormatConditions(sessionLifetimeConditions(id, server)),
-		assignment+" ; display-message -p -l '"+spaceSuccessMarker+"'",
+		assignment+" ; display-message -p -l '"+groupSuccessMarker+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		return false, err
 	}
 	switch output {
-	case spaceSuccessMarker:
+	case groupSuccessMarker:
 		return true, nil
 	case identityMismatchMarker:
 		return false, nil
 	default:
-		return false, errors.New("tmux conditional space assignment returned unexpected output")
+		return false, errors.New("tmux conditional group assignment returned unexpected output")
 	}
 }
 

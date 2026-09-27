@@ -14,8 +14,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 	"golang.org/x/term"
 )
@@ -23,8 +23,8 @@ import (
 const usage = `usage: skid [--config PATH] COMMAND [options]
 
 skid                                      open the session browser
-skid list [--machine HOST] [--space LABEL | --unassigned]
-                                          list the fleet by space
+skid list [--machine HOST] [--group LABEL | --unassigned]
+                                          list the fleet by group
 skid info NAME                            show metadata and exact reference
 skid enter NAME                           enter terminal; ctrl-] d detaches
 skid read NAME [--terminal] [--max-bytes N] read bounded output
@@ -34,19 +34,19 @@ skid keys NAME KEY...                     send 1–16 logical keys
 skid interrupt NAME                       cancel current work, keep session
 skid stop NAME                            attempt agent halt, close session
 skid kill NAME                            close session without requesting agent halt
-skid start NAME --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--space LABEL]
-skid shell NAME                           create a terminal in this session's directory/space
-skid space NAME (--set LABEL | --clear)    assign or clear membership
+skid start NAME --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--group LABEL]
+skid shell NAME                           create a terminal in this session's directory/group
+skid group NAME (--set LABEL | --clear)    assign or clear membership
 
 existing targets: use NAME [--machine HOST] or --ref VALUE
 --json: one structured envelope for noninteractive commands
 --: remaining operands are literal; --help: this guide
 browser (80x24 minimum)
-  g spaces; a agents; t tabs; tab/shift-tab cycles focus
+  g groups; a agents; t tabs; tab/shift-tab cycles focus
   up/down (j/k) lists; left/right (h/l) tabs; arrows select locally
   n opens creation; m chooses machine; ctrl-r refreshes; q/escape quits
   selected agent/tab: enter attaches fullscreen; spacebar shows details
-  T (shift+t) creates and attaches a terminal here; e edits membership
+  T (shift+t) creates and attaches a terminal here; e changes group
   r reads; i interrupts; s stops; x kills; session actions require an agent/tab
   ctrl-] d returns to the browser; forms and details own their keys
 keys: enter escape ctrl-c up down left right tab backspace page-up page-down
@@ -129,7 +129,7 @@ type command struct {
 func parse(args []string) (command, error) {
 	var result command
 	var operands []string
-	var spaceArgument, setArgument string
+	var groupArgument, setArgument string
 	seen := map[string]bool{}
 	literal := false
 	for i := 0; i < len(args); i++ {
@@ -159,7 +159,7 @@ func parse(args []string) (command, error) {
 				case "--help":
 					result.help = true
 				}
-			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--space", "--set":
+			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -171,8 +171,8 @@ func parse(args []string) (command, error) {
 					return result, errors.New("empty option value")
 				}
 				switch name {
-				case "--space":
-					spaceArgument = argument
+				case "--group":
+					groupArgument = argument
 				case "--set":
 					setArgument = argument
 				case "--config":
@@ -203,7 +203,7 @@ func parse(args []string) (command, error) {
 		return result, nil
 	}
 	if len(operands) == 0 {
-		if seen["--space"] || seen["--set"] || seen["--clear"] || seen["--unassigned"] || result.json || result.stdin || result.request.Machine != "" || result.request.Ref != "" || result.request.Profile != "" || result.request.CWD != "" || result.request.Mode != "" || result.request.MaxBytes != 0 {
+		if seen["--group"] || seen["--set"] || seen["--clear"] || seen["--unassigned"] || result.json || result.stdin || result.request.Machine != "" || result.request.Ref != "" || result.request.Profile != "" || result.request.CWD != "" || result.request.Mode != "" || result.request.MaxBytes != 0 {
 			return result, errors.New("missing command")
 		}
 		return result, nil
@@ -220,7 +220,7 @@ func parse(args []string) (command, error) {
 			return result, errors.New("start requires name")
 		}
 		result.request.Name = operands[0]
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "space", "shell":
+	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "group", "shell":
 		if result.request.Ref == "" {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
@@ -258,36 +258,36 @@ func parse(args []string) (command, error) {
 			result.request.Mode = ""
 		}
 	}
-	if seen["--space"] {
+	if seen["--group"] {
 		if operation != "list" && operation != "start" || seen["--unassigned"] {
-			return result, errors.New("space option not supported")
+			return result, errors.New("group option not supported")
 		}
-		label, err := space.ParseDraft(spaceArgument)
+		label, err := group.ParseDraft(groupArgument)
 		if err != nil || label.IsUnassigned() {
-			return result, errors.New("invalid space")
+			return result, errors.New("invalid group")
 		}
 		if operation == "list" {
-			result.request.SpaceFilter, _ = space.NamedFilter(label)
+			result.request.GroupFilter, _ = group.NamedFilter(label)
 		} else {
-			result.request.Space = label
+			result.request.Group = label
 		}
 	}
 	if seen["--unassigned"] {
 		if operation != "list" {
 			return result, errors.New("unassigned is list-only")
 		}
-		result.request.SpaceFilter = space.UnassignedFilter()
+		result.request.GroupFilter = group.UnassignedFilter()
 	}
-	if operation == "space" {
+	if operation == "group" {
 		if seen["--set"] == seen["--clear"] {
 			return result, errors.New("choose set or clear")
 		}
 		if seen["--set"] {
-			label, err := space.ParseDraft(setArgument)
+			label, err := group.ParseDraft(setArgument)
 			if err != nil || label.IsUnassigned() {
-				return result, errors.New("invalid space")
+				return result, errors.New("invalid group")
 			}
-			result.request.Space = label
+			result.request.Group = label
 		}
 	} else if seen["--set"] || seen["--clear"] {
 		return result, errors.New("assignment option not supported")
@@ -417,9 +417,9 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 				fmt.Fprintf(table, "%s\tunavailable\t\t%s\t\n", peer.Label, peer.Error.Code)
 			}
 		}
-		groups := fleetclient.Groups(list.Peers, space.Filter{})
+		groups := fleetclient.Groups(list.Peers, group.Filter{})
 		for _, group := range groups {
-			fmt.Fprintln(table, fleetclient.SpaceHeading(group.Space))
+			fmt.Fprintln(table, fleetclient.GroupHeading(group.Label))
 			for _, entry := range group.Rows {
 				row := entry.Session
 				provider, state := "shell", "—"
@@ -454,7 +454,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 		} else {
 			row := value.Session
-			fmt.Fprintln(stdout, fleetclient.SpaceHeading(row.Space))
+			fmt.Fprintln(stdout, fleetclient.GroupHeading(row.Group))
 			fmt.Fprintf(stdout, "session: %s\nmachine: %s\nmachine id: %s\ndirectory: %s\ncommand: %s\nattached clients: %d\n", row.Name, value.Label, value.Machine, row.CWD, row.ActiveCommand, row.AttachedClients)
 			if row.Agent == nil {
 				fmt.Fprintln(stdout, "agent: none (shell)")
@@ -489,10 +489,10 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if _, err := fmt.Fprintf(stdout, "agent halt: %s; terminal: %s\n", value.Agent, value.Terminal); err != nil {
 			return 1
 		}
-	case "space":
-		text := "space assigned\n"
-		if command.request.Space.IsUnassigned() {
-			text = "space cleared\n"
+	case "group":
+		text := "group assigned\n"
+		if command.request.Group.IsUnassigned() {
+			text = "group cleared\n"
 		}
 		if _, err := io.WriteString(stdout, text); err != nil {
 			return 1

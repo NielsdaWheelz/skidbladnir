@@ -151,7 +151,7 @@ internal fun completeRenameHttp(
             ApiErrorCode.DirectoryListingUnavailable,
             ApiErrorCode.DirectoryListingTooLarge,
             ApiErrorCode.ProfileUnknown,
-            ApiErrorCode.ObjectiveInvalid, ApiErrorCode.SpaceInvalid,
+            ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
             ApiErrorCode.PairingInviteRejected,
             ApiErrorCode.ReconnectRequired,
             ApiErrorCode.TerminalConfigurationUnsupported,

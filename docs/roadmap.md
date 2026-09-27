@@ -33,7 +33,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
 | sampled agent status, bounded reads, terminal input, interrupt and stop | [agent control](agent-control.md) |
-| session labels, client grouping/filtering and dashboard restoration | [spaces](spaces.md), [dashboard continuity](dashboard-return-continuity.md) |
+| session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | organized desktop browser and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
@@ -68,9 +68,13 @@ sessions retain their original launch policy.
   one per issue. finish one reviewed pr before starting the next.
 - [darwin desktop browser](issues/desktop-browser-runtime-acceptance.md): the
   real browser/pty/gateway/isolated-tmux journey remains skipped by user direction.
-- [spaces and shells hands-on](issues/spaces-shells-hands-on.md): human workflow
+- [groups and shells hands-on](issues/groups-shells-hands-on.md): human workflow
   and usability acceptance remains unperformed; automated phone results do not
   supply it.
+- [groups cutover runtime acceptance](issues/groups-cutover-acceptance.md):
+  android restore/interaction and darwin isolated-host journeys remain `NOT_RUN`.
+- [terminal continuity integration](issues/groups-terminal-continuity-integration.md):
+  the concurrent creation work must use the new group wire contract when merged.
 - [readable terminal sizing](terminal-readable-sizing.md#red--green--refactor-and-acceptance): the named
   fitting-grid/handback and human readability criteria remain unclaimed by the
   generic later release-suite result.
@@ -78,7 +82,7 @@ sessions retain their original launch policy.
   tests are removed before commit. no retained suite protects the important
   behavior automatically. [testing policy](rules/testing.md) owns the workflow;
   `scripts/check verify` runs engineering checks and builds only.
-- [terminal embedding](spaces-and-shells.md): separate feasibility work; there
+- [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 
 other unperformed visual/device checks and explicitly waived shipment checks

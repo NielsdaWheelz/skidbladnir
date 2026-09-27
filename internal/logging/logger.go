@@ -40,7 +40,7 @@ const (
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
-	RouteSessionSpace      Route = "/v1/sessions/{tmuxId}/space"
+	RouteSessionGroup      Route = "/v1/sessions/{tmuxId}/group"
 	RouteSessionShell      Route = "/v1/sessions/{tmuxId}/shell"
 	RouteTerminal          Route = "/v1/sessions/{tmuxId}/terminal"
 	RoutePressure          Route = "/v1/pressure"
@@ -52,7 +52,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionSpace, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
+	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -76,7 +76,7 @@ const (
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
-	ErrorSpaceInvalid                ErrorCode = "SpaceInvalid"
+	ErrorGroupInvalid                ErrorCode = "GroupInvalid"
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
@@ -97,7 +97,7 @@ func (code ErrorCode) valid() bool {
 		ErrorProfileUnknown,
 		ErrorSessionNameInvalid,
 		ErrorObjectiveInvalid,
-		ErrorSpaceInvalid,
+		ErrorGroupInvalid,
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,

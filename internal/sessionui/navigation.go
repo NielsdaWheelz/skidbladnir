@@ -5,14 +5,14 @@ import (
 	"slices"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
 type region int
 
 const (
 	tabs region = iota
-	spaces
+	groups
 	agents
 )
 
@@ -29,7 +29,7 @@ func (m *model) rebuild() {
 	}
 	previous := m.cursor
 	m.rows = nil
-	for _, group := range fleetclient.Groups(m.scopedPeers(), m.spaceFilter) {
+	for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
 		for _, row := range group.Rows {
 			m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
 		}
@@ -93,7 +93,7 @@ func (m *model) rebuildForFilter() {
 	if row := m.selectedRow(); row != nil && !sameSession(row.session, selected) {
 		m.cursor = 0
 	}
-	m.spacesTop, m.agentsTop, m.tabsTop = 0, 0, 0
+	m.groupsTop, m.agentsTop, m.tabsTop = 0, 0, 0
 }
 
 func (m *model) setFocus(focus region) {
@@ -107,13 +107,13 @@ func (m *model) setFocus(focus region) {
 	}
 }
 
-func (m *model) spaceOptions() []space.Filter {
-	labels := fleetclient.ObservedSpaces(m.scopedPeers())
-	if m.spaceFilter.Kind() == space.FilterNamed && !slices.Contains(labels, m.spaceFilter.Label()) {
-		labels = append(labels, m.spaceFilter.Label())
-		slices.SortFunc(labels, space.Compare)
+func (m *model) groupOptions() []group.Filter {
+	labels := fleetclient.ObservedGroups(m.scopedPeers())
+	if m.groupFilter.Kind() == group.FilterNamed && !slices.Contains(labels, m.groupFilter.Label()) {
+		labels = append(labels, m.groupFilter.Label())
+		slices.SortFunc(labels, group.Compare)
 	}
-	options := []space.Filter{{}, space.UnassignedFilter()}
+	options := []group.Filter{{}, group.UnassignedFilter()}
 	for _, label := range labels {
 		options = append(options, filterFor(label))
 	}
@@ -146,12 +146,12 @@ func (m *model) move(key string) {
 		if len(m.rows) > 0 {
 			m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
 		}
-	case spaces:
-		options := m.spaceOptions()
-		index := slices.Index(options, m.spaceFilter)
+	case groups:
+		options := m.groupOptions()
+		index := slices.Index(options, m.groupFilter)
 		next := min(max(0, index+delta), len(options)-1)
 		if next != index {
-			m.spaceFilter = options[next]
+			m.groupFilter = options[next]
 			m.rebuildForFilter()
 		}
 	case agents:
@@ -164,8 +164,8 @@ func (m *model) move(key string) {
 		}
 		index = min(max(0, index+delta), len(m.agents)-1)
 		selected := m.agents[index].session
-		if m.spaceFilter != filterFor(selected.Space) {
-			m.spaceFilter = filterFor(selected.Space)
+		if m.groupFilter != filterFor(selected.Group) {
+			m.groupFilter = filterFor(selected.Group)
 			m.rebuildForFilter()
 		}
 		for index, row := range m.rows {

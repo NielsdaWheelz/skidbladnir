@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -26,7 +26,7 @@ func (m *model) View() tea.View {
 	width := m.width - sidebarWidth - 1
 	left := m.sidebarLines(height)
 	right := append([]string{m.tabLine(width)}, m.mainLines(width, height-1)...)
-	heading := "skid · " + m.machineHeading() + " · " + fleetclient.SpaceFilterHeading(m.spaceFilter)
+	heading := "skid · " + m.machineHeading() + " · " + fleetclient.GroupFilterHeading(m.groupFilter)
 	if m.refreshing {
 		heading += " · refreshing…"
 	}
@@ -55,21 +55,21 @@ func (m *model) footerLines() []string {
 		text = "y/enter confirms · n/escape cancels"
 	case "machine-picker":
 		text = "up/down/j/k choose · enter selects · escape cancels"
-	case "space-edit":
+	case "group-edit":
 		text = "left/right fill suggestion · ctrl-u unassigned\nenter/ctrl-s saves · ctrl-r refresh · escape cancels"
-		if m.spaceChecking {
+		if m.groupChecking {
 			text = "checking inventory · ctrl-r refresh · escape cancels"
 		}
 	case "create":
-		text = "left/right choose machine/launch/space · tab/enter next\nenter on space creates · ctrl-u unassigned · escape cancels"
+		text = "left/right choose machine/launch/group · tab/enter next\nenter on group creates · ctrl-u unassigned · escape cancels"
 	case "output", "details":
 		text = "up/down/page-up/page-down scroll · q/escape returns"
 	default:
-		text = "g spaces · a agents · t tabs · tab/shift-tab focus · n new · m machine\n"
+		text = "g groups · a agents · t tabs · tab/shift-tab focus · n new · m machine\n"
 		switch m.focus {
 		case tabs:
 			text += "left/right/h/l select"
-		case spaces:
+		case groups:
 			text += "up/down/j/k select · enter tabs"
 		case agents:
 			text += "up/down/j/k select"
@@ -78,15 +78,15 @@ func (m *model) footerLines() []string {
 		row := m.selectedRow()
 		if m.focus == agents && m.agentIndex() < 0 {
 			text += "\nno active agent · down/up selects first/last"
-		} else if m.focus != spaces && row != nil {
+		} else if m.focus != groups && row != nil {
 			if row.available {
-				text += "\nenter attach · space info"
+				text += "\nenter attach · spacebar info"
 				if row.session.Agent != nil {
 					text += " · r read · i interrupt · s stop"
 				}
-				text += " · x kill\ne edit space · T terminal here"
+				text += " · x kill\ne change group · T terminal here"
 			} else {
-				text += "\nspace info · session unavailable; remote actions disabled"
+				text += "\nspacebar info · session unavailable; remote actions disabled"
 			}
 		}
 	}
@@ -127,8 +127,8 @@ func capturedHeading(name, machine string, width int) string {
 }
 
 func (m *model) sidebarHeights(height int) (int, int) {
-	spaces := min(len(m.spaceOptions())+1, height/2)
-	return spaces, height - spaces
+	groups := min(len(m.groupOptions())+1, height/2)
+	return groups, height - groups
 }
 
 func fitList(top, index, length, height int) int {
@@ -149,9 +149,9 @@ func (m *model) fitViewports() {
 		return
 	}
 	height := m.mainHeight() + 1
-	spacesHeight, agentsHeight := m.sidebarHeights(height)
-	options := m.spaceOptions()
-	m.spacesTop = fitList(m.spacesTop, slices.Index(options, m.spaceFilter), len(options), spacesHeight-1)
+	groupsHeight, agentsHeight := m.sidebarHeights(height)
+	options := m.groupOptions()
+	m.groupsTop = fitList(m.groupsTop, slices.Index(options, m.groupFilter), len(options), groupsHeight-1)
 	m.agentsTop = fitList(m.agentsTop, m.agentIndex(), len(m.agents), agentsHeight-1)
 	m.tabsTop = min(m.tabsTop, max(0, len(m.rows)-1))
 	if m.cursor < 0 {
@@ -175,7 +175,7 @@ func (m *model) fitViewports() {
 }
 
 func (m *model) sidebarLines(height int) []string {
-	spacesHeight, agentsHeight := m.sidebarHeights(height)
+	groupsHeight, agentsHeight := m.sidebarHeights(height)
 	title := func(label string, focus region, top, end, total int) string {
 		marker := "  "
 		if m.page == "" && m.focus == focus {
@@ -190,17 +190,17 @@ func (m *model) sidebarLines(height int) []string {
 		}
 		return text
 	}
-	options := m.spaceOptions()
-	end := min(len(options), m.spacesTop+spacesHeight-1)
-	lines := []string{title("spaces", spaces, m.spacesTop, end, len(options))}
-	for index := m.spacesTop; index < end; index++ {
+	options := m.groupOptions()
+	end := min(len(options), m.groupsTop+groupsHeight-1)
+	lines := []string{title("groups", groups, m.groupsTop, end, len(options))}
+	for index := m.groupsTop; index < end; index++ {
 		marker := "  "
-		if options[index] == m.spaceFilter {
+		if options[index] == m.groupFilter {
 			marker = "* "
 		}
-		lines = append(lines, marker+fleetclient.SpaceFilterHeading(options[index]))
+		lines = append(lines, marker+fleetclient.GroupFilterHeading(options[index]))
 	}
-	for len(lines) < spacesHeight {
+	for len(lines) < groupsHeight {
 		lines = append(lines, "")
 	}
 	end = min(len(m.agents), m.agentsTop+agentsHeight-1)
@@ -283,34 +283,34 @@ func (m *model) mainLines(width, height int) []string {
 				focusEnd = len(lines)
 			}
 		}
-	case "space-edit":
-		add("space for " + m.pendingName + " on " + m.pendingLabel)
-		if m.spaceFailure != nil {
-			add(m.spaceFailure.Code + " (unknown); not repeated")
+	case "group-edit":
+		add("change group for " + m.pendingName + " on " + m.pendingLabel)
+		if m.groupFailure != nil {
+			add(m.groupFailure.Code + " (unknown); not repeated")
 		}
 		current := m.pendingRow()
 		if current != nil {
-			add("current: " + fleetclient.SpaceHeading(current.session.Space))
+			add("current: " + fleetclient.GroupHeading(current.session.Group))
 		}
 		focusStart = len(lines)
-		add("> space: " + spaceDraftDisplay(m.spaceDraft))
+		add("> group: " + groupDraftDisplay(m.groupDraft))
 		focusEnd = len(lines)
-		label, err := space.ParseDraft(m.spaceDraft)
+		label, err := group.ParseDraft(m.groupDraft)
 		switch {
-		case m.spaceChecking:
+		case m.groupChecking:
 			add("checking inventory; escape returns")
 		case err != nil:
-			add(space.ErrInvalid.Error())
+			add(group.ErrInvalid.Error())
 		case current == nil || !current.available:
 			add("session unavailable; save disabled")
-		case current.session.Space == label:
+		case current.session.Group == label:
 			add("unchanged; save disabled")
 		default:
 			add("enter/ctrl-s saves")
 		}
-		add(m.spaceSuggestions())
+		add(m.groupSuggestions())
 	case "create":
-		for index, label := range []string{"machine", "launch", "name", "directory", "space"} {
+		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
 			marker := "  "
 			if index == m.field {
 				marker = "> "
@@ -318,7 +318,7 @@ func (m *model) mainLines(width, height int) []string {
 			}
 			text := m.form[index]
 			if index == 4 {
-				text = spaceDraftDisplay(text)
+				text = groupDraftDisplay(text)
 			}
 			add(marker + label + ": " + text)
 			if index == m.field {
@@ -328,10 +328,10 @@ func (m *model) mainLines(width, height int) []string {
 		if !m.createAvailable() {
 			add("host unavailable; create disabled")
 		}
-		if _, err := space.ParseDraft(m.form[4]); err != nil {
-			add(space.ErrInvalid.Error())
+		if _, err := group.ParseDraft(m.form[4]); err != nil {
+			add(group.ErrInvalid.Error())
 		}
-		add(m.spaceSuggestions())
+		add(m.groupSuggestions())
 	case "output", "details":
 		if m.page == "output" {
 			// Identity and coverage stay pinned and leave room for the snapshot.
@@ -362,7 +362,7 @@ func (m *model) mainLines(width, height int) []string {
 			break
 		}
 		session := row.session
-		lines = []string{"session: " + session.Name, "machine: " + row.label, fleetclient.SpaceHeading(session.Space), "directory: " + session.CWD}
+		lines = []string{"session: " + session.Name, "machine: " + row.label, fleetclient.GroupHeading(session.Group), "directory: " + session.CWD}
 		if session.Agent == nil {
 			lines = append(lines, "agent: none (shell)")
 		} else {
@@ -396,18 +396,18 @@ func (m *model) machineHeading() string {
 	}
 	return "machine: " + m.machine
 }
-func spaceDraftDisplay(draft string) string {
-	if _, err := space.ParseDraft(draft); err != nil {
+func groupDraftDisplay(draft string) string {
+	if _, err := group.ParseDraft(draft); err != nil {
 		return strconv.QuoteToASCII(draft)
 	}
 	return draft
 }
-func (m *model) spaceSuggestions() string {
+func (m *model) groupSuggestions() string {
 	options := []string{}
-	for _, label := range fleetclient.ObservedSpaces(m.scopedPeers()) {
-		options = append(options, fleetclient.SpaceHeading(label))
+	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
+		options = append(options, fleetclient.GroupHeading(label))
 	}
-	return "observed spaces: " + strings.Join(options, " · ")
+	return "observed groups: " + strings.Join(options, " · ")
 }
 func (m *model) detailLines() []string {
 	lines := []string{}

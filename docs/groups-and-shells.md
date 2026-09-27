@@ -1,7 +1,7 @@
-# spaces, shells, and client composition
+# groups, shells, and client composition
 
-[spaces](spaces.md) and [terminal creation](shells.md) are implemented.
-[the roadmap](roadmap.md) indexes delivery; [hands-on acceptance](issues/spaces-shells-hands-on.md)
+[groups](groups.md) and [terminal creation](shells.md) are implemented.
+[the roadmap](roadmap.md) indexes delivery; [hands-on acceptance](issues/groups-shells-hands-on.md)
 remains open. this document owns the delivery boundary.
 
 2026-09-17: approved navigation direction, split into two further prs: pr 3
@@ -16,20 +16,20 @@ herdr's example puts claude and a shell in adjacent panes of one tab. borrow
 that useful proximity while preserving skid's existing execution owners.
 
 tmux owns terminals and process lifetime. each gateway owns its local operations.
-clients compose the fleet and its presentation. space membership organizes
+clients compose the fleet and its presentation. group membership organizes
 sessions; it does not own them. git owns checkouts and worktrees.
 
 ## delivery split
 
 | pr | goal and scope | acceptance and accepted cost |
 | --- | --- | --- |
-| 1. spaces | optional per-session work label, inventory exposure, assignment and clearing, grouped views in cli/tui/phone. see [spaces.md](spaces.md). | sessions remain addressable and usable through regrouping. labels last only for the tmux session lifetime; manual filing; no saved empty spaces. |
-| 2. new shell here | standalone terminal choice; source-session create/attach. see [shells.md](shells.md). works with zero agent profiles or no space. | independent lifetime, generated shortcut name, sampled location, manual uncertainty recovery; browser-based return. |
-| 3. organized desktop browser | spaces, global agents, session tabs and main browser content; immediate local selection; existing fullscreen attachment. [desktop-browser.md](desktop-browser.md) owns implementation and acceptance. | one current browser state survives detach; no per-space memory or special source return. navigation and fleet status are hidden while attached. |
+| 1. groups | optional per-session work label, inventory exposure, assignment and clearing, grouped views in cli/tui/phone. see [groups.md](groups.md). | sessions remain addressable and usable through regrouping. labels last only for the tmux session lifetime; manual filing; no saved empty groups. |
+| 2. new shell here | standalone terminal choice; source-session create/attach. see [shells.md](shells.md). works with zero agent profiles or no group. | independent lifetime, generated shortcut name, sampled location, manual uncertainty recovery; browser-based return. |
+| 3. organized desktop browser | groups, global agents, session tabs and main browser content; immediate local selection; existing fullscreen attachment. [desktop-browser.md](desktop-browser.md) owns implementation and acceptance. | one current browser state survives detach; no per-group memory or special source return. navigation and fleet status are hidden while attached. |
 | 4. embedded-terminal experiment | evaluate one borrowed terminal component inside the main area, using the existing authenticated attachment. persistent navigation during attachment is the proposed outcome. | establish terminal compatibility before committing to production integration. a negative feasibility result is valid; it does not block pr 3 or justify a homegrown emulator. |
 
 each shipping pr completes its feature end to end, including docs and appropriate checks.
-do not add scaffolding for later prs. pr 1 owns space filtering and collection
+do not add scaffolding for later prs. pr 1 owns group filtering and collection
 return continuity; pr 3 owns the new desktop navigation. phone navigation beyond
 prs 1 and 2 remains separate; neither of the new desktop prs requires phone ui changes.
 
@@ -37,7 +37,7 @@ prs 1 and 2 remains separate; neither of the new desktop prs requires phone ui c
 
 [the pr 3 spec](desktop-browser.md) owns behavior, state, keys, geometry, file
 ownership, hard cut and acceptance. latest decisions replace the earlier proposed
-per-space memory and source-return exception: selection updates locally; detach
+per-group memory and source-return exception: selection updates locally; detach
 resumes the same browser model; a new shell stays selected. no history is added.
 pr 3 introduces no host, phone, wire, terminal-transport or dependency change.
 
@@ -59,7 +59,7 @@ old agent target stale. see [agent-control.md](agent-control.md#identity-state-a
 two independent sessions can still be displayed side by side through two
 `skid enter` attachments. expose multiple individually addressable panes inside
 one tmux session only through a separately specified pane-level discovery change.
-visual spaces are not tmux session groups; do not restore retired shadow grouping.
+visual groups are not tmux session groups; do not restore retired shadow grouping.
 
 ## boundaries
 
@@ -78,7 +78,7 @@ are incorporated into [architecture.md](architecture.md), with delivery in
 there with source implementation and separately attributed acceptance. the
 2026-09-17 desktop spec is incorporated as the accepted pr 3 target; it supersedes
 only the named desktop presentation/selection rules and retains the prohibition
-on per-space history. direct attachment remains unchanged. pr 4 is a
+on per-group history. direct attachment remains unchanged. pr 4 is a
 feasibility investigation, not an accepted production terminal contract. never
 relabel historical evidence as new proof.
 broader capability changes require a new explicit scope decision.
@@ -102,7 +102,7 @@ optional fields do not imply compatibility with strict old decoders. hard-cut
 superseded paths with no compatibility readers, negotiation, alternative routes,
 or later-pr scaffolding. pr 1 uses one new session metadata option, one exact
 membership route, and the existing runtime/navigation owners. its explicit costs
-and implementation file map live in [spaces.md](spaces.md). evidence belongs in
+and implementation file map live in [groups.md](groups.md). evidence belongs in
 the roadmap; historical runtime results do not establish later changes.
 
 background references, not additional scope: [herdr concepts](https://herdr.dev/docs/concepts/),

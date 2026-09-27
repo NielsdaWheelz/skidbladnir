@@ -14,7 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/space"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 )
 
@@ -52,15 +52,15 @@ type model struct {
 	form                                      [5]string
 	field                                     int
 	machine                                   string
-	spaceFilter                               space.Filter
+	groupFilter                               group.Filter
 	scopeReady                                bool
 	picker                                    int
-	spaceDraft                                string
-	spaceChecking, spaceAcknowledged          bool
-	spaceFailure                              *fleetclient.Failure
+	groupDraft                                string
+	groupChecking, groupAcknowledged          bool
+	groupFailure                              *fleetclient.Failure
 	focus                                     region
 	agents                                    []listedRow
-	spacesTop, agentsTop, tabsTop             int
+	groupsTop, agentsTop, tabsTop             int
 	outputName, outputMachine, outputCoverage string
 }
 
@@ -147,19 +147,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.rebuild()
-		if m.page == "space-edit" || m.spaceChecking {
+		if m.page == "group-edit" || m.groupChecking {
 			target := m.pendingRow()
 			if target == nil && m.pendingPeerAvailable() {
 				m.page = ""
-				m.spaceChecking = false
+				m.groupChecking = false
 				m.notice = "session unavailable; editor closed"
-			} else if target != nil && target.available && m.spaceChecking {
-				m.spaceChecking = false
-				if m.spaceAcknowledged {
+			} else if target != nil && target.available && m.groupChecking {
+				m.groupChecking = false
+				if m.groupAcknowledged {
 					m.page = ""
-					m.notice = "space assigned"
-					if m.pending.Space.IsUnassigned() {
-						m.notice = "space cleared"
+					m.notice = "group assigned"
+					if m.pending.Group.IsUnassigned() {
+						m.notice = "group cleared"
 					}
 				}
 			}
@@ -182,11 +182,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !message.result.OK {
 			m.notice = message.result.Error.Code + " (" + message.result.Error.Dispatch + "); not repeated"
 			failure := message.result.Error
-			if message.operation == "space" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
-				m.spaceChecking = true
-				m.spaceAcknowledged = false
+			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
+				m.groupChecking = true
+				m.groupAcknowledged = false
 				if failure.Dispatch == "unknown" {
-					m.spaceFailure = failure
+					m.groupFailure = failure
 				}
 				m.invalidatePendingPeer()
 				return m, m.refresh()
@@ -212,8 +212,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.machine = value.Label
 				m.scopeReady = false
 			}
-			if !m.spaceFilter.Matches(value.Session.Space) {
-				m.spaceFilter = filterFor(value.Session.Space)
+			if !m.groupFilter.Matches(value.Session.Group) {
+				m.groupFilter = filterFor(value.Session.Group)
 			}
 			created, _ := fleetclient.DecodeReference(value.Session.Ref)
 			found := false
@@ -254,13 +254,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
 				return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
 			}
-		case "space":
-			m.spaceChecking = true
-			m.spaceAcknowledged = true
+		case "group":
+			m.groupChecking = true
+			m.groupAcknowledged = true
 			m.invalidatePendingPeer()
-			m.notice = "space assigned; checking inventory"
-			if m.pending.Space.IsUnassigned() {
-				m.notice = "space cleared; checking inventory"
+			m.notice = "group assigned; checking inventory"
+			if m.pending.Group.IsUnassigned() {
+				m.notice = "group cleared; checking inventory"
 			}
 
 		case "stop":
@@ -293,8 +293,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if m.page == "space-edit" && !m.spaceChecking {
-				m.spaceDraft += message.Content
+			if m.page == "group-edit" && !m.groupChecking {
+				m.groupDraft += message.Content
 			}
 			if m.page == "create" && m.field >= 2 {
 				if m.field == 4 {
@@ -328,8 +328,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "machine-picker" {
 			return m, m.editPicker(key)
 		}
-		if m.page == "space-edit" {
-			return m, m.editSpace(message)
+		if m.page == "group-edit" {
+			return m, m.editGroup(message)
 		}
 		if m.page == "confirm" {
 			switch key {
@@ -371,7 +371,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			return m, tea.Quit
 		case "g":
-			m.setFocus(spaces)
+			m.setFocus(groups)
 			return m, nil
 		case "a":
 			m.setFocus(agents)
@@ -407,7 +407,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					if len(peer.Profiles) != 0 {
 						launch = peer.Profiles[0].Key
 					}
-					m.form = [5]string{peer.Label, launch, "", "~", m.spaceFilter.Label().String()}
+					m.form = [5]string{peer.Label, launch, "", "~", m.groupFilter.Label().String()}
 					m.notice = ""
 					return m, nil
 				}
@@ -415,7 +415,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "no available host"
 			return m, nil
 		}
-		if m.focus == spaces {
+		if m.focus == groups {
 			if key == "enter" {
 				m.setFocus(tabs)
 			}
@@ -440,13 +440,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = "creating terminal here"
 			return m, m.execute(request)
 		case "e":
-			request.Operation = "space"
+			request.Operation = "group"
 			m.pending = request
 			m.pendingLabel, m.pendingName = row.label, row.session.Name
-			m.spaceDraft = row.session.Space.String()
-			m.spaceChecking, m.spaceAcknowledged = false, false
-			m.spaceFailure = nil
-			m.page, m.notice = "space-edit", ""
+			m.groupDraft = row.session.Group.String()
+			m.groupChecking, m.groupAcknowledged = false, false
+			m.groupFailure = nil
+			m.page, m.notice = "group-edit", ""
 			return m, nil
 		case "enter":
 			request.Operation = "enter"
@@ -482,11 +482,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func filterFor(label space.Label) space.Filter {
+func filterFor(label group.Label) group.Filter {
 	if label.IsUnassigned() {
-		return space.UnassignedFilter()
+		return group.UnassignedFilter()
 	}
-	filter, _ := space.NamedFilter(label)
+	filter, _ := group.NamedFilter(label)
 	return filter
 }
 func (m *model) scopedPeers() []fleetclient.Peer {
@@ -565,13 +565,13 @@ func (m *model) editPicker(key string) tea.Cmd {
 	}
 	return nil
 }
-func (m *model) nextSpaceDraft(draft string, previous bool) string {
+func (m *model) nextGroupDraft(draft string, previous bool) string {
 	options := []string{""}
-	for _, label := range fleetclient.ObservedSpaces(m.scopedPeers()) {
+	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
 		options = append(options, label.String())
 	}
 	index := -1
-	canonical, err := space.ParseDraft(draft)
+	canonical, err := group.ParseDraft(draft)
 	if err == nil {
 		for i, option := range options {
 			if canonical.String() == option {
@@ -587,21 +587,21 @@ func (m *model) nextSpaceDraft(draft string, previous bool) string {
 	}
 	return options[index]
 }
-func (m *model) editSpace(key tea.KeyPressMsg) tea.Cmd {
+func (m *model) editGroup(key tea.KeyPressMsg) tea.Cmd {
 	if key.String() == "esc" {
 		m.page = ""
-		m.spaceChecking = false
-		m.spaceAcknowledged = false
+		m.groupChecking = false
+		m.groupAcknowledged = false
 		return nil
 	}
-	if m.spaceChecking {
+	if m.groupChecking {
 		return nil
 	}
 	switch key.String() {
 	case "enter", "ctrl+s":
-		label, err := space.ParseDraft(m.spaceDraft)
+		label, err := group.ParseDraft(m.groupDraft)
 		if err != nil {
-			m.notice = space.ErrInvalid.Error()
+			m.notice = group.ErrInvalid.Error()
 			return nil
 		}
 		current := m.pendingRow()
@@ -609,23 +609,23 @@ func (m *model) editSpace(key tea.KeyPressMsg) tea.Cmd {
 			m.notice = "session unavailable; refresh before saving"
 			return nil
 		}
-		if current.session.Space == label {
+		if current.session.Group == label {
 			return nil
 		}
-		m.pending.Space = label
-		m.spaceFailure = nil
+		m.pending.Group = label
+		m.groupFailure = nil
 		return m.execute(m.pending)
 	case "ctrl+u":
-		m.spaceDraft = ""
+		m.groupDraft = ""
 	case "left", "right":
-		m.spaceDraft = m.nextSpaceDraft(m.spaceDraft, key.String() == "left")
+		m.groupDraft = m.nextGroupDraft(m.groupDraft, key.String() == "left")
 	case "backspace":
-		if m.spaceDraft != "" {
-			_, size := utf8.DecodeLastRuneInString(m.spaceDraft)
-			m.spaceDraft = m.spaceDraft[:len(m.spaceDraft)-size]
+		if m.groupDraft != "" {
+			_, size := utf8.DecodeLastRuneInString(m.groupDraft)
+			m.groupDraft = m.groupDraft[:len(m.groupDraft)-size]
 		}
 	default:
-		m.spaceDraft += key.Text
+		m.groupDraft += key.Text
 	}
 	return nil
 }
@@ -673,12 +673,12 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			m.notice = "host unavailable; refresh before creating"
 			return nil
 		}
-		label, err := space.ParseDraft(m.form[4])
+		label, err := group.ParseDraft(m.form[4])
 		if err != nil {
-			m.notice = space.ErrInvalid.Error()
+			m.notice = group.ErrInvalid.Error()
 			return nil
 		}
-		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Space: label}
+		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Group: label}
 		if m.form[1] == "terminal" {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
 		}
@@ -689,7 +689,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		return m.execute(request)
 	case "left", "right":
 		if m.field == 4 {
-			m.form[4] = m.nextSpaceDraft(m.form[4], key.String() == "left")
+			m.form[4] = m.nextGroupDraft(m.form[4], key.String() == "left")
 			return nil
 		}
 		if m.field > 1 {

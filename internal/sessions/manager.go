@@ -164,11 +164,11 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 	if err != nil || cwd == "" {
 		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
 	}
-	encoded, err := manager.sessionOption(ctx, input.TmuxID, tmuxclient.SpaceOption)
+	encoded, err := manager.sessionOption(ctx, input.TmuxID, tmuxclient.GroupOption)
 	if err != nil {
 		return ObservedSession{}, err
 	}
-	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: cwd, Space: decodeSpaceMetadata(encoded)}, input.TmuxID, server)
+	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: cwd, Group: decodeGroupMetadata(encoded)}, input.TmuxID, server)
 }
 
 func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (result ObservedSession, resultErr error) {
@@ -267,9 +267,9 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		encodedObjective := base64.RawURLEncoding.EncodeToString([]byte(input.Objective))
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_objective_b64", encodedObjective)
 	}
-	if !input.Space.IsUnassigned() {
-		encodedSpace := base64.RawURLEncoding.EncodeToString([]byte(input.Space.String()))
-		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", tmuxclient.SpaceOption, encodedSpace)
+	if !input.Group.IsUnassigned() {
+		encodedGroup := base64.RawURLEncoding.EncodeToString([]byte(input.Group.String()))
+		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", tmuxclient.GroupOption, encodedGroup)
 	}
 	commandArgs = append(commandArgs,
 		";", "display-message", "-p", "-t", exactName,
@@ -546,8 +546,8 @@ func (manager *Manager) inspectRequired(
 func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
 	session := inspected.session
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
-	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.SpaceOption); err == nil {
-		session.Space = decodeSpaceMetadata(encoded)
+	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption); err == nil {
+		session.Group = decodeGroupMetadata(encoded)
 	}
 	session.AttachedClients = inspected.attachedClients
 	// justify-ignore-error: optional pane metadata does not suppress an ordinary terminal.
