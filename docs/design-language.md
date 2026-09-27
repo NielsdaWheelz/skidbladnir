@@ -573,3 +573,32 @@ those plans do not override current testing policy or claim human acceptance.
   at night brightness; WCAG bias near black is documented.
 - Whether Junicode's subset ships in v0 at all, or waits for the About/
   catalogue view that would use it.
+
+## 19. terminal browser
+
+the [desktop browser](desktop-browser.md) is this language with every ornament
+deleted (§1.2), drawn in the operator's own terminal. it speaks only the
+sixteen-colour protocol: the operator's theme is the ground, its default foreground
+the ink, and the browser never paints a background. under §10's table the bright
+slots are the accents verbatim, so the browser renders exactly in this palette;
+any other theme renders it in that theme's colours.
+
+| intensity | sgr | carries |
+| --- | --- | --- |
+| reverse | 7 | the `skid` wordmark; the form caret |
+| bold | 1 | the cursor row's name, keys, page titles, the rule's target |
+| plain | — | everything that must be read: names, status words, key labels, notices |
+| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable rows |
+
+| accent | slot | its one meaning |
+| --- | --- | --- |
+| Gold | bright yellow | you are here: the cursor bar `▌` and the focused form field |
+| Ember | bright red | blocked or failed status, a failed outcome, the stop/kill question |
+| Moss | bright green | working |
+
+status colour follows §5's sampled status mapping. ember never appears in hints,
+so blocked and failed stay the only red in the table and are found at a glance.
+colour never carries meaning alone: every status is a word, and the cursor is a
+glyph plus bold. faint varies by terminal and disappears under mosh; the hierarchy
+then flattens without losing information. one rule separates content from
+controls. no boxes, fret, runes, icons or motion.

@@ -8,13 +8,10 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
-type region int
-
-const (
-	tabs region = iota
-	groups
-	agents
-)
+// attention orders the agents view: states that may be waiting on the operator
+// come first, working and stopped last. codex reports a finished turn as idle,
+// unknown can be a dialog nobody recognized, and remote agents are unknown.
+var attention = []string{"blocked", "failed", "done", "idle", "unknown", "working", "stopped"}
 
 func sameSession(a, b fleetclient.Session) bool {
 	left, _ := fleetclient.DecodeReference(a.Ref)
@@ -29,9 +26,29 @@ func (m *model) rebuild() {
 	}
 	previous := m.cursor
 	m.rows = nil
-	for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
-		for _, row := range group.Rows {
-			m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
+	if m.agentsView {
+		for _, peer := range m.scopedPeers() {
+			for _, session := range peer.Sessions {
+				row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+				if m.current(&row).Agent != nil {
+					m.rows = append(m.rows, row)
+				}
+			}
+		}
+		slices.SortStableFunc(m.rows, func(a, b listedRow) int {
+			if a.available != b.available {
+				if a.available {
+					return -1
+				}
+				return 1
+			}
+			return cmp.Compare(slices.Index(attention, m.current(&a).Agent.State), slices.Index(attention, m.current(&b).Agent.State))
+		})
+	} else {
+		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
+			for _, row := range group.Rows {
+				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
+			}
 		}
 	}
 	m.cursor = -1
@@ -44,47 +61,10 @@ func (m *model) rebuild() {
 	if m.cursor < 0 && len(m.rows) > 0 {
 		m.cursor = min(max(0, previous), len(m.rows)-1)
 	}
-
-	current := []listedRow{}
-	for _, peer := range m.scopedPeers() {
-		for _, session := range peer.Sessions {
-			row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
-			if m.current(&row).Agent != nil {
-				current = append(current, row)
-			}
-		}
-	}
-	if m.focus == agents {
-		ordered := make([]listedRow, 0, len(current))
-		for _, previous := range m.agents {
-			for index, row := range current {
-				if sameSession(previous.session, row.session) {
-					ordered = append(ordered, row)
-					current = slices.Delete(current, index, index+1)
-					break
-				}
-			}
-		}
-		m.agents = append(ordered, current...)
-	} else {
-		m.agents = current
-		m.sortAgents()
-	}
 }
 
-func (m *model) sortAgents() {
-	states := []string{"blocked", "failed", "done", "working", "idle", "stopped", "unknown"}
-	slices.SortStableFunc(m.agents, func(a, b listedRow) int {
-		if a.available != b.available {
-			if a.available {
-				return -1
-			}
-			return 1
-		}
-		return cmp.Compare(slices.Index(states, m.current(&a).Agent.State), slices.Index(states, m.current(&b).Agent.State))
-	})
-}
-
+// rebuildForFilter keeps the selected session when it survives a scope change;
+// otherwise it selects the first row.
 func (m *model) rebuildForFilter() {
 	var selected fleetclient.Session
 	if row := m.selectedRow(); row != nil {
@@ -94,18 +74,7 @@ func (m *model) rebuildForFilter() {
 	if row := m.selectedRow(); row != nil && !sameSession(row.session, selected) {
 		m.cursor = 0
 	}
-	m.groupsTop, m.agentsTop, m.tabsTop = 0, 0, 0
-}
-
-func (m *model) setFocus(focus region) {
-	if m.focus == focus {
-		return
-	}
-	m.focus = focus
-	if focus != agents {
-		// Rebuild from host order before sorting, so old focus order cannot break ties.
-		m.rebuild()
-	}
+	m.top = 0
 }
 
 func (m *model) groupOptions() []group.Filter {
@@ -121,59 +90,36 @@ func (m *model) groupOptions() []group.Filter {
 	return options
 }
 
-func (m *model) agentIndex() int {
-	selected := m.selectedRow()
-	if selected != nil {
-		for index, row := range m.agents {
-			if sameSession(selected.session, row.session) {
-				return index
-			}
-		}
+// step moves along agents, all groups, unassigned, then each named group.
+// the agents view always spans all groups.
+func (m *model) step(delta int) {
+	options := m.groupOptions()
+	index := 0
+	if !m.agentsView {
+		index = 1 + slices.Index(options, m.groupFilter)
 	}
-	return -1
-}
-
-func (m *model) move(key string) {
-	delta := 1
-	if key == "up" || key == "k" || key == "left" || key == "h" {
-		delta = -1
-	}
-	horizontal := key == "left" || key == "h" || key == "right" || key == "l"
-	if horizontal != (m.focus == tabs) {
+	next := min(max(0, index+delta), len(options))
+	if next == index {
 		return
 	}
-	switch m.focus {
-	case tabs:
-		if len(m.rows) > 0 {
-			m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
-		}
-	case groups:
-		options := m.groupOptions()
-		index := slices.Index(options, m.groupFilter)
-		next := min(max(0, index+delta), len(options)-1)
-		if next != index {
-			m.groupFilter = options[next]
-			m.rebuildForFilter()
-		}
-	case agents:
-		if len(m.agents) == 0 {
-			return
-		}
-		index := m.agentIndex()
-		if index < 0 && delta < 0 {
-			index = len(m.agents)
-		}
-		index = min(max(0, index+delta), len(m.agents)-1)
-		selected := m.agents[index].session
-		if m.groupFilter != filterFor(selected.Group) {
-			m.groupFilter = filterFor(selected.Group)
-			m.rebuildForFilter()
-		}
-		for index, row := range m.rows {
-			if sameSession(row.session, selected) {
-				m.cursor = index
-				break
-			}
-		}
+	m.agentsView = next == 0
+	m.groupFilter = group.Filter{}
+	if next > 0 {
+		m.groupFilter = options[next-1]
+	}
+	m.rebuildForFilter()
+}
+
+// showAgents opens the agents view on its most urgent row.
+func (m *model) showAgents() {
+	m.agentsView, m.groupFilter = true, group.Filter{}
+	m.rebuild()
+	m.cursor = min(0, len(m.rows)-1)
+	m.top = 0
+}
+
+func (m *model) move(delta int) {
+	if len(m.rows) > 0 {
+		m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
 	}
 }

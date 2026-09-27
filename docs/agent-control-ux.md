@@ -134,9 +134,9 @@ preserve partial stop results even with exit 1; nonzero never authorizes replay.
 
 ## one small tui
 
-the accepted [pr 3 desktop browser](desktop-browser.md) owns presentation, keys,
-selection and bounded acceptance. it replaces the grouped table and group picker
-with groups/agents/tabs and immediate local selection. source is implemented;
+the [desktop browser](desktop-browser.md) owns presentation, keys, selection and
+bounded acceptance. it replaces the grouped table and group picker with one table,
+an agents view and group views, and immediate local selection. source is implemented;
 the roadmap records its verification. historical release proofs do not prove pr 3.
 
 retain one bubble tea model, existing fleetclient operations, exact pinned

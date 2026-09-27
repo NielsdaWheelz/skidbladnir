@@ -556,9 +556,10 @@ of target, not semantic safety.
 
 ### desktop and agent controls
 
-the implemented [desktop browser](desktop-browser.md) replaces the preceding
-grouped table with groups, global agents, session tabs and a browser-content area.
-it owns pr 3's exact selection, keys, geometry and return rules; no new public api
+the implemented [desktop browser](desktop-browser.md) presents one table: an agents
+view ordered by what may be waiting on the operator, and a view per group label,
+with forms, details and output in the same frame. it owns the exact selection, keys,
+geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
 ordinary commands expose list, info, enter,
