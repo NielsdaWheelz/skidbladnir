@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 internal fun SessionCard(
     visibleSession: VisibleSession,
     machine: MachineState,
+    machines: List<MachineState>,
     showMachineLabel: Boolean,
     motionEnabled: Boolean,
     onOpen: () -> Unit,
@@ -62,10 +63,23 @@ internal fun SessionCard(
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
-    val status = sessionStatusContent(session.agent?.status, fresh = machine.canMutate)
-    val tone = sessionStatusColor(session.agent?.status?.state)
-    val profile = sessionProfileLabel(session, snapshot.inventory.profiles)
-    val visibleContext = sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
+    val context = visibleSession.context
+    val status = when (context) {
+        is ExecutionContext.Local -> sessionStatusContent(context.agent?.status, fresh = machine.canMutate)
+        is ExecutionContext.Remote -> SessionStatusContent("REMOTE", "remote status unknown")
+        ExecutionContext.RemoteUnknown -> SessionStatusContent("REMOTE UNKNOWN", "remote context unknown")
+    }
+    val tone = sessionStatusColor((context as? ExecutionContext.Local)?.agent?.status?.state)
+    val profile = when (context) {
+        is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
+        is ExecutionContext.Remote -> remoteAgentLabel(context, machines)
+        ExecutionContext.RemoteUnknown -> "remote context unknown"
+    }
+    val visibleContext = when (context) {
+        is ExecutionContext.Local -> sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
+        is ExecutionContext.Remote -> "running on ${context.machine.label.text} · $profile · terminal on ${visibleSession.machine.label.text}"
+        ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on ${visibleSession.machine.label.text}"
+    }
     Surface(
         color = DeepSurface,
         shape = NidavellirShapes.Card,
@@ -88,7 +102,7 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                working = session.agent?.status?.state == AgentState.Working,
+                working = (context as? ExecutionContext.Local)?.agent?.status?.state == AgentState.Working,
                 activityTone = tone,
                 animateActivity = machine.canMutate && motionEnabled,
             )
@@ -119,7 +133,12 @@ internal fun SessionCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            session.cwd?.let { directory ->
+            val directory = when (context) {
+                is ExecutionContext.Local -> context.cwd
+                is ExecutionContext.Remote -> context.cwd
+                ExecutionContext.RemoteUnknown -> null
+            }
+            directory?.let { directory ->
                 Text(
                     text = abbreviatedDirectory(directory),
                     modifier = Modifier
@@ -131,6 +150,11 @@ internal fun SessionCard(
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = NidavellirType.Data,
                 )
+            }
+            if (directory == null && context is ExecutionContext.Remote) {
+                Text("Directory unavailable", color = Muted,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 8.dp))
             }
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -147,7 +171,7 @@ internal fun SessionCard(
                         .fillMaxWidth()
                         .semantics {
                             contentDescription =
-                                "Machine ${visibleSession.machine.label.text}. Profile $profile."
+                                "${visibleContext}." + (directory?.let { " Directory $it." } ?: "")
                         },
                 )
                 FlowRow(
@@ -184,9 +208,7 @@ internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileCho
             AgentProvider.Claude -> "Claude · profile unknown"
         }
     } else {
-        session.launchProfile?.let { launchProfile ->
-            profiles.single { it.key == launchProfile }.label
-        } ?: "profile unknown"
+        "terminal"
     }
 }
 

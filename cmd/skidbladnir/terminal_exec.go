@@ -7,19 +7,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"syscall"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
-	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
-// This process already belongs to the new tmux pane. Fail before user code if
-// the required cwd or configured shell disappeared after gateway validation.
+// This process already belongs to the new tmux pane. The shell consumes the
+// requested directory after startup and remains available if entry fails.
 func terminalExec(arguments []string) error {
-	if len(arguments) != 3 {
+	if len(arguments) != 4 {
 		return errors.New("invalid terminal invocation")
+	}
+	if arguments[3] != "" {
+		if _, err := agentruntime.DecodeLaunch(arguments[3]); err != nil {
+			return err
+		}
 	}
 	paths := make([]string, 2)
 	for index := range paths {
@@ -40,23 +45,8 @@ func terminalExec(arguments []string) error {
 	if _, err := exec.LookPath(shell); err != nil {
 		return err
 	}
-	directories, err := workdir.New("/")
-	if err != nil {
-		return err
-	}
-	candidate, err := directories.ParseCandidate(paths[0])
-	if err != nil {
-		return err
-	}
-	directory, err := directories.ValidateStart(candidate)
-	if err != nil {
-		return err
-	}
-	if err := os.Chdir(directory.String()); err != nil {
-		return err
-	}
-	if err := os.Setenv("PWD", directory.String()); err != nil {
-		return err
+	if base := filepath.Base(shell); base != "bash" && base != "zsh" {
+		return errors.New("default shell has no startup integration")
 	}
 	if err := os.Setenv("SHELL", shell); err != nil {
 		return err
@@ -65,15 +55,13 @@ func terminalExec(arguments []string) error {
 	if err != nil || !filepath.IsAbs(home) {
 		return errors.New("terminal home is unavailable")
 	}
-	environment := make([]string, 0, len(os.Environ())+2)
-	for _, entry := range runtimeenv.WithoutHerdr(os.Environ()) {
-		name, _, _ := strings.Cut(entry, "=")
-		if name != "CODEX_HOME" && name != "CLAUDE_CONFIG_DIR" && name != "SKIDBLADNIR_SHELL" && name != "SKIDBLADNIR_AGENT" && name != "SKIDBLADNIR_CLAUDE_COMMAND" {
-			environment = append(environment, entry)
-		}
-	}
+	environment := runtimeenv.WithoutLaunchContext(os.Environ())
 	environment = append(environment,
 		"SKIDBLADNIR_SHELL=1",
-		"CODEX_HOME="+filepath.Join(home, ".codex"))
+		"CODEX_HOME="+filepath.Join(home, ".codex"),
+		"SKIDBLADNIR_STARTUP_PID="+strconv.Itoa(os.Getpid()),
+		"SKIDBLADNIR_STARTUP_CWD="+paths[0],
+		"SKIDBLADNIR_STARTUP_HELPER="+os.Args[0],
+		"SKIDBLADNIR_STARTUP_AGENT="+arguments[3])
 	return syscall.Exec(shell, []string{"-" + filepath.Base(shell)}, environment)
 }

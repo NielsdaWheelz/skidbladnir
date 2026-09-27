@@ -33,6 +33,11 @@ type actionMsg struct {
 	operation string
 	result    fleetclient.Result
 }
+type searchMsg struct {
+	machine  string
+	revision int
+	result   fleetclient.Result
+}
 type attachedMsg struct{ err error }
 type model struct {
 	ctx                                       context.Context
@@ -62,6 +67,11 @@ type model struct {
 	agents                                    []listedRow
 	groupsTop, agentsTop, tabsTop             int
 	outputName, outputMachine, outputCoverage string
+	searchRevision                            int
+	searching                                 bool
+	searchDirectories                         []string
+	searchCursor                              int
+	searchOmitted                             bool
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -101,6 +111,24 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	return func() tea.Msg {
 		return actionMsg{operation: request.Operation, result: m.client.Execute(m.ctx, request)}
 	}
+}
+
+func (m *model) creationPeer() *fleetclient.Peer {
+	handle := m.client.DefaultMachine().Handle
+	if m.machine != "" {
+		for index := range m.peers {
+			if m.peers[index].Label == m.machine {
+				return &m.peers[index]
+			}
+		}
+		return nil
+	}
+	for index := range m.peers {
+		if m.peers[index].Machine == handle {
+			return &m.peers[index]
+		}
+	}
+	return nil
 }
 
 func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -249,11 +277,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.setFocus(tabs)
-			m.notice = "created " + value.Session.Name + "; enter to attach"
-			if message.operation == "shell" {
-				request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
-				return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
-			}
+			m.notice = "opening terminal on " + value.Label + "…"
+			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
+			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
 		case "group":
 			m.groupChecking = true
 			m.groupAcknowledged = true
@@ -281,6 +307,32 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice = value.Method + ": " + value.Outcome
 		}
 		return m, m.refresh()
+	case searchMsg:
+		if m.page != "search" || m.form[0] != message.machine || m.searchRevision != message.revision {
+			return m, nil
+		}
+		m.searching = false
+		if !message.result.OK {
+			m.notice = "directory search unavailable on " + message.machine
+			if message.result.Error != nil {
+				switch message.result.Error.Code {
+				case "DirectorySearchTooLarge":
+					m.notice = "too many results; narrow your search"
+				case "invalid_input":
+					m.notice = "enter 1–8 search words"
+				}
+			}
+			return m, nil
+		}
+		value := message.result.Value.(fleetclient.DirectorySearchResult)
+		m.searchDirectories, m.searchOmitted, m.searchCursor = value.Directories, value.Omitted, 0
+		m.notice = ""
+		if len(value.Directories) == 0 {
+			m.notice = "no matching directories"
+		} else if value.Omitted {
+			m.notice = "some directories are not shown"
+		}
+		return m, nil
 	case attachedMsg:
 		if m.refreshing {
 			m.refreshAfterAction = true
@@ -352,6 +404,22 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "create" {
 			return m, m.editForm(message)
 		}
+		if m.page == "search" {
+			switch key {
+			case "esc", "q":
+				m.page = "create"
+			case "up", "k":
+				m.searchCursor = max(0, m.searchCursor-1)
+			case "down", "j":
+				m.searchCursor = min(max(0, len(m.searchDirectories)-1), m.searchCursor+1)
+			case "enter":
+				if !m.searching && len(m.searchDirectories) > 0 {
+					m.form[3] = m.searchDirectories[m.searchCursor]
+					m.field, m.page, m.notice = 3, "create", ""
+				}
+			}
+			return m, nil
+		}
 		if m.page != "" {
 			switch key {
 			case "q", "esc":
@@ -399,20 +467,25 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "n":
-			for _, peer := range m.peers {
-				if peer.OK && (m.machine == "" || m.machine == peer.Label) && m.scopeReady {
-					m.page = "create"
-					m.field = 0
-					launch := "terminal"
-					if len(peer.Profiles) != 0 {
-						launch = peer.Profiles[0].Key
-					}
-					m.form = [5]string{peer.Label, launch, "", "~", m.groupFilter.Label().String()}
-					m.notice = ""
-					return m, nil
+			peer := m.creationPeer()
+			if peer == nil || !peer.OK || !m.scopeReady {
+				m.notice = "target unavailable; refresh before creating"
+				if peer != nil {
+					m.notice = peer.Label + " unavailable"
 				}
+				return m, nil
 			}
-			m.notice = "no available host"
+			m.notice = "opening terminal on " + peer.Label + "…"
+			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.groupFilter.Label()})
+		case "N":
+			peer := m.creationPeer()
+			if peer == nil {
+				m.notice = "target unavailable; refresh before creating"
+				return m, nil
+			}
+			m.page, m.field = "create", 0
+			m.form = [5]string{peer.Label, "terminal", "", "~", m.groupFilter.Label().String()}
+			m.notice = ""
 			return m, nil
 		}
 		if m.focus == groups {
@@ -436,6 +509,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		request := fleetclient.Request{Ref: row.session.Ref}
 		switch key {
 		case "T":
+			if row.session.Connection != nil {
+				m.notice = "new terminal on " + row.label + ": use n or N"
+				return m, nil
+			}
 			request.Operation = "shell"
 			m.notice = "creating terminal here"
 			return m, m.execute(request)
@@ -665,6 +742,30 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	case "shift+tab":
 		m.field = (m.field + 4) % 5
 	case "enter":
+		if m.field == 3 {
+			if m.form[3] == "z" {
+				m.notice = "enter 1–8 search words"
+				return nil
+			}
+			if strings.HasPrefix(m.form[3], "z ") {
+				terms := strings.Fields(m.form[3][2:])
+				if len(terms) == 0 || len(terms) > 8 {
+					m.notice = "enter 1–8 search words"
+					return nil
+				}
+				m.searchRevision++
+				m.searching = true
+				m.searchDirectories = nil
+				m.searchCursor = 0
+				m.searchOmitted = false
+				m.notice = "searching…"
+				m.page = "search"
+				machine, revision := m.form[0], m.searchRevision
+				return func() tea.Msg {
+					return searchMsg{machine: machine, revision: revision, result: m.client.SearchDirectories(m.ctx, machine, terms)}
+				}
+			}
+		}
 		if m.field < 4 {
 			m.field++
 			return nil
@@ -683,7 +784,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
 		}
 		if !request.Valid() {
-			m.notice = "name, machine, launch, and directory are required"
+			m.notice = "machine, launch, and directory are required"
 			return nil
 		}
 		return m.execute(request)

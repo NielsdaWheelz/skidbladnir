@@ -35,6 +35,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | sampled agent status, bounded reads, terminal input, interrupt and stop | [agent control](agent-control.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
+| persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
 | organized desktop browser and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |
@@ -73,8 +74,6 @@ sessions retain their original launch policy.
   supply it.
 - [groups cutover runtime acceptance](issues/groups-cutover-acceptance.md):
   android restore/interaction and darwin isolated-host journeys remain `NOT_RUN`.
-- [terminal continuity integration](issues/groups-terminal-continuity-integration.md):
-  the concurrent creation work must use the new group wire contract when merged.
 - [readable terminal sizing](terminal-readable-sizing.md#red--green--refactor-and-acceptance): the named
   fitting-grid/handback and human readability criteria remain unclaimed by the
   generic later release-suite result.
@@ -82,6 +81,11 @@ sessions retain their original launch policy.
   tests are removed before commit. no retained suite protects the important
   behavior automatically. [testing policy](rules/testing.md) owns the workflow;
   `scripts/check verify` runs engineering checks and builds only.
+- [terminal continuity](terminal-continuity.md): isolated linux tmux and static
+  build checks are source qualification only. actual [fleet ssh/mosh](issues/terminal-continuity-remote-qualification.md),
+  [darwin](issues/terminal-continuity-darwin-qualification.md), and
+  [phone](issues/terminal-continuity-phone-qualification.md) acceptance remain
+  `NOT_RUN` until deployment prerequisites and live gates are qualified.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 

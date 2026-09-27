@@ -22,6 +22,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
+	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
@@ -152,14 +153,26 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 	if err != nil {
 		return ObservedSession{}, err
 	}
-	anchor, err := manager.tmux.Output(ctx, "read-shell-source-pane", "display-message", "-p", "-t", input.TmuxID, "#{session_id}|#{pane_id}")
+	anchor, err := manager.tmux.Output(ctx, "read-shell-source-pane", "display-message", "-p", "-t", input.TmuxID, "#{session_id}|#{pane_id}|#{pane_pid}")
 	if err != nil {
 		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
 	}
-	id, pane, found := strings.Cut(anchor, "|")
-	if !found || id != input.TmuxID || !paneIDPattern.MatchString(pane) {
+	fields := strings.Split(anchor, "|")
+	if len(fields) != 3 || fields[0] != input.TmuxID || !paneIDPattern.MatchString(fields[1]) {
 		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
 	}
+	panePID, err := strconv.Atoi(fields[2])
+	if err != nil || panePID <= 0 {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
+	}
+	foreground, err := processinfo.ObserveForeground(processinfo.PID(panePID))
+	if err != nil {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
+	}
+	if _, _, remote := observedTransport(foreground, nil); remote {
+		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source is a remote connection.")
+	}
+	pane := fields[1]
 	cwd, err := manager.tmux.Output(ctx, "read-shell-source-cwd", "display-message", "-p", "-t", pane, "#{pane_current_path}")
 	if err != nil || cwd == "" {
 		return ObservedSession{}, newSessionError(ErrorWorkingDirectoryUnavailable, "The source directory is unavailable.")
@@ -224,39 +237,18 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	character := selectCharacter(manager.catalogue.Characters(), scan.characterUse, epochCandidate)
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
-	creationDirectory := ""
+	launch := ""
 	if input.Kind == LaunchAgent {
-		commandArgs = append(commandArgs, "-c", cwd.String())
-		for _, variable := range profile.Environment {
-			commandArgs = append(commandArgs, "-e", variable.Name+"="+variable.Value)
-		}
-		executable, err := os.Executable()
+		launch, err = agentruntime.EncodeLaunch(agentruntime.NewLaunch(profile, name))
 		if err != nil {
 			return ObservedSession{}, err
 		}
-		homeName := "CODEX_HOME"
-		if profile.Provider == agentruntime.ProviderClaude {
-			homeName = "CLAUDE_CONFIG_DIR"
-		}
-		home := ""
-		for _, variable := range profile.Environment {
-			if variable.Name == homeName {
-				home = variable.Value
-				break
-			}
-		}
-		commandArgs = append(commandArgs, "--", executable, "agent-exec")
-		for _, argument := range append([]string{profile.Command, homeName, home}, agentruntime.LaunchArguments(profile, name)...) {
-			commandArgs = append(commandArgs, base64.RawURLEncoding.EncodeToString([]byte(argument)))
-		}
-	} else {
-		terminal, err := manager.tmux.TerminalCommand(cwd.String())
-		if err != nil {
-			return ObservedSession{}, err
-		}
-		creationDirectory = cwd.String()
-		commandArgs = append(commandArgs, terminal...)
 	}
+	terminal, err := manager.tmux.TerminalCommand(cwd.String(), launch)
+	if err != nil {
+		return ObservedSession{}, err
+	}
+	commandArgs = append(commandArgs, terminal...)
 	exactName := "=" + name + ":"
 	commandArgs = append(commandArgs, ";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate)
 	if input.Kind == LaunchAgent {
@@ -277,7 +269,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if _, err := manager.workdir.ValidateStart(candidate); err != nil {
 		return ObservedSession{}, mapWorkingDirectoryError(err)
 	}
-	output, accepted, err := manager.tmux.CreateSession(ctx, creationDirectory, sourceID, sourceServer, commandArgs)
+	output, accepted, err := manager.tmux.CreateSession(ctx, cwd.String(), sourceID, sourceServer, commandArgs)
 	if !accepted {
 		if err != nil {
 			var pathError *os.PathError
@@ -570,7 +562,65 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 		}
 	}
 	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	if session.foreground != nil {
+		foreground := *session.foreground
+		if transport, _, recognized := observedTransport(foreground, nil); recognized {
+			environment, err := processinfo.ObserveForegroundEnvironment(inspected.panePID, foreground)
+			if errors.Is(err, processinfo.ErrForegroundMismatch) {
+				session.Agent, session.foreground = nil, nil
+				return session
+			}
+			_, id, _ := observedTransport(foreground, environment)
+			session.Connection = &Connection{Transport: transport, ID: id}
+			session.Agent = nil
+			session.CWD = ""
+		}
+	}
 	return session
+}
+
+func (manager *Manager) TerminalContext(connectionID string) (TerminalContext, error) {
+	root, err := terminalcontext.Observe(connectionID)
+	if err != nil {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	foreground, err := processinfo.ObserveForeground(root.PID)
+	if err != nil || foreground.SessionID != root.PID || foreground.TerminalDevice != root.TerminalDevice {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	if foreground.ExecutableBase() == "tmux" || foreground.ExecutableBase() == "screen" {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	environment, err := processinfo.ObserveForegroundEnvironment(root.PID, foreground)
+	if errors.Is(err, processinfo.ErrForegroundMismatch) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	if err != nil {
+		environment = nil
+	}
+	cwd, cwdErr := processinfo.ObserveCurrentDirectory(foreground.PID, foreground)
+	if errors.Is(cwdErr, processinfo.ErrForegroundMismatch) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	if cwdErr != nil {
+		cwd = ""
+	}
+	currentRoot, err := terminalcontext.Observe(connectionID)
+	if err != nil || !processinfo.SameObservation(currentRoot, root) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	currentForeground, err := processinfo.ObserveForeground(root.PID)
+	if err != nil || !processinfo.SameObservation(currentForeground, foreground) {
+		return TerminalContext{}, terminalcontext.ErrUnavailable
+	}
+	result := TerminalContext{ObservedAt: time.Now().UTC(), CWD: cwd}
+	if transport, id, recognized := observedTransport(foreground, environment); recognized {
+		result.CWD = ""
+		result.Connection = &Connection{Transport: transport, ID: id}
+	} else if agent := observeRemoteAgent(foreground, environment, manager.profiles); agent != nil {
+		result.Agent = &RemoteAgent{Provider: agent.Provider, Profile: agent.Profile}
+	}
+	return result, nil
 }
 
 type inspectedSession struct {

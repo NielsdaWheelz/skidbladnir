@@ -72,12 +72,30 @@ type Session struct {
 	IdentityToken   string
 	LaunchProfile   agentruntime.ProfileKey
 	Agent           *agentruntime.AgentRuntime
+	Connection      *Connection
 	Objective       string
 	Group           group.Label
 	Character       catalog.Character
 	CWD             string
 	ActiveCommand   string
 	AttachedClients int
+}
+
+type Connection struct {
+	Transport string
+	ID        string
+}
+
+type RemoteAgent struct {
+	Provider agentruntime.Provider
+	Profile  agentruntime.ProfileKey
+}
+
+type TerminalContext struct {
+	ObservedAt time.Time
+	CWD        string
+	Agent      *RemoteAgent
+	Connection *Connection
 }
 
 type Inventory struct {

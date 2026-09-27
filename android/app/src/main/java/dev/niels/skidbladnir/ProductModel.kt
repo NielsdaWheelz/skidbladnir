@@ -251,7 +251,51 @@ internal data class TmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: AgentRuntime? = null,
+    val connection: RemoteConnection? = null,
 )
+
+@Serializable internal enum class RemoteTransport { @kotlinx.serialization.SerialName("ssh") Ssh, @kotlinx.serialization.SerialName("mosh") Mosh }
+internal data class RemoteConnection(val transport: RemoteTransport, val id: String? = null) {
+    init { require(id == null || id.matches(Regex("[0-9a-f]{32}"))) }
+}
+internal data class RemoteAgent(val provider: AgentProvider, val profile: ProfileKey?)
+internal data class TerminalContext(
+    val observedAt: Instant,
+    val cwd: String?,
+    val agent: RemoteAgent?,
+    val connection: RemoteConnection?,
+)
+
+internal sealed interface ExecutionContext {
+    data class Local(val cwd: String?, val agent: AgentRuntime?) : ExecutionContext
+    data class Remote(val machine: PairedMachine, val cwd: String?, val agent: RemoteAgent?) : ExecutionContext
+    data object RemoteUnknown : ExecutionContext
+}
+
+@Serializable private data class WireRemoteConnection(val transport: RemoteTransport, val id: String? = null)
+@Serializable private data class WireRemoteAgent(val provider: AgentProvider, val profile: String? = null)
+@Serializable private data class WireTerminalContext(
+    @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
+    val cwd: String? = null,
+    val agent: WireRemoteAgent? = null,
+    val connection: WireRemoteConnection? = null,
+)
+
+internal fun decodeTerminalContext(encoded: String): TerminalContext = decodeProtocol {
+    val element = strictJsonObject(encoded)
+    element.requireAbsentOrNonNull(setOf("cwd", "agent", "connection"))
+    (element["agent"] as? JsonObject)?.requireAbsentOrNonNull(setOf("profile"))
+    (element["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
+    val wire = productJson.decodeFromJsonElement<WireTerminalContext>(element)
+    require(wire.agent == null || wire.connection == null)
+    require(wire.cwd == null || WorkingDirectoryPath.parse(wire.cwd) != null)
+    TerminalContext(
+        acceptProjectionInstant(wire.observedAt),
+        wire.cwd,
+        wire.agent?.let { RemoteAgent(it.provider, it.profile?.let { key -> requireNotNull(ProfileKey.parse(key)) }) },
+        wire.connection?.let { RemoteConnection(it.transport, it.id) },
+    )
+}
 
 internal data class SessionsResponse(
     val machine: MachineSummary,
@@ -305,6 +349,7 @@ private data class WireTmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: WireAgentRuntime? = null,
+    val connection: WireRemoteConnection? = null,
 )
 
 internal sealed interface LaunchChoice {
@@ -375,6 +420,22 @@ internal data class DirectoryListing(
     val children: List<DirectoryEntry>,
     val omissions: DirectoryOmissions,
 )
+
+internal data class DirectorySearchResult(val directories: List<WorkingDirectoryPath>, val omitted: Boolean)
+
+@Serializable private data class WireDirectorySearchResult(val directories: List<String>, val omitted: Boolean)
+
+internal fun decodeDirectorySearchResult(encoded: String): DirectorySearchResult = decodeProtocol {
+    val wire = productJson.decodeFromJsonElement<WireDirectorySearchResult>(strictJsonObject(encoded))
+    require(wire.directories.size <= 64)
+    val directories = wire.directories.map { path ->
+        require(path.startsWith('/'))
+        requireNotNull(WorkingDirectoryPath.parse(path))
+    }
+    require(directories.distinct().size == directories.size)
+    require(directories.sumOf { it.encoded.toByteArray(StandardCharsets.UTF_8).size } <= 32 * 1024)
+    DirectorySearchResult(directories, wire.omitted)
+}
 
 @Serializable
 private data class WireDirectoryListingResponse(
@@ -515,7 +576,8 @@ internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.
  * kill control, so the spoken description and the dialog title cannot name different sessions.
  */
 internal fun killActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
-    "${if (target.session.agent == null || terminalOnly) "Kill" else "Stop"} ${target.session.tmuxName} on ${label.text}"
+    if (target.session.agent == null || terminalOnly) "Close ${target.session.tmuxName} on ${label.text}"
+    else "Stop agent and close ${target.session.tmuxName} on ${label.text}"
 internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
     killActionLabel(label, target, terminalOnly) + "?"
 
@@ -557,7 +619,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         session.launchProfile?.let { launchProfile ->
             profiles.single { choice -> choice.key == launchProfile }
         }
-        session.agent?.let { agent ->
+    session.agent?.let { agent ->
             agent.profile?.let { runtimeProfile ->
                 profiles.single { choice -> choice.key == runtimeProfile && choice.provider == agent.provider }
             }
@@ -643,6 +705,7 @@ internal data class MachineState(
     val access: MachineAccess,
     val inventory: InventoryState,
     val pressure: PressureState,
+    val remoteContexts: Map<String, ExecutionContext.Remote> = emptyMap(),
 ) {
     val canMutate: Boolean get() = when (access) {
         MachineAccess.Ready -> inventory is InventoryState.Fresh
@@ -652,6 +715,25 @@ internal data class MachineState(
     val canForge: Boolean get() = canMutate
 
     fun inventoryFailed(cause: GatewayFailure): MachineState = copy(inventory = inventory.downgraded(cause))
+}
+
+internal fun MachineState.executionContext(session: TmuxSession): ExecutionContext {
+    val current = (inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
+        it.tmuxId == session.tmuxId && it.identityToken == session.identityToken
+    }
+    val observed = current ?: session
+    return if (observed.connection == null) ExecutionContext.Local(observed.cwd, observed.agent)
+    else if (access == MachineAccess.Ready && current != null)
+        remoteContexts[session.identityToken] ?: ExecutionContext.RemoteUnknown
+    else ExecutionContext.RemoteUnknown
+}
+
+internal fun remoteAgentLabel(context: ExecutionContext.Remote, machines: List<MachineState>): String {
+    val agent = context.agent ?: return "terminal"
+    val profiles = machines.singleOrNull { it.machine.handle == context.machine.handle }
+        ?.inventory?.lastSnapshot()?.inventory?.profiles.orEmpty()
+    return agent.profile?.let { key -> profiles.singleOrNull { it.key == key && it.provider == agent.provider }?.label }
+        ?: "${agent.provider.name} · profile unknown"
 }
 
 /**
@@ -755,6 +837,7 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
 internal data class VisibleSession(
     val machine: PairedMachine,
     val target: SessionTarget,
+    val context: ExecutionContext,
 ) {
     val cardKey: DashboardCardKey = dashboardCardKey(target)
 }
@@ -800,7 +883,7 @@ internal fun visibleInventoryTargets(
 internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope): List<VisibleSession> = machines
     .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
     .flatMap { state -> state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map {
-        VisibleSession(state.machine, SessionTarget(state.machine.handle, it))
+        VisibleSession(state.machine, SessionTarget(state.machine.handle, it), state.executionContext(it))
     } }
     .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
         .thenBy { it.machine.label.text }
@@ -813,6 +896,8 @@ internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
     DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
+    DirectorySearchUnavailable("DirectorySearchUnavailable"), DirectorySearchTooLarge("DirectorySearchTooLarge"),
+    TerminalContextUnavailable("TerminalContextUnavailable"),
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
@@ -834,6 +919,9 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
         "This directory cannot be browsed. Enter the path instead."
     ApiErrorCode.DirectoryListingTooLarge ->
         "This directory has too many folders to show. Enter the path instead."
+    ApiErrorCode.DirectorySearchUnavailable -> "Directory search is unavailable on this machine."
+    ApiErrorCode.DirectorySearchTooLarge -> "Too many directory search results. Narrow the search."
+    ApiErrorCode.TerminalContextUnavailable -> "Remote context is unavailable."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
     ApiErrorCode.GroupInvalid -> GROUP_INVALID
@@ -867,12 +955,13 @@ internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean): Session
 
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent"))
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection"))
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireAbsentOrNonNull(setOf("profile", "providerSession"))
         (agent["status"] as? JsonObject)?.requireAbsentOrNonNull(setOf("reason"))
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
+    (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
 
@@ -898,6 +987,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,
     agent = session.agent?.let(::acceptAgentRuntime),
+    connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
 ).also(::acceptSession)
 
 private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentRuntime(
@@ -924,6 +1014,7 @@ private fun acceptSession(session: TmuxSession) {
     require(session.activeCommand?.isNotEmpty() != false)
     require(session.objective?.isNotEmpty() != false)
     require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
+    require(session.agent == null || session.connection == null)
 }
 
 private fun isProviderSessionId(value: String): Boolean =

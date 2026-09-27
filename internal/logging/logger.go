@@ -47,12 +47,14 @@ const (
 	RoutePairingInvites    Route = "/v1/pairing-invites"
 	RoutePairings          Route = "/v1/pairings"
 	RouteDirectoryListings Route = "/v1/directory-listings"
+	RouteDirectorySearches Route = "/v1/directory-searches"
+	RouteTerminalContexts  Route = "/v1/terminal-contexts/{connectionId}"
 	RouteUnmatched         Route = "unmatched"
 )
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteUnmatched:
+	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -73,6 +75,9 @@ const (
 	ErrorWorkingDirectoryUnavailable ErrorCode = "WorkingDirectoryUnavailable"
 	ErrorDirectoryListingUnavailable ErrorCode = "DirectoryListingUnavailable"
 	ErrorDirectoryListingTooLarge    ErrorCode = "DirectoryListingTooLarge"
+	ErrorDirectorySearchUnavailable  ErrorCode = "DirectorySearchUnavailable"
+	ErrorDirectorySearchTooLarge     ErrorCode = "DirectorySearchTooLarge"
+	ErrorTerminalContextUnavailable  ErrorCode = "TerminalContextUnavailable"
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
@@ -94,6 +99,9 @@ func (code ErrorCode) valid() bool {
 		ErrorWorkingDirectoryUnavailable,
 		ErrorDirectoryListingUnavailable,
 		ErrorDirectoryListingTooLarge,
+		ErrorDirectorySearchUnavailable,
+		ErrorDirectorySearchTooLarge,
+		ErrorTerminalContextUnavailable,
 		ErrorProfileUnknown,
 		ErrorSessionNameInvalid,
 		ErrorObjectiveInvalid,

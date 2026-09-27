@@ -130,6 +130,7 @@ active_runtime_is_current() {
   local -a files=(
     skidbladnir characters.json release.json host-config.json
     providers/native-control providers/provider-command providers/shell-init
+    providers/terminal-context-init
     providers/claude-agent-identity/.claude-plugin/plugin.json
     providers/claude-agent-identity/hooks/hooks.json
     providers/claude-agent-identity/bin/agent-hook
@@ -441,12 +442,14 @@ provision_clients() (
     (.peers | map(.origin) | unique | length) == 3 and
     (.peers | map(.bearer) | unique | length) == 3
   ' "$temporary" >/dev/null 2>&1 || die 'fleet client identities, origins, or credentials are invalid or not unique'
-  install_client_config <"$temporary" || return
+  jq --arg label macbook '. + {defaultMachine: (.peers[] | select(.label == $label).machine)}' "$temporary" |
+    install_client_config || return
   for label in devbox arch; do
     command="$(declare -f install_client_config)"
     command+=$'\ninstall_client_config'
     printf -v command 'bash -c %q' "$command"
-    fleet_ssh "$label" "$command" <"$temporary" || return
+    jq --arg label "$label" '. + {defaultMachine: (.peers[] | select(.label == $label).machine)}' "$temporary" |
+      fleet_ssh "$label" "$command" || return
   done
   printf 'private peer configuration installed on macbook, devbox, and arch\n'
 )

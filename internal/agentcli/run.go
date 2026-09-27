@@ -32,7 +32,7 @@ skid send NAME TEXT [--terminal]           submit text once
 skid send NAME --stdin [--terminal]        submit literal stdin, up to 32 kib
 skid keys NAME KEY...                     send 1–16 logical keys
 skid interrupt NAME                       cancel current work, keep session
-skid stop NAME                            attempt agent halt, close session
+skid stop NAME                            stop agent and close terminal
 skid kill NAME                            close session without requesting agent halt
 skid start NAME --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--group LABEL]
 skid shell NAME                           create a terminal in this session's directory/group
@@ -44,10 +44,11 @@ existing targets: use NAME [--machine HOST] or --ref VALUE
 browser (80x24 minimum)
   g groups; a agents; t tabs; tab/shift-tab cycles focus
   up/down (j/k) lists; left/right (h/l) tabs; arrows select locally
-  n opens creation; m chooses machine; ctrl-r refreshes; q/escape quits
+  n opens terminal on selected/default machine; N options; m chooses machine
+  ctrl-r refreshes; q/escape quits
   selected agent/tab: enter attaches fullscreen; spacebar shows details
-  T (shift+t) creates and attaches a terminal here; e changes group
-  r reads; i interrupts; s stops; x kills; session actions require an agent/tab
+  T (shift+t) creates and attaches a terminal here; e edits membership
+  r reads; i interrupts; s stops agent and closes terminal; x kills
   ctrl-] d returns to the browser; forms and details own their keys
 keys: enter escape ctrl-c up down left right tab backspace page-up page-down
 config defaults to ~/.config/skidbladnir/client.json
@@ -412,7 +413,9 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(table, "machine\tsession\tprovider/profile\tstate · source\tdirectory")
+		owners := make(map[string]fleetclient.Peer, len(list.Peers))
 		for _, peer := range list.Peers {
+			owners[peer.Machine] = peer
 			if !peer.OK {
 				fmt.Fprintf(table, "%s\tunavailable\t\t%s\t\n", peer.Label, peer.Error.Code)
 			}
@@ -422,18 +425,28 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			fmt.Fprintln(table, fleetclient.GroupHeading(group.Label))
 			for _, entry := range group.Rows {
 				row := entry.Session
-				provider, state := "shell", "—"
-				if row.Agent != nil {
-					provider = row.Agent.Provider
-					if row.Agent.Profile != "" {
-						provider += "/" + row.Agent.Profile
+				current := row.Current(owners[entry.Machine])
+				machine, provider, state := entry.Label, "terminal", "—"
+				if current.Kind == "remoteUnknown" {
+					provider, state = "remote context unknown", "unknown"
+				} else {
+					if current.Kind == "remote" {
+						machine += " → " + current.Label
 					}
-					state = row.Agent.Status.State + " · " + row.Agent.Status.Source
-					if row.Agent.Status.Reason != "" {
-						state += " · " + row.Agent.Status.Reason
+					if current.Agent != nil {
+						provider = current.Agent.Provider
+						if current.Agent.Label != "" {
+							provider += "/" + current.Agent.Label
+						} else {
+							provider += "/profile unknown"
+						}
+						state = current.Agent.State
+						if current.Kind == "local" && row.Agent != nil {
+							state += " · " + row.Agent.Status.Source
+						}
 					}
 				}
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", entry.Label, row.Name, provider, state, row.CWD)
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", machine, row.Name, provider, state, current.CWD)
 			}
 		}
 		if len(groups) == 0 {
@@ -454,19 +467,35 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			}
 		} else {
 			row := value.Session
+			current := row.Current(fleetclient.Peer{Label: value.Label, Machine: value.Machine})
 			fmt.Fprintln(stdout, fleetclient.GroupHeading(row.Group))
-			fmt.Fprintf(stdout, "session: %s\nmachine: %s\nmachine id: %s\ndirectory: %s\ncommand: %s\nattached clients: %d\n", row.Name, value.Label, value.Machine, row.CWD, row.ActiveCommand, row.AttachedClients)
-			if row.Agent == nil {
-				fmt.Fprintln(stdout, "agent: none (shell)")
+			fmt.Fprintf(stdout, "session: %s\nterminal on: %s\nmachine id: %s\n", row.Name, value.Label, value.Machine)
+			if current.Kind == "remote" {
+				fmt.Fprintf(stdout, "running on: %s\n", current.Label)
+			}
+			if current.Kind == "remoteUnknown" {
+				fmt.Fprintln(stdout, "remote context unknown")
 			} else {
-				a := row.Agent
-				fmt.Fprintf(stdout, "provider: %s\nprofile: %s\nstate: %s (%s)\nreason: %s\nread: %s; send: %s; interrupt: %s\n", a.Provider, a.Profile, a.Status.State, a.Status.Source, a.Status.Reason, a.Methods.Read, a.Methods.Send, a.Methods.Interrupt)
-				if a.ProviderSession != nil {
-					fmt.Fprintf(stdout, "provider session: %s %s\n", a.ProviderSession.ID, a.ProviderSession.Name)
+				cwd := current.CWD
+				if cwd == "" {
+					cwd = "directory unavailable"
+				}
+				fmt.Fprintf(stdout, "directory: %s\n", cwd)
+				if current.Agent == nil {
+					fmt.Fprintln(stdout, "agent: not detected")
+				} else {
+					profile := current.Agent.Label
+					if profile == "" {
+						profile = "profile unknown"
+					}
+					fmt.Fprintf(stdout, "provider: %s\nprofile: %s\nstate: %s\n", current.Agent.Provider, profile, current.Agent.State)
+					if current.Kind == "local" && row.Agent != nil {
+						fmt.Fprintf(stdout, "read: %s; send: %s; interrupt: %s\n", row.Agent.Methods.Read, row.Agent.Methods.Send, row.Agent.Methods.Interrupt)
+					}
 				}
 			}
 			if row.LaunchProfile != "" {
-				fmt.Fprintf(stdout, "launch profile: %s\n", row.LaunchProfile)
+				fmt.Fprintf(stdout, "started with: %s\n", row.LaunchProfile)
 			}
 			if _, err := fmt.Fprintf(stdout, "observed: %s\nreference: %s\n", value.ObservedAt, row.Ref); err != nil {
 				return 1

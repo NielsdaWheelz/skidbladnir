@@ -39,6 +39,7 @@ case "$gate" in
       scripts/check-release scripts/check-release-source scripts/check-release-repository scripts/fleet
       scripts/install-android scripts/release scripts/render-release-notes
       deployment/providers/provider-command deployment/providers/shell-init
+      deployment/providers/terminal-context-init
       deployment/providers/claude-agent-identity/bin/agent-hook
       deployment/native-control/claude
       deployment/native-control/skidbladnir-provider-runtime-control

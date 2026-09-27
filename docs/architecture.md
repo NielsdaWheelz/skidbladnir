@@ -17,6 +17,9 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[terminal continuity](terminal-continuity.md) owns persistent shell startup,
+current local/remote execution context, directory search, and the new desktop
+creation shortcut; it supersedes the earlier launch and chooser details there.
 [design language](design-language.md) owns visual values; [codebase rules](rules/index.md)
 own implementation conventions. a platform fact that contradicts a premise
 reopens the responsible contract.
@@ -30,7 +33,9 @@ feature plans; those recipes do not recreate removed gates.
 
 - **tmux is the database and the process supervisor.** Session list, pane
   facts, and user options are the durable session state. Gateway restart means
-  "list tmux again", never a recovery protocol.
+  "list tmux again", never a recovery protocol. the only separate transient
+  metadata is a kernel-validated ssh/mosh connection registration. it records
+  association, never session lifetime, status, or history.
 - **providers own execution and history.** skid observes the exact foreground
   process, samples its status, and offers bounded reads and explicit controls.
   codex is terminal-only; claude may use native status/history/stop through a
@@ -66,7 +71,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | ordinary tmux sessions; exact foreground identity, sampled native/terminal status, bounded reads and explicit controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | Each host's tmux sessions/panes/user options are runtime truth; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
+| State | Each host's tmux sessions/panes/user options are runtime truth; private kernel-validated connection registrations identify live remote ttys; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
@@ -93,10 +98,11 @@ remaining provider trust/setup dialogs and project instructions still apply.
 
 the app renders the closed profile table declared by each gateway. changing
 that table changes the contract; callers cannot invent a profile. the gateway
-launches its one-shot `agent-exec` boundary in the new pane, clears inherited
-`HERDR_*` and provider homes, then execs the selected row's native command with
-its exact home/flags in the requested cwd. existing tmux server/session
-environments remain untouched. the
+starts the configured login shell in the new pane. one private startup envelope
+launches the selected native provider as its foreground child with the selected
+home/flags in the requested cwd. provider exit returns to that shell without
+closing the tmux session. inherited `HERDR_*` and provider homes are cleared at
+the launch boundary. existing tmux server/session environments remain untouched. the
 gateway does not gate launch on binary or configuration inspection;
 the agent retains its ordinary provider configuration and terminal. deployment
 owns one explicitly loaded Claude hook plugin; skid installs no codex hook and
@@ -218,7 +224,9 @@ creation, and content-free restoration contracts:
 
 - One card anchors to the session's current window and that window's active
   pane. cwd, command, foreground process, and runtime registration come
-  from that anchor.
+  from that anchor. a foreground ssh/mosh transport replaces local execution
+  facts with a client-resolved remote context, or an explicit unknown context.
+  the source still owns attachment and every control.
   attached clients are the selected session's `session_attached` count.
 
 - **Card facts:** machine label, exact local tmux id, tmux name, an opaque
@@ -268,6 +276,9 @@ creation, and content-free restoration contracts:
   registration path. Their character is normalized as above; absent hooks,
   unnamed provider sessions, raw launches, and unproven profiles are successful
   omission, never guessed.
+- Codex home labels are sampled from the foreground process's native
+  environment and matched to the destination host's configured account homes.
+  launch profile is historical and cannot determine the current account.
 - status carries no transition time or age. only top-level inventory freshness
   carries a clock; android does not locally decay the sampled status.
 - The agent registration is exactly
@@ -395,8 +406,8 @@ declared agent profiles. Terminal remains available with zero profiles.
 An explicit machine filter may preselect it; otherwise no
 machine is inferred. A fresh machine replaces the primary cwd editor with one
 full-height, machine-bound chooser: Home, distinct current tmux cwd values,
-one-level-at-a-time Home browsing with local folder filtering, and a secondary
-exact-path page. Folder entry and explicit `Use` remain distinct; selection
+one-level-at-a-time Home browsing with local folder filtering, ranked zoxide
+search, and a secondary exact-path page. Folder entry and explicit `Use` remain distinct; selection
 only fills the Forge draft. Listing is bounded, read-only, on demand, and
 non-persistent. It never invokes tmux, a shell, an agent, a crawler, a watcher,
 or another gateway. [`working-directory-chooser.md`](working-directory-chooser.md)
@@ -430,10 +441,10 @@ names the target and sends
    server-scoped `@skid_server_epoch` if absent, sets agent-only `@skid_profile` and
    `@skid_character`, sets encoded `@skid_objective_b64` and `@skid_space_b64`
    only when supplied,
-   and starts the chosen launch. agent commands retain their exact arguments and
-   environment. terminal uses the one-shot current-binary entrypoint specified
-   in [shells.md](shells.md#3-host-composition-and-launch): literal directory
-   entry followed by exec of the configured login shell, without fallback.
+   and starts the configured login shell. an agent launch is a one-shot
+   foreground child of that shell; the shell persists after provider exit.
+   terminal uses the same shell without an initial provider. the private
+   current-binary entrypoint carries the launch envelope without shell quoting.
    Managed Claude inserts `--name <tmuxName>` before those arguments; configured
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
@@ -449,6 +460,8 @@ only `{identityToken}`. the host samples current pane cwd and local group,
 guards creation by session lifetime, then returns a new independent session.
 tui `T` (shift+t) and the android attach-header action create once and attach the returned
 reference; source name or agent replacement does not retarget the operation.
+the action is unavailable while the source pane is an ssh/mosh transport;
+remote cwd never becomes authority for local creation.
 one-shot launch failure may follow session creation; no shell-readiness promise,
 automatic retry, or persistent creation receipt exists. desktop detach leaves the
 created shell selected in the browser; return to the source is ordinary navigation.
@@ -558,7 +571,10 @@ inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
 identity. cli and tui consume one fleetclient projection. jarvis uses herdr
 directly; skid does not provision or alter jarvis's configuration or credentials.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
-interrupt retains the session; stop attempts provider halt then closes it; kill
+the tui's `n` immediately creates and attaches a home terminal on the visible
+machine or configured default; `N` opens the advanced form. mobile retains
+its machine, directory, and provider chooser. `stop` is presented as
+`stop agent and close terminal`. interrupt retains the session; stop attempts provider halt then closes it; kill
 closes the session alone. halt and closure remain separately observed outcomes.
 
 ### Pressure
@@ -705,8 +721,10 @@ history item is `current`.
 | --- | --- |
 | `POST /v1/pairing-invites` | Normal bearer + machine auth, empty body; replaces the in-memory slot and returns one five-minute `pairingInviteToken`, expiry, and machine |
 | `POST /v1/pairings` | `Skidbladnir-Invite` token + expected machine, empty body; atomically consumes the slot and returns that machine's current bearer once |
-| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; session fields include `tmuxId`, `tmuxName`, `character`, opaque `identityToken`, local facts, optional `group`, optional `launchProfile`, and optional exact `agent` with current agent-control status/methods |
+| `GET /v1/sessions` | `{machine:{handle,platform},observedAt,profiles,sessions}`; every profile has `key,label,provider`; session fields include `tmuxId`, `tmuxName`, `character`, opaque `identityToken`, local facts, optional `group`, optional `launchProfile`, optional exact local `agent`, and optional foreground `connection:{transport,id?}`. connection suppresses local cwd/agent |
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
+| `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
+| `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
 | `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without profile; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the existing strict session DTO; exact creation errors include `code,message,dispatch` |
 | `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/group and session-lifetime gate; no agent predicate |
 | `PUT /v1/sessions/{tmuxId}/group` | exact `{identityToken,group}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
@@ -730,6 +748,9 @@ agent-control errors retain their own spec. session and v0 mappings:
 | `WorkingDirectoryUnavailable` | 422 | `That directory does not exist or cannot be opened.` |
 | `DirectoryListingUnavailable` | 422 | `This directory cannot be browsed. Enter the path instead.` |
 | `DirectoryListingTooLarge` | 422 | `This directory has too many folders to show. Enter the path instead.` |
+| `DirectorySearchUnavailable` | 422 | `Directory search is unavailable on this machine.` |
+| `DirectorySearchTooLarge` | 422 | `Too many directory search results. Narrow the search.` |
+| `TerminalContextUnavailable` | 404 | `Remote context is unavailable.` |
 | `ProfileUnknown` | 422 | `Choose an available profile.` |
 | `SessionNameInvalid` | 422 | `Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.` |
 | `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
@@ -755,7 +776,9 @@ enum values are defects, with no protocol branch or compatibility state.
   the three required tmux options; it is not an http error. No byte
   replay or gateway scrollback; slow clients disconnect and reattach fresh.
   Any WSS loss freezes terminal input behind a typed `Reconnect required`.
-- Bounds: HTTP body 64 KiB; cwd 4,096 bytes; one directory listing scans at
+- Bounds: HTTP body 64 KiB; cwd 4,096 bytes; directory search accepts 1–8 terms
+  totalling at most 256 bytes and returns at most 64 paths / 32 KiB;
+  a remote-context response is at most 64 KiB; one directory listing scans at
   most 4,096 entries, returns at most 256 folders and 32 KiB of path text, and
   encodes to at most 64 KiB; chooser filter 256 Unicode scalars and history 32
   views; objective 240 scalars; group 64 scalars / 256 utf-8 bytes; terminal frame 64 KiB; queue 1 MiB; geometry

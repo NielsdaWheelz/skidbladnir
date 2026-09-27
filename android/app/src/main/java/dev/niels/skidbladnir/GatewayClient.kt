@@ -144,6 +144,31 @@ internal class GatewayClient {
         )
     }
 
+    fun searchDirectories(credential: MachineCredential, terms: List<String>): GatewayResult<DirectorySearchResult> = executeJson(
+        request = authorizedRequest(credential, listOf("v1", "directory-searches"))
+            .post(productJson.encodeToString(WireDirectorySearchRequest(terms)).toRequestBody(jsonMediaType))
+            .build(),
+        expectedStatus = 200,
+        decode = ::decodeDirectorySearchResult,
+        decodeFailure = ::decodeDirectorySearchHttpFailure,
+    )
+
+    fun readTerminalContext(
+        credential: MachineCredential,
+        connectionId: String,
+        timeoutMillis: Long,
+    ): GatewayResult<TerminalContext> {
+        require(connectionId.matches(Regex("[0-9a-f]{32}")))
+        require(timeoutMillis > 0)
+        return executeJson(
+            request = authorizedRequest(credential, listOf("v1", "terminal-contexts", connectionId)).get().build(),
+            expectedStatus = 200,
+            decode = ::decodeTerminalContext,
+            decodeFailure = ::decodeTerminalContextHttpFailure,
+            timeoutMillis = timeoutMillis,
+        )
+    }
+
     internal fun directoryListingRequest(
         credential: MachineCredential,
         directory: HomeDirectory,
@@ -302,8 +327,11 @@ internal class GatewayClient {
         expectedStatus: Int,
         decode: (String) -> Value,
         decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
+        timeoutMillis: Long? = null,
     ): GatewayResult<Value> = try {
-        http.newCall(request).execute().use { response ->
+        val call = http.newCall(request)
+        if (timeoutMillis != null) call.timeout().timeout(timeoutMillis, TimeUnit.MILLISECONDS)
+        call.execute().use { response ->
             decodeGatewayResponse(response, expectedStatus, decode, decodeFailure)
         }
     } catch (_: IOException) {
@@ -510,6 +538,22 @@ internal fun decodeDirectoryListingHttpFailure(status: Int, encoded: String): Ga
     )
 }
 
+@Serializable private data class WireDirectorySearchRequest(val terms: List<String>)
+
+internal fun decodeDirectorySearchHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(status, encoded, setOf(
+        ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
+        ApiErrorCode.DirectorySearchUnavailable, ApiErrorCode.DirectorySearchTooLarge,
+        ApiErrorCode.MachineIdentityMismatch, ApiErrorCode.InternalError,
+    ), "directory-search")
+
+internal fun decodeTerminalContextHttpFailure(status: Int, encoded: String): GatewayFailure =
+    decodeClosedHttpFailure(status, encoded, setOf(
+        ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
+        ApiErrorCode.TerminalContextUnavailable, ApiErrorCode.MachineIdentityMismatch,
+        ApiErrorCode.InternalError,
+    ), "terminal-context")
+
 private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.Unauthenticated -> 401
     ApiErrorCode.PairingInviteRejected -> 401
@@ -519,6 +563,8 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.WorkingDirectoryUnavailable,
     ApiErrorCode.DirectoryListingUnavailable,
     ApiErrorCode.DirectoryListingTooLarge,
+    ApiErrorCode.DirectorySearchUnavailable,
+    ApiErrorCode.DirectorySearchTooLarge,
     ApiErrorCode.ProfileUnknown,
     ApiErrorCode.SessionNameInvalid,
     ApiErrorCode.ObjectiveInvalid,
@@ -531,6 +577,7 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentBlocked -> 409
     ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
+    ApiErrorCode.TerminalContextUnavailable -> 404
     ApiErrorCode.InternalError -> 500
     ApiErrorCode.ReconnectRequired, ApiErrorCode.TerminalConfigurationUnsupported -> throw SerializationException("terminal error has no HTTP status")
 }

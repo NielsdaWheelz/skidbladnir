@@ -60,6 +60,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 internal class WorkingDirectoryPickerActions(
+    val showSearch: () -> Unit,
+    val updateSearch: (String) -> Unit,
+    val search: () -> Unit,
+    val chooseSearch: (WorkingDirectoryPath) -> Unit,
     val browseHome: () -> Unit,
     val openChild: (HomeDirectory) -> Unit,
     val openParent: () -> Unit,
@@ -96,6 +100,15 @@ private sealed interface PickerContent {
         override val useAction: PickerUseAction? = null
     }
 
+    data class Search(
+        override val chrome: PickerChrome,
+        val machine: PairedMachine,
+        val page: WorkingDirectoryPage.Search,
+    ) : PickerContent {
+        override val rows: List<PickerRow> = emptyList()
+        override val useAction: PickerUseAction? = null
+    }
+
     data class Browse(
         override val chrome: PickerChrome,
         override val rows: List<PickerRow>,
@@ -123,6 +136,7 @@ private enum class PickerUseKind { Current, Exact }
 
 private sealed interface PickerAction {
     data object BrowseHome : PickerAction
+    data object Search : PickerAction
     data class Active(val directory: WorkingDirectoryPath) : PickerAction
     data object Exact : PickerAction
     data object Parent : PickerAction
@@ -207,6 +221,7 @@ private sealed interface PickerRow {
 
 private sealed interface PickerRowKey {
     data object BrowseHome : PickerRowKey
+    data object Search : PickerRowKey
     data object ActiveHeading : PickerRowKey
     data class Active(val directory: WorkingDirectoryPath, val ordinal: Int) : PickerRowKey
     data object ExactAction : PickerRowKey
@@ -220,6 +235,7 @@ private sealed interface PickerRowKey {
 
 private fun PickerRowKey.saveableKey(): String = when (this) {
     PickerRowKey.BrowseHome -> "browse-home"
+    PickerRowKey.Search -> "search"
     PickerRowKey.ActiveHeading -> "active-heading"
     is PickerRowKey.Active -> "active:$ordinal"
     PickerRowKey.ExactAction -> "exact-action"
@@ -270,18 +286,22 @@ internal fun WorkingDirectoryPickerScreen(
     ) {
         PickerHeader(content.chrome, actions.back, actions.cancel)
         browse?.let { BrowseContext(it.context, actions.retry) }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            state = listState,
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(rows, key = { row -> row.key.saveableKey() }) { row ->
-                PickerRow(
-                    row = row,
-                    browseActionsEnabled = browse?.actionsEnabled == true && restorationReady,
-                    actions = actions,
-                )
+        if (content is PickerContent.Search) {
+            SearchVisitedDirectories(content, actions, Modifier.weight(1f))
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(rows, key = { row -> row.key.saveableKey() }) { row ->
+                    PickerRow(
+                        row = row,
+                        browseActionsEnabled = browse?.actionsEnabled == true && restorationReady,
+                        actions = actions,
+                    )
+                }
             }
         }
         PickerUseAction(
@@ -290,6 +310,62 @@ internal fun WorkingDirectoryPickerScreen(
             onUseCurrent = actions.useCurrent,
             onUseExact = actions.useExact,
         )
+    }
+}
+
+@Composable
+private fun SearchVisitedDirectories(
+    content: PickerContent.Search,
+    actions: WorkingDirectoryPickerActions,
+    modifier: Modifier,
+) {
+    val page = content.page
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            OutlinedTextField(
+                value = page.draft,
+                onValueChange = actions.updateSearch,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search words") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { actions.search() }),
+            )
+        }
+        item {
+            Button(
+                onClick = actions.search,
+                enabled = page.sequence == null && directorySearchTerms(page.draft) != null,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text("Search on ${content.machine.label.text}") }
+        }
+        val message = when {
+            page.sequence != null -> "Searching…"
+            directorySearchTerms(page.draft) == null -> "Enter 1–8 search words"
+            page.failure == DirectoryBrowseFailure.Unavailable ->
+                "Directory search unavailable on ${content.machine.label.text}"
+            page.failure == DirectoryBrowseFailure.TooLarge -> "Too many results; narrow your search"
+            page.failure != null -> "Directory search failed. Try again."
+            page.result?.directories?.isEmpty() == true -> "No matching directories"
+            page.result?.omitted == true -> "Some directories are not shown"
+            else -> null
+        }
+        message?.let { text -> item { Text(text, color = Muted, modifier = Modifier.semantics {
+            liveRegion = LiveRegionMode.Polite
+        }) } }
+        page.result?.directories?.forEach { directory ->
+            item(key = directory.encoded) {
+                PickerActionRow(
+                    label = PickerRowLabel.Path(directory.encoded),
+                    description = "${directory.encoded} on ${content.machine.label.text}. Select working directory.",
+                    onClick = { actions.chooseSearch(directory) },
+                )
+            }
+        }
     }
 }
 
@@ -346,12 +422,14 @@ private fun PickerRow(
             enabled = when (row.action) {
                 PickerAction.Parent, is PickerAction.Folder -> browseActionsEnabled
                 PickerAction.BrowseHome,
+                PickerAction.Search,
                 is PickerAction.Active,
                 PickerAction.Exact,
                 -> true
             },
             onClick = when (val action = row.action) {
                 PickerAction.BrowseHome -> actions.browseHome
+                PickerAction.Search -> actions.showSearch
                 is PickerAction.Active -> ({ actions.chooseActive(action.directory) })
                 PickerAction.Exact -> actions.showExact
                 PickerAction.Parent -> actions.openParent
@@ -684,6 +762,12 @@ private fun workingDirectoryPickerContent(picker: WorkingDirectoryPickerState): 
                         action = PickerAction.BrowseHome,
                     ),
                 )
+                add(PickerRow.Action(
+                    key = PickerRowKey.Search,
+                    label = PickerRowLabel.Text("Search visited directories"),
+                    contentDescription = "Search visited directories on ${picker.machine.label.text}.",
+                    action = PickerAction.Search,
+                ))
                 if (picker.activeDirectories.isNotEmpty()) {
                     add(
                         PickerRow.Heading(
@@ -707,6 +791,11 @@ private fun workingDirectoryPickerContent(picker: WorkingDirectoryPickerState): 
                 add(exactPathAction(picker.machine))
             },
         )
+        is WorkingDirectoryPage.Search -> PickerContent.Search(
+            chrome = pickerChrome(picker.machine, "Search visited directories"),
+            machine = picker.machine,
+            page = page,
+        )
         is WorkingDirectoryPage.ExactPath -> PickerContent.Exact(
             chrome = pickerChrome(picker.machine, "Enter exact path"),
             rows = listOf(
@@ -714,13 +803,13 @@ private fun workingDirectoryPickerContent(picker: WorkingDirectoryPickerState): 
                     draft = picker.exactDraft,
                     validation = page.validation,
                     label = "Working directory",
-                    guidance = "Use an absolute path or ~/…",
+                    guidance = "Use an absolute path, ~/…, or z search words",
                     invalidBody = "Choose a valid working directory.",
                     invalidTone = NoticeTone.Failure,
                 ),
             ),
             useAction = PickerUseAction(
-                label = "Use path",
+                label = if (picker.exactDraft.startsWith("z ")) "Search directories" else "Use path",
                 contentDescription = null,
                 enabled = page.validation == ExactPathValidation.Valid,
                 action = PickerUseKind.Exact,

@@ -110,7 +110,7 @@ func (request Request) Valid() bool {
 	case "list":
 		return request.Name == "" && request.Ref == ""
 	case "start":
-		return request.Name != "" && request.Machine != "" && request.Ref == "" &&
+		return request.Machine != "" && request.Ref == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
 	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "group", "shell":
 	default:

@@ -48,8 +48,9 @@ func (m *model) rebuild() {
 	current := []listedRow{}
 	for _, peer := range m.scopedPeers() {
 		for _, session := range peer.Sessions {
-			if session.Agent != nil {
-				current = append(current, listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady})
+			row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+			if m.current(&row).Agent != nil {
+				current = append(current, row)
 			}
 		}
 	}
@@ -80,7 +81,7 @@ func (m *model) sortAgents() {
 			}
 			return 1
 		}
-		return cmp.Compare(slices.Index(states, a.session.Agent.Status.State), slices.Index(states, b.session.Agent.Status.State))
+		return cmp.Compare(slices.Index(states, m.current(&a).Agent.State), slices.Index(states, m.current(&b).Agent.State))
 	})
 }
 
