@@ -1102,6 +1102,28 @@ internal class SkidbladnirController(
         }
     }
 
+    fun openSourceTerminalForge() {
+        val source = state as? SkidbladnirUiState.Terminal ?: return
+        if (source.target.session.connection == null || source.shellPending ||
+            source.kill != null || source.rename != null ||
+            !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
+        val handle = source.target.machineHandle
+        if (machineStates[handle]?.canForge != true) return
+        leaveTerminal()
+        dashboardEntry.selectScope(DashboardScope.Machine(handle))
+        publishDashboard(carry = ForgeCarry(
+            ForgeState(
+                ForgeForm(handle, "", LaunchChoice.Terminal, "", "",
+                    GroupDraft.Chosen(source.target.session.group?.text.orEmpty())),
+                pending = false,
+                failure = ForgeFailure.None,
+                surface = ForgeSurface.Form,
+            ),
+            null,
+        ))
+        verifyVisibleInventory()
+    }
+
     fun newTerminalHere() {
         val source = state as? SkidbladnirUiState.Terminal ?: return
         if (source.shellPending || source.kill != null || source.rename != null ||
