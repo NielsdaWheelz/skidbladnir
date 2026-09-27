@@ -16,7 +16,8 @@ it does not forward the marker. no live fleet ssh/mosh boundary was run.
 `docs/terminal-continuity.md` names the full acceptance set.
 
 resolved when: install the matching host generation and forwarding settings on
-all three paired hosts; prove distinct simultaneous connections, nested hops,
+the intended outbound and inbound routes without adding devbox-to-macbook ssh
+access; prove distinct simultaneous connections, nested hops,
 cwd and provider changes, suspension/resume, reconnect, gateway restart,
 source loss, and source-only controls with credential-free evidence. remove this
 record then.
