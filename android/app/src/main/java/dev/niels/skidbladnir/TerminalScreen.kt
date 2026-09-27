@@ -102,7 +102,9 @@ internal fun TerminalScreen(
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                 HeaderChip(
                     label = "", spokenName = "new terminal on ${state.machine.machine.label.text}", enabled = shellEnabled,
-                    onClick = controller::newTerminalHere, modifier = Modifier.fillMaxSize(),
+                    onClick = if (state.target.session.connection == null) controller::newTerminalHere
+                              else controller::openSourceTerminalForge,
+                    modifier = Modifier.fillMaxSize(),
                 )
                 Canvas(Modifier.size(24.dp)) {
                     val color = if (shellEnabled) Gold else Muted
