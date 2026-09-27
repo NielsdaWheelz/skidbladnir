@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # source in bash/zsh startup on paired hosts. no action outside a scoped tty.
-[[ $- == *i* && -t 0 ]] || return 0
+[[ $- == *i* ]] && : 2>/dev/null </dev/tty || return 0
 [[ "${SKIDBLADNIR_SHELL:-}" == 1 || "${SKIDBLADNIR_TERMINAL_CONTEXT:-}" == 1 || -n "${SKIDBLADNIR_CONNECTION:-}" ]] || return 0
 
 _skid_context_helper="$HOME/.local/share/skidbladnir/current/skidbladnir"
