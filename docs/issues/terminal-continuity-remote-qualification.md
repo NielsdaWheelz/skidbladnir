@@ -16,7 +16,14 @@ replaced the provider, detached/reopened, and closed its exact source terminal.
 macbook-to-devbox `SendEnv` and destination `AcceptEnv` remain scoped; sshd
 configuration validated before reload. no devbox-to-macbook ssh route was
 added. distinct simultaneous connections, nested hops, suspension/resume,
-reconnect, gateway restart, and source loss are `NOT_RUN`.
+reconnect, gateway restart, and source loss are `NOT_RUN`. the accepted
+[remote adversarial cases](../terminal-continuity.md#6-delivery-and-adversarial-acceptance)
+also lack final-release proof for stale or reused registrations, wrong tty,
+late replacement results, ambiguous matches, unrelated offline peers,
+oversized environment, source-empty/destination-populated catalogues, inner
+tmux, missing forwarding or integration, hop exit, and remote ctrl-z/fg. these
+remain `NOT_RUN`.
 
 resolved when: prove those six unqualified lifecycle paths on intended routes
-with content-free evidence. remove this record then.
+and the listed adversarial cases with content-free evidence. preserve the
+source-owned action boundary and remove this record then.
