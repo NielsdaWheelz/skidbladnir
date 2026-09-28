@@ -47,10 +47,10 @@ criterion. feature specs retain their detailed acceptance requirements.
 
 ## release and operations
 
-after restoration publication, `release-pin.json` will again be the single
-committed owner of the published version, source and artifact digests. it is
-currently absent; no valid original-product release pin exists. that future
-pin will not assert the installed version of any host or phone.
+`release-pin.json` is the single committed owner of the published version,
+source and artifact digests. it pins immutable `v0.10.3` from
+`e5906e4df4244c166eb868e678f738f47b893e86`; it does not assert the
+installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.
 `scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.
@@ -83,10 +83,14 @@ sessions retain their original launch policy.
   `scripts/check verify` runs engineering checks and builds only.
 - [terminal continuity](terminal-continuity.md): `v0.10.3` is published and
   deployed on the three hosts. isolated mac zsh/bash, ssh/mosh, and the named
-  physical-phone journey passed. the [remote](issues/terminal-continuity-remote-qualification.md)
-  issue retains unqualified lifecycle paths; the
-  [phone](issues/terminal-continuity-phone-qualification.md) issue records one
-  unexplained missing baseline session lifetime.
+  physical-phone journey passed. open qualification: [shell](issues/terminal-continuity-shell-qualification.md),
+  [observation](issues/terminal-continuity-observation-qualification.md),
+  [directory](issues/terminal-continuity-directory-qualification.md),
+  [desktop](issues/desktop-browser-runtime-acceptance.md),
+  [remote](issues/terminal-continuity-remote-qualification.md), and
+  [phone controls](issues/terminal-continuity-phone-controls-qualification.md).
+  [phone preservation](issues/terminal-continuity-phone-qualification.md)
+  retains one unexplained missing baseline session lifetime.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
 
