@@ -31,7 +31,7 @@ if [[ "${SKIDBLADNIR_STARTUP_PID:-}" == "$$" ]] && ! typeset -f _skid_startup >/
       autoload -Uz add-zsh-hook
       add-zsh-hook -d precmd _skid_startup
     else
-      [[ "${BASHPID:-}" == "${SKIDBLADNIR_STARTUP_PID:-}" && "${BASH_SUBSHELL:-0}" == 0 ]] || return 0
+      [[ "$$" == "${SKIDBLADNIR_STARTUP_PID:-}" && "${BASH_SUBSHELL:-0}" == 0 ]] || return 0
       if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a'* ]]; then
         local -a _skid_prompt_commands=()
         local _skid_command
