@@ -3,7 +3,6 @@ package agentruntime
 import (
 	"encoding/json"
 	"errors"
-	"regexp"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
@@ -28,14 +27,8 @@ type Conversation struct {
 	ConversationID string     `json:"conversationId"`
 }
 
-type View struct {
-	ViewID   string `json:"viewId"`
-	Revision uint64 `json:"revision"`
-}
-
 type Binding struct {
 	Conversation Conversation `json:"conversation"`
-	View         *View        `json:"view,omitempty"`
 }
 
 type Turn struct {
@@ -49,7 +42,12 @@ type Observation struct {
 	Turn    *Turn   `json:"turn,omitempty"`
 }
 
-var viewIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+type ConversationRuntime struct {
+	Binding Binding `json:"binding"`
+	Status  Status  `json:"status"`
+	Methods Methods `json:"methods"`
+	Turn    *Turn   `json:"turn,omitempty"`
+}
 
 func (status Status) Valid() bool {
 	switch status.State {
@@ -61,20 +59,12 @@ func (status Status) Valid() bool {
 }
 
 func (methods Methods) Valid() bool {
-	for _, method := range []string{methods.Read, methods.SendPeer, methods.SendUser, methods.QueueUser} {
+	for _, method := range []string{methods.Read, methods.SendPeer, methods.SendUser} {
 		if method != "native" && method != "unavailable" {
 			return false
 		}
 	}
-	return methods.Stop == "native" || methods.Stop == "terminal" || methods.Stop == "unavailable"
-}
-
-func UnavailableMethods(provider Provider) Methods {
-	stop := "unavailable"
-	if provider == ProviderCodex || provider == ProviderClaude {
-		stop = "terminal"
-	}
-	return Methods{Read: "unavailable", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: stop}
+	return methods.QueueUser == "unavailable" && (methods.Stop == "native" || methods.Stop == "unavailable")
 }
 
 func (conversation Conversation) Valid() bool {
@@ -95,19 +85,8 @@ func (conversation Conversation) Valid() bool {
 	return true
 }
 
-func (binding Binding) Valid() bool {
-	if !binding.Conversation.Valid() {
-		return false
-	}
-	if binding.Conversation.Provider == ProviderCodex {
-		return binding.View != nil && viewIDPattern.MatchString(binding.View.ViewID)
-	}
-	return binding.View == nil
-}
-
-func (binding Binding) Equal(other Binding) bool {
-	return binding.Conversation == other.Conversation && (binding.View == nil && other.View == nil || binding.View != nil && other.View != nil && *binding.View == *other.View)
-}
+func (binding Binding) Valid() bool              { return binding.Conversation.Valid() }
+func (binding Binding) Equal(other Binding) bool { return binding.Conversation == other.Conversation }
 
 func (turn Turn) Valid() bool {
 	if !validProviderSessionID(turn.ID) {
@@ -122,7 +101,7 @@ func (turn Turn) Valid() bool {
 }
 
 // These records are also accepted from opaque client references. Null never
-// means omission, and a view revision of zero still has to be present.
+// means omission.
 func requiredRecord(encoded []byte, fields ...string) error {
 	var members map[string]json.RawMessage
 	if err := strictjson.Decode(encoded, &members); err != nil {
@@ -155,21 +134,6 @@ func (value *Conversation) UnmarshalJSON(encoded []byte) error {
 	*value = Conversation(decoded)
 	if !value.Valid() {
 		return errors.New("invalid conversation")
-	}
-	return nil
-}
-func (value *View) UnmarshalJSON(encoded []byte) error {
-	if err := requiredRecord(encoded, "viewId", "revision"); err != nil {
-		return err
-	}
-	type wire View
-	var decoded wire
-	if err := strictjson.Decode(encoded, &decoded); err != nil {
-		return err
-	}
-	*value = View(decoded)
-	if !viewIDPattern.MatchString(value.ViewID) {
-		return errors.New("invalid view")
 	}
 	return nil
 }

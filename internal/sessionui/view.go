@@ -79,7 +79,7 @@ func (m *model) footerLines() []string {
 		}
 	case "confirm", "group-edit":
 		legend = target(m.pendingName, m.pendingLabel, width)
-	case "output", "details":
+	case "details":
 		legend = target(m.pageName, m.pageMachine, width)
 	case "create", "search":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
@@ -133,9 +133,9 @@ func (m *model) hints() [][]hint {
 	case "confirm":
 		effect := "close terminal only"
 		if m.pending.Operation == "stop" {
-			effect = "stop current work"
+			effect = "stop tracked conversation"
 		} else if !m.pending.TerminalOnly {
-			effect = "stop work and close terminal"
+			effect = "stop tracked conversation and close terminal"
 		}
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
 	case "machine-picker":
@@ -145,6 +145,8 @@ func (m *model) hints() [][]hint {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "close"}}}
 		}
 		return [][]hint{{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}, {"enter", "save"}, {"escape", "cancel"}}}
+	case "track":
+		return [][]hint{{{"tab", "field"}, {"←→", "profile"}, {"enter", "track"}, {"escape", "cancel"}}}
 	case "create":
 		enter := hint{"enter", "next"}
 		if m.field == 4 {
@@ -157,23 +159,24 @@ func (m *model) hints() [][]hint {
 		return [][]hint{hints}
 	case "search":
 		return [][]hint{{{"↑↓", "choose"}, {"enter", "use directory"}, {"escape", "back"}}}
-	case "output", "details":
+	case "details":
 		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}}
 	}
 	session := []hint{}
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
-		if row.session.Agent != nil {
-			if row.session.Agent.Methods.Read == "native" {
-				session = append(session, hint{"r", "read"})
-			}
+		if _, readable := m.replyReference(*row); readable {
+			session = append(session, hint{"r", "view replies"})
 		}
-		session = append(session, hint{"e", "group"})
+		session = append(session, hint{"e", "group"}, hint{"t", "track id"})
+		if row.session.Conversation != nil {
+			session = append(session, hint{"u", "clear tracking"})
+		}
 		if row.session.Connection == nil {
 			session = append(session, hint{"T", "here"})
 		}
-		if row.session.Agent != nil && row.session.Agent.Methods.Stop != "unavailable" {
-			session = append(session, hint{"s", "stop current work"}, hint{"c", "stop work and close terminal"})
+		if row.session.Conversation != nil && row.session.Conversation.Methods.Stop == "native" {
+			session = append(session, hint{"s", "stop tracked conversation"}, hint{"c", "stop tracked conversation and close terminal"})
 		}
 		session = append(session, hint{"x", "close terminal only"})
 	} else if row != nil {
@@ -243,8 +246,12 @@ func (m *model) rowDetail(row listedRow) string {
 	if row.session.ActiveCommand != "" {
 		facts += ": " + row.session.ActiveCommand
 	}
-	if agent := current.Agent; agent != nil {
-		facts = fleetclient.StatusText(agent.Status)
+	if current.Agent != nil || row.session.Conversation != nil {
+		facts = fleetclient.SessionStatus(row.session)
+	}
+	if row.session.Conversation != nil {
+		id := row.session.Conversation.Binding.Conversation.ConversationID
+		facts = "tracking " + fleetclient.ShortConversationID(id) + " · " + facts
 	}
 	if reply := m.replyText(row); reply != "" {
 		facts += " · " + reply
@@ -268,13 +275,19 @@ func (m *model) rowDetail(row listedRow) string {
 func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
+	case "track":
+		lines := []string{bold.Styled("track conversation"), ""}
+		lines = append(lines, field("profile", m.form[0], m.field == 0, true, 16, width)...)
+		lines = append(lines, field("conversation id", m.form[1], m.field == 1, false, 16, width)...)
+		lines = append(lines, "", "tracking does not identify the terminal selection.")
+		return window(lines, 0, 0, height)
 	case "confirm":
 		action, effect := "close terminal only", "close this session. work shared through another session may survive."
 		if m.pending.Operation == "stop" {
-			action, effect = "stop current work", "halt captured current work and retain the terminal. pending input may remain; saved history is retained."
+			action, effect = "stop tracked conversation", "halt captured current work and retain the terminal. pending input may remain; saved history is retained."
 		}
 		if m.pending.Operation == "close" && !m.pending.TerminalOnly {
-			action, effect = "stop work and close terminal", "halt and terminal closure have separate outcomes. pending input may remain; saved history is retained."
+			action, effect = "stop tracked conversation and close terminal", "halt and terminal closure have separate outcomes. pending input may remain; saved history is retained."
 		}
 		lines := []string{}
 		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {
@@ -375,11 +388,8 @@ func (m *model) bodyLines(height int) []string {
 			}
 		}
 		return window(lines, focusStart, focusEnd, height)
-	case "output", "details":
+	case "details":
 		title := bold.Styled(m.page)
-		if m.page == "output" {
-			title += "  " + faint.Styled(ansi.Truncate(singleLine(m.outputCoverage), width-8, "…"))
-		}
 		// The title stays pinned; only the captured snapshot scrolls.
 		body := m.detailLines()
 		offset := min(m.offset, max(0, len(body)-(height-2)))
@@ -455,14 +465,8 @@ func (m *model) suggestions(width int) []string {
 func (m *model) detailLines() []string {
 	width := m.width - 2
 	lines := []string{}
-	if m.page == "details" {
-		for _, fact := range m.facts {
-			lines = append(lines, field(fact[0], fact[1], false, false, 16, width)...)
-		}
-		return lines
-	}
-	for _, line := range m.text {
-		lines = append(lines, strings.Split(ansi.Hardwrap(singleLine(line), max(1, width), true), "\n")...)
+	for _, fact := range m.facts {
+		lines = append(lines, field(fact[0], fact[1], false, false, 16, width)...)
 	}
 	return lines
 }
@@ -561,7 +565,7 @@ func (m *model) tableLines(width int) []string {
 			lines = append(lines, faint.Styled(ansi.Truncate(singleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
 		}
 		gutter, nameStyle, statusStyle := "  ", plain, plain
-		switch state := m.rowStatus(row); {
+		switch state := fleetclient.SessionStatus(row.session); {
 		case !row.available:
 			nameStyle, statusStyle = faint, faint
 		case state == "working":
@@ -608,14 +612,18 @@ func (m *model) rowStatus(row listedRow) string {
 		}
 		return "checking"
 	}
+	if row.session.Conversation != nil {
+		id := row.session.Conversation.Binding.Conversation.ConversationID
+		return "tracking " + fleetclient.ShortConversationID(id) + " · " + fleetclient.SessionStatus(row.session)
+	}
 	current := m.current(&row)
 	switch {
 	case current.Kind == "remoteUnknown":
 		return "status unavailable"
-	case current.Agent == nil:
+	case current.Agent == nil && row.session.Conversation == nil:
 		return "terminal"
 	}
-	return fleetclient.StatusText(current.Agent.Status)
+	return fleetclient.SessionStatus(row.session)
 }
 
 // agentText is the configured profile label, per terminal continuity's identity copy.

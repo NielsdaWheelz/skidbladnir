@@ -52,7 +52,7 @@ from pr 3; no permanent parallel renderer is implied by this delivery split.
 
 current discovery follows the active pane in a session's current window. selecting
 a shell inside that same tmux session changes the observed agent and makes the
-old agent target stale. see [agent-control.md](agent-control.md#identity-state-and-dispatch),
+old agent target stale. see [agent-control.md](agent-control.md#targets-and-ownership),
 [manager.go](../internal/sessions/manager.go), and
 [control.go](../internal/sessions/control.go).
 

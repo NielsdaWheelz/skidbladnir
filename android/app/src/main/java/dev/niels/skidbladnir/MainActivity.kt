@@ -89,7 +89,7 @@ internal fun DashboardTerminalHost(
         is SkidbladnirUiState.Dashboard -> false
         is SkidbladnirUiState.Terminal -> true
     }
-    BackHandler(enabled = terminalVisible, onBack = onDetach)
+    BackHandler(enabled = terminalVisible && controller.conversationSheet == null, onBack = onDetach)
     when (state) {
         is SkidbladnirUiState.Dashboard -> DashboardScreen(
             state = state,
@@ -103,6 +103,7 @@ internal fun DashboardTerminalHost(
             onDetach = onDetach,
         )
     }
+    controller.conversationSheet?.let { ConversationSheet(it, controller) }
 }
 
 @Composable

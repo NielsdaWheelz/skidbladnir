@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
@@ -27,8 +28,9 @@ const (
 )
 
 type Failure struct {
-	Code     string `json:"code"`
-	Dispatch string `json:"dispatch"`
+	Code         string                     `json:"code"`
+	Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
+	Dispatch     string                     `json:"dispatch"`
 }
 type Result struct {
 	OK bool `json:"ok"`
@@ -60,6 +62,9 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	defer cancel()
 	if !request.Valid() {
 		return Failed("invalid_input", "not_sent")
+	}
+	if request.Operation == "send" && request.Delivery == "queue" {
+		return Failed("AgentUnavailable", "not_sent")
 	}
 	var result Result
 	switch request.Operation {
@@ -135,64 +140,68 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		case operation == "group":
 			body["group"] = request.Group.String()
 			path += "/group"
-		case operation == "close" && (request.TerminalOnly || ref.Agent == nil):
+		case operation == "track":
+			conversation, failed := client.conversationByProfile(ctx, selected, request.Profile, request.ConversationID)
+			if failed != nil {
+				return *failed
+			}
+			body["conversation"] = conversation
+			path += "/conversation"
+		case operation == "untrack":
+			path += "/conversation"
+		case operation == "close" && request.TerminalOnly:
 			body["tmuxName"] = observed.Session.Name
 			operation = "terminal_close"
-		default:
-			if ref.Agent == nil {
+		case operation == "inspect" || operation == "send" || operation == "read" && request.Mode != "terminal" || operation == "stop" && request.Mode != "terminal" || operation == "close":
+			if ref.Conversation == nil {
 				return Failed("AgentUnavailable", "not_sent")
 			}
-			body["paneId"] = ref.Agent.PaneID
-			body["pid"] = ref.Agent.PID
-			body["startIdentity"] = ref.Agent.StartIdentity
-			path += "/agent/" + operation
+			runtime := ref.Conversation
+			body = map[string]any{"conversation": runtime.Binding.Conversation}
+			path = "/v1/conversations/" + operation
 			switch operation {
 			case "read":
-				mode := request.Mode
-				if mode == "" {
-					mode = "native"
+				scope := request.Scope
+				if scope == "" {
+					scope = "latest"
 				}
-				body["mode"] = mode
+				body["scope"] = scope
 				maximum := request.MaxBytes
 				if maximum == 0 {
 					maximum = 16384
 				}
 				body["maxBytes"] = maximum
-				if mode == "native" {
-					if ref.Agent.Binding == nil {
-						return Failed("AgentUnavailable", "not_sent")
-					}
-					body["binding"] = ref.Agent.Binding
-					scope := request.Scope
-					if scope == "" {
-						scope = "latest"
-					}
-					body["scope"] = scope
-				}
 			case "send":
-				if ref.Agent.Binding == nil {
-					return Failed("AgentUnavailable", "not_sent")
+				body["input"], body["delivery"], body["text"] = request.Input, request.Delivery, request.Text
+			case "stop", "close":
+				if runtime.Turn != nil && runtime.Turn.State == "inProgress" {
+					body["turn"] = runtime.Turn
 				}
-				body["binding"] = ref.Agent.Binding
-				body["text"] = request.Text
-				body["input"] = request.Input
-				body["delivery"] = request.Delivery
+				if operation == "close" {
+					path = "/v1/sessions/" + ref.TmuxID + "/agent/close"
+					body["identityToken"], body["method"] = ref.IdentityToken, "native"
+				}
+			}
+		default:
+			if ref.Agent == nil {
+				return Failed("AgentUnavailable", "not_sent")
+			}
+			body["paneId"], body["pid"], body["startIdentity"] = ref.Agent.PaneID, ref.Agent.PID, ref.Agent.StartIdentity
+			path += "/agent/" + operation
+			switch operation {
+			case "read":
+				body["mode"] = "terminal"
+				maximum := request.MaxBytes
+				if maximum == 0 {
+					maximum = 16384
+				}
+				body["maxBytes"] = maximum
 			case "text":
 				body["text"] = request.Text
 			case "keys":
 				body["keys"] = request.Keys
 			case "stop", "close":
-				method := ref.Agent.Methods.Stop
-				if method != "native" && method != "terminal" {
-					return Failed("AgentUnavailable", "not_sent")
-				}
-				body["method"] = method
-				if ref.Agent.Binding != nil {
-					body["binding"] = ref.Agent.Binding
-				}
-				if ref.Agent.Turn != nil {
-					body["turn"] = ref.Agent.Turn
-				}
+				body["method"] = "terminal"
 			}
 		}
 		encoded, _ := json.Marshal(body)
@@ -200,6 +209,30 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			return Failed("input_limit", "not_sent")
 		}
 		result = client.call(ctx, selected, operation, path, encoded)
+		if result.OK && (request.Operation == "read" && request.Mode != "terminal" || request.Operation == "inspect") {
+			var conversation agentruntime.Conversation
+			if request.Operation == "read" {
+				value := result.Value.(ReadResult)
+				if value.Observation == nil || value.Scope != request.Scope && !(request.Scope == "" && value.Scope == "latest") {
+					return Failed("protocol_error", "not_sent")
+				}
+				conversation = value.Observation.Binding.Conversation
+			} else {
+				conversation = result.Value.(agentruntime.ConversationRuntime).Binding.Conversation
+			}
+			if conversation != ref.Conversation.Binding.Conversation {
+				return Failed("protocol_error", "not_sent")
+			}
+		}
+		if result.OK && request.Operation == "stop" {
+			method := "native"
+			if request.Mode == "terminal" {
+				method = "terminal"
+			}
+			if result.Value.(WriteResult).Method != method {
+				return Failed("protocol_error", "unknown")
+			}
+		}
 		if result.OK && request.Operation == "group" {
 			result = success(GroupResult{Group: request.Group.String()})
 		}
@@ -284,6 +317,26 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return Reference{}, ObservedSession{}, &result
 	}
 	var ref Reference
+	if request.ConversationID != "" && request.Operation != "track" {
+		selected, found := client.peerByLabel(request.Machine)
+		if !found {
+			return fail("machine_unknown")
+		}
+		conversation, failure := client.conversationByProfile(ctx, selected, request.Profile, request.ConversationID)
+		if failure != nil {
+			return Reference{}, ObservedSession{}, failure
+		}
+		encoded, _ := json.Marshal(map[string]any{"conversation": conversation})
+		inspected := client.call(ctx, selected, "inspect", "/v1/conversations/inspect", encoded)
+		if !inspected.OK {
+			return Reference{}, ObservedSession{}, &inspected
+		}
+		runtime := inspected.Value.(agentruntime.ConversationRuntime)
+		if runtime.Binding.Conversation != conversation {
+			return fail("protocol_error")
+		}
+		return Reference{Machine: selected.Machine, Conversation: &runtime}, ObservedSession{}, nil
+	}
 	label := request.Machine
 	if request.Ref != "" {
 		var err error
@@ -295,7 +348,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		if !ok {
 			return fail("machine_unknown")
 		}
-		if request.Operation != "info" && !(request.Operation == "close" && (request.TerminalOnly || ref.Agent == nil)) {
+		if request.Operation != "info" && !(request.Operation == "close" && request.TerminalOnly) {
 			return ref, ObservedSession{}, nil
 		}
 		label = selected.Label
@@ -405,7 +458,7 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
-	writes := operation != "list" && operation != "read" && operation != "directory_search" && operation != "terminal_context" && operation != "results"
+	writes := operation != "list" && operation != "read" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -414,10 +467,10 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "list" || operation == "terminal_context" {
 		method = http.MethodGet
 	} else {
-		if operation == "group" {
+		if operation == "group" || operation == "track" {
 			method = http.MethodPut
 		}
-		if operation == "terminal_close" {
+		if operation == "terminal_close" || operation == "untrack" {
 			method = http.MethodDelete
 		}
 		// No GetBody: net/http cannot replay a possibly delivered mutation.
@@ -452,9 +505,12 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if (operation == "terminal_close" || operation == "group") && response.StatusCode == http.StatusNoContent {
+	if (operation == "terminal_close" || operation == "group" || operation == "track" || operation == "untrack") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
+		}
+		if operation == "track" || operation == "untrack" {
+			return success(struct{}{})
 		}
 		if operation == "group" {
 			return success(GroupResult{})
@@ -469,7 +525,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
-	if operation == "terminal_close" || operation == "group" {
+	if operation == "terminal_close" || operation == "group" || operation == "track" || operation == "untrack" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {
@@ -493,9 +549,10 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
 	var value *struct {
-		Code     string `json:"code"`
-		Message  string `json:"message"`
-		Dispatch string `json:"dispatch,omitempty"`
+		Code         string                     `json:"code"`
+		Message      string                     `json:"message"`
+		Dispatch     string                     `json:"dispatch,omitempty"`
+		Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -507,7 +564,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 	} else if knownRejection(value.Code) {
 		dispatch = "not_sent"
 	}
-	return &Failure{Code: value.Code, Dispatch: dispatch}
+	return &Failure{Code: value.Code, Dispatch: dispatch, Conversation: value.Conversation}
 }
 
 func knownRejection(code string) bool {
@@ -565,4 +622,22 @@ func (result Result) ExitCode(operation string) int {
 		}
 	}
 	return 0
+}
+
+func (client *Client) conversationByProfile(ctx context.Context, target peer, key, id string) (agentruntime.Conversation, *Result) {
+	listed := client.call(ctx, target, "list", "/v1/sessions", nil)
+	if !listed.OK {
+		return agentruntime.Conversation{}, &listed
+	}
+	for _, profile := range listed.Value.(Peer).Profiles {
+		if profile.Key == key {
+			conversation := agentruntime.Conversation{Provider: agentruntime.Provider(profile.Provider), ProfileKey: agentruntime.ProfileKey(key), HistoryScope: profile.HistoryScope, ConversationID: id}
+			if conversation.Valid() {
+				return conversation, nil
+			}
+			break
+		}
+	}
+	failed := Failed("AgentUnavailable", "not_sent")
+	return agentruntime.Conversation{}, &failed
 }

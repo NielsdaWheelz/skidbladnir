@@ -48,16 +48,18 @@ func (m *model) details(row *listedRow) [][2]string {
 		if profile == "" {
 			profile = "profile unknown"
 		}
-		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile}, [2]string{"state", fleetclient.StatusText(a.Status)})
+		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile})
 		if current.Kind == "local" && value.Agent != nil {
 			local := value.Agent
-			facts[len(facts)-1][1] = fleetclient.StatusText(local.Status)
-			facts = append(facts, [2]string{"methods", "read " + local.Methods.Read + " · peer " + local.Methods.SendPeer + " · user " + local.Methods.SendUser + " · queue user " + local.Methods.QueueUser + " · stop " + local.Methods.Stop})
 			if local.ProviderSession != nil {
 				facts = append(facts, [2]string{"provider session", local.ProviderSession.ID + " " + local.ProviderSession.Name})
 			}
 		}
 	}
+	if value.Conversation != nil {
+		facts = append(facts, [2]string{"tracking", value.Conversation.Binding.Conversation.ConversationID}, [2]string{"state", fleetclient.StatusText(value.Conversation.Status)})
+	}
+
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}

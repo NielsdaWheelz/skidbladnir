@@ -188,7 +188,7 @@ internal data class SessionTarget(val machineHandle: MachineHandle, val session:
 internal enum class MachinePlatform { Linux, Darwin }
 internal data class MachineSummary(val handle: MachineHandle, val platform: MachinePlatform)
 @Serializable internal enum class AgentProvider { Codex, Claude }
-internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider)
+internal data class ProfileChoice(val key: ProfileKey, val label: String, val provider: AgentProvider, val historyScope: String? = null)
 
 @Serializable private data class WireMachineSummary(val handle: String, val platform: WireMachinePlatform)
 @Serializable private enum class WireMachinePlatform { Linux, Darwin }
@@ -196,6 +196,7 @@ internal data class ProfileChoice(val key: ProfileKey, val label: String, val pr
     val key: String,
     val label: String,
     val provider: AgentProvider,
+    val historyScope: String? = null,
 )
 @Serializable internal data class CharacterSummary(val key: String, val displayName: String)
 
@@ -223,10 +224,6 @@ internal data class AgentRuntime(
     val pid: Long,
     val paneId: String,
     val startIdentity: String,
-    val status: AgentStatus,
-    val methods: AgentMethods,
-    val binding: AgentBinding? = null,
-    val turn: AgentTurn? = null,
     val profile: ProfileKey? = null,
     val providerSession: ProviderSessionFacts? = null,
 ) {
@@ -234,9 +231,6 @@ internal data class AgentRuntime(
         require(pid > 0)
         require(paneId.matches(Regex("%[0-9]+")))
         require(startIdentity.isNotEmpty())
-        require(binding == null || binding.conversation.provider == provider)
-        require(binding == null || profile == null || binding.conversation.profileKey == profile.encoded)
-        require(binding != null || listOf(methods.read, methods.sendPeer, methods.sendUser, methods.queueUser, methods.stop).none { it == AgentMethod.Native })
         when (provider) {
             AgentProvider.Codex -> require(providerSession?.name == null)
             AgentProvider.Claude -> Unit
@@ -257,6 +251,7 @@ internal data class TmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: AgentRuntime? = null,
+    val conversation: ConversationRuntime? = null,
     val connection: RemoteConnection? = null,
 )
 
@@ -336,10 +331,6 @@ private data class WireAgentRuntime(
     val pid: Long,
     val paneId: String,
     val startIdentity: String,
-    val status: AgentStatus,
-    val methods: AgentMethods,
-    val binding: AgentBinding? = null,
-    val turn: AgentTurn? = null,
     val profile: String? = null,
     val providerSession: WireProviderSessionFacts? = null,
 )
@@ -358,6 +349,7 @@ private data class WireTmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: WireAgentRuntime? = null,
+    val conversation: ConversationRuntime? = null,
     val connection: WireRemoteConnection? = null,
 )
 
@@ -585,8 +577,8 @@ internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.
  * close control, so the spoken description and the dialog title cannot name different sessions.
  */
 internal fun closeActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
-    if (target.session.agent == null || terminalOnly) "close terminal only: ${target.session.tmuxName} on ${label.text}"
-    else "stop work and close terminal: ${target.session.tmuxName} on ${label.text}"
+    if (target.session.conversation == null || terminalOnly) "close terminal only: ${target.session.tmuxName} on ${label.text}"
+    else "stop tracked conversation and close terminal: ${target.session.tmuxName} on ${label.text}"
 internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
     closeActionLabel(label, target, terminalOnly) + "?"
 
@@ -612,12 +604,18 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         (encodedSession as? JsonObject ?: throw SerializationException("session is not an object"))
             .requireSessionOptionalFields()
     }
+    element.getValue("profiles").jsonArray.forEach { profile ->
+        (profile as? JsonObject ?: throw SerializationException("profile is not an object"))
+            .requireAbsentOrNonNull(setOf("historyScope"))
+    }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
     val profiles = wire.profiles.map { profile ->
         require(profile.label.isNotEmpty())
-        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label, profile.provider)
+        ProfileChoice(requireNotNull(ProfileKey.parse(profile.key)), profile.label, profile.provider, profile.historyScope).also {
+            require(it.historyScope == null || it.historyScope.matches(Regex("[0-9a-f]{64}")))
+        }
     }
     require(profiles.map(ProfileChoice::key).allUnique())
     require(profiles.map(ProfileChoice::label).allUnique())
@@ -628,7 +626,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
         session.launchProfile?.let { launchProfile ->
             profiles.single { choice -> choice.key == launchProfile }
         }
-    session.agent?.let { agent ->
+        session.agent?.let { agent ->
             agent.profile?.let { runtimeProfile ->
                 profiles.single { choice -> choice.key == runtimeProfile && choice.provider == agent.provider }
             }
@@ -962,7 +960,7 @@ internal fun replyAvailabilityLabel(replies: ReplyPresentation): String? = when 
     else -> null
 }
 
-internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean, replies: ReplyPresentation = ReplyPresentation()): SessionStatusContent {
+internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean, replies: ReplyPresentation = ReplyPresentation(), conversation: Conversation? = null, untrackedCodex: Boolean = false): SessionStatusContent {
     val state = when (status?.state) {
         AgentState.Working -> "working"
         AgentState.Blocked -> "waiting"
@@ -971,22 +969,27 @@ internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean, replies:
         AgentState.Failed -> "failed"
         AgentState.Stopped -> "stopped"
         AgentState.Unknown -> "status unavailable"
-        null -> "terminal"
+        null -> if (untrackedCodex) "conversation not tracked" else "terminal"
     }
     val reply = if (!replies.unread) "" else if (replies.previousAgent) "new reply · previous agent" else "new reply"
     val spoken = if (!replies.unread) state else if (replies.previousAgent) {
         "terminal. new reply from the previous agent, unread on this device."
     } else "$state. new reply, unread on this device."
-    return SessionStatusContent(state + if (reply.isEmpty()) "" else "\n$reply", (if (fresh) "" else "last observed: ") + spoken)
+    val tracking = conversation?.let { "tracking ${it.conversationId.takeLast(8)}" }
+    return SessionStatusContent(
+        listOfNotNull(tracking, state, reply.takeIf(String::isNotEmpty)).joinToString("\n"),
+        (tracking?.let { "tracking ${conversation.conversationId}. " } ?: "") + (if (fresh) "" else "last observed: ") + spoken,
+    )
 }
 
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection"))
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection"))
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireNativeValues()
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
+    (this["conversation"] as? JsonObject)?.requireNativeValues()
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
@@ -1014,6 +1017,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     activeCommand = session.activeCommand,
     attachedClients = session.attachedClients,
     agent = session.agent?.let(::acceptAgentRuntime),
+    conversation = session.conversation,
     connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
 ).also(::acceptSession)
 
@@ -1022,10 +1026,6 @@ private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentR
     pid = runtime.pid,
     paneId = runtime.paneId,
     startIdentity = runtime.startIdentity,
-    status = runtime.status,
-    methods = runtime.methods,
-    binding = runtime.binding,
-    turn = runtime.turn,
     profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
     providerSession = runtime.providerSession?.let(::acceptProviderSessionFacts),
 )

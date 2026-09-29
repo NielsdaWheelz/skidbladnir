@@ -60,7 +60,8 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid info reviewer` | full metadata and fresh reference for this session |
 | `skid enter reviewer` | attach; explicit detach returns to the caller |
 | `skid read reviewer [--history | --terminal] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
-| `skid send reviewer "review the patch" [--input peer|user] [--queue]` | native peer by default; queue requires explicit user input; `--stdin` accepts literal text |
+| `skid replies reviewer` | view native output and acknowledge only replies known at opening |
+| `skid send reviewer "review the patch" [--input peer|user] [--queue]` | native peer by default; queue and native claude input are unavailable; `--stdin` accepts literal text |
 | `skid keys reviewer enter` | existing logical key vocabulary; 1–16 keys |
 | `skid text reviewer --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
 | `skid wait reviewer [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
@@ -70,9 +71,12 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid start terminal-name --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
 | `skid shell reviewer` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
 | `skid group reviewer --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same name/machine/ref selectors; no agent required |
+| `skid track reviewer --conversation ID --profile PROFILE --machine HOST` / `skid untrack reviewer --machine HOST` | explicitly record or clear a codex conversation association; never select the terminal's displayed thread |
 
 for commands targeting an existing session, replace the name with `--ref VALUE` or add
 `--machine LABEL` to the name. these selector forms are mutually exclusive.
+native operations also accept `--conversation ID --profile PROFILE --machine HOST`
+independently of terminal lifetime.
 `--json` works on every noninteractive command. support the shown flag placement
 and `--` for literal operands; publish complete usage in `skid --help`.
 start requires machine, name, and either advertised profile or `--terminal`.
@@ -196,9 +200,10 @@ and terminal closure separately; closure never proves halt. provider pending inp
 may remain and saved history is retained. terminal-only close requests no halt.
 
 [native interaction](native-agent-observation.md) owns provider state, capabilities,
-output and delivery. terminal operations are explicit, never fallback. current
-browser keys are `r` read, `s` stop current work, `c` stop work and close terminal,
-`x` close terminal only. capture and confirm the exact target/effect.
+output and delivery. terminal operations are explicit, never fallback. browser
+keys are `r` view replies, `t` track an explicit id, `u` clear tracking,
+`s` stop tracked conversation, `c` stop it and close terminal, `x` close terminal
+only. capture and confirm the exact conversation and terminal effects.
 
 ## composition and deletion
 

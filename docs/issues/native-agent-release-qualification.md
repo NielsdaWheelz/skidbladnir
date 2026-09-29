@@ -1,22 +1,18 @@
-# native agent release qualification
+# stock native conversation release qualification
 
-problem: the signed skid v0.10.4 release is published, but no coordinated
-native-agent installation or physical-phone acceptance has been recorded.
-dev-server main still pins v0.10.3. its draft update pins v0.10.4 but keeps
-gateway application unqualified pending installed-host acceptance.
+problem: the stock conversation-target source passed isolated acceptance, but
+its coordinated release and installed-fleet acceptance remain open. published
+v0.10.4 uses the former selected-view contract; dev-server draft pr139 awaits
+the new release pin before enabling installation.
 
-impact: the native gateway/helper contract is not qualified on the installed
-fleet. source and disposable mac checks do not establish installed linux apparmor,
-installed-fleet behavior or physical-phone usability.
+impact: installed-fleet behavior and native-output unread acknowledgement cannot
+be claimed from former fork evidence or isolated source checks.
 
-evidence: [source qualification](../native-agent-qualification.md) records the
-provider, helper and client boundaries. [dev-server draft pr #139](https://github.com/NielsdaWheelz/dev-server/pull/139)
-stages the pinned package but remains unmerged. its exact mac installer release
-package passed a controlled finalized reply through the published gateway and frozen
-helper. a disposable ubuntu noble x86_64 provider package passed native
-view/control and bubblewrap checks under a temporary policy. persistent
-installation and policy activation are `NOT_RUN`.
+evidence: [current qualification](../native-agent-qualification.md) separates stock
+final installed Darwin/Linux and Claude evidence from superseded tests.
+[installer draft](https://github.com/NielsdaWheelz/dev-server/pull/139)
+remains unmerged; no phone/fleet deployment occurred. original working copies
+remain untouched.
 
-resolved when: qualify the exact v0.10.4 release with the final provider/helper
-package on the intended hosts, then complete approved fleet and phone
-acceptance. record content-free results and remove this issue.
+resolved when: new signed coordinated release/pins agree, and approved installed-host/phone checks
+pass. NOT_RUN is never pass. record content-free evidence and remove this issue.

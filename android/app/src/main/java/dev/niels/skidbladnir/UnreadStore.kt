@@ -62,11 +62,13 @@ import kotlinx.serialization.json.jsonObject
     fun record(key: ConversationKey): UnreadRecord? = conversations.singleOrNull { it.key == key }
     fun conversation(target: SessionTarget): Conversation? {
         val session = target.session
-        session.agent?.let { return it.binding?.conversation }
+        session.conversation?.let { return it.binding.conversation }
+        if (session.agent != null) return null
         if (session.connection != null) return null
         return associations.singleOrNull {
             it.machine == target.machineHandle.encoded && it.tmuxId == session.tmuxId &&
-                it.identityToken == session.identityToken && it.paneId == session.activePaneId
+                it.identityToken == session.identityToken && it.paneId == session.activePaneId &&
+                it.conversation.provider == AgentProvider.Claude
         }?.conversation
     }
 }
@@ -128,7 +130,7 @@ internal class UnreadStore(context: Context) {
                 }
             }.toMutableList()
             for (session in sessions) {
-                val conversation = session.agent?.binding?.conversation ?: continue
+                val conversation = session.conversation?.binding?.conversation?.takeIf { it.provider == AgentProvider.Claude } ?: continue
                 associations.removeAll { it.machine == machine.encoded && it.tmuxId == session.tmuxId && it.identityToken == session.identityToken }
                 associations.add(UnreadAssociation(machine.encoded, session.tmuxId, session.identityToken, session.activePaneId, conversation))
             }

@@ -136,9 +136,11 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
-the shared provider installer builds the immutable upstream revision plus bundled
-source patch, verifies its lock and publishes the managed native executable.
-profiles use that exact executable, with no npm launcher or account wrapper.
+the shared provider installer installs ordinary upstream `@openai/codex` through
+npm. profiles resolve its native executable for honest foreground detection;
+no codex fork, source build or custom package is installed. existing account
+homes remain shared. CLI and running daemon upgrade independently through upstream
+management; the helper validates consumed methods/fields rather than version parity.
 claude uses the managed native symlink at the qualified version; user update
 policy remains unchanged. provider drift requires requalification; missing or
 malformed native interfaces remain unavailable. claude native input is unavailable
@@ -151,8 +153,8 @@ exact schema (all named members required unless marked optional):
 - `profiles`: either `[]` for terminal-only operation or exactly the four rows
   below in that order. the restoration uses all four.
 - each row: `key`, `label`, `provider`, `command`, `environment`,
-  `foregroundSignatures`, `arguments`; codex additionally requires filesystem
-  `endpoint`, the existing owning unix discovery socket; claude forbids it.
+  `foregroundSignatures`, `arguments`. endpoint is retired; the host derives the
+  stock account socket from CODEX_HOME, with unavailable capability on drift.
 - environment entry: `{name,value}` strings. exactly one absolute provider home;
   names unique, no other provider's home, `HERDR_*`, `SKIDBLADNIR_SHELL`, `SKIDBLADNIR_AGENT`, or
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
@@ -186,12 +188,19 @@ the user's existing provider setup owns those files and its normal login flow.
 
 | forge key | provider home relative to `HOME` | native argv after executable |
 | --- | --- | --- |
-| `personal` | `.codex` | `--yolo` |
-| `work` | `.codex-work` | `--yolo` |
-| `work2` | `.codex-work2` | `--yolo` |
+| `personal` | `.codex` | `--remote unix://<account-socket> --cd <cwd> resume <captured-id>` |
+| `work` | `.codex-work` | same |
+| `work2` | `.codex-work2` | same |
 | `claude-work` | `.claude-work` | `--name <tmuxName> --dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
 
 codex rows set only their `CODEX_HOME`; claude sets `CLAUDE_CONFIG_DIR`.
+for skid-created codex conversations, the host first invokes stock
+`app-server daemon start`, captures native thread/start's id and sets its native
+name, prepares the exact empty thread with native resume without a turn, then launches the
+remote tui and records that id in tmux metadata. native creation applies the
+configured `--yolo` policy; remote resume restores it and omits that unsupported
+override from terminal argv. ordinary manual terminal commands
+remain stock and unassociated until an explicit conversation id is tracked.
 manual `claude`/`claude-personal` leave `CLAUDE_CONFIG_DIR` unset to retain native
 default behavior, including `~/.claude.json`; setting it to `~/.claude` is not
 assumed equivalent. personal claude is never a forge profile. its unconfigured
@@ -356,8 +365,8 @@ provider-home variable before selecting their own.
 
 ## hooks
 
-skid installs no codex hooks. codex projection already ignores registrations and
-uses the foreground process and native selected-view interface. the unused codex writer and
+skid installs no codex hooks. foreground presence and explicitly tracked native
+conversation are separate projections. no selected-view interface remains. the unused codex writer and
 template are retired; existing `hooks.json` remains untouched by skid setup.
 no hook merger is needed. stage the supplied
 [`claude-agent-identity`](../deployment/providers/claude-agent-identity) tree at
@@ -400,10 +409,9 @@ not qualify the new native interaction contract.
 consume [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
 and [the installation contract](restoration-native-control.md):
 
-- llm-calling `0bbba0a994de7b46645037f0ecc24aeb59fe6e4a`;
-  uv.lock sha-256 `a7771120dd948759c4f0d089382046443a2348a447453e68369400c6a43bc8e9`.
-  install that source directly; the previous helper patch is retired. this
-  installation is unqualified until the new pinned generation is exercised.
+- install the exact llm-calling source and lock digest in the pin directly;
+  the previous helper patch is retired. qualification applies to that generation,
+  never to a newer source merely sharing its interface.
 - private uv `0.11.28`, python `3.12.13`, frozen `claude-agent-sdk==0.2.130`;
   `uv sync --python 3.12.13 --frozen --extra claude-sdk --no-dev`.
 - install the helper environment beneath `~/.local/share/skidbladnir/` and expose
@@ -419,9 +427,9 @@ and [the installation contract](restoration-native-control.md):
   launcher, entry point, source/lock and installed versions before activation.
 
 one strict json request on stdin and one envelope on stdout, then exit. skid uses
-both provider adapters for inspect/read/send/interrupt/stop/results under
-[native interaction](native-agent-observation.md#5-api-and-dispatch).
-account environments and codex endpoints come from host profiles; no caller
+both provider adapters for create/inspect/read/send/interrupt/stop/results under
+[native interaction](native-agent-observation.md#4-api-and-behavior).
+account environments come from host profiles; native socket derives from home; no caller
 supplies paths. the helper owns no daemon, execution, copied history or queue.
 
 the gateway sets the selected existing account's `CLAUDE_CONFIG_DIR` before import and

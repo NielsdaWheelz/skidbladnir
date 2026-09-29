@@ -25,8 +25,7 @@
       ],
       "arguments": [
         "--yolo"
-      ],
-      "endpoint": "@ROOT@/.codex/app-server-control/app-server-control.sock"
+      ]
     },
     {
       "key": "work",
@@ -46,8 +45,7 @@
       ],
       "arguments": [
         "--yolo"
-      ],
-      "endpoint": "@ROOT@/.codex-work/app-server-control/app-server-control.sock"
+      ]
     },
     {
       "key": "work2",
@@ -67,8 +65,7 @@
       ],
       "arguments": [
         "--yolo"
-      ],
-      "endpoint": "@ROOT@/.codex-work2/app-server-control/app-server-control.sock"
+      ]
     },
     {
       "key": "claude-work",

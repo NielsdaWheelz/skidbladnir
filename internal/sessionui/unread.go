@@ -74,8 +74,7 @@ func (m *model) receiveReplies(message repliesMsg) {
 		}
 		current, _ := fleetclient.DecodeReference(row.session.Ref)
 		conversation, found := m.unreadSnapshot.Conversation(current, row.session.ActivePaneID)
-		sameProcess := current.Agent == nil && message.ref.Agent == nil || current.Agent != nil && message.ref.Agent != nil && current.Agent.PID == message.ref.Agent.PID && current.Agent.StartIdentity == message.ref.Agent.StartIdentity && current.Agent.PaneID == message.ref.Agent.PaneID && current.Agent.Binding != nil && message.ref.Agent.Binding != nil && current.Agent.Binding.Equal(*message.ref.Agent.Binding)
-		if current.SessionEqual(message.ref) && sameProcess && found && conversation == message.conversation {
+		if current.SessionEqual(message.ref) && found && conversation == message.conversation {
 			represented = true
 			break
 		}
@@ -159,8 +158,21 @@ func (m *model) replyText(row listedRow) string {
 	if !found || len(record.UnreadIDs) == 0 {
 		return ""
 	}
-	if ref.Agent == nil {
+	if conversation.Provider == agentruntime.ProviderClaude && ref.Conversation == nil {
 		return "new reply · previous agent"
 	}
 	return "new reply"
+}
+
+func (m *model) replyReference(row listedRow) (fleetclient.Reference, bool) {
+	ref, _ := fleetclient.DecodeReference(row.session.Ref)
+	if ref.Conversation != nil {
+		return ref, ref.Conversation.Methods.Read == "native"
+	}
+	conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID)
+	if !found {
+		return ref, false
+	}
+	ref.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}, Status: agentruntime.Status{State: "unknown", Source: "unavailable"}, Methods: agentruntime.Methods{Read: "native", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}}
+	return ref, true
 }

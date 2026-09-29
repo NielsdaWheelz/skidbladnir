@@ -2,9 +2,7 @@ package agentcontrol
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sync"
 	"time"
@@ -58,13 +56,11 @@ type WriteResult struct {
 }
 
 type SendResult struct {
-	Method          string `json:"method"`
-	Input           string `json:"input"`
-	Delivery        string `json:"delivery"`
-	Outcome         string `json:"outcome"`
-	TurnID          string `json:"turnId,omitempty"`
-	QueueItemID     string `json:"queueItemId,omitempty"`
-	ClientMessageID string `json:"clientMessageId,omitempty"`
+	Method   string `json:"method"`
+	Input    string `json:"input"`
+	Delivery string `json:"delivery"`
+	Outcome  string `json:"outcome"`
+	TurnID   string `json:"turnId,omitempty"`
 }
 
 type CloseResult struct {
@@ -83,15 +79,29 @@ func (service *Service) Enrich(parent context.Context, inventory *sessions.Inven
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 	groups := make(map[agentruntime.ProfileKey][]int)
-	for index, session := range inventory.Sessions {
-		if session.Agent == nil {
+	for index := range inventory.Sessions {
+		session := &inventory.Sessions[index]
+		if session.Conversation == nil && session.Agent != nil && session.Agent.Provider == agentruntime.ProviderClaude && session.Agent.ProviderSession != nil {
+			profile, found := service.sessions.Profile(session.Agent.Profile)
+			if !found || profile.Provider != agentruntime.ProviderClaude {
+				continue
+			}
+			scope, err := agentruntime.HistoryScope(profile)
+			if err != nil {
+				continue
+			}
+			conversation := agentruntime.Conversation{Provider: profile.Provider, ProfileKey: profile.Key, HistoryScope: scope, ConversationID: session.Agent.ProviderSession.ID()}
+			if !conversation.Valid() {
+				continue
+			}
+			session.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}}
+		}
+		if session.Conversation == nil {
 			continue
 		}
-		session.Agent.Status = agentruntime.Status{State: "unknown", Source: "unavailable"}
-		session.Agent.Methods = agentruntime.UnavailableMethods(session.Agent.Provider)
-		session.Agent.Binding = nil
-		session.Agent.Turn = nil
-		if profile, _, ok := service.nativeIdentity(session); ok {
+		session.Conversation.Status = agentruntime.Status{State: "unknown", Source: "unavailable"}
+		session.Conversation.Methods = agentruntime.Methods{Read: "unavailable", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}
+		if profile, _, err := service.conversationTarget(session.Conversation.Binding.Conversation); err == nil {
 			groups[profile.Key] = append(groups[profile.Key], index)
 		}
 	}
@@ -103,88 +113,73 @@ func (service *Service) Enrich(parent context.Context, inventory *sessions.Inven
 			profile, _ := service.sessions.Profile(key)
 			targets := make([]nativeTarget, len(indices))
 			for i, index := range indices {
-				_, targets[i], _ = service.nativeIdentity(inventory.Sessions[index])
+				targets[i] = nativeTarget{SessionID: inventory.Sessions[index].Conversation.Binding.Conversation.ConversationID}
 			}
 			var results []nativeEnvelope
 			if service.native(ctx, profile, "inspect", targets, nil, &results) != nil || len(results) != len(indices) {
 				return
 			}
 			for i, result := range results {
-				session := inventory.Sessions[indices[i]]
 				var inspected nativeInspection
 				if decodeNativeEnvelope(result, &inspected, &UnavailableError{Dispatch: "not_sent"}) != nil {
 					continue
 				}
 				observation, err := service.observation(profile, inspected)
-				if err != nil {
+				session := &inventory.Sessions[indices[i]]
+				if err != nil || !session.Conversation.Binding.Equal(observation.Binding) {
 					continue
 				}
-				if _, err := service.sessions.ResolveAgent(ctx, sessions.TargetOf(session)); err != nil {
-					continue
-				}
-				session.Agent.Status = observation.Status
-				session.Agent.Methods = inspected.Methods
-				session.Agent.Binding = &observation.Binding
-				session.Agent.Turn = observation.Turn
+				session.Conversation = &agentruntime.ConversationRuntime{Binding: observation.Binding, Status: observation.Status, Methods: inspected.Methods, Turn: observation.Turn}
 			}
 		}()
 	}
 	work.Wait()
 }
 
-func (service *Service) nativeIdentity(session sessions.Session) (agentruntime.Profile, nativeTarget, bool) {
-	agent := session.Agent
-	if agent == nil || session.ActivePaneID != agent.PaneID {
-		return agentruntime.Profile{}, nativeTarget{}, false
+func (service *Service) conversationTarget(conversation agentruntime.Conversation) (agentruntime.Profile, nativeTarget, error) {
+	profile, found := service.sessions.Profile(conversation.ProfileKey)
+	if !found || profile.Provider != conversation.Provider {
+		return profile, nativeTarget{}, sessions.ErrAgentTargetStale
 	}
-	profile, found := service.sessions.Profile(agent.Profile)
-	if !found || profile.Provider != agent.Provider || profile.Provider == agentruntime.ProviderCodex && profile.Endpoint == "" {
-		return profile, nativeTarget{}, false
+	scope, err := agentruntime.HistoryScope(profile)
+	if err != nil {
+		return profile, nativeTarget{}, &UnavailableError{Dispatch: "not_sent"}
 	}
-	target := nativeTarget{PID: int(agent.PID), StartIdentity: string(agent.StartIdentity)}
-	if agent.ProviderSession != nil {
-		target.SessionID = agent.ProviderSession.ID()
+	if scope != conversation.HistoryScope {
+		return profile, nativeTarget{}, sessions.ErrAgentTargetStale
 	}
-	return profile, target, true
-}
-
-func historyScope(profile agentruntime.Profile) (string, error) {
-	name := "CODEX_HOME"
-	if profile.Provider == agentruntime.ProviderClaude {
-		name = "CLAUDE_CONFIG_DIR"
-	}
-	for _, entry := range profile.Environment {
-		if entry.Name != name {
-			continue
-		}
-		home, err := filepath.EvalSymlinks(entry.Value)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%x", sha256.Sum256([]byte(string(profile.Provider)+"\x00"+home))), nil
-	}
-	return "", errors.New("profile omits native history home")
+	return profile, nativeTarget{SessionID: conversation.ConversationID}, nil
 }
 
 func (service *Service) observation(profile agentruntime.Profile, inspected nativeInspection) (agentruntime.Observation, error) {
 	if !inspected.Status.Valid() || !inspected.Methods.Valid() || inspected.SessionID == "" || inspected.Turn != nil && !inspected.Turn.Valid() {
 		return agentruntime.Observation{}, &UnavailableError{Dispatch: "not_sent"}
 	}
-	scope, err := historyScope(profile)
+	scope, err := agentruntime.HistoryScope(profile)
 	if err != nil {
 		return agentruntime.Observation{}, &UnavailableError{Dispatch: "not_sent"}
 	}
-	binding := agentruntime.Binding{Conversation: agentruntime.Conversation{Provider: profile.Provider, ProfileKey: profile.Key, HistoryScope: scope, ConversationID: inspected.SessionID}, View: inspected.View}
+	binding := agentruntime.Binding{Conversation: agentruntime.Conversation{Provider: profile.Provider, ProfileKey: profile.Key, HistoryScope: scope, ConversationID: inspected.SessionID}}
 	if !binding.Valid() {
 		return agentruntime.Observation{}, &UnavailableError{Dispatch: "not_sent"}
 	}
 	return agentruntime.Observation{Binding: binding, Status: inspected.Status, Turn: inspected.Turn}, nil
 }
 
-func (service *Service) inspect(ctx context.Context, session sessions.Session) (agentruntime.Profile, nativeTarget, nativeInspection, agentruntime.Observation, error) {
-	profile, target, available := service.nativeIdentity(session)
-	if !available {
-		return profile, target, nativeInspection{}, agentruntime.Observation{}, &UnavailableError{Dispatch: "not_sent"}
+func (service *Service) Inspect(parent context.Context, conversation agentruntime.Conversation) (agentruntime.ConversationRuntime, error) {
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	_, _, inspected, observation, err := service.bound(ctx, conversation)
+	if err != nil {
+		return agentruntime.ConversationRuntime{}, err
+	}
+	return agentruntime.ConversationRuntime{Binding: observation.Binding, Status: observation.Status, Methods: inspected.Methods, Turn: observation.Turn}, nil
+}
+
+func (service *Service) bound(ctx context.Context, conversation agentruntime.Conversation) (agentruntime.Profile, nativeTarget, nativeInspection, agentruntime.Observation, error) {
+	profile, target, err := service.conversationTarget(conversation)
+	if err != nil {
+		return profile, target, nativeInspection{}, agentruntime.Observation{}, err
 	}
 	inspectContext, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -200,50 +195,42 @@ func (service *Service) inspect(ctx context.Context, session sessions.Session) (
 		return profile, target, inspected, agentruntime.Observation{}, err
 	}
 	observation, err := service.observation(profile, inspected)
-	target.SessionID = inspected.SessionID
-	target.View = inspected.View
+	if err == nil && observation.Binding.Conversation != conversation {
+		err = sessions.ErrAgentTargetStale
+	}
 	return profile, target, inspected, observation, err
 }
 
-func (service *Service) bound(ctx context.Context, target sessions.AgentTarget) (agentruntime.Profile, nativeTarget, nativeInspection, agentruntime.Observation, error) {
-	if target.Binding == nil || !target.Binding.Valid() {
-		return agentruntime.Profile{}, nativeTarget{}, nativeInspection{}, agentruntime.Observation{}, ErrInvalidInput
-	}
-	session, err := service.sessions.ResolveAgent(ctx, target)
-	if err != nil {
-		return agentruntime.Profile{}, nativeTarget{}, nativeInspection{}, agentruntime.Observation{}, err
-	}
-	profile, native, inspected, observation, err := service.inspect(ctx, session)
-	if err == nil && !target.Binding.Equal(observation.Binding) {
-		err = sessions.ErrAgentTargetStale
-	}
-	if err == nil {
-		_, err = service.sessions.ResolveAgent(ctx, target)
-	}
-	return profile, native, inspected, observation, err
-}
-
-func (service *Service) Read(parent context.Context, target sessions.AgentTarget, mode, scope string, maxBytes int) (ReadResult, error) {
+func (service *Service) TerminalRead(parent context.Context, target sessions.AgentTarget, maxBytes int) (ReadResult, error) {
 	if maxBytes == 0 {
 		maxBytes = 16384
 	}
-	if maxBytes < 1 || maxBytes > 32768 || mode != "native" && mode != "terminal" || mode == "native" && scope != "latest" && scope != "history" || mode == "terminal" && scope != "" {
+	if maxBytes < 1 || maxBytes > 32768 {
 		return ReadResult{}, ErrInvalidInput
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	if mode == "terminal" {
-		capture, err := service.sessions.CaptureAgent(ctx, target, maxBytes)
-		if err != nil {
-			return ReadResult{}, err
-		}
-		captureScope := "terminal_history"
-		if capture.Alternate {
-			captureScope = "visible"
-		}
-		return ReadResult{Text: capture.Text, Source: "terminal", Scope: captureScope, Truncated: capture.Truncated}, nil
+	capture, err := service.sessions.CaptureAgent(ctx, target, maxBytes)
+	if err != nil {
+		return ReadResult{}, err
 	}
-	profile, native, inspected, before, err := service.bound(ctx, target)
+	scope := "terminal_history"
+	if capture.Alternate {
+		scope = "visible"
+	}
+	return ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
+}
+
+func (service *Service) Read(parent context.Context, conversation agentruntime.Conversation, scope string, maxBytes int) (ReadResult, error) {
+	if maxBytes == 0 {
+		maxBytes = 16384
+	}
+	if maxBytes < 1 || maxBytes > 32768 || scope != "latest" && scope != "history" {
+		return ReadResult{}, ErrInvalidInput
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	profile, native, inspected, before, err := service.bound(ctx, conversation)
 	if err != nil {
 		return ReadResult{}, err
 	}
@@ -273,9 +260,6 @@ func (service *Service) Read(parent context.Context, target sessions.AgentTarget
 	if !before.Binding.Equal(after.Binding) {
 		return ReadResult{}, sessions.ErrAgentTargetStale
 	}
-	if _, err := service.sessions.ResolveAgent(ctx, target); err != nil {
-		return ReadResult{}, err
-	}
 	if read.Text == nil || read.Truncated == nil || read.Source != "native" || read.Scope != scope || !utf8.ValidString(*read.Text) {
 		return ReadResult{}, &UnavailableError{Dispatch: "not_sent"}
 	}
@@ -298,22 +282,15 @@ func (service *Service) Read(parent context.Context, target sessions.AgentTarget
 	return result, nil
 }
 
-func (service *Service) Results(parent context.Context, tmuxID, identityToken string, conversation agentruntime.Conversation, cursor string) (ResultsResult, error) {
-	if !conversation.Valid() || len(cursor) > 32768 || !utf8.ValidString(cursor) {
+func (service *Service) Results(parent context.Context, conversation agentruntime.Conversation, cursor string) (ResultsResult, error) {
+	if !conversation.Valid() || len(cursor) > 4096 || !utf8.ValidString(cursor) {
 		return ResultsResult{}, ErrInvalidInput
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	if err := service.sessions.ResolveSession(ctx, tmuxID, identityToken); err != nil {
+	profile, _, err := service.conversationTarget(conversation)
+	if err != nil {
 		return ResultsResult{}, err
-	}
-	profile, found := service.sessions.Profile(conversation.ProfileKey)
-	if !found || profile.Provider != conversation.Provider {
-		return ResultsResult{}, &UnavailableError{Dispatch: "not_sent"}
-	}
-	scope, err := historyScope(profile)
-	if err != nil || scope != conversation.HistoryScope {
-		return ResultsResult{}, &UnavailableError{Dispatch: "not_sent"}
 	}
 	var page struct {
 		ResultIDs  []string `json:"resultIds"`
@@ -328,7 +305,7 @@ func (service *Service) Results(parent context.Context, tmuxID, identityToken st
 	if err := service.native(ctx, profile, "results", []nativeTarget{{SessionID: conversation.ConversationID}}, input, &page); err != nil {
 		return ResultsResult{}, err
 	}
-	if page.ResultIDs == nil || len(page.ResultIDs) > 128 || len(page.NextCursor) > 32768 || page.NextCursor != "" && page.NextCursor == cursor {
+	if page.ResultIDs == nil || len(page.ResultIDs) > 128 || len(page.NextCursor) > 4096 || page.NextCursor != "" && page.NextCursor == cursor {
 		return ResultsResult{}, &UnavailableError{Dispatch: "not_sent"}
 	}
 	seen := make(map[string]struct{}, len(page.ResultIDs))
@@ -340,9 +317,6 @@ func (service *Service) Results(parent context.Context, tmuxID, identityToken st
 			return ResultsResult{}, &UnavailableError{Dispatch: "not_sent"}
 		}
 		seen[id] = struct{}{}
-	}
-	if err := service.sessions.ResolveSession(ctx, tmuxID, identityToken); err != nil {
-		return ResultsResult{}, err
 	}
 	return ResultsResult{Conversation: conversation, ResultIDs: page.ResultIDs, NextCursor: page.NextCursor}, nil
 }

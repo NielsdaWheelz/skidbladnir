@@ -18,12 +18,10 @@ type AgentTarget struct {
 	PaneID        string                    `json:"paneId"`
 	PID           processinfo.PID           `json:"pid"`
 	StartIdentity processinfo.StartIdentity `json:"startIdentity"`
-	Binding       *agentruntime.Binding     `json:"binding,omitempty"`
-	Turn          *agentruntime.Turn        `json:"turn,omitempty"`
 }
 
 func TargetOf(session Session) AgentTarget {
-	return AgentTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.Agent.PaneID, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity, Binding: session.Agent.Binding, Turn: session.Agent.Turn}
+	return AgentTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.Agent.PaneID, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity}
 }
 
 func (manager *Manager) ResolveAgent(ctx context.Context, target AgentTarget) (Session, error) {
@@ -176,4 +174,20 @@ func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToke
 	}
 	_, err = manager.mutationIdentity(ctx, tmuxID, name, identityToken)
 	return err
+}
+
+func (manager *Manager) SessionKillInput(ctx context.Context, tmuxID, identityToken string) (KillInput, error) {
+	manager.mutations.RLock()
+	defer manager.mutations.RUnlock()
+	name, exists, err := manager.sessionIdentity(ctx, tmuxID)
+	if err != nil {
+		return KillInput{}, err
+	}
+	if !exists {
+		return KillInput{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	}
+	if _, err := manager.mutationIdentity(ctx, tmuxID, name, identityToken); err != nil {
+		return KillInput{}, err
+	}
+	return KillInput{TmuxID: tmuxID, TmuxName: name, IdentityToken: identityToken}, nil
 }

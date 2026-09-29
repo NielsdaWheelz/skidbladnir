@@ -15,6 +15,7 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
+	"github.com/muesli/cancelreader"
 )
 
 type listedRow struct {
@@ -38,47 +39,48 @@ type searchMsg struct {
 	result   fleetclient.Result
 }
 type attachedMsg struct{ err error }
+type outputPresentedMsg struct{ err error }
 type model struct {
-	ctx                                   context.Context
-	client                                *fleetclient.Client
-	input, output                         *os.File
-	peers                                 []fleetclient.Peer
-	rows                                  []listedRow
-	cursor                                int
-	refreshing, busy                      bool
-	refreshAfterAction                    bool
-	width, height                         int
-	notice, page                          string
-	noticeFailure                         bool
-	text                                  []string
-	facts                                 [][2]string
-	offset                                int
-	pending                               fleetclient.Request
-	pendingLabel, pendingName             string
-	form                                  [5]string
-	field                                 int
-	machine                               string
-	groupFilter                           group.Filter
-	scopeReady                            bool
-	picker                                int
-	groupDraft                            string
-	groupChecking, groupAcknowledged      bool
-	groupFailure                          *fleetclient.Failure
-	agentsView                            bool
-	top                                   int
-	pageName, pageMachine, outputCoverage string
-	searchRevision                        int
-	searching                             bool
-	searchDirectories                     []string
-	searchCursor                          int
-	searchOmitted                         bool
-	unreadStore                           *fleetclient.UnreadStore
-	unreadSnapshot                        fleetclient.UnreadSnapshot
-	unreadFailed                          bool
-	replyScans                            map[fleetclient.UnreadKey]*replyScan
-	replyBusy                             map[string]bool
-	replyNext                             map[string]int
-	repliesUnavailable                    map[fleetclient.UnreadKey]bool
+	ctx                              context.Context
+	client                           *fleetclient.Client
+	input, output                    *os.File
+	peers                            []fleetclient.Peer
+	rows                             []listedRow
+	cursor                           int
+	refreshing, busy                 bool
+	refreshAfterAction               bool
+	width, height                    int
+	notice, page                     string
+	noticeFailure                    bool
+	facts                            [][2]string
+	offset                           int
+	pending                          fleetclient.Request
+	pendingLabel, pendingName        string
+	form                             [5]string
+	field                            int
+	machine                          string
+	groupFilter                      group.Filter
+	scopeReady                       bool
+	picker                           int
+	groupDraft                       string
+	groupChecking, groupAcknowledged bool
+	groupFailure                     *fleetclient.Failure
+	agentsView                       bool
+	top                              int
+	pageName, pageMachine            string
+	searchRevision                   int
+	searching                        bool
+	searchDirectories                []string
+	searchCursor                     int
+	searchOmitted                    bool
+	unreadStore                      *fleetclient.UnreadStore
+	unreadSnapshot                   fleetclient.UnreadSnapshot
+	outputAck                        func() error
+	unreadFailed                     bool
+	replyScans                       map[fleetclient.UnreadKey]*replyScan
+	replyBusy                        map[string]bool
+	replyNext                        map[string]int
+	repliesUnavailable               map[fleetclient.UnreadKey]bool
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -225,11 +227,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !message.result.OK {
 			failureText := message.result.Error.Code
 			if message.result.Error.Dispatch == "unknown" {
-				failureText = "could not confirm the request. check the terminal before trying again."
+				failureText = "could not confirm the request. inspect the conversation before trying again."
 			} else if message.result.Error.Code == "AgentTargetStale" || message.result.Error.Code == "SessionIdentityMismatch" {
 				failureText = "the session changed. refresh and try again."
 			} else if message.result.Error.Code == "AgentUnavailable" {
 				failureText = "this action is unavailable for this session."
+			}
+			if message.result.Error.Conversation != nil {
+				failureText += " created conversation: " + message.result.Error.Conversation.ConversationID + "; terminal creation unconfirmed"
 			}
 			m.fail(failureText)
 			failure := message.result.Error
@@ -247,11 +252,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch message.operation {
 		case "read":
 			read := message.result.Value.(fleetclient.ReadResult)
-			m.page = "output"
-			m.offset = 0
-			m.pageName, m.pageMachine = m.pendingName, m.pendingLabel
-			m.outputCoverage = fmt.Sprintf("%s · %s · truncated: %t", read.Source, read.Scope, read.Truncated)
-			m.text = strings.Split(read.Text, "\n")
+			acknowledgement := m.outputAck
+			m.outputAck = nil
+			return m, tea.Exec(&replyPresentation{ctx: m.ctx, read: read, input: m.input, output: m.output, acknowledge: acknowledgement}, func(err error) tea.Msg { return outputPresentedMsg{err: err} })
+
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
 			// Confirmed creation reveals the new session in its group.
@@ -298,7 +302,12 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.inform("opening terminal on " + value.Label + "…")
 			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
-			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output, onHello: m.acknowledgement(request)}, func(err error) tea.Msg { return attachedMsg{err: err} })
+			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
+		case "track":
+			m.page = ""
+			m.inform("tracking " + m.pending.ConversationID)
+		case "untrack":
+			m.inform("conversation not tracked")
 		case "group":
 			m.groupChecking = true
 			m.groupAcknowledged = true
@@ -317,14 +326,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if value.Reason == "stale" {
 				m.fail("terminal left open because the session changed.")
 			} else if value.Terminal == "closed" && value.Agent == "unconfirmed" {
-				m.fail("terminal closed; agent stop unconfirmed.")
+				m.fail("terminal closed; conversation stop unconfirmed.")
 			} else {
 				m.inform("current work: " + value.Agent + "; terminal: " + value.Terminal + "; pending input may remain; saved history is retained.")
 			}
 		case "stop":
 			value := message.result.Value.(fleetclient.WriteResult)
 			if value.Outcome == "unknown" {
-				m.fail("could not confirm the request. check the terminal before trying again.")
+				m.fail("could not confirm the request. inspect the conversation before trying again.")
 			} else if value.Method == "terminal" {
 				m.inform("keys sent; agent state not confirmed.")
 			} else {
@@ -334,7 +343,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			value := message.result.Value.(fleetclient.WriteResult)
 			if value.Outcome == "unknown" {
-				m.fail("could not confirm the request. check the terminal before trying again.")
+				m.fail("could not confirm the request. inspect the conversation before trying again.")
 			} else {
 				m.inform("keys sent; agent state not confirmed.")
 			}
@@ -366,6 +375,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.inform("some directories are not shown")
 		}
 		return m, nil
+	case outputPresentedMsg:
+		if message.err != nil {
+			m.fail(message.err.Error())
+		}
+		return m, nil
 	case attachedMsg:
 		if m.refreshing {
 			m.refreshAfterAction = true
@@ -378,6 +392,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
+			if m.page == "track" && m.field == 1 {
+				m.form[1] += singleLine(message.Content)
+			}
 			if m.page == "group-edit" && !m.groupChecking {
 				m.groupDraft += message.Content
 			}
@@ -398,7 +415,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
-			case "", "machine-picker", "details", "output":
+			case "", "machine-picker", "details":
 				cancel = cancel || key == "q"
 			case "confirm":
 				cancel = cancel || key == "q" || key == "n"
@@ -433,6 +450,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.pending = fleetclient.Request{}
 			}
 			return m, nil
+		}
+		if m.page == "track" {
+			return m, m.editTracking(message)
 		}
 		if m.page == "create" {
 			return m, m.editForm(message)
@@ -536,6 +556,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// The rule names this captured target until the action completes.
 		m.pendingName, m.pendingLabel = row.session.Name, row.label
 		switch key {
+		case "t":
+			profiles := m.trackingProfiles()
+			if len(profiles) == 0 {
+				m.inform("tracking unavailable")
+				return m, nil
+			}
+			m.pending = request
+			m.form = [5]string{profiles[0].Key, ""}
+			m.field, m.page = 1, "track"
+			return m, nil
+		case "u":
+			request.Operation = "untrack"
+			return m, m.execute(request)
 		case "T":
 			if row.session.Connection != nil {
 				m.inform("new terminal on " + row.label + ": use n or N")
@@ -555,25 +588,27 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			request.Operation = "enter"
-			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output, onHello: m.acknowledgement(request)}, func(err error) tea.Msg { return attachedMsg{err: err} })
+			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
 		case "x":
 			request.Operation = "close"
 			request.TerminalOnly = true
 		case "s":
-			if row.session.Agent == nil || row.session.Agent.Methods.Stop == "unavailable" {
+			if row.session.Conversation == nil || row.session.Conversation.Methods.Stop != "native" {
 				return m, nil
 			}
 			request.Operation = "stop"
 		case "c":
-			if row.session.Agent == nil || row.session.Agent.Methods.Stop == "unavailable" {
+			if row.session.Conversation == nil || row.session.Conversation.Methods.Stop != "native" {
 				return m, nil
 			}
 			request.Operation = "close"
 		case "r":
-			if row.session.Agent == nil || row.session.Agent.Methods.Read != "native" {
+			ref, readable := m.replyReference(*row)
+			if !readable {
 				return m, nil
 			}
-			request.Operation = "read"
+			request.Operation, request.Ref = "read", ref.Encode()
+			m.outputAck = m.acknowledgement(request)
 			return m, m.execute(request)
 		}
 		if request.Operation == "stop" || request.Operation == "close" {
@@ -893,7 +928,6 @@ func singleLine(text string) string {
 }
 
 type attachment struct {
-	onHello       func() error
 	ctx           context.Context
 	client        *fleetclient.Client
 	request       fleetclient.Request
@@ -901,8 +935,107 @@ type attachment struct {
 }
 
 func (a *attachment) Run() error {
-	return terminalclient.Run(a.ctx, a.client, a.request, a.input, a.output, a.onHello)
+	return terminalclient.Run(a.ctx, a.client, a.request, a.input, a.output)
 }
 func (a *attachment) SetStdin(io.Reader)  {}
 func (a *attachment) SetStdout(io.Writer) {}
 func (a *attachment) SetStderr(io.Writer) {}
+
+type replyPresentation struct {
+	ctx         context.Context
+	read        fleetclient.ReadResult
+	input       io.Reader
+	output      io.Writer
+	acknowledge func() error
+}
+
+func (presentation *replyPresentation) SetStdin(input io.Reader)   { presentation.input = input }
+func (presentation *replyPresentation) SetStdout(output io.Writer) { presentation.output = output }
+func (presentation *replyPresentation) SetStderr(io.Writer)        {}
+func (presentation *replyPresentation) Run() error {
+	safeLines := strings.Split(presentation.read.Text, "\n")
+	for index, line := range safeLines {
+		safeLines[index] = singleLine(line)
+	}
+	if _, err := fmt.Fprintf(presentation.output, "conversation %s\n%s · truncated: %t\n\n%s\n\npress enter to return\n", presentation.read.Observation.Binding.Conversation.ConversationID, presentation.read.Scope, presentation.read.Truncated, strings.Join(safeLines, "\n")); err != nil {
+		return err
+	}
+	var acknowledgementErr error
+	if presentation.acknowledge != nil {
+		acknowledgementErr = presentation.acknowledge()
+	}
+	reader, err := cancelreader.NewReader(presentation.input)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	stop := context.AfterFunc(presentation.ctx, func() { reader.Cancel() })
+	defer stop()
+	buffer := make([]byte, 1)
+	for {
+		_, err := reader.Read(buffer)
+		if err != nil {
+			return err
+		}
+		if buffer[0] == '\n' || buffer[0] == '\r' {
+			break
+		}
+	}
+	return acknowledgementErr
+}
+
+func (m *model) trackingProfiles() []fleetclient.Profile {
+	profiles := []fleetclient.Profile{}
+	for _, peer := range m.peers {
+		if peer.Label == m.pendingLabel {
+			for _, profile := range peer.Profiles {
+				if profile.Provider == "Codex" && profile.HistoryScope != "" {
+					profiles = append(profiles, profile)
+				}
+			}
+			break
+		}
+	}
+	return profiles
+}
+func (m *model) editTracking(message tea.KeyPressMsg) tea.Cmd {
+	key := message.String()
+	switch key {
+	case "esc":
+		m.page = ""
+		return nil
+	case "tab", "shift+tab":
+		m.field = 1 - m.field
+	case "left", "right":
+		if m.field == 0 {
+			profiles := m.trackingProfiles()
+			for index, profile := range profiles {
+				if profile.Key == m.form[0] {
+					delta := 1
+					if key == "left" {
+						delta = -1
+					}
+					m.form[0] = profiles[(index+delta+len(profiles))%len(profiles)].Key
+					break
+				}
+			}
+		}
+	case "enter":
+		request := m.pending
+		request.Operation, request.Profile, request.ConversationID = "track", m.form[0], m.form[1]
+		if !request.Valid() {
+			m.fail("enter an explicit conversation id")
+			return nil
+		}
+		return m.execute(request)
+	case "backspace":
+		if m.field == 1 && m.form[1] != "" {
+			m.form[1] = m.form[1][:len(m.form[1])-1]
+		}
+	default:
+		if m.field == 1 && message.Text != "" {
+			m.form[1] += singleLine(message.Text)
+		}
+	}
+	return nil
+}

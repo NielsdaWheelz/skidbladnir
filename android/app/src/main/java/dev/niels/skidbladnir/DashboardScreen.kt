@@ -201,6 +201,8 @@ internal fun DashboardMain(
                 onOpen = onOpenTerminal,
                 onClose = controller::requestClose,
                 onGroup = controller::openGroupEditor,
+                onReplies = controller::openReplies,
+                onTrack = controller::openConversationTracking,
             )
         }
 
@@ -234,6 +236,8 @@ internal fun DashboardDwarfCollection(
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
+    onReplies: (SessionTarget) -> Unit,
+    onTrack: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
     val machines = state.machines.filter { machine ->
@@ -269,6 +273,8 @@ internal fun DashboardDwarfCollection(
                 onOpen,
                 onClose,
                 onGroup,
+                onReplies,
+                onTrack,
             )
         }
     } else {
@@ -282,6 +288,8 @@ internal fun DashboardDwarfCollection(
             onOpen,
             onClose,
             onGroup,
+            onReplies,
+            onTrack,
         )
     }
 }
@@ -372,6 +380,8 @@ private fun DashboardDwarfGrid(
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
+    onReplies: (SessionTarget) -> Unit,
+    onTrack: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
     val bottomPadding = 84.dp
@@ -433,6 +443,8 @@ private fun DashboardDwarfGrid(
                                 onOpen = { onOpen(visible.target) },
                                 onClose = { onClose(visible.target) },
                                 onGroup = { onGroup(visible.target) },
+                                onReplies = { onReplies(visible.target) },
+                                onTrack = { onTrack(visible.target) },
                             )
                         }
                     }
@@ -581,8 +593,8 @@ internal fun CloseConfirmation(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val stoppingAgent = state.target.session.agent != null && !state.terminalOnly
-    val verb = if (stoppingAgent) "stop work and close terminal" else "close terminal only"
+    val stoppingAgent = state.target.session.conversation != null && !state.terminalOnly
+    val verb = if (stoppingAgent) "stop tracked conversation and close terminal" else "close terminal only"
     // No ornament near destructive surfaces (design-language.md §7): the close
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
@@ -594,7 +606,7 @@ internal fun CloseConfirmation(
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "stop current work, then close this terminal. pending input may remain. saved provider history is retained."
+                stoppingAgent -> "stop tracked conversation ${state.target.session.conversation?.binding?.conversation?.conversationId}, then close this terminal. pending input may remain. saved provider history is retained."
                 else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
             })
         },
@@ -651,7 +663,7 @@ internal fun forgeRecoveryMessage(
         it.machine.handle == recovery.draft.machineHandle
     }
     val label = target?.machine?.label?.text ?: "Machine"
-    return when (recovery) {
+    val message = when (recovery) {
         is ForgeRecovery.RefreshRequired -> {
             val repair = when (target?.access) {
                 null, MachineAccess.IdentityChanged ->
@@ -674,6 +686,7 @@ internal fun forgeRecoveryMessage(
         is ForgeRecovery.ReviewReady ->
             "$label refreshed. Review its sessions before resuming this draft."
     }
+    return message + (recovery.conversation?.let { " saved conversation: ${it.conversationId} (${it.profileKey}). terminal creation remains unconfirmed. inspect it before creating again." } ?: "")
 }
 
 internal fun dashboardSummary(sessionCount: Int, machineCount: Int): String =

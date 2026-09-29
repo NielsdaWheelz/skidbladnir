@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+	"unicode"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessionui"
@@ -29,20 +31,24 @@ skid list [--machine HOST] [--group LABEL | --unassigned]
 skid info NAME                            metadata and exact reference
 skid enter NAME                           enter terminal; ctrl-] d detaches
 skid read NAME [--history | --terminal] [--max-bytes N]
+skid replies NAME                         view replies; acknowledge known replies
 skid send NAME [--input peer|user] [--queue] TEXT|--stdin
 skid text NAME TEXT|--stdin                explicit terminal paste and submit
 skid keys NAME KEY...                      explicit logical terminal keys
 skid wait NAME [--state idle|blocked|done|failed|stopped] [--timeout DURATION]
-skid stop NAME                             stop current work; retain terminal
+skid stop NAME [--terminal]                stop captured conversation; retain terminal
 skid close NAME [--terminal-only]          halt plus close; separate outcomes
 skid start NAME --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--group LABEL]
 skid shell NAME                            new terminal here
 skid group NAME (--set LABEL | --clear)
 
 existing targets: NAME [--machine HOST] or --ref VALUE
+native targets: --conversation ID --profile PROFILE --machine HOST
+skid track NAME --conversation ID --profile PROFILE --machine HOST
+skid untrack NAME --machine HOST
 --json emits one structured envelope; -- separates literal operands
 read defaults to native latest assistant output; history remains bounded
-send defaults to peer; queue requires explicit --input user
+send defaults to peer; --queue and native claude input are unavailable
 wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
 start makes no input-readiness promise; use explicit text/keys for terminal input
 stop and close may leave pending provider input; saved history is retained
@@ -53,12 +59,13 @@ browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through agents/groups
   a selects agents; m chooses machine; n opens terminal; N opens options
   enter attaches; space shows details; T opens a terminal here; e edits group
-  r reads; s stops current work; c stops work and closes; x closes terminal only
+  r views replies; t tracks an id; u clears tracking
+  s stops tracked conversation; c stops it and closes; x closes terminal only
   ctrl-r refreshes; q/escape quits
 
 workflow
   skid list --json
-  skid start reviewer --machine arch --profile claude-work --cwd '~/code/project' --json
+  skid start reviewer --machine arch --profile work --cwd '~/code/project' --json
   skid info reviewer --machine arch --json
   skid send reviewer --machine arch --stdin --json < message.txt
   skid read reviewer --machine arch --json
@@ -77,6 +84,7 @@ type command struct {
 	request           fleetclient.Request
 	config            string
 	json, stdin, help bool
+	replies           bool
 }
 
 func parse(args []string) (command, error) {
@@ -118,7 +126,7 @@ func parse(args []string) (command, error) {
 				case "--terminal-only":
 					result.request.TerminalOnly = true
 				}
-			case "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
+			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -130,6 +138,8 @@ func parse(args []string) (command, error) {
 					return result, errors.New("empty option value")
 				}
 				switch name {
+				case "--conversation":
+					result.request.ConversationID = argument
 				case "--input":
 					result.request.Input = argument
 				case "--state":
@@ -180,6 +190,10 @@ func parse(args []string) (command, error) {
 		return result, nil
 	}
 	result.request.Operation = operands[0]
+	if result.request.Operation == "replies" {
+		result.replies = true
+		result.request.Operation = "read"
+	}
 	operands = operands[1:]
 	switch result.request.Operation {
 	case "list":
@@ -191,8 +205,8 @@ func parse(args []string) (command, error) {
 			return result, errors.New("start requires name")
 		}
 		result.request.Name = operands[0]
-	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell":
-		if result.request.Ref == "" {
+	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell", "track", "untrack":
+		if result.request.Ref == "" && (result.request.ConversationID == "" || result.request.Operation == "track") {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
 			}
@@ -229,9 +243,6 @@ func parse(args []string) (command, error) {
 		if result.request.Delivery == "" {
 			result.request.Delivery = "direct"
 		}
-		if seen["--queue"] && (!seen["--input"] || result.request.Input != "user") {
-			return result, errors.New("queue requires explicit user input")
-		}
 	}
 	if operation == "read" && result.request.Mode == "" {
 		result.request.Mode = "native"
@@ -241,6 +252,9 @@ func parse(args []string) (command, error) {
 	}
 	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
+	}
+	if result.replies && result.request.Mode == "terminal" {
+		return result, errors.New("replies requires native output")
 	}
 	if operation == "start" {
 		result.request.Kind = fleetclient.LaunchAgent
@@ -373,30 +387,85 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		row := observed.Value.(fleetclient.ObservedSession).Session
 		request := fleetclient.Request{Operation: "enter", Ref: row.Ref}
-		var onHello func() error
-		store, storeErr := fleetclient.DefaultUnreadStore()
-		if storeErr == nil {
-			snapshot, err := store.Read()
-			if err != nil {
-				fmt.Fprintln(stderr, "unread unavailable")
-			} else {
-				ref, _ := fleetclient.DecodeReference(row.Ref)
-				if conversation, found := snapshot.Conversation(ref, row.ActivePaneID); found {
-					key := fleetclient.ReplyKey(ref.Machine, conversation)
-					if record, found := snapshot.Record(key); found && len(record.UnreadIDs) > 0 {
-						ids := append([]string(nil), record.UnreadIDs...)
-						onHello = func() error { _, err := store.Acknowledge(key, ids); return err }
-					}
-				}
-			}
-		} else {
-			fmt.Fprintln(stderr, "unread unavailable")
-		}
-		if err := terminalclient.Run(ctx, client, request, stdin.(*os.File), stdout.(*os.File), onHello); err != nil {
+
+		if err := terminalclient.Run(ctx, client, request, stdin.(*os.File), stdout.(*os.File)); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
 		return 0
+	}
+	if parsed.replies {
+		capture := parsed.request
+		paneID := ""
+		if capture.Ref == "" {
+			resolve := capture
+			resolve.Operation = "inspect"
+			if capture.ConversationID == "" {
+				resolve.Operation = "info"
+			}
+			resolve.Mode, resolve.Scope, resolve.MaxBytes = "", "", 0
+			observed := client.Execute(ctx, resolve)
+			if !observed.OK {
+				return render(parsed, observed, stdout, stderr)
+			}
+			if resolve.Operation == "info" {
+				session := observed.Value.(fleetclient.ObservedSession).Session
+				paneID = session.ActivePaneID
+				capture = fleetclient.Request{Operation: "read", Ref: session.Ref, Scope: parsed.request.Scope, MaxBytes: parsed.request.MaxBytes}
+			} else {
+				runtime := observed.Value.(agentruntime.ConversationRuntime)
+				machine, found := client.MachineByLabel(parsed.request.Machine)
+				if !found {
+					return render(parsed, fleetclient.Failed("machine_unknown", "not_sent"), stdout, stderr)
+				}
+				capture = fleetclient.Request{Operation: "read", Ref: (fleetclient.Reference{Machine: machine.Handle, Conversation: &runtime}).Encode(), Scope: parsed.request.Scope, MaxBytes: parsed.request.MaxBytes}
+			}
+		}
+		ref, _ := fleetclient.DecodeReference(capture.Ref)
+		var key fleetclient.UnreadKey
+		var ids []string
+		store, storeErr := fleetclient.DefaultUnreadStore()
+		if storeErr == nil {
+			snapshot, err := store.Read()
+			if err != nil {
+				storeErr = err
+			} else {
+				if ref.Conversation == nil {
+					if paneID == "" {
+						info := client.Execute(ctx, fleetclient.Request{Operation: "info", Ref: ref.Encode()})
+						if !info.OK {
+							return render(parsed, info, stdout, stderr)
+						}
+						paneID = info.Value.(fleetclient.ObservedSession).Session.ActivePaneID
+					}
+					if conversation, found := snapshot.Conversation(ref, paneID); found {
+						ref.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}, Status: agentruntime.Status{State: "unknown", Source: "unavailable"}, Methods: agentruntime.Methods{Read: "native", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}}
+						capture.Ref = ref.Encode()
+					}
+				}
+				if ref.Conversation != nil {
+					key = fleetclient.ReplyKey(ref.Machine, ref.Conversation.Binding.Conversation)
+				}
+				if record, found := snapshot.Record(key); found {
+					ids = append([]string(nil), record.UnreadIDs...)
+				}
+			}
+		}
+		result := client.Execute(ctx, capture)
+		code := render(parsed, result, stdout, stderr)
+		if code == 0 && result.OK && result.Value.(fleetclient.ReadResult).Source == "native" {
+			if storeErr != nil {
+				fmt.Fprintln(stderr, "unread unavailable")
+				return 1
+			}
+			if len(ids) > 0 {
+				if _, err := store.Acknowledge(key, ids); err != nil {
+					fmt.Fprintln(stderr, "unread unavailable")
+					return 1
+				}
+			}
+		}
+		return code
 	}
 	return render(parsed, client.Execute(ctx, parsed.request), stdout, stderr)
 }
@@ -415,13 +484,16 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	if !result.OK {
 		message := result.Error.Code + " (" + result.Error.Dispatch + ")"
 		if result.Error.Dispatch == "unknown" {
-			message = "could not confirm the request. check the terminal before trying again."
+			message = "could not confirm the request. inspect the conversation before trying again."
 		} else if result.Error.Code == "AgentTargetStale" || result.Error.Code == "SessionIdentityMismatch" {
 			message = "the session changed. refresh and try again."
 		} else if result.Error.Code == "AgentUnavailable" {
 			message = "this action is unavailable for this session."
 		}
 		fmt.Fprintln(stderr, message)
+		if result.Error.Conversation != nil {
+			fmt.Fprintln(stderr, "created conversation: "+result.Error.Conversation.ConversationID+"; terminal creation unconfirmed")
+		}
 		switch result.Error.Code {
 		case "name_ambiguous":
 			for _, candidate := range result.Candidates {
@@ -467,8 +539,12 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 						} else {
 							provider += "/profile unknown"
 						}
-						state = fleetclient.StatusText(current.Agent.Status)
+						state = fleetclient.SessionStatus(row)
 					}
+				}
+				if row.Conversation != nil {
+					id := row.Conversation.Binding.Conversation.ConversationID
+					state = "tracking " + fleetclient.ShortConversationID(id) + " · " + fleetclient.SessionStatus(row)
 				}
 				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", machine, row.Name, provider, state, current.CWD)
 			}
@@ -512,11 +588,17 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 					if profile == "" {
 						profile = "profile unknown"
 					}
-					fmt.Fprintf(stdout, "provider: %s\nprofile: %s\nstate: %s\n", current.Agent.Provider, profile, fleetclient.StatusText(current.Agent.Status))
-					if current.Kind == "local" && row.Agent != nil {
-						fmt.Fprintf(stdout, "read: %s; peer send: %s; stop: %s\n", row.Agent.Methods.Read, row.Agent.Methods.SendPeer, row.Agent.Methods.Stop)
+					fmt.Fprintf(stdout, "provider: %s\nprofile: %s\n", current.Agent.Provider, profile)
+					if row.Conversation == nil {
+						fmt.Fprintln(stdout, "state: "+fleetclient.SessionStatus(row))
+					}
+					if current.Kind == "local" && row.Conversation != nil {
+						fmt.Fprintf(stdout, "read: %s; peer send: %s; stop: %s\n", row.Conversation.Methods.Read, row.Conversation.Methods.SendPeer, row.Conversation.Methods.Stop)
 					}
 				}
+			}
+			if row.Conversation != nil {
+				fmt.Fprintf(stdout, "tracking: %s\nstate: %s\n", row.Conversation.Binding.Conversation.ConversationID, fleetclient.StatusText(row.Conversation.Status))
 			}
 			if row.LaunchProfile != "" {
 				fmt.Fprintf(stdout, "started with: %s\n", row.LaunchProfile)
@@ -528,7 +610,21 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	case "read":
 		value := result.Value.(fleetclient.ReadResult)
 		fmt.Fprintf(stderr, "source: %s; scope: %s; truncated: %t\n", value.Source, value.Scope, value.Truncated)
-		if _, err := io.WriteString(stdout, value.Text); err != nil {
+		if command.replies && value.Observation != nil {
+			if _, err := fmt.Fprintln(stdout, "conversation "+value.Observation.Binding.Conversation.ConversationID); err != nil {
+				return 1
+			}
+		}
+		text := value.Text
+		if command.replies {
+			text = strings.Map(func(r rune) rune {
+				if r != '\n' && r != '\t' && unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
+					return ' '
+				}
+				return r
+			}, text)
+		}
+		if _, err := io.WriteString(stdout, text); err != nil {
 			return 1
 		}
 	case "close":
@@ -541,9 +637,13 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if value.Reason == "stale" {
 			text = "terminal left open because the session changed."
 		} else if value.Terminal == "closed" && value.Agent == "unconfirmed" {
-			text = "terminal closed; agent stop unconfirmed."
+			text = "terminal closed; conversation stop unconfirmed."
 		}
 		fmt.Fprintln(stdout, text)
+	case "track":
+		fmt.Fprintln(stdout, "tracking "+command.request.ConversationID)
+	case "untrack":
+		fmt.Fprintln(stdout, "conversation not tracked")
 	case "group":
 		text := "group assigned\n"
 		if command.request.Group.IsUnassigned() {
@@ -565,15 +665,12 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 	case "send":
 		value := result.Value.(fleetclient.SendResult)
 		text := "message accepted."
-		if value.Delivery == "queue" {
-			text = "queued input accepted; it may already be running."
-		}
 		fmt.Fprintf(stdout, "%s %s: %s\n", value.Input, value.Delivery, text)
 	default:
 		value := result.Value.(fleetclient.WriteResult)
 		text := "current work: " + value.Outcome + "; pending input may remain."
 		if value.Outcome == "unknown" {
-			text = "could not confirm the request. check the terminal before trying again."
+			text = "could not confirm the request. inspect the conversation before trying again."
 		} else if value.Method == "terminal" {
 			text = "keys sent; agent state not confirmed."
 			if command.request.Operation == "text" {

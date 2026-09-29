@@ -29,3 +29,9 @@ real native tool work; a wrong kernel lifetime was refused before dispatch, exac
 stop confirmed `stopped` with pid absent, the control retained its exact lifetime,
 and saved history survived both stops. this qualifies the source path, not the
 installed three-host fleet; the deployment criterion above remains open.
+
+stock source qualification, 2026-09-29: the current pinned unpatched helper with
+Claude 2.1.284 and sdk 0.2.130 passed native background identities, exact stop and
+saved-history/results survival in a disposable home. wrong kernel lifetime was
+refused and the control worker retained its pid. [current qualification](../native-agent-qualification.md)
+owns the final package evidence; installed fleet remains NOT_RUN.

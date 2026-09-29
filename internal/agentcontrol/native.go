@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -18,11 +20,8 @@ import (
 )
 
 type nativeTarget struct {
-	SessionID     string             `json:"sessionId,omitempty"`
-	PID           int                `json:"pid,omitempty"`
-	StartIdentity string             `json:"startIdentity,omitempty"`
-	View          *agentruntime.View `json:"view,omitempty"`
-	TurnID        string             `json:"turnId,omitempty"`
+	SessionID string `json:"sessionId,omitempty"`
+	TurnID    string `json:"turnId,omitempty"`
 }
 
 type nativeRequest struct {
@@ -30,14 +29,25 @@ type nativeRequest struct {
 	Provider   agentruntime.Provider   `json:"provider"`
 	ProfileKey agentruntime.ProfileKey `json:"profileKey"`
 	Endpoint   string                  `json:"endpoint,omitempty"`
-	Targets    []nativeTarget          `json:"targets"`
+	Targets    []nativeTarget          `json:"targets,omitempty"`
 	Input      any                     `json:"input,omitempty"`
 }
 
 type nativeFailure struct {
-	Code     string `json:"code"`
-	Dispatch string `json:"dispatch"`
+	Code      string  `json:"code"`
+	Dispatch  string  `json:"dispatch"`
+	SessionID *string `json:"sessionId,omitempty"`
 }
+
+type nativeCreateError struct {
+	sessionID string
+	cause     error
+}
+
+func (err *nativeCreateError) Error() string { return err.cause.Error() }
+func (err *nativeCreateError) Unwrap() error { return err.cause }
+
+var nativeCodexIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type nativeEnvelope struct {
 	OK     bool            `json:"ok"`
@@ -46,12 +56,10 @@ type nativeEnvelope struct {
 }
 
 type nativeInspection struct {
-	Status            agentruntime.Status  `json:"status"`
-	Methods           agentruntime.Methods `json:"methods"`
-	SessionID         string               `json:"sessionId,omitempty"`
-	View              *agentruntime.View   `json:"view,omitempty"`
-	Turn              *agentruntime.Turn   `json:"turn,omitempty"`
-	TerminalOwnsAgent bool                 `json:"terminalOwnsAgent,omitempty"`
+	Status    agentruntime.Status  `json:"status"`
+	Methods   agentruntime.Methods `json:"methods"`
+	SessionID string               `json:"sessionId,omitempty"`
+	Turn      *agentruntime.Turn   `json:"turn,omitempty"`
 }
 
 // Keep the buffer named so io.Copy cannot bypass Write through bytes.Buffer.ReadFrom.
@@ -65,15 +73,15 @@ func (buffer *outputBuffer) Write(contents []byte) (int, error) {
 }
 
 func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) error {
-	mutation := operation == "send" || operation == "stop" || operation == "interrupt"
+	mutation := operation == "create" || operation == "send" || operation == "stop" || operation == "interrupt"
 	dispatch := "not_sent"
 	if mutation {
 		dispatch = "unknown"
 	}
 	unavailable := &UnavailableError{Dispatch: dispatch}
 	endpoint := ""
-	if profile.Endpoint != "" {
-		endpoint = "unix://" + profile.Endpoint
+	if profile.Provider == agentruntime.ProviderCodex {
+		endpoint = "unix://" + agentruntime.CodexEndpoint(profile)
 	}
 	encoded, err := json.Marshal(nativeRequest{Operation: operation, Provider: profile.Provider, ProfileKey: profile.Key, Endpoint: endpoint, Targets: targets, Input: input})
 	if err != nil || len(encoded) > 65536 {
@@ -89,8 +97,11 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	command.Env = service.nativeEnvironment(profile)
 	runErr := command.Run()
 	if runErr != nil {
+		if command.Process == nil {
+			return &UnavailableError{Dispatch: "not_sent"}
+		}
 		var exited *exec.ExitError
-		if ctx.Err() != nil || !errors.As(runErr, &exited) {
+		if !errors.As(runErr, &exited) && !(ctx.Err() != nil && errors.Is(runErr, ctx.Err())) {
 			return unavailable
 		}
 	}
@@ -110,10 +121,24 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	if strictjson.Decode(output.data.Bytes(), &envelope) != nil {
 		return unavailable
 	}
+	if envelope.Error != nil && envelope.Error.SessionID != nil {
+		if operation != "create" || profile.Provider != agentruntime.ProviderCodex ||
+			envelope.OK || len(envelope.Result) != 0 || envelope.Error.Dispatch != "unknown" ||
+			!nativeCodexIDPattern.MatchString(*envelope.Error.SessionID) ||
+			!slices.Contains([]string{"stale", "unavailable", "rejected", "unknown"}, envelope.Error.Code) {
+			return unavailable
+		}
+		sessionID := *envelope.Error.SessionID
+		envelope.Error.SessionID = nil
+		return &nativeCreateError{sessionID: sessionID, cause: decodeNativeEnvelope(envelope, result, unavailable)}
+	}
 	return decodeNativeEnvelope(envelope, result, unavailable)
 }
 
 func decodeNativeEnvelope(envelope nativeEnvelope, result any, unavailable *UnavailableError) error {
+	if envelope.Error != nil && envelope.Error.SessionID != nil {
+		return unavailable
+	}
 	if envelope.OK && envelope.Error == nil && len(envelope.Result) > 0 && string(envelope.Result) != "null" {
 		if strictjson.Decode(envelope.Result, result) == nil {
 			return nil

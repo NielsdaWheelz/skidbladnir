@@ -128,27 +128,37 @@ internal fun TerminalScreen(
                 onClick = controller::openTextSize,
                 modifier = Modifier.width(48.dp),
             )
-            if (state.target.session.agent != null) {
+            if (state.target.session.conversation != null || state.target.session.agent != null ||
+                state.machine.inventory.lastSnapshot()?.inventory?.profiles?.any { it.provider == AgentProvider.Codex } == true) {
                 var expanded by remember(state.attempt) { mutableStateOf(false) }
                 Box {
                     HeaderChip(
-                        label = "⋯", spokenName = "Agent actions",
-                        enabled = !state.agentControlPending && terminalActionAdmissible(state.machine.canMutate, state.connection),
+                        label = "⋯", spokenName = "conversation and terminal actions",
+                        enabled = !state.agentControlPending && state.machine.canMutate,
                         onClick = { expanded = true }, modifier = Modifier.width(48.dp),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(text = { Text("stop current work") }, onClick = {
+                        DropdownMenuItem(text = { Text("view replies") }, onClick = {
+                            expanded = false
+                            controller.openReplies(state.target)
+                        }, enabled = state.target.session.conversation != null || state.machine.replies[state.target.session.identityToken]?.previousAgent == true)
+                        DropdownMenuItem(text = { Text("track conversation") }, onClick = {
+                            expanded = false
+                            controller.openConversationTracking(state.target)
+                        }, enabled = state.machine.inventory.lastSnapshot()?.inventory?.profiles?.any { it.provider == AgentProvider.Codex } == true)
+                        DropdownMenuItem(text = { Text("stop tracked conversation") }, onClick = {
                             expanded = false
                             controller.stopAgent()
-                        }, enabled = state.target.session.agent.methods.stop != AgentMethod.Unavailable)
-                        DropdownMenuItem(text = { Text("stop work and close terminal") }, onClick = {
+                        }, enabled = state.target.session.conversation?.methods?.stop == AgentMethod.Native)
+                        DropdownMenuItem(text = { Text("stop tracked conversation and close terminal") }, onClick = {
                             expanded = false
                             controller.requestClose(state.target)
-                        }, enabled = state.target.session.agent.methods.stop != AgentMethod.Unavailable)
+                        }, enabled = state.target.session.conversation?.methods?.stop == AgentMethod.Native &&
+                            terminalActionAdmissible(state.machine.canMutate, state.connection))
                         DropdownMenuItem(text = { Text("close terminal only") }, onClick = {
                             expanded = false
                             controller.requestTerminalClose(state.target)
-                        })
+                        }, enabled = terminalActionAdmissible(state.machine.canMutate, state.connection))
                     }
                 }
             } else {
@@ -159,9 +169,11 @@ internal fun TerminalScreen(
                 )
             }
         }
-        if (execution is ExecutionContext.Local) {
+        if (execution is ExecutionContext.Local || state.target.session.conversation != null) {
             val replies = state.machine.replies[state.target.session.identityToken] ?: ReplyPresentation()
-            val content = sessionStatusContent(execution.agent?.status, state.machine.canMutate, replies)
+            val content = sessionStatusContent(state.target.session.conversation?.status, state.machine.canMutate, replies,
+                conversation = state.target.session.conversation?.binding?.conversation,
+                untrackedCodex = state.target.session.agent?.provider == AgentProvider.Codex)
             Text(content.label.replace("\n", " · "), color = Muted, style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                     .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
