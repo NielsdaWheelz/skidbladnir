@@ -6,6 +6,10 @@ applies only to its named boundary; compilation is not behavioral acceptance.
 
 ## accepted isolated boundaries
 
+- shell startup: the source template's missing `BASHPID` blocked macos bash 3.2.
+  the corrected top-level pid/subshell guard matches the installer. actual bash
+  3.2, bash 5.3 scalar/array prompts and zsh 5.9 passed exactly-once startup,
+  subshell refusal, repeated sourcing and preservation of existing prompt hooks.
 - ordinary upstream npm codex 0.159.1: Darwin arm64 and Linux amd64 fresh/repeat
   installation and native executable discovery passed. Darwin 0.157.1→0.159.1
   upgrade passed. repeat apply preserved the executable timestamp; installation
