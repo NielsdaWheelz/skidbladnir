@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"syscall"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -57,4 +60,65 @@ func isC0OrC1(value rune) bool {
 
 func newSessionError(code ErrorCode, message string) *Error {
 	return &Error{Code: code, Message: message}
+}
+
+// PreflightCreate rejects known request failures before a native conversation is created.
+func (manager *Manager) PreflightCreate(ctx context.Context, input CreateInput) (CreateInput, error) {
+	manager.mutations.RLock()
+	defer manager.mutations.RUnlock()
+	cwd, profile, err := manager.validateCreate(input)
+	if err != nil {
+		return CreateInput{}, err
+	}
+	scan, err := manager.scanSessions(ctx)
+	if err != nil {
+		return CreateInput{}, err
+	}
+	if input.OptionalTmuxName == "" {
+		prefix := string(profile.Key)
+		if input.Kind == LaunchTerminal {
+			prefix = "terminal"
+		}
+		input.OptionalTmuxName = generatedTmuxName(scan.names, prefix)
+	} else if _, exists := scan.names[input.OptionalTmuxName]; exists {
+		return CreateInput{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
+	}
+	input.CWD = cwd.String()
+	return input, nil
+}
+
+func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirectory, agentruntime.Profile, error) {
+	candidate, err := manager.workdir.ParseCandidate(input.CWD)
+	if err != nil {
+		return workdir.WorkingDirectory{}, agentruntime.Profile{}, mapWorkingDirectoryError(err)
+	}
+	cwd, err := manager.workdir.ValidateStart(candidate)
+	if err != nil {
+		return workdir.WorkingDirectory{}, agentruntime.Profile{}, mapWorkingDirectoryError(err)
+	}
+	var profile agentruntime.Profile
+	switch input.Kind {
+	case LaunchAgent:
+		var found bool
+		profile, found = manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
+		if !found {
+			return workdir.WorkingDirectory{}, agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
+		}
+	case LaunchTerminal:
+		if input.Profile != "" {
+			panic("terminal launch carries a profile") // justify-defect: creation ingress forbids a terminal profile.
+		}
+	default:
+		panic("unknown launch kind") // justify-defect: creation ingress admits the closed launch union.
+	}
+	if input.OptionalTmuxName != "" {
+		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
+			return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
+		}
+	}
+	if err := validateObjective(input.Objective); err != nil {
+		return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
+	}
+
+	return cwd, profile, nil
 }

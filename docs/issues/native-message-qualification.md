@@ -20,13 +20,16 @@ the original must be absent there; it is present. a prior UI-key fixture timed
 out and supplies no pass; separate verified native approval and sdk reads prove
 the recipient failure.
 
-codex guarded peer/user input, persistent queue receipts, exact interruption,
-gateway composition and reciprocal machine routing passed actual boundaries.
+the former fork/helper checks passed codex guarded peer/user input, persistent
+queue receipts, exact interruption, gateway composition and reciprocal routing.
+that evidence does not qualify the stock cutover; its experimental queue is
+unavailable under [the current contract](../native-agent-observation.md).
 successful claude socket writes proved only `written`, never admission.
 
-current qualification: actual helper/gateway/cli rejects peer/user/queue sends
-with `unavailable/not_sent` and preserves native result identities. immutable
-patched helper installation passes with the frozen dependencies.
+current contract: helper/gateway/cli rejects claude peer/user/queue sends with
+`unavailable/not_sent` and preserves native result identities.
+[current qualification](../native-agent-qualification.md) owns source and
+installation evidence; the helper comes directly from merged source, without patches.
 
 resolved when: native recipient revalidation spans holding and approval, the
 same switch/admission reproduction passes, and an explicit capability scope

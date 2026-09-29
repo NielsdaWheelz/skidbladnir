@@ -61,17 +61,21 @@ internal fun SessionCard(
     onOpen: () -> Unit,
     onClose: () -> Unit,
     onGroup: () -> Unit,
+    onReplies: () -> Unit,
+    onTrack: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
     val context = visibleSession.context
     val replies = machine.replies[session.identityToken] ?: ReplyPresentation()
-    val status = when (context) {
-        is ExecutionContext.Local -> sessionStatusContent(context.agent?.status, fresh = machine.canMutate, replies = replies)
+    val conversation = session.conversation
+    val status = if (conversation != null) sessionStatusContent(conversation.status, machine.canMutate, replies, conversation.binding.conversation) else when (context) {
+        is ExecutionContext.Local -> sessionStatusContent(null, fresh = machine.canMutate, replies = replies,
+            untrackedCodex = session.agent?.provider == AgentProvider.Codex)
         is ExecutionContext.Remote -> SessionStatusContent("REMOTE", "remote status unknown")
         ExecutionContext.RemoteUnknown -> SessionStatusContent("REMOTE UNKNOWN", "remote context unknown")
     }
-    val tone = sessionStatusColor((context as? ExecutionContext.Local)?.agent?.status?.state)
+    val tone = sessionStatusColor(conversation?.status?.state)
     val profile = when (context) {
         is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
         is ExecutionContext.Remote -> remoteAgentLabel(context, machines)
@@ -104,9 +108,9 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                working = (context as? ExecutionContext.Local)?.agent?.status?.state == AgentState.Working,
+                working = conversation?.status?.state == AgentState.Working,
                 activityTone = tone,
-                animateActivity = machine.canMutate && motionEnabled && (context as? ExecutionContext.Local)?.agent?.status?.source == AgentMethod.Native,
+                animateActivity = machine.canMutate && motionEnabled && conversation?.status?.source == AgentMethod.Native,
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -185,6 +189,12 @@ internal fun SessionCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (conversation != null || replies.previousAgent) {
+                        GroupTextAction("view replies", machine.canMutate, onReplies)
+                    }
+                    if (snapshot.inventory.profiles.any { it.provider == AgentProvider.Codex }) {
+                        GroupTextAction("track conversation", machine.canMutate, onTrack)
+                    }
                     GroupTextAction(
                         label = "change group", enabled = machine.canMutate, onClick = onGroup,
                         description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
@@ -193,7 +203,7 @@ internal fun SessionCard(
                     CloseButton(
                         machineLabel = visibleSession.machine.label,
                         target = visibleSession.target,
-                        enabled = machine.canMutate && session.agent?.methods?.stop != AgentMethod.Unavailable,
+                        enabled = machine.canMutate && session.conversation?.methods?.stop != AgentMethod.Unavailable,
                         onClick = onClose,
                     )
                 }

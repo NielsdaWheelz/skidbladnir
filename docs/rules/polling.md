@@ -8,7 +8,7 @@ recurring inventory, status, and pressure observations.
 
 - use the existing polling owners and accepted cadence. the
   [architecture](../architecture.md#4-product-behavior),
-  [agent-control status contract](../agent-control.md#identity-state-and-dispatch),
+  [agent-control status contract](../agent-control.md#targets-and-ownership),
   and [desktop browser](../desktop-browser.md#2-composition-and-data-contract)
   own refresh, stale-state, and manual-verification behavior.
 - polling samples changing external state. it does not create an atomic fleet

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
@@ -178,6 +179,10 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.createShell(writer, request)
 	case request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/group"):
 		gateway.setSessionGroup(writer, request)
+	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/conversations/"):
+		gateway.conversationOperation(writer, request)
+	case (request.Method == http.MethodPut || request.Method == http.MethodDelete) && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/conversation"):
+		gateway.setConversation(writer, request)
 	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
 		gateway.agentOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
@@ -480,14 +485,45 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		writeError(writer, errorGroupInvalid)
 		return
 	}
-	created, err := gateway.sessions.Create(request.Context(), sessions.CreateInput{
+	createInput := sessions.CreateInput{
 		Kind:             input.Kind,
 		CWD:              input.CWD.value,
 		Profile:          input.Profile.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
 		Group:            label,
-	})
+	}
+	createInput, err = gateway.sessions.PreflightCreate(request.Context(), createInput)
+	if err != nil {
+		gateway.completeCreation(writer, sessions.ObservedSession{}, err, startedAt)
+		return
+	}
+	if createInput.Kind == sessions.LaunchAgent {
+		profile, found := gateway.sessions.Profile(agentruntime.ProfileKey(createInput.Profile))
+		if found && profile.Provider == agentruntime.ProviderCodex {
+			conversation, err := gateway.agents.CreateConversation(request.Context(), profile.Key, createInput.OptionalTmuxName, createInput.CWD)
+			if err != nil {
+				failure := agentFailure(err)
+				if conversation.Valid() {
+					failure.Conversation = &conversation
+				}
+				writeError(writer, failure)
+				return
+			}
+			createInput.Conversation = &conversation
+		}
+	}
+	created, err := gateway.sessions.Create(request.Context(), createInput)
+	if err != nil && createInput.Conversation != nil {
+		failure := sessionFailure(err)
+		failure.Dispatch = "not_sent"
+		if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
+			failure.Dispatch = "unknown"
+		}
+		failure.Conversation = createInput.Conversation
+		writeError(writer, failure)
+		return
+	}
 	gateway.completeCreation(writer, created, err, startedAt)
 }
 
@@ -526,6 +562,10 @@ func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created ses
 	if err != nil {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
+		if created.Session.Conversation != nil {
+			conversation := created.Session.Conversation.Binding.Conversation
+			failure.Conversation = &conversation
+		}
 		writeError(writer, failure)
 		return
 	}
@@ -717,30 +757,33 @@ func decodeJSON[T any](writer http.ResponseWriter, request *http.Request) (T, *a
 }
 
 func writeSessionError(writer http.ResponseWriter, err error) {
+	writeError(writer, sessionFailure(err))
+}
+
+func sessionFailure(err error) apiError {
 	var sessionError *sessions.Error
 	if !errors.As(err, &sessionError) {
-		writeError(writer, errorInternal)
-		return
+		return errorInternal
 	}
 	switch sessionError.Code {
 	case sessions.ErrorWorkingDirectoryInvalid:
-		writeError(writer, errorWorkingDirectoryInvalid)
+		return errorWorkingDirectoryInvalid
 	case sessions.ErrorWorkingDirectoryUnavailable:
-		writeError(writer, errorWorkingDirectoryUnavailable)
+		return errorWorkingDirectoryUnavailable
 	case sessions.ErrorProfileUnknown:
-		writeError(writer, errorProfileUnknown)
+		return errorProfileUnknown
 	case sessions.ErrorSessionNameInvalid:
-		writeError(writer, errorSessionNameInvalid)
+		return errorSessionNameInvalid
 	case sessions.ErrorSessionNameConflict:
-		writeError(writer, errorSessionNameConflict)
+		return errorSessionNameConflict
 	case sessions.ErrorObjectiveInvalid:
-		writeError(writer, errorObjectiveInvalid)
+		return errorObjectiveInvalid
 	case sessions.ErrorSessionNotFound:
-		writeError(writer, errorSessionNotFound)
+		return errorSessionNotFound
 	case sessions.ErrorSessionIdentityMismatch:
-		writeError(writer, errorSessionIdentityMismatch)
+		return errorSessionIdentityMismatch
 	default:
-		writeError(writer, errorInternal)
+		return errorInternal
 	}
 }
 
@@ -819,7 +862,7 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteDirectorySearches
 	case strings.HasPrefix(path, "/v1/terminal-contexts/"):
 		return logging.RouteTerminalContexts
-	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
+	case strings.HasPrefix(path, "/v1/conversations/") || strings.HasSuffix(path, "/conversation") || strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
 		return logging.RouteAgentControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):
 		return logging.RouteSessionShell

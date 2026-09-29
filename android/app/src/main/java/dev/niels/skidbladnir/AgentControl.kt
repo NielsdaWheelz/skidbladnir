@@ -16,7 +16,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
     @SerialName("unknown") Unknown,
 }
 @Serializable internal enum class AgentMethod {
-    @SerialName("native") Native, @SerialName("terminal") Terminal,
+    @SerialName("native") Native,
     @SerialName("unavailable") Unavailable,
 }
 @Serializable internal data class AgentStatus(val state: AgentState, val source: AgentMethod) {
@@ -26,7 +26,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
     val read: AgentMethod, val sendPeer: AgentMethod, val sendUser: AgentMethod,
     val queueUser: AgentMethod, val stop: AgentMethod,
 ) {
-    init { require(listOf(read, sendPeer, sendUser, queueUser).none { it == AgentMethod.Terminal }) }
+    init { require(queueUser == AgentMethod.Unavailable) }
 }
 
 @Serializable internal data class Conversation(
@@ -39,11 +39,28 @@ import kotlinx.serialization.json.decodeFromJsonElement
         require(validNativeId(conversationId))
     }
 }
-@Serializable internal data class AgentView(val viewId: String, val revision: ULong) {
-    init { require(viewId.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) }
-}
-@Serializable internal data class AgentBinding(val conversation: Conversation, val view: AgentView? = null) {
-    init { require((conversation.provider == AgentProvider.Codex) == (view != null)) }
+@Serializable internal data class AgentBinding(val conversation: Conversation)
+@Serializable internal data class ConversationRuntime(
+    val binding: AgentBinding, val status: AgentStatus, val methods: AgentMethods, val turn: AgentTurn? = null,
+)
+@Serializable internal data class ConversationObservation(
+    val binding: AgentBinding, val status: AgentStatus, val turn: AgentTurn? = null,
+)
+@Serializable internal data class ConversationOutput(
+    val text: String, val source: AgentMethod, val scope: String, val truncated: Boolean,
+    val observation: ConversationObservation, val outputState: String,
+    val outputId: String? = null, val outputTurnId: String? = null,
+)
+internal fun decodeConversationOutput(encoded: String): ConversationOutput = decodeProtocol {
+    productJson.decodeFromJsonElement<ConversationOutput>(nativeJsonObject(encoded)).also {
+        require(it.source == AgentMethod.Native && it.scope in setOf("latest", "history"))
+        require(it.text.utf8ByteCountWithin(32 * 1024) != null)
+        require(it.outputState in setOf("partial", "finalized", "unknown", "none"))
+        require(it.outputId == null || validNativeId(it.outputId))
+        require(it.outputTurnId == null || validNativeId(it.outputTurnId))
+        require(it.outputState != "finalized" || it.outputId != null)
+        require(it.outputState != "none" || (it.scope != "latest" || it.text.isEmpty()) && it.outputId == null && it.outputTurnId == null)
+    }
 }
 @Serializable internal data class AgentTurn(val id: String, val state: String) {
     init { require(validNativeId(id) && state in setOf("inProgress", "completed", "failed", "interrupted")) }
@@ -56,7 +73,7 @@ internal fun JsonElement.requireNativeValues() {
     when (this) {
         JsonNull -> throw kotlinx.serialization.SerializationException("native field is null")
         is JsonObject -> {
-            for (field in listOf("pid", "revision")) {
+            for (field in listOf("pid")) {
                 this[field]?.let { value ->
                     require(value is JsonPrimitive && !value.isString && value.content.matches(Regex("[0-9]+")))
                 }
@@ -69,26 +86,32 @@ internal fun JsonElement.requireNativeValues() {
 }
 internal fun nativeJsonObject(encoded: String): JsonObject = strictJsonObject(encoded).also { it.requireNativeValues() }
 
-@Serializable private data class AgentControlRequest(
-    val identityToken: String, val paneId: String, val pid: Long, val startIdentity: String,
-    val method: AgentMethod, val binding: AgentBinding? = null, val turn: AgentTurn? = null,
+@Serializable private data class ConversationStopRequest(val conversation: Conversation, val turn: AgentTurn? = null)
+@Serializable private data class ConversationCloseRequest(
+    val identityToken: String, val method: AgentMethod, val conversation: Conversation, val turn: AgentTurn? = null,
 )
+@Serializable private data class ConversationReadRequest(val conversation: Conversation, val scope: String, val maxBytes: Int)
+@Serializable private data class ConversationAssociationRequest(val identityToken: String, val conversation: Conversation? = null)
+internal fun encodeConversationStopRequest(runtime: ConversationRuntime): String =
+    productJson.encodeToString(ConversationStopRequest.serializer(), ConversationStopRequest(runtime.binding.conversation, runtime.turn?.takeIf { it.state == "inProgress" }))
 internal fun encodeAgentControlRequest(target: SessionTarget): String {
-    val agent = requireNotNull(target.session.agent)
-    require(agent.methods.stop != AgentMethod.Unavailable)
-    return productJson.encodeToString(AgentControlRequest.serializer(), AgentControlRequest(
-        target.session.identityToken, agent.paneId, agent.pid, agent.startIdentity,
-        agent.methods.stop, agent.binding.takeIf { agent.methods.stop == AgentMethod.Native },
-        agent.turn.takeIf { agent.methods.stop == AgentMethod.Native },
+    val runtime = requireNotNull(target.session.conversation)
+    require(runtime.methods.stop == AgentMethod.Native)
+    return productJson.encodeToString(ConversationCloseRequest.serializer(), ConversationCloseRequest(
+        target.session.identityToken, AgentMethod.Native, runtime.binding.conversation, runtime.turn?.takeIf { it.state == "inProgress" },
     ))
 }
+internal fun encodeConversationReadRequest(conversation: Conversation): String =
+    productJson.encodeToString(ConversationReadRequest.serializer(), ConversationReadRequest(conversation, "latest", 16 * 1024))
+internal fun encodeConversationAssociationRequest(target: SessionTarget, conversation: Conversation?): String =
+    productJson.encodeToString(ConversationAssociationRequest.serializer(), ConversationAssociationRequest(target.session.identityToken, conversation))
 
 @Serializable internal data class AgentStopResult(val method: AgentMethod, val outcome: String)
 @Serializable internal data class AgentCloseResult(val agent: String, val terminal: String, val reason: String? = null)
 @Serializable internal data class AgentResultPage(val conversation: Conversation, val resultIds: List<String>, val nextCursor: String? = null)
-@Serializable private data class AgentResultsRequest(val identityToken: String, val conversation: Conversation, val cursor: String? = null)
-internal fun encodeAgentResultsRequest(target: SessionTarget, conversation: Conversation, cursor: String?): String =
-    productJson.encodeToString(AgentResultsRequest.serializer(), AgentResultsRequest(target.session.identityToken, conversation, cursor))
+@Serializable private data class AgentResultsRequest(val conversation: Conversation, val cursor: String? = null)
+internal fun encodeAgentResultsRequest(conversation: Conversation, cursor: String?): String =
+    productJson.encodeToString(AgentResultsRequest.serializer(), AgentResultsRequest(conversation, cursor))
 
 internal fun decodeAgentResultPage(encoded: String): AgentResultPage = decodeProtocol {
     productJson.decodeFromJsonElement<AgentResultPage>(nativeJsonObject(encoded)).also {
@@ -99,11 +122,8 @@ internal fun decodeAgentResultPage(encoded: String): AgentResultPage = decodePro
 }
 internal fun decodeAgentStopResult(encoded: String): AgentStopResult = decodeProtocol {
     productJson.decodeFromJsonElement<AgentStopResult>(nativeJsonObject(encoded)).also {
-        require(when (it.method) {
-            AgentMethod.Native -> it.outcome in setOf("interrupted", "stopped", "finished", "unknown")
-            AgentMethod.Terminal -> it.outcome in setOf("written", "unknown")
-            AgentMethod.Unavailable -> false
-        })
+        require(it.method == AgentMethod.Native)
+        require(it.outcome in setOf("interrupted", "stopped", "finished", "unknown"))
     }
 }
 internal fun decodeAgentCloseResult(encoded: String): AgentCloseResult = decodeProtocol {
@@ -114,8 +134,7 @@ internal fun decodeAgentCloseResult(encoded: String): AgentCloseResult = decodeP
     }
 }
 internal fun agentStopMessage(result: AgentStopResult): String = when {
-    result.outcome == "unknown" -> "could not confirm the request. check the terminal before trying again."
-    result.method == AgentMethod.Terminal -> "keys sent; agent state not confirmed."
+    result.outcome == "unknown" -> "could not confirm the request. inspect the conversation before trying again."
     result.outcome == "interrupted" -> "current work interrupted. pending input may remain."
     result.outcome == "stopped" -> "current work stopped. pending input may remain."
     result.outcome == "finished" -> "no active work observed. pending input may remain."
@@ -123,8 +142,8 @@ internal fun agentStopMessage(result: AgentStopResult): String = when {
 }
 internal fun agentCloseMessage(result: AgentCloseResult): String = when {
     result.reason == "stale" -> "terminal left open because the session changed."
-    result.terminal == "closed" && result.agent == "unconfirmed" -> "terminal closed; agent stop unconfirmed."
-    result.terminal == "unconfirmed" -> "could not confirm the request. check the terminal before trying again."
+    result.terminal == "closed" && result.agent == "unconfirmed" -> "terminal closed; conversation stop unconfirmed."
+    result.terminal == "unconfirmed" -> "could not confirm the request. inspect the conversation before trying again."
     else -> when (result.agent) {
         "finished" -> "no active work observed"
         "interrupted" -> "current work interrupted"

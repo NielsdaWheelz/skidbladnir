@@ -3,8 +3,9 @@
 this document owns optional process-lifetime registration. [agent control](agent-control.md)
 owns the current foreground target, sampled status and controls. only claude
 registration contributes projected runtime profile/provider-session id;
-codex hook registration is ignored. its native binding comes from the owning
-tui's selected-view interface under [native interaction](native-agent-observation.md).
+codex hook registration is ignored. native codex targeting uses an explicitly
+recorded conversation id under [native interaction](native-agent-observation.md),
+independent of the foreground tui.
 
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md).
@@ -36,8 +37,8 @@ second registry. The session row's launch profile remains a separate fact and
 never substitutes for an unproven runtime profile.
 
 The machine-bound tmux id, current tmux name, and server-lifetime identity
-token remain the mutation address. Provider ids and names are descriptive
-facts, not keys, routes, authority, or uniqueness claims.
+token remain the terminal mutation address. a native conversation uses its
+profile/history-scope/id address separately. provider names grant no authority.
 
 ## One process-lifetime registration
 
@@ -145,10 +146,10 @@ provider-home separation is not an identity boundary.
 
 ## API and presentation
 
-the strict session shape contains optional `agent` identity. its complete
-current fields are owned by [agent control](agent-control.md#identity-state-and-dispatch),
-including pane/start identity, status and methods; the old codex registration
-projection and flat activity field are absent.
+the strict session shape contains optional foreground `agent` identity, including
+pane/start identity. [agent control](agent-control.md#targets-and-ownership) owns
+its contract; `Session.conversation` carries native status and methods separately.
+the old codex registration projection and flat activity field are absent.
 
 `agent` is omitted when no supported exact foreground runtime is proven. No
 alias, nullable member, alternate registration, dual decoder, schema version,

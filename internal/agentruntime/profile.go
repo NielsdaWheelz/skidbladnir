@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -69,7 +70,6 @@ type Profile struct {
 	Label                string
 	Provider             Provider
 	Command              string
-	Endpoint             string
 	Environment          []EnvironmentVariable
 	ForegroundSignatures []ForegroundSignature
 	Arguments            []string
@@ -107,9 +107,6 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 		}
 		if !filepath.IsAbs(profile.Command) {
 			return nil, fmt.Errorf("profile %s command must be absolute", profile.Key)
-		}
-		if profile.Endpoint != "" && (profile.Provider != ProviderCodex || !filepath.IsAbs(profile.Endpoint) || filepath.Clean(profile.Endpoint) != profile.Endpoint || !utf8.ValidString(profile.Endpoint) || strings.ContainsRune(profile.Endpoint, 0)) {
-			return nil, fmt.Errorf("profile %s native endpoint is invalid", profile.Key)
 		}
 		homeName := providerHomeEnvironment(profile.Provider)
 		home := ""
@@ -275,4 +272,29 @@ func hasTerminalControl(value string) bool {
 
 func isC0OrC1(value rune) bool {
 	return value >= 0 && value <= 0x1f || value >= 0x7f && value <= 0x9f
+}
+
+// CodexEndpoint is the provider-owned rendezvous for this account.
+func CodexEndpoint(profile Profile) string {
+	for _, variable := range profile.Environment {
+		if variable.Name == "CODEX_HOME" {
+			return filepath.Join(variable.Value, "app-server-control", "app-server-control.sock")
+		}
+	}
+	panic("codex profile omits its validated home") // justify-defect: profile validation requires its provider home.
+}
+
+// HistoryScope identifies the provider's existing canonical account home.
+func HistoryScope(profile Profile) (string, error) {
+	for _, entry := range profile.Environment {
+		if entry.Name != providerHomeEnvironment(profile.Provider) {
+			continue
+		}
+		home, err := filepath.EvalSymlinks(entry.Value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%x", sha256.Sum256([]byte(string(profile.Provider)+"\x00"+home))), nil
+	}
+	return "", errors.New("profile omits native history home")
 }

@@ -7,7 +7,7 @@ clients compose independent gateways. there is no application database.
 | --- | --- | --- |
 | startup and host configuration | `cmd/skidbladnir`, `internal/hostconfig`, `internal/platform` | compose one host from deployment-owned configuration |
 | sessions and metadata | `internal/sessions`, `internal/tmux`, `internal/group`, `internal/catalog` | inventory, creation, exact lifetime mutations, direct attachment |
-| agent identity and control | `internal/agentruntime`, `internal/process`, `internal/agenthook`, `internal/agentcontrol` | observe one foreground process; bind reads and controls to that lifetime |
+| agent identity and control | `internal/agentruntime`, `internal/process`, `internal/agenthook`, `internal/agentcontrol` | foreground presence separately from explicit native conversation reads/controls |
 | host resources | `internal/workdir`, `internal/pressure` | bounded directory browsing and native pressure observation |
 | gateway transport and access | `internal/gateway`, `internal/auth`, `internal/pairing`, `internal/strictjson`, `internal/logging`, `internal/terminal` | authenticated http, strict messages, owned websocket/pty lifetime |
 | desktop clients | `internal/fleetclient`, `internal/agentcli`, `internal/sessionui`, `internal/terminalclient` | shared peer routing and references; cli, browser, local tty |

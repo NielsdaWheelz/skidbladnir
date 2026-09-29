@@ -102,3 +102,12 @@ func (client *Client) DefaultMachine() Machine {
 	}
 	panic("validated default machine is absent")
 }
+
+func (client *Client) MachineByLabel(label string) (Machine, bool) {
+	for _, machine := range client.Machines() {
+		if machine.Label == label {
+			return machine, true
+		}
+	}
+	return Machine{}, false
+}

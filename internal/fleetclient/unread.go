@@ -57,14 +57,14 @@ func (snapshot UnreadSnapshot) Record(key UnreadKey) (UnreadRecord, bool) {
 	return UnreadRecord{}, false
 }
 func (snapshot UnreadSnapshot) Conversation(ref Reference, paneID string) (agentruntime.Conversation, bool) {
+	if ref.Conversation != nil {
+		return ref.Conversation.Binding.Conversation, true
+	}
 	if ref.Agent != nil {
-		if ref.Agent.Binding == nil {
-			return agentruntime.Conversation{}, false
-		}
-		return ref.Agent.Binding.Conversation, true
+		return agentruntime.Conversation{}, false
 	}
 	for _, association := range snapshot.Associations {
-		if association.Machine == ref.Machine && association.TmuxID == ref.TmuxID && association.IdentityToken == ref.IdentityToken && association.PaneID == paneID {
+		if association.Machine == ref.Machine && association.TmuxID == ref.TmuxID && association.IdentityToken == ref.IdentityToken && association.PaneID == paneID && association.Conversation.Provider == agentruntime.ProviderClaude {
 			return association.Conversation, true
 		}
 	}
@@ -173,10 +173,10 @@ func (store *UnreadStore) Sync(peers []Peer, machines []Machine) (UnreadSnapshot
 			}
 			for _, session := range peer.Sessions {
 				ref, _ := DecodeReference(session.Ref)
-				if ref.Agent == nil || ref.Agent.Binding == nil {
+				if ref.Conversation == nil || ref.Conversation.Binding.Conversation.Provider != agentruntime.ProviderClaude {
 					continue
 				}
-				association := UnreadAssociation{Machine: peer.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken, PaneID: session.ActivePaneID, Conversation: ref.Agent.Binding.Conversation}
+				association := UnreadAssociation{Machine: peer.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken, PaneID: session.ActivePaneID, Conversation: ref.Conversation.Binding.Conversation}
 				found := false
 				for index, previous := range snapshot.Associations {
 					if previous.Machine == association.Machine && previous.TmuxID == association.TmuxID && previous.IdentityToken == association.IdentityToken && previous.PaneID == association.PaneID {

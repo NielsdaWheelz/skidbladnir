@@ -44,7 +44,7 @@ error and defect modeling, absence classification, and runtime invariant checks.
   omission and null semantics; see [boundaries.md](boundaries.md).
 - loss of confirmation after dispatch is not absence or proof of failure.
   preserve the unknown or partial outcome specified by
-  [agent control](../agent-control.md#capability-and-api-contract).
+  [agent control](../agent-control.md#operations-and-composition).
 
 ## Service Invariants
 

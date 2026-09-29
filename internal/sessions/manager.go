@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,37 +186,14 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 }
 
 func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (result ObservedSession, resultErr error) {
-	candidate, err := manager.workdir.ParseCandidate(input.CWD)
+	cwd, profile, err := manager.validateCreate(input)
 	if err != nil {
-		return ObservedSession{}, mapWorkingDirectoryError(err)
-	}
-	cwd, err := manager.workdir.ValidateStart(candidate)
-	if err != nil {
-		return ObservedSession{}, mapWorkingDirectoryError(err)
-	}
-	var profile agentruntime.Profile
-	switch input.Kind {
-	case LaunchAgent:
-		var found bool
-		profile, found = manager.profilesByKey[agentruntime.ProfileKey(input.Profile)]
-		if !found {
-			return ObservedSession{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
-		}
-	case LaunchTerminal:
-		if input.Profile != "" {
-			panic("terminal launch carries a profile") // justify-defect: creation ingress forbids a terminal profile.
-		}
-	default:
-		panic("unknown launch kind") // justify-defect: creation ingress admits the closed launch union.
-	}
-	if input.OptionalTmuxName != "" {
-		if err := validateTmuxName(input.OptionalTmuxName); err != nil {
-			return ObservedSession{}, err
-		}
-	}
-	if err := validateObjective(input.Objective); err != nil {
 		return ObservedSession{}, err
 	}
+	candidate, err := manager.workdir.ParseCandidate(cwd.String())
+	if err != nil {
+		panic("validated cwd became invalid")
+	} // justify-defect: ValidateStart returns a canonical validated directory.
 
 	epochCandidate, err := newServerEpoch()
 	if err != nil {
@@ -239,7 +217,17 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	launch := ""
 	if input.Kind == LaunchAgent {
-		launch, err = agentruntime.EncodeLaunch(agentruntime.NewLaunch(profile, name))
+		nativeLaunch := agentruntime.NewLaunch(profile, name)
+		if profile.Provider == agentruntime.ProviderCodex {
+			if input.Conversation == nil || input.Conversation.Provider != profile.Provider || input.Conversation.ProfileKey != profile.Key {
+				return ObservedSession{}, errors.New("codex launch requires its explicitly created conversation")
+			}
+			// Native creation already saved the profile's permission policy. Stock
+			// remote resume refuses a second permission override.
+			nativeLaunch.Arguments = slices.DeleteFunc(nativeLaunch.Arguments, func(argument string) bool { return argument == "--yolo" })
+			nativeLaunch.Arguments = append(nativeLaunch.Arguments, "--remote", "unix://"+agentruntime.CodexEndpoint(profile), "--cd", cwd.String(), "resume", input.Conversation.ConversationID)
+		}
+		launch, err = agentruntime.EncodeLaunch(nativeLaunch)
 		if err != nil {
 			return ObservedSession{}, err
 		}
@@ -253,6 +241,13 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs = append(commandArgs, ";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate)
 	if input.Kind == LaunchAgent {
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key))
+		if input.Conversation != nil {
+			encoded, err := encodeConversation(*input.Conversation)
+			if err != nil {
+				return ObservedSession{}, err
+			}
+			commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", conversationOption, encoded)
+		}
 	}
 	commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_character", character.Key)
 	if input.Objective != "" {
@@ -560,6 +555,11 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 		objective, decodeErr := base64.RawURLEncoding.DecodeString(encodedObjective)
 		if decodeErr == nil && validateObjective(string(objective)) == nil {
 			session.Objective = string(objective)
+		}
+	}
+	if encoded, err := manager.sessionOption(ctx, session.TmuxID, conversationOption); err == nil && encoded != "" {
+		if conversation, err := decodeConversation(encoded); err == nil && conversation.Provider == agentruntime.ProviderCodex {
+			session.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}, Status: agentruntime.Status{State: "unknown", Source: "unavailable"}, Methods: agentruntime.Methods{Read: "unavailable", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}}
 		}
 	}
 	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)

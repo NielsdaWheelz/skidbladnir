@@ -32,6 +32,7 @@ type CreateInput struct {
 	OptionalTmuxName string
 	Objective        string
 	Group            group.Label
+	Conversation     *agentruntime.Conversation
 }
 
 type ShellInput struct {
@@ -73,6 +74,7 @@ type Session struct {
 	IdentityToken   string
 	LaunchProfile   agentruntime.ProfileKey
 	Agent           *agentruntime.AgentRuntime
+	Conversation    *agentruntime.ConversationRuntime
 	Connection      *Connection
 	Objective       string
 	Group           group.Label

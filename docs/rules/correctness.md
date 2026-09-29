@@ -25,7 +25,7 @@ failure classification and repository-wide correctness invariants.
 - inventory is an observation of tmux, not a durable claim on a session. handle
   later disappearance and replacement through the existing stale-target rules.
 - after dispatch, loss of confirmation does not prove that no effect occurred.
-  preserve the [agent-control outcomes](../agent-control.md#identity-state-and-dispatch)
+  preserve the [agent-control outcomes](../agent-control.md#operations-and-composition)
   and the [architecture's mutation contracts](../architecture.md).
 - keep cross-boundary ordering explicit; see [mutation-ordering.md](mutation-ordering.md).
 - use types to enforce local invariants where they make the code simpler. parse

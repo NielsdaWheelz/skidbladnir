@@ -29,15 +29,10 @@ type agentRequest struct {
 	PaneID        stringField                `json:"paneId"`
 	PID           *int                       `json:"pid"`
 	StartIdentity stringField                `json:"startIdentity"`
-	Binding       *agentruntime.Binding      `json:"binding"`
 	Turn          *agentruntime.Turn         `json:"turn"`
 	Conversation  *agentruntime.Conversation `json:"conversation"`
-	Cursor        stringField                `json:"cursor"`
 	Mode          stringField                `json:"mode"`
-	Scope         stringField                `json:"scope"`
 	Method        stringField                `json:"method"`
-	Input         stringField                `json:"input"`
-	Delivery      stringField                `json:"delivery"`
 	Text          stringField                `json:"text"`
 	MaxBytes      *int                       `json:"maxBytes"`
 	Keys          *[]string                  `json:"keys"`
@@ -66,23 +61,22 @@ func (input agentRequest) valid(operation string) bool {
 	if input.IdentityToken.value == "" {
 		return false
 	}
-	if operation == "results" {
-		return input.Conversation != nil && input.PID == nil && !input.PaneID.present && !input.StartIdentity.present && input.Binding == nil && input.Turn == nil && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && !input.Text.present && input.MaxBytes == nil && input.Keys == nil && (!input.Cursor.present || input.Cursor.value != "")
+	if operation == "close" && input.Method.value == "native" {
+		return input.Conversation != nil && input.Conversation.Valid() &&
+			(input.Turn == nil || input.Turn.Valid() && input.Turn.State == "inProgress" && input.Conversation.Provider == agentruntime.ProviderCodex) && input.PID == nil && !input.PaneID.present && !input.StartIdentity.present && !input.Mode.present && !input.Text.present && input.Keys == nil && input.MaxBytes == nil
 	}
-	if input.PaneID.value == "" || input.PID == nil || *input.PID <= 0 || input.StartIdentity.value == "" || input.Conversation != nil || input.Cursor.present {
+	if input.PaneID.value == "" || input.PID == nil || *input.PID <= 0 || input.StartIdentity.value == "" || input.Conversation != nil || input.Turn != nil {
 		return false
 	}
 	switch operation {
 	case "read":
-		return input.Mode.present && (input.Mode.value == "terminal" && !input.Scope.present && input.Binding == nil && input.Turn == nil || input.Mode.value == "native" && input.Binding != nil && (input.Scope.value == "latest" || input.Scope.value == "history")) && !input.Method.present && !input.Input.present && !input.Delivery.present && !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
-	case "send":
-		return input.Binding != nil && input.Text.present && (input.Input.value == "peer" || input.Input.value == "user") && (input.Delivery.value == "direct" || input.Delivery.value == "queue" && input.Input.value == "user") && !input.Mode.present && !input.Scope.present && !input.Method.present && input.Keys == nil && input.MaxBytes == nil
+		return input.Mode.value == "terminal" && !input.Method.present && !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
 	case "text":
-		return input.Text.present && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && input.Binding == nil && input.Turn == nil && input.Keys == nil && input.MaxBytes == nil
+		return input.Text.present && !input.Mode.present && !input.Method.present && input.Keys == nil && input.MaxBytes == nil
 	case "keys":
-		return input.Keys != nil && !input.Text.present && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && input.Binding == nil && input.Turn == nil && input.MaxBytes == nil
+		return input.Keys != nil && !input.Text.present && !input.Mode.present && !input.Method.present && input.MaxBytes == nil
 	case "stop", "close":
-		return input.Method.present && (input.Method.value == "terminal" || input.Method.value == "native" && input.Binding != nil) && input.Keys == nil && !input.Text.present && !input.Mode.present && !input.Scope.present && !input.Input.present && !input.Delivery.present && input.MaxBytes == nil
+		return input.Method.value == "terminal" && input.Keys == nil && !input.Text.present && !input.Mode.present && input.MaxBytes == nil
 	default:
 		return false
 	}
@@ -115,10 +109,18 @@ func (gateway *Gateway) agentOperation(writer http.ResponseWriter, request *http
 	ctx := request.Context()
 	var result any
 	var err error
-	if operation == "results" {
-		result, err = gateway.agents.Results(ctx, id, input.IdentityToken.value, *input.Conversation, input.Cursor.value)
+	if operation == "close" && input.Method.value == "native" {
+		if err := gateway.sessions.ResolveSession(ctx, id, input.IdentityToken.value); err != nil {
+			writeAgentError(writer, err)
+			return
+		}
+		result, err = gateway.agents.Close(ctx, *input.Conversation, input.Turn, func(ctx context.Context) error {
+			gateway.terminalLifecycle.Lock()
+			defer gateway.terminalLifecycle.Unlock()
+			return gateway.closeSessionTerminal(ctx, id, input.IdentityToken.value)
+		})
 	} else {
-		target := sessions.AgentTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value, PID: processinfo.PID(*input.PID), StartIdentity: processinfo.StartIdentity(input.StartIdentity.value), Binding: input.Binding, Turn: input.Turn}
+		target := sessions.AgentTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value, PID: processinfo.PID(*input.PID), StartIdentity: processinfo.StartIdentity(input.StartIdentity.value)}
 		switch operation {
 		case "read":
 			maxBytes := 0
@@ -126,23 +128,22 @@ func (gateway *Gateway) agentOperation(writer http.ResponseWriter, request *http
 				maxBytes = *input.MaxBytes
 			}
 			var read agentcontrol.ReadResult
-			read, err = gateway.agents.Read(ctx, target, input.Mode.value, input.Scope.value, maxBytes)
+			read, err = gateway.agents.TerminalRead(ctx, target, maxBytes)
 			if err == nil {
 				writeAgentRead(writer, read)
 				return
 			}
-		case "send":
-			result, err = gateway.agents.Send(ctx, target, input.Text.value, input.Input.value, input.Delivery.value)
 		case "text":
 			result, err = gateway.agents.Text(ctx, target, input.Text.value)
 		case "keys":
 			result, err = gateway.agents.Keys(ctx, target, *input.Keys)
 		case "stop":
-			result, err = gateway.agents.Stop(ctx, target, input.Method.value)
+			result, err = gateway.agents.TerminalStop(ctx, target)
 		case "close":
-			result, err = gateway.agents.Close(ctx, target, input.Method.value, gateway.closeAgentTerminal)
+			result, err = gateway.agents.TerminalClose(ctx, target, gateway.closeAgentTerminal)
 		}
 	}
+
 	if err != nil {
 		writeAgentError(writer, err)
 		return
@@ -191,23 +192,28 @@ func writeAgentRead(writer http.ResponseWriter, result agentcontrol.ReadResult) 
 }
 
 func writeAgentError(writer http.ResponseWriter, err error) {
+	writeError(writer, agentFailure(err))
+}
+
+func agentFailure(err error) apiError {
 	var unavailable *agentcontrol.UnavailableError
 	switch {
 	case errors.As(err, &unavailable):
 		failure := errorAgentUnavailable
 		failure.Dispatch = unavailable.Dispatch
-		writeError(writer, failure)
+		return failure
 	case errors.Is(err, sessions.ErrAgentTargetStale):
 		failure := errorAgentTargetStale
-		if dispatched, ok := err.(interface{ DispatchState() string }); ok {
+		var dispatched interface{ DispatchState() string }
+		if errors.As(err, &dispatched) {
 			failure.Dispatch = dispatched.DispatchState()
 		}
-		writeError(writer, failure)
+		return failure
 	case errors.Is(err, agentcontrol.ErrHistoryChanged):
-		writeError(writer, errorHistoryChanged)
+		return errorHistoryChanged
 	case errors.Is(err, agentcontrol.ErrInvalidInput):
-		writeError(writer, errorAgentInputInvalid)
+		return errorAgentInputInvalid
 	default:
-		writeSessionError(writer, err)
+		return sessionFailure(err)
 	}
 }

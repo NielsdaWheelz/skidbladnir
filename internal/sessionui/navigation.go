@@ -30,7 +30,7 @@ func (m *model) rebuild() {
 		for _, peer := range m.scopedPeers() {
 			for _, session := range peer.Sessions {
 				row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
-				if m.current(&row).Agent != nil {
+				if m.current(&row).Agent != nil || row.session.Conversation != nil {
 					m.rows = append(m.rows, row)
 				}
 			}
@@ -42,7 +42,7 @@ func (m *model) rebuild() {
 				}
 				return 1
 			}
-			return cmp.Compare(slices.Index(attention, m.current(&a).Agent.Status.State), slices.Index(attention, m.current(&b).Agent.Status.State))
+			return cmp.Compare(slices.Index(attention, statusState(a.session)), slices.Index(attention, statusState(b.session)))
 		})
 	} else {
 		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
@@ -122,4 +122,11 @@ func (m *model) move(delta int) {
 	if len(m.rows) > 0 {
 		m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
 	}
+}
+
+func statusState(session fleetclient.Session) string {
+	if session.Conversation != nil {
+		return session.Conversation.Status.State
+	}
+	return "unknown"
 }

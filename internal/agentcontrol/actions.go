@@ -16,22 +16,22 @@ func validText(text string) bool {
 	return text != "" && len(text) <= 32768 && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }
 
-func (service *Service) Send(parent context.Context, target sessions.AgentTarget, text, input, delivery string) (SendResult, error) {
+func (service *Service) Send(parent context.Context, conversation agentruntime.Conversation, text, input, delivery string) (SendResult, error) {
 	if !validText(text) || input != "peer" && input != "user" || delivery != "direct" && delivery != "queue" || input == "peer" && delivery == "queue" {
 		return SendResult{}, ErrInvalidInput
 	}
+	if delivery == "queue" || conversation.Provider == agentruntime.ProviderClaude {
+		return SendResult{}, &UnavailableError{Dispatch: "not_sent"}
+	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	profile, native, inspected, _, err := service.bound(ctx, target)
+	profile, native, inspected, _, err := service.bound(ctx, conversation)
 	if err != nil {
 		return SendResult{}, err
 	}
 	method := inspected.Methods.SendPeer
 	if input == "user" {
 		method = inspected.Methods.SendUser
-	}
-	if delivery == "queue" {
-		method = inspected.Methods.QueueUser
 	}
 	if method != "native" {
 		return SendResult{}, &UnavailableError{Dispatch: "not_sent"}
@@ -47,7 +47,7 @@ func (service *Service) Send(parent context.Context, target sessions.AgentTarget
 	if result.Method != "native" || result.Input != input || result.Delivery != delivery || result.Outcome != "accepted" {
 		return SendResult{}, &UnavailableError{Dispatch: "unknown"}
 	}
-	if delivery == "direct" && result.TurnID == "" || delivery == "queue" && (result.QueueItemID == "" || result.ClientMessageID == "") {
+	if result.TurnID == "" {
 		return SendResult{}, &UnavailableError{Dispatch: "unknown"}
 	}
 	return result, nil
@@ -84,108 +84,108 @@ func terminalWriteResult(err error) (WriteResult, error) {
 	return WriteResult{}, err
 }
 
-func (service *Service) Stop(parent context.Context, target sessions.AgentTarget, method string) (WriteResult, error) {
+func (service *Service) Stop(parent context.Context, conversation agentruntime.Conversation, turn *agentruntime.Turn) (WriteResult, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	result, _, err := service.halt(ctx, target, method)
-	return result, err
+	return service.halt(ctx, conversation, turn)
 }
 
-func (service *Service) halt(ctx context.Context, target sessions.AgentTarget, method string) (WriteResult, bool, error) {
-	if method != "native" && method != "terminal" {
-		return WriteResult{}, false, ErrInvalidInput
-	}
-	session, err := service.sessions.ResolveAgent(ctx, target)
+func (service *Service) halt(ctx context.Context, conversation agentruntime.Conversation, turn *agentruntime.Turn) (WriteResult, error) {
+	profile, native, inspected, observation, err := service.bound(ctx, conversation)
 	if err != nil {
-		return WriteResult{}, false, err
-	}
-	if method == "terminal" {
-		_, _, inspected, observation, inspectErr := service.inspect(ctx, session)
-		if inspectErr == nil {
-			if target.Binding != nil && !target.Binding.Equal(observation.Binding) {
-				return WriteResult{}, false, sessions.ErrAgentTargetStale
-			}
-			if inspected.Methods.Stop != "terminal" {
-				return WriteResult{}, false, &UnavailableError{Dispatch: "not_sent"}
-			}
-		}
-		result, err := terminalWriteResult(service.sessions.AgentKeys(ctx, target, []string{interruptKey(session.Agent.Provider)}))
-		return result, inspectErr == nil && inspected.TerminalOwnsAgent, err
-	}
-	profile, native, inspected, observation, err := service.bound(ctx, target)
-	if err != nil {
-		return WriteResult{}, false, err
+		return WriteResult{}, err
 	}
 	if inspected.Methods.Stop != "native" {
-		return WriteResult{}, false, &UnavailableError{Dispatch: "not_sent"}
+		return WriteResult{}, &UnavailableError{Dispatch: "not_sent"}
 	}
 	if observation.Status.State == "idle" && (observation.Turn == nil || observation.Turn.State != "inProgress") {
-		return WriteResult{Method: "native", Outcome: "finished"}, inspected.TerminalOwnsAgent, nil
+		return WriteResult{Method: "native", Outcome: "finished"}, nil
 	}
 	operation := "stop"
 	if profile.Provider == agentruntime.ProviderCodex {
-		if target.Turn == nil || target.Turn.State != "inProgress" {
-			return WriteResult{}, false, ErrInvalidInput
+		if turn != nil {
+			if turn.State != "inProgress" {
+				return WriteResult{}, ErrInvalidInput
+			}
+			if observation.Turn == nil || observation.Turn.State != "inProgress" || observation.Turn.ID != turn.ID {
+				return WriteResult{}, sessions.ErrAgentTargetStale
+			}
+			native.TurnID = turn.ID
+		} else {
+			return WriteResult{}, sessions.ErrAgentTargetStale
 		}
-		if observation.Turn == nil || observation.Turn.State != "inProgress" || observation.Turn.ID != target.Turn.ID {
-			return WriteResult{}, false, sessions.ErrAgentTargetStale
-		}
-		native.TurnID = target.Turn.ID
 		operation = "interrupt"
 	}
+
 	var result struct {
 		Method  string `json:"method"`
 		Outcome string `json:"outcome"`
 		TurnID  string `json:"turnId,omitempty"`
 	}
 	if err := service.native(ctx, profile, operation, []nativeTarget{native}, nil, &result); err != nil {
-		return WriteResult{}, false, err
+		return WriteResult{}, err
 	}
 	if result.Method != "native" || native.TurnID != "" && result.TurnID != "" && result.TurnID != native.TurnID {
-		return WriteResult{}, false, &UnavailableError{Dispatch: "unknown"}
+		return WriteResult{}, &UnavailableError{Dispatch: "unknown"}
 	}
 	switch result.Outcome {
 	case "interrupted", "stopped", "finished", "unknown":
-		return WriteResult{Method: result.Method, Outcome: result.Outcome}, inspected.TerminalOwnsAgent, nil
+		return WriteResult{Method: result.Method, Outcome: result.Outcome}, nil
 	default:
-		return WriteResult{}, false, &UnavailableError{Dispatch: "unknown"}
+		return WriteResult{}, &UnavailableError{Dispatch: "unknown"}
 	}
 }
 
-// Halt and terminal closure have independent effects. Revalidation protects the
-// captured process/view; provider calls never hold the terminal manager's lock.
-func (service *Service) Close(parent context.Context, target sessions.AgentTarget, method string, closeTerminal func(context.Context, sessions.AgentTarget) error) (CloseResult, error) {
+func (service *Service) TerminalStop(parent context.Context, target sessions.AgentTarget) (WriteResult, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	session, err := service.sessions.ResolveAgent(ctx, target)
 	if err != nil {
-		return CloseResult{}, err
+		return WriteResult{}, err
 	}
+	return terminalWriteResult(service.sessions.AgentKeys(ctx, target, []string{interruptKey(session.Agent.Provider)}))
+}
+
+// Conversation halt and terminal closure have independent targets and effects.
+func (service *Service) Close(parent context.Context, conversation agentruntime.Conversation, turn *agentruntime.Turn, closeTerminal func(context.Context) error) (CloseResult, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
 	haltContext, cancelHalt := context.WithTimeout(ctx, 8*time.Second)
-	halted, terminalOwnsAgent, haltErr := service.halt(haltContext, target, method)
-	if haltErr != nil {
-		var unavailable *UnavailableError
-		if !errors.As(haltErr, &unavailable) || unavailable.Dispatch != "unknown" {
-			cancelHalt()
-			return CloseResult{}, haltErr
-		}
+	halted, haltErr := service.halt(haltContext, conversation, turn)
+	cancelHalt()
+	if errors.Is(haltErr, ErrInvalidInput) {
+		return CloseResult{}, haltErr
 	}
 	result := CloseResult{Agent: "unconfirmed", Terminal: "unconfirmed"}
 	if halted.Outcome == "interrupted" || halted.Outcome == "stopped" || halted.Outcome == "finished" {
 		result.Agent = halted.Outcome
 	}
-	exited := service.sessions.AgentProcessExited(target)
-	if !exited && target.Binding != nil {
-		if _, _, _, _, err := service.bound(haltContext, target); err != nil {
-			cancelHalt()
-			result.Reason = "unavailable"
-			if errors.Is(err, sessions.ErrAgentTargetStale) {
-				result.Reason = "stale"
-			}
-			return result, nil
+	closeContext, cancelClose := context.WithTimeout(ctx, 2*time.Second)
+	defer cancelClose()
+	if err := closeTerminal(closeContext); err != nil {
+		result.Reason = "unavailable"
+		if isSessionIdentityMismatch(err) {
+			result.Reason = "stale"
 		}
+		return result, nil
 	}
+	result.Terminal = "closed"
+	return result, nil
+}
+
+func (service *Service) TerminalClose(parent context.Context, target sessions.AgentTarget, closeTerminal func(context.Context, sessions.AgentTarget) error) (CloseResult, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	haltContext, cancelHalt := context.WithTimeout(ctx, 8*time.Second)
+	halted, err := service.TerminalStop(haltContext, target)
 	cancelHalt()
+	if err != nil {
+		return CloseResult{}, err
+	}
+	result := CloseResult{Agent: "unconfirmed", Terminal: "unconfirmed"}
+	if halted.Outcome != "written" {
+		result.Reason = "unavailable"
+	}
 	closeContext, cancelClose := context.WithTimeout(ctx, 2*time.Second)
 	defer cancelClose()
 	if err := closeTerminal(closeContext, target); err != nil {
@@ -196,9 +196,6 @@ func (service *Service) Close(parent context.Context, target sessions.AgentTarge
 		return result, nil
 	}
 	result.Terminal = "closed"
-	if session.Agent.Provider == agentruntime.ProviderClaude && terminalOwnsAgent && service.sessions.AgentProcessExited(target) {
-		result.Agent = "stopped"
-	}
 	return result, nil
 }
 
@@ -214,6 +211,6 @@ func interruptKey(provider agentruntime.Provider) string {
 	case agentruntime.ProviderClaude:
 		return "ctrl-c"
 	default:
-		panic("invalid agent provider")
-	} // justify-defect: session projection admits only validated providers.
+		panic("invalid agent provider") // justify-defect: foreground projection admits only validated providers.
+	}
 }

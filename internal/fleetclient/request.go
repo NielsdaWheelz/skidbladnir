@@ -23,41 +23,40 @@ const (
 
 // Request is shared by command parsing and the session browser. It is never a wire DTO.
 type Request struct {
-	Operation    string
-	Name         string
-	Machine      string
-	Ref          string
-	Kind         LaunchKind
-	Profile      string
-	CWD          string
-	Text         string
-	Keys         []string
-	Mode         string
-	Scope        string
-	Input        string
-	Delivery     string
-	TerminalOnly bool
-	State        string
-	WaitTimeout  time.Duration
-	MaxBytes     int
-	Group        group.Label
-	GroupFilter  group.Filter
+	ConversationID string
+	Operation      string
+	Name           string
+	Machine        string
+	Ref            string
+	Kind           LaunchKind
+	Profile        string
+	CWD            string
+	Text           string
+	Keys           []string
+	Mode           string
+	Scope          string
+	Input          string
+	Delivery       string
+	TerminalOnly   bool
+	State          string
+	WaitTimeout    time.Duration
+	MaxBytes       int
+	Group          group.Label
+	GroupFilter    group.Filter
 }
 
 type ProcessReference struct {
-	Methods       agentruntime.Methods  `json:"methods"`
-	Binding       *agentruntime.Binding `json:"binding,omitempty"`
-	Turn          *agentruntime.Turn    `json:"turn,omitempty"`
-	PaneID        string                `json:"paneId"`
-	PID           int                   `json:"pid"`
-	StartIdentity string                `json:"startIdentity"`
+	PaneID        string `json:"paneId"`
+	PID           int    `json:"pid"`
+	StartIdentity string `json:"startIdentity"`
 }
 
 type Reference struct {
-	Machine       string            `json:"machine"`
-	TmuxID        string            `json:"tmuxId"`
-	IdentityToken string            `json:"identityToken"`
-	Agent         *ProcessReference `json:"agent,omitempty"`
+	Machine       string                            `json:"machine"`
+	TmuxID        string                            `json:"tmuxId,omitempty"`
+	IdentityToken string                            `json:"identityToken,omitempty"`
+	Agent         *ProcessReference                 `json:"agent,omitempty"`
+	Conversation  *agentruntime.ConversationRuntime `json:"conversation,omitempty"`
 }
 
 func DecodeReference(encoded string) (Reference, error) {
@@ -70,13 +69,23 @@ func DecodeReference(encoded string) (Reference, error) {
 		return Reference{}, invalid
 	}
 	var ref Reference
-	if !nonNullJSON(data) || strictjson.Decode(data, &ref) != nil || !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" {
+	if !nonNullJSON(data) || strictjson.Decode(data, &ref) != nil {
 		return Reference{}, invalid
 	}
 	if _, err := machine.Parse(ref.Machine); err != nil {
 		return Reference{}, invalid
 	}
-	if ref.Agent != nil && (!tmuxAddress(ref.Agent.PaneID, '%') || ref.Agent.PID <= 0 || ref.Agent.StartIdentity == "" || !ref.Agent.Methods.Valid() || ref.Agent.Binding != nil && !ref.Agent.Binding.Valid() || ref.Agent.Turn != nil && !ref.Agent.Turn.Valid()) {
+	if ref.Agent != nil && (!tmuxAddress(ref.Agent.PaneID, '%') || ref.Agent.PID <= 0 || ref.Agent.StartIdentity == "") {
+		return Reference{}, invalid
+	}
+	if ref.TmuxID == "" {
+		if ref.IdentityToken != "" || ref.Agent != nil || ref.Conversation == nil {
+			return Reference{}, invalid
+		}
+	} else if !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" {
+		return Reference{}, invalid
+	}
+	if ref.Conversation != nil && !validConversationRuntime(*ref.Conversation) {
 		return Reference{}, invalid
 	}
 	return ref, nil
@@ -102,40 +111,52 @@ func (request Request) Valid() bool {
 	if request.Mode != "" && request.Mode != "native" && request.Mode != "terminal" {
 		return false
 	}
-	if request.Operation != "read" && request.MaxBytes != 0 || request.Operation != "read" && request.Mode != "" {
+	if request.Operation != "read" && request.MaxBytes != 0 || request.Operation != "read" && request.Operation != "stop" && request.Mode != "" {
 		return false
 	}
 	if request.Operation != "send" && request.Operation != "text" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
 		return false
 	}
-	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" || request.CWD != "") {
+	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" && request.ConversationID == "" || request.CWD != "") {
 		return false
 	}
 	switch request.Operation {
 	case "list":
-		return request.Name == "" && request.Ref == ""
+		return request.Name == "" && request.Ref == "" && request.ConversationID == ""
 	case "start":
-		return request.Machine != "" && request.Ref == "" &&
+		return request.Machine != "" && request.Ref == "" && request.ConversationID == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
-	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell":
+	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "track", "untrack", "inspect":
 	default:
 		return false
 	}
 	if request.Ref != "" {
+		if request.ConversationID != "" && request.Operation != "track" {
+			return false
+		}
 		if request.Name != "" || request.Machine != "" {
 			return false
 		}
-		if _, err := DecodeReference(request.Ref); err != nil {
+		if ref, err := DecodeReference(request.Ref); err != nil || ref.TmuxID == "" && (request.Operation == "enter" || request.Operation == "close" || request.Operation == "text" || request.Operation == "keys" || request.Operation == "shell" || request.Operation == "group" || request.Operation == "track" || request.Operation == "untrack" || request.Mode == "terminal") {
+			return false
+		}
+	} else if request.ConversationID != "" {
+		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Operation != "track" && request.Name != "" {
+			return false
+		}
+		if request.Operation != "track" && request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
 			return false
 		}
 	} else if request.Name == "" {
 		return false
 	}
 	switch request.Operation {
+	case "track":
+		return request.ConversationID != "" && request.Profile != "" && validReplyID(request.ConversationID)
 	case "read":
 		return request.MaxBytes >= 0 && request.MaxBytes <= 32768 && (request.Mode == "terminal" && request.Scope == "" || request.Mode != "terminal" && (request.Scope == "" || request.Scope == "latest" || request.Scope == "history"))
 	case "send":
-		return validInputText(request.Text) && (request.Input == "peer" || request.Input == "user") && (request.Delivery == "direct" || request.Delivery == "queue" && request.Input == "user")
+		return validInputText(request.Text) && (request.Input == "peer" || request.Input == "user") && (request.Delivery == "direct" || request.Delivery == "queue")
 	case "text":
 		return validInputText(request.Text)
 	case "wait":

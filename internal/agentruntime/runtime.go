@@ -32,10 +32,6 @@ type Foreground struct {
 type AgentRuntime struct {
 	PaneID          string
 	StartIdentity   processinfo.StartIdentity
-	Status          Status
-	Methods         Methods
-	Binding         *Binding
-	Turn            *Turn
 	Provider        Provider
 	PID             processinfo.PID
 	Profile         ProfileKey
@@ -191,7 +187,7 @@ func Project(profiles []Profile, observation processinfo.Observation, encodedReg
 	if !found {
 		return AgentRuntime{}, false
 	}
-	agent := AgentRuntime{Provider: foreground.Provider, PID: foreground.PID, StartIdentity: foreground.StartIdentity, Status: Status{State: "unknown", Source: "unavailable"}, Methods: UnavailableMethods(foreground.Provider)}
+	agent := AgentRuntime{Provider: foreground.Provider, PID: foreground.PID, StartIdentity: foreground.StartIdentity}
 	providerSessionID, providerSessionName := "", ""
 	if foreground.Provider == ProviderClaude {
 		if registration, valid := acceptRegistration(profiles, foreground, encodedRegistration); valid {

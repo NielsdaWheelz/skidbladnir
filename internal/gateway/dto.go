@@ -20,11 +20,12 @@ import (
 )
 
 type apiError struct {
-	Dispatch string `json:"dispatch,omitempty"`
-	Code     string `json:"code"`
-	Message  string `json:"message"`
-	Status   int    `json:"-"`
-	logCode  logging.ErrorCode
+	Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
+	Dispatch     string                     `json:"dispatch,omitempty"`
+	Code         string                     `json:"code"`
+	Message      string                     `json:"message"`
+	Status       int                        `json:"-"`
+	logCode      logging.ErrorCode
 }
 
 var (
@@ -51,9 +52,10 @@ var (
 )
 
 type profileDTO struct {
-	Key      string `json:"key"`
-	Label    string `json:"label"`
-	Provider string `json:"provider"`
+	HistoryScope string `json:"historyScope,omitempty"`
+	Key          string `json:"key"`
+	Label        string `json:"label"`
+	Provider     string `json:"provider"`
 }
 
 type characterDTO struct {
@@ -67,16 +69,12 @@ type providerSessionDTO struct {
 }
 
 type agentDTO struct {
-	PaneID          string                `json:"paneId"`
-	StartIdentity   string                `json:"startIdentity"`
-	Status          agentruntime.Status   `json:"status"`
-	Methods         agentruntime.Methods  `json:"methods"`
-	Binding         *agentruntime.Binding `json:"binding,omitempty"`
-	Turn            *agentruntime.Turn    `json:"turn,omitempty"`
-	Provider        string                `json:"provider"`
-	PID             int                   `json:"pid"`
-	Profile         string                `json:"profile,omitempty"`
-	ProviderSession *providerSessionDTO   `json:"providerSession,omitempty"`
+	PaneID          string              `json:"paneId"`
+	StartIdentity   string              `json:"startIdentity"`
+	Provider        string              `json:"provider"`
+	PID             int                 `json:"pid"`
+	Profile         string              `json:"profile,omitempty"`
+	ProviderSession *providerSessionDTO `json:"providerSession,omitempty"`
 }
 
 type connectionDTO struct {
@@ -85,19 +83,20 @@ type connectionDTO struct {
 }
 
 type sessionDTO struct {
-	TmuxID          string         `json:"tmuxId"`
-	ActivePaneID    string         `json:"activePaneId"`
-	TmuxName        string         `json:"tmuxName"`
-	IdentityToken   string         `json:"identityToken"`
-	Character       characterDTO   `json:"character"`
-	LaunchProfile   string         `json:"launchProfile,omitempty"`
-	Agent           *agentDTO      `json:"agent,omitempty"`
-	Connection      *connectionDTO `json:"connection,omitempty"`
-	Objective       string         `json:"objective,omitempty"`
-	Group           string         `json:"group,omitempty"`
-	CWD             string         `json:"cwd,omitempty"`
-	ActiveCommand   string         `json:"activeCommand,omitempty"`
-	AttachedClients int            `json:"attachedClients"`
+	TmuxID          string                            `json:"tmuxId"`
+	ActivePaneID    string                            `json:"activePaneId"`
+	TmuxName        string                            `json:"tmuxName"`
+	IdentityToken   string                            `json:"identityToken"`
+	Character       characterDTO                      `json:"character"`
+	LaunchProfile   string                            `json:"launchProfile,omitempty"`
+	Agent           *agentDTO                         `json:"agent,omitempty"`
+	Conversation    *agentruntime.ConversationRuntime `json:"conversation,omitempty"`
+	Connection      *connectionDTO                    `json:"connection,omitempty"`
+	Objective       string                            `json:"objective,omitempty"`
+	Group           string                            `json:"group,omitempty"`
+	CWD             string                            `json:"cwd,omitempty"`
+	ActiveCommand   string                            `json:"activeCommand,omitempty"`
+	AttachedClients int                               `json:"attachedClients"`
 }
 
 type machineDTO struct {
@@ -266,6 +265,10 @@ func mapProfiles(profiles []agentruntime.Profile) ([]profileDTO, error) {
 	mapped := make([]profileDTO, len(validated))
 	for index, profile := range validated {
 		mapped[index] = profileDTO{Key: string(profile.Key), Label: profile.Label, Provider: profile.Provider.String()}
+		// justify-ignore-error: absent native home omits this profile's native capability without hiding its terminal launch.
+		if scope, err := agentruntime.HistoryScope(profile); err == nil {
+			mapped[index].HistoryScope = scope
+		}
 	}
 	return mapped, nil
 }
@@ -274,15 +277,13 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 	if agent == nil {
 		return nil, nil
 	}
-	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil || agent.PaneID == "" || agent.StartIdentity == "" || !agent.Status.Valid() || !agent.Methods.Valid() {
+	if err := agentruntime.ValidateAgentRuntime(profiles, *agent); err != nil || agent.PaneID == "" || agent.StartIdentity == "" {
 		return nil, errors.New("invalid agent runtime")
 	}
 	mapped := &agentDTO{
-		PaneID: agent.PaneID, StartIdentity: string(agent.StartIdentity), Status: agent.Status, Methods: agent.Methods,
+		PaneID: agent.PaneID, StartIdentity: string(agent.StartIdentity),
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
-		Binding:  agent.Binding,
-		Turn:     agent.Turn,
 		Profile:  string(agent.Profile),
 	}
 	if agent.ProviderSession != nil {
@@ -324,6 +325,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
+		Conversation:    session.Conversation,
 		Connection:      connection,
 		Objective:       session.Objective,
 		Group:           session.Group.String(),
