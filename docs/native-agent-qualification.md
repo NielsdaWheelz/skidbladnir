@@ -56,7 +56,26 @@ failed without the proposed profile. a uniquely named temporary profile with
 the declared attachment/body made both package paths pass user, network and
 pid namespace creation. the profile and all test-owned files were removed.
 the persistent policy was absent; its installation and full linux provider
-control remain `NOT_RUN`.
+control were `NOT_RUN` in this namespace check.
+
+2026-09-29 coordinated mac follow-up: the exact dev-server installer built the
+pinned codex release package and repeated without changing its installed
+marker. published skid v0.10.4, the frozen merged helper and that release
+binary passed isolated selected-view binding, native user send, bounded
+finalized reply read with matching turn/output identity, and stale-process
+rejection against a controlled local model endpoint. exact native stop and
+fixture cleanup passed. this does not qualify authenticated model access,
+installed hosts or the physical phone.
+
+2026-09-29 linux provider follow-up: a disposable ubuntu noble x86_64 package
+built the exact pinned codex cli and code-mode helper. marked tuis shared one
+native owner with distinct selected views; guarded send and finalized read
+passed against a controlled local model endpoint, while spoofed and stale
+controls failed. package and daemon-copy bubblewrap were denied without the
+temporary apparmor policy, allowed with it, then denied after removal. native
+stop, policy removal and fixture cleanup passed. this was a debug build with
+code-mode runtime disabled; no linux installer release build, installed policy,
+authenticated access or fleet behavior was tested.
 
 codex execution used a controlled model http endpoint with actual provider,
 history, queue and tui processes. it does not qualify the real openai backend.
