@@ -2,8 +2,9 @@
 
 2026-09-28 · isolated source qualification; no fleet deployment or release.
 2026-09-29 delivery changes the helper source/lock and codex bootstrap. the
-disposable frozen helper installation and mac codex bootstrap now pass; linux
-apparmor and coordinated release acceptance remain `NOT_RUN`. the dated
+disposable frozen helper installation and mac codex bootstrap now pass; scoped
+linux apparmor namespaces pass with a temporary profile. installed policy,
+full linux provider control and coordinated cutover remain `NOT_RUN`. the dated
 evidence below does not qualify those remaining boundaries.
 [the contract](native-agent-observation.md) owns requirements and accepted costs.
 the [claude recipient defect](issues/native-message-qualification.md) makes native
@@ -45,9 +46,17 @@ owner and preserved the first selected view. read-only observation succeeded;
 spoofed-owner registration and cross-view control failed. the upstream update
 marker stayed absent. the debug daemon used about 188 mib resident in that
 fixture; all test-owned processes, sockets and files were removed. ubuntu noble
-x86_64 apparmor, a published matching skid release, installed-fleet behavior
+installed x86_64 apparmor, coordinated package installation, installed-fleet behavior
 and physical-phone usability remain unqualified. [release qualification](issues/native-agent-release-qualification.md)
 tracks that cutover.
+
+2026-09-29 ubuntu noble x86_64 follow-up: ordinary-user system bubblewrap
+passed namespace creation; a byte-identical copy at the native package path
+failed without the proposed profile. a uniquely named temporary profile with
+the declared attachment/body made both package paths pass user, network and
+pid namespace creation. the profile and all test-owned files were removed.
+the persistent policy was absent; its installation and full linux provider
+control remain `NOT_RUN`.
 
 codex execution used a controlled model http endpoint with actual provider,
 history, queue and tui processes. it does not qualify the real openai backend.
@@ -64,4 +73,4 @@ fixtures, test trust entries and owned processes are removed; existing upstream
 tests remain. test deletion deliberately leaves
 no new regression protection.
 ship the coordinated source/contracts/pins together; rollback uses the prior
-complete release. publication and fleet installation are separate work.
+complete release. v0.10.4 publication is complete; fleet installation is separate.
