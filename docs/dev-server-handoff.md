@@ -23,7 +23,13 @@ verified; neither remains a blocker. the local checkout remains `skid-v1`.
 live original-skid installation still waits for the root operator's namespace
 handback.
 
-published release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
+current stock-native generation: [v0.10.5](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.10.5).
+[`release-pin.json`](../release-pin.json) owns its source and artifact digests;
+[`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
+owns its qualified helper. [current qualification](native-agent-qualification.md)
+records isolated source checks and artifact verification; this generation has no fleet/phone acceptance.
+
+historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
 android `0.9.0` / `9000`; package `dev.niels.skidbladnir`.
 published upstream pin: [release-pin.json at 50a688b](https://github.com/NielsdaWheelz/skidbladnir/blob/50a688bf92080428bcb9543b1654c28eff81213f/release-pin.json),

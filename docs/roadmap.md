@@ -16,10 +16,10 @@ experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
 v0.10.4 is published historical output under the former selected-view contract.
-the coordinated stock helper/gateway/client generation needs its new release pin.
+the coordinated stock helper/gateway/client generation is released as v0.10.5.
 [qualification](native-agent-qualification.md) records stock evidence;
 [release qualification](issues/native-agent-release-qualification.md) tracks remaining
-integration and installed-fleet boundaries. temporary behavioral tests are deleted
+installed-fleet boundaries. temporary behavioral tests are deleted
 after verification; no installed-fleet/physical-phone pass is claimed.
 
 ## original-product restoration
@@ -41,7 +41,7 @@ three-host coexistence and the recorded fleet/phone cutover checks, including
 arch prior-generation rollback/restore, opposite-product repeat-apply, both apk
 reinstalls and exact probe cleanup. [live qualification](dev-server-handoff.md#qualification-and-remaining-work)
 states the evidence and its limits; prior-conversation resumption is not claimed.
-[native background-job stop](issues/restoration-native-control.md) remains
+[installed-fleet native background-job stop](issues/restoration-native-control.md) remains
 `NOT_RUN`, separate from namespace separation. broader ux waivers below remain.
 
 ## implemented scope
@@ -49,7 +49,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| native status/history, qualified messaging/queueing, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
+| native status/history, qualified controls, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
@@ -65,8 +65,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.10.4` from
-`8510f2ef61e7e05a5f55d5233a18fd59da640b76`; it does not assert the
+source and artifact digests. it pins immutable `v0.10.5` from
+`223bc923ea43f90f9d870562a63306062c5fd43a`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.
