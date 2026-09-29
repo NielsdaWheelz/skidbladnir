@@ -1,6 +1,7 @@
 # native conversation qualification
 
-2026-09-29 · stock-provider source qualified; no installed-fleet acceptance.
+2026-09-29 · stock-provider source qualified; signed artifacts verified and pinned.
+no installed-fleet acceptance.
 [contract](native-agent-observation.md) owns target behavior. new evidence below
 applies only to its named boundary; compilation is not behavioral acceptance.
 
@@ -66,10 +67,15 @@ the custom Linux optimized source build hit its disposable 4-gibibyte RAM /
 service, source/toolchain/build and fixture cleanup passed. the removed source-build
 path has no remaining acceptance role.
 
-## remaining work
+## release and remaining work
 
-publish and pin the new coordinated release; installer readiness stays false
-until its release pin also names that generation. native Claude input remains
+[v0.10.5](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.10.5)
+publishes source `223bc923ea43f90f9d870562a63306062c5fd43a`; upstream and installer
+pins identify the same signed artifacts and qualified helper. release verification
+passed signer, package/version, archive and digest checks; both host binaries
+reproduced byte-for-byte from the clean exact source. published tag/immutability
+and hosted verification also passed. this does not establish deployment.
+native Claude input remains
 unavailable under [recipient qualification](issues/native-message-qualification.md);
 [background stop](issues/restoration-native-control.md) retains its separate
 source/fleet evidence. release pins identify sources and digests, not deployment.

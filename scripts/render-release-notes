@@ -86,7 +86,7 @@ render_notes() {
     '## Known limits' "" \
     'Android 16/API 36, Linux amd64, and Darwin arm64 only. Phone enrollment is' \
     'fixed to three owner-managed hosts in one tailnet and two trusted phones.' \
-    'The CLI supports explicit configurable peers. There are four launch profiles.' \
+    'The CLI supports explicit configurable peers.' \
     'There is no app store, automatic update, downgrade, mixed-version compatibility,' \
     'public ingress, fleet discovery, or embedded Tailscale login. GitHub is used' \
     'for installation and updates, never at runtime.'
