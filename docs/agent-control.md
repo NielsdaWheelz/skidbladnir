@@ -82,7 +82,7 @@ never follow a different pane, unbound agent or deleted session.
 
 ## delivery boundaries
 
-dev-server installs fixed provider source patches and the frozen helper using
+dev-server installs the fixed codex source patch and direct frozen helper using
 existing accounts and sockets. coordinated release hard-cuts schemas; rollback
 restores the previous complete release. [deployment](dev-server-handoff.md) owns
 installation; [testing policy](rules/testing.md) owns temporary-test retirement.

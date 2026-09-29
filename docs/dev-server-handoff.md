@@ -400,8 +400,10 @@ not qualify the new native interaction contract.
 consume [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
 and [the installation contract](restoration-native-control.md):
 
-- llm-calling `ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f`;
-  uv.lock sha-256 `7566d8859aead7cfa6ae9477f5ea2406d00c860335cbe954cbb320ea330783f5`.
+- llm-calling `0bbba0a994de7b46645037f0ecc24aeb59fe6e4a`;
+  uv.lock sha-256 `a7771120dd948759c4f0d089382046443a2348a447453e68369400c6a43bc8e9`.
+  install that source directly; the previous helper patch is retired. this
+  installation is unqualified until the new pinned generation is exercised.
 - private uv `0.11.28`, python `3.12.13`, frozen `claude-agent-sdk==0.2.130`;
   `uv sync --python 3.12.13 --frozen --extra claude-sdk --no-dev`.
 - install the helper environment beneath `~/.local/share/skidbladnir/` and expose

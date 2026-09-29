@@ -407,8 +407,11 @@ before parallel implementation and integrates cross-slice changes.
 | root | docs, entry-point wiring, all pins/manifests/lockfiles, `scripts/check` composition and temporary cross-system journey | all |
 
 f reuses existing provider homes/endpoints and publishes no new per-pane daemon.
-install immutable upstream source plus checksummed bundled patches; generation
-identity includes upstream revision and patch digest. native codex artifacts are
+the marked codex tui starts its provider-owned app-server on demand; that
+daemon can remain after the tui exits and consumes memory per used profile.
+install the merged helper source directly and codex from immutable source plus
+its checksummed patch. generation identity includes exact source and patch
+digests. native codex artifacts are
 traversable by existing shared clients; provider account data stays private.
 the fixed native socket root accepts owned 0700 or explicit client-group 0710;
 only individually granted socket inodes become 0660. clients resolve the native
@@ -418,7 +421,7 @@ of that root remains unchanged, and startup locks remain 0600. claude's qualifie
 version is reconciled without changing user update policy; drift requires
 requalification, and missing/malformed native interfaces remain unavailable.
 claude native input stays unavailable under this contract.
-root owns `deployment/native-control/`, dev-server `assets/codex/profiles.json`,
+root owns `deployment/native-control/`, dev-server `assets/codex/native-source.json`,
 `assets/skidbladnir/*.json` and `assets/skid-provider/native-control.json`.
 file changes outside a slice require reassignment before editing.
 

@@ -1,6 +1,9 @@
 # native interaction qualification
 
 2026-09-28 · isolated source qualification; no fleet deployment or release.
+2026-09-29 delivery changes the helper source/lock and codex bootstrap. the
+new frozen installation and on-demand bootstrap remain unqualified; the dated
+evidence below does not qualify those new boundaries.
 [the contract](native-agent-observation.md) owns requirements and accepted costs.
 the [claude recipient defect](issues/native-message-qualification.md) makes native
 input unavailable under the contract; status/history/results and matched
@@ -38,9 +41,10 @@ history, queue and tui processes. it does not qualify the real openai backend.
 claude used its actual native binary and sdk with a real account. the emulator
 does not establish physical-phone usability or installed-fleet acceptance.
 
-source pins and bundled patch digests are authoritative in skid's
+the helper source and lock pin are authoritative in skid's
 `deployment/native-control/pin.json` and dev-server's
-`assets/{codex/native-source,skid-provider/native-control}.json`.
+`assets/skid-provider/native-control.json`; dev-server's
+`assets/codex/native-source.json` owns the codex source and patch digest.
 skid engineering checks (`scripts/check verify`) passed after temporary test deletion.
 helper lint/format/types and installer shell checks passed. task-added tests,
 fixtures, test trust entries and owned processes are removed; existing upstream
