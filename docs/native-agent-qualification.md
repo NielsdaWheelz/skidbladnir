@@ -2,8 +2,9 @@
 
 2026-09-28 · isolated source qualification; no fleet deployment or release.
 2026-09-29 delivery changes the helper source/lock and codex bootstrap. the
-new frozen installation and on-demand bootstrap remain unqualified; the dated
-evidence below does not qualify those new boundaries.
+disposable frozen helper installation and mac codex bootstrap now pass; linux
+apparmor and coordinated release acceptance remain `NOT_RUN`. the dated
+evidence below does not qualify those remaining boundaries.
 [the contract](native-agent-observation.md) owns requirements and accepted costs.
 the [claude recipient defect](issues/native-message-qualification.md) makes native
 input unavailable under the contract; status/history/results and matched
@@ -35,6 +36,18 @@ the supported command-hook barrier reached the actual failure. a herdr wait
 timed out; only the independently finalized native reply is qualified.
 
 ## limits and delivery
+
+2026-09-29 source follow-up: the exact merged helper commit and updated lock
+passed a fresh frozen install and repeat in an empty disposable home; python,
+uv, sdk, shim and launcher matched their pins. the final pinned codex package
+started a native daemon from a marked mac tui; a second tui reused the same
+owner and preserved the first selected view. read-only observation succeeded;
+spoofed-owner registration and cross-view control failed. the upstream update
+marker stayed absent. the debug daemon used about 188 mib resident in that
+fixture; all test-owned processes, sockets and files were removed. ubuntu noble
+x86_64 apparmor, a published matching skid release, installed-fleet behavior
+and physical-phone usability remain unqualified. [release qualification](issues/native-agent-release-qualification.md)
+tracks that cutover.
 
 codex execution used a controlled model http endpoint with actual provider,
 history, queue and tui processes. it does not qualify the real openai backend.

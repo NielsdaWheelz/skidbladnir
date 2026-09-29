@@ -9,7 +9,9 @@ this index records present scope and open work, not a release diary.
 
 [native interaction and unread replies](native-agent-observation.md): implemented
 and isolated-source qualified on the 2026-09-28 pins. the direct helper source
-and codex bootstrap in the delivery package await renewed qualification. provider
+and mac codex bootstrap passed disposable qualification on 2026-09-29; linux
+apparmor and the [coordinated release](issues/native-agent-release-qualification.md)
+remain open. provider
 view association, existing-helper extension, native-only
 status/history, codex peer/user messaging and native queueing, names-first cli,
 bounded waits, work-only stop, compound close and device-local unread; coordinated hard
