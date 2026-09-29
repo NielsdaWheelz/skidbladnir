@@ -67,14 +67,16 @@ type providerSessionDTO struct {
 }
 
 type agentDTO struct {
-	PaneID          string               `json:"paneId"`
-	StartIdentity   string               `json:"startIdentity"`
-	Status          agentruntime.Status  `json:"status"`
-	Methods         agentruntime.Methods `json:"methods"`
-	Provider        string               `json:"provider"`
-	PID             int                  `json:"pid"`
-	Profile         string               `json:"profile,omitempty"`
-	ProviderSession *providerSessionDTO  `json:"providerSession,omitempty"`
+	PaneID          string                `json:"paneId"`
+	StartIdentity   string                `json:"startIdentity"`
+	Status          agentruntime.Status   `json:"status"`
+	Methods         agentruntime.Methods  `json:"methods"`
+	Binding         *agentruntime.Binding `json:"binding,omitempty"`
+	Turn            *agentruntime.Turn    `json:"turn,omitempty"`
+	Provider        string                `json:"provider"`
+	PID             int                   `json:"pid"`
+	Profile         string                `json:"profile,omitempty"`
+	ProviderSession *providerSessionDTO   `json:"providerSession,omitempty"`
 }
 
 type connectionDTO struct {
@@ -84,6 +86,7 @@ type connectionDTO struct {
 
 type sessionDTO struct {
 	TmuxID          string         `json:"tmuxId"`
+	ActivePaneID    string         `json:"activePaneId"`
 	TmuxName        string         `json:"tmuxName"`
 	IdentityToken   string         `json:"identityToken"`
 	Character       characterDTO   `json:"character"`
@@ -278,6 +281,8 @@ func mapAgent(agent *agentruntime.AgentRuntime, profiles []agentruntime.Profile)
 		PaneID: agent.PaneID, StartIdentity: string(agent.StartIdentity), Status: agent.Status, Methods: agent.Methods,
 		Provider: agent.Provider.String(),
 		PID:      int(agent.PID),
+		Binding:  agent.Binding,
+		Turn:     agent.Turn,
 		Profile:  string(agent.Profile),
 	}
 	if agent.ProviderSession != nil {
@@ -313,6 +318,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	}
 	card := sessionDTO{
 		TmuxID:          session.TmuxID,
+		ActivePaneID:    session.ActivePaneID,
 		TmuxName:        session.TmuxName,
 		IdentityToken:   session.IdentityToken,
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
@@ -325,7 +331,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
+	if card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}

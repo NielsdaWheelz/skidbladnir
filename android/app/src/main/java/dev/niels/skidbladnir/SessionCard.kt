@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -58,14 +59,15 @@ internal fun SessionCard(
     showMachineLabel: Boolean,
     motionEnabled: Boolean,
     onOpen: () -> Unit,
-    onKill: () -> Unit,
+    onClose: () -> Unit,
     onGroup: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
     val context = visibleSession.context
+    val replies = machine.replies[session.identityToken] ?: ReplyPresentation()
     val status = when (context) {
-        is ExecutionContext.Local -> sessionStatusContent(context.agent?.status, fresh = machine.canMutate)
+        is ExecutionContext.Local -> sessionStatusContent(context.agent?.status, fresh = machine.canMutate, replies = replies)
         is ExecutionContext.Remote -> SessionStatusContent("REMOTE", "remote status unknown")
         ExecutionContext.RemoteUnknown -> SessionStatusContent("REMOTE UNKNOWN", "remote context unknown")
     }
@@ -104,7 +106,7 @@ internal fun SessionCard(
                 dwarfName = session.character.displayName,
                 working = (context as? ExecutionContext.Local)?.agent?.status?.state == AgentState.Working,
                 activityTone = tone,
-                animateActivity = machine.canMutate && motionEnabled,
+                animateActivity = machine.canMutate && motionEnabled && (context as? ExecutionContext.Local)?.agent?.status?.source == AgentMethod.Native,
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -122,6 +124,10 @@ internal fun SessionCard(
                     fontFamily = NidavellirType.Data,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+            }
+            replyAvailabilityLabel(replies)?.let {
+                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
+                    fontFamily = NidavellirType.Data, modifier = Modifier.padding(top = 8.dp))
             }
             session.objective?.let {
                 Text(
@@ -184,11 +190,11 @@ internal fun SessionCard(
                         description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
                             (session.group?.let { "group: ${it.text}" } ?: "unassigned"),
                     )
-                    KillButton(
+                    CloseButton(
                         machineLabel = visibleSession.machine.label,
                         target = visibleSession.target,
-                        enabled = machine.canMutate,
-                        onClick = onKill,
+                        enabled = machine.canMutate && session.agent?.methods?.stop != AgentMethod.Unavailable,
+                        onClick = onClose,
                     )
                 }
             }
@@ -297,7 +303,7 @@ private fun SessionStatusBay(status: SessionStatusContent, tone: Color, modifier
         shape = NidavellirShapes.Chip,
         border = BorderStroke(1.dp, tone),
         modifier = modifier
-            .semantics { contentDescription = status.accessibilityLabel },
+            .clearAndSetSemantics { contentDescription = status.accessibilityLabel },
     ) {
         Box(
             modifier = Modifier

@@ -2,6 +2,8 @@
 
 implemented. 2026-09-27: one table with an agents view and group views replaces
 pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
+[native interaction](native-agent-observation.md) adds native status, separate
+unread and stop/close semantics; its content contract owns those fields.
 [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
 skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
@@ -26,7 +28,7 @@ are the same table over the same observations.
 design for a half-screen terminal: 3–4 groups, 6–7 agents, about 3 sessions per
 group; fully usable at 80 columns × 24 rows. no mouse interaction, embedding,
 new dependency, host/android change, search, saved empty groups, manual ordering,
-collapsing, panes, attention counters, unread state, new status semantics, or
+collapsing, panes, attention counters, or
 navigation history. one current selection and scroll position; no disk state.
 
 ## 2. composition and data contract
@@ -100,11 +102,11 @@ copy.
 | context | keys/behavior |
 | --- | --- |
 | ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q/escape` quit |
-| selected row | spacebar full metadata; `r` bounded read, `i` interrupt and `s` stop agent and close terminal for local agents only; `x` close terminal; `e` change group; `T` (shift+t) terminal-here, refused for remote connections; existing remote capability/availability guards; local metadata remains readable when unavailable |
+| selected row | spacebar full metadata; `r` bounded read, `s` stop current work and `c` stop work and close terminal for local agents only; `x` close terminal; `e` change group; `T` (shift+t) terminal-here, refused for remote connections; existing remote capability/availability guards; local metadata remains readable when unavailable |
 | modal page | owns input while the header and rule stay visible; forms keep field/paste/validation keys; details/read scroll; existing confirm/cancel keys; no global navigation mnemonics |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; no new prefix commands |
 
-stop/kill name and pin their target/effect before confirmation. inventory cannot
+stop/close name and pin their target/effect before confirmation. inventory cannot
 substitute a replacement process. keep the existing single pending-operation lane,
 duplicate suppression, completion guards, and unknown-outcome/no-replay behavior.
 modal close returns to the table; refresh reconciliation still applies.
@@ -147,7 +149,7 @@ failed a read, or `checking` while a scoped read is still outstanding.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, only when the table scrolls, the cursor position at its end; the selected
-session's state, source and reason, attached clients and full directory; the keys.
+session's state and device-local unread, attached clients and full directory; the keys.
 while an action is in flight the rule names that action's captured target instead.
 observed text is sanitized for display: controls, format characters such as bidi
 overrides, and line separators become spaces.
@@ -162,7 +164,7 @@ pages keep the header and rule. the page title is bold, and labels right-align o
 one axis. the rule names the captured target (pending action, details or output
 snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal`
-or `enter stop agent and close terminal`.
+or `enter stop work and close terminal`.
 bounded output remains an explicit snapshot; its title and source/scope/truncation
 stay pinned while the body scrolls, and refresh cannot relabel it. page scrolling
 uses the visible body height; forms keep the focused field visible.

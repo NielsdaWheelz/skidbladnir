@@ -3,7 +3,6 @@ package sessionui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -73,6 +72,13 @@ type model struct {
 	searchDirectories                     []string
 	searchCursor                          int
 	searchOmitted                         bool
+	unreadStore                           *fleetclient.UnreadStore
+	unreadSnapshot                        fleetclient.UnreadSnapshot
+	unreadFailed                          bool
+	replyScans                            map[fleetclient.UnreadKey]*replyScan
+	replyBusy                             map[string]bool
+	replyNext                             map[string]int
+	repliesUnavailable                    map[fleetclient.UnreadKey]bool
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -84,7 +90,8 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 	for _, machine := range client.Machines() {
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 	}
-	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true, agentsView: true}
+	store, storeErr := fleetclient.DefaultUnreadStore()
+	return &model{unreadStore: store, unreadFailed: storeErr != nil, replyScans: map[fleetclient.UnreadKey]*replyScan{}, replyBusy: map[string]bool{}, replyNext: map[string]int{}, repliesUnavailable: map[fleetclient.UnreadKey]bool{}, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true, agentsView: true}
 }
 func (m *model) Init() tea.Cmd { return tea.Batch(m.fetch(), tick()) }
 func tick() tea.Cmd            { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
@@ -186,6 +193,19 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		if m.unreadStore != nil {
+			snapshot, err := m.unreadStore.Sync(m.peers, m.client.Machines())
+			if err != nil {
+				m.unreadFailed = true
+			} else {
+				m.unreadFailed = false
+				m.unreadSnapshot = snapshot
+			}
+		}
+		return m, m.recoverReplies()
+	case repliesMsg:
+		m.receiveReplies(message)
+		return m, nil
 	case actionMsg:
 		if message.operation == "start" || message.operation == "shell" {
 			if m.ctx.Err() != nil {
@@ -203,7 +223,15 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshAfterAction = true
 		}
 		if !message.result.OK {
-			m.fail(message.result.Error.Code + " (" + message.result.Error.Dispatch + "); not repeated")
+			failureText := message.result.Error.Code
+			if message.result.Error.Dispatch == "unknown" {
+				failureText = "could not confirm the request. check the terminal before trying again."
+			} else if message.result.Error.Code == "AgentTargetStale" || message.result.Error.Code == "SessionIdentityMismatch" {
+				failureText = "the session changed. refresh and try again."
+			} else if message.result.Error.Code == "AgentUnavailable" {
+				failureText = "this action is unavailable for this session."
+			}
+			m.fail(failureText)
 			failure := message.result.Error
 			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
 				m.groupChecking = true
@@ -218,11 +246,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch message.operation {
 		case "read":
-			var read fleetclient.ReadResult
-			if json.Unmarshal(message.result.Value.(json.RawMessage), &read) != nil {
-				m.fail("invalid read response")
-				break
-			}
+			read := message.result.Value.(fleetclient.ReadResult)
 			m.page = "output"
 			m.offset = 0
 			m.pageName, m.pageMachine = m.pendingName, m.pendingLabel
@@ -274,7 +298,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.inform("opening terminal on " + value.Label + "…")
 			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
-			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
+			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output, onHello: m.acknowledgement(request)}, func(err error) tea.Msg { return attachedMsg{err: err} })
 		case "group":
 			m.groupChecking = true
 			m.groupAcknowledged = true
@@ -284,22 +308,36 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.inform("group cleared; checking inventory")
 			}
 
+		case "close":
+			if _, ok := message.result.Value.(fleetclient.TerminalCloseResult); ok {
+				m.inform("terminal closed; pending input may remain")
+				break
+			}
+			value := message.result.Value.(fleetclient.CloseResult)
+			if value.Reason == "stale" {
+				m.fail("terminal left open because the session changed.")
+			} else if value.Terminal == "closed" && value.Agent == "unconfirmed" {
+				m.fail("terminal closed; agent stop unconfirmed.")
+			} else {
+				m.inform("current work: " + value.Agent + "; terminal: " + value.Terminal + "; pending input may remain; saved history is retained.")
+			}
 		case "stop":
-			var value fleetclient.StopResult
-			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
-				m.fail("invalid stop response")
-				break
+			value := message.result.Value.(fleetclient.WriteResult)
+			if value.Outcome == "unknown" {
+				m.fail("could not confirm the request. check the terminal before trying again.")
+			} else if value.Method == "terminal" {
+				m.inform("keys sent; agent state not confirmed.")
+			} else {
+				m.inform("current work: " + value.Outcome + "; pending input may remain")
 			}
-			m.inform("agent halt: " + value.Agent + "; terminal: " + value.Terminal)
-		case "kill":
-			m.inform("terminal closed; shared work may continue")
+
 		default:
-			var value fleetclient.WriteResult
-			if json.Unmarshal(message.result.Value.(json.RawMessage), &value) != nil {
-				m.fail("invalid control response")
-				break
+			value := message.result.Value.(fleetclient.WriteResult)
+			if value.Outcome == "unknown" {
+				m.fail("could not confirm the request. check the terminal before trying again.")
+			} else {
+				m.inform("keys sent; agent state not confirmed.")
 			}
-			m.inform(value.Method + ": " + value.Outcome)
 		}
 		return m, m.refresh()
 	case searchMsg:
@@ -517,28 +555,28 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			request.Operation = "enter"
-			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
+			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output, onHello: m.acknowledgement(request)}, func(err error) tea.Msg { return attachedMsg{err: err} })
 		case "x":
-			request.Operation = "kill"
+			request.Operation = "close"
+			request.TerminalOnly = true
 		case "s":
-			if row.session.Agent == nil {
+			if row.session.Agent == nil || row.session.Agent.Methods.Stop == "unavailable" {
 				return m, nil
 			}
 			request.Operation = "stop"
-		case "i":
-			if row.session.Agent == nil {
+		case "c":
+			if row.session.Agent == nil || row.session.Agent.Methods.Stop == "unavailable" {
 				return m, nil
 			}
-			request.Operation = "interrupt"
-			return m, m.execute(request)
+			request.Operation = "close"
 		case "r":
-			if row.session.Agent == nil {
+			if row.session.Agent == nil || row.session.Agent.Methods.Read != "native" {
 				return m, nil
 			}
 			request.Operation = "read"
 			return m, m.execute(request)
 		}
-		if request.Operation == "stop" || request.Operation == "kill" {
+		if request.Operation == "stop" || request.Operation == "close" {
 			m.pending = request
 			m.page = "confirm"
 		}
@@ -855,6 +893,7 @@ func singleLine(text string) string {
 }
 
 type attachment struct {
+	onHello       func() error
 	ctx           context.Context
 	client        *fleetclient.Client
 	request       fleetclient.Request
@@ -862,7 +901,7 @@ type attachment struct {
 }
 
 func (a *attachment) Run() error {
-	return terminalclient.Run(a.ctx, a.client, a.request, a.input, a.output)
+	return terminalclient.Run(a.ctx, a.client, a.request, a.input, a.output, a.onHello)
 }
 func (a *attachment) SetStdin(io.Reader)  {}
 func (a *attachment) SetStdout(io.Writer) {}

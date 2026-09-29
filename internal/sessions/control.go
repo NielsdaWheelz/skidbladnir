@@ -18,10 +18,12 @@ type AgentTarget struct {
 	PaneID        string                    `json:"paneId"`
 	PID           processinfo.PID           `json:"pid"`
 	StartIdentity processinfo.StartIdentity `json:"startIdentity"`
+	Binding       *agentruntime.Binding     `json:"binding,omitempty"`
+	Turn          *agentruntime.Turn        `json:"turn,omitempty"`
 }
 
 func TargetOf(session Session) AgentTarget {
-	return AgentTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.Agent.PaneID, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity}
+	return AgentTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.Agent.PaneID, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity, Binding: session.Agent.Binding, Turn: session.Agent.Turn}
 }
 
 func (manager *Manager) ResolveAgent(ctx context.Context, target AgentTarget) (Session, error) {
@@ -73,6 +75,7 @@ func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTa
 		return Session{}, ErrAgentTargetStale
 	}
 	session := inspected.session
+	session.ActivePaneID = inspected.paneID
 	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
 	return session, nil
 }
@@ -133,6 +136,9 @@ func (manager *Manager) agentTerminalKillInput(ctx context.Context, target Agent
 	if session.foreground == nil || session.Agent != nil && (session.Agent.PID != target.PID || session.Agent.StartIdentity != target.StartIdentity) {
 		return KillInput{}, ErrAgentTargetStale
 	}
+	if session.Agent == nil && !manager.AgentProcessExited(target) {
+		return KillInput{}, ErrAgentTargetStale
+	}
 	return KillInput{TmuxID: session.TmuxID, TmuxName: session.TmuxName, IdentityToken: session.IdentityToken}, nil
 }
 
@@ -155,4 +161,19 @@ func (manager *Manager) KillAgentTerminal(ctx context.Context, target AgentTarge
 		return err
 	}
 	return manager.kill(ctx, input, &target)
+}
+
+// ResolveSession validates the surviving terminal lifetime without requiring an agent.
+func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToken string) error {
+	manager.mutations.RLock()
+	defer manager.mutations.RUnlock()
+	name, exists, err := manager.sessionIdentity(ctx, tmuxID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	}
+	_, err = manager.mutationIdentity(ctx, tmuxID, name, identityToken)
+	return err
 }

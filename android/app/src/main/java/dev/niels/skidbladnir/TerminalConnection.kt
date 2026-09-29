@@ -74,6 +74,7 @@ private fun JsonObject.requiredPositiveInt(key: String): Int {
 }
 
 internal interface TerminalConnectionObserver {
+    fun onHello(attachedClients: Int)
     fun onPresence(attachedClients: Int)
     fun onFailure(code: ApiErrorCode)
 }
@@ -143,7 +144,7 @@ internal class TerminalConnection(
                 // justify-defect: the gateway owns the closed terminal event sequence.
                 if (connected) throw ProtocolDecodeException("terminal sent Hello more than once")
                 connected = true
-                observer.onPresence(event.attachedClients)
+                observer.onHello(event.attachedClients)
             }
             is TerminalServerEvent.Presence -> synchronized(monitor) {
                 if (stopped.get()) return

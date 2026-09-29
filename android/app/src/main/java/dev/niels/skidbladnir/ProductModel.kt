@@ -225,6 +225,8 @@ internal data class AgentRuntime(
     val startIdentity: String,
     val status: AgentStatus,
     val methods: AgentMethods,
+    val binding: AgentBinding? = null,
+    val turn: AgentTurn? = null,
     val profile: ProfileKey? = null,
     val providerSession: ProviderSessionFacts? = null,
 ) {
@@ -232,6 +234,9 @@ internal data class AgentRuntime(
         require(pid > 0)
         require(paneId.matches(Regex("%[0-9]+")))
         require(startIdentity.isNotEmpty())
+        require(binding == null || binding.conversation.provider == provider)
+        require(binding == null || profile == null || binding.conversation.profileKey == profile.encoded)
+        require(binding != null || listOf(methods.read, methods.sendPeer, methods.sendUser, methods.queueUser, methods.stop).none { it == AgentMethod.Native })
         when (provider) {
             AgentProvider.Codex -> require(providerSession?.name == null)
             AgentProvider.Claude -> Unit
@@ -241,6 +246,7 @@ internal data class AgentRuntime(
 
 internal data class TmuxSession(
     val tmuxId: String,
+    val activePaneId: String,
     val tmuxName: String,
     val identityToken: String,
     val character: CharacterSummary,
@@ -332,6 +338,8 @@ private data class WireAgentRuntime(
     val startIdentity: String,
     val status: AgentStatus,
     val methods: AgentMethods,
+    val binding: AgentBinding? = null,
+    val turn: AgentTurn? = null,
     val profile: String? = null,
     val providerSession: WireProviderSessionFacts? = null,
 )
@@ -339,6 +347,7 @@ private data class WireAgentRuntime(
 @Serializable
 private data class WireTmuxSession(
     val tmuxId: String,
+    val activePaneId: String,
     val tmuxName: String,
     val identityToken: String,
     val character: CharacterSummary,
@@ -573,13 +582,13 @@ internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.
 
 /**
  * Single owner of destructive copy: the action label is also the screen-reader description of every
- * kill control, so the spoken description and the dialog title cannot name different sessions.
+ * close control, so the spoken description and the dialog title cannot name different sessions.
  */
-internal fun killActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
-    if (target.session.agent == null || terminalOnly) "Close ${target.session.tmuxName} on ${label.text}"
-    else "Stop agent and close ${target.session.tmuxName} on ${label.text}"
-internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
-    killActionLabel(label, target, terminalOnly) + "?"
+internal fun closeActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
+    if (target.session.agent == null || terminalOnly) "close terminal only: ${target.session.tmuxName} on ${label.text}"
+    else "stop work and close terminal: ${target.session.tmuxName} on ${label.text}"
+internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
+    closeActionLabel(label, target, terminalOnly) + "?"
 
 @Serializable private data class CreateSessionRequest(
     val kind: String,
@@ -590,7 +599,7 @@ internal fun killConfirmationTitle(label: MachineLabel, target: SessionTarget, t
     val group: String? = null,
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
-@Serializable private data class KillSessionRequest(val tmuxName: String, val identityToken: String)
+@Serializable private data class CloseTerminalRequest(val tmuxName: String, val identityToken: String)
 @Serializable private data class RenameSessionRequest(
     val tmuxName: String,
     val newTmuxName: String,
@@ -657,8 +666,8 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
 )
 internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
     productJson.encodeToString(DirectoryListingRequest(directory.encoded))
-internal fun encodeKillSessionRequest(session: TmuxSession): String =
-    productJson.encodeToString(KillSessionRequest(session.tmuxName, session.identityToken))
+internal fun encodeCloseTerminalRequest(session: TmuxSession): String =
+    productJson.encodeToString(CloseTerminalRequest(session.tmuxName, session.identityToken))
 internal fun encodeRenameSessionRequest(target: SessionTarget, newTmuxName: String): String =
     productJson.encodeToString(
         RenameSessionRequest(
@@ -706,6 +715,7 @@ internal data class MachineState(
     val inventory: InventoryState,
     val pressure: PressureState,
     val remoteContexts: Map<String, ExecutionContext.Remote> = emptyMap(),
+    val replies: Map<String, ReplyPresentation> = emptyMap(),
 ) {
     val canMutate: Boolean get() = when (access) {
         MachineAccess.Ready -> inventory is InventoryState.Fresh
@@ -906,7 +916,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     ReconnectRequired("ReconnectRequired"),
     TerminalConfigurationUnsupported("TerminalConfigurationUnsupported"),
     AgentTargetStale("AgentTargetStale"),
-    AgentBlocked("AgentBlocked"), AgentInputInvalid("AgentInputInvalid"),
+    AgentUnavailable("AgentUnavailable"), AgentInputInvalid("AgentInputInvalid"), HistoryChanged("HistoryChanged"),
 }
 
 internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
@@ -935,9 +945,10 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.ReconnectRequired -> "Reconnect required."
     ApiErrorCode.TerminalConfigurationUnsupported ->
         "tmux requires window-size latest, destroy-unattached off, and detach-on-destroy on."
-    ApiErrorCode.AgentTargetStale -> "The agent changed. Refresh and try again."
-    ApiErrorCode.AgentBlocked -> "Inspect the terminal and send a deliberate reply."
-    ApiErrorCode.AgentInputInvalid -> "The agent input is not valid."
+    ApiErrorCode.AgentTargetStale -> "the session changed. refresh and try again."
+    ApiErrorCode.AgentUnavailable -> "this action is unavailable for this session."
+    ApiErrorCode.HistoryChanged -> "native history changed. restart the result scan."
+    ApiErrorCode.AgentInputInvalid -> "the agent input is not valid."
 }
 
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
@@ -945,20 +956,35 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
 
 internal data class SessionStatusContent(val label: String, val accessibilityLabel: String)
 
-internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean): SessionStatusContent {
-    val state = status?.state?.name?.uppercase() ?: "TERMINAL"
-    val inferred = status?.source == AgentMethod.Terminal
-    val label = state + if (inferred) " · inferred" else ""
-    val spoken = (if (fresh) "" else "Last observed: ") + label.lowercase()
-    return SessionStatusContent(label, spoken)
+internal fun replyAvailabilityLabel(replies: ReplyPresentation): String? = when {
+    replies.storeUnavailable -> "unread unavailable"
+    replies.repliesUnavailable -> "replies unavailable"
+    else -> null
+}
+
+internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean, replies: ReplyPresentation = ReplyPresentation()): SessionStatusContent {
+    val state = when (status?.state) {
+        AgentState.Working -> "working"
+        AgentState.Blocked -> "waiting"
+        AgentState.Idle -> "idle"
+        AgentState.Done -> "done"
+        AgentState.Failed -> "failed"
+        AgentState.Stopped -> "stopped"
+        AgentState.Unknown -> "status unavailable"
+        null -> "terminal"
+    }
+    val reply = if (!replies.unread) "" else if (replies.previousAgent) "new reply · previous agent" else "new reply"
+    val spoken = if (!replies.unread) state else if (replies.previousAgent) {
+        "terminal. new reply from the previous agent, unread on this device."
+    } else "$state. new reply, unread on this device."
+    return SessionStatusContent(state + if (reply.isEmpty()) "" else "\n$reply", (if (fresh) "" else "last observed: ") + spoken)
 }
 
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
     requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "connection"))
     (this["agent"] as? JsonObject)?.let { agent ->
-        agent.requireAbsentOrNonNull(setOf("profile", "providerSession"))
-        (agent["status"] as? JsonObject)?.requireAbsentOrNonNull(setOf("reason"))
+        agent.requireNativeValues()
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
@@ -977,6 +1003,7 @@ private fun acceptMachinePlatform(platform: WireMachinePlatform): MachinePlatfor
 
 private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     tmuxId = session.tmuxId,
+    activePaneId = session.activePaneId,
     tmuxName = session.tmuxName,
     identityToken = session.identityToken,
     character = session.character,
@@ -997,6 +1024,8 @@ private fun acceptAgentRuntime(runtime: WireAgentRuntime): AgentRuntime = AgentR
     startIdentity = runtime.startIdentity,
     status = runtime.status,
     methods = runtime.methods,
+    binding = runtime.binding,
+    turn = runtime.turn,
     profile = runtime.profile?.let { requireNotNull(ProfileKey.parse(it)) },
     providerSession = runtime.providerSession?.let(::acceptProviderSessionFacts),
 )
@@ -1009,6 +1038,8 @@ private fun acceptProviderSessionFacts(facts: WireProviderSessionFacts): Provide
 
 private fun acceptSession(session: TmuxSession) {
     require(session.tmuxId.isNotEmpty() && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
+    require(session.activePaneId.matches(Regex("%[0-9]+")))
+    require(session.agent == null || session.agent.paneId == session.activePaneId)
     require(session.attachedClients >= 0)
     require(session.cwd?.let(WorkingDirectoryPath::parse) != null || session.cwd == null)
     require(session.activeCommand?.isNotEmpty() != false)

@@ -4,6 +4,13 @@ tmux owns terminal sessions and pane processes. providers own execution and hist
 each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
+[native interaction and unread replies](native-agent-observation.md) owns native
+observation, codex selected-view association, messaging, provider queues,
+client-side waits and device-local acknowledgement. `stop` retains the terminal;
+`close` reports halt and terminal closure separately. [isolated source
+qualification](native-agent-qualification.md) records evidence and limits;
+historical fleet evidence does not qualify this change.
+
 2026-09-25 restoration scope: this original tmux product coexists independently
 with herdr-mobile. [the deployment handoff](dev-server-handoff.md) owns the
 namespace handback, existing provider accounts, scoped shell setup, helper pins, and
@@ -38,8 +45,9 @@ feature plans; those recipes do not recreate removed gates.
   association, never session lifetime, status, or history.
 - **providers own execution and history.** skid observes the exact foreground
   process, samples its status, and offers bounded reads and explicit controls.
-  codex is terminal-only; claude may use native status/history/stop through a
-  short-lived helper. no history is copied into a skid store, and no helper
+  native status/history/results and qualified controls use a short-lived helper.
+  explicit terminal reads/text/keys remain separate. no history is copied into
+  a skid store, and no helper
   owns the provider's lifetime. identity hooks never publish status or content.
 - **Android and each laptop are tmux clients.** Every gateway is an independent
   capability over one local tmux server. Android composes paired gateways; an
@@ -53,8 +61,8 @@ create on an explicit machine and directory using terminal or that host's
 allowlisted agent profiles; create an independent terminal from a session's
 current host/cwd/group; attach the same stock TUI that host's laptop sees; type, paste, and
 dictate through Gboard; select rendered terminal text and explicitly copy it to
-that phone's Android clipboard; detach without stopping anything; and kill an
-exact machine-bound confirmed session. phone interrupt/stop and desktop
+that phone's Android clipboard; detach without stopping anything; stop current
+work or close an exact machine-bound confirmed session. phone stop/close and desktop
 read/text/key controls follow [agent control](agent-control.md). one unavailable
 machine does not block or authorize action against another.
 
@@ -70,8 +78,8 @@ machine does not block or authorize action against another.
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
-| agent control | ordinary tmux sessions; exact foreground identity, sampled native/terminal status, bounded reads and explicit controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | Each host's tmux sessions/panes/user options are runtime truth; private kernel-validated connection registrations identify live remote ttys; Android persists pairings, one phone-local terminal text-size preference, and one system-managed, task-scoped, content-free Dashboard return capsule; inventory snapshots stay in memory |
+| agent control | exact foreground identity and native conversation/view; sampled native status, bounded native output, explicit native/terminal controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
+| State | tmux owns terminal runtime; providers own execution/history/queues; clients persist device-local reply ids, acknowledgements and terminal associations. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
@@ -143,8 +151,8 @@ portrait manifest.
 
 ### Guarantees (cheap, disaster-preventing)
 
-- Never kill a tmux session other than the exact confirmed target.
-- Detach and kill are visibly different actions; kill always confirms.
+- never close a tmux session other than the exact confirmed target.
+- detach and close are visibly different actions; close always confirms.
 - Validate cwd; launch only the configured terminal shell or the target host's
   declared closed agent profile set.
 - Codex credentials stay on their host; the app holds one encrypted bearer per
@@ -153,13 +161,13 @@ portrait manifest.
 
 ### Non-goals
 
-provider conversation search/registry, unread-result attention, arbitrary
+provider conversation search/inbox, cross-device unread sync, arbitrary
 transcript-derived semantic state, chat ui, copied provider history, a
 generalized hook runtime or trust-store editor, git/project-root
 resolution, router-owned provider payload interception, SQLite lifecycle facts,
 durable command receipts and replay,
 adoption, pin-parity launch refusal, upgrade rehearsals, proof-ledger
-acceptance matrices, App Server integration, project enrollment, quotas,
+acceptance matrices, project enrollment, quotas,
 scheduling, orchestration, and multi-user anything. See §8 for what would
 ever bring the retired machinery back.
 
@@ -245,8 +253,9 @@ creation, and content-free restoration contracts:
 - **Card presentation:** the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
   a fixed status facet is redundant decoration; the adjacent named status
-  bay remains the semantic and accessible source. inferred terminal observations
-  are labelled as such; a pane without an agent is `TERMINAL`. the machine label
+  bay remains the semantic and accessible source. state and device-local unread
+  are independent; no reasons or inference marker. a pane without an agent is
+  `terminal`, with a previous-agent reply marker when exactly associated. the machine label
   is quiet footer context in
   `All`; a selected-machine filter supplies that visible context once, so its
   cards omit the repeated visual machine label while retaining machine identity
@@ -264,9 +273,8 @@ creation, and content-free restoration contracts:
   inventory instead of fabricating a card.
 - **agent status is sampled, never authority.** states are
   `working | blocked | idle | done | failed | stopped | unknown`, with source
-  `native | terminal | unavailable`. claude uses a valid native observation when
-  available; otherwise explicit provider chrome may supply an inferred terminal
-  observation. codex uses terminal chrome only. unfamiliar chrome is unknown.
+  `native | unavailable`. both providers use their qualified native observation;
+  failure is unknown/unavailable. terminal chrome never supplies status.
   status is distinct from inventory freshness, unread attention and liveness;
   every command revalidates its full target.
 - a vanished session reconciles out. failed required tmux
@@ -380,7 +388,8 @@ missing and unsupported remain distinct in the protocol.
 
 [agent control](agent-control.md) owns status and bounded reads/controls.
 `agentcontrol` enriches the collected tmux inventory outside the session lock,
-using terminal capture and one claude native inspection per selected profile.
+using one batched native inspection per selected profile. terminal capture never
+supplies execution state.
 enrichment is bounded to two seconds and reuses the foreground five-second
 inventory schedule. pressure has its own coalesced polling lane.
 
@@ -549,7 +558,7 @@ tmux client command queues the epoch/PID/start-time/id/name predicate and
 cannot reach deletion. the gateway validates, closes its owned terminal
 connections, then revalidates and deletes. group membership is no restriction:
 only the selected session is removed; shared windows/processes may survive.
-the app confirms `Kill <tmuxName> on <machine>?` and never offers kill and detach in the
+the app confirms `close terminal only` with the exact name/machine and never combines closure and detach in the
 same gesture. There is no working/idle
 gate — the human is looking at the terminal facts; the guarantee is exactness
 of target, not semantic safety.
@@ -563,7 +572,7 @@ geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
 ordinary commands expose list, info, enter,
-read, send, keys, interrupt, stop, kill, start, shell, and group. `list --group LABEL` /
+read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
 use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
 default private peer configuration
@@ -574,9 +583,9 @@ directly; skid does not provision or alter jarvis's configuration or credentials
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
 the tui's `n` immediately creates and attaches a home terminal on the visible
 machine or configured default; `N` opens the advanced form. mobile retains
-its machine, directory, and provider chooser. `stop` is presented as
-`stop agent and close terminal`. interrupt retains the session; stop attempts provider halt then closes it; kill
-closes the session alone. halt and closure remain separately observed outcomes.
+its machine, directory, and provider chooser. `stop` means `stop current work`;
+`close` means `stop work and close terminal`. `close --terminal-only` closes the
+exact session without halt. pending provider input may remain; history is retained.
 
 ### Pressure
 
@@ -653,7 +662,7 @@ history item is `current`.
   `ps` output or a Linux fallback.
   `internal/agentcontrol` depends on sessions and the configured native helper;
   sessions never imports agentcontrol. the gateway composes both. short-lived
-  claude helpers inspect/read/stop using the selected profile environment;
+  native helpers inspect/read/control using the selected profile environment;
   neither helper nor client owns the provider runtime.
 - Public `dev-server` is the sole machine-local install owner. It pins one immutable
   GitHub release, source SHA, and two host-bundle digests, while this repository
@@ -732,7 +741,7 @@ history item is `current`.
 | `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
-| `POST /v1/sessions/{tmuxId}/agent/{operation}` | `read`, `send`, `keys`, `interrupt`, or `stop`; strict full foreground target plus operation inputs, [agent-control contract](agent-control.md#capability-and-api-contract) |
+| `POST /v1/sessions/{tmuxId}/agent/{operation}` | `read`, `send`, `text`, `keys`, `stop`, `close`, `results`; strict targets and inputs under [native interaction](native-agent-observation.md#5-api-and-dispatch); results validates session/conversation without pid |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 
 errors use `{code,message}` and the existing optional `dispatch` for operations
@@ -1003,7 +1012,7 @@ accepted and implemented. their detailed specifications own their limits.
 separate feasibility experiment; shipping it requires an accepted production
 contract and its own evidence.
 
-push, unread-result attention, provenance, copied provider history, durable
+push, cross-device unread sync, provenance, copied provider history, durable
 receipts and replay remain excluded. any new capability requires an explicit
 scope and acceptance-criterion change; removing old code does not authorize it.
 

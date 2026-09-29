@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
@@ -17,20 +18,29 @@ import (
 )
 
 var (
-	errorAgentTargetStale  = apiError{Code: "AgentTargetStale", Message: "The agent changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorAgentTargetStale, Dispatch: "not_sent"}
-	errorAgentBlocked      = apiError{Code: "AgentBlocked", Message: "Inspect the terminal and send a deliberate reply.", Status: http.StatusConflict, logCode: logging.ErrorAgentBlocked, Dispatch: "not_sent"}
-	errorAgentInputInvalid = apiError{Code: "AgentInputInvalid", Message: "The agent input is not valid.", Status: http.StatusBadRequest, logCode: logging.ErrorAgentInputInvalid, Dispatch: "not_sent"}
+	errorAgentTargetStale  = apiError{Code: "AgentTargetStale", Message: "the session changed. refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorAgentTargetStale, Dispatch: "not_sent"}
+	errorAgentUnavailable  = apiError{Code: "AgentUnavailable", Message: "this action is unavailable for this session.", Status: http.StatusConflict, logCode: logging.ErrorAgentUnavailable, Dispatch: "not_sent"}
+	errorAgentInputInvalid = apiError{Code: "AgentInputInvalid", Message: "the agent input is not valid.", Status: http.StatusBadRequest, logCode: logging.ErrorAgentInputInvalid, Dispatch: "not_sent"}
+	errorHistoryChanged    = apiError{Code: "HistoryChanged", Message: "native history changed. restart the result scan.", Status: http.StatusConflict, logCode: logging.ErrorHistoryChanged, Dispatch: "not_sent"}
 )
 
 type agentRequest struct {
-	IdentityToken stringField `json:"identityToken"`
-	PaneID        stringField `json:"paneId"`
-	PID           *int        `json:"pid"`
-	StartIdentity stringField `json:"startIdentity"`
-	Mode          stringField `json:"mode"`
-	Text          stringField `json:"text"`
-	MaxBytes      *int        `json:"maxBytes"`
-	Keys          *[]string   `json:"keys"`
+	IdentityToken stringField                `json:"identityToken"`
+	PaneID        stringField                `json:"paneId"`
+	PID           *int                       `json:"pid"`
+	StartIdentity stringField                `json:"startIdentity"`
+	Binding       *agentruntime.Binding      `json:"binding"`
+	Turn          *agentruntime.Turn         `json:"turn"`
+	Conversation  *agentruntime.Conversation `json:"conversation"`
+	Cursor        stringField                `json:"cursor"`
+	Mode          stringField                `json:"mode"`
+	Scope         stringField                `json:"scope"`
+	Method        stringField                `json:"method"`
+	Input         stringField                `json:"input"`
+	Delivery      stringField                `json:"delivery"`
+	Text          stringField                `json:"text"`
+	MaxBytes      *int                       `json:"maxBytes"`
+	Keys          *[]string                  `json:"keys"`
 }
 
 func (input *agentRequest) UnmarshalJSON(encoded []byte) error {
@@ -53,21 +63,26 @@ func (input *agentRequest) UnmarshalJSON(encoded []byte) error {
 }
 
 func (input agentRequest) valid(operation string) bool {
-	if input.IdentityToken.value == "" || input.PaneID.value == "" || input.PID == nil || *input.PID <= 0 || input.StartIdentity.value == "" {
+	if input.IdentityToken.value == "" {
 		return false
 	}
-	if input.Mode.present && input.Mode.value != "auto" && input.Mode.value != "terminal" {
+	if operation == "results" {
+		return input.Conversation != nil && input.PID == nil && !input.PaneID.present && !input.StartIdentity.present && input.Binding == nil && input.Turn == nil && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && !input.Text.present && input.MaxBytes == nil && input.Keys == nil && (!input.Cursor.present || input.Cursor.value != "")
+	}
+	if input.PaneID.value == "" || input.PID == nil || *input.PID <= 0 || input.StartIdentity.value == "" || input.Conversation != nil || input.Cursor.present {
 		return false
 	}
 	switch operation {
 	case "read":
-		return !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
+		return input.Mode.present && (input.Mode.value == "terminal" && !input.Scope.present && input.Binding == nil && input.Turn == nil || input.Mode.value == "native" && input.Binding != nil && (input.Scope.value == "latest" || input.Scope.value == "history")) && !input.Method.present && !input.Input.present && !input.Delivery.present && !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
 	case "send":
-		return input.Text.present && input.Keys == nil && input.MaxBytes == nil
+		return input.Binding != nil && input.Text.present && (input.Input.value == "peer" || input.Input.value == "user") && (input.Delivery.value == "direct" || input.Delivery.value == "queue" && input.Input.value == "user") && !input.Mode.present && !input.Scope.present && !input.Method.present && input.Keys == nil && input.MaxBytes == nil
+	case "text":
+		return input.Text.present && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && input.Binding == nil && input.Turn == nil && input.Keys == nil && input.MaxBytes == nil
 	case "keys":
-		return input.Keys != nil && !input.Text.present && !input.Mode.present && input.MaxBytes == nil
-	case "interrupt", "stop":
-		return input.Keys == nil && !input.Text.present && !input.Mode.present && input.MaxBytes == nil
+		return input.Keys != nil && !input.Text.present && !input.Mode.present && !input.Scope.present && !input.Method.present && !input.Input.present && !input.Delivery.present && input.Binding == nil && input.Turn == nil && input.MaxBytes == nil
+	case "stop", "close":
+		return input.Method.present && (input.Method.value == "terminal" || input.Method.value == "native" && input.Binding != nil) && input.Keys == nil && !input.Text.present && !input.Mode.present && !input.Scope.present && !input.Input.present && !input.Delivery.present && input.MaxBytes == nil
 	default:
 		return false
 	}
@@ -97,33 +112,44 @@ func (gateway *Gateway) agentOperation(writer http.ResponseWriter, request *http
 		writeError(writer, errorAgentInputInvalid)
 		return
 	}
-	target := sessions.AgentTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value, PID: processinfo.PID(*input.PID), StartIdentity: processinfo.StartIdentity(input.StartIdentity.value)}
 	ctx := request.Context()
 	var result any
 	var err error
-	switch operation {
-	case "read":
-		maxBytes := 0
-		if input.MaxBytes != nil {
-			maxBytes = *input.MaxBytes
+	if operation == "results" {
+		result, err = gateway.agents.Results(ctx, id, input.IdentityToken.value, *input.Conversation, input.Cursor.value)
+	} else {
+		target := sessions.AgentTarget{TmuxID: id, IdentityToken: input.IdentityToken.value, PaneID: input.PaneID.value, PID: processinfo.PID(*input.PID), StartIdentity: processinfo.StartIdentity(input.StartIdentity.value), Binding: input.Binding, Turn: input.Turn}
+		switch operation {
+		case "read":
+			maxBytes := 0
+			if input.MaxBytes != nil {
+				maxBytes = *input.MaxBytes
+			}
+			var read agentcontrol.ReadResult
+			read, err = gateway.agents.Read(ctx, target, input.Mode.value, input.Scope.value, maxBytes)
+			if err == nil {
+				writeAgentRead(writer, read)
+				return
+			}
+		case "send":
+			result, err = gateway.agents.Send(ctx, target, input.Text.value, input.Input.value, input.Delivery.value)
+		case "text":
+			result, err = gateway.agents.Text(ctx, target, input.Text.value)
+		case "keys":
+			result, err = gateway.agents.Keys(ctx, target, *input.Keys)
+		case "stop":
+			result, err = gateway.agents.Stop(ctx, target, input.Method.value)
+		case "close":
+			result, err = gateway.agents.Close(ctx, target, input.Method.value, gateway.closeAgentTerminal)
 		}
-		var read agentcontrol.ReadResult
-		read, err = gateway.agents.Read(ctx, target, input.Mode.value, maxBytes)
-		if err == nil {
-			writeAgentRead(writer, read)
-			return
-		}
-	case "send":
-		result, err = gateway.agents.Send(ctx, target, input.Text.value, input.Mode.value)
-	case "keys":
-		result, err = gateway.agents.Keys(ctx, target, *input.Keys)
-	case "interrupt":
-		result, err = gateway.agents.Interrupt(ctx, target)
-	case "stop":
-		result, err = gateway.agents.Stop(ctx, target, gateway.closeAgentTerminal)
 	}
 	if err != nil {
 		writeAgentError(writer, err)
+		return
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil || len(encoded)+1 > int(MaximumBodyBytes) {
+		writeError(writer, errorInternal)
 		return
 	}
 	writeJSON(writer, http.StatusOK, result)
@@ -152,6 +178,10 @@ func writeAgentRead(writer http.ResponseWriter, result agentcontrol.ReadResult) 
 			writeJSON(writer, http.StatusOK, result)
 			return
 		}
+		if result.Text == "" {
+			writeError(writer, errorInternal)
+			return
+		}
 		result.Text = result.Text[len(result.Text)/2:]
 		for len(result.Text) > 0 && !utf8.RuneStart(result.Text[0]) {
 			result.Text = result.Text[1:]
@@ -161,11 +191,20 @@ func writeAgentRead(writer http.ResponseWriter, result agentcontrol.ReadResult) 
 }
 
 func writeAgentError(writer http.ResponseWriter, err error) {
+	var unavailable *agentcontrol.UnavailableError
 	switch {
+	case errors.As(err, &unavailable):
+		failure := errorAgentUnavailable
+		failure.Dispatch = unavailable.Dispatch
+		writeError(writer, failure)
 	case errors.Is(err, sessions.ErrAgentTargetStale):
-		writeError(writer, errorAgentTargetStale)
-	case errors.Is(err, agentcontrol.ErrBlocked):
-		writeError(writer, errorAgentBlocked)
+		failure := errorAgentTargetStale
+		if dispatched, ok := err.(interface{ DispatchState() string }); ok {
+			failure.Dispatch = dispatched.DispatchState()
+		}
+		writeError(writer, failure)
+	case errors.Is(err, agentcontrol.ErrHistoryChanged):
+		writeError(writer, errorHistoryChanged)
 	case errors.Is(err, agentcontrol.ErrInvalidInput):
 		writeError(writer, errorAgentInputInvalid)
 	default:

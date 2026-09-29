@@ -42,7 +42,7 @@ func (m *model) rebuild() {
 				}
 				return 1
 			}
-			return cmp.Compare(slices.Index(attention, m.current(&a).Agent.State), slices.Index(attention, m.current(&b).Agent.State))
+			return cmp.Compare(slices.Index(attention, m.current(&a).Agent.Status.State), slices.Index(attention, m.current(&b).Agent.Status.State))
 		})
 	} else {
 		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {

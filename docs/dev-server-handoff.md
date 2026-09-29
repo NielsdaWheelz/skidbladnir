@@ -136,10 +136,14 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
-codex's npm command may itself be a javascript launcher: select its packaged
-native `codex` executable, not `HOME/bin/codex` or an account wrapper. resolving
-that platform binary is the shared provider installer's responsibility. inspect
-the native claude symlink target/executable; a same-name account wrapper is invalid.
+the shared provider installer builds the immutable upstream revision plus bundled
+source patch, verifies its lock and publishes the managed native executable.
+profiles use that exact executable, with no npm launcher or account wrapper.
+claude uses the managed native symlink at the qualified version; user update
+policy remains unchanged. provider drift requires requalification; missing or
+malformed native interfaces remain unavailable. claude native input is unavailable
+because held messages can cross conversations; prompting uses explicit terminal input.
+
 
 exact schema (all named members required unless marked optional):
 
@@ -147,7 +151,8 @@ exact schema (all named members required unless marked optional):
 - `profiles`: either `[]` for terminal-only operation or exactly the four rows
   below in that order. the restoration uses all four.
 - each row: `key`, `label`, `provider`, `command`, `environment`,
-  `foregroundSignatures`, `arguments`.
+  `foregroundSignatures`, `arguments`; codex additionally requires filesystem
+  `endpoint`, the existing owning unix discovery socket; claude forbids it.
 - environment entry: `{name,value}` strings. exactly one absolute provider home;
   names unique, no other provider's home, `HERDR_*`, `SKIDBLADNIR_SHELL`, `SKIDBLADNIR_AGENT`, or
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
@@ -352,7 +357,7 @@ provider-home variable before selecting their own.
 ## hooks
 
 skid installs no codex hooks. codex projection already ignores registrations and
-uses the foreground process and terminal controls. the unused codex writer and
+uses the foreground process and native selected-view interface. the unused codex writer and
 template are retired; existing `hooks.json` remains untouched by skid setup.
 no hook merger is needed. stage the supplied
 [`claude-agent-identity`](../deployment/providers/claude-agent-identity) tree at
@@ -387,15 +392,18 @@ marked skid terminal too. trace any wrong-runtime hook execution to its
 registration or launch boundary and fix it there. do not relocate providers,
 remove native herdr integrations, add a shared dispatcher, or suppress project
 settings to mask an interaction. the root-reported live qualification below
-records the restored deployment's boundary checks.
+records the restored deployment's boundary checks; those historical checks do
+not qualify the new native interaction contract.
 
 ## native helper
 
 consume [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
 and [the installation contract](restoration-native-control.md):
 
-- llm-calling `ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f`;
-  uv.lock sha-256 `7566d8859aead7cfa6ae9477f5ea2406d00c860335cbe954cbb320ea330783f5`.
+- llm-calling `0bbba0a994de7b46645037f0ecc24aeb59fe6e4a`;
+  uv.lock sha-256 `a7771120dd948759c4f0d089382046443a2348a447453e68369400c6a43bc8e9`.
+  install that source directly; the previous helper patch is retired. this
+  installation is unqualified until the new pinned generation is exercised.
 - private uv `0.11.28`, python `3.12.13`, frozen `claude-agent-sdk==0.2.130`;
   `uv sync --python 3.12.13 --frozen --extra claude-sdk --no-dev`.
 - install the helper environment beneath `~/.local/share/skidbladnir/` and expose
@@ -410,13 +418,11 @@ and [the installation contract](restoration-native-control.md):
   the earlier standalone launcher installation. verify the shim,
   launcher, entry point, source/lock and installed versions before activation.
 
-one json request on stdin, one json envelope on stdout, then exit. skid calls
-only `inspect`, `read`, `stop`, always with `provider:"Claude"`, selected
-`profileKey`, `targets:[{sessionId?,pid?}]`, and optional operation `input`.
-success is `{ok:true,result:...}`; errors use
-`{ok:false,error:{code,dispatch}}`. [agent control](agent-control.md#output-and-provider-command)
-owns the complete result and bounded-read semantics. there is no native send,
-daemon, provider lifetime ownership, or copied history store.
+one strict json request on stdin and one envelope on stdout, then exit. skid uses
+both provider adapters for inspect/read/send/interrupt/stop/results under
+[native interaction](native-agent-observation.md#5-api-and-dispatch).
+account environments and codex endpoints come from host profiles; no caller
+supplies paths. the helper owns no daemon, execution, copied history or queue.
 
 the gateway sets the selected existing account's `CLAUDE_CONFIG_DIR` before import and
 sets `SKIDBLADNIR_CLAUDE_COMMAND` to that profile's exact native executable.
@@ -441,6 +447,11 @@ provider home variables retain their upstream meaning with the explicit values
 above; no home is inferred from cwd.
 
 ## qualification and remaining work
+
+[native interaction source qualification](native-agent-qualification.md) records
+the 2026-09-28 isolated provider/helper, client and immutable-installer checks.
+these changes are not installed on the fleet; the following deployed evidence
+belongs to the earlier restoration.
 
 the root operator's immutable
 [separation qualification](https://github.com/NielsdaWheelz/herdr-mobile/blob/0dd92df41090c156b53bc8632c4b34281d3b32ce/docs/separation-qualification.md)

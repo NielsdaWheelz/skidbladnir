@@ -116,14 +116,14 @@ internal fun DashboardScreen(
             onSubmit = controller::submitGroup,
         )
     }
-    state.kill?.let { kill ->
-        KillConfirmation(
-            state = kill,
+    state.close?.let { close ->
+        CloseConfirmation(
+            state = close,
             actionAdmissible = state.machines.singleOrNull {
-                it.machine.handle == kill.target.machineHandle
+                it.machine.handle == close.target.machineHandle
             }?.canMutate == true,
-            onDismiss = controller::dismissKill,
-            onConfirm = controller::confirmKill,
+            onDismiss = controller::dismissClose,
+            onConfirm = controller::confirmClose,
         )
     }
 }
@@ -199,7 +199,7 @@ internal fun DashboardMain(
                 onVerify = onVerify,
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
-                onKill = controller::requestKill,
+                onClose = controller::requestClose,
                 onGroup = controller::openGroupEditor,
             )
         }
@@ -232,7 +232,7 @@ internal fun DashboardDwarfCollection(
     onVerify: () -> Unit,
     onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
-    onKill: (SessionTarget) -> Unit,
+    onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
@@ -267,7 +267,7 @@ internal fun DashboardDwarfCollection(
                 entry.gridState,
                 motionEnabled,
                 onOpen,
-                onKill,
+                onClose,
                 onGroup,
             )
         }
@@ -280,7 +280,7 @@ internal fun DashboardDwarfCollection(
             entry.gridState,
             motionEnabled,
             onOpen,
-            onKill,
+            onClose,
             onGroup,
         )
     }
@@ -370,7 +370,7 @@ private fun DashboardDwarfGrid(
     gridState: LazyGridState,
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
-    onKill: (SessionTarget) -> Unit,
+    onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
@@ -431,7 +431,7 @@ private fun DashboardDwarfGrid(
                                 showMachineLabel = scope == DashboardScope.All,
                                 motionEnabled = motionEnabled,
                                 onOpen = { onOpen(visible.target) },
-                                onKill = { onKill(visible.target) },
+                                onClose = { onClose(visible.target) },
                                 onGroup = { onGroup(visible.target) },
                             )
                         }
@@ -575,26 +575,26 @@ private fun MachineStrip(
 }
 
 @Composable
-internal fun KillConfirmation(
-    state: KillState,
+internal fun CloseConfirmation(
+    state: CloseState,
     actionAdmissible: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     val stoppingAgent = state.target.session.agent != null && !state.terminalOnly
-    val verb = if (stoppingAgent) "Stop agent and close terminal" else "Close terminal"
-    // No ornament near destructive surfaces (design-language.md §7): the kill
+    val verb = if (stoppingAgent) "stop work and close terminal" else "close terminal only"
+    // No ornament near destructive surfaces (design-language.md §7): the close
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(killConfirmationTitle(state.machine.label, state.target, state.terminalOnly)) },
+        title = { Text(closeConfirmationTitle(state.machine.label, state.target, state.terminalOnly)) },
         text = {
             Text(when {
                 state.pending -> "$verb is in progress on ${state.machine.label.text}."
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "Try to halt this agent, then close its terminal. Halting shared work affects linked sessions; detached work may continue."
+                stoppingAgent -> "stop current work, then close this terminal. pending input may remain. saved provider history is retained."
                 else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
             })
         },

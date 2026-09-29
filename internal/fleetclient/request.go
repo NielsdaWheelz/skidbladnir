@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -21,25 +23,34 @@ const (
 
 // Request is shared by command parsing and the session browser. It is never a wire DTO.
 type Request struct {
-	Operation   string
-	Name        string
-	Machine     string
-	Ref         string
-	Kind        LaunchKind
-	Profile     string
-	CWD         string
-	Text        string
-	Keys        []string
-	Mode        string
-	MaxBytes    int
-	Group       group.Label
-	GroupFilter group.Filter
+	Operation    string
+	Name         string
+	Machine      string
+	Ref          string
+	Kind         LaunchKind
+	Profile      string
+	CWD          string
+	Text         string
+	Keys         []string
+	Mode         string
+	Scope        string
+	Input        string
+	Delivery     string
+	TerminalOnly bool
+	State        string
+	WaitTimeout  time.Duration
+	MaxBytes     int
+	Group        group.Label
+	GroupFilter  group.Filter
 }
 
 type ProcessReference struct {
-	PaneID        string `json:"paneId"`
-	PID           int    `json:"pid"`
-	StartIdentity string `json:"startIdentity"`
+	Methods       agentruntime.Methods  `json:"methods"`
+	Binding       *agentruntime.Binding `json:"binding,omitempty"`
+	Turn          *agentruntime.Turn    `json:"turn,omitempty"`
+	PaneID        string                `json:"paneId"`
+	PID           int                   `json:"pid"`
+	StartIdentity string                `json:"startIdentity"`
 }
 
 type Reference struct {
@@ -59,22 +70,13 @@ func DecodeReference(encoded string) (Reference, error) {
 		return Reference{}, invalid
 	}
 	var ref Reference
-	if strictjson.Decode(data, &ref) != nil || !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" {
+	if !nonNullJSON(data) || strictjson.Decode(data, &ref) != nil || !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" {
 		return Reference{}, invalid
 	}
 	if _, err := machine.Parse(ref.Machine); err != nil {
 		return Reference{}, invalid
 	}
-	var fields map[string]json.RawMessage
-	if strictjson.Decode(data, &fields) != nil {
-		return Reference{}, invalid
-	}
-	for _, value := range fields {
-		if string(value) == "null" {
-			return Reference{}, invalid
-		}
-	}
-	if ref.Agent != nil && (!tmuxAddress(ref.Agent.PaneID, '%') || ref.Agent.PID <= 0 || ref.Agent.StartIdentity == "") {
+	if ref.Agent != nil && (!tmuxAddress(ref.Agent.PaneID, '%') || ref.Agent.PID <= 0 || ref.Agent.StartIdentity == "" || !ref.Agent.Methods.Valid() || ref.Agent.Binding != nil && !ref.Agent.Binding.Valid() || ref.Agent.Turn != nil && !ref.Agent.Turn.Valid()) {
 		return Reference{}, invalid
 	}
 	return ref, nil
@@ -91,16 +93,19 @@ func (ref Reference) SessionEqual(other Reference) bool {
 }
 
 func (request Request) Valid() bool {
+	if request.Operation != "read" && request.Scope != "" || request.Operation != "send" && (request.Input != "" || request.Delivery != "") || request.Operation != "wait" && (request.State != "" || request.WaitTimeout != 0) || request.Operation != "close" && request.TerminalOnly {
+		return false
+	}
 	if request.Operation != "start" && request.Operation != "group" && !request.Group.IsUnassigned() || request.Operation != "list" && request.GroupFilter.Kind() != group.FilterAll {
 		return false
 	}
-	if request.Mode != "" && request.Mode != "auto" && request.Mode != "terminal" {
+	if request.Mode != "" && request.Mode != "native" && request.Mode != "terminal" {
 		return false
 	}
-	if request.Operation != "read" && request.MaxBytes != 0 || request.Operation != "read" && request.Operation != "send" && request.Mode != "" {
+	if request.Operation != "read" && request.MaxBytes != 0 || request.Operation != "read" && request.Mode != "" {
 		return false
 	}
-	if request.Operation != "send" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
+	if request.Operation != "send" && request.Operation != "text" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
 		return false
 	}
 	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" || request.CWD != "") {
@@ -112,7 +117,7 @@ func (request Request) Valid() bool {
 	case "start":
 		return request.Machine != "" && request.Ref == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
-	case "info", "enter", "read", "send", "keys", "interrupt", "stop", "kill", "group", "shell":
+	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell":
 	default:
 		return false
 	}
@@ -128,9 +133,13 @@ func (request Request) Valid() bool {
 	}
 	switch request.Operation {
 	case "read":
-		return request.MaxBytes >= 0 && request.MaxBytes <= 32768
+		return request.MaxBytes >= 0 && request.MaxBytes <= 32768 && (request.Mode == "terminal" && request.Scope == "" || request.Mode != "terminal" && (request.Scope == "" || request.Scope == "latest" || request.Scope == "history"))
 	case "send":
-		return request.Text != "" && len(request.Text) <= 32768 && utf8.ValidString(request.Text)
+		return validInputText(request.Text) && (request.Input == "peer" || request.Input == "user") && (request.Delivery == "direct" || request.Delivery == "queue" && request.Input == "user")
+	case "text":
+		return validInputText(request.Text)
+	case "wait":
+		return (request.State == "" || request.State == "idle" || request.State == "blocked" || request.State == "done" || request.State == "failed" || request.State == "stopped") && request.WaitTimeout >= 0 && request.WaitTimeout <= time.Hour
 	case "keys":
 		if len(request.Keys) < 1 || len(request.Keys) > 16 {
 			return false
@@ -148,4 +157,8 @@ func (request Request) Valid() bool {
 
 func tmuxAddress(value string, prefix byte) bool {
 	return len(value) > 1 && value[0] == prefix && strings.Trim(value[1:], "0123456789") == ""
+}
+
+func validInputText(text string) bool {
+	return text != "" && len(text) <= 32768 && utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }

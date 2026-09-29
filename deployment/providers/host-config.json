@@ -1,6 +1,9 @@
 {
   "platform": "@PLATFORM@",
-  "tmux": {"path": "@TMUX@", "testedVersion": "@TMUX_VERSION@"},
+  "tmux": {
+    "path": "@TMUX@",
+    "testedVersion": "@TMUX_VERSION@"
+  },
   "nativeControlPath": "@ROOT@/.local/bin/skidbladnir-provider-runtime-control",
   "zoxidePath": "@ZOXIDE@",
   "profiles": [
@@ -9,36 +12,85 @@
       "label": "Codex · Personal",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex"}],
-      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
-      "arguments": ["--yolo"]
+      "environment": [
+        {
+          "name": "CODEX_HOME",
+          "value": "@ROOT@/.codex"
+        }
+      ],
+      "foregroundSignatures": [
+        {
+          "executableBase": "codex"
+        }
+      ],
+      "arguments": [
+        "--yolo"
+      ],
+      "endpoint": "@ROOT@/.codex/app-server-control/app-server-control.sock"
     },
     {
       "key": "work",
       "label": "Codex · Work",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work"}],
-      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
-      "arguments": ["--yolo"]
+      "environment": [
+        {
+          "name": "CODEX_HOME",
+          "value": "@ROOT@/.codex-work"
+        }
+      ],
+      "foregroundSignatures": [
+        {
+          "executableBase": "codex"
+        }
+      ],
+      "arguments": [
+        "--yolo"
+      ],
+      "endpoint": "@ROOT@/.codex-work/app-server-control/app-server-control.sock"
     },
     {
       "key": "work2",
       "label": "Codex · Work 2",
       "provider": "Codex",
       "command": "@CODEX@",
-      "environment": [{"name": "CODEX_HOME", "value": "@ROOT@/.codex-work2"}],
-      "foregroundSignatures": [{"executableBase": "codex"}, {"executableBase": "node", "argument1": "@ROOT@/.local/bin/codex"}],
-      "arguments": ["--yolo"]
+      "environment": [
+        {
+          "name": "CODEX_HOME",
+          "value": "@ROOT@/.codex-work2"
+        }
+      ],
+      "foregroundSignatures": [
+        {
+          "executableBase": "codex"
+        }
+      ],
+      "arguments": [
+        "--yolo"
+      ],
+      "endpoint": "@ROOT@/.codex-work2/app-server-control/app-server-control.sock"
     },
     {
       "key": "claude-work",
       "label": "Claude · Work",
       "provider": "Claude",
       "command": "@CLAUDE@",
-      "environment": [{"name": "CLAUDE_CONFIG_DIR", "value": "@ROOT@/.claude-work"}],
-      "foregroundSignatures": [{"argument0": "@CLAUDE@"}],
-      "arguments": ["--dangerously-skip-permissions", "--plugin-dir", "@ROOT@/.local/share/skidbladnir/claude-agent-identity"]
+      "environment": [
+        {
+          "name": "CLAUDE_CONFIG_DIR",
+          "value": "@ROOT@/.claude-work"
+        }
+      ],
+      "foregroundSignatures": [
+        {
+          "argument0": "@CLAUDE@"
+        }
+      ],
+      "arguments": [
+        "--dangerously-skip-permissions",
+        "--plugin-dir",
+        "@ROOT@/.local/share/skidbladnir/claude-agent-identity"
+      ]
     }
   ]
 }
