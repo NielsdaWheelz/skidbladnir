@@ -9,20 +9,20 @@ this index records present scope and open work, not a release diary.
 
 [native interaction and unread replies](native-agent-observation.md): implemented
 and isolated-source qualified on the 2026-09-28 pins. the direct helper source
-and mac codex bootstrap passed disposable qualification on 2026-09-29; linux
-apparmor and the [coordinated release](issues/native-agent-release-qualification.md)
-remain open. provider
+and mac codex bootstrap passed disposable qualification on 2026-09-29. a
+temporary ubuntu noble apparmor profile passed the scoped namespace probe;
+installed activation and the [coordinated cutover](issues/native-agent-release-qualification.md)
+remain open. v0.10.4 is published. provider
 view association, existing-helper extension, native-only
 status/history, codex peer/user messaging and native queueing, names-first cli,
 bounded waits, work-only stop, compound close and device-local unread; coordinated hard
 cutover. temporary integration/live red–green–refactor tests are deleted after
-verification. no deployment or release acceptance is claimed.
+verification. no installed-fleet acceptance is claimed.
 [source qualification](native-agent-qualification.md) records the actual native,
 host/client and installer boundaries. [claude held-message targeting](issues/native-message-qualification.md)
 failed exact-recipient qualification; all claude native input rejects before
 dispatch. native observation/results and matched background stop remain supported.
-deliberate terminal prompting stays separate. publication and fleet cutover remain
-unperformed.
+deliberate terminal prompting stays separate. fleet cutover remains unperformed.
 
 ## original-product restoration
 
@@ -67,8 +67,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.10.3` from
-`e5906e4df4244c166eb868e678f738f47b893e86`; it does not assert the
+source and artifact digests. it pins immutable `v0.10.4` from
+`8510f2ef61e7e05a5f55d5233a18fd59da640b76`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.
