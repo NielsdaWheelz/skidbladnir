@@ -68,6 +68,7 @@ type RenameInput struct {
 type Session struct {
 	foreground      *processinfo.Observation
 	TmuxID          string
+	ActivePaneID    string
 	TmuxName        string
 	IdentityToken   string
 	LaunchProfile   agentruntime.ProfileKey

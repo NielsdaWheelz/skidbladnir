@@ -101,6 +101,20 @@ func (m *model) noticeLines(width int) []string {
 			lines = append(lines, style.Styled(line))
 		}
 	}
+	if m.unreadFailed {
+		lines = append(lines, faint.Styled("unread unavailable"))
+	}
+	unavailable := false
+	for _, row := range m.rows {
+		ref, _ := fleetclient.DecodeReference(row.session.Ref)
+		if conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID); found && m.repliesUnavailable[fleetclient.ReplyKey(row.machine, conversation)] {
+			unavailable = true
+			break
+		}
+	}
+	if unavailable {
+		lines = append(lines, faint.Styled("replies unavailable"))
+	}
 	// A peer without an error is unobserved or being checked, not unavailable.
 	for _, peer := range m.scopedPeers() {
 		if !peer.OK && peer.Error != nil {
@@ -117,9 +131,11 @@ func (m *model) noticeLines(width int) []string {
 func (m *model) hints() [][]hint {
 	switch m.page {
 	case "confirm":
-		effect := "close terminal"
+		effect := "close terminal only"
 		if m.pending.Operation == "stop" {
-			effect = "stop agent and close terminal"
+			effect = "stop current work"
+		} else if !m.pending.TerminalOnly {
+			effect = "stop work and close terminal"
 		}
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
 	case "machine-picker":
@@ -148,16 +164,18 @@ func (m *model) hints() [][]hint {
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
 		if row.session.Agent != nil {
-			session = append(session, hint{"r", "read"}, hint{"i", "interrupt"})
+			if row.session.Agent.Methods.Read == "native" {
+				session = append(session, hint{"r", "read"})
+			}
 		}
 		session = append(session, hint{"e", "group"})
 		if row.session.Connection == nil {
 			session = append(session, hint{"T", "here"})
 		}
-		if row.session.Agent != nil {
-			session = append(session, hint{"s", "stop"})
+		if row.session.Agent != nil && row.session.Agent.Methods.Stop != "unavailable" {
+			session = append(session, hint{"s", "stop current work"}, hint{"c", "stop work and close terminal"})
 		}
-		session = append(session, hint{"x", "kill"})
+		session = append(session, hint{"x", "close terminal only"})
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
 	}
@@ -226,13 +244,10 @@ func (m *model) rowDetail(row listedRow) string {
 		facts += ": " + row.session.ActiveCommand
 	}
 	if agent := current.Agent; agent != nil {
-		facts = agent.State
-		if local := row.session.Agent; current.Kind == "local" && local != nil {
-			facts = local.Status.State + " (" + local.Status.Source + ")"
-			if local.Status.Reason != "" {
-				facts += ": " + local.Status.Reason
-			}
-		}
+		facts = fleetclient.StatusText(agent.Status)
+	}
+	if reply := m.replyText(row); reply != "" {
+		facts += " · " + reply
 	}
 	if !row.available {
 		facts = m.rowStatus(row) + "; last observed " + facts
@@ -254,9 +269,12 @@ func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
 	case "confirm":
-		action, effect := "close terminal", "close this session. work shared through another session may survive."
+		action, effect := "close terminal only", "close this session. work shared through another session may survive."
 		if m.pending.Operation == "stop" {
-			action, effect = "stop agent and close terminal", "attempt agent halt, then close this session. shared work may be affected."
+			action, effect = "stop current work", "halt captured current work and retain the terminal. pending input may remain; saved history is retained."
+		}
+		if m.pending.Operation == "close" && !m.pending.TerminalOnly {
+			action, effect = "stop work and close terminal", "halt and terminal closure have separate outcomes. pending input may remain; saved history is retained."
 		}
 		lines := []string{}
 		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {
@@ -497,10 +515,11 @@ func (m *model) fitViewports() {
 // all-groups view enters another group. the agents view names each row's group
 // in a column instead; machine appears only when all machines are in scope.
 func (m *model) tableLines(width int) []string {
-	name, status, agent, label, machine := 4, 0, 0, 0, 0
+	name, status, attention, agent, label, machine := 4, 0, 0, 0, 0, 0
 	for _, row := range m.rows {
 		name = max(name, ansi.StringWidth(singleLine(row.session.Name)))
 		status = max(status, len(m.rowStatus(row)))
+		attention = max(attention, ansi.StringWidth(m.replyText(row)))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
 		if m.agentsView {
 			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
@@ -516,7 +535,7 @@ func (m *model) tableLines(width int) []string {
 		}
 		return width + 2
 	}
-	for 2+name+span(status)+span(agent)+span(label)+span(machine) > width && max(name, agent, label, machine) > 8 {
+	for 2+name+span(status)+span(attention)+span(agent)+span(label)+span(machine) > width && max(name, agent, label, machine) > 8 {
 		switch max(name, agent, label, machine) {
 		case name:
 			name--
@@ -528,7 +547,14 @@ func (m *model) tableLines(width int) []string {
 			machine--
 		}
 	}
-	directory := width - 2 - name - span(status) - span(agent) - span(label) - span(machine) - 2
+	for 2+name+span(status)+span(attention)+span(agent)+span(label)+span(machine) > width && (agent > 0 || label > 0) {
+		if agent > 0 {
+			agent = 0
+		} else {
+			label = 0
+		}
+	}
+	directory := width - 2 - name - span(status) - span(attention) - span(agent) - span(label) - span(machine) - 2
 	lines := []string{}
 	for index, row := range m.rows {
 		if m.opensGroup(index) {
@@ -540,7 +566,7 @@ func (m *model) tableLines(width int) []string {
 			nameStyle, statusStyle = faint, faint
 		case state == "working":
 			statusStyle = alive
-		case state == "blocked" || state == "failed":
+		case state == "waiting" || state == "failed":
 			statusStyle = alarm
 		}
 		if index == m.cursor {
@@ -559,6 +585,9 @@ func (m *model) tableLines(width int) []string {
 			facts = append(facts, m.whereText(row, directory))
 		}
 		line := gutter + nameStyle.Styled(cell(row.session.Name, name)) + "  " + statusStyle.Styled(cell(m.rowStatus(row), status))
+		if attention > 0 {
+			line += "  " + bold.Styled(cell(m.replyText(row), attention))
+		}
 		if len(facts) > 0 {
 			line += "  " + faint.Styled(strings.Join(facts, "  "))
 		}
@@ -582,11 +611,11 @@ func (m *model) rowStatus(row listedRow) string {
 	current := m.current(&row)
 	switch {
 	case current.Kind == "remoteUnknown":
-		return "unknown"
+		return "status unavailable"
 	case current.Agent == nil:
 		return "terminal"
 	}
-	return current.Agent.State
+	return fleetclient.StatusText(current.Agent.Status)
 }
 
 // agentText is the configured profile label, per terminal continuity's identity copy.

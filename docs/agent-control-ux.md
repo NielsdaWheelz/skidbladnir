@@ -1,5 +1,9 @@
 # agent control: usable client, direct attachment
 
+[native interaction](native-agent-observation.md) owns the current agent operations,
+references and unread contract. historical qualification below applies only to its
+recorded releases; retired command names are not compatibility aliases.
+
 restoration amendment: jarvis's current herdr integration and credentials are
 independent of skid. jarvis-specific routing, rollout and acceptance below are
 historical; skid's cli/tui/phone contracts remain in force. see the current
@@ -38,8 +42,8 @@ and agents. phone and desktop attach directly to the same tmux session.
   returned references support automation. no global name registry.
 - delete skid's tmux shadow grouping and grouped-session refusal. shared window/pane navigation
   is intentional. unrelated user-created groups remain ordinary tmux objects.
-- no search, attention system, layouts, scheduler, task schema, coordinator role,
-  new agent launcher, native codex binding, transcript store, ssh transport,
+- no search, layouts, scheduler, task schema, coordinator role,
+  new agent launcher, transcript store, ssh transport,
   discovery service, mcp server, or new security/permission framework.
 
 ## public commands
@@ -55,12 +59,13 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
 | `skid info reviewer` | full metadata and fresh reference for this session |
 | `skid enter reviewer` | attach; explicit detach returns to the caller |
-| `skid read reviewer [--terminal] [--max-bytes N]` | existing bounded read; label source, scope, truncation |
-| `skid send reviewer "review the patch" [--terminal]` | send once; alternative `--stdin` accepts literal text |
+| `skid read reviewer [--history | --terminal] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
+| `skid send reviewer "review the patch" [--input peer|user] [--queue]` | native peer by default; queue requires explicit user input; `--stdin` accepts literal text |
 | `skid keys reviewer enter` | existing logical key vocabulary; 1–16 keys |
-| `skid interrupt reviewer` | existing provider cancellation input; retain session |
-| `skid stop reviewer` | best-effort agent halt, then exact session closure; report both outcomes |
-| `skid kill reviewer` | close exactly this tmux session; works without an agent |
+| `skid text reviewer --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
+| `skid wait reviewer [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
+| `skid stop reviewer` | stop captured current work; retain terminal; pending input may remain |
+| `skid close reviewer [--terminal-only]` | halt and exact terminal closure with separate outcomes; explicit terminal-only bypass |
 | `skid start reviewer --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
 | `skid start terminal-name --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
 | `skid shell reviewer` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
@@ -91,8 +96,8 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
 
 ```text
 ref payload = {machine, tmuxId, identityToken,
-               agent?: {paneId, pid, startIdentity}}
-row = {name, ref, group?, cwd?, activeCommand?, launchProfile?, attachedClients,
+               agent?: {paneId, pid, startIdentity, methods, binding?, turn?}}
+row = {name, ref, activePaneId, group?, cwd?, activeCommand?, launchProfile?, attachedClients,
        agent?: {provider, profile?, providerSession?, status, methods}}
 peer = {label, machine, ok,
         observedAt?, profiles?, sessions?: [row], error?}
@@ -104,7 +109,7 @@ failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
 reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
 `info` and `start` return `{label, machine, observedAt, session: row}`. other results
-retain the current agent-control schema; `kill` returns `{terminal: closed}` only
+retain the current agent-control schema; terminal-only `close` returns `{terminal: closed}` only
 after confirmed deletion. `group` acknowledges `{group: string}`, with empty
 string for clear, only after the host's bodyless `204`; it returns no new ref.
 group filtering keeps every source peer/error in machine scope and never changes
@@ -118,8 +123,8 @@ apply the existing 1 mib inventory limit to the final projected envelope; reject
 overflow, never silently omit rows.
 
 names are absent from the reference, so rename does not invalidate it. `info` and
-`kill` retrieve current metadata from the referenced host and require the same
-session lifetime; kill supplies the current name to the existing delete contract.
+terminal-only `close` retrieves current metadata from the referenced host and require the same
+session lifetime; terminal-only close supplies the current name to the existing delete contract.
 `info --ref` observes the exact session now, even if its previous agent exited;
 it returns the newly observed agent reference. it never refreshes a mutation target.
 start does not claim an agent is ready. an old agent reference cannot control a
@@ -130,7 +135,7 @@ exit 0: complete result with the requested effect confirmed to the returned
 contract (`written` means input delivered, never task completed). exit 1: operational
 failure, partial inventory, unknown delivery, or unconfirmed stop/closure. exit 2:
 invalid usage. successful bounded reads exit 0 even when `truncated: true`.
-preserve partial stop results even with exit 1; nonzero never authorizes replay.
+preserve partial close results even with exit 1; nonzero never authorizes replay.
 
 ## one small tui
 
@@ -181,20 +186,19 @@ rename. a session switch ends the connection on detection by the existing two-se
 monitor; bytes can pass before detection. this is not an atomic session lock.
 no additional monitor or mutator-defense machinery.
 
-kill uses the existing exact identity/name predicate and `kill-session` in one
-queue; remove the group-size predicate. preserve validate → close owned terminal
-connections → revalidate/delete ordering. deleting one ordinary grouped session
-may leave shared windows/processes alive through another. no group-wide destruction.
-stop retains separate agent/terminal outcomes; session closure never proves halt.
-halting a shared-pane agent affects that work in every linked session; kill alone
-does not request provider halt. explain this distinction in action descriptions.
+terminal-only close uses the existing exact identity/name predicate and
+`kill-session` in one queue. preserve validate → close owned terminal connections
+→ revalidate/delete ordering. deleting one ordinary grouped session may leave
+shared windows/processes alive through another. no group-wide destruction.
 
-provider policy is unchanged: codex uses terminal observations/controls; claude uses
-verified native status/history when available and the existing terminal observation
-policy otherwise. send/keys use terminal input. interrupt sends codex escape or
-claude ctrl-c. native failure/unknown is never fabricated as idle/done. reads retain
-honest native-history, terminal-history, or visible-only scope. this cut removes
-legacy interfaces, not the accepted provider selection policy.
+stop retains the terminal and targets captured current work. close reports halt
+and terminal closure separately; closure never proves halt. provider pending input
+may remain and saved history is retained. terminal-only close requests no halt.
+
+[native interaction](native-agent-observation.md) owns provider state, capabilities,
+output and delivery. terminal operations are explicit, never fallback. current
+browser keys are `r` read, `s` stop current work, `c` stop work and close terminal,
+`x` close terminal only. capture and confirm the exact target/effect.
 
 ## composition and deletion
 
@@ -212,13 +216,11 @@ cli parses/renders; tui presents; neither reimplements routing or provider logic
 reuse terminal protocol codecs in both directions. the groups extension adds
 only its specified membership endpoint; the terminal/agent routes are unchanged.
 
-jarvis exposes list/info/start/read/send/keys/interrupt/stop/kill. replace structured
-targets with the returned opaque reference; spawn exact argv, never a shell, and
-pass send text through `--stdin`. consume the common
-json projection directly; delete `_session`, `_inventory`, and json-request stdin.
-tool inputs: list `{machine?}`; start `{machine,name,profile,cwd?}`; info/interrupt/
-stop/kill `{ref}`; read `{ref,mode?,maxBytes?}`; send `{ref,text,mode?}`; keys `{ref,keys}`.
-retain existing mode/key/bound contracts; cwd defaults to `~`.
+agent integrations consume the installed cli and its common json projection.
+spawn exact argv, never a shell, and pass text through `--stdin`. use native
+`read`, attributed `send`, explicit `text`/`keys`, bounded `wait`, work-only `stop`
+and compound `close`. the previous jarvis interrupt/kill adapter is historical;
+it must change with the coordinated release, not receive compatibility aliases.
 parse envelopes before interpreting exit status: exit 1 with `ok: true` retains
 partial inventory or unconfirmed outcomes, rather than becoming malformed output.
 before gating an addressed write, its existing dispatcher calls cli `info --ref`
@@ -235,7 +237,7 @@ kernel, cognition, and immutable action-history rendering. no new authority mode
 `skid --help` keeps the human command summary first and appends an automation
 guide: when to use skid, a discover/start/inspect/send/read example, exact session
 and agent references, startup dialogs, json and exit semantics, uncertain delivery,
-interrupt/stop/kill effects, and work products. native subagents and workflows
+stop/close effects, and work products. native subagents and workflows
 remain the agent's choice.
 dev-server keeps only a brief usage hint pointing to `skid --help` in its existing
 `assets/agent-instructions.md`, installed through `ai_install_instructions` for
@@ -275,11 +277,11 @@ substantial incidental complexity; no generalized command/lifecycle framework.
 | --- | --- |
 | a1 | default-installed `skid` opens the fleet; list/info expose host, name, directory, provider/profile, state/source; shell sessions are usable; unavailable peers remain visible |
 | a2 | duplicate/incomplete names produce zero writes; qualified names and exact refs work despite unrelated peer outage; rename preserves refs; replacement session/process and changed pane reject stale controls |
-| a3 | cli/tui use the same projection/dispatch; refresh and confirmation cannot retarget; creation, bounded read, interrupt, stop, kill, attach/return work without json assembly or mandatory config flags |
+| a3 | cli/tui use the same projection/dispatch; refresh and confirmation cannot retarget; creation, bounded read, send, wait, stop, close, attach/return work without json assembly or mandatory config flags |
 | a4 | multiline stdin and keys survive the real subprocess/http boundary; JSON is one valid envelope; partial/unknown results have nonzero exit; lost replies cause no automatic retry |
 | a5 | two clients attach to one isolated session without creating sessions/options; window and pane navigation are shared; measured first resize and >240-column desktop geometry work; detach/error/shutdown restore tty, release input ownership, and preserve source/other clients |
 | a6 | unsupported tmux settings/dimensions fail explicitly; rename preserves attachment; source destruction detaches, session switching closes within existing observation/cleanup bounds; server restart/id reuse cannot attach/delete a replacement |
-| a7 | deleting one isolated ordinary grouped session leaves its sibling/shared process alive; stop reports provider uncertainty independently from closure; all grouped-conflict/shadow runtime paths are gone |
+| a7 | deleting one isolated ordinary grouped session leaves its sibling/shared process alive; close reports provider uncertainty independently from closure; all grouped-conflict/shadow runtime paths are gone |
 | a8 | ordinary codex and claude-work coordinators discover the guide and operate an exact peer; jarvis exercises nine tools through the installed cli, including startup-dialog keys and observed outcomes; an owner requests a session by name, without copying a reference, and the existing write gate permits the authorized action |
 | a9 | macbook/arch/devbox control peers directly; phone still enters all three hosts and retains pairing, readable size, draft, scroll/copy and reconnect behavior; deployment preserves unrelated session/process identities |
 

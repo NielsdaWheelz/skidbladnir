@@ -3,7 +3,8 @@
 this document owns optional process-lifetime registration. [agent control](agent-control.md)
 owns the current foreground target, sampled status and controls. only claude
 registration contributes projected runtime profile/provider-session id;
-codex registration is ignored by the current terminal-only projection.
+codex hook registration is ignored. its native binding comes from the owning
+tui's selected-view interface under [native interaction](native-agent-observation.md).
 
 Normative rules: [`rules/index.md`](rules/index.md), especially
 [`rules/testing.md`](rules/testing.md).

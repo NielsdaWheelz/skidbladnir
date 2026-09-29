@@ -2,6 +2,7 @@ package fleetclient
 
 import (
 	"context"
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"sync"
 	"time"
 )
@@ -42,7 +43,7 @@ func (session Session) Current(peer Peer) ExecutionContext {
 			Provider: session.Agent.Provider,
 			Profile:  session.Agent.Profile,
 			Label:    profileLabel(peer.Profiles, session.Agent.Profile),
-			State:    session.Agent.Status.State,
+			Status:   session.Agent.Status,
 		}
 	}
 	return result
@@ -113,7 +114,7 @@ func (client *Client) resolveContexts(parent context.Context, peers []Peer) {
 					profiles := entry.([]Profile)
 					execution := &ExecutionContext{Kind: "remote", Machine: match.peer.Machine, Label: match.peer.Label, CWD: match.context.CWD}
 					if match.context.Agent != nil {
-						execution.Agent = &ExecutionAgent{Provider: match.context.Agent.Provider, Profile: match.context.Agent.Profile, Label: profileLabel(profiles, match.context.Agent.Profile), State: "unknown"}
+						execution.Agent = &ExecutionAgent{Provider: match.context.Agent.Provider, Profile: match.context.Agent.Profile, Label: profileLabel(profiles, match.context.Agent.Profile), Status: agentruntime.Status{State: "unknown", Source: "unavailable"}}
 					}
 					session.Execution = execution
 					return

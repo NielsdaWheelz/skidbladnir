@@ -5,6 +5,21 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## native interaction source delivery
+
+[native interaction and unread replies](native-agent-observation.md): implemented
+and isolated-source qualified. provider view association, existing-helper extension, native-only
+status/history, codex peer/user messaging and native queueing, names-first cli,
+bounded waits, work-only stop, compound close and device-local unread; coordinated hard
+cutover. temporary integration/live red–green–refactor tests are deleted after
+verification. no deployment or release acceptance is claimed.
+[source qualification](native-agent-qualification.md) records the actual native,
+host/client and installer boundaries. [claude held-message targeting](issues/native-message-qualification.md)
+failed exact-recipient qualification; all claude native input rejects before
+dispatch. native observation/results and matched background stop remain supported.
+deliberate terminal prompting stays separate. publication and fleet cutover remain
+unperformed.
+
 ## original-product restoration
 
 2026-09-25: [the dev-server handoff](dev-server-handoff.md) specifies independent
@@ -32,7 +47,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| sampled agent status, bounded reads, terminal input, interrupt and stop | [agent control](agent-control.md) |
+| native status/history, qualified messaging/queueing, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |

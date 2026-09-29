@@ -32,8 +32,7 @@ type Failure struct {
 }
 type Result struct {
 	OK bool `json:"ok"`
-	// Success values are Inventory, ObservedSession, KillResult, or GroupResult.
-	// Read/write/stop retain json.RawMessage; list peer calls return Peer.
+	// Values are decoded at the owning transport boundary.
 	Value      any      `json:"result,omitempty"`
 	Error      *Failure `json:"error,omitempty"`
 	Candidates []string `json:"-"`
@@ -54,6 +53,9 @@ type Client struct {
 
 // Execute never retries a write, including after a lost acknowledgement.
 func (client *Client) Execute(ctx context.Context, request Request) Result {
+	if request.Operation == "wait" {
+		return client.wait(ctx, request)
+	}
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	if !request.Valid() {
@@ -123,55 +125,88 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		if request.Operation == "enter" {
 			return Failed("invalid_input", "not_sent")
 		}
+
 		body := map[string]any{"identityToken": ref.IdentityToken}
 		path := "/v1/sessions/" + ref.TmuxID
-		if request.Operation == "shell" {
+		operation := request.Operation
+		switch {
+		case operation == "shell":
 			path += "/shell"
-		} else if request.Operation == "group" {
+		case operation == "group":
 			body["group"] = request.Group.String()
 			path += "/group"
-		} else if request.Operation == "kill" {
+		case operation == "close" && (request.TerminalOnly || ref.Agent == nil):
 			body["tmuxName"] = observed.Session.Name
-		} else {
+			operation = "terminal_close"
+		default:
 			if ref.Agent == nil {
-				return Failed("agent_unavailable", "not_sent")
+				return Failed("AgentUnavailable", "not_sent")
 			}
 			body["paneId"] = ref.Agent.PaneID
 			body["pid"] = ref.Agent.PID
 			body["startIdentity"] = ref.Agent.StartIdentity
-			path += "/agent/" + request.Operation
-			switch request.Operation {
-			case "read", "send":
+			path += "/agent/" + operation
+			switch operation {
+			case "read":
 				mode := request.Mode
 				if mode == "" {
-					mode = "auto"
+					mode = "native"
 				}
 				body["mode"] = mode
-				if request.Operation == "read" {
-					maximum := request.MaxBytes
-					if maximum == 0 {
-						maximum = 16384
-					}
-					body["maxBytes"] = maximum
-				} else {
-					body["text"] = request.Text
+				maximum := request.MaxBytes
+				if maximum == 0 {
+					maximum = 16384
 				}
+				body["maxBytes"] = maximum
+				if mode == "native" {
+					if ref.Agent.Binding == nil {
+						return Failed("AgentUnavailable", "not_sent")
+					}
+					body["binding"] = ref.Agent.Binding
+					scope := request.Scope
+					if scope == "" {
+						scope = "latest"
+					}
+					body["scope"] = scope
+				}
+			case "send":
+				if ref.Agent.Binding == nil {
+					return Failed("AgentUnavailable", "not_sent")
+				}
+				body["binding"] = ref.Agent.Binding
+				body["text"] = request.Text
+				body["input"] = request.Input
+				body["delivery"] = request.Delivery
+			case "text":
+				body["text"] = request.Text
 			case "keys":
 				body["keys"] = request.Keys
+			case "stop", "close":
+				method := ref.Agent.Methods.Stop
+				if method != "native" && method != "terminal" {
+					return Failed("AgentUnavailable", "not_sent")
+				}
+				body["method"] = method
+				if ref.Agent.Binding != nil {
+					body["binding"] = ref.Agent.Binding
+				}
+				if ref.Agent.Turn != nil {
+					body["turn"] = ref.Agent.Turn
+				}
 			}
 		}
 		encoded, _ := json.Marshal(body)
 		if len(encoded) > MaximumInputBytes {
 			return Failed("input_limit", "not_sent")
 		}
-		result = client.call(ctx, selected, request.Operation, path, encoded)
+		result = client.call(ctx, selected, operation, path, encoded)
 		if result.OK && request.Operation == "group" {
 			result = success(GroupResult{Group: request.Group.String()})
 		}
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "interrupt" || request.Operation == "stop" || request.Operation == "kill" || request.Operation == "group" {
+		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "text" || request.Operation == "stop" || request.Operation == "close" || request.Operation == "group" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
@@ -260,7 +295,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		if !ok {
 			return fail("machine_unknown")
 		}
-		if request.Operation != "info" && request.Operation != "kill" {
+		if request.Operation != "info" && !(request.Operation == "close" && (request.TerminalOnly || ref.Agent == nil)) {
 			return ref, ObservedSession{}, nil
 		}
 		label = selected.Label
@@ -370,7 +405,7 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
-	writes := operation != "list" && operation != "read" && operation != "directory_search" && operation != "terminal_context"
+	writes := operation != "list" && operation != "read" && operation != "directory_search" && operation != "terminal_context" && operation != "results"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -382,7 +417,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 		if operation == "group" {
 			method = http.MethodPut
 		}
-		if operation == "kill" {
+		if operation == "terminal_close" {
 			method = http.MethodDelete
 		}
 		// No GetBody: net/http cannot replay a possibly delivered mutation.
@@ -417,14 +452,14 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if (operation == "kill" || operation == "group") && response.StatusCode == http.StatusNoContent {
+	if (operation == "terminal_close" || operation == "group") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
 		}
 		if operation == "group" {
 			return success(GroupResult{})
 		}
-		return success(KillResult{Terminal: "closed"})
+		return success(TerminalCloseResult{Terminal: "closed"})
 	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -434,7 +469,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
-	if operation == "kill" || operation == "group" {
+	if operation == "terminal_close" || operation == "group" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {
@@ -462,10 +497,14 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 		Message  string `json:"message"`
 		Dispatch string `json:"dispatch,omitempty"`
 	}
-	if strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
+	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
 	}
-	if value.Dispatch == "not_sent" || knownRejection(value.Code) {
+	if value.Dispatch == "not_sent" || value.Dispatch == "unknown" {
+		dispatch = value.Dispatch
+	} else if value.Dispatch != "" {
+		return nil
+	} else if knownRejection(value.Code) {
 		dispatch = "not_sent"
 	}
 	return &Failure{Code: value.Code, Dispatch: dispatch}
@@ -504,18 +543,24 @@ func (result Result) ExitCode(operation string) int {
 		if result.Value.(Inventory).Partial {
 			return 1
 		}
-	case "send", "keys", "interrupt":
-		var value WriteResult
-		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil || value.Outcome == "unknown" {
+	case "text", "keys", "stop":
+		value := result.Value.(WriteResult)
+		if value.Outcome == "unknown" {
 			return 1
 		}
-	case "stop":
-		var value StopResult
-		if json.Unmarshal(result.Value.(json.RawMessage), &value) != nil || value.Agent == "unconfirmed" || value.Terminal != "closed" {
+	case "close":
+		if value, ok := result.Value.(TerminalCloseResult); ok {
+			if value.Terminal != "closed" {
+				return 1
+			}
+			break
+		}
+		value := result.Value.(CloseResult)
+		if value.Agent == "unconfirmed" || value.Terminal != "closed" {
 			return 1
 		}
-	case "kill":
-		if result.Value.(KillResult).Terminal != "closed" {
+	case "wait":
+		if result.Value.(WaitResult).Outcome != "matched" {
 			return 1
 		}
 	}

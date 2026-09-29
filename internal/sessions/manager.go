@@ -537,6 +537,7 @@ func (manager *Manager) inspectRequired(
 
 func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
 	session := inspected.session
+	session.ActivePaneID = inspected.paneID
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
 	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption); err == nil {
 		session.Group = decodeGroupMetadata(encoded)

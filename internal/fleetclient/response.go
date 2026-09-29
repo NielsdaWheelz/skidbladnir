@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -12,40 +13,33 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
-type Status struct {
-	State  string `json:"state"`
-	Source string `json:"source"`
-	Reason string `json:"reason,omitempty"`
-}
-type Methods struct {
-	Read      string `json:"read"`
-	Send      string `json:"send"`
-	Interrupt string `json:"interrupt"`
-}
 type ProviderSession struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 type Agent struct {
-	Provider        string           `json:"provider"`
-	Profile         string           `json:"profile,omitempty"`
-	ProviderSession *ProviderSession `json:"providerSession,omitempty"`
-	Status          Status           `json:"status"`
-	Methods         Methods          `json:"methods"`
+	Binding         *agentruntime.Binding `json:"binding,omitempty"`
+	Turn            *agentruntime.Turn    `json:"turn,omitempty"`
+	Provider        string                `json:"provider"`
+	Profile         string                `json:"profile,omitempty"`
+	ProviderSession *ProviderSession      `json:"providerSession,omitempty"`
+	Status          agentruntime.Status   `json:"status"`
+	Methods         agentruntime.Methods  `json:"methods"`
 }
 type Connection struct {
 	Transport string `json:"transport"`
 	ID        string `json:"id,omitempty"`
 }
 type ExecutionAgent struct {
-	Provider string `json:"provider"`
-	Profile  string `json:"profile,omitempty"`
-	Label    string `json:"label,omitempty"`
-	State    string `json:"state"`
+	Provider string              `json:"provider"`
+	Profile  string              `json:"profile,omitempty"`
+	Label    string              `json:"label,omitempty"`
+	Status   agentruntime.Status `json:"status"`
 }
 type ExecutionContext struct {
 	Kind    string          `json:"kind"`
@@ -55,6 +49,7 @@ type ExecutionContext struct {
 	Agent   *ExecutionAgent `json:"agent,omitempty"`
 }
 type Session struct {
+	ActivePaneID    string            `json:"activePaneId"`
 	Name            string            `json:"name"`
 	Ref             string            `json:"ref"`
 	CWD             string            `json:"cwd,omitempty"`
@@ -69,6 +64,7 @@ type Session struct {
 
 // sessionJSON is the string-speaking boundary for the owned session label.
 type sessionJSON struct {
+	ActivePaneID    string            `json:"activePaneId"`
 	Name            string            `json:"name"`
 	Ref             string            `json:"ref"`
 	CWD             string            `json:"cwd,omitempty"`
@@ -97,7 +93,7 @@ func (value *groupField) UnmarshalJSON(encoded []byte) error {
 	return nil
 }
 func (s Session) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sessionJSON{Name: s.Name, Ref: s.Ref, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: s.AttachedClients, Agent: s.Agent, Connection: s.Connection, Execution: s.Execution, Group: groupField{s.Group}})
+	return json.Marshal(sessionJSON{ActivePaneID: s.ActivePaneID, Name: s.Name, Ref: s.Ref, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: s.AttachedClients, Agent: s.Agent, Connection: s.Connection, Execution: s.Execution, Group: groupField{s.Group}})
 }
 
 type Profile struct {
@@ -146,21 +142,25 @@ type ObservedSession struct {
 	Session    Session `json:"session"`
 }
 type ReadResult struct {
-	Text      string `json:"text"`
-	Source    string `json:"source"`
-	Scope     string `json:"scope"`
-	Truncated bool   `json:"truncated"`
+	Observation  *agentruntime.Observation `json:"observation,omitempty"`
+	OutputState  string                    `json:"outputState,omitempty"`
+	OutputID     string                    `json:"outputId,omitempty"`
+	OutputTurnID string                    `json:"outputTurnId,omitempty"`
+	Text         string                    `json:"text"`
+	Source       string                    `json:"source"`
+	Scope        string                    `json:"scope"`
+	Truncated    bool                      `json:"truncated"`
 }
 type WriteResult struct {
 	Method  string `json:"method"`
 	Outcome string `json:"outcome"`
 }
-type StopResult struct {
+type CloseResult struct {
 	Agent    string `json:"agent"`
 	Terminal string `json:"terminal"`
 	Reason   string `json:"reason,omitempty"`
 }
-type KillResult struct {
+type TerminalCloseResult struct {
 	Terminal string `json:"terminal"`
 }
 type GroupResult struct {
@@ -173,16 +173,19 @@ type DirectorySearchResult struct {
 }
 
 type hostAgent struct {
-	Provider        string           `json:"provider"`
-	Profile         string           `json:"profile,omitempty"`
-	ProviderSession *ProviderSession `json:"providerSession,omitempty"`
-	Status          Status           `json:"status"`
-	Methods         Methods          `json:"methods"`
-	PID             int              `json:"pid"`
-	PaneID          string           `json:"paneId"`
-	StartIdentity   string           `json:"startIdentity"`
+	Binding         *agentruntime.Binding `json:"binding,omitempty"`
+	Turn            *agentruntime.Turn    `json:"turn,omitempty"`
+	Provider        string                `json:"provider"`
+	Profile         string                `json:"profile,omitempty"`
+	ProviderSession *ProviderSession      `json:"providerSession,omitempty"`
+	Status          agentruntime.Status   `json:"status"`
+	Methods         agentruntime.Methods  `json:"methods"`
+	PID             int                   `json:"pid"`
+	PaneID          string                `json:"paneId"`
+	StartIdentity   string                `json:"startIdentity"`
 }
 type hostSession struct {
+	ActivePaneID  string `json:"activePaneId"`
 	TmuxID        string `json:"tmuxId"`
 	TmuxName      string `json:"tmuxName"`
 	IdentityToken string `json:"identityToken"`
@@ -215,16 +218,19 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken}
-	row := Session{Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
+	row := Session{ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection}
 	if s.Agent != nil {
-		ref.Agent = &ProcessReference{PaneID: s.Agent.PaneID, PID: s.Agent.PID, StartIdentity: s.Agent.StartIdentity}
-		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, Status: s.Agent.Status, Methods: s.Agent.Methods}
+		ref.Agent = &ProcessReference{PaneID: s.Agent.PaneID, PID: s.Agent.PID, StartIdentity: s.Agent.StartIdentity, Methods: s.Agent.Methods, Binding: s.Agent.Binding, Turn: s.Agent.Turn}
+		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, Status: s.Agent.Status, Methods: s.Agent.Methods, Binding: s.Agent.Binding, Turn: s.Agent.Turn}
 	}
 	row.Ref = ref.Encode()
 	return row
 }
 
 func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
+	if !nonNullJSON(encoded) {
+		return nil, false
+	}
 	switch operation {
 	case "terminal_context":
 		var value *RemoteContext
@@ -291,37 +297,71 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		}
 		return ObservedSession{Label: target.Label, Machine: target.Machine, ObservedAt: value.ObservedAt, Session: value.Session.project(target.Machine)}, true
 	case "read":
-		var value *struct {
-			Text      *string `json:"text"`
-			Source    string  `json:"source"`
-			Scope     string  `json:"scope"`
-			Truncated *bool   `json:"truncated"`
-		}
-		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Text == nil || value.Truncated == nil || !slices.Contains([]string{"native", "terminal"}, value.Source) || !slices.Contains([]string{"recent_messages", "latest_turn", "terminal_history", "visible"}, value.Scope) {
+		var value *ReadResult
+		if strictjson.Decode(encoded, &value) != nil || value == nil {
 			return nil, false
 		}
-	case "send", "keys", "interrupt":
+		var fields map[string]json.RawMessage
+		if strictjson.Decode(encoded, &fields) != nil || fields["text"] == nil || fields["truncated"] == nil || len(value.Text) > 32768 {
+			return nil, false
+		}
+		if value.Source == "native" {
+			if value.Scope != "latest" && value.Scope != "history" || value.Observation == nil || !value.Observation.Binding.Valid() || !value.Observation.Status.Valid() || value.Observation.Turn != nil && !value.Observation.Turn.Valid() || !slices.Contains([]string{"partial", "finalized", "unknown", "none"}, value.OutputState) {
+				return nil, false
+			}
+		} else if value.Source != "terminal" || !slices.Contains([]string{"terminal_history", "visible"}, value.Scope) || value.Observation != nil || value.OutputState != "" || value.OutputID != "" || value.OutputTurnID != "" {
+			return nil, false
+		}
+		return *value, true
+	case "send":
+		var value *SendResult
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Method != "native" || !slices.Contains([]string{"peer", "user"}, value.Input) || !slices.Contains([]string{"direct", "queue"}, value.Delivery) || value.Input == "peer" && value.Delivery == "queue" || value.Outcome != "accepted" {
+			return nil, false
+		}
+		if value.Delivery == "direct" && value.TurnID == "" || value.Delivery == "queue" && (value.QueueItemID == "" || value.ClientMessageID == "") {
+			return nil, false
+		}
+		return *value, true
+	case "keys", "text", "stop":
 		var value *WriteResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Method != "terminal" || !slices.Contains([]string{"written", "unknown"}, value.Outcome) {
+		if strictjson.Decode(encoded, &value) != nil || value == nil {
 			return nil, false
 		}
-	case "stop":
-		var value *StopResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !slices.Contains([]string{"stopped", "interrupted", "idle", "unconfirmed"}, value.Agent) || !slices.Contains([]string{"closed", "unconfirmed"}, value.Terminal) || !slices.Contains([]string{"", "stale", "unavailable"}, value.Reason) {
+		if value.Method == "terminal" {
+			if value.Outcome != "written" && value.Outcome != "unknown" {
+				return nil, false
+			}
+		} else if operation != "stop" || value.Method != "native" || !slices.Contains([]string{"interrupted", "stopped", "finished", "unknown"}, value.Outcome) {
 			return nil, false
 		}
+		return *value, true
+	case "close":
+		var value *CloseResult
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !slices.Contains([]string{"stopped", "interrupted", "finished", "unconfirmed"}, value.Agent) || !slices.Contains([]string{"closed", "unconfirmed"}, value.Terminal) || !slices.Contains([]string{"", "stale", "unavailable"}, value.Reason) {
+			return nil, false
+		}
+		return *value, true
+	case "results":
+		var value *ResultsResult
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.Conversation.Valid() || value.ResultIDs == nil || len(value.ResultIDs) > 128 {
+			return nil, false
+		}
+		seen := make(map[string]bool, len(value.ResultIDs))
+		for _, id := range value.ResultIDs {
+			if !validReplyID(id) || seen[id] {
+				return nil, false
+			}
+			seen[id] = true
+		}
+		return *value, true
 	default:
 		return nil, false
 	}
-	var compact bytes.Buffer
-	if json.Compact(&compact, encoded) != nil {
-		return nil, false
-	}
-	return json.RawMessage(compact.Bytes()), true
+
 }
 
 func validSession(s hostSession) bool {
-	if !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 {
+	if !tmuxAddress(s.ActivePaneID, '%') || !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 {
 		return false
 	}
 	if s.Connection != nil && (s.Agent != nil || s.CWD != "" || !validConnection(*s.Connection)) {
@@ -331,7 +371,7 @@ func validSession(s hostSession) bool {
 	if a == nil {
 		return true
 	}
-	return slices.Contains([]string{"Codex", "Claude"}, a.Provider) && a.PID > 0 && tmuxAddress(a.PaneID, '%') && a.StartIdentity != "" && slices.Contains([]string{"working", "blocked", "idle", "done", "failed", "stopped", "unknown"}, a.Status.State) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Status.Source) && slices.Contains([]string{"", "permission", "input", "dialog", "provider_unavailable", "unrecognized"}, a.Status.Reason) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Read) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Send) && slices.Contains([]string{"native", "terminal", "unavailable"}, a.Methods.Interrupt)
+	return slices.Contains([]string{"Codex", "Claude"}, a.Provider) && a.PID > 0 && a.PaneID == s.ActivePaneID && a.StartIdentity != "" && a.Status.Valid() && a.Methods.Valid() && (a.Binding == nil || a.Binding.Valid() && a.Binding.Conversation.Provider.String() == a.Provider && string(a.Binding.Conversation.ProfileKey) == a.Profile) && (a.Turn == nil || a.Turn.Valid())
 }
 
 func validConnection(connection Connection) bool {
@@ -349,7 +389,7 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 		Message  string `json:"message"`
 		Dispatch string `json:"dispatch"`
 	}
-	if strictjson.Decode(encoded, &value) != nil || value.Dispatch != "not_sent" && value.Dispatch != "unknown" {
+	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value.Dispatch != "not_sent" && value.Dispatch != "unknown" {
 		return nil
 	}
 	wantStatus, wantMessage := 0, ""
@@ -396,4 +436,48 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 		return nil
 	}
 	return &Failure{Code: value.Code, Dispatch: value.Dispatch}
+}
+
+type SendResult struct {
+	Method          string `json:"method"`
+	Input           string `json:"input"`
+	Delivery        string `json:"delivery"`
+	Outcome         string `json:"outcome"`
+	TurnID          string `json:"turnId,omitempty"`
+	QueueItemID     string `json:"queueItemId,omitempty"`
+	ClientMessageID string `json:"clientMessageId,omitempty"`
+}
+type ResultsResult struct {
+	Conversation agentruntime.Conversation `json:"conversation"`
+	ResultIDs    []string                  `json:"resultIds"`
+	NextCursor   string                    `json:"nextCursor,omitempty"`
+}
+type WaitResult struct {
+	Outcome     string                    `json:"outcome"`
+	Target      string                    `json:"target"`
+	Observation *agentruntime.Observation `json:"observation,omitempty"`
+}
+
+func StatusText(status agentruntime.Status) string {
+	if status.Source == "unavailable" || status.State == "unknown" {
+		return "status unavailable"
+	}
+	if status.State == "blocked" {
+		return "waiting"
+	}
+	return status.State
+}
+
+// All fleet and local unread schemas distinguish omission from null.
+func nonNullJSON(encoded []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			return true
+		}
+		if err != nil || token == nil {
+			return false
+		}
+	}
 }

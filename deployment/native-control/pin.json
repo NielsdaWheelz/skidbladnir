@@ -6,5 +6,8 @@
   "pythonVersion": "3.12.13",
   "claudeSdkVersion": "0.2.130",
   "entryPoint": "provider-runtime-control",
-  "installedCommand": "skidbladnir-provider-runtime-control"
+  "installedCommand": "skidbladnir-provider-runtime-control",
+  "patchSha256": "1eb1cfe555176c3a2857b0156f78370b1129efe3a52eb956207bd18f2be77d58",
+  "claudeVersion": "2.1.284",
+  "qualified": true
 }

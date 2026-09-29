@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -97,7 +98,7 @@ internal fun TerminalScreen(
                 onClick = controller::openRename,
                 modifier = Modifier.weight(1f),
             )
-            val shellEnabled = !state.shellPending && state.kill == null && state.rename == null &&
+            val shellEnabled = !state.shellPending && state.close == null && state.rename == null &&
                 terminalActionAdmissible(state.machine.canMutate, state.connection)
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                 HeaderChip(
@@ -136,26 +137,37 @@ internal fun TerminalScreen(
                         onClick = { expanded = true }, modifier = Modifier.width(48.dp),
                     )
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(text = { Text("Interrupt agent") }, onClick = {
+                        DropdownMenuItem(text = { Text("stop current work") }, onClick = {
                             expanded = false
-                            controller.interruptAgent()
-                        }, enabled = state.target.session.agent.methods.interrupt != AgentMethod.Unavailable)
-                        DropdownMenuItem(text = { Text("Stop agent and close terminal") }, onClick = {
+                            controller.stopAgent()
+                        }, enabled = state.target.session.agent.methods.stop != AgentMethod.Unavailable)
+                        DropdownMenuItem(text = { Text("stop work and close terminal") }, onClick = {
                             expanded = false
-                            controller.requestKill(state.target)
-                        })
-                        DropdownMenuItem(text = { Text("Kill terminal only") }, onClick = {
+                            controller.requestClose(state.target)
+                        }, enabled = state.target.session.agent.methods.stop != AgentMethod.Unavailable)
+                        DropdownMenuItem(text = { Text("close terminal only") }, onClick = {
                             expanded = false
-                            controller.requestTerminalKill(state.target)
+                            controller.requestTerminalClose(state.target)
                         })
                     }
                 }
             } else {
-                KillButton(
+                CloseButton(
                     machineLabel = state.machine.machine.label, target = state.target,
                     enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                    onClick = { controller.requestKill(state.target) },
+                    onClick = { controller.requestClose(state.target) },
                 )
+            }
+        }
+        if (execution is ExecutionContext.Local) {
+            val replies = state.machine.replies[state.target.session.identityToken] ?: ReplyPresentation()
+            val content = sessionStatusContent(execution.agent?.status, state.machine.canMutate, replies)
+            Text(content.label.replace("\n", " · "), color = Muted, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
+            replyAvailabilityLabel(replies)?.let {
+                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
             }
         }
         if (execution !is ExecutionContext.Local) {
@@ -265,12 +277,12 @@ internal fun TerminalScreen(
         }
     }
 
-    state.kill?.let { kill ->
-        KillConfirmation(
-            state = kill,
+    state.close?.let { close ->
+        CloseConfirmation(
+            state = close,
             actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection),
-            onDismiss = controller::dismissKill,
-            onConfirm = controller::confirmKill,
+            onDismiss = controller::dismissClose,
+            onConfirm = controller::confirmClose,
         )
     }
     state.rename?.let { rename ->

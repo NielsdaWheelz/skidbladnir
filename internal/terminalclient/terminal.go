@@ -21,7 +21,7 @@ import (
 
 var errDimensions = errors.New("terminal size must be 20–1024 columns and 5–512 rows; detached, work continues")
 
-func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, input, output *os.File) (result error) {
+func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, input, output *os.File, onHello func() error) (result error) {
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return errors.New("enter requires stdin and stdout ttys")
 	}
@@ -64,11 +64,11 @@ func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Re
 			result = errors.Join(result, errors.New("terminal restoration failed"))
 		}
 	}()
-	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) })
+	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, onHello)
 }
 
 // stream cancels and joins both readers before returning ownership of stdin.
-func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error)) error {
+func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), onHello func() error) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
@@ -91,6 +91,10 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	}
 	switch frame := frame.(type) {
 	case terminal.HelloFrame:
+		if onHello != nil {
+			acknowledgementErr := onHello()
+			defer func() { result = errors.Join(result, acknowledgementErr) }()
+		}
 	case terminal.ErrorFrame:
 		return errors.New(frame.Message)
 	default:

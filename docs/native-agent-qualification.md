@@ -1,0 +1,50 @@
+# native interaction qualification
+
+2026-09-28 · isolated source qualification; no fleet deployment or release.
+[the contract](native-agent-observation.md) owns requirements and accepted costs.
+the [claude recipient defect](issues/native-message-qualification.md) makes native
+input unavailable under the contract; status/history/results and matched
+background stop remain supported.
+
+## boundaries exercised
+
+| boundary | evidence |
+| --- | --- |
+| codex selected view | actual patched tuis and direct unix app-server: two owners, new/clear, cached resume a→b→a, overview, fork, child/parent, process/server restart; owner pid/birth checks, invalidation ordering, reconnect revocation and unsupported-owner rejection |
+| native controls | actual provider/helper/gateway: peer/user submission, working/approval/failure, persistent user queue and restart, exact interruption; stale turn cannot cancel its successor; reads never resume saved conversations. actual arch claude background workers: exact stop, wrong-birth rejection, independent control survives and saved history remains |
+| native history | actual provider plus helper: 129-turn paging, uuidv7/timestamp/final-answer eligibility, fresh unmaterialized history, cursor invalidation; sdk assistant-block grouping and finalized claude reply identity |
+| lifecycle and wait | actual public start, retained-terminal stop and compound close; saved history and codex queue survive closure; bounded waits cover idle, timeout, cancellation, unavailable and identity changes |
+| close authority | actual tmux/kernel regression: a live captured agent backgrounded behind a replacement foreground process rejects closure; only proven exit permits the surviving shell to close |
+| machine composition | actual mac and arch gateways over reciprocal ssh forwarding; current arch cli→mac codex admission and finalized reply recovery; current claude sends reject `unavailable/not_sent`, while separate explicit terminal prompting produces a saved native reply |
+| desktop unread | real browser→tls gateway→pty→isolated tmux first-hello; later reply stays unread, failed attach/reconnect cannot acknowledge it; independent-process file merges, interrupted baselines and unavailable storage/history |
+| android unread | owned emulator with actual controller, tls/wss and datastore: restart, offline recovery, captured-only acknowledgement, same-pane shell, hiding/deletion/reappearance, partial pages, fair scans and failed writes |
+| content | desktop 80×24 and android 320dp review: working plus unread, previous-agent badge, merged accessibility, no reasons/inference or false outcome copy |
+| native installation | real immutable codex source/patch/locked release build and generation installation; execution under a second uid; socket root/granted inode/private locks, restart repair and long rendezvous aliases on linux/darwin. final checksummed helper patch, frozen uv/python/sdk installation, private generation, launcher and exact native shim passed |
+| coexistence | owned herdr pane used the patched provider and produced a native finalized reply; no user pane or account was retargeted |
+| claude recipient | native provider FAIL: a held old-session message approved after `/clear` appears in successor sdk history. product red→green: peer/user/queue sends reject before provider discovery, no unsafe adapter remains, reads/result ids stay intact |
+
+meaningful red→green repairs included strict nullable provider schema, selected-view
+ordering, exact native error certainty, history materialization, linux native
+identity format, long socket aliases, android schema validation/fair scans/whole-call
+timeouts, truthful close copy, foreground closure authority and strict send
+acceptance receipts. native claude recipient safety remains unsupported. a custom-function-hook barrier was `NOT_RUN`;
+the supported command-hook barrier reached the actual failure. a herdr wait
+timed out; only the independently finalized native reply is qualified.
+
+## limits and delivery
+
+codex execution used a controlled model http endpoint with actual provider,
+history, queue and tui processes. it does not qualify the real openai backend.
+claude used its actual native binary and sdk with a real account. the emulator
+does not establish physical-phone usability or installed-fleet acceptance.
+
+source pins and bundled patch digests are authoritative in skid's
+`deployment/native-control/pin.json` and dev-server's
+`assets/{codex/native-source,skid-provider/native-control}.json`.
+skid engineering checks (`scripts/check verify`) passed after temporary test deletion.
+helper lint/format/types and installer shell checks passed. task-added tests,
+fixtures, test trust entries and owned processes are removed; existing upstream
+tests remain. test deletion deliberately leaves
+no new regression protection.
+ship the coordinated source/contracts/pins together; rollback uses the prior
+complete release. publication and fleet installation are separate work.

@@ -61,7 +61,7 @@ internal fun NoticePanel(
 }
 
 // The one header chip: DeepSurface ground, accent hairline, angular indication,
-// and the 48dp floor on the inner Box for the reason KillButton records below.
+// and the 48dp floor on the inner Box for the reason CloseButton records below.
 // Hand-rolling this per call site is how the header grew two owners for one
 // treatment. `spokenName` is null wherever the visible label is already the
 // control's name, and carries it where the label is a glyph.
@@ -105,13 +105,11 @@ internal fun HeaderChip(
 
 // The one destructive control (destructive-chrome.md). Its signal is geometry:
 // Cleft is the only asymmetric shape in the product, so architecture.md's
-// "detach and kill are visibly different actions" survives greyscale without an
-// icon — §15 bans axe/hammer/helm clip-art and the app ships none. The word
-// stays "Kill" because §4 keeps the dwarven voice in geometry, material and
-// type, never in wording, and the label keeps the body face: it is a control,
+// "detach and close are visibly different actions" survives greyscale without an
+// icon. The label names the complete action; the body face marks a control,
 // not a machine fact (§9).
 @Composable
-internal fun KillButton(
+internal fun CloseButton(
     machineLabel: MachineLabel,
     target: SessionTarget,
     enabled: Boolean,
@@ -119,7 +117,7 @@ internal fun KillButton(
     modifier: Modifier = Modifier,
 ) {
     val failure = noticeToneColor(NoticeTone.Failure)
-    val spoken = killActionLabel(machineLabel, target)
+    val spoken = closeActionLabel(machineLabel, target)
     Surface(
         // One ground for both states, at the 12% the delta specifies. Not
         // the chip register's 18%: that puts the label at 4.43:1 over a card,
@@ -143,8 +141,7 @@ internal fun KillButton(
                 role = Role.Button,
                 onClick = onClick,
             )
-            // Every kill control on the grid speaks an identical bare "Kill"
-            // today, so a screen-reader user cannot tell one from another.
+            // Name both the action and its target for screen-reader users.
             .semantics { contentDescription = spoken },
     ) {
         // The minimum target sits on this inner Box, not the outer chain:
@@ -157,7 +154,7 @@ internal fun KillButton(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (target.session.agent == null) "Close" else "Stop",
+                text = if (target.session.agent == null) "close terminal only" else "stop work and close terminal",
                 // Disabled goes to Bone, not a dimmed Ember: Ember at 38% over
                 // an Ember-tinted ground measures 1.82:1, where Bone holds
                 // 3.21:1 — the legibility the TextButton had. The hue change

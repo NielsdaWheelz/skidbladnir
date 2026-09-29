@@ -5,8 +5,9 @@ Before changing this repository, read [the architecture](docs/architecture.md),
 [the codebase rules](docs/rules/index.md). tmux owns terminal sessions and pane
 processes; providers own execution and history.
 the phone and desktop are tmux clients. read [agent control](docs/agent-control.md)
-for the accepted sampled status, bounded reads and explicit controls: codex is
-terminal-only; claude may use native status/history/stop. do not reintroduce
+for native observation and explicit controls; [native agent interaction](docs/native-agent-observation.md)
+owns the detailed contract. native failure never selects terminal operations.
+do not reintroduce
 retired machinery: generalized hook runtimes, provenance, sqlite lifecycle facts,
 contract codegen or proof ledgers.
 

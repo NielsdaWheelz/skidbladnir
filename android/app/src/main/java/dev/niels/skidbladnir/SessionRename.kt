@@ -159,7 +159,7 @@ internal fun completeRenameHttp(
             ApiErrorCode.ReconnectRequired,
             ApiErrorCode.TerminalConfigurationUnsupported,
             ApiErrorCode.AgentTargetStale,
-            ApiErrorCode.AgentBlocked, ApiErrorCode.AgentInputInvalid,
+            ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentInputInvalid, ApiErrorCode.HistoryChanged,
             -> error("rename received an error outside its closed route")
         }
     }

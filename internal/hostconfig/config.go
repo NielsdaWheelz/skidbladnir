@@ -118,6 +118,7 @@ type profileDTO struct {
 	Label                stringField               `json:"label"`
 	Provider             stringField               `json:"provider"`
 	Command              stringField               `json:"command"`
+	Endpoint             stringField               `json:"endpoint"`
 	Environment          *[]environmentVariableDTO `json:"environment"`
 	ForegroundSignatures *[]foregroundSignatureDTO `json:"foregroundSignatures"`
 	Arguments            *[]stringField            `json:"arguments"`
@@ -177,6 +178,9 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		if !candidate.Key.present || !candidate.Label.present || !candidate.Provider.present || !candidate.Command.present || candidate.Environment == nil || candidate.ForegroundSignatures == nil || candidate.Arguments == nil {
 			return nil, errors.New("host config profile omits a required member")
 		}
+		if candidate.Endpoint.present && candidate.Endpoint.value == "" {
+			return nil, errors.New("host config native endpoint is empty")
+		}
 		if candidate.Key.value != expected.key {
 			return nil, fmt.Errorf("host config profile %d must be %q", index, expected.key)
 		}
@@ -211,6 +215,7 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 			Label:                candidate.Label.value,
 			Provider:             provider,
 			Command:              candidate.Command.value,
+			Endpoint:             candidate.Endpoint.value,
 			Environment:          environment,
 			ForegroundSignatures: signatures,
 			Arguments:            arguments,

@@ -43,7 +43,7 @@ internal sealed interface SkidbladnirUiState {
         val notice: String? = null,
         val forge: ForgeState?,
         val forgeRecovery: ForgeRecovery?,
-        val kill: KillState?,
+        val close: CloseState?,
         val groupEditor: GroupEditor? = null,
     ) : Workspace
 
@@ -55,7 +55,7 @@ internal sealed interface SkidbladnirUiState {
         val connection: TerminalUiStatus,
         val viewport: TerminalViewport,
         val textSize: TerminalTextSizeState,
-        val kill: KillState?,
+        val close: CloseState?,
         val rename: RenameState? = null,
         val agentControlPending: Boolean = false,
         val shellPending: Boolean = false,
@@ -124,7 +124,7 @@ internal sealed interface ForgeRecovery {
     data class RefreshRequired(override val draft: ForgeDraft) : ForgeRecovery
     data class ReviewReady(override val draft: ForgeDraft) : ForgeRecovery
 }
-internal data class KillState(
+internal data class CloseState(
     val machine: PairedMachine,
     val target: SessionTarget,
     val pending: Boolean,
@@ -277,7 +277,7 @@ private fun availableTerminalStatus(
 private fun unavailableTerminalStatus(
     terminal: SkidbladnirUiState.Terminal,
 ): TerminalUiStatus.ReconnectRequired? {
-    if (terminal.kill?.pending != true && terminal.machine.canMutate) return null
+    if (terminal.close?.pending != true && terminal.machine.canMutate) return null
     return TerminalUiStatus.ReconnectRequired(machineAccessMessage(terminal.machine))
 }
 
@@ -296,7 +296,7 @@ internal fun dashboardAfterTerminalAccessLoss(
         notice = machineAccessMessage(machine),
         forge = null,
         forgeRecovery = null,
-        kill = null,
+        close = null,
     )
 }
 
@@ -317,11 +317,11 @@ internal fun dashboardAfterMachineAccessLoss(
     )
     val message = machineAccessMessage(machine)
     val affectedForge = dashboard.forge?.takeIf { it.form.machineHandle == handle }
-    val affectedKill = dashboard.kill?.takeIf { it.target.machineHandle == handle }
+    val affectedClose = dashboard.close?.takeIf { it.target.machineHandle == handle }
     val recoveryOwnsScope =
         affectedForge?.pending == true ||
             affectedForge?.surface is ForgeSurface.DirectoryPicker ||
-            affectedKill != null
+            affectedClose != null
     if (recoveryOwnsScope) {
         dashboardEntry.selectScope(DashboardScope.Machine(handle))
     }
@@ -338,7 +338,7 @@ internal fun dashboardAfterMachineAccessLoss(
         } else {
             dashboard.forge
         },
-        kill = dashboard.kill?.takeUnless { it.target.machineHandle == handle },
+        close = dashboard.close?.takeUnless { it.target.machineHandle == handle },
         groupEditor = dashboard.groupEditor?.takeUnless { it.target.machineHandle == handle },
     )
 }
@@ -357,6 +357,8 @@ private data class PollRuntime(
     var inventoryFuture: ScheduledFuture<*>? = null,
     var pressureFuture: ScheduledFuture<*>? = null,
 )
+
+private data class ResultScan(var cursor: String? = null, val baselineIds: MutableSet<String> = linkedSetOf())
 
 private data class CreatedTerminalAdmission(
     val attempt: Int,
@@ -442,6 +444,14 @@ internal class SkidbladnirController(
     }
     private val store = MachineStore(context.applicationContext)
     private val textSizeStore = TerminalTextSizeStore(context)
+    private val unreadStore = UnreadStore(context)
+    private var unreadSnapshot: UnreadSnapshot? = null
+    private var unreadUnavailable = false
+    private val resultScans = mutableMapOf<ConversationKey, ResultScan>()
+    private val resultsInFlight = mutableSetOf<MachineHandle>()
+    private val nextResultByHost = mutableMapOf<MachineHandle, Int>()
+    private val unavailableResults = mutableSetOf<ConversationKey>()
+    private var openingReplies: Pair<Int, UnreadCapture>? = null
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
     private val polling = ConcurrentHashMap<MachineHandle, PollRuntime>()
@@ -466,6 +476,7 @@ internal class SkidbladnirController(
     fun start() {
         if (foreground) return
         foreground = true
+        unreadStore.read(::acceptUnreadSnapshot, ::unreadStoreUnavailable)
         val connectState = state as? SkidbladnirUiState.FleetConnect
         val interruptedPersistence = pendingFleetPersistence?.takeIf {
             connectState?.phase == FleetConnectPhase.Connecting && connectState.mode == it.mode
@@ -597,6 +608,7 @@ internal class SkidbladnirController(
         pendingFleetScan = null
         pendingFleetPersistence = null
         textSizeStore.close()
+        unreadStore.close()
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
@@ -1105,7 +1117,7 @@ internal class SkidbladnirController(
     fun openSourceTerminalForge() {
         val source = state as? SkidbladnirUiState.Terminal ?: return
         if (source.target.session.connection == null || source.shellPending ||
-            source.kill != null || source.rename != null ||
+            source.close != null || source.rename != null ||
             !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
         val handle = source.target.machineHandle
         if (machineStates[handle]?.canForge != true) return
@@ -1126,7 +1138,7 @@ internal class SkidbladnirController(
 
     fun newTerminalHere() {
         val source = state as? SkidbladnirUiState.Terminal ?: return
-        if (source.shellPending || source.kill != null || source.rename != null ||
+        if (source.shellPending || source.close != null || source.rename != null ||
             !terminalActionAdmissible(source.machine.canMutate, source.connection)) return
         val handle = source.target.machineHandle
         val credential = credentials[handle] ?: return
@@ -1163,7 +1175,7 @@ internal class SkidbladnirController(
 
     fun openGroupEditor(target: SessionTarget) {
         val dashboard = state as? SkidbladnirUiState.Dashboard ?: return
-        if (dashboard.forge != null || dashboard.kill != null || dashboard.groupEditor != null) return
+        if (dashboard.forge != null || dashboard.close != null || dashboard.groupEditor != null) return
         val machine = machineStates[target.machineHandle] ?: return
         if (!machine.canMutate) return
         val observed = machine.inventory.lastSnapshot()?.inventory?.sessions?.singleOrNull {
@@ -1246,8 +1258,15 @@ internal class SkidbladnirController(
             connection = TerminalUiStatus.Preparing,
             viewport = TerminalViewport.Pending,
             textSize = TerminalTextSizeState.Reading,
-            kill = null,
+            close = null,
         )
+        val conversation = unreadSnapshot?.conversation(target)
+        openingReplies = conversation?.let {
+            val key = ConversationKey(target.machineHandle, it)
+            unreadSnapshot?.record(key)?.unreadIds?.takeIf { ids -> ids.isNotEmpty() }?.let { ids ->
+                attempt to UnreadCapture(key, ids.toSet())
+            }
+        }
         readTextSize(attempt)
     }
 
@@ -1264,7 +1283,7 @@ internal class SkidbladnirController(
             connection = TerminalUiStatus.Verifying,
             viewport = TerminalViewport.Pending,
             textSize = TerminalTextSizeState.Reading,
-            kill = null,
+            close = null,
         )
         createdTerminalAdmission = CreatedTerminalAdmission(attempt, requiredMutationFence)
         readTextSize(attempt)
@@ -1350,6 +1369,16 @@ internal class SkidbladnirController(
             viewport,
             page,
             object : TerminalConnectionObserver {
+                override fun onHello(attachedClients: Int) {
+                    main.post {
+                        val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
+                        if (terminal.attempt != attempt || terminalOwner !== owner) return@post
+                        state = terminal.copy(connection = TerminalUiStatus.Connected(attachedClients))
+                        val capture = openingReplies?.takeIf { it.first == attempt }?.second
+                        openingReplies = null
+                        if (capture != null) unreadStore.acknowledge(capture, ::acceptUnreadSnapshot, ::unreadStoreUnavailable)
+                    }
+                }
                 override fun onPresence(attachedClients: Int) {
                     main.post {
                         val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
@@ -1411,7 +1440,7 @@ internal class SkidbladnirController(
 
     fun openTextSize() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.rename != null || current.kill != null || terminalTextSizeSheet(current.textSize, current.connection) != null) return
+        if (current.rename != null || current.close != null || terminalTextSizeSheet(current.textSize, current.connection) != null) return
         val textSize = current.textSize as? TerminalTextSizeState.Ready ?: return
         if (!terminalPageLive(current.connection)) return
         terminalPage?.resetInputState()
@@ -1460,7 +1489,7 @@ internal class SkidbladnirController(
 
     fun openRename() {
         val current = state as? SkidbladnirUiState.Terminal ?: return
-        if (current.rename != null || current.kill != null || terminalTextSizeSheet(current.textSize, current.connection) != null ||
+        if (current.rename != null || current.close != null || terminalTextSizeSheet(current.textSize, current.connection) != null ||
             !terminalActionAdmissible(current.machine.canMutate, current.connection)
         ) return
         terminalPage?.resetInputState()
@@ -1546,7 +1575,7 @@ internal class SkidbladnirController(
             connection = TerminalUiStatus.Verifying,
             viewport = TerminalViewport.Pending,
             textSize = TerminalTextSizeState.Reading,
-            kill = null,
+            close = null,
         )
         readTextSize(attempt)
         val activeGeneration = generation
@@ -1586,29 +1615,29 @@ internal class SkidbladnirController(
         verifyVisibleInventory()
     }
 
-    fun interruptAgent() {
+    fun stopAgent() {
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
-        if (terminal.agentControlPending || terminal.kill != null || terminal.rename != null ||
+        if (terminal.agentControlPending || terminal.close != null || terminal.rename != null ||
             !terminalActionAdmissible(terminal.machine.canMutate, terminal.connection)) return
         val target = terminal.target
         val agent = target.session.agent ?: return
-        if (agent.methods.interrupt == AgentMethod.Unavailable) return
+        if (agent.methods.stop == AgentMethod.Unavailable) return
         val credential = credentials[target.machineHandle] ?: return
         val runtime = polling[target.machineHandle] ?: return
         val activeGeneration = generation
         state = terminal.copy(agentControlPending = true)
         runtime.inventoryOperation.submitMutation(onReserved = {}) {
-            val result = client.interruptAgent(credential, target)
+            val result = client.stopAgent(credential, target)
             main.post {
                 if (!isCredentialActive(activeGeneration, credential)) return@post
                 if (result is GatewayResult.Failure && acceptAccessFailure(target.machineHandle, result.failure)) return@post
                 val current = state as? SkidbladnirUiState.Terminal
                 if (current?.attempt == terminal.attempt) state = current.copy(agentControlPending = false)
                 val message = when (result) {
-                    is GatewayResult.Success -> agentInterruptMessage(terminal.machine.machine.label, result.value)
-                    is GatewayResult.Failure -> if (result.failure is GatewayFailure.Api && result.failure.code != ApiErrorCode.InternalError) {
+                    is GatewayResult.Success -> agentStopMessage(result.value)
+                    is GatewayResult.Failure -> if (result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent) {
                         machineError(terminal.machine.machine, result.failure)
-                    } else "${terminal.machine.machine.label.text}: interrupt outcome unknown; refresh before another attempt."
+                    } else "could not confirm the request. check the terminal before trying again."
                 }
                 android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
                 awaitInventory(target.machineHandle, activeGeneration)
@@ -1616,21 +1645,22 @@ internal class SkidbladnirController(
         }
     }
 
-    fun requestKill(target: SessionTarget) = prepareKill(target, terminalOnly = false)
+    fun requestClose(target: SessionTarget) = prepareClose(target, terminalOnly = false)
 
-    fun requestTerminalKill(target: SessionTarget) = prepareKill(target, terminalOnly = true)
+    fun requestTerminalClose(target: SessionTarget) = prepareClose(target, terminalOnly = true)
 
-    private fun prepareKill(target: SessionTarget, terminalOnly: Boolean) {
+    private fun prepareClose(target: SessionTarget, terminalOnly: Boolean) {
         val machine = machineStates[target.machineHandle] ?: return
-        val kill = KillState(machine.machine, target, false, terminalOnly)
+        if (!terminalOnly && target.session.agent?.methods?.stop == AgentMethod.Unavailable) return
+        val close = CloseState(machine.machine, target, false, terminalOnly)
         state = when (val current = state) {
-            is SkidbladnirUiState.Dashboard -> if (machine.canMutate && current.groupEditor == null) current.copy(kill = kill) else return
+            is SkidbladnirUiState.Dashboard -> if (machine.canMutate && current.groupEditor == null) current.copy(close = close) else return
             is SkidbladnirUiState.Terminal ->
                 if (current.rename == null && terminalTextSizeSheet(current.textSize, current.connection) == null &&
                     terminalActionAdmissible(machine.canMutate, current.connection)
                 ) {
                     terminalPage?.resetInputState()
-                    current.copy(kill = kill)
+                    current.copy(close = close)
                 } else {
                     return
                 }
@@ -1638,32 +1668,32 @@ internal class SkidbladnirController(
         }
     }
 
-    fun dismissKill() {
+    fun dismissClose() {
         state = when (val current = state) {
-            is SkidbladnirUiState.Dashboard -> if (current.kill?.pending == true) current else current.copy(kill = null)
-            is SkidbladnirUiState.Terminal -> if (current.kill?.pending == true) current else current.copy(kill = null)
+            is SkidbladnirUiState.Dashboard -> if (current.close?.pending == true) current else current.copy(close = null)
+            is SkidbladnirUiState.Terminal -> if (current.close?.pending == true) current else current.copy(close = null)
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> current
         }
     }
 
-    fun confirmKill() {
+    fun confirmClose() {
         val current = state
-        val kill = when (current) {
-            is SkidbladnirUiState.Dashboard -> current.kill
-            is SkidbladnirUiState.Terminal -> current.kill
+        val close = when (current) {
+            is SkidbladnirUiState.Dashboard -> current.close
+            is SkidbladnirUiState.Terminal -> current.close
             SkidbladnirUiState.Booting, is SkidbladnirUiState.FleetConnect -> null
         } ?: return
-        if (kill.pending) return
-        val machine = machineStates[kill.target.machineHandle] ?: return
-        val credential = credentials[kill.target.machineHandle] ?: return
-        val runtime = polling[kill.target.machineHandle] ?: return
-        val pending = kill.copy(pending = true)
+        if (close.pending) return
+        val machine = machineStates[close.target.machineHandle] ?: return
+        val credential = credentials[close.target.machineHandle] ?: return
+        val runtime = polling[close.target.machineHandle] ?: return
+        val pending = close.copy(pending = true)
         state = when (current) {
-            is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(kill = pending) else return
+            is SkidbladnirUiState.Dashboard -> if (machine.canMutate) current.copy(close = pending) else return
             is SkidbladnirUiState.Terminal ->
                 if (terminalActionAdmissible(machine.canMutate, current.connection)) {
                     leaveTerminal()
-                    current.copy(kill = pending)
+                    current.copy(close = pending)
                 } else {
                     return
                 }
@@ -1671,13 +1701,13 @@ internal class SkidbladnirController(
         }
         val activeGeneration = generation
         runtime.inventoryOperation.submitMutation(
-            onReserved = { fence -> requireInventoryRefresh(kill.target.machineHandle, fence) },
+            onReserved = { fence -> requireInventoryRefresh(close.target.machineHandle, fence) },
         ) { _ ->
-            val stoppingAgent = kill.target.session.agent != null && !kill.terminalOnly
-            val result = if (stoppingAgent) client.stopAgent(credential, kill.target) else {
-                when (val killed = client.killSession(credential, kill.target)) {
-                    is GatewayResult.Success -> GatewayResult.Success(AgentStopResult("unconfirmed", "closed"))
-                    is GatewayResult.Failure -> killed
+            val stoppingAgent = close.target.session.agent != null && !close.terminalOnly
+            val result = if (stoppingAgent) client.closeAgent(credential, close.target) else {
+                when (val closed = client.closeTerminal(credential, close.target)) {
+                    is GatewayResult.Success -> GatewayResult.Success(AgentCloseResult("unconfirmed", "closed"))
+                    is GatewayResult.Failure -> closed
                 }
             }
             main.post {
@@ -1685,24 +1715,24 @@ internal class SkidbladnirController(
                 when (result) {
                     is GatewayResult.Success -> {
                         leaveTerminal()
-                        if (result.value.terminal == "closed") removeTargetFromSnapshot(kill.target)
-                        awaitInventory(kill.target.machineHandle, activeGeneration)
-                        val message = if (stoppingAgent) agentStopMessage(kill.machine.label, result.value) else null
-                        val partial = result.value.agent == "unconfirmed" || result.value.terminal == "unconfirmed"
+                        if (result.value.terminal == "closed") removeTargetFromSnapshot(close.target)
+                        awaitInventory(close.target.machineHandle, activeGeneration)
+                        val message = if (stoppingAgent) agentCloseMessage(result.value) else null
+                        val partial = stoppingAgent && result.value.agent == "unconfirmed" || result.value.terminal == "unconfirmed"
                         publishDashboard(notice = if (partial) message else null)
                         if (message != null && !partial) {
                             android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
                     is GatewayResult.Failure -> {
-                        if (acceptAccessFailure(kill.target.machineHandle, result.failure)) return@post
+                        if (acceptAccessFailure(close.target.machineHandle, result.failure)) return@post
                         leaveTerminal()
                         val message = when {
-                            killFailureIsDefinitive(result.failure) || stoppingAgent && result.failure is GatewayFailure.Api && result.failure.code != ApiErrorCode.InternalError -> machineError(kill.machine, result.failure)
-                            else -> "${kill.machine.label.text}: stop outcome unknown. Sessions are refreshing."
+                            closeFailureIsDefinitive(result.failure) || stoppingAgent && result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent -> machineError(close.machine, result.failure)
+                            else -> "could not confirm the request. check the terminal before trying again."
                         }
-                        markInventoryFailed(kill.target.machineHandle, result.failure)
-                        awaitInventory(kill.target.machineHandle, activeGeneration)
+                        markInventoryFailed(close.target.machineHandle, result.failure)
+                        awaitInventory(close.target.machineHandle, activeGeneration)
                         publishDashboard(notice = message)
                     }
                 }
@@ -1821,6 +1851,14 @@ internal class SkidbladnirController(
                         pendingMetadataFences[handle]?.let { fence ->
                             if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
                         }
+                        unreadStore.reconcile(handle, result.value.sessions,
+                            onReady = { snapshot ->
+                                acceptUnreadSnapshot(snapshot)
+                                if (isCredentialActive(activeGeneration, credential) && polling[handle] === runtime) {
+                                    requestResults(credential, runtime, activeGeneration)
+                                }
+                            }, onUnavailable = ::unreadStoreUnavailable,
+                        )
                         advanceTerminalRename(handle)
                         advanceGroupEditor(handle)
                         dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
@@ -1829,6 +1867,93 @@ internal class SkidbladnirController(
                 advanceCreatedTerminalAdmission(handle, completedMutationFence)
             }
             publishDashboardIfVisible()
+        }
+    }
+
+    private fun acceptUnreadSnapshot(snapshot: UnreadSnapshot) {
+        unreadSnapshot = snapshot
+        unreadUnavailable = false
+        publishReplies()
+    }
+
+    private fun unreadStoreUnavailable() {
+        unreadUnavailable = true
+        publishReplies()
+    }
+
+    private fun publishReplies() {
+        val snapshot = unreadSnapshot
+        for ((handle, machine) in machineStates.toMap()) {
+            val sessions = machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
+            val replies = sessions.associate { session ->
+                val target = SessionTarget(handle, session)
+                val conversation = snapshot?.conversation(target)
+                val key = conversation?.let { ConversationKey(handle, it) }
+                session.identityToken to ReplyPresentation(
+                    unread = key?.let { snapshot?.record(it)?.unreadIds?.isNotEmpty() } == true,
+                    previousAgent = session.agent == null && conversation != null,
+                    repliesUnavailable = key in unavailableResults,
+                    storeUnavailable = unreadUnavailable,
+                )
+            }
+            updateMachine(handle) { it.copy(replies = replies) }
+        }
+        publishDashboardIfVisible()
+    }
+
+    /** One page per existing inventory refresh; rotation covers conversations before more pages. */
+    private fun requestResults(credential: MachineCredential, runtime: PollRuntime, activeGeneration: Long) {
+        if (credential.machine.handle in resultsInFlight || unreadUnavailable) return
+        val snapshot = unreadSnapshot ?: return
+        val handle = credential.machine.handle
+        val inventory = (machineStates[handle]?.inventory as? InventoryState.Fresh)?.snapshot?.inventory ?: return
+        val represented = inventory.sessions.mapNotNull { session ->
+            val target = SessionTarget(handle, session)
+            snapshot.conversation(target)?.let { Triple(ConversationKey(handle, it), target, it) }
+        }.distinctBy { it.first }
+        if (represented.isEmpty()) return
+        val next = nextResultByHost[handle] ?: 0
+        val (key, target, conversation) = represented[next % represented.size]
+        nextResultByHost[handle] = (next + 1) % represented.size
+        val scan = resultScans.getOrPut(key) { ResultScan() }
+        val cursor = scan.cursor
+        resultsInFlight.add(handle)
+        executeNetwork {
+            val result = client.readAgentResults(credential, target, conversation, cursor)
+            main.post {
+                resultsInFlight.remove(handle)
+                if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
+                val current = (machineStates[handle]?.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
+                    it.tmuxId == target.session.tmuxId && it.identityToken == target.session.identityToken && it.activePaneId == target.session.activePaneId
+                } ?: return@post
+                if (unreadSnapshot?.conversation(SessionTarget(handle, current)) != conversation) return@post
+                when (result) {
+                    is GatewayResult.Failure -> {
+                        if (acceptAccessFailure(handle, result.failure)) return@post
+                        resultScans.remove(key)
+                        unavailableResults.add(key)
+                        publishReplies()
+                    }
+                    is GatewayResult.Success -> {
+                        unavailableResults.remove(key)
+                        val initialized = unreadSnapshot?.record(key) != null
+                        if (!initialized) scan.baselineIds.addAll(result.value.resultIds)
+                        scan.cursor = result.value.nextCursor
+                        val ids = if (initialized) result.value.resultIds.toSet() else scan.baselineIds.toSet()
+                        if (initialized || scan.cursor == null) {
+                            unreadStore.observe(key, ids, completeBaseline = scan.cursor == null,
+                                onReady = ::acceptUnreadSnapshot,
+                                onUnavailable = {
+                                    resultScans.remove(key)
+                                    unreadStoreUnavailable()
+                                },
+                            )
+                        }
+                        if (scan.cursor == null) resultScans.remove(key)
+                        publishReplies()
+                    }
+                }
+            }
         }
     }
 
@@ -2058,7 +2183,7 @@ internal class SkidbladnirController(
             val currentSession = (updated.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
                 it.tmuxId == terminal.target.session.tmuxId && it.identityToken == terminal.target.session.identityToken
             }
-            val target = if (currentSession != null && terminal.kill == null && terminal.rename == null) {
+            val target = if (currentSession != null && terminal.close == null && terminal.rename == null) {
                 terminal.target.copy(session = currentSession)
             } else terminal.target
             state = terminal.copy(machine = updated, machines = sortedMachineStates(), target = target)
@@ -2086,7 +2211,7 @@ internal class SkidbladnirController(
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
-            kill = null,
+            close = null,
         )
     }
 
@@ -2095,6 +2220,7 @@ internal class SkidbladnirController(
     }
 
     private fun leaveTerminal() {
+        openingReplies = null
         terminalOwner = null
         createdTerminalAdmission = null
         val connection = terminalConnection

@@ -69,6 +69,7 @@ type Profile struct {
 	Label                string
 	Provider             Provider
 	Command              string
+	Endpoint             string
 	Environment          []EnvironmentVariable
 	ForegroundSignatures []ForegroundSignature
 	Arguments            []string
@@ -106,6 +107,9 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 		}
 		if !filepath.IsAbs(profile.Command) {
 			return nil, fmt.Errorf("profile %s command must be absolute", profile.Key)
+		}
+		if profile.Endpoint != "" && (profile.Provider != ProviderCodex || !filepath.IsAbs(profile.Endpoint) || filepath.Clean(profile.Endpoint) != profile.Endpoint || !utf8.ValidString(profile.Endpoint) || strings.ContainsRune(profile.Endpoint, 0)) {
+			return nil, fmt.Errorf("profile %s native endpoint is invalid", profile.Key)
 		}
 		homeName := providerHomeEnvironment(profile.Provider)
 		home := ""

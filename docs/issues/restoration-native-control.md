@@ -22,3 +22,10 @@ resolved when: an approved disposable background claude job on each host is
 matched and halted through the installed helper; native confirmation and
 terminal closure remain separate, and unrelated jobs survive. record
 content-free results and remove this file. no provider-home relocation is needed.
+
+source qualification, 2026-09-28: the isolated patched helper with actual native
+claude 2.1.284 and sdk 0.2.130 passed on arch. two owned background workers reached
+real native tool work; a wrong kernel lifetime was refused before dispatch, exact
+stop confirmed `stopped` with pid absent, the control retained its exact lifetime,
+and saved history survived both stops. this qualifies the source path, not the
+installed three-host fleet; the deployment criterion above remains open.
