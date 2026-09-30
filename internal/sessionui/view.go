@@ -194,9 +194,9 @@ func (m *model) footerLines() []string {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
-	case "confirm", "group-edit":
+	case "confirm":
 		legend = target(m.pendingName, m.pendingLabel, width)
-	case "details":
+	case "details", "group-edit", "name-edit":
 		legend = target(m.pageName, m.pageMachine, width)
 	case "create":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
@@ -251,11 +251,20 @@ func (m *model) hints() [][]hint {
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
 	case "machine-picker":
 		return [][]hint{{{"↑↓", "choose"}, {"enter", "select"}, {"escape", "cancel"}}}
-	case "group-edit":
-		if m.groupChecking {
-			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "close"}}}
+	case "group-edit", "name-edit":
+		if m.metadata.checking {
+			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
 		}
-		return [][]hint{{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}, {"enter", "save"}, {"escape", "cancel"}}}
+		keys := []hint{{"enter", "save"}, {"escape", "cancel"}}
+		if m.page == "group-edit" {
+			keys = append([]hint{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}}, keys...)
+		} else {
+			keys[0].label = "save name"
+			if row := m.rowForReference(m.pageRef); row != nil && row.available && row.session.NameMode == "manual" {
+				keys = append(keys, hint{"ctrl-a", "use automatic title"})
+			}
+		}
+		return [][]hint{keys}
 	case "create":
 		enter := hint{"enter", "next"}
 		if m.field == 4 {
@@ -269,12 +278,15 @@ func (m *model) hints() [][]hint {
 		}
 		return [][]hint{hints}
 	case "details":
-		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}}
+		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
+		if row := m.rowForReference(m.pageRef); row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
+			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
+		}
+		return [][]hint{keys}
 	}
 	session := []hint{}
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
-		session = append(session, hint{"e", "group"})
 		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
@@ -399,34 +411,63 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, text)
 		}
 		return window(lines, m.picker+2, m.picker+3, height)
-	case "group-edit":
-		lines := []string{bold.Styled("group"), ""}
-		if m.groupFailure != nil {
-			lines = append(lines, alarm.Styled(singleLine(m.groupFailure.Code)+" (unknown); not repeated"), "")
+	case "group-edit", "name-edit":
+		editor := m.metadata
+		title, label, draft, axis := "group", "group", groupDraftDisplay(editor.draft), 7
+		if m.page == "name-edit" {
+			title, label, draft, axis = "rename session", "session name", editor.draft, 12
+			if !fleetclient.ValidSessionName(draft) {
+				draft = strconv.QuoteToASCII(draft)
+			}
 		}
-		current := m.pendingRow()
+		lines := []string{bold.Styled(title), ""}
+		if editor.failure != nil {
+			lines = append(lines, wrapped(fleetclient.ErrorMessage(*editor.failure, editor.request, false), width)...)
+			lines = append(lines, "")
+		}
+		current := m.rowForReference(editor.request.Ref)
 		if current != nil {
-			lines = append(lines, field("current", fleetclient.GroupHeading(current.session.Group), false, false, 7, width)...)
+			value := fleetclient.GroupHeading(current.session.Group)
+			if m.page == "name-edit" {
+				value = current.session.Name + " (" + current.session.NameMode + ")"
+			}
+			lines = append(lines, field("current", value, false, false, axis, width)...)
 		}
 		focusStart := len(lines)
-		lines = append(lines, field("group", groupDraftDisplay(m.groupDraft), !m.groupChecking, false, 7, width)...)
+		lines = append(lines, field(label, draft, !editor.checking && !m.busy, false, axis, width)...)
 		focusEnd := len(lines)
-		label, err := group.ParseDraft(m.groupDraft)
 		status := "enter saves"
 		switch {
-		case m.groupChecking:
-			status = "checking inventory; escape returns"
-		case err != nil:
-			status = group.ErrInvalid.Error()
+		case m.busy:
+			status = "saving; delivery will be reported"
+		case editor.checking:
+			status = "checking inventory; escape returns to info"
 		case current == nil || !current.available:
 			status = "session unavailable; save disabled"
-		case current.session.Group == label:
+		case m.page == "group-edit":
+			value, err := group.ParseDraft(editor.draft)
+			if err != nil {
+				status = group.ErrInvalid.Error()
+			} else if current.session.Group == value {
+				status = "unchanged; save disabled"
+			}
+		case !fleetclient.ValidSessionName(editor.draft):
+			status = fleetclient.ErrorMessage(fleetclient.Failure{Code: "SessionNameInvalid"}, editor.request, false)
+		case current.session.NameMode == "manual" && current.session.Name == editor.draft:
 			status = "unchanged; save disabled"
 		}
 		lines = append(lines, "")
 		lines = append(lines, wrapped(status, width)...)
 		lines = append(lines, "")
-		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
+		if m.page == "group-edit" {
+			lines = append(lines, m.suggestions(width)...)
+		} else {
+			lines = append(lines, "saving a name stops automatic naming.")
+			if current != nil && current.session.NameMode == "automatic" {
+				lines = append(lines, "follows the active pane's terminal title.")
+			}
+		}
+		return window(lines, focusStart, focusEnd, height)
 	case "create":
 		lines := []string{bold.Styled("new session"), ""}
 		focusStart, focusEnd := 0, 0
@@ -473,7 +514,7 @@ func (m *model) bodyLines(height int) []string {
 		}
 		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
 	case "details":
-		title := bold.Styled(m.page)
+		title := bold.Styled("info")
 		// The title stays pinned; only the captured snapshot scrolls.
 		body := m.detailLines()
 		offset := min(m.offset, max(0, len(body)-(height-2)))
@@ -549,8 +590,17 @@ func (m *model) suggestions(width int) []string {
 func (m *model) detailLines() []string {
 	width := m.width - 2
 	lines := []string{}
+	row := m.rowForReference(m.pageRef)
 	for _, fact := range m.facts {
-		lines = append(lines, field(fact[0], fact[1], false, false, 16, width)...)
+		label := fact[0]
+		if row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
+			if label == "name" {
+				label += " [r]"
+			} else if label == "group" {
+				label += " [g]"
+			}
+		}
+		lines = append(lines, field(label, fact[1], false, false, 16, width)...)
 	}
 	return lines
 }

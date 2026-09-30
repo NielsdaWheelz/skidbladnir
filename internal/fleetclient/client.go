@@ -159,6 +159,8 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		case operation == "group":
 			body["group"] = request.Group.String()
 			path += "/group"
+		case operation == "rename":
+			body["expectedNaming"], body["naming"] = request.ExpectedNaming, request.Naming
 		case operation == "close" && request.TerminalOnly:
 			operation = "terminal_close"
 		case ref.Conversation != nil:
@@ -237,7 +239,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 	}
 	if _, err := result.Encode(request.Operation); err != nil {
 		dispatch := "not_sent"
-		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "text" || request.Operation == "stop" || request.Operation == "close" || request.Operation == "group" {
+		if request.Operation == "start" || request.Operation == "shell" || request.Operation == "send" || request.Operation == "keys" || request.Operation == "text" || request.Operation == "stop" || request.Operation == "close" || request.Operation == "group" || request.Operation == "rename" {
 			dispatch = "unknown"
 		}
 		return Failed("output_limit", dispatch)
@@ -496,6 +498,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 		if operation == "group" {
 			method = http.MethodPut
 		}
+		if operation == "rename" {
+			method = http.MethodPatch
+		}
 		if operation == "terminal_close" {
 			method = http.MethodDelete
 		}
@@ -531,12 +536,15 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if (operation == "terminal_close" || operation == "group") && response.StatusCode == http.StatusNoContent {
+	if (operation == "terminal_close" || operation == "group" || operation == "rename") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
 		}
 		if operation == "group" {
 			return success(GroupResult{})
+		}
+		if operation == "rename" {
+			return success(nil)
 		}
 		return success(TerminalCloseResult{Terminal: "closed"})
 	}
@@ -548,7 +556,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
-	if operation == "terminal_close" || operation == "group" {
+	if operation == "terminal_close" || operation == "group" || operation == "rename" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {
@@ -598,7 +606,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 
 func knownRejection(code string) bool {
 	switch code {
-	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
+	case "Unauthenticated", "MachineIdentityMismatch", "InvalidRequest", "RequestTooLarge", "WorkingDirectoryInvalid", "WorkingDirectoryUnavailable", "ProfileUnknown", "SessionNameInvalid", "ObjectiveInvalid", "GroupInvalid", "SessionNameConflict", "SessionNameChanged", "SessionNotFound", "SessionIdentityMismatch", "TerminalTargetChanged", "TerminalUnavailable", "TerminalInputBlocked":
 		return true
 	default:
 		return false

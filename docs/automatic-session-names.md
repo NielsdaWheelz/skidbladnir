@@ -263,6 +263,11 @@ handles. saved automation requiring replacement rejection uses full references.
 
 ## client composition
 
+the desktop browser edits names with `r` inside its spacebar info page;
+`ctrl-a` in the manual name editor restores automatic ownership. save/cancel
+returns to that captured info. [desktop browser](desktop-browser.md#4-actions-and-return)
+owns the contextual keys, regrouping behavior and post-write return contract.
+
 retain `editing -> sending -> reconciling`, per-machine mutation fences and
 bodyless-response handling. capture the draft and `expectedNaming` once.
 automatic-to-automatic title updates preserve that expectation. an observed

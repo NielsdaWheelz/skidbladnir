@@ -109,7 +109,9 @@ copy.
 | context | keys/behavior |
 | --- | --- |
 | ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
-| selected row | spacebar full metadata; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `e` changes group; `T` terminal-here retains its remote guard; metadata remains readable when unavailable |
+| selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
+| info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
+| metadata editor | enter saves; escape cancels or dismisses to the same info page; group retains observed suggestions and explicit clearing; name offers `ctrl-a` for `use automatic title` in manual mode |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
 | operation in flight | every key, `ctrl-c` included, is refused with the in-flight notice; nothing quits |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
@@ -117,7 +119,29 @@ copy.
 stop/close name and pin their target/effect before confirmation. inventory cannot
 substitute a replacement pane or session lifetime. keep the existing single pending-operation lane,
 duplicate suppression, completion guards, and unknown-outcome/no-replay behavior.
-modal close returns to the table; refresh reconciliation still applies.
+info owns a captured session lifetime, independently of table selection and
+group filtering. its name, naming mode and group appear first, with `r`/`g`
+beside the editable rows. both editors resolve that lifetime from underlying
+scoped inventory, so regrouping or agent exit can remove its table row without
+retargeting or disabling info. unavailable or replaced lifetimes disable editing.
+the table has no metadata-edit shortcut.
+
+confirmed saves return to the same info after a post-write inventory read;
+cancellation also returns there. assignment never changes the table's view.
+unknown writes are never replayed: preserve the draft and uncertainty while
+checking, including after dismissal to info. matching fresh state resolves the
+editor with an unknown-outcome notice; differing state retains the draft for
+review, reopened with its `r`/`g` key. a definite rejection never becomes success
+because another writer happens to match the draft. the machine picker and `N`
+options are unavailable while checking, keeping the unresolved target in the
+existing scoped refresh. other pages still close to the table.
+
+the name editor follows [automatic/manual ownership](automatic-session-names.md#client-composition):
+saving a name selects manual naming, including unchanged text in automatic
+mode. unchanged manual names disable save. `use automatic title` bypasses draft
+validation; automatic reconciliation compares ownership, never a predicted title.
+title updates do not rewrite the draft; changed manual naming or ownership
+retains it with a conflict notice and a fresh expectation for deliberate resubmission.
 
 `n` creates a terminal at home on the target machine (the machine filter,
 otherwise the configured default; never the first reachable peer) in the selected
@@ -209,7 +233,7 @@ one axis. the rule names the captured target (pending action or details
 snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal
 only`, `enter interrupt terminal` or `enter interrupt and close terminal`.
-details pin the captured session lifetime; refresh may update its observed name
+info pins the captured session lifetime; refresh may update its observed name
 and facts without retargeting. page scrolling uses the visible body height; forms
 keep the focused field visible.
 
@@ -253,6 +277,7 @@ records the boundary of current evidence.
 | a3: 80×24 fits the stated working set; long labels, strip overflow (shared cap, counted markers, the current view whole and never hidden, a long machine filter), empty/offline states, forms and resize notice stay usable in color and under NO_COLOR | rendered fixture inspection |
 | a4: create → select, shell-here → exact fullscreen attach → detach on new shell; ordinary enter → detach preserves context and the first subsequent navigation key; escape after `ctrl-] d` stays in skid; `ctrl-c` quits; source survives; lost reply never repeats creation | the real browser → pty → gateway → isolated tmux journey on linux and darwin |
 | a5: old keys gone; escape never quits, `q` quits from the table, `ctrl-c` quits from any browser frame unless an operation is in flight; help and browser agree | diff review, `scripts/check verify`, and the real binary under a pty: a bare escape keeps it running, `q` and 0x03 exit 0 |
+| a6: info alone owns name/group editing; cancellation and reconciled saves return to its exact lifetime, including after leaving the table's view; automatic/manual ownership, conflict drafts, post-write fences and unknown/no-replay behavior are preserved | temporary model and loopback HTTP checks; actual browser/gateway/isolated-tmux editing journey remains with the runtime acceptance issue |
 
 2026-09-27: a1–a3 were shown with temporary out-of-tree fixture renders and
 model checks, removed afterwards; they provide no retained regression protection.
@@ -270,6 +295,17 @@ with isolated state, `dd06814` exited on a bare escape and ignored 0x03; the
 change stayed up on escape and exited 0 on `q` and 0x03. the checks were deleted
 before commit; `scripts/check verify` passed. a4 remains `NOT_RUN` by the
 user's choice.
+
+2026-09-30, info-owned metadata editing (`codex/info-editors`, baseline `b4a4711`):
+two temporary cases first failed on the baseline: info lost a regrouped lifetime,
+and the table still owned group editing. the change passed ten model cases and
+three loopback HTTP checks, including manual takeover/reset, title ticks,
+conflicts and draft rebasing, lost acknowledgements without replay, post-write
+read fences, regrouping/return, replacement rejection, dismissed-draft recovery,
+machine-scope retention, and long fields at 80×24. independent review found and
+resolved dismissal and cross-host-creation traps. temporary tests were removed;
+`scripts/check verify` passed. actual browser/gateway/tmux editing remains
+`NOT_RUN` under the [runtime acceptance issue](issues/desktop-browser-runtime-acceptance.md).
 
 accepted costs:
 - attached: chrome/status disappear; navigation requires detach.

@@ -23,7 +23,7 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
-	facts := [][2]string{{"session", value.Name}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}, {"naming", value.NameMode}}
+	facts := [][2]string{{"name", value.Name}, {"naming", value.NameMode}, {"group", fleetclient.GroupHeading(value.Group)}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}}
 	if value.ConversationHandle != "" {
 		facts = append(facts, [2]string{"conversation handle", value.ConversationHandle})
 	}
@@ -41,8 +41,7 @@ func (m *model) details(row *listedRow) [][2]string {
 		facts = append(facts, [2]string{"directory", cwd})
 	}
 	facts = append(facts, [2]string{"command", value.ActiveCommand},
-		[2]string{"attached clients", strconv.Itoa(value.AttachedClients)},
-		[2]string{"membership", fleetclient.GroupHeading(value.Group)})
+		[2]string{"attached clients", strconv.Itoa(value.AttachedClients)})
 	if current.Agent == nil && current.Kind != "remoteUnknown" {
 		facts = append(facts, [2]string{"agent", "not detected"})
 	}
@@ -81,4 +80,30 @@ func (m *model) details(row *listedRow) [][2]string {
 		facts = append(facts, [2]string{"availability", "unavailable"})
 	}
 	return facts
+}
+
+func (m *model) rowForReference(encoded string) *listedRow {
+	target, _ := fleetclient.DecodeReference(encoded)
+	for _, peer := range m.scopedPeers() {
+		for _, session := range peer.Sessions {
+			ref, _ := fleetclient.DecodeReference(session.Ref)
+			if ref.SessionEqual(target) {
+				return &listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+			}
+		}
+	}
+	return nil
+}
+
+func (m *model) refreshInfo() {
+	if row := m.rowForReference(m.pageRef); row != nil {
+		m.facts = m.details(row)
+		m.pageName = row.session.Name
+		return
+	}
+	for index := range m.facts {
+		if m.facts[index][0] == "state" {
+			m.facts[index][1] = "unavailable"
+		}
+	}
 }
