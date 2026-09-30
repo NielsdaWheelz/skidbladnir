@@ -1,6 +1,7 @@
 # terminal status and control
 
-status: implementation plan; production unchanged. this owns the hard cutover
+status: source snapshot composed into `codex/reply-notifications`; broader
+qualification and deployment remain separate. this owns the hard cutover
 of ordinary terminal observation and orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
 [agent control](agent-control.md), and [client controls](agent-control-ux.md) at
@@ -262,12 +263,11 @@ separate operations, never an automatic composite selected from session metadata
 
 [reply notifications](reply-notifications.md) owns `r`/`replies`/viewer deletion,
 notification stores, colors and visit policy. do not implement those changes here.
-its native working/recorded-conversation assumptions conflict with this terminal
-contract after `/resume`; root must reconcile that contract with its owner before
-a combined release. heuristic working must not be silently substituted for native
-work identity/finality. the user explicitly leaves notification redesign to that
-pr; [the release dependency](issues/terminal-notification-coordination.md) records
-the conflict. terminal primitives can be implemented independently.
+the user approved replacing native-reply claims with terminal `ready` attention.
+that revised contract follows this exact terminal and foreground evidence after
+`/resume`; it never claims native work identity/finality. both implementations
+must still qualify their combined lifecycle and content before release. terminal
+primitives and notification client slices remain separate owners.
 
 the naming plan owns automatic titles/handles; titles never become status evidence.
 its exact-lifetime deletion change is shared with this plan: implement once at
@@ -317,7 +317,7 @@ recorded conversation. an exited agent remains in all-terminals/group views;
 if its row leaves the filter, use existing nearest-row selection, never retarget
 an open confirmation. preserve relative attention order blocked/idle/unknown/working.
 retain typography, dimensions, palette, motion and group sorting; the notification
-owner governs its planned colors. labels survive no-color display; no success claim.
+owner governs its colors. labels survive no-color display; no success claim.
 
 ## 7. disjoint implementation and review
 

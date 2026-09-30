@@ -7,10 +7,11 @@ clients compose independent gateways. there is no application database.
 | --- | --- | --- |
 | startup and host configuration | `cmd/skidbladnir`, `internal/hostconfig`, `internal/platform` | compose one host from deployment-owned configuration |
 | sessions and metadata | `internal/sessions`, `internal/tmux`, `internal/group`, `internal/catalog` | inventory, creation, exact lifetime mutations, direct attachment |
-| agent identity and control | `internal/agentruntime`, `internal/process`, `internal/agenthook`, `internal/agentcontrol` | foreground presence separately from explicit native conversation reads/controls |
+| agent identity and control | `internal/agentruntime`, `internal/process`, `internal/agenthook`, `internal/agentcontrol` | pure terminal state/composer detector and interrupt policy; foreground presence and metadata separately from explicit native reads/controls |
 | host resources | `internal/workdir`, `internal/pressure` | bounded directory browsing and native pressure observation |
 | gateway transport and access | `internal/gateway`, `internal/auth`, `internal/pairing`, `internal/strictjson`, `internal/logging`, `internal/terminal` | authenticated http, strict messages, owned websocket/pty lifetime |
 | desktop clients | `internal/fleetclient`, `internal/agentcli`, `internal/sessionui`, `internal/terminalclient` | shared peer routing and references; cli, browser, local tty |
+| terminal attention | desktop `internal/fleetclient/notifications.go`, phone `NotificationStore.kt` | serialized pending/boundary persistence; client-local working predecessors; no native-history feed |
 | phone fleet and dashboard | `MachineStore.kt`, `FleetPersistence.kt`, `FleetInvite.kt`, `GatewayClient.kt`, `SkidbladnirController.kt`, dashboard/forge/group/chooser files | encrypted pairings, reconciliation, selection and mutations |
 | phone polling and ordering | `Polling.kt` | coalesced reads, per-machine mutation fences and awaited inventory reads; the controller owns lane lifetimes |
 | phone machine pressure | `Pressure.kt`, `PressurePresentation.kt`, `MachinePressureRail.kt` | strict pressure contract and state, dashboard visibility and content, rendered rail and details |

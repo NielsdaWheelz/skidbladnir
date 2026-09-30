@@ -5,15 +5,16 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## planned terminal status and control
+## terminal status and control source composition
 
 [terminal control](terminal-agent-control.md) makes heuristic observation and
 terminal input the ordinary session workflow. stop/close work without an agent
 or conversation identity; explicit native integration is retained separately.
 the plan owns replacement schemas, disjoint slices, content and temporary
-red/green/refactor acceptance. inferred idle is advisory. notification semantics
-stay with their separate pr; [coordination](issues/terminal-notification-coordination.md)
-is a combined-release dependency. this plan changes no production code.
+red/green/refactor acceptance. inferred idle is advisory. terminal attention
+consumes this same status contract. the notification worktree includes a source
+snapshot of the concurrent terminal-control prerequisite; notification composition
+is qualified. broader terminal-control acceptance and deployment remain separate.
 
 ## planned automatic session names
 
@@ -24,22 +25,27 @@ implemented. the plan owns disjoint work slices, the native-helper prerequisite,
 content, temporary red/green/refactor acceptance and hard cutover. literal tmux
 comparisons need [qualification](issues/tmux-name-literal-comparison.md).
 
-## planned terminal reply notifications
+## terminal attention source delivery
 
-[reply notifications](reply-notifications.md) specifies current-reply attention,
-whole-terminal-visit and resumed-work clearing, blue/green/grey presentation, and
-human reply-viewer deletion while preserving orchestration `read`. implementation
-starts with [native work-boundary qualification](issues/reply-notification-native-boundary.md);
-the pinned claude interface does not yet establish that prerequisite. source is
-unchanged; the plan owns disjoint slices and temporary red/green/refactor acceptance.
+[terminal attention](reply-notifications.md) replaces history-driven unread with
+observed working-to-idle `ready`, whole-visit and resumed-work clearing,
+blue/green/grey presentation and human viewer deletion. the user approved this
+explicit weaker meaning after native-boundary qualification failed. native
+machine read remains separate; the SDK completeness issue remains unresolved.
+implemented on `codex/reply-notifications`. its spec records temporary
+red/green/refactor, real desktop/provider boundaries and isolated physical-phone
+acceptance, including rendered colors, visits, races, restart and storage errors.
+temporary tests are removed; deployment and installed-fleet qualification remain
+separate.
 
 ## native interaction source delivery
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
 ordinary upstream npm plus its owning daemon, creation-time id association and native
-operations. the selected-view fork/build and terminal-opening unread acknowledgement
-are retired. clients acknowledge known replies only after native output opens.
+operations. the selected-view fork/build is retired. human native-output viewing
+and read receipts are removed under terminal attention; machine native
+reads have no notification effect.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
@@ -83,7 +89,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| native status/history, qualified controls, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
+| explicit native status/history and qualified native controls | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |

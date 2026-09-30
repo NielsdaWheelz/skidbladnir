@@ -83,20 +83,21 @@ type connectionDTO struct {
 }
 
 type sessionDTO struct {
-	TmuxID          string                            `json:"tmuxId"`
-	ActivePaneID    string                            `json:"activePaneId"`
-	TmuxName        string                            `json:"tmuxName"`
-	IdentityToken   string                            `json:"identityToken"`
-	Character       characterDTO                      `json:"character"`
-	LaunchProfile   string                            `json:"launchProfile,omitempty"`
-	Agent           *agentDTO                         `json:"agent,omitempty"`
-	Conversation    *agentruntime.ConversationRuntime `json:"conversation,omitempty"`
-	Connection      *connectionDTO                    `json:"connection,omitempty"`
-	Objective       string                            `json:"objective,omitempty"`
-	Group           string                            `json:"group,omitempty"`
-	CWD             string                            `json:"cwd,omitempty"`
-	ActiveCommand   string                            `json:"activeCommand,omitempty"`
-	AttachedClients int                               `json:"attachedClients"`
+	TerminalStatus  sessions.TerminalStatus    `json:"terminalStatus"`
+	TmuxID          string                     `json:"tmuxId"`
+	ActivePaneID    string                     `json:"activePaneId"`
+	TmuxName        string                     `json:"tmuxName"`
+	IdentityToken   string                     `json:"identityToken"`
+	Character       characterDTO               `json:"character"`
+	LaunchProfile   string                     `json:"launchProfile,omitempty"`
+	Agent           *agentDTO                  `json:"agent,omitempty"`
+	Conversation    *agentruntime.Conversation `json:"conversation,omitempty"`
+	Connection      *connectionDTO             `json:"connection,omitempty"`
+	Objective       string                     `json:"objective,omitempty"`
+	Group           string                     `json:"group,omitempty"`
+	CWD             string                     `json:"cwd,omitempty"`
+	ActiveCommand   string                     `json:"activeCommand,omitempty"`
+	AttachedClients int                        `json:"attachedClients"`
 }
 
 type machineDTO struct {
@@ -200,8 +201,7 @@ func (field *stringField) UnmarshalJSON(encoded []byte) error {
 }
 
 type killSessionRequest struct {
-	TmuxName      string `json:"tmuxName"`
-	IdentityToken string `json:"identityToken"`
+	IdentityToken stringField `json:"identityToken"`
 }
 
 type renameSessionRequest struct {
@@ -326,6 +326,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		LaunchProfile:   string(session.LaunchProfile),
 		Agent:           agent,
 		Conversation:    session.Conversation,
+		TerminalStatus:  session.TerminalStatus,
 		Connection:      connection,
 		Objective:       session.Objective,
 		Group:           session.Group.String(),
@@ -333,7 +334,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
+	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}

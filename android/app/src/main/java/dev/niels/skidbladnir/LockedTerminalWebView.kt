@@ -104,6 +104,7 @@ internal data class TerminalModifiers(
 
 internal interface TerminalPageListener {
     fun onReady(page: TerminalPage)
+    fun onOutputApplied(page: TerminalPage)
     fun onInput(bytes: ByteArray)
     fun onResize(columns: Int, rows: Int)
     fun onViewportTooSmall()
@@ -850,8 +851,11 @@ internal class LockedTerminalWebView(
             }
         }
         when (advance) {
-            PageOutputAdvance.Complete -> Unit
-            PageOutputAdvance.Continue -> post(::sendNextOutput)
+            PageOutputAdvance.Complete -> listener.onOutputApplied(this)
+            PageOutputAdvance.Continue -> {
+                listener.onOutputApplied(this)
+                post(::sendNextOutput)
+            }
             PageOutputAdvance.Invalid -> markUnavailable()
         }
     }

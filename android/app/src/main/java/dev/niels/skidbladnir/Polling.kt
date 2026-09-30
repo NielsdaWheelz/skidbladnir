@@ -118,14 +118,16 @@ internal fun submitCoalescedInventoryRead(
     operations: InventoryOperationLane,
     polls: CoalescingPollLane,
     initialRun: PollRun,
-    read: (PollRun, Long) -> Unit,
+    read: (PollRun, Long, () -> Unit) -> Unit,
 ) {
     operations.submitRead { completedMutationFence ->
         try {
-            read(initialRun, completedMutationFence)
-            val trailing = polls.finish(initialRun.sequence)
-            if (trailing != null) {
-                submitCoalescedInventoryRead(operations, polls, trailing, read)
+            // Publication completes the read; network return alone cannot release a trailing read.
+            read(initialRun, completedMutationFence) {
+                val trailing = polls.finish(initialRun.sequence)
+                if (trailing != null) {
+                    submitCoalescedInventoryRead(operations, polls, trailing, read)
+                }
             }
         } catch (defect: RuntimeException) {
             polls.abort()

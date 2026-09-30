@@ -11,7 +11,20 @@ import (
 	"unicode/utf8"
 )
 
-var ErrInputInvalid = errors.New("invalid agent terminal input")
+var (
+	ErrInputInvalid  = errors.New("invalid terminal input")
+	ErrTargetChanged = errors.New("terminal target changed")
+	ErrUnavailable   = errors.New("terminal unavailable")
+	ErrWriteUnknown  = errors.New("terminal input delivery is unknown")
+)
+
+const inputWrittenMarker = "SKIDBLADNIR_INPUT_WRITTEN"
+
+type PaneTarget struct {
+	SessionID string
+	PaneID    string
+	Server    ServerIdentity
+}
 
 type Capture struct {
 	Text      string
@@ -19,95 +32,141 @@ type Capture struct {
 	Truncated bool
 }
 
-// CapturePane reads tmux's retained tail, not the client's scrolled viewport.
-func (client Client) CapturePane(ctx context.Context, pane string, maxBytes int) (Capture, error) {
-	if !validPane(pane) || maxBytes < 1 || maxBytes > 32768 {
-		return Capture{}, errors.New("invalid pane capture")
+func (target PaneTarget) valid() bool {
+	return sessionIDPattern.MatchString(target.SessionID) && validPane(target.PaneID) && target.Server.valid()
+}
+
+func (target PaneTarget) condition() string {
+	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+target.PaneID+"}"))
+}
+
+// CapturePane retains SGR for visible observation; retained-tail/public reads
+// stay plain, including alternate screens. Both use the same exact target guard.
+func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int, visible bool) (Capture, error) {
+	if !target.valid() || maxBytes < 1 || maxBytes > 32768 {
+		return Capture{}, ErrInputInvalid
 	}
-	alternate, err := client.Output(ctx, "capture-metadata", "display-message", "-p", "-t", pane, "#{alternate_on}")
-	if err != nil {
-		return Capture{}, err
+	capture := "capture-pane -p -J -t " + target.PaneID
+	if visible {
+		capture += " -e"
+	} else {
+		capture += " -S -" + strconv.Itoa(maxBytes)
 	}
-	if alternate != "0" && alternate != "1" {
-		return Capture{}, errors.New("invalid pane capture metadata")
+	branch := "display-message -p '#{alternate_on}' ; "
+	if visible {
+		branch += capture
+	} else {
+		branch += "if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
 	}
-	// A byte bound is applied after capture; limiting lines also bounds work for
-	// a large configured scrollback. Joined wrapped lines preserve readable text.
-	output := captureTail{limit: maxBytes}
-	command := client.command(ctx, nil, "capture-pane", "-p", "-J", "-t", pane, "-S", "-"+strconv.Itoa(maxBytes))
+	output := captureOutput{tail: captureTail{limit: maxBytes}}
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
-		return Capture{}, errors.New("pane capture failed")
+		return Capture{}, ErrUnavailable
 	}
-	text := strings.TrimSuffix(string(output.bytes), "\n")
+	if output.header == identityMismatchMarker {
+		return Capture{}, ErrTargetChanged
+	}
+	if output.header != "0" && output.header != "1" {
+		return Capture{}, ErrUnavailable
+	}
+	text := strings.TrimSuffix(string(output.tail.bytes), "\n")
 	for len(text) > 0 && !utf8.RuneStart(text[0]) {
 		text = text[1:]
 	}
-	truncated := output.truncated
-	return Capture{Text: text, Alternate: alternate == "1", Truncated: truncated}, nil
+	return Capture{Text: text, Alternate: output.header == "1", Truncated: output.tail.truncated}, nil
 }
 
-func (client Client) Paste(ctx context.Context, pane, text string) error {
-	if !validPane(pane) || text == "" || len(text) > 32768 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
+// Paste stages a unique buffer before the caller's final foreground check.
+// Both paste and submit are inside one successful lifetime/active-pane branch.
+func (client Client) Paste(ctx context.Context, target PaneTarget, text string, revalidate func() error) error {
+	if !target.valid() || text == "" || len(text) > 32768 || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
 		return ErrInputInvalid
 	}
 	var entropy [16]byte
 	if _, err := rand.Read(entropy[:]); err != nil {
-		return err
+		return ErrUnavailable
 	}
-	name := "skid-agent-" + hex.EncodeToString(entropy[:])
-	// Cleanup is registered before loading: a failed acknowledgement can follow
-	// a successful load. Only this operation's unique transient buffer is addressed.
+	name := "skid-input-" + hex.EncodeToString(entropy[:])
 	defer func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+		cleanup, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
-		_ = client.Run(cleanup, "clear-agent-input", "delete-buffer", "-b", name) // justify-ignore-error: paste may already have deleted this operation's buffer.
+		_ = client.Run(cleanup, "clear-terminal-input", "-N", "delete-buffer", "-b", name) // justify-ignore-error: cleanup only addresses this operation's transient buffer; cancellation may prevent it.
 	}()
-	load := client.command(ctx, nil, "load-buffer", "-b", name, "-")
+	load := client.command(ctx, nil, "-N", "load-buffer", "-b", name, "-")
 	load.Stdin = strings.NewReader(text)
 	if err := load.Run(); err != nil {
-		return errors.New("load agent input failed")
+		return ErrUnavailable
 	}
-	err := client.Run(ctx, "paste-agent-input", "paste-buffer", "-p", "-r", "-d", "-b", name, "-t", pane, ";", "send-keys", "-t", pane, "Enter")
-	return err
+	if err := revalidate(); err != nil {
+		return err
+	}
+	branch := "paste-buffer -p -r -d -b '" + name + "' -t '" + target.PaneID + "' ; send-keys -t '" + target.PaneID + "' Enter"
+	return client.write(ctx, target, branch)
 }
 
-func (client Client) Keys(ctx context.Context, pane string, keys []string) error {
-	if !validPane(pane) || len(keys) < 1 || len(keys) > 16 {
+func (client Client) Keys(ctx context.Context, target PaneTarget, keys []string) error {
+	if !target.valid() || len(keys) < 1 || len(keys) > 16 {
 		return ErrInputInvalid
 	}
-	args := []string{"-t", pane}
+	encoded := make([]string, 0, len(keys))
 	for _, key := range keys {
-		var encoded string
 		switch key {
 		case "enter":
-			encoded = "Enter"
+			encoded = append(encoded, "Enter")
 		case "escape":
-			encoded = "Escape"
+			encoded = append(encoded, "Escape")
 		case "ctrl-c":
-			encoded = "C-c"
+			encoded = append(encoded, "C-c")
 		case "up":
-			encoded = "Up"
+			encoded = append(encoded, "Up")
 		case "down":
-			encoded = "Down"
+			encoded = append(encoded, "Down")
 		case "left":
-			encoded = "Left"
+			encoded = append(encoded, "Left")
 		case "right":
-			encoded = "Right"
+			encoded = append(encoded, "Right")
 		case "tab":
-			encoded = "Tab"
+			encoded = append(encoded, "Tab")
 		case "backspace":
-			encoded = "BSpace"
+			encoded = append(encoded, "BSpace")
 		case "page-up":
-			encoded = "PPage"
+			encoded = append(encoded, "PPage")
 		case "page-down":
-			encoded = "NPage"
+			encoded = append(encoded, "NPage")
 		default:
 			return ErrInputInvalid
 		}
-		args = append(args, encoded)
 	}
-	return client.Run(ctx, "agent-keys", "send-keys", args...)
+	return client.write(ctx, target, "send-keys -t '"+target.PaneID+"' "+strings.Join(encoded, " "))
+}
+
+func (client Client) write(ctx context.Context, target PaneTarget, branch string) error {
+	if ctx.Err() != nil {
+		return ErrUnavailable
+	}
+	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
+	// A dead pane is positively unavailable; a different active pane/lifetime is stale.
+	refusal := "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l SKIDBLADNIR_INPUT_UNAVAILABLE' 'display-message -p -l " + identityMismatchMarker + "'"
+	var output strings.Builder
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", refusal)
+	command.Stdout = &output
+	if err := command.Start(); err != nil {
+		return ErrUnavailable
+	}
+	if err := command.Wait(); err != nil {
+		return ErrWriteUnknown
+	}
+	switch strings.TrimSuffix(output.String(), "\n") {
+	case inputWrittenMarker:
+		return nil
+	case identityMismatchMarker:
+		return ErrTargetChanged
+	case "SKIDBLADNIR_INPUT_UNAVAILABLE":
+		return ErrUnavailable
+	default:
+		return ErrWriteUnknown
+	}
 }
 
 func validPane(value string) bool {
@@ -120,6 +179,31 @@ func validPane(value string) bool {
 		}
 	}
 	return true
+}
+
+// captureOutput keeps the small protocol header separate from the bounded text.
+type captureOutput struct {
+	header     string
+	headerDone bool
+	tail       captureTail
+}
+
+func (output *captureOutput) Write(contents []byte) (int, error) {
+	count := len(contents)
+	if !output.headerDone {
+		header, rest, found := strings.Cut(string(contents), "\n")
+		output.header += header
+		if len(output.header) > 128 {
+			return 0, errors.New("invalid capture header")
+		}
+		if !found {
+			return count, nil
+		}
+		output.headerDone = true
+		contents = []byte(rest)
+	}
+	_, err := output.tail.Write(contents)
+	return count, err
 }
 
 // captureTail bounds memory while tmux emits a potentially large retained tail.

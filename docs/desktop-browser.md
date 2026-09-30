@@ -2,8 +2,10 @@
 
 implemented. 2026-09-27: one table with an agents view and group views replaces
 pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
-[native interaction](native-agent-observation.md) adds native status, separate
-unread and stop/close semantics; its content contract owns those fields.
+[terminal control](terminal-agent-control.md) owns inferred status and ordinary
+read/send/wait/stop/close for both providers and generic terminals. native
+interaction remains explicitly addressed; [terminal attention](reply-notifications.md)
+owns notifications and visits.
 [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
 skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
@@ -63,7 +65,7 @@ or none. the machine filter applies to every view.
 
 | view | rows and order |
 | --- | --- |
-| agents | one row per agent in its current execution context across all groups, including resolved remote agents (always unknown) and retained unavailable rows: blocked, failed, done, idle, unknown, working, stopped; unavailable hosts last; ties keep configured peer then host-published name/id order |
+| agents | one row per current local/remote agent across all groups, never recorded native identity; blocked, idle, unknown, working; unavailable hosts last; ties keep configured peer then host-published name/id order |
 | all groups | every session, including terminals, in existing `Groups` order, each group under a heading |
 | unassigned, `group: <label>` | that group's sessions in `Groups` order; named views are the sorted observations, preserving a selected empty label |
 
@@ -75,11 +77,11 @@ agent the next is one key away. movement never attaches or fetches output.
 changing machine uses the same keep-if-matching/otherwise-first rule.
 
 the agents view puts what may be waiting on the operator first. codex reports a
-finished turn as idle, and unknown can be an unrecognized dialog; only working
-affirmatively needs nothing. the order updates on every refresh. the cursor follows
+prompt/footer as inferred idle, and unknown can be an unrecognized dialog. no state
+establishes task completion. the order updates on every refresh. the cursor follows
 its session's lifetime, never a row position, so a reorder moves rows but never
-retargets a key. done keeps its native-completion meaning, never unread state;
-unknown is not offline. the contract publishes no transition age, so nothing is
+retargets a key. an exited agent remains in terminal/group views; unknown is not
+offline. the contract publishes no transition age, so nothing is
 ordered by time.
 
 named labels read `group: <label>` wherever a label could be mistaken for a special
@@ -102,7 +104,7 @@ copy.
 | context | keys/behavior |
 | --- | --- |
 | ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q/escape` quit |
-| selected row | spacebar full metadata; `r` bounded read, `s` stop current work and `c` stop work and close terminal for local agents only; `x` close terminal; `e` change group; `T` (shift+t) terminal-here, refused for remote connections; existing remote capability/availability guards; local metadata remains readable when unavailable |
+| selected row | spacebar full metadata; `s` sends one interrupt on every fresh terminal, `c` then independently closes its entire session, `x` closes without input; `e` change group; `T` terminal-here retains its remote guard; metadata remains readable when unavailable |
 | modal page | owns input while the header and rule stay visible; forms keep field/paste/validation keys; details/read scroll; existing confirm/cancel keys; no global navigation mnemonics |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; no new prefix commands |
 
@@ -149,7 +151,7 @@ failed a read, or `checking` while a scoped read is still outstanding.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, only when the table scrolls, the cursor position at its end; the selected
-session's state and device-local unread, attached clients and full directory; the keys.
+session's terminal status/attention, attached clients and full directory; the keys.
 while an action is in flight the rule names that action's captured target instead.
 observed text is sanitized for display: controls, format characters such as bidi
 overrides, and line separators become spaces.

@@ -26,9 +26,12 @@ const (
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
 	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
 	// GroupOption retains the persisted tmux key so existing memberships remain visible.
-	GroupOption        = "@skid_space_b64"
-	groupSuccessMarker = "SKIDBLADNIR_GROUP_SUCCESS_V1"
+	GroupOption         = "@skid_space_b64"
+	groupSuccessMarker  = "SKIDBLADNIR_GROUP_SUCCESS_V1"
+	deleteSuccessMarker = "SKIDBLADNIR_DELETE_SUCCESS"
 )
+
+var ErrDeleteUnknown = errors.New("session deletion is unknown")
 
 var (
 	serverEpochPattern = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
@@ -216,24 +219,28 @@ func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error)
 	return identity, nil
 }
 
-func (client Client) KillSessionIfIdentity(ctx context.Context, id, name string, server ServerIdentity) (bool, error) {
-	if !sessionIDPattern.MatchString(id) || name == "" || !server.valid() {
+func (client Client) KillSessionIfIdentity(ctx context.Context, id string, server ServerIdentity) (bool, error) {
+	if !sessionIDPattern.MatchString(id) || !server.valid() {
 		return false, errors.New("tmux kill identity is invalid")
 	}
-	condition := mutationIdentityCondition(id, name, server)
-	output, err := client.Output(ctx, "kill-session-if-identity", "if-shell", "-F", "-t", id, condition,
-		"kill-session -t '"+id+"'",
+	condition := andFormatConditions(sessionLifetimeConditions(id, server))
+	var stdout bytes.Buffer
+	command := client.command(ctx, &stdout, "-N", "if-shell", "-F", "-t", id, condition,
+		"kill-session -t '"+id+"' ; display-message -p -l '"+deleteSuccessMarker+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
-	if err != nil {
+	if err := command.Start(); err != nil {
 		return false, err
 	}
-	switch output {
-	case "":
+	if err := command.Wait(); err != nil {
+		return false, ErrDeleteUnknown
+	}
+	switch strings.TrimSuffix(stdout.String(), "\n") {
+	case deleteSuccessMarker:
 		return true, nil
 	case identityMismatchMarker:
 		return false, nil
 	default:
-		return false, errors.New("tmux conditional kill returned unexpected output")
+		return false, ErrDeleteUnknown
 	}
 }
 

@@ -120,10 +120,11 @@ internal object NidavellirMotion {
     }
 }
 
-internal fun sessionStatusColor(state: AgentState?): Color = when (state) {
-    AgentState.Working -> Moss
-    AgentState.Blocked, AgentState.Failed -> Ember
-    else -> Muted
+internal fun sessionStatusColor(tone: SessionStatusTone): Color = when (tone) {
+    SessionStatusTone.Working -> Frost
+    SessionStatusTone.Ready -> Moss
+    SessionStatusTone.Waiting -> Ember
+    SessionStatusTone.Muted -> Muted
 }
 
 /** One observed Android motion setting shared by every state-bound animation. */

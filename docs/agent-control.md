@@ -1,7 +1,8 @@
 # agent control
 
-[native conversations](native-agent-observation.md) owns schemas, behavior and
-acceptance. [qualification](native-agent-qualification.md) records actual evidence;
+[terminal control](terminal-agent-control.md) owns ordinary session status, input,
+waits and closure. [native conversations](native-agent-observation.md) owns explicitly
+addressed native operations. [qualification](native-agent-qualification.md) records native evidence;
 [roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
 installed-fleet acceptance remains open.
 
@@ -10,7 +11,8 @@ installed-fleet acceptance remains open.
 a terminal and native conversation are separate targets. tmux owns terminal
 lifetimes/processes; providers own conversations, work and history. exact native
 commands capture machine/profile/history scope/conversation id. terminal switches
-never retarget them. terminal commands retain exact tmux/process identity.
+never retarget them. terminal commands retain the exact tmux lifetime and pane;
+foreground process facts select heuristic rules and interruption keys only.
 
 codex uses ordinary upstream npm installation and its native owning daemon.
 creation starts/reuses that owner, captures thread/start's id, names the native
@@ -31,38 +33,42 @@ following failed exact-recipient qualification. terminal prompting stays explici
 ```text
 client -> target-machine gateway -> sessions/tmux/kernel
                                 -> agentcontrol -> short-lived helper -> provider
-client -> device-local unread store
+client -> device-local terminal attention store
 ```
 
 native inspect/read/send/stop/results use `/v1/conversations/{operation}` and an
 explicit Conversation. start uses creation; wait is client-only. session metadata
 association is written only during creation. foreground Agent describes presence only;
-Session.conversation owns native state/capabilities. no duplicate state projection.
+Session.conversation is recorded identity metadata. Session.terminalStatus is a
+terminal inference; explicit native inspect supplies native runtime/capabilities.
 
-native read defaults to bounded latest assistant output; history and terminal
-capture are explicit choices. reads never resume. send distinguishes native peer
+ordinary terminal read captures bounded rendered text; guarded send uses one
+fresh heuristic check. text/keys are deliberate input. stop sends one interrupt
+key on any terminal. close attempts that key then independently closes the exact
+session; terminal-only close skips input. neither delivery nor closure proves
+work stopped. inferred idle is advisory; wait never proves task completion.
+
+explicit native read defaults to bounded latest assistant output; native history
+remains explicit. reads never resume. native send distinguishes peer
 and user input; experimental queue is unavailable before dispatch. stop captures
 exact active turn; idle proves no task completion. mutations are one attempt,
 native admission receipts never imply completion, and uncertain delivery is not
 replayed. native failure never sends keys or selects another provider server.
 
-close explicitly targets a terminal and optional conversation halt. outcomes are
-separate; closure preserves saved history and cannot assert provider queues or
-another displayed conversation stopped. terminal-only close reuses exact deletion.
+native stop and terminal deletion are separate capabilities. no session metadata
+selects a native stop automatically. uncertain outcomes are never replayed.
 
-## presentation and acknowledgement
+## presentation and terminal attention
 
-cards explicitly show tracking <conversation id>. their status/unread describes
-that recorded conversation, which may differ from terminal contents. unassociated
-codex has no asserted native state or unread. blocking reasons are omitted.
+cards follow terminal evidence for both providers and retain controls for shells,
+unknown programs and remote transports. details label any recorded native
+identity as potentially different from the terminal. metadata is never a gate.
 
-native output is a separate view replies action. opening captures known unread
-ids; first successful native output presentation acknowledges exactly those ids.
-failed reads/presentation or precommit storage failures acknowledge nothing;
-postcommit errors report acknowledgement unconfirmed. later replies stay unread.
-terminal Hello/attachment/reconnect and staying open never acknowledge.
-reuse local reply-id stores and serialized merges; no copied content or cross-device
-sync. claude same-pane previous-agent recovery retains its existing contract.
+[terminal attention](reply-notifications.md) owns the exclusive working/ready/idle
+projection, real-output entry clearing and whole-visit closing baseline. native
+history never supplies human notifications. there is no reply viewer or read
+receipt. explicit machine native read remains available and never clears notices.
+inferred readiness is no native work identity or completion evidence.
 
 ## boundaries
 

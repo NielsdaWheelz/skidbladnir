@@ -228,11 +228,12 @@ that full target after resolution; later rename/rebinding never retargets them.
 expose the existing resolver as
 `Client.Capture(ctx, Request) (Reference, *Failure)`: validate a target-bearing
 request, apply the existing timeout and delegate to `resolve`; reject list/start.
-`replies` captures its native-read request once, then reads using only the returned
-`Ref`, scope and byte limit. the reference owns machine selection, even without
-`--machine`; never reconstruct it from a label or route `c-...` through `info`.
-retain existing exact-ref/direct-native admission and unread acknowledgement:
-capture unread ids before reading; acknowledge those ids only after native rendering.
+explicit native `read` captures its request once, then reads using only the
+returned `Ref`, scope and byte limit. the reference owns machine selection,
+even without `--machine`; never reconstruct it from a label or route `c-...`
+through `info`. retain exact-ref/direct-native admission. native reads have no
+notification effect; [terminal attention](reply-notifications.md) owns that policy
+and removes `replies` and human read receipts.
 
 malformed/wrong-kind/old-name selectors return `invalid_input`; absent match
 `handle_not_found`; distinct full identities sharing a handle `handle_ambiguous`;

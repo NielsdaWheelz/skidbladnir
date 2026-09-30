@@ -4,8 +4,10 @@ problem: the stock conversation-target source passed isolated qualification.
 signed v0.10.5 artifacts were verified and pinned. installed-fleet and
 physical-phone acceptance remain open.
 
-impact: installed-fleet behavior and native-output unread acknowledgement cannot
-be claimed from former fork evidence or isolated source checks.
+impact: installed-fleet native behavior cannot be claimed from former fork
+evidence or isolated source checks. [terminal attention](../reply-notifications.md)
+retires human native-output viewing; its isolated test app does not qualify
+installed-fleet native operations.
 
 evidence: [current qualification](../native-agent-qualification.md) separates stock
 final installed Darwin/Linux and Claude evidence from superseded tests.

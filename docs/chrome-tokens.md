@@ -89,13 +89,14 @@ internal object NidavellirMotion
   // (design language §12) join with their first consumer — nothing in this
   // delta animates layout or has hover/drag surfaces; no speculative tokens.
 
-internal fun statusColor(kind: SessionStatusKind): Color   // exhaustive, injective
+internal fun sessionStatusColor(tone: SessionStatusTone): Color
 internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean
 ```
 
-`statusColor` maps `Working→Moss, Running→Frost, Idle→Gold, Shell→Bronze,
-Unknown→Muted` and moves from `private` to `internal` so its injectivity is a
-pure JVM proof. Pressure history and details keep `Normal→Moss, Warm→Gold,
+the former `statusColor` mapping and pure JVM proof are retired. current
+[terminal attention](reply-notifications.md) uses `Working→Frost, Ready→Moss,
+Waiting→Ember, Idle/Unknown/Terminal→Muted`; labels survive without color.
+pressure history and details keep `Normal→Moss, Warm→Gold,
 Hot→Ember, Unknown→Muted`; the collapsed rail independently quiets
 informational/normal values to Bone with Muted labels/marks and spends
 Gold/Ember only on host-evaluated Warm/Hot exceptions.

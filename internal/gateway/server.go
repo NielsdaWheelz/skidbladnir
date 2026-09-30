@@ -44,6 +44,7 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) error
 	}
 	server := &http.Server{
 		Handler:           gateway,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    int(MaximumBodyBytes),

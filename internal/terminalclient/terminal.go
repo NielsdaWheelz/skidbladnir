@@ -21,7 +21,14 @@ import (
 
 var errDimensions = errors.New("terminal size must be 20–1024 columns and 5–512 rows; detached, work continues")
 
-func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, input, output *os.File) (result error) {
+// Run owns one exact visit. changed receives only committed presentation/exit
+// snapshots or notification errors; those errors never interrupt terminal I/O.
+func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, input, output *os.File, notifications *fleetclient.NotificationStore, changed func(fleetclient.NotificationSnapshot, error)) (result error) {
+	ref, err := fleetclient.DecodeReference(request.Ref)
+	if err != nil || ref.Conversation != nil {
+		return errors.New("enter requires an exact terminal reference")
+	}
+	key := fleetclient.NotificationKey(ref)
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return errors.New("enter requires stdin and stdout ttys")
 	}
@@ -64,11 +71,31 @@ func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Re
 			result = errors.Join(result, errors.New("terminal restoration failed"))
 		}
 	}()
-	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) })
+	presented := false
+	defer func() {
+		if !presented {
+			return
+		}
+		if notifications == nil {
+			changed(fleetclient.NotificationSnapshot{}, fleetclient.ErrNotificationsUnavailable)
+			return
+		}
+		snapshot, err := notifications.EndVisit(key)
+		changed(snapshot, err)
+	}()
+	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, func() {
+		presented = true
+		if notifications == nil {
+			changed(fleetclient.NotificationSnapshot{}, fleetclient.ErrNotificationsUnavailable)
+			return
+		}
+		snapshot, err := notifications.Presented(key)
+		changed(snapshot, err)
+	})
 }
 
 // stream cancels and joins both readers before returning ownership of stdin.
-func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error)) (result error) {
+func stream(ctx context.Context, connection *websocket.Conn, input *os.File, output io.Writer, columns, rows int, resized <-chan os.Signal, size func() (int, int, error), presented func()) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	connection.SetReadLimit(terminal.MaximumFrameBytes)
@@ -140,6 +167,7 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 	}()
 	defer func() { cancel(); reader.Cancel(); connection.CloseNow(); workers.Wait(); reader.Close() }()
 	prefix := false
+	presentedOutput := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -168,6 +196,10 @@ func stream(ctx context.Context, connection *websocket.Conn, input *os.File, out
 						return errors.New("terminal output unavailable")
 					}
 					remaining = remaining[n:]
+				}
+				if len(event.body) > 0 && !presentedOutput {
+					presentedOutput = true
+					presented()
 				}
 				continue
 			}

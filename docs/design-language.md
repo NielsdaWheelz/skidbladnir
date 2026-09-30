@@ -149,12 +149,14 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Muted | `#AAA69D` | 8.01 | Secondary text |
 | Gold | `#D6A85F` | 8.91 | Primary accent; cursor; selected/armed states |
 | Ember | `#E46C55` | 6.09 | Error; destructive; `HOT` |
-| Moss | `#76B082` | 7.69 | working; healthy |
-| Frost | `#78A9C6` | 7.67 | Informational |
+| Moss | `#76B082` | 7.69 | ready; healthy |
+| Frost | `#78A9C6` | 7.67 | working; informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-sampled status mapping is working Moss, blocked/failed Ember, all other states
-and a plain terminal Muted. Pressure history and detail rows keep Normal
+terminal status mapping is working Frost, ready Moss, blocked Ember, idle/unknown
+and a plain terminal Muted. [terminal attention](reply-notifications.md) owns
+the exclusive projection and green suppression during stale/uncertain samples
+and visits. Pressure history and detail rows keep Normal
 Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
 collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
 Muted, informational/normal values are Bone, and only Warm/Hot values and marks
@@ -174,7 +176,8 @@ a surface may reach for; it is what one tone resolves to.
 Two rules follow, and both are load-bearing:
 
 - **Staleness is absence, not failure.** degraded machine-freshness notices use
-  Muted; stale cards retain their sampled status color with motion/actions off.
+  Muted; stale cards retain their last observed status with motion/actions off,
+  but never retain green readiness styling.
   freshness remains separate from status under the honesty
   law (§1.4): absence is displayed, not alarmed.
   Ember spent on routine staleness is Ember spent on nothing — in a federation
@@ -594,7 +597,8 @@ any other theme renders it in that theme's colours.
 | --- | --- | --- |
 | Gold | bright yellow | you are here: the cursor bar `▌` and the focused form field |
 | Ember | bright red | blocked or failed status, a failed outcome, the stop/kill question |
-| Moss | bright green | working |
+| Frost | bright blue | working |
+| Moss | bright green | ready |
 
 status colour follows §5's sampled status mapping. ember never appears in hints,
 so blocked and failed stay the only red in the table and are found at a glance.
