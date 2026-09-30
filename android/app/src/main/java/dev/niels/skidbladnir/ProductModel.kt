@@ -911,16 +911,6 @@ internal fun visibleInventoryTargets(
     is DashboardScope.Machine -> if (scope.handle in liveMachineHandles) setOf(scope.handle) else emptySet()
 }
 
-internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope): List<VisibleSession> = machines
-    .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
-    .flatMap { state -> state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map {
-        VisibleSession(state.machine, SessionTarget(state.machine.handle, it), state.executionContext(it))
-    } }
-    .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
-        .thenBy { it.machine.label.text }
-        .thenBy { it.machine.handle.encoded }
-        .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
-
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
@@ -985,9 +975,9 @@ internal data class SessionStatusContent(
 )
 
 /**
- * Single status projection for the card and the terminal header (spec §6): the first matching
- * row wins. A response request, menu or current notice outranks visible work, which then survives
- * as `work continues`. Only a local agent's terminal sample makes an inference claim.
+ * Single status projection for the card and the terminal header (terminal-observation.md §6): the
+ * first matching row wins. A response request, menu or current notice outranks visible work, which
+ * then survives as `work continues`. Only a local agent's terminal sample makes an inference claim.
  */
 internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation = NotificationPresentation()): SessionStatusContent {
     val status = session.terminalStatus
@@ -1028,15 +1018,18 @@ internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notifica
         label,
         label + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
             (secondary?.let { "; $it" } ?: ""),
-        if (inferred) listOfNotNull("work continues".takeIf { workContinues }, "inferred from terminal").joinToString(" · ")
-        else session.activeCommand.takeIf { session.connection == null },
+        when {
+            workContinues -> "work continues · inferred from terminal"
+            inferred -> "inferred from terminal"
+            else -> session.activeCommand.takeIf { session.connection == null }
+        },
         if (fresh) tone else SessionStatusTone.Muted, secondary,
     )
 }
 
 /**
- * The needs-input filter (spec §6): a fresh sample showing a response request, whatever its
- * activity, notice or reason. An unavailable sample never carries an interaction.
+ * The needs-input filter (terminal-observation.md §6): a fresh sample showing a response request,
+ * whatever its activity, notice or reason. An unavailable sample never carries an interaction.
  */
 internal fun sessionNeedsInput(session: TmuxSession, fresh: Boolean): Boolean = fresh && when (session.terminalStatus.interaction) {
     TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,

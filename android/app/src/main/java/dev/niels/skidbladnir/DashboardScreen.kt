@@ -424,15 +424,15 @@ private fun DashboardDwarfGrid(
                     Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
                         val wait = dashboardInventoryWaitCopy(machines)
                         when {
-                            needsInputOnly -> EmptyState(
-                                "no sessions currently need input in this view", wait?.message,
-                                tone = wait?.tone ?: NoticeTone.Degraded,
-                            )
-                            wait != null -> EmptyState("no matching sessions in available inventory", wait.message, tone = wait.tone)
+                            needsInputOnly -> EmptyState("no sessions currently need input in this view", wait)
+                            wait != null -> EmptyState("no matching sessions in available inventory", wait)
                             else -> EmptyState(
                                 "no sessions in this view",
-                                "Create a dwarf here, or launch tmux on the visible " +
-                                    if (machines.size == 1) "machine." else "machines.",
+                                MachineNotice(
+                                    "Create a dwarf here, or launch tmux on the visible " +
+                                        if (machines.size == 1) "machine." else "machines.",
+                                    NoticeTone.Degraded,
+                                ),
                                 ornament = true,
                             )
                         }
@@ -653,8 +653,7 @@ internal fun CloseConfirmation(
 @Composable
 internal fun EmptyState(
     title: String,
-    body: String?,
-    tone: NoticeTone = NoticeTone.Degraded,
+    body: MachineNotice?,
     ornament: Boolean = false,
 ) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -670,7 +669,7 @@ internal fun EmptyState(
                 )
             }
             Text(title, style = MaterialTheme.typography.titleLarge)
-            body?.let { Text(it, color = noticeToneColor(tone), modifier = Modifier.padding(top = 8.dp)) }
+            body?.let { Text(it.message, color = noticeToneColor(it.tone), modifier = Modifier.padding(top = 8.dp)) }
         }
     }
 }

@@ -35,8 +35,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
     val reason: TerminalStatusReason,
 ) {
     init {
-        // justify-service-invariant-check: the reason ties source and the count of classified dimensions
-        // together; five independent wire enums cannot encode that product in Kotlin's type system.
+        // justify-service-invariant-check: this flat record mirrors the host's sessions.TerminalStatus and its
+        // five-member wire. A sealed split would need custom decoding and still leave reason's dimension counts here.
         val activityKnown = activity != TerminalActivity.Unknown
         val interactionKnown = interaction != TerminalInteraction.Unknown
         val terminal = source == TerminalStatusSource.Terminal

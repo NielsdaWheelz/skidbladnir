@@ -103,7 +103,8 @@ import kotlinx.serialization.json.jsonObject
                     baselinePending = false
                 }
                 ReadyObservation.Ready -> {
-                    if (!baselinePending && key != visiting && !replaced && prior != null) pending = true
+                    // A matching prior means old is the record its arming wrote: this foreground, no baseline.
+                    if (key != visiting && prior != null) pending = true
                     baselinePending = false
                 }
                 ReadyObservation.Neutral -> Unit
@@ -134,10 +135,10 @@ internal data class NotificationUpdate(val snapshot: NotificationSnapshot, val p
 internal data class NotificationPresentation(val ready: Boolean = false, val unavailable: Boolean = false)
 
 /**
- * One fresh local sample's effect on ready attention (spec §6). Arming is working with no request,
- * menu or notice; ready is the same shape at idle. Any request or menu (whatever the activity), any
- * notice, starting or other work clears. Everything else, unavailable samples included since they
- * classify nothing, only disarms and keeps pending ready.
+ * One fresh local sample's effect on ready attention (terminal-observation.md §6). Arming is working
+ * with no request, menu or notice; ready is the same shape at idle. Any request or menu (whatever the
+ * activity), any notice, starting or other work clears. Everything else, unavailable samples included
+ * since they classify nothing, only disarms and keeps pending ready.
  */
 private enum class ReadyObservation { Arming, Clearing, Ready, Neutral }
 

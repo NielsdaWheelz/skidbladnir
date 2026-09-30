@@ -1,6 +1,7 @@
 package dev.niels.skidbladnir
 
 import java.security.MessageDigest
+import java.util.Locale
 import android.icu.text.Normalizer2
 import android.icu.text.UnicodeSet
 
@@ -119,19 +120,27 @@ internal sealed interface DashboardItem {
     data class Session(val visible: VisibleSession) : DashboardItem { override val key = visible.cardKey }
 }
 
-/** One ordered heading/session projection; filtering before grouping leaves no empty heading. */
+/**
+ * The dashboard's one ordered projection: headings by label with unassigned last, sessions by machine
+ * then tmux id. Filtering before grouping leaves no empty heading.
+ */
 internal fun dashboardItems(
     machines: List<MachineState>,
     scope: DashboardScope,
     group: DashboardGroupSelection,
     needsInputOnly: Boolean,
 ): List<DashboardItem> {
-    val grouped = visibleSessions(machines, scope)
-        .filter { visible ->
-            group.matches(visible.target.session.group) && (!needsInputOnly || sessionNeedsInput(
-                visible.target.session, machines.single { it.machine.handle == visible.target.machineHandle }.canMutate,
-            ))
+    val grouped = machines
+        .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
+        .flatMap { state ->
+            state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
+                .filter { group.matches(it.group) && (!needsInputOnly || sessionNeedsInput(it, state.canMutate)) }
+                .map { VisibleSession(state.machine, SessionTarget(state.machine.handle, it), state.executionContext(it)) }
         }
+        .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
+            .thenBy { it.machine.label.text }
+            .thenBy { it.machine.handle.encoded }
+            .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
         .groupBy { it.target.session.group }
     val labels = grouped.keys.filterNotNull()
         .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
