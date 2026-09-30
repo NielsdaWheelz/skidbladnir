@@ -119,8 +119,6 @@ type foregroundSignatureDTO struct {
 	ExecutablePath stringField `json:"executablePath"`
 }
 
-// admit validates the decoded document and resolves the foreground executable
-// paths it names; a path that does not resolve to an executable file fails.
 func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
 	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.ZoxidePath.present || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
 		return Config{}, errors.New("host config omits a required member")
@@ -142,7 +140,7 @@ func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
 	if !wire.Tmux.Path.present || !wire.Tmux.TestedVersion.present || !validAbsolutePath(wire.Tmux.Path.value) || ValidateTmuxVersion(wire.Tmux.TestedVersion.value) != nil {
 		return Config{}, errors.New("host config tmux entry is invalid")
 	}
-	profiles, err := mapProfiles(*wire.Profiles)
+	profiles, err := admitProfiles(*wire.Profiles)
 	if err != nil {
 		return Config{}, err
 	}
@@ -154,7 +152,7 @@ func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
 	}, nil
 }
 
-func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
+func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 	if len(wire) != 0 && len(wire) != len(expectedProfiles) {
 		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfiles))
 	}
@@ -186,9 +184,8 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
 				}
 				// The kernel reports the executable image, whatever spelling
-				// launched it, so admission resolves the configured spelling once.
-				// The gateway sees a later relink only after restart; agent-hook
-				// and validate-host-config re-admit on every run.
+				// launched it, so admission resolves the configured spelling. A
+				// Config is a snapshot: a later relink needs a fresh Load.
 				resolved, err := filepath.EvalSymlinks(signature.ExecutablePath.value)
 				if err != nil {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is unresolvable", candidate.Key.value)

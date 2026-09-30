@@ -51,19 +51,20 @@ func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
 }
 
 func (input terminalRequest) valid(operation string) bool {
-	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 ||
-		input.Explain != nil && operation != "inspect" {
+	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 		return false
 	}
 	switch operation {
-	case "inspect", "stop", "close":
+	case "inspect":
 		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil
+	case "stop", "close":
+		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "read":
-		return !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
+		return !input.Text.present && input.Keys == nil && input.Explain == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
 	case "send", "text":
-		return input.Keys == nil && input.MaxBytes == nil && input.Text.value != "" && len(input.Text.value) <= 32768 && utf8.ValidString(input.Text.value) && !strings.ContainsRune(input.Text.value, 0)
+		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil && input.Text.value != "" && len(input.Text.value) <= 32768 && utf8.ValidString(input.Text.value) && !strings.ContainsRune(input.Text.value, 0)
 	case "keys":
-		return !input.Text.present && input.MaxBytes == nil && input.Keys != nil && len(*input.Keys) >= 1 && len(*input.Keys) <= 16
+		return !input.Text.present && input.MaxBytes == nil && input.Explain == nil && input.Keys != nil && len(*input.Keys) >= 1 && len(*input.Keys) <= 16
 	default:
 		return false
 	}
@@ -123,10 +124,6 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
 		}{TerminalStatus: status}
 		if input.Explain != nil && *input.Explain {
-			// The wire contract sends rules as an array, never null.
-			if diagnostics.Rules == nil {
-				diagnostics.Rules = []agentcontrol.DiagnosticRule{}
-			}
 			inspected.Diagnostics = &diagnostics
 		}
 		result = inspected

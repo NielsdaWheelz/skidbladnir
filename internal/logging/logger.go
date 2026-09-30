@@ -229,8 +229,6 @@ func NewSessionKilled(tmuxID string, duration time.Duration) (Event, error) {
 	return event, nil
 }
 
-// NewTerminalObservationFailed records one observation whose status is
-// unavailable: the failed stage's reason and how long the observation took.
 func NewTerminalObservationFailed(tmuxID string, reason sessions.StatusReason, duration time.Duration) (Event, error) {
 	event := Event{kind: eventTerminalObservationFailed, tmuxID: tmuxID, observationReason: reason, duration: duration}
 	if !event.valid() {

@@ -546,7 +546,9 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		writeSessionError(writer, err)
 		return
 	}
-	// The response carries the new terminal's status from one focused observation.
+	// Session.Created times creation alone. The response also carries the new
+	// terminal's status, from one focused observation.
+	createdElapsed := time.Since(startedAt)
 	observed := []sessions.Session{created.Session}
 	for _, failure := range gateway.agents.Enrich(ctx, observed) {
 		gateway.logObservationFailure(failure)
@@ -559,7 +561,7 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		writeError(writer, failure)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, createdElapsed)
 	if eventErr != nil {
 		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
 	}
