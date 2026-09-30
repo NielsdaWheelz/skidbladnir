@@ -47,10 +47,15 @@ if [[ "${SKIDBLADNIR_STARTUP_PID:-}" == "$$" ]] && ! typeset -f _skid_startup >/
       return 0
     fi
     if [[ -n "$_skid_agent" ]]; then
+      if [[ ! -t 0 || ! -t 1 ]]; then
+        printf 'skidbladnir: initial agent not started: stdin and stdout must be terminals\n' >&2
+        return 0
+      fi
       if "$_skid_helper" agent-exec "$_skid_agent"; then
         :
       else
-        printf 'skidbladnir: initial agent exited or failed\n' >&2
+        local _skid_exit_status=$?
+        printf 'skidbladnir: initial agent command exited with status %s\n' "$_skid_exit_status" >&2
       fi
     fi
     return 0

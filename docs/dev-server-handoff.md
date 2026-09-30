@@ -352,6 +352,14 @@ skid startup path within skid setup, without replacing dotfiles. shell-init is
 idempotent: source it after each relevant startup file, without a once-only flag
 that would allow later login files to override skid's functions or defaults.
 
+before the cached zsh instant-prompt preamble, exclude the exact shell with a
+pending skid action: shell marker, startup pid matching `$$`, and no zsh subshell.
+guard the preamble itself; do not call private theme helpers.
+dev-server owns the managed preamble and its scoped installation into existing
+startup files. its renderer must copy the matching product `shell-init`.
+the normal theme configuration remains enabled; powerlevel10k may invalidate
+and rebuild its shared preview cache after the skipped preamble.
+
 within marked skid terminals, bare `codex`/`claude` select the existing personal
 homes; `codex-personal`, `codex-work`, `codex-work2`, `claude-personal`,
 `claude-work` select those exact homes. explicit account selection wins over

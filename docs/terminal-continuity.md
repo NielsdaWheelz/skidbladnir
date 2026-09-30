@@ -107,6 +107,12 @@ missing integration is a deployment qualification failure, never permission to
 use direct agent-as-pane launch. prove real job control before accepting this
 mechanism; no guessed prompt delays or injected keystrokes.
 
+deployment keeps instant-prompt descriptor capture out of the intended shell's
+pending startup action by guarding the cached zsh preamble. the initial interactive
+agent requires terminal stdin and stdout; failed admission consumes the action,
+reports that precondition, and leaves the shell. stderr may be redirected.
+nonzero provider commands report their actual exit status without inferring cause.
+
 ### observed codex home
 
 keep the existing agent wire schema and native-method fields. after classification
