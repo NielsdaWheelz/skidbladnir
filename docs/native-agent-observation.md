@@ -9,7 +9,7 @@ targets. providers own execution/history; tmux owns terminals.
 ## 1. outcome and scope
 
 keep cards, direct tmux attachment, existing accounts, machine routing, sorting
-and visual language. a card may explicitly track a native conversation. status
+and visual language. a codex card tracks the conversation captured at creation. status
 and unread describe that conversation even when its terminal displays another
 conversation or a shell. omit blocking reasons.
 
@@ -17,8 +17,9 @@ conversation or a shell. omit blocking reasons.
   retargets a command addressing a.
 - codex uses upstream `@openai/codex`, its owning app-server and existing helper.
   no source patch, custom package, view registry or exact-version gate.
-- creation captures `thread/start`'s returned id. existing conversations require
-  explicit selection by id. never infer from cwd, clocks, screens, process
+- creation captures `thread/start`'s returned id. manual association, reassignment
+  and clearing are unavailable. manually launched codex terminals remain
+  unassociated. never infer from cwd, clocks, screens, process
   presence or the newest transcript.
 - claude retains native listing, sdk history/results and exact background-worker
   stop. native input remains unavailable after failed recipient qualification;
@@ -51,8 +52,7 @@ create the native thread, set its native name and prepare that exact thread with
 native `thread/resume`, then launch
 `codex --remote unix:// --cd CWD resume ID`. explicit remote mode does not
 start a server; ordinary codex may embed one. another server never attaches to
-an independently running agent. manual ordinary terminals stay unassociated
-until explicitly tracked.
+an independently running agent. manual ordinary codex terminals stay unassociated.
 
 the helper uses the account's default unix control socket, currently
 `CODEX_HOME/app-server-control/app-server-control.sock`, derived from the existing
@@ -103,17 +103,20 @@ fields. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
 it identifies history storage, not credentials. host validates profile/provider/
 scope before calls. client references contain no home, endpoint or credential.
 
-one `@skid_conversation_b64` session option records explicitly tracked codex
-Conversation. creation writes its captured id. explicit association replaces or
-clears it; pane/foreground/tui navigation never does. claude's exact identity
-hook can supply its current conversation projection; hooks publish no status,
+one `@skid_conversation_b64` session option records the codex Conversation
+captured at creation. creation is its only writer; no api, cli or client action
+replaces or clears it. pane/foreground/tui navigation never changes it. claude's
+exact identity hook can supply its current conversation projection; hooks publish no status,
 history or prompt data. tracking never proves what the terminal displays.
+existing valid associations retain their meaning: earlier releases stored manual
+and creation associations identically, so this cutover neither guesses their
+origin nor clears live metadata. no provenance store or migration is added.
 
 `NAME --machine HOST` resolves its recorded conversation once. direct
 `--conversation ID --profile PROFILE --machine HOST` works independently of
 terminal lifetime; opaque refs retain the captured structured target. fresh named
-commands may resolve a replacement association; running commands keep their
-original conversation. no alias store or second account table. return-address
+commands may resolve a replacement terminal or current claude identity; running
+commands keep their original conversation. no alias store or second account table. return-address
 text is ordinary delegation metadata, never authority.
 
 ## 4. api and behavior
@@ -128,8 +131,6 @@ absent fields are omitted, not null. reject old schemas/view fields outright.
 | `POST /v1/conversations/send` | conversation, peer/user input, direct/queue delivery, text → native receipt |
 | `POST /v1/conversations/stop` | conversation plus captured active codex turn → exact interruption |
 | `POST /v1/conversations/results` | conversation, optional cursor → finalized reply ids only |
-| `PUT /v1/sessions/{id}/conversation` | exact terminal lifetime + explicit Conversation; validate without resume, record |
-| `DELETE /v1/sessions/{id}/conversation` | exact terminal lifetime; clear association only |
 | terminal read/text/keys/stop | existing exact terminal/process targets; explicit terminal mode |
 | close | exact terminal target and optional explicit native conversation/turn or terminal halt; separate outcomes |
 
@@ -176,7 +177,7 @@ claude peer/user/queue input rejects unavailable/not_sent before discovery.
 wait is client-only: capture once, sample immediately, then existing five-second
 cadence with one request in flight. default idle/60 seconds, max one hour; cap
 requests by the monotonic remaining deadline. terminal switches, closure and
-reassociation never retarget it. profile/history-scope changes end it. timeout
+provider identity changes never retarget it. profile/history-scope changes end it. timeout
 returns last observation; cancellation stops waiter only. idle is neither job
 completion nor empty queue. native unavailability is an error; only matched exits
 zero.
@@ -261,7 +262,7 @@ association/state/unread survive narrow layouts before directory detail.
 accessibility announces tracked id plus state/unread once, without unchanged-poll
 repetition or color-only distinctions. only fresh native working uses existing
 motion. terminal attachment and native output are separate visible actions.
-tracking takes an explicit id, never an inferred chooser. use suffixes because
+manual tracking controls are absent. use suffixes because
 contemporaneous uuidv7 conversations share their timestamp prefixes; shortened
 labels are presentation only, never command targets.
 
@@ -273,7 +274,7 @@ labels are presentation only, never command targets.
 | adapter | llm-calling stock create/read/send/interrupt/results and native Claude capture |
 | host | runtime/session/agentcontrol/gateway/hostconfig; conversation routes, recorded association |
 | cli/desktop | fleetclient/agentcli/sessionui; names/direct ids, wait, native output, local acknowledgement |
-| android | gateway/models/controller/cards; explicit association, native output, acknowledgement |
+| android | gateway/models/controller/cards; creation association display, native output, acknowledgement |
 | root | architecture/spec/roadmap, pins/manifests, integration, final evidence |
 
 use temporary meaningful integration/live red–green–refactor tests; review then
@@ -283,7 +284,7 @@ contain no output, prompts, token or account data.
 
 acceptance: stock npm install/repeat/upgrade; same owner for tui/helper; created-id
 capture, native name and empty-thread tui adoption before its first terminal input;
-explicit existing association; a→b→a switches/terminal exit never
+manual association commands/routes/forms absent; a→b→a switches/terminal exit never
 retarget a; read never resumes; exact-turn interruption cannot cancel successor;
 unsupported methods/fields/queue fail without fallback; CLI/daemon version skew
 handled by consumed capabilities; native-output captured-only acknowledgement,
@@ -297,8 +298,9 @@ terminal primitives. immutable v0.10.4 is historical fork-contract output; ship
 a new coordinated release, never mutate artifacts. rollback uses prior complete
 release. no installed-fleet/phone pass without actual boundary.
 
-accepted costs: manual existing-thread association; weaker automatic terminal
-association; experimental method/socket drift may disable capabilities; independent
+accepted costs: manually launched codex terminals have no native card association;
+existing associations retain their recorded identity without origin classification;
+experimental method/socket drift may disable capabilities; independent
 daemon updates may interrupt work; native creation excludes other profile-argument
 overrides; possible empty thread after terminal-create
 failure; sampled wait latency; unavailable user queueing; bounded output can omit

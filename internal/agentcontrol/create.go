@@ -51,13 +51,3 @@ func (service *Service) CreateConversation(parent context.Context, profileKey ag
 	}
 	return conversation, err
 }
-
-func (service *Service) Associate(parent context.Context, tmuxID, identityToken string, conversation agentruntime.Conversation) error {
-	if conversation.Provider != agentruntime.ProviderCodex {
-		return ErrInvalidInput
-	}
-	if _, err := service.Inspect(parent, conversation); err != nil {
-		return err
-	}
-	return service.sessions.SetConversation(parent, tmuxID, identityToken, &conversation)
-}

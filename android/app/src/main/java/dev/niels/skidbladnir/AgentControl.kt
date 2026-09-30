@@ -91,7 +91,6 @@ internal fun nativeJsonObject(encoded: String): JsonObject = strictJsonObject(en
     val identityToken: String, val method: AgentMethod, val conversation: Conversation, val turn: AgentTurn? = null,
 )
 @Serializable private data class ConversationReadRequest(val conversation: Conversation, val scope: String, val maxBytes: Int)
-@Serializable private data class ConversationAssociationRequest(val identityToken: String, val conversation: Conversation? = null)
 internal fun encodeConversationStopRequest(runtime: ConversationRuntime): String =
     productJson.encodeToString(ConversationStopRequest.serializer(), ConversationStopRequest(runtime.binding.conversation, runtime.turn?.takeIf { it.state == "inProgress" }))
 internal fun encodeAgentControlRequest(target: SessionTarget): String {
@@ -103,8 +102,6 @@ internal fun encodeAgentControlRequest(target: SessionTarget): String {
 }
 internal fun encodeConversationReadRequest(conversation: Conversation): String =
     productJson.encodeToString(ConversationReadRequest.serializer(), ConversationReadRequest(conversation, "latest", 16 * 1024))
-internal fun encodeConversationAssociationRequest(target: SessionTarget, conversation: Conversation?): String =
-    productJson.encodeToString(ConversationAssociationRequest.serializer(), ConversationAssociationRequest(target.session.identityToken, conversation))
 
 @Serializable internal data class AgentStopResult(val method: AgentMethod, val outcome: String)
 @Serializable internal data class AgentCloseResult(val agent: String, val terminal: String, val reason: String? = null)

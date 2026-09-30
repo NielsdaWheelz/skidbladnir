@@ -5,15 +5,49 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## planned terminal status and control
+
+[terminal control](terminal-agent-control.md) makes heuristic observation and
+terminal input the ordinary session workflow. stop/close work without an agent
+or conversation identity; explicit native integration is retained separately.
+the plan owns replacement schemas, disjoint slices, content and temporary
+red/green/refactor acceptance. inferred idle is advisory. notification semantics
+stay with their separate pr; [coordination](issues/terminal-notification-coordination.md)
+is a combined-release dependency. this plan changes no production code.
+
+## planned automatic session names
+
+[automatic names and public handles](automatic-session-names.md) specifies one
+canonical tmux name, manual takeover/reset, terminal-title reconciliation,
+typed live selectors and name-independent targeting/order. source is not yet
+implemented. the plan owns disjoint work slices, the native-helper prerequisite,
+content, temporary red/green/refactor acceptance and hard cutover. literal tmux
+comparisons need [qualification](issues/tmux-name-literal-comparison.md).
+
+## planned terminal reply notifications
+
+[reply notifications](reply-notifications.md) specifies current-reply attention,
+whole-terminal-visit and resumed-work clearing, blue/green/grey presentation, and
+human reply-viewer deletion while preserving orchestration `read`. implementation
+starts with [native work-boundary qualification](issues/reply-notification-native-boundary.md);
+the pinned claude interface does not yet establish that prerequisite. source is
+unchanged; the plan owns disjoint slices and temporary red/green/refactor acceptance.
+
 ## native interaction source delivery
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, explicit id association and native
+ordinary upstream npm plus its owning daemon, creation-time id association and native
 operations. the selected-view fork/build and terminal-opening unread acknowledgement
 are retired. clients acknowledge known replies only after native output opens.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
+
+manual conversation association is removed from source: no mobile/browser form,
+cli track/untrack command or host mutation route remains. creation captures codex
+identity automatically; manually launched codex terminals remain unassociated.
+existing valid metadata is retained because earlier manual and creation bindings
+have the same representation. this source change does not assert deployment.
 
 v0.10.4 is published historical output under the former selected-view contract.
 the coordinated stock helper/gateway/client generation is released as v0.10.5.
