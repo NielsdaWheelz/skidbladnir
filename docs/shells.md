@@ -7,14 +7,14 @@ desktop `n` creates and attaches a home terminal; `N` opens the advanced form.
 new-terminal-here is unavailable during a remote ssh/mosh connection. the older
 red/green evidence here does not qualify those changes.
 
-2026-09-25 restoration amendment: [the deployment handoff](dev-server-handoff.md)
+current launch contract: [the deployment handoff](dev-server-handoff.md)
 selects existing personal accounts and adds `SKIDBLADNIR_SHELL=1` to new terminal
 startup, with final bash/zsh startup integration for bare/account provider
-commands. inherited herdr context is removed at the pane boundary; the existing
-tmux server and unrelated sessions are unchanged. this supersedes
+commands. inherited provider homes and skid launch context are cleared at the
+pane boundary; the existing tmux server and unrelated sessions are unchanged. this supersedes
 provider-environment inheritance below only for new skid terminals. ordinary
-shells and herdr panes keep their existing provider commands, homes, histories
-and native integrations. skid apply owns the guarded shell source installation;
+shells keep their existing provider commands, homes, histories and user
+integrations. skid apply owns the guarded shell source installation;
 shared provider maintenance has no skid startup-file prerequisite. inherited
 `SKIDBLADNIR_AGENT` is cleared; only the final provider exec sets it. personal
 claude uses its native unset `CLAUDE_CONFIG_DIR` default. shell readiness remains

@@ -4,9 +4,11 @@
 references and unread contract. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
-restoration amendment: jarvis's current herdr integration and credentials are
-independent of skid. jarvis-specific routing, rollout and acceptance below are
-historical; skid's cli/tui/phone contracts remain in force. see the current
+current jarvis workers use nine tools through the installed skid cli: list, info,
+start, read, send, text, keys, stop and close. jarvis deployment supplies its
+private skid client config. cognition retains its existing shared codex process;
+its availability is separate from worker control and herdr retirement. older
+jarvis routing, rollout and acceptance below remain historical. see the current
 [deployment boundary](dev-server-handoff.md#owned-installation-and-runtime).
 
 2026-09-13 spec · shipped in v0.4.1; a1–a9 verified on 2026-09-14.
@@ -58,6 +60,7 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid` | open tui; without a tty, print usage and exit 2 |
 | `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
 | `skid info reviewer` | full metadata and fresh reference for this session |
+| `skid inspect --ref VALUE` | captured conversation and optional turn, native inspection outcome, and optional fresh conversation-only reference; preserve captured identity on native failure |
 | `skid enter reviewer` | attach; explicit detach returns to the caller |
 | `skid read reviewer [--history | --terminal] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
 | `skid replies reviewer` | view native output and acknowledge only replies known at opening |
@@ -228,11 +231,13 @@ and compound `close`. the previous jarvis interrupt/kill adapter is historical;
 it must change with the coordinated release, not receive compatibility aliases.
 parse envelopes before interpreting exit status: exit 1 with `ok: true` retains
 partial inventory or unconfirmed outcomes, rather than becoming malformed output.
-before gating an addressed write, its existing dispatcher calls cli `info --ref`
-once for metadata. pass the observed name/machine and original ref through existing
-effect-target fields; metadata failure returns not-sent through existing handling.
-absent owner input retains the existing denial before any metadata read.
-persist/execute the ORIGINAL reference, never info's refreshed agent reference.
+before preparatory lookups, writes require current owner input. native writes
+inspect the original captured conversation; terminal metadata grounds its name
+only when the terminal still tracks that conversation. missing or reassociated
+terminals do not erase conversation authority. terminal writes inspect the exact
+terminal; compound close inspects both targets and retains captured identity even
+when native inspection fails. persist/execute the ORIGINAL reference, never a
+fresh `info` reference or `inspect`'s `observedRef`.
 share the existing controller between tool composition and the dispatcher; no
 second adapter or preparation subsystem. start needs no metadata read.
 bump the agent tool implementation revision.
