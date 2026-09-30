@@ -1,29 +1,28 @@
 # skidbladnir deployment contract
 
-2026-09-25 restoration source in `/Users/nnandal/Documents/code/skid-v1`, based on
-`927c55412eec7fa129a3325fb8f5ebf8051b6ea0`. publication belongs to the root
-operator; live installation waits for host namespace handback. this file's
-containing commit owns the source contract. dev-server is the sole installation owner. this file
-is the contract for its separation agent; the other product is herdr-mobile.
+historical restoration source on 2026-09-25 was `/Users/nnandal/Documents/code/skid-v1`,
+based on `927c55412eec7fa129a3325fb8f5ebf8051b6ea0`. publication belongs to the root
+operator. this file's containing commit owns the current source contract;
+dev-server is the sole installation owner. herdr and herdr-mobile are retired;
+installation updates skid in place and preserves existing pairings and identities.
 
-provider continuity correction: all products use the existing provider accounts.
+provider continuity: skid uses the existing provider accounts.
 preserve `.codex`, `.codex-work`, `.codex-work2`, native personal claude's default
 state, and `.claude-work`, including authentication, configuration, history,
-memories, trust and native herdr/user integrations. no provider-home provisioning,
+memories, trust and unrelated user integrations. no provider-home provisioning,
 relocation or copy is part of skid installation. gateway credentials and helper
 dependencies remain skid-owned. command overrides remain scoped to skid launches
-and marked terminals; ordinary/herdr account selection is unchanged.
+and marked terminals; ordinary account selection is unchanged.
 
 ## release and namespace
 
 original github repository id: `1386409483`; reclaimed name:
 `NielsdaWheelz/skidbladnir`. the other repository, `1342599607`, is
 `NielsdaWheelz/herdr-mobile`. github names and immutable-release settings are
-verified; neither remains a blocker. the local checkout remains `skid-v1`.
-live original-skid installation still waits for the root operator's namespace
-handback.
+verified; neither remains a blocker. historical namespace handback is not an
+installation prerequisite.
 
-current stock-native generation: [v0.10.5](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.10.5).
+current stock-native generation: [v0.10.6](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.10.6).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
 owns its qualified helper. [current qualification](native-agent-qualification.md)
@@ -62,9 +61,9 @@ retain binary `skidbladnir` and the required `skid` cli, linux user unit
 `skidbladnir.service`, macos label `dev.niels.skidbladnir`, and private roots
 `~/.config/skidbladnir`, `~/.local/share/skidbladnir`,
 `~/.local/state/skidbladnir`. bind `127.0.0.1:7341`; tailscale serve owns only
-https `8443` `/v1`. upstream herdr, its socket/service, and herdr-mobile's
-`7342` / `8444` belong to the other product. remove herdr service dependencies
-from skid's restored unit. gateway stop must not kill tmux workers; preserve
+https `8443` `/v1`. dev-server's retirement step removes only proven owned herdr
+services, files and serve mapping, preserving unrelated state. skid has no herdr
+service dependency. gateway stop must not kill tmux workers; preserve
 the historical linux `KillMode=process` arrangement. never reset tailscale
 serve or modify the default tmux server's environment.
 
@@ -76,18 +75,17 @@ are outside the generation digest. the earlier optional-cli
 wording was wrong: [the accepted client contract](agent-control-ux.md#public-commands)
 requires this command.
 
-after explicit handback, mint fresh bearer and machine-handle files using the
-existing skid commands; mode `0600`. generate a fresh private
-`~/.config/skidbladnir/client.json` through skid's existing fleet provisioning.
-do not copy, link, preserve, or roll back to herdr-era credentials/generations.
-ordinary later skid reinstalls preserve these new skid identities and workers.
+preserve existing skid bearer and machine-handle files, mode `0600`, private
+`~/.config/skidbladnir/client.json`, workers and phone pairings. initial setup
+uses the existing skid commands and fleet provisioning; an update does not
+rotate credentials, mint new identities, clear app data or require re-enrollment.
 removal is an explicit allowlist of skid files/services and its own serve
-mapping; no provider-binary, tailscale, herdr, shared-home, or jarvis removal.
+mapping; no provider-binary, tailscale, shared-home, or jarvis removal.
 
 `scripts/fleet provision-clients` distributes skid's private client config only
-to the macbook, devbox and arch users. jarvis uses herdr directly; its service
-configuration and credentials are not skid inputs or provisioning targets.
-run this once after all three gateways have fresh identities, and again after
+to the macbook, devbox and arch users. jarvis uses the skid cli with its own
+private client config supplied by jarvis deployment; it is not a provisioning target.
+run this once after initial gateway setup, and again after
 rotating a host bearer. desktop setup is incomplete until every host has the
 mode-0600 three-peer config. `scripts/fleet verify` checks both public links and
 uses each installed `skid list --json` to exercise real config admission and
@@ -162,7 +160,7 @@ exact schema (all named members required unless marked optional):
   `foregroundSignatures`, `arguments`. endpoint is retired; the host derives the
   stock account socket from CODEX_HOME, with unavailable capability on drift.
 - environment entry: `{name,value}` strings. exactly one absolute provider home;
-  names unique, no other provider's home, `HERDR_*`, `SKIDBLADNIR_SHELL`, `SKIDBLADNIR_AGENT`, or
+  names unique, no other provider's home, `SKIDBLADNIR_SHELL`, `SKIDBLADNIR_AGENT`, or
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
   within each provider. other explicitly configured environment values retain
   their existing meaning.
@@ -331,9 +329,8 @@ live qualification below; fixture results alone do not establish live rollback.
 new skid terminals set `SKIDBLADNIR_SHELL=1`, select `CODEX_HOME=HOME/.codex`, and
 clear inherited `CLAUDE_CONFIG_DIR` before the configured login shell.
 at the END of that shell's ordinary startup,
-source the installed `shell-init` when that marker is `1`. it removes any
-`HERDR_*` introduced during startup and replaces shared aliases with product-local
-functions. zsh requires the end of `.zshrc` and,
+source the installed `shell-init` when that marker is `1`. it replaces shared
+aliases with product-local functions. zsh requires the end of `.zshrc` and,
 if it changes provider setup, the later `.zlogin`; bash requires the actual
 login file (`.bash_profile`, `.bash_login`, or `.profile`) and `.bashrc` for
 interactive subshells. do not assume bash login reads `.bashrc`. current fleet
@@ -341,7 +338,7 @@ shell support is bash/zsh; configure and qualify its actual startup path.
 skid apply owns startup validation and edits. shared provider installation must
 not edit or validate startup files for skid, or fail because skid is absent.
 the fully managed zshrc may retain its optional source line, guarded by the
-skid shell marker and absence of herdr context before any file access. this
+skid shell marker before any file access. this
 small static dependency preserves skid support when ordinary dotfile maintenance
 replaces that whole managed file. no general extension renderer is introduced.
 preserve startup-file symlinks and user content; resolve a missing or unsupported
@@ -355,19 +352,17 @@ homes; `codex-personal`, `codex-work`, `codex-work2`, `claude-personal`,
 inherited home variables. functions
 call the absolute installed launcher, so startup PATH and shared work wrappers
 cannot redirect them. no changes apply to ordinary unmarked shells or existing
-tmux sessions. a real herdr pane (`HERDR_ENV=1`) makes this integration a no-op
-even if it inherited skid's shell marker; upstream herdr owns that pane's setup.
-ordinary/herdr commands retain their existing account selection, provider homes,
-histories, trust and integrations. do not install global account replacements,
-provider-home exports, or a private herdr-home layout for skid's restoration.
+tmux sessions. ordinary commands retain their existing account selection,
+provider homes, histories, trust and integrations. do not install global account replacements,
+provider-home exports, or separate provider homes for skid.
 arbitrary absolute commands remain deliberate user overrides.
 
-gateway, tmux client startup, native helper, and the new pane's one-shot exec
-boundary strip inherited `HERDR_*`. the latter boundary is required because an
-already running tmux server can carry its own environment. it never changes
-that server or unrelated sessions. provider-command also strips that context
-and the shell marker before exec. both forge and manual paths clear the opposite
-provider-home variable before selecting their own.
+new provider and terminal exec boundaries clear inherited provider homes and
+skid launch context before selecting their own. the pane boundary is required
+because an already running tmux server can carry its own environment. it never changes
+that server or unrelated sessions. the native helper selects its configured
+account explicitly. both forge and manual paths clear the opposite provider-home
+variable before selecting their own.
 
 ## hooks
 
@@ -389,23 +384,22 @@ this corrects the original
 `v0.9.0` source template; stage a new generation and receipt from the corrected
 deployment asset. no published host binary or android artifact changes.
 after argv validation it returns without reading input or host config unless
-`SKIDBLADNIR_AGENT=1` and `HERDR_ENV` is not `1`. the marker is set only at skid's
+`SKIDBLADNIR_AGENT=1`. the marker is set only at skid's
 provider exec boundaries; it does not replace exact pane/tty/pid/start checks.
 
 these hooks register process-lifetime identity only. preserve normal provider
-project instructions/trust and native herdr integrations in existing accounts.
-the separation integrator may remove only proven obsolete skid registrations
-and scripts, matched to the exact historical command or file contents. preserve
+project instructions/trust and unrelated user integrations in existing accounts.
+retirement removes only proven owned obsolete registrations and scripts, matched
+to the exact historical command or file contents. preserve
 unrelated entries in the same hook group, user settings, histories, trust,
 plugins and jarvis cognition; an unknown reference stays for its owner to resolve.
 
 qualify actual hook interaction at `cwd=$HOME` and a shared project, including
 inline and enabled plugin sources. check skid forge/marked-terminal launches
-and ordinary/herdr bare/account launches: each must keep its intended account
-and only publish identity to its owning runtime. exercise herdr entry from a
-marked skid terminal too. trace any wrong-runtime hook execution to its
-registration or launch boundary and fix it there. do not relocate providers,
-remove native herdr integrations, add a shared dispatcher, or suppress project
+and ordinary bare/account launches: each must keep its intended account.
+only marked skid launches publish identity to skid. trace any wrong-runtime hook
+execution to its registration or launch boundary and fix it there. do not relocate providers,
+remove unrelated user integrations, add a shared dispatcher, or suppress project
 settings to mask an interaction. the root-reported live qualification below
 records the restored deployment's boundary checks; those historical checks do
 not qualify the new native interaction contract.
@@ -456,7 +450,7 @@ values are cleared. gateway, terminal and helper boundaries remove inherited
 copies; marked shells do not set it. `SKIDBLADNIR_CLAUDE_COMMAND` is required only
 for native helper dispatch, has no default, is set by the gateway from validated
 profile config, and is removed before exec of claude. inherited values are
-cleared at gateway/forge/terminal boundaries. `HERDR_*` is never a skid input.
+cleared at gateway/forge/terminal boundaries.
 provider home variables retain their upstream meaning with the explicit values
 above; no home is inferred from cwd.
 
@@ -562,12 +556,12 @@ engineering checks. the root operator owns the live evidence; this source work
 performed no live tmux, device or service mutation. the corrected plugin bytes
 are covered by the generation receipt; published archives and pins are unchanged.
 
-costs accepted: shared provider configuration, history and memories across apps;
-changing provider account state in either app is visible in the other. one small
+costs accepted: shared provider configuration, history and memories between skid
+and ordinary launches; changing account state is visible to both. one small
 exec boundary per agent launch; explicit bash/zsh startup integration; private
 helper download/disk per revision; one private claude exec shim; native cli
 requalification on provider upgrades. no separate provider login is introduced.
-ordinary/herdr account state is retained; future provider or project-hook changes
+ordinary account state is retained; future provider or project-hook changes
 need integration qualification. tmux ownership is unchanged. remaining native
 background-job stop qualification is recorded in
 [native-control](issues/restoration-native-control.md). receipt admission,

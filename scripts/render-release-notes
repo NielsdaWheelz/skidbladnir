@@ -61,14 +61,11 @@ render_notes() {
     '3. On the phone, download `skidbladnir-android.apk` from this release and' \
     '   approve installation from the browser when Android asks. Or, with USB debugging' \
     '   already authorized, run `scripts/install-android /path/to/skidbladnir-android.apk`.' \
-    '   The script installs in place without prompts and preserves app data.' \
-    '   When replacing the former herdr-backed build under this package, first' \
-    '   install and pair herdr-mobile separately. Force-stop Skíðblaðnir and clear only its app data' \
-    '   before this installation, then pair Skíðblaðnir with a fresh invitation.' \
+    '   The script installs in place without prompts and preserves app data and existing pairings.' \
     '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
-    '5. Open Skíðblaðnir and tap **Connect**.' \
-    '6. On a computer configured for `skid`, run `scripts/fleet invite`,' \
+    '5. For first enrollment, open Skíðblaðnir and tap **Connect**.' \
+    '   On a computer configured for `skid`, run `scripts/fleet invite`,' \
     '   then scan the fresh QR within five minutes. It works once.' "" \
     '## Update order' "" \
     'Apply and verify all three hosts first; update the phone second. Mixed' \
