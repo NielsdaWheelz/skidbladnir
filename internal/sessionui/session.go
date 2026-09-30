@@ -530,7 +530,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			request.Operation = "shell"
-			m.inform("creating terminal here")
+			m.inform("opening new shell on " + row.label + "…")
 			return m, m.execute(request)
 		case "e":
 			request.Operation = "group"

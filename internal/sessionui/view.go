@@ -189,7 +189,7 @@ func (m *model) footerLines() []string {
 			legend = target(m.pendingName, m.pendingLabel, width)
 		} else if row := m.selectedRow(); row != nil {
 			legend = target(row.session.Name, row.label, width)
-			detail = []string{faint.Styled(ansi.Truncate(m.rowDetail(*row), width, "…"))}
+			detail = m.rowDetailLines(*row, width)
 			if m.tableLength() > m.height-3-len(notices)-len(detail)-len(keys) {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
@@ -275,9 +275,6 @@ func (m *model) hints() [][]hint {
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
 		session = append(session, hint{"e", "group"})
-		if row.session.Connection == nil {
-			session = append(session, hint{"T", "here"})
-		}
 		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
@@ -340,7 +337,7 @@ func target(name, machine string, width int) string {
 	return bold.Styled(ansi.Truncate(singleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(singleLine(machine), half, "…")
 }
 
-func (m *model) rowDetail(row listedRow) string {
+func (m *model) rowDetailLines(row listedRow, width int) []string {
 	current := m.current(&row)
 	facts := m.rowStatus(row)
 	if !row.available {
@@ -365,7 +362,14 @@ func (m *model) rowDetail(row listedRow) string {
 	case "remoteUnknown":
 		where = "remote context unknown"
 	}
-	return singleLine(fmt.Sprintf("%s  ·  %d attached  ·  %s", facts, row.session.AttachedClients, where))
+	status := singleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
+	directory := ansi.Truncate(singleLine(where), width, "…")
+	if row.available && row.session.Connection == nil {
+		action := bold.Styled("shift+t") + " new shell here"
+		directory = tail(singleLine(where), width-ansi.StringWidth(action)-2)
+		directory += strings.Repeat(" ", width-ansi.StringWidth(directory)-ansi.StringWidth(action)) + action
+	}
+	return []string{faint.Styled(ansi.Truncate(status, width, "…")), directory}
 }
 
 func (m *model) bodyLines(height int) []string {

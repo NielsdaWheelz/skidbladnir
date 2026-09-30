@@ -589,8 +589,8 @@ values for working/ready/idle. NO_COLOR strips styling and preserves every label
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
 | bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
-| plain | — | everything that must be read: names, status words, key labels, notices |
-| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable and checking rows, form chevrons |
+| plain | — | everything that must be read: names, status words, key labels, notices, the selected directory beside the new-shell action |
+| faint | 2 | what may recede: group headings, agent, machine, table directories, the rule, the selected session's status facts, unavailable and checking rows, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |
