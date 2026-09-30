@@ -29,8 +29,12 @@ var (
 type hint struct{ key, label string }
 
 func (m *model) View() tea.View {
-	content := ansi.Truncate("resize to at least 80 × 24; escape cancels or quits", max(1, m.width), "…")
-	if m.width >= 80 && m.height >= 24 {
+	var content string
+	if m.width < 80 || m.height < 24 {
+		// the outcome still shows, so a refused ctrl-c says why.
+		lines := append(wrapped("80 × 24 minimum; ctrl-c quits", m.width), m.outcomeLines(m.width)...)
+		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
+	} else {
 		footer := m.footerLines()
 		lines := append([]string{m.header(), ""}, m.bodyLines(m.height-2-len(footer))...)
 		for len(lines) < m.height-len(footer) {
@@ -47,16 +51,127 @@ func (m *model) View() tea.View {
 	return view
 }
 
+// header is the wordmark, then the strip of views in stepping order, then the
+// machine filter at the right edge when one narrows the scope.
 func (m *model) header() string {
-	scope := "agents"
-	if !m.agentsView {
-		scope = fleetclient.GroupFilterHeading(m.groupFilter)
-	}
-	machine := "all machines"
+	machine, room := "", m.width-2-7
 	if m.machine != "" {
-		machine = "machine: " + m.machine
+		machine = ansi.Truncate("machine: "+singleLine(m.machine), 24, "…")
+		room -= ansi.StringWidth(machine) + 2
 	}
-	return wordmark.Styled(" skid ") + "  " + ansi.Truncate(singleLine(scope), 40, "…") + faint.Styled(" · ") + ansi.Truncate(singleLine(machine), 24, "…")
+	tabs, current := []tab{{fixed: "agents"}, {fixed: "all"}}, 0
+	if !m.agentsView {
+		current = 1
+	}
+	for index, filter := range m.groupOptions()[1:] {
+		label := singleLine(filter.Label().String())
+		switch trimmed := strings.TrimSpace(label); {
+		case filter.Kind() == group.FilterUnassigned:
+			tabs = append(tabs, tab{fixed: "unassigned"})
+		case trimmed == "agents" || trimmed == "all" || trimmed == "unassigned" || strings.HasPrefix(trimmed, "group: "):
+			tabs = append(tabs, tab{fixed: "group: ", label: label})
+		default:
+			tabs = append(tabs, tab{label: label})
+		}
+		if !m.agentsView && filter == m.groupFilter {
+			current = index + 2
+		}
+	}
+	line := wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
+	if machine == "" {
+		return line
+	}
+	return line + strings.Repeat(" ", max(0, m.width-2-ansi.StringWidth(line)-ansi.StringWidth(machine))) + machine
+}
+
+// tab is one view in the strip: fixed is skid's own words and never truncates;
+// label is an operator's group label and may.
+type tab struct{ fixed, label string }
+
+// strip lays out tabs in at most room cells, for room ≥ 45. agents and all
+// always show whole. group labels share one cap, the largest from 24 down to 7
+// that fits; while a group is current the fit reserves room for the widest
+// label whole, so stepping between groups keeps the cap. below the floor, the
+// groups farthest from the current view hide behind counted markers. the
+// current label shows whole up to 24 cells unless a long machine filter leaves
+// no room.
+func strip(tabs []tab, current, room int, stepping bool) string {
+	cells := func(t tab, limit int) int {
+		return ansi.StringWidth(t.fixed) + min(ansi.StringWidth(t.label), limit)
+	}
+	marker := func(hidden int) int {
+		if hidden == 0 {
+			return 0
+		}
+		return len(strconv.Itoa(hidden)) + 3
+	}
+	// width measures groups first..last shown: the current one capped at
+	// whole, the others at limit.
+	width := func(limit, whole, first, last int) int {
+		total := cells(tabs[0], 0) + cells(tabs[1], 0) + 4 + marker(first-2) + marker(len(tabs)-1-last)
+		for index := first; index <= last; index++ {
+			if index == current {
+				total += cells(tabs[index], whole) + 2
+			} else {
+				total += cells(tabs[index], limit) + 2
+			}
+		}
+		return total
+	}
+	fits := func(limit, first, last int) bool {
+		reserve := 0
+		if current >= 2 {
+			for _, t := range tabs[2:] {
+				reserve = max(reserve, cells(t, 24)-cells(t, limit))
+			}
+		}
+		return width(limit, limit, first, last)+reserve <= room
+	}
+	limit, first, last := 24, 2, len(tabs)-1
+	for limit > 7 && !fits(limit, first, last) {
+		limit--
+	}
+	for !fits(limit, first, last) && first < last {
+		// hide the group farthest from the current view; ties hide the left
+		// one, and with agents or all current, groups hide from the right.
+		if current-first >= last-current && first != current {
+			first++
+		} else {
+			last--
+		}
+	}
+	// only a current group standing alone can still overflow; its label
+	// gives up the excess.
+	whole := 24
+	if over := width(limit, whole, first, last) - room; over > 0 && current >= 2 {
+		whole = max(1, min(ansi.StringWidth(tabs[current].label), 24)-over)
+	}
+	line := ""
+	for index, t := range tabs {
+		if index >= 2 && (index < first || index > last) {
+			continue
+		}
+		if index == first && first > 2 {
+			line += " ←" + strconv.Itoa(first-2) + " "
+		}
+		size := limit
+		if index == current {
+			size = whole
+		}
+		text := t.fixed + ansi.Truncate(t.label, size, "…")
+		switch {
+		case index == current && stepping:
+			line += here.Styled("‹") + bold.Styled(text) + here.Styled("›")
+		case index == current:
+			line += " " + bold.Styled(text) + " "
+		default:
+			line += " " + text + " "
+		}
+	}
+	if last < len(tabs)-1 {
+		line += " " + strconv.Itoa(len(tabs)-1-last) + "→ "
+	}
+	return line
 }
 
 // footerLines holds notices, the rule naming the session the keys act on, that
@@ -89,18 +204,25 @@ func (m *model) footerLines() []string {
 	return append(lines, keys...)
 }
 
-func (m *model) noticeLines(width int) []string {
+// outcomeLines is the notice, wrapped, in its tone.
+func (m *model) outcomeLines(width int) []string {
 	lines := []string{}
-	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
-	if m.notice != "" {
-		style := plain
-		if m.noticeFailure {
-			style = alarm
-		}
-		for _, line := range wrapped(m.notice, width) {
-			lines = append(lines, style.Styled(line))
-		}
+	if m.notice == "" {
+		return lines
 	}
+	style := plain
+	if m.noticeFailure {
+		style = alarm
+	}
+	for _, line := range wrapped(m.notice, width) {
+		lines = append(lines, style.Styled(line))
+	}
+	return lines
+}
+
+func (m *model) noticeLines(width int) []string {
+	// Outcomes precede host notices: unavailable labels cannot conceal uncertainty.
+	lines := m.outcomeLines(width)
 	if m.unreadFailed {
 		lines = append(lines, faint.Styled("unread unavailable"))
 	}
@@ -181,7 +303,7 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	return [][]hint{session, {{"a", "agents"}, {"←→", "group"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -505,13 +627,13 @@ func (m *model) fitViewports() {
 }
 
 // tableLines lays out one line per row, with a quiet heading wherever the
-// all-groups view enters another group. the agents view names each row's group
+// all view enters another group. the agents view names each row's group
 // in a column instead; machine appears only when all machines are in scope.
 func (m *model) tableLines(width int) []string {
 	name, status, attention, agent, label, machine := 4, 0, 0, 0, 0, 0
 	for _, row := range m.rows {
 		name = max(name, ansi.StringWidth(singleLine(row.session.Name)))
-		status = max(status, len(m.rowStatus(row)))
+		status = max(status, ansi.StringWidth(m.rowStatus(row)))
 		attention = max(attention, ansi.StringWidth(m.replyText(row)))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
 		if m.agentsView {
@@ -553,13 +675,14 @@ func (m *model) tableLines(width int) []string {
 		if m.opensGroup(index) {
 			lines = append(lines, faint.Styled(ansi.Truncate(singleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
 		}
-		gutter, nameStyle, statusStyle := "  ", plain, plain
-		switch state := fleetclient.SessionStatus(row.session); {
+		// the printed status alone keys colour; unavailable rows recede.
+		gutter, nameStyle, statusStyle, printed := "  ", plain, plain, m.rowStatus(row)
+		switch {
 		case !row.available:
 			nameStyle, statusStyle = faint, faint
-		case state == "working":
+		case printed == "working":
 			statusStyle = alive
-		case state == "waiting" || state == "failed":
+		case printed == "waiting" || printed == "failed":
 			statusStyle = alarm
 		}
 		if index == m.cursor {
@@ -577,7 +700,7 @@ func (m *model) tableLines(width int) []string {
 		if directory >= 8 {
 			facts = append(facts, m.whereText(row, directory))
 		}
-		line := gutter + nameStyle.Styled(cell(row.session.Name, name)) + "  " + statusStyle.Styled(cell(m.rowStatus(row), status))
+		line := gutter + nameStyle.Styled(cell(row.session.Name, name)) + "  " + statusStyle.Styled(cell(printed, status))
 		if attention > 0 {
 			line += "  " + bold.Styled(cell(m.replyText(row), attention))
 		}
@@ -590,7 +713,8 @@ func (m *model) tableLines(width int) []string {
 }
 
 // rowStatus names a row without remote actions by why: its host failed a read,
-// or a scoped read is still checking it.
+// or a scoped read is still checking it. otherwise it is the status text alone;
+// the facts line names a tracked conversation.
 func (m *model) rowStatus(row listedRow) string {
 	switch {
 	case !row.available:
@@ -602,14 +726,13 @@ func (m *model) rowStatus(row listedRow) string {
 		return "checking"
 	}
 	if row.session.Conversation != nil {
-		id := row.session.Conversation.Binding.Conversation.ConversationID
-		return "tracking " + fleetclient.ShortConversationID(id) + " · " + fleetclient.SessionStatus(row.session)
+		return fleetclient.SessionStatus(row.session)
 	}
 	current := m.current(&row)
 	switch {
 	case current.Kind == "remoteUnknown":
 		return "status unavailable"
-	case current.Agent == nil && row.session.Conversation == nil:
+	case current.Agent == nil:
 		return "terminal"
 	}
 	return fleetclient.SessionStatus(row.session)

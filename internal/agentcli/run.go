@@ -60,12 +60,13 @@ terminal delivery proves neither completion nor cancellation
 unknown delivery is never replayed; a nonzero exit alone permits no retry
 
 browser (80x24 minimum)
-  up/down (j/k) selects; left/right (h/l) steps through agents/groups
+  up/down (j/k) selects; left/right (h/l) steps through the views on the top row
   a selects agents; m chooses machine; n opens terminal; N opens options
   enter attaches; space shows details; T opens a terminal here; e edits group
   r views replies
   s stops tracked conversation; c stops it and closes; x closes terminal only
-  ctrl-r refreshes; q/escape quits
+  ctrl-r refreshes; escape closes a page; q quits from the table
+  ctrl-c quits from the table or any page unless an operation is in flight
 
 workflow
   skid list --json

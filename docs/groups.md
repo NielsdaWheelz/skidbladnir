@@ -330,10 +330,11 @@ headings are presentation only. `info` includes membership with its other facts.
 ## 7. collection behavior and creation
 
 machine and group are independent selectors. each has an all state; group also
-has unassigned and named. display named picker entries as `group: <label>` to
-distinguish labels from selector states. selected empty labels remain in the
-selected control; other empty labels need not remain suggestions. no collapsed
-group state exists.
+has unassigned and named. the phone displays named picker entries as
+`group: <label>` to distinguish labels from selector states; the desktop strip
+prefixes only colliding labels ([desktop browser §5](desktop-browser.md#5-presentation)).
+selected empty labels remain in the selected control; other empty labels need
+not remain suggestions. no collapsed group state exists.
 
 named group headings also use `group: <label>`; the unassigned heading is
 `unassigned`. the unresolved selected control says `previously selected group`

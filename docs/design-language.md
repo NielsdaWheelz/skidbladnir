@@ -586,20 +586,23 @@ any other theme renders it in that theme's colours.
 | intensity | sgr | carries |
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
-| bold | 1 | the cursor row's name, keys, page titles, the rule's target |
+| bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
 | plain | — | everything that must be read: names, status words, key labels, notices |
-| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable rows |
+| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable and checking rows, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |
-| Gold | bright yellow | you are here: the cursor bar `▌` and the focused form field |
+| Gold | bright yellow | you are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
 | Ember | bright red | blocked or failed status, a failed outcome, the stop/kill question |
 | Moss | bright green | working |
 
-status colour follows §5's sampled status mapping. ember never appears in hints,
-so blocked and failed stay the only red in the table and are found at a glance.
-colour never carries meaning alone: every status is a word, and the cursor is a
-glyph plus bold. faint varies by terminal and disappears under mosh; the hierarchy
+status colour follows §5's sampled status mapping, keyed by the printed word:
+`working` is moss, `waiting` (blocked) and `failed` are ember, every other word
+plain. ember never appears in hints, so blocked and failed stay the only red in
+the table and are found at a glance. colour never carries meaning alone: every
+status is a word; the cursor is a glyph plus bold; the current view is bold,
+between gold `‹ ›` at the table; form chevrons stay faint because the `▌` gutter
+marks focus. faint varies by terminal and disappears under mosh; the hierarchy
 then flattens without losing information. one rule separates content from
 controls. no boxes, fret, runes, icons or motion.
 
