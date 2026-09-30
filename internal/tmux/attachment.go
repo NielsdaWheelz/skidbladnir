@@ -30,11 +30,10 @@ var (
 )
 
 type AttachmentSpec struct {
-	SourceID   string
-	SourceName string
-	Columns    int
-	Rows       int
-	Server     ServerIdentity
+	SourceID string
+	Columns  int
+	Rows     int
+	Server   ServerIdentity
 }
 
 type Attachment struct {
@@ -89,14 +88,14 @@ func attachmentStartFailure(cause, cleanupErr error) error {
 }
 
 func attachmentCommandArguments(spec AttachmentSpec) ([]string, error) {
-	if !sessionIDPattern.MatchString(spec.SourceID) || spec.SourceName == "" || !spec.Server.valid() ||
+	if !sessionIDPattern.MatchString(spec.SourceID) || !spec.Server.valid() ||
 		spec.Columns < terminal.MinimumColumns || spec.Columns > terminal.MaximumColumns || spec.Rows < terminal.MinimumRows || spec.Rows > terminal.MaximumRows {
 		return nil, errors.New("tmux attachment identity or geometry is invalid")
 	}
 	options := "#{&&:#{==:#{window-size},latest},#{&&:#{==:#{destroy-unattached},off},#{==:#{detach-on-destroy},on}}}"
 	return []string{
 		"-u", "-T", "RGB", "if-shell", "-F", "-t", spec.SourceID,
-		mutationIdentityCondition(spec.SourceID, spec.SourceName, spec.Server),
+		andFormatConditions(sessionLifetimeConditions(spec.SourceID, spec.Server)),
 		"if-shell -F -t '" + spec.SourceID + "' '" + options + "' \"attach-session -E -t '" + spec.SourceID + "'\" \"display-message -p -l '" + attachmentConfigurationMarker + "'\"",
 		"display-message -p -l '" + identityMismatchMarker + "'",
 	}, nil

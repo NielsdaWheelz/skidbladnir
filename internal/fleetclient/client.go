@@ -1,4 +1,4 @@
-// Package fleetclient owns direct peer routing, name resolution, and exact references.
+// Package fleetclient owns direct peer routing, handle resolution, and exact references.
 package fleetclient
 
 import (
@@ -28,16 +28,14 @@ const (
 )
 
 type Failure struct {
-	Code         string                     `json:"code"`
-	Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
-	Dispatch     string                     `json:"dispatch"`
+	Code     string `json:"code"`
+	Dispatch string `json:"dispatch"`
 }
 type Result struct {
 	OK bool `json:"ok"`
 	// Values are decoded at the owning transport boundary.
-	Value      any      `json:"result,omitempty"`
-	Error      *Failure `json:"error,omitempty"`
-	Candidates []string `json:"-"`
+	Value any      `json:"result,omitempty"`
+	Error *Failure `json:"error,omitempty"`
 }
 
 func Failed(code, dispatch string) Result {
@@ -173,7 +171,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		case operation == "untrack":
 			path += "/conversation"
 		case operation == "close" && request.TerminalOnly:
-			body["tmuxName"] = observed.Session.Name
 			operation = "terminal_close"
 		case operation == "inspect" || operation == "send" || operation == "read" && request.Mode != "terminal" || operation == "stop" && request.Mode != "terminal" || operation == "close":
 			if ref.Conversation == nil {
@@ -385,6 +382,8 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return fail("inventory_incomplete")
 	}
 	matches := make([]ObservedSession, 0)
+	seen := map[string]bool{}
+	var conversationRef Reference
 	for _, peer := range listed.Peers {
 		for _, row := range peer.Sessions {
 			current, err := DecodeReference(row.Ref)
@@ -395,8 +394,29 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 				if !current.SessionEqual(ref) {
 					continue
 				}
-			} else if row.Name != request.Name {
-				continue
+			} else if strings.HasPrefix(request.Handle, "c-") {
+				if row.Conversation == nil {
+					continue
+				}
+				conversation := row.Conversation.Binding.Conversation
+				tuple, _ := json.Marshal([]string{peer.Machine, string(conversation.Provider), string(conversation.ProfileKey), conversation.HistoryScope, conversation.ConversationID})
+				if seen[string(tuple)] {
+					continue
+				}
+				seen[string(tuple)] = true
+				if conversationHandle(peer.Machine, conversation) != request.Handle {
+					continue
+				}
+				conversationRef = Reference{Machine: peer.Machine, Conversation: row.Conversation}
+			} else {
+				key := Reference{Machine: current.Machine, TmuxID: current.TmuxID, IdentityToken: current.IdentityToken}.Encode()
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				if terminalHandle(current) != request.Handle {
+					continue
+				}
 			}
 			if request.Operation == "info" && row.Connection == nil {
 				current := row.Current(peer)
@@ -409,20 +429,33 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		if request.Ref != "" {
 			return fail("SessionIdentityMismatch")
 		}
-		return fail("name_not_found")
+		return fail("handle_not_found")
 	}
 	if len(matches) > 1 {
-		result := Failed("name_ambiguous", "not_sent")
-		for _, match := range matches {
-			result.Candidates = append(result.Candidates, match.Label+" / "+match.Session.Name)
-		}
-		return Reference{}, ObservedSession{}, &result
+		return fail("handle_ambiguous")
+	}
+	if conversationRef.Conversation != nil {
+		return conversationRef, ObservedSession{}, nil
 	}
 	observed := matches[0]
 	if request.Ref == "" {
 		ref, _ = DecodeReference(observed.Session.Ref)
 	}
 	return ref, observed, nil
+}
+
+// Capture resolves a target once without dispatching its operation.
+func (client *Client) Capture(ctx context.Context, request Request) (Reference, *Failure) {
+	if !request.Valid() || request.Operation == "list" || request.Operation == "start" {
+		return Reference{}, &Failure{Code: "invalid_input", Dispatch: "not_sent"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	ref, _, failure := client.resolve(ctx, request)
+	if failure != nil {
+		return Reference{}, failure.Error
+	}
+	return ref, nil
 }
 
 // OpenTerminal shares the configured transport and identity binding with control calls.
@@ -572,10 +605,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
 	var value *struct {
-		Code         string                     `json:"code"`
-		Message      string                     `json:"message"`
-		Dispatch     string                     `json:"dispatch,omitempty"`
-		Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		Dispatch string `json:"dispatch,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -587,7 +619,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 	} else if knownRejection(value.Code) {
 		dispatch = "not_sent"
 	}
-	return &Failure{Code: value.Code, Dispatch: dispatch, Conversation: value.Conversation}
+	return &Failure{Code: value.Code, Dispatch: dispatch}
 }
 
 func knownRejection(code string) bool {

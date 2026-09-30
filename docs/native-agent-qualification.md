@@ -3,6 +3,12 @@
 2026-09-29 · stock-provider source qualified; signed v0.10.6 verified, pinned and
 installed on all three hosts and android. retirement boundaries below pass;
 broader phone-native interaction retains its separate acceptance scope.
+
+source amendment: the named-thread creation/adoption evidence below qualifies
+v0.10.6, not the amended launch: [automatic naming](automatic-session-names.md) removes provider
+naming and pre-creation, starts codex remotely without a reserved id, and requires
+explicit association. its qualification owns the amended launch boundary;
+that source change is not yet installed.
 [contract](native-agent-observation.md) owns target behavior. new evidence below
 applies only to its named boundary; compilation is not behavioral acceptance.
 
@@ -57,7 +63,7 @@ behavioral harness.
   started no daemon. account routing and the unqualified-helper refusal passed.
 - actual empty-thread adoption exposed two defects: remote resume rejects
   `--yolo`, and naming a paginated thread persists metadata without the tui's
-  required rollout. creation now saves policy at thread/start, names the thread,
+  required rollout. that qualified source saved policy at thread/start, names the thread,
   prepares that exact id through native resume, then launches the tui without
   permission overrides. naming-only failed on both platforms; no hidden turn,
   fabricated history or filesystem patch was used to repair it.

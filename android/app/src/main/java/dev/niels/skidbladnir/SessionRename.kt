@@ -56,6 +56,8 @@ internal sealed interface RenamePhase {
 internal data class RenameState(
     val target: SessionTarget,
     val draft: String,
+    val expectedNaming: SessionNaming,
+    val submittedNaming: SessionNaming? = null,
     val phase: RenamePhase,
     val error: String?,
 )
@@ -71,14 +73,15 @@ internal data class TerminalRenameInventoryResult(
     val detachTransport: Boolean,
 )
 
-internal const val RENAME_OUTCOME_UNKNOWN = "Rename outcome unknown. Checking tmux."
-internal const val RENAME_STALE_EDIT = "The tmux name changed. Review and try again."
+internal const val RENAME_OUTCOME_UNKNOWN = "name change outcome unknown. checking tmux."
+internal const val RENAME_STALE_EDIT = "the session name changed. review and save again."
 
 internal fun isValidTmuxName(candidate: String): Boolean = tmuxNamePattern.matches(candidate)
 
 internal fun beginRename(target: SessionTarget): RenameState = RenameState(
     target = target,
     draft = target.session.tmuxName,
+    expectedNaming = target.session.naming(),
     phase = RenamePhase.Editing(),
     error = null,
 )
@@ -96,17 +99,34 @@ internal fun renameSubmissionAdmissible(
     val phase = state.phase as? RenamePhase.Editing ?: return false
     return terminalActionsAdmissible && !phase.stale &&
         sameSessionAuthority(state.target, terminalTarget) &&
-        state.draft != state.target.session.tmuxName && isValidTmuxName(state.draft)
+        (state.expectedNaming == SessionNaming.Automatic || state.draft != state.target.session.tmuxName) &&
+        isValidTmuxName(state.draft)
 }
+
+internal fun automaticSubmissionAdmissible(
+    state: RenameState,
+    terminalTarget: SessionTarget,
+    terminalActionsAdmissible: Boolean,
+): Boolean = state.phase is RenamePhase.Editing &&
+    terminalActionsAdmissible && sameSessionAuthority(state.target, terminalTarget) &&
+    state.expectedNaming is SessionNaming.Manual
 
 internal fun beginRenameSending(
     state: RenameState,
     terminalTarget: SessionTarget,
     terminalActionsAdmissible: Boolean,
-): RenameState? = if (renameSubmissionAdmissible(state, terminalTarget, terminalActionsAdmissible)) {
-    state.copy(phase = RenamePhase.Sending, error = null)
-} else {
-    null
+    automatic: Boolean = false,
+): RenameState? {
+    val admitted = if (automatic) {
+        automaticSubmissionAdmissible(state, terminalTarget, terminalActionsAdmissible)
+    } else {
+        renameSubmissionAdmissible(state, terminalTarget, terminalActionsAdmissible)
+    }
+    return if (admitted) state.copy(
+        phase = RenamePhase.Sending,
+        submittedNaming = if (automatic) SessionNaming.Automatic else SessionNaming.Manual(state.draft),
+        error = null,
+    ) else null
 }
 
 internal fun dismissRename(state: RenameState): RenameState? = when (val phase = state.phase) {
@@ -130,7 +150,6 @@ internal fun completeRenameHttp(
             ApiErrorCode.InvalidRequest,
             ApiErrorCode.RequestTooLarge,
             ApiErrorCode.SessionNameInvalid,
-            ApiErrorCode.SessionNameConflict,
             -> RenameHttpTransition(
                 state = state.copy(
                     phase = RenamePhase.Editing(),
@@ -138,6 +157,16 @@ internal fun completeRenameHttp(
                 ),
                 clearMutationFence = true,
                 requireInventoryRead = false,
+            )
+            ApiErrorCode.SessionNameConflict,
+            ApiErrorCode.SessionNameChanged,
+            -> RenameHttpTransition(
+                state = state.copy(
+                    phase = RenamePhase.Editing(),
+                    error = gatewayFailureMessage(failure),
+                ),
+                clearMutationFence = false,
+                requireInventoryRead = true,
             )
             ApiErrorCode.Unauthenticated,
             ApiErrorCode.MachineIdentityMismatch,
@@ -214,20 +243,23 @@ internal fun reconcileTerminalRename(
     }
     val resolvedRename = when (val phase = rename.phase) {
         RenamePhase.Sending -> rename
-        is RenamePhase.Editing -> if (sameSessionAuthority(rename.target, authoritativeTarget)) {
-            rename
+        is RenamePhase.Editing -> if (rename.expectedNaming == authoritative.naming()) {
+            rename.copy(target = authoritativeTarget)
         } else {
             rename.copy(
                 target = authoritativeTarget,
-                phase = RenamePhase.Editing(stale = true),
+                expectedNaming = authoritative.naming(),
+                phase = RenamePhase.Editing(),
                 error = RENAME_STALE_EDIT,
             )
         }
         is RenamePhase.Reconciling -> when {
-            authoritative.tmuxName == rename.draft -> null
+            authoritative.naming() == rename.submittedNaming -> null
             phase.sheetVisible -> rename.copy(
                 target = authoritativeTarget,
-                phase = RenamePhase.Editing(stale = true),
+                expectedNaming = authoritative.naming(),
+                submittedNaming = null,
+                phase = RenamePhase.Editing(),
                 error = RENAME_STALE_EDIT,
             )
             else -> null
@@ -242,7 +274,6 @@ internal fun reconcileTerminalRename(
 private fun sameSessionAuthority(first: SessionTarget, second: SessionTarget): Boolean =
     first.machineHandle == second.machineHandle &&
         first.session.tmuxId == second.session.tmuxId &&
-        first.session.tmuxName == second.session.tmuxName &&
         first.session.identityToken == second.session.identityToken
 
 @Composable
@@ -323,13 +354,17 @@ internal fun SessionRenameSheet(
     onDraftChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: () -> Unit,
+    onAutomatic: () -> Unit,
 ) {
     val phase = state.phase
     if (phase is RenamePhase.Reconciling && !phase.sheetVisible) return
     val fieldsEnabled = phase is RenamePhase.Editing
     val canSubmit = renameSubmissionAdmissible(state, terminalTarget, terminalActionsAdmissible)
+    val errorMessage = state.error ?: if (!isValidTmuxName(state.draft)) {
+        apiErrorMessage(ApiErrorCode.SessionNameInvalid)
+    } else null
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(state.target, fieldsEnabled) {
+    LaunchedEffect(Unit) {
         if (fieldsEnabled) focusRequester.requestFocus()
     }
     ModalBottomSheet(
@@ -348,7 +383,7 @@ internal fun SessionRenameSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Rename tmux session",
+                text = "rename session",
                 style = MaterialTheme.typography.headlineSmall,
                 fontFamily = NidavellirType.Display,
                 fontWeight = FontWeight.SemiBold,
@@ -363,8 +398,8 @@ internal fun SessionRenameSheet(
                 onValueChange = onDraftChange,
                 enabled = fieldsEnabled,
                 singleLine = true,
-                isError = state.error != null,
-                label = { Text("Tmux name") },
+                isError = errorMessage != null,
+                label = { Text("session name") },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = false,
@@ -377,11 +412,19 @@ internal fun SessionRenameSheet(
                     .focusRequester(focusRequester),
             )
             Text(
-                text = "1–64 letters, numbers, underscores, or hyphens",
+                text = "saving a name stops automatic naming.",
                 color = Muted,
                 style = MaterialTheme.typography.labelSmall,
             )
-            state.error?.let { error ->
+            if (state.expectedNaming == SessionNaming.Automatic) {
+                Text("follows the active pane's terminal title.", color = Muted)
+            } else {
+                OutlinedButton(
+                    onClick = onAutomatic,
+                    enabled = automaticSubmissionAdmissible(state, terminalTarget, terminalActionsAdmissible),
+                ) { Text("use automatic title") }
+            }
+            errorMessage?.let { error ->
                 Text(
                     text = error,
                     color = noticeToneColor(NoticeTone.Failure),
@@ -408,7 +451,7 @@ internal fun SessionRenameSheet(
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("Rename")
+                    Text("save name")
                 }
             }
         }

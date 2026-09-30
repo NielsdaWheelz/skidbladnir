@@ -350,7 +350,7 @@ func (m *model) bodyLines(height int) []string {
 				focusEnd = len(lines)
 			}
 		}
-		lines = append(lines, "")
+		lines = append(lines, "", "leave blank to follow the terminal title.")
 		if !m.createAvailable() {
 			lines = append(lines, "host unavailable; create disabled")
 		}

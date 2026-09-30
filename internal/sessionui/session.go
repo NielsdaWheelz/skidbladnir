@@ -233,9 +233,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			} else if message.result.Error.Code == "AgentUnavailable" {
 				failureText = "this action is unavailable for this session."
 			}
-			if message.result.Error.Conversation != nil {
-				failureText += " created conversation: " + message.result.Error.Conversation.ConversationID + "; terminal creation unconfirmed"
-			}
+
 			m.fail(failureText)
 			failure := message.result.Error
 			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
