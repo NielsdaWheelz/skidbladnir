@@ -43,8 +43,8 @@ internal fun ConversationSheet(state: ConversationSheetState, controller: Skidbl
             Text("native output for this conversation. opening clears only replies known at opening; later replies stay unread.", color = Muted)
             if (state.loading) Text("reading replies", color = Gold)
             state.output?.let { output ->
-                val content = sessionStatusContent(output.observation.status, fresh = true)
-                Text(content.label, color = Muted, fontFamily = NidavellirType.Data)
+                val label = conversationStatusLabel(output.observation.status)
+                Text(label, color = Muted, fontFamily = NidavellirType.Data)
                 Text(when (output.outputState) {
                     "partial" -> "partial output"
                     "finalized" -> "finalized output"

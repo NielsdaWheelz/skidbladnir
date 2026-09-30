@@ -29,9 +29,10 @@ const (
 )
 
 type liveTerminal struct {
-	sessionID string
-	cancel    context.CancelFunc
-	done      chan error
+	sessionID     string
+	identityToken string
+	cancel        context.CancelFunc
+	done          chan error
 }
 
 type terminalEnd uint8
@@ -75,9 +76,16 @@ func (gateway *Gateway) openTerminal(writer http.ResponseWriter, request *http.R
 	connection.SetReadLimit(-1)
 
 	terminalContext, cancel := context.WithCancel(context.Background())
-	gateway.terminalLifecycle.Lock()
-	registration, registered := gateway.registerLiveTerminal(id, cancel)
-	gateway.terminalLifecycle.Unlock()
+	admissionContext, cancelAdmission := context.WithTimeout(request.Context(), terminalInitialResizeTimeout)
+	admissionErr := gateway.lockTerminalLifecycle(admissionContext)
+	cancelAdmission()
+	if admissionErr != nil {
+		cancel()
+		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
+		return
+	}
+	registration, registered := gateway.registerLiveTerminal(id, identityToken, cancel)
+	<-gateway.terminalLifecycle
 	if !registered {
 		cancel()
 		writeTerminalErrorAndClose(request.Context(), connection, terminal.ErrorReconnectRequired)
@@ -498,7 +506,7 @@ func waitForTerminalWriter(ctx context.Context, writerDone <-chan error) {
 	}
 }
 
-func (gateway *Gateway) registerLiveTerminal(sessionID string, cancel context.CancelFunc) (uint64, bool) {
+func (gateway *Gateway) registerLiveTerminal(sessionID, identityToken string, cancel context.CancelFunc) (uint64, bool) {
 	gateway.liveMutex.Lock()
 	defer gateway.liveMutex.Unlock()
 	if gateway.closing {
@@ -509,7 +517,7 @@ func (gateway *Gateway) registerLiveTerminal(sessionID string, cancel context.Ca
 		panic("terminal registration sequence exhausted") // justify-defect: uint64 exhaustion is unreachable for one-user process lifetime.
 	}
 	key := gateway.nextLiveTerminal
-	gateway.liveTerminals[key] = &liveTerminal{sessionID: sessionID, cancel: cancel, done: make(chan error, 1)}
+	gateway.liveTerminals[key] = &liveTerminal{sessionID: sessionID, identityToken: identityToken, cancel: cancel, done: make(chan error, 1)}
 	return key, true
 }
 
@@ -524,24 +532,32 @@ func (gateway *Gateway) unregisterLiveTerminal(key uint64, cleanupErr error) {
 	gateway.liveMutex.Unlock()
 }
 
-func (gateway *Gateway) closeLiveTerminals(ctx context.Context, sessionID string) error {
+func (gateway *Gateway) closeLiveTerminals(ctx context.Context, sessionID, identityToken string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	gateway.liveMutex.Lock()
 	selected := make([]*liveTerminal, 0)
 	for _, terminalSession := range gateway.liveTerminals {
-		if terminalSession.sessionID == sessionID {
+		if terminalSession.sessionID == sessionID && terminalSession.identityToken == identityToken {
 			selected = append(selected, terminalSession)
 		}
 	}
 	gateway.liveMutex.Unlock()
 	for _, terminalSession := range selected {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		terminalSession.cancel()
 	}
 	return waitForLiveTerminals(ctx, selected)
 }
 
 func (gateway *Gateway) CloseLiveTerminals(ctx context.Context) error {
-	gateway.terminalLifecycle.Lock()
-	defer gateway.terminalLifecycle.Unlock()
+	if err := gateway.lockTerminalLifecycle(ctx); err != nil {
+		return err
+	}
+	defer func() { <-gateway.terminalLifecycle }()
 	gateway.liveMutex.Lock()
 	gateway.closing = true
 	selected := make([]*liveTerminal, 0, len(gateway.liveTerminals))

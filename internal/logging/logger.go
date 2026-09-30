@@ -36,7 +36,8 @@ func (method Method) valid() bool {
 type Route string
 
 const (
-	RouteAgentControl      Route = "/v1/sessions/{tmuxId}/agent/{operation}"
+	RouteTerminalControl   Route = "/v1/sessions/{tmuxId}/terminal/{operation}"
+	RouteConversations     Route = "/v1/conversations/{operation}"
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
@@ -54,7 +55,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteAgentControl, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
+	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false
@@ -64,6 +65,9 @@ func (route Route) valid() bool {
 type ErrorCode string
 
 const (
+	ErrorTerminalTargetChanged       ErrorCode = "TerminalTargetChanged"
+	ErrorTerminalUnavailable         ErrorCode = "TerminalUnavailable"
+	ErrorTerminalInputBlocked        ErrorCode = "TerminalInputBlocked"
 	ErrorAgentTargetStale            ErrorCode = "AgentTargetStale"
 	ErrorAgentUnavailable            ErrorCode = "AgentUnavailable"
 	ErrorHistoryChanged              ErrorCode = "HistoryChanged"
@@ -93,7 +97,7 @@ const (
 
 func (code ErrorCode) valid() bool {
 	switch code {
-	case ErrorAgentTargetStale, ErrorAgentUnavailable, ErrorHistoryChanged, ErrorAgentInputInvalid, ErrorUnauthenticated,
+	case ErrorTerminalTargetChanged, ErrorTerminalUnavailable, ErrorTerminalInputBlocked, ErrorAgentTargetStale, ErrorAgentUnavailable, ErrorHistoryChanged, ErrorAgentInputInvalid, ErrorUnauthenticated,
 		ErrorInvalidRequest,
 		ErrorRequestTooLarge,
 		ErrorWorkingDirectoryInvalid,
@@ -167,6 +171,7 @@ const (
 	eventSessionKilled          eventKind = "Session.Killed"
 	eventPressureSampled        eventKind = "Pressure.Sampled"
 	eventAuthenticationRejected eventKind = "Authentication.Rejected"
+	eventTerminalCleanupFailed  eventKind = "Terminal.CleanupFailed"
 )
 
 type Event struct {
@@ -185,6 +190,8 @@ type Event struct {
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
+
+func NewTerminalCleanupFailed() Event { return Event{kind: eventTerminalCleanupFailed} }
 
 func NewRequestCompleted(method Method, route Route, status int, duration time.Duration, errorCode ErrorCode) (Event, error) {
 	event := Event{kind: eventRequestCompleted, method: method, route: route, status: status, duration: duration, errorCode: errorCode}
@@ -210,8 +217,8 @@ func NewSessionCreated(tmuxID, tmuxName string, launchProfile agentruntime.Profi
 	return event, nil
 }
 
-func NewSessionKilled(tmuxID, tmuxName string, duration time.Duration) (Event, error) {
-	event := Event{kind: eventSessionKilled, tmuxID: tmuxID, tmuxName: tmuxName, duration: duration}
+func NewSessionKilled(tmuxID string, duration time.Duration) (Event, error) {
+	event := Event{kind: eventSessionKilled, tmuxID: tmuxID, duration: duration}
 	if !event.valid() {
 		return Event{}, errors.New("invalid session-killed log event")
 	}
@@ -236,7 +243,7 @@ func NewAuthenticationRejected(route Route) (Event, error) {
 
 func (event Event) valid() bool {
 	switch event.kind {
-	case eventGatewayStarted:
+	case eventGatewayStarted, eventTerminalCleanupFailed:
 		return true
 	case eventRequestCompleted:
 		if !event.method.valid() || !event.route.valid() || event.status < 100 || event.status > 599 || event.duration < 0 {
@@ -249,7 +256,7 @@ func (event Event) valid() bool {
 		_, profileErr := agentruntime.ParseProfileKey(string(event.launchProfile))
 		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
 	case eventSessionKilled:
-		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && event.duration >= 0
+		return validTmuxID(event.tmuxID) && event.duration >= 0
 	case eventPressureSampled:
 		if !event.level.valid() || event.duration < 0 {
 			return false
@@ -294,7 +301,7 @@ func (logger Logger) Write(event Event) error {
 	}
 	fields := map[string]any{"event.name": event.kind}
 	switch event.kind {
-	case eventGatewayStarted:
+	case eventGatewayStarted, eventTerminalCleanupFailed:
 	case eventRequestCompleted:
 		fields["http.request.method"] = event.method
 		fields["http.route"] = event.route
@@ -315,7 +322,6 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionKilled:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
-		fields["skidbladnir.session.tmux_name"] = event.tmuxName
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventPressureSampled:
 		fields["skidbladnir.pressure.level"] = event.level

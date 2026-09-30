@@ -200,6 +200,8 @@ internal fun DashboardMain(
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
                 onClose = controller::requestClose,
+                onStop = controller::stopTerminal,
+                onTerminalClose = controller::requestTerminalClose,
                 onGroup = controller::openGroupEditor,
                 onReplies = controller::openReplies,
             )
@@ -210,7 +212,7 @@ internal fun DashboardMain(
         // every dashboard state including zero machines, where it is cold.
         // Absence is displayed, not hidden. The 16dp margin is the wrapper's,
         // not the seal's — padding threaded into ForgeSeal would grow its
-        // semantics bounds past its ink, and the grid's bottom inset below is
+        // semantics bounds past its ink, and the grid's viewport clearance below is
         // measured against those bounds.
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             ForgeSeal(canForge = canForge, onClick = controller::openForge)
@@ -234,6 +236,8 @@ internal fun DashboardDwarfCollection(
     onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
+    onStop: (SessionTarget) -> Unit,
+    onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
     onReplies: (SessionTarget) -> Unit,
 ) {
@@ -270,6 +274,8 @@ internal fun DashboardDwarfCollection(
                 motionEnabled,
                 onOpen,
                 onClose,
+                onStop,
+                onTerminalClose,
                 onGroup,
                 onReplies,
             )
@@ -284,6 +290,8 @@ internal fun DashboardDwarfCollection(
             motionEnabled,
             onOpen,
             onClose,
+            onStop,
+            onTerminalClose,
             onGroup,
             onReplies,
         )
@@ -375,13 +383,16 @@ private fun DashboardDwarfGrid(
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
+    onStop: (SessionTarget) -> Unit,
+    onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
     onReplies: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
-    val bottomPadding = 84.dp
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
+    // Reserve the seal's 16dp margin + 56dp target + 12dp gap outside the scroll
+    // viewport. Trailing content padding alone lets visible controls scroll under it.
+    BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 84.dp)) {
+        val emptyItemHeight = (maxHeight - topPadding).coerceAtLeast(0.dp)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(170.dp),
             modifier = Modifier.fillMaxSize(),
@@ -390,7 +401,6 @@ private fun DashboardDwarfGrid(
                 start = 12.dp,
                 top = topPadding,
                 end = 12.dp,
-                bottom = bottomPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -437,6 +447,9 @@ private fun DashboardDwarfGrid(
                                 motionEnabled = motionEnabled,
                                 onOpen = { onOpen(visible.target) },
                                 onClose = { onClose(visible.target) },
+                                onStop = { onStop(visible.target) },
+                                onTerminalClose = { onTerminalClose(visible.target) },
+                                terminalControlPending = state.terminalControlPending,
                                 onGroup = { onGroup(visible.target) },
                                 onReplies = { onReplies(visible.target) },
                             )
@@ -587,8 +600,7 @@ internal fun CloseConfirmation(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val stoppingAgent = state.target.session.conversation != null && !state.terminalOnly
-    val verb = if (stoppingAgent) "stop tracked conversation and close terminal" else "close terminal only"
+    val verb = if (state.terminalOnly) TERMINAL_ONLY_CLOSE_ACTION else TERMINAL_CLOSE_ACTION
     // No ornament near destructive surfaces (design-language.md §7): the close
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
@@ -600,8 +612,7 @@ internal fun CloseConfirmation(
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "stop tracked conversation ${state.target.session.conversation?.binding?.conversation?.conversationId}, then close this terminal. pending input may remain. saved provider history is retained."
-                else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
+                else -> closeConfirmationBody(state.machine.label, state.target, state.terminalOnly)
             })
         },
         confirmButton = {

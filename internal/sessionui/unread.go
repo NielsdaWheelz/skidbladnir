@@ -32,7 +32,7 @@ func (m *model) recoverReplies() tea.Cmd {
 			continue
 		}
 		ref, _ := fleetclient.DecodeReference(row.session.Ref)
-		conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID)
+		conversation, found := m.unreadSnapshot.Conversation(ref, row.session)
 		if !found {
 			continue
 		}
@@ -73,7 +73,7 @@ func (m *model) receiveReplies(message repliesMsg) {
 			continue
 		}
 		current, _ := fleetclient.DecodeReference(row.session.Ref)
-		conversation, found := m.unreadSnapshot.Conversation(current, row.session.ActivePaneID)
+		conversation, found := m.unreadSnapshot.Conversation(current, row.session)
 		if current.SessionEqual(message.ref) && found && conversation == message.conversation {
 			represented = true
 			break
@@ -132,7 +132,7 @@ func (m *model) acknowledgement(request fleetclient.Request) func() error {
 		if !current.SessionEqual(ref) {
 			continue
 		}
-		conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID)
+		conversation, found := m.unreadSnapshot.Conversation(ref, row.session)
 		if !found {
 			return nil
 		}
@@ -149,7 +149,7 @@ func (m *model) acknowledgement(request fleetclient.Request) func() error {
 
 func (m *model) replyText(row listedRow) string {
 	ref, _ := fleetclient.DecodeReference(row.session.Ref)
-	conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID)
+	conversation, found := m.unreadSnapshot.Conversation(ref, row.session)
 	if !found {
 		return ""
 	}
@@ -158,21 +158,14 @@ func (m *model) replyText(row listedRow) string {
 	if !found || len(record.UnreadIDs) == 0 {
 		return ""
 	}
-	if conversation.Provider == agentruntime.ProviderClaude && ref.Conversation == nil {
+	if conversation.Provider == agentruntime.ProviderClaude && row.session.Conversation == nil {
 		return "new reply · previous agent"
 	}
 	return "new reply"
 }
 
-func (m *model) replyReference(row listedRow) (fleetclient.Reference, bool) {
+func (m *model) replyAvailable(row listedRow) bool {
 	ref, _ := fleetclient.DecodeReference(row.session.Ref)
-	if ref.Conversation != nil {
-		return ref, ref.Conversation.Methods.Read == "native"
-	}
-	conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID)
-	if !found {
-		return ref, false
-	}
-	ref.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}, Status: agentruntime.Status{State: "unknown", Source: "unavailable"}, Methods: agentruntime.Methods{Read: "native", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}}
-	return ref, true
+	_, found := m.unreadSnapshot.Conversation(ref, row.session)
+	return found
 }

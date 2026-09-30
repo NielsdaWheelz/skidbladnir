@@ -107,7 +107,7 @@ func (m *model) noticeLines(width int) []string {
 	unavailable := false
 	for _, row := range m.rows {
 		ref, _ := fleetclient.DecodeReference(row.session.Ref)
-		if conversation, found := m.unreadSnapshot.Conversation(ref, row.session.ActivePaneID); found && m.repliesUnavailable[fleetclient.ReplyKey(row.machine, conversation)] {
+		if conversation, found := m.unreadSnapshot.Conversation(ref, row.session); found && m.repliesUnavailable[fleetclient.ReplyKey(row.machine, conversation)] {
 			unavailable = true
 			break
 		}
@@ -133,9 +133,9 @@ func (m *model) hints() [][]hint {
 	case "confirm":
 		effect := "close terminal only"
 		if m.pending.Operation == "stop" {
-			effect = "stop tracked conversation"
+			effect = "send interrupt"
 		} else if !m.pending.TerminalOnly {
-			effect = "stop tracked conversation and close terminal"
+			effect = "interrupt and close terminal"
 		}
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
 	case "machine-picker":
@@ -163,16 +163,14 @@ func (m *model) hints() [][]hint {
 	session := []hint{}
 	if row := m.selectedRow(); row != nil && row.available {
 		session = append(session, hint{"enter", "attach"}, hint{"space", "info"})
-		if _, readable := m.replyReference(*row); readable {
+		if m.replyAvailable(*row) {
 			session = append(session, hint{"r", "view replies"})
 		}
 		session = append(session, hint{"e", "group"})
 		if row.session.Connection == nil {
 			session = append(session, hint{"T", "here"})
 		}
-		if row.session.Conversation != nil && row.session.Conversation.Methods.Stop == "native" {
-			session = append(session, hint{"s", "stop tracked conversation"}, hint{"c", "stop tracked conversation and close terminal"})
-		}
+		session = append(session, hint{"s", "send interrupt"}, hint{"c", "interrupt and close terminal"})
 		session = append(session, hint{"x", "close terminal only"})
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
@@ -237,22 +235,15 @@ func target(name, machine string, width int) string {
 
 func (m *model) rowDetail(row listedRow) string {
 	current := m.current(&row)
-	facts := "terminal"
-	if row.session.ActiveCommand != "" {
+	facts := fleetclient.SessionStatusDetail(row.session)
+	if row.session.Agent == nil && row.session.ActiveCommand != "" {
 		facts += ": " + row.session.ActiveCommand
-	}
-	if current.Agent != nil || row.session.Conversation != nil {
-		facts = fleetclient.SessionStatus(row.session)
-	}
-	if row.session.Conversation != nil {
-		id := row.session.Conversation.Binding.Conversation.ConversationID
-		facts = "tracking " + fleetclient.ShortConversationID(id) + " · " + facts
 	}
 	if reply := m.replyText(row); reply != "" {
 		facts += " · " + reply
 	}
 	if !row.available {
-		facts = m.rowStatus(row) + "; last observed " + facts
+		facts = m.rowStatus(row) + "; last observed: " + facts
 	}
 	where := current.CWD
 	if where == "" {
@@ -271,17 +262,19 @@ func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
 	case "confirm":
-		action, effect := "close terminal only", "close this session. work shared through another session may survive."
+		action, effect := "close terminal only", "close this entire session without interruption. work shared elsewhere or running remotely may continue."
 		if m.pending.Operation == "stop" {
-			action, effect = "stop tracked conversation", "halt captured current work and retain the terminal. pending input may remain; saved history is retained."
+			action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
 		}
 		if m.pending.Operation == "close" && !m.pending.TerminalOnly {
-			action, effect = "stop tracked conversation and close terminal", "halt and terminal closure have separate outcomes. pending input may remain; saved history is retained."
+			action, effect = "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
 		}
 		lines := []string{}
 		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {
 			lines = append(lines, danger.Styled(line))
 		}
+		ref, _ := fleetclient.DecodeReference(m.pending.Ref)
+		lines = append(lines, wrapped("selected pane "+ref.PaneID+" · terminal host "+singleLine(m.pendingLabel), width)...)
 		return window(append(lines, wrapped(effect, width)...), 0, 0, height)
 	case "machine-picker":
 		lines := []string{bold.Styled("machine"), ""}
@@ -559,7 +552,7 @@ func (m *model) tableLines(width int) []string {
 			nameStyle, statusStyle = faint, faint
 		case state == "working":
 			statusStyle = alive
-		case state == "waiting" || state == "failed":
+		case state == "waiting":
 			statusStyle = alarm
 		}
 		if index == m.cursor {
@@ -601,17 +594,7 @@ func (m *model) rowStatus(row listedRow) string {
 		}
 		return "checking"
 	}
-	if row.session.Conversation != nil {
-		id := row.session.Conversation.Binding.Conversation.ConversationID
-		return "tracking " + fleetclient.ShortConversationID(id) + " · " + fleetclient.SessionStatus(row.session)
-	}
-	current := m.current(&row)
-	switch {
-	case current.Kind == "remoteUnknown":
-		return "status unavailable"
-	case current.Agent == nil && row.session.Conversation == nil:
-		return "terminal"
-	}
+
 	return fleetclient.SessionStatus(row.session)
 }
 

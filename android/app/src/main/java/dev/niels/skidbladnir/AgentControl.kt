@@ -87,24 +87,19 @@ internal fun JsonElement.requireNativeValues() {
 internal fun nativeJsonObject(encoded: String): JsonObject = strictJsonObject(encoded).also { it.requireNativeValues() }
 
 @Serializable private data class ConversationStopRequest(val conversation: Conversation, val turn: AgentTurn? = null)
-@Serializable private data class ConversationCloseRequest(
-    val identityToken: String, val method: AgentMethod, val conversation: Conversation, val turn: AgentTurn? = null,
-)
+@Serializable private data class ConversationInspectRequest(val conversation: Conversation)
 @Serializable private data class ConversationReadRequest(val conversation: Conversation, val scope: String, val maxBytes: Int)
 internal fun encodeConversationStopRequest(runtime: ConversationRuntime): String =
     productJson.encodeToString(ConversationStopRequest.serializer(), ConversationStopRequest(runtime.binding.conversation, runtime.turn?.takeIf { it.state == "inProgress" }))
-internal fun encodeAgentControlRequest(target: SessionTarget): String {
-    val runtime = requireNotNull(target.session.conversation)
-    require(runtime.methods.stop == AgentMethod.Native)
-    return productJson.encodeToString(ConversationCloseRequest.serializer(), ConversationCloseRequest(
-        target.session.identityToken, AgentMethod.Native, runtime.binding.conversation, runtime.turn?.takeIf { it.state == "inProgress" },
-    ))
+internal fun encodeConversationInspectRequest(conversation: Conversation): String =
+    productJson.encodeToString(ConversationInspectRequest.serializer(), ConversationInspectRequest(conversation))
+internal fun decodeConversationRuntime(encoded: String): ConversationRuntime = decodeProtocol {
+    productJson.decodeFromJsonElement<ConversationRuntime>(nativeJsonObject(encoded))
 }
 internal fun encodeConversationReadRequest(conversation: Conversation): String =
     productJson.encodeToString(ConversationReadRequest.serializer(), ConversationReadRequest(conversation, "latest", 16 * 1024))
 
 @Serializable internal data class AgentStopResult(val method: AgentMethod, val outcome: String)
-@Serializable internal data class AgentCloseResult(val agent: String, val terminal: String, val reason: String? = null)
 @Serializable internal data class AgentResultPage(val conversation: Conversation, val resultIds: List<String>, val nextCursor: String? = null)
 @Serializable private data class AgentResultsRequest(val conversation: Conversation, val cursor: String? = null)
 internal fun encodeAgentResultsRequest(conversation: Conversation, cursor: String?): String =
@@ -123,13 +118,6 @@ internal fun decodeAgentStopResult(encoded: String): AgentStopResult = decodePro
         require(it.outcome in setOf("interrupted", "stopped", "finished", "unknown"))
     }
 }
-internal fun decodeAgentCloseResult(encoded: String): AgentCloseResult = decodeProtocol {
-    productJson.decodeFromJsonElement<AgentCloseResult>(nativeJsonObject(encoded)).also {
-        require(it.agent in setOf("stopped", "interrupted", "finished", "unconfirmed"))
-        require(it.terminal in setOf("closed", "unconfirmed"))
-        require(it.reason == null || it.reason in setOf("stale", "unavailable"))
-    }
-}
 internal fun agentStopMessage(result: AgentStopResult): String = when {
     result.outcome == "unknown" -> "could not confirm the request. inspect the conversation before trying again."
     result.outcome == "interrupted" -> "current work interrupted. pending input may remain."
@@ -137,14 +125,13 @@ internal fun agentStopMessage(result: AgentStopResult): String = when {
     result.outcome == "finished" -> "no active work observed. pending input may remain."
     else -> error("unrecognized stop outcome") // justify-defect: the decoder owns the closed outcome set.
 }
-internal fun agentCloseMessage(result: AgentCloseResult): String = when {
-    result.reason == "stale" -> "terminal left open because the session changed."
-    result.terminal == "closed" && result.agent == "unconfirmed" -> "terminal closed; conversation stop unconfirmed."
-    result.terminal == "unconfirmed" -> "could not confirm the request. inspect the conversation before trying again."
-    else -> when (result.agent) {
-        "finished" -> "no active work observed"
-        "interrupted" -> "current work interrupted"
-        "stopped" -> "current work stopped"
-        else -> error("unrecognized close outcome") // justify-defect: the decoder owns the closed outcome set.
-    } + "; terminal closed. pending input may remain. saved provider history is retained."
+
+internal fun conversationStatusLabel(status: AgentStatus): String = when (status.state) {
+    AgentState.Working -> "working"
+    AgentState.Blocked -> "waiting"
+    AgentState.Idle -> "idle"
+    AgentState.Done -> "done"
+    AgentState.Failed -> "failed"
+    AgentState.Stopped -> "stopped"
+    AgentState.Unknown -> "status unavailable"
 }

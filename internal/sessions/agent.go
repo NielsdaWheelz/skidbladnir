@@ -8,35 +8,39 @@ import (
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation) {
+func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
 	// An empty tmux pane has no process to observe or registered identity to accept.
 	if panePID == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	registration := ""
 	if observedRegistration, optionErr := manager.paneOption(ctx, paneID, agentruntime.PaneOption); optionErr == nil {
 		registration = observedRegistration
 	}
-	// justify-ignore-error: an exited or unstable foreground process omits optional agent identity.
+	// Stable process absence is an empty terminal. Other kernel failures remain
+	// distinguishable from a successful unsupported-provider sample.
 	foreground, err := processinfo.ObserveForeground(panePID)
+	if errors.Is(err, processinfo.ErrProcessAbsent) {
+		return nil, nil, nil
+	}
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 	agent, found := agentruntime.Project(manager.profiles, foreground, registration)
 	if !found {
-		return nil, &foreground
+		return nil, &foreground, nil
 	}
 	if agent.Provider == agentruntime.ProviderCodex {
 		environment, readErr := processinfo.ObserveForegroundEnvironment(panePID, foreground)
 		if errors.Is(readErr, processinfo.ErrForegroundMismatch) {
-			return nil, nil
+			return nil, nil, readErr
 		}
 		if readErr == nil {
 			agent.Profile = codexProfile(manager.profiles, environment)
 		}
 	}
 	agent.PaneID = paneID
-	return &agent, &foreground
+	return &agent, &foreground, nil
 }
 
 func observeRemoteAgent(foreground processinfo.Observation, environment map[string]string, profiles []agentruntime.Profile) *agentruntime.AgentRuntime {

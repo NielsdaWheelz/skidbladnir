@@ -5,7 +5,7 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## planned terminal status and control
+## terminal status and control
 
 [terminal control](terminal-agent-control.md) makes heuristic observation and
 terminal input the ordinary session workflow. stop/close work without an agent
@@ -13,7 +13,8 @@ or conversation identity; explicit native integration is retained separately.
 the plan owns replacement schemas, disjoint slices, content and temporary
 red/green/refactor acceptance. inferred idle is advisory. notification semantics
 stay with their separate pr; [coordination](issues/terminal-notification-coordination.md)
-is a combined-release dependency. this plan changes no production code.
+is a combined-release dependency. source implementation, [isolated qualification](terminal-agent-control-qualification.md)
+and engineering checks passed. temporary tests are removed; no deployment is asserted.
 
 ## planned automatic session names
 
@@ -83,7 +84,8 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| native status/history, qualified controls, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
+| inferred terminal status, bounded reads/waits, input and independent stop/close | [terminal control](terminal-agent-control.md) |
+| explicit native status/history/results, qualified controls, creation and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |

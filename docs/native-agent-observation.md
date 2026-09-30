@@ -8,10 +8,10 @@ targets. providers own execution/history; tmux owns terminals.
 
 ## 1. outcome and scope
 
-keep cards, direct tmux attachment, existing accounts, machine routing, sorting
-and visual language. a codex card tracks the conversation captured at creation. status
-and unread describe that conversation even when its terminal displays another
-conversation or a shell. omit blocking reasons.
+[terminal control](terminal-agent-control.md) owns ordinary cards, terminal input,
+waits and closure for both providers. this contract owns explicit native targets,
+creation and retained reply acknowledgement. recorded native identity may differ
+from the terminal; it never supplies ordinary status or gates terminal actions.
 
 - native commands capture a conversation id. switching terminal a→b never
   retargets a command addressing a.
@@ -94,12 +94,12 @@ Status = {state: working|blocked|idle|done|failed|stopped|unknown,
 Turn = {id, state: inProgress|completed|failed|interrupted}
 Methods = {read, sendPeer, sendUser, queueUser, stop: native|unavailable}
 ConversationRuntime = {binding, status, methods, turn?}
-Session += {conversation?: ConversationRuntime}
+Session += {conversation?: Conversation} // identity metadata only
 ```
 
-`Agent` describes foreground process/provider presence. native state has ONE
-projection, `Session.conversation`. remove agent state duplication and view
-fields. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
+`Agent` describes foreground process/provider presence. explicit native inspect
+returns ConversationRuntime; ordinary inventory makes no native status/history
+call. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
 it identifies history storage, not credentials. host validates profile/provider/
 scope before calls. client references contain no home, endpoint or credential.
 
@@ -112,11 +112,11 @@ existing valid associations retain their meaning: earlier releases stored manual
 and creation associations identically, so this cutover neither guesses their
 origin nor clears live metadata. no provenance store or migration is added.
 
-`NAME --machine HOST` resolves its recorded conversation once. direct
+ordinary terminal selectors never resolve a recorded conversation. direct
 `--conversation ID --profile PROFILE --machine HOST` works independently of
-terminal lifetime; opaque refs retain the captured structured target. fresh named
-commands may resolve a replacement terminal or current claude identity; running
-commands keep their original conversation. no alias store or second account table. return-address
+terminal lifetime; native-only opaque refs retain runtime and exact turn. explicit
+native resolution inspects its captured identity; running commands keep that
+conversation. no alias store or second account table. return-address
 text is ordinary delegation metadata, never authority.
 
 ## 4. api and behavior
@@ -131,8 +131,7 @@ absent fields are omitted, not null. reject old schemas/view fields outright.
 | `POST /v1/conversations/send` | conversation, peer/user input, direct/queue delivery, text → native receipt |
 | `POST /v1/conversations/stop` | conversation plus captured active codex turn → exact interruption |
 | `POST /v1/conversations/results` | conversation, optional cursor → finalized reply ids only |
-| terminal read/text/keys/stop | existing exact terminal/process targets; explicit terminal mode |
-| close | exact terminal target and optional explicit native conversation/turn or terminal halt; separate outcomes |
+| terminal operations | [terminal contract](terminal-agent-control.md#4-api-and-client-commands); no native method switch or session-native compound close |
 
 start reuses profile/cwd/name validation and normal generated-name selection.
 gateway runs native daemon start/create/name/resume before tmux creation and
@@ -153,14 +152,13 @@ read = {text, source:native, scope, truncated, observation,
 send = {method:native, input, delivery, outcome:accepted, turnId}
 wait = {outcome:matched|timeout|target_changed, target:captured-ref,
         observation?:Observation}
-close = {agent, terminal} // independent outcomes; no queue-stop promise
 ```
 
 output identity belongs to the assistant output, not current work. finalized
 requires §5's predicate; absent evidence is unknown. none requires a successful
 read with no assistant text. output is 16 kib default/32 kib max; text ≤32 kib;
 envelopes ≤64 kib. retain 2-second status, 10-second operation, 15-second client
-budgets and close's separate terminal-closure budget.
+budgets. terminal closure has its own contract.
 
 codex user send uses `turn/start.input`; peer send uses standalone
 `turn/start.toolOutput` namespace `skid`. preserve native sender metadata when
@@ -184,18 +182,14 @@ zero.
 
 stop interrupts captured work only: no successor chasing, terminal closure or
 provider queue purge. idle/no work returns finished without dispatch. terminal
-keys confirm bytes written only. compound close explicitly names a conversation
-and terminal and reports their outcomes separately; native close requires no
-foreground-process identity. terminal halt still requires exact process proof.
-closure does not establish that another displayed thread stopped. terminal-only
-close reuses exact session deletion; never kill the shared daemon or erase history.
+keys confirm bytes written only. native stop never becomes a session-native
+compound close. terminal closure is independent and never kills the shared daemon
+or erases provider history.
 
 preserve dispatch unknown after possible mutation; never replay. unsupported
 capability returns AgentUnavailable/not_sent. retain malformed/stale distinctions.
 references capture identity and turns, not permanent capability availability;
-the host checks native methods at execution. well-formed compound close still
-attempts its exact terminal effect when native halt is unavailable or stale,
-returning conversation stop unconfirmed. malformed input rejects before closure.
+the host checks native methods at execution. malformed input rejects before effects.
 
 ## 5. unread recovery and acknowledgement
 
@@ -241,27 +235,25 @@ migration reader or retained behavioral suite.
 
 ## 6. content contract
 
-client designer owns content and reviews each feature. good content distinguishes
-tracked conversation, foreground terminal, sampled state and outcome. reuse
-existing typography/status bay/chips; no new visual system.
+client designer owns explicit native content. good content names the addressed
+conversation and distinguishes native admission from completion. ordinary cards
+and controls follow the [terminal content contract](terminal-agent-control.md#6-content-contract).
 
 | feature | required copy / behavior |
 | --- | --- |
-| association | tracking <last 8 id characters>; full id in details; never current tui selection |
-| unassociated codex | conversation not tracked; no asserted native status/unread |
+| recorded metadata | secondary details: recorded native conversation; may differ from terminal; never current tui selection |
+| unassociated terminal | ordinary terminal status/actions; no tracking repair instruction |
 | native output | view replies; conversation id visible; successful opening clears captured known replies only |
-| state | working/waiting/idle/done/failed/stopped; status unavailable; no reasons |
+| explicit native state | native snapshot working/blocked/idle/done/failed/stopped/unknown; unavailable source; never ordinary terminal status |
 | unread | static new reply; no count/pulse/sorting; claude recovery new reply · previous agent |
 | unavailable | retain known marker; replies unavailable / unread unavailable |
 | send | message accepted; peer/user kind; no completion claim |
-| stop/close | stop tracked conversation / stop tracked conversation and close terminal; pending input may remain; close terminal only |
-| partial close | terminal closed; conversation stop unconfirmed |
+| explicit native stop | captured native turn; pending input may remain; terminal closure is separate |
 | uncertain mutation | could not confirm the request. inspect the conversation before trying again |
 
-association/state/unread survive narrow layouts before directory detail.
-accessibility announces tracked id plus state/unread once, without unchanged-poll
-repetition or color-only distinctions. only fresh native working uses existing
-motion. terminal attachment and native output are separate visible actions.
+native output attribution survives narrow layouts. accessibility names its exact
+conversation without unchanged-poll repetition or color-only distinctions.
+terminal attachment and native output are separate visible actions.
 manual tracking controls are absent. use suffixes because
 contemporaneous uuidv7 conversations share their timestamp prefixes; shortened
 labels are presentation only, never command targets.
@@ -273,7 +265,7 @@ labels are presentation only, never command targets.
 | installer | dev-server ordinary npm install, fork/build deletion, account env, helper install |
 | adapter | llm-calling stock create/read/send/interrupt/results and native Claude capture |
 | host | runtime/session/agentcontrol/gateway/hostconfig; conversation routes, recorded association |
-| cli/desktop | fleetclient/agentcli/sessionui; names/direct ids, wait, native output, local acknowledgement |
+| cli/desktop | fleetclient/agentcli/sessionui; explicit native ids/refs, wait, native output, local acknowledgement |
 | android | gateway/models/controller/cards; creation association display, native output, acknowledgement |
 | root | architecture/spec/roadmap, pins/manifests, integration, final evidence |
 

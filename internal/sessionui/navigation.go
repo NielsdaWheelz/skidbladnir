@@ -8,10 +8,8 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
-// attention orders the agents view: states that may be waiting on the operator
-// come first, working and stopped last. codex reports a finished turn as idle,
-// unknown can be a dialog nobody recognized, and remote agents are unknown.
-var attention = []string{"blocked", "failed", "done", "idle", "unknown", "working", "stopped"}
+// attention keeps inferred waiting and idle ahead of unknown and working.
+var attention = []string{"blocked", "idle", "unknown", "working"}
 
 func sameSession(a, b fleetclient.Session) bool {
 	left, _ := fleetclient.DecodeReference(a.Ref)
@@ -30,7 +28,7 @@ func (m *model) rebuild() {
 		for _, peer := range m.scopedPeers() {
 			for _, session := range peer.Sessions {
 				row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
-				if m.current(&row).Agent != nil || row.session.Conversation != nil {
+				if m.current(&row).Agent != nil {
 					m.rows = append(m.rows, row)
 				}
 			}
@@ -125,8 +123,5 @@ func (m *model) move(delta int) {
 }
 
 func statusState(session fleetclient.Session) string {
-	if session.Conversation != nil {
-		return session.Conversation.Status.State
-	}
-	return "unknown"
+	return session.TerminalStatus.State
 }

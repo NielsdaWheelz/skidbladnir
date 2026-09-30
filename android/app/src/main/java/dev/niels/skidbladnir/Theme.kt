@@ -120,9 +120,9 @@ internal object NidavellirMotion {
     }
 }
 
-internal fun sessionStatusColor(state: AgentState?): Color = when (state) {
-    AgentState.Working -> Moss
-    AgentState.Blocked, AgentState.Failed -> Ember
+internal fun sessionStatusColor(state: TerminalState?): Color = when (state) {
+    TerminalState.Working -> Moss
+    TerminalState.Blocked -> Ember
     else -> Muted
 }
 

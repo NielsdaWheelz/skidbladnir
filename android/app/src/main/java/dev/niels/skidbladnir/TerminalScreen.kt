@@ -128,55 +128,49 @@ internal fun TerminalScreen(
                 onClick = controller::openTextSize,
                 modifier = Modifier.width(48.dp),
             )
-            if (state.target.session.conversation != null || state.target.session.agent != null ||
-                state.machine.replies[state.target.session.identityToken]?.previousAgent == true) {
-                var expanded by remember(state.attempt) { mutableStateOf(false) }
-                Box {
-                    HeaderChip(
-                        label = "⋯", spokenName = "conversation and terminal actions",
-                        enabled = !state.agentControlPending && state.machine.canMutate,
-                        onClick = { expanded = true }, modifier = Modifier.width(48.dp),
-                    )
-                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            var expanded by remember(state.attempt) { mutableStateOf(false) }
+            val actionsEnabled = !state.terminalControlPending && state.close == null && state.rename == null &&
+                terminalActionAdmissible(state.machine.canMutate, state.connection)
+            Box {
+                HeaderChip(
+                    label = "⋯", spokenName = "terminal actions for ${state.target.session.tmuxName} on ${state.machine.machine.label.text}",
+                    enabled = actionsEnabled,
+                    onClick = { expanded = true }, modifier = Modifier.width(48.dp),
+                )
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    if (state.target.session.conversation != null || state.machine.replies[state.target.session.identityToken]?.previousAgent == true) {
                         DropdownMenuItem(text = { Text("view replies") }, onClick = {
                             expanded = false
                             controller.openReplies(state.target)
-                        }, enabled = state.target.session.conversation != null || state.machine.replies[state.target.session.identityToken]?.previousAgent == true)
-                        DropdownMenuItem(text = { Text("stop tracked conversation") }, onClick = {
-                            expanded = false
-                            controller.stopAgent()
-                        }, enabled = state.target.session.conversation?.methods?.stop == AgentMethod.Native)
-                        DropdownMenuItem(text = { Text("stop tracked conversation and close terminal") }, onClick = {
-                            expanded = false
-                            controller.requestClose(state.target)
-                        }, enabled = state.target.session.conversation?.methods?.stop == AgentMethod.Native &&
-                            terminalActionAdmissible(state.machine.canMutate, state.connection))
-                        DropdownMenuItem(text = { Text("close terminal only") }, onClick = {
-                            expanded = false
-                            controller.requestTerminalClose(state.target)
-                        }, enabled = terminalActionAdmissible(state.machine.canMutate, state.connection))
+                        }, enabled = actionsEnabled)
                     }
+                    DropdownMenuItem(text = { Text(TERMINAL_STOP_ACTION) }, onClick = {
+                        expanded = false
+                        controller.stopTerminal(state.target)
+                    }, enabled = actionsEnabled)
+                    DropdownMenuItem(text = { Text(TERMINAL_CLOSE_ACTION) }, onClick = {
+                        expanded = false
+                        controller.requestClose(state.target)
+                    }, enabled = actionsEnabled)
+                    DropdownMenuItem(text = { Text(TERMINAL_ONLY_CLOSE_ACTION) }, onClick = {
+                        expanded = false
+                        controller.requestTerminalClose(state.target)
+                    }, enabled = actionsEnabled)
                 }
-            } else {
-                CloseButton(
-                    machineLabel = state.machine.machine.label, target = state.target,
-                    enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                    onClick = { controller.requestClose(state.target) },
-                )
             }
         }
-        if (execution is ExecutionContext.Local || state.target.session.conversation != null) {
-            val replies = state.machine.replies[state.target.session.identityToken] ?: ReplyPresentation()
-            val content = sessionStatusContent(state.target.session.conversation?.status, state.machine.canMutate, replies,
-                conversation = state.target.session.conversation?.binding?.conversation,
-                untrackedCodex = state.target.session.agent?.provider == AgentProvider.Codex)
-            Text(content.label.replace("\n", " · "), color = Muted, style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                    .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
-            replyAvailabilityLabel(replies)?.let {
-                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-            }
+        val replies = state.machine.replies[state.target.session.identityToken] ?: ReplyPresentation()
+        val content = sessionStatusContent(state.target.session, state.machine.canMutate, replies)
+        Text(listOfNotNull(content.label.replace("\n", " · "), content.detail).joinToString(" · "), color = Muted, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
+        if (state.target.session.conversation != null) {
+            Text("recorded native conversation; may differ from terminal", color = Muted, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+        }
+        replyAvailabilityLabel(replies)?.let {
+            Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
         }
         if (execution !is ExecutionContext.Local) {
             val description = when (execution) {

@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -109,16 +108,4 @@ func (gateway *Gateway) conversationOperation(writer http.ResponseWriter, reques
 		return
 	}
 	writeJSON(writer, http.StatusOK, result)
-}
-
-// The caller holds terminalLifecycle; no foreground provider identity is required.
-func (gateway *Gateway) closeSessionTerminal(ctx context.Context, id, identityToken string) error {
-	input, err := gateway.sessions.SessionKillInput(ctx, id, identityToken)
-	if err != nil {
-		return err
-	}
-	if err := gateway.closeLiveTerminals(ctx, id); err != nil {
-		return err
-	}
-	return gateway.sessions.Kill(ctx, input)
 }

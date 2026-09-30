@@ -225,14 +225,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshAfterAction = true
 		}
 		if !message.result.OK {
-			failureText := message.result.Error.Code
-			if message.result.Error.Dispatch == "unknown" {
-				failureText = "could not confirm the request. inspect the conversation before trying again."
-			} else if message.result.Error.Code == "AgentTargetStale" || message.result.Error.Code == "SessionIdentityMismatch" {
-				failureText = "the session changed. refresh and try again."
-			} else if message.result.Error.Code == "AgentUnavailable" {
-				failureText = "this action is unavailable for this session."
-			}
+			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
 			if message.result.Error.Conversation != nil {
 				failureText += " created conversation: " + message.result.Error.Conversation.ConversationID + "; terminal creation unconfirmed"
 			}
@@ -314,35 +307,25 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "close":
 			if _, ok := message.result.Value.(fleetclient.TerminalCloseResult); ok {
-				m.inform("terminal closed; pending input may remain")
-				break
-			}
-			value := message.result.Value.(fleetclient.CloseResult)
-			if value.Reason == "stale" {
-				m.fail("terminal left open because the session changed.")
-			} else if value.Terminal == "closed" && value.Agent == "unconfirmed" {
-				m.fail("terminal closed; conversation stop unconfirmed.")
+				m.inform("terminal closed; work shared elsewhere or running remotely may continue.")
 			} else {
-				m.inform("current work: " + value.Agent + "; terminal: " + value.Terminal + "; pending input may remain; saved history is retained.")
+				text := fleetclient.CloseText(message.result.Value.(fleetclient.CloseResult))
+				if message.result.ExitCode("close") != 0 {
+					m.fail(text)
+				} else {
+					m.inform(text)
+				}
 			}
-		case "stop":
-			value := message.result.Value.(fleetclient.WriteResult)
-			if value.Outcome == "unknown" {
-				m.fail("could not confirm the request. inspect the conversation before trying again.")
-			} else if value.Method == "terminal" {
-				m.inform("keys sent; agent state not confirmed.")
-			} else {
-				m.inform("current work: " + value.Outcome + "; pending input may remain")
-			}
-
 		default:
-			value := message.result.Value.(fleetclient.WriteResult)
-			if value.Outcome == "unknown" {
-				m.fail("could not confirm the request. inspect the conversation before trying again.")
+			receipt := message.result.Value.(fleetclient.WriteResult)
+			text := fleetclient.WriteText(message.operation, receipt)
+			if receipt.Outcome == "unknown" {
+				m.fail(text)
 			} else {
-				m.inform("keys sent; agent state not confirmed.")
+				m.inform(text)
 			}
 		}
+
 		return m, m.refresh()
 	case searchMsg:
 		if m.page != "search" || m.form[0] != message.machine || m.searchRevision != message.revision {
@@ -569,23 +552,26 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			request.Operation = "close"
 			request.TerminalOnly = true
 		case "s":
-			if row.session.Conversation == nil || row.session.Conversation.Methods.Stop != "native" {
-				return m, nil
-			}
 			request.Operation = "stop"
 		case "c":
-			if row.session.Conversation == nil || row.session.Conversation.Methods.Stop != "native" {
-				return m, nil
-			}
 			request.Operation = "close"
 		case "r":
-			ref, readable := m.replyReference(*row)
-			if !readable {
+			if !m.replyAvailable(*row) {
 				return m, nil
 			}
-			request.Operation, request.Ref = "read", ref.Encode()
+			ref, _ := fleetclient.DecodeReference(row.session.Ref)
+			conversation, _ := m.unreadSnapshot.Conversation(ref, row.session)
+			request.Operation = "read"
 			m.outputAck = m.acknowledgement(request)
-			return m, m.execute(request)
+			m.pending, m.busy = request, true
+			return m, func() tea.Msg {
+				native, failure := m.client.NativeReference(m.ctx, ref.Machine, conversation)
+				if failure != nil {
+					return actionMsg{operation: "read", result: fleetclient.Result{Error: failure}}
+				}
+				return actionMsg{operation: "read", result: m.client.Execute(m.ctx, fleetclient.Request{Operation: "read", Ref: native.Encode()})}
+			}
+
 		}
 		if request.Operation == "stop" || request.Operation == "close" {
 			m.pending = request

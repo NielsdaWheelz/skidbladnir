@@ -47,12 +47,12 @@ internal sealed interface GatewayResult<out Value> {
 internal enum class MutationDispatch { NotSent, Unknown }
 
 internal sealed interface GatewayFailure {
-    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null, val conversation: Conversation? = null) : GatewayFailure
+    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null, val conversation: Conversation? = null, val message: String? = null) : GatewayFailure
     data object Transport : GatewayFailure
 }
 
 internal fun gatewayFailureMessage(failure: GatewayFailure): String = when (failure) {
-    is GatewayFailure.Api -> apiErrorMessage(failure.code)
+    is GatewayFailure.Api -> failure.message ?: apiErrorMessage(failure.code)
     GatewayFailure.Transport -> "Could not reach this machine over your Tailnet."
 }
 
@@ -223,9 +223,15 @@ internal class GatewayClient {
         )
     }
 
-    fun stopAgent(credential: MachineCredential, target: SessionTarget): GatewayResult<AgentStopResult> {
-        require(target.machineHandle == credential.machine.handle)
-        val runtime = requireNotNull(target.session.conversation)
+    fun inspectConversation(credential: MachineCredential, conversation: Conversation): GatewayResult<ConversationRuntime> = executeJson(
+        request = authorizedRequest(credential, listOf("v1", "conversations", "inspect"))
+            .post(encodeConversationInspectRequest(conversation).toRequestBody(jsonMediaType)).build(),
+        expectedStatus = 200, decode = { encoded ->
+            decodeConversationRuntime(encoded).also { require(it.binding.conversation == conversation) }
+        }, decodeFailure = ::decodeAgentHttpFailure, timeoutMillis = AGENT_CALL_TIMEOUT_MILLIS,
+    )
+
+    fun stopConversation(credential: MachineCredential, runtime: ConversationRuntime): GatewayResult<AgentStopResult> {
         require(runtime.methods.stop == AgentMethod.Native)
         return executeJson(
             request = authorizedRequest(credential, listOf("v1", "conversations", "stop"))
@@ -235,12 +241,22 @@ internal class GatewayClient {
         )
     }
 
-    fun closeAgent(credential: MachineCredential, target: SessionTarget): GatewayResult<AgentCloseResult> {
+    fun stopTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalWriteResult> {
         require(target.machineHandle == credential.machine.handle)
         return executeJson(
-            request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "agent", "close"))
-                .post(encodeAgentControlRequest(target).toRequestBody(jsonMediaType)).build(),
-            expectedStatus = 200, decode = ::decodeAgentCloseResult, decodeFailure = ::decodeAgentHttpFailure,
+            request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal", "stop"))
+                .post(encodeTerminalControlRequest(target).toRequestBody(jsonMediaType)).build(),
+            expectedStatus = 200, decode = ::decodeTerminalWriteResult, decodeFailure = ::decodeTerminalControlHttpFailure,
+            timeoutMillis = AGENT_CALL_TIMEOUT_MILLIS,
+        )
+    }
+
+    fun interruptAndCloseTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalCloseResult> {
+        require(target.machineHandle == credential.machine.handle)
+        return executeJson(
+            request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "terminal", "close"))
+                .post(encodeTerminalControlRequest(target).toRequestBody(jsonMediaType)).build(),
+            expectedStatus = 200, decode = ::decodeTerminalCloseResult, decodeFailure = ::decodeTerminalControlHttpFailure,
             timeoutMillis = AGENT_CALL_TIMEOUT_MILLIS,
         )
     }
@@ -261,9 +277,12 @@ internal class GatewayClient {
         }, decodeFailure = ::decodeAgentHttpFailure, timeoutMillis = AGENT_CALL_TIMEOUT_MILLIS,
     )
 
-    fun closeTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<Unit> {
+    fun closeTerminal(credential: MachineCredential, target: SessionTarget): GatewayResult<TerminalClosure> {
         require(target.machineHandle == credential.machine.handle)
-        return executeBodyless(closeTerminalRequest(credential, target), ::decodeCloseTerminalHttpFailure)
+        return when (val result = executeBodyless(closeTerminalRequest(credential, target), ::decodeTerminalControlHttpFailure)) {
+            is GatewayResult.Success -> GatewayResult.Success(TerminalClosure.Closed)
+            is GatewayResult.Failure -> result
+        }
     }
 
     internal fun closeTerminalRequest(credential: MachineCredential, target: SessionTarget): Request {
@@ -608,7 +627,8 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
     ApiErrorCode.SessionIdentityMismatch,
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
-    ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.HistoryChanged -> 409
+    ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentUnavailable, ApiErrorCode.HistoryChanged,
+    ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked -> 409
     ApiErrorCode.AgentInputInvalid -> 400
     ApiErrorCode.SessionNotFound -> 404
     ApiErrorCode.TerminalContextUnavailable -> 404
@@ -636,6 +656,36 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
     }
     require(dispatch == MutationDispatch.NotSent || code in setOf(ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentTargetStale))
     GatewayFailure.Api(code, dispatch)
+}
+
+internal fun decodeTerminalControlHttpFailure(status: Int, encoded: String): GatewayFailure {
+    if (status == 502 || status == 503 || status == 504) return GatewayFailure.Transport
+    return decodeProtocol {
+        val response = productJson.decodeFromJsonElement<MutationErrorResponse>(strictJsonObject(encoded))
+        val code = parseApiErrorCode(response.code)
+        require(code in setOf(
+            ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
+            ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch,
+            ApiErrorCode.MachineIdentityMismatch, ApiErrorCode.InternalError,
+            ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked,
+        ))
+        require(status == apiErrorHttpStatus(code))
+        val dispatch = when (response.dispatch) {
+            "not_sent" -> MutationDispatch.NotSent
+            "unknown" -> MutationDispatch.Unknown
+            else -> throw SerializationException("invalid terminal dispatch")
+        }
+        require(dispatch == MutationDispatch.NotSent || code in setOf(ApiErrorCode.InternalError, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalTargetChanged))
+        val messages = when (code) {
+            ApiErrorCode.TerminalUnavailable -> if (dispatch == MutationDispatch.Unknown) {
+                setOf(TERMINAL_INPUT_UNKNOWN, TERMINAL_CLOSE_UNKNOWN)
+            } else setOf(apiErrorMessage(code))
+            ApiErrorCode.TerminalInputBlocked -> setOf(apiErrorMessage(code), "terminal contains a draft. open it before sending.", "respond to the dialog in the terminal.")
+            else -> setOf(apiErrorMessage(code))
+        }
+        require(response.message in messages)
+        GatewayFailure.Api(code, dispatch, message = response.message)
+    }
 }
 
 @Serializable private data class GroupRequest(val identityToken: String, val group: String)

@@ -1,7 +1,8 @@
 # agent control: usable client, direct attachment
 
-[native interaction](native-agent-observation.md) owns the current agent operations,
-references and unread contract. historical qualification below applies only to its
+[terminal control](terminal-agent-control.md) owns ordinary session operations,
+references, status and s/c/x. [native interaction](native-agent-observation.md)
+owns explicit native capabilities and retained unread. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
 restoration amendment: jarvis's current herdr integration and credentials are
@@ -59,14 +60,14 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
 | `skid info reviewer` | full metadata and fresh reference for this session |
 | `skid enter reviewer` | attach; explicit detach returns to the caller |
-| `skid read reviewer [--history | --terminal] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
+| `skid read reviewer [--max-bytes N]` | bounded rendered terminal output; native-only targets retain explicit history |
 | `skid replies reviewer` | view native output and acknowledge only replies known at opening |
-| `skid send reviewer "review the patch" [--input peer|user] [--queue]` | native peer by default; queue and native claude input are unavailable; `--stdin` accepts literal text |
+| `skid send reviewer "review the patch"` | guarded terminal paste/submit; `--stdin` accepts literal text; native input/queue flags require an explicit native target |
 | `skid keys reviewer enter` | existing logical key vocabulary; 1–16 keys |
 | `skid text reviewer --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
 | `skid wait reviewer [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
-| `skid stop reviewer` | stop captured current work; retain terminal; pending input may remain |
-| `skid close reviewer [--terminal-only]` | halt and exact terminal closure with separate outcomes; explicit terminal-only bypass |
+| `skid stop reviewer` | one interruption key on the captured pane; retain terminal; stopping unconfirmed |
+| `skid close reviewer [--terminal-only]` | interruption attempt and independent whole-session closure; terminal-only skips input |
 | `skid start reviewer --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
 | `skid start terminal-name --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
 | `skid shell reviewer` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
@@ -94,14 +95,16 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
    configured peers and never fall back to a name. all mutations remain one attempt.
 3. references are opaque to callers: unpadded base64url of strict json below,
    maximum 4096 characters. no credentials, signatures, registry, expiry, or cache.
-   session operations use the session identity; agent operations also require the
-   process identity. the host performs the existing final lifetime validation.
+   terminal input/read/wait pins its active pane, without process or conversation
+   identity. closure requires the session lifetime only. the host performs final
+   queue-level validation; foreground facts select heuristic rules and keys.
 
 ```text
-ref payload = {machine, tmuxId, identityToken,
-               agent?: {paneId, pid, startIdentity, methods, binding?, turn?}}
+terminal ref = {machine, tmuxId, identityToken, paneId}
+native ref = {machine, conversation: ConversationRuntime}
 row = {name, ref, activePaneId, group?, cwd?, activeCommand?, launchProfile?, attachedClients,
-       agent?: {provider, profile?, providerSession?, status, methods}}
+       terminalStatus, conversation?: Conversation,
+       agent?: {provider, pid, paneId, startIdentity, profile?, providerSession?}}
 peer = {label, machine, ok,
         observedAt?, profiles?, sessions?: [row], error?}
 inventory = {partial: boolean, peers: [peer]}
@@ -127,12 +130,12 @@ overflow, never silently omit rows.
 
 names are absent from the reference, so rename does not invalidate it. `info` and
 terminal-only `close` retrieves current metadata from the referenced host and require the same
-session lifetime; terminal-only close supplies the current name to the existing delete contract.
+session lifetime; deletion supplies exactly identityToken, never name or pane.
 `info --ref` observes the exact session now, even if its previous agent exited;
-it returns the newly observed agent reference. it never refreshes a mutation target.
-start does not claim an agent is ready. an old agent reference cannot control a
-replacement process or newly selected pane. an old session reference cannot bind
-to a recreated session. callers never reconstruct the host's six-field target.
+it returns a newly observed terminal reference. it never refreshes a mutation target.
+start does not claim an agent is ready. foreground exit/resume/replacement within
+the same pane preserves terminal authority; pane changes reject captured input.
+an old lifetime cannot bind to a recreated session. reject old mixed references.
 
 exit 0: complete result with the requested effect confirmed to the returned
 contract (`written` means input delivered, never task completed). exit 1: operational
@@ -189,20 +192,19 @@ rename. a session switch ends the connection on detection by the existing two-se
 monitor; bytes can pass before detection. this is not an atomic session lock.
 no additional monitor or mutator-defense machinery.
 
-terminal-only close uses the existing exact identity/name predicate and
+terminal-only close uses the exact lifetime predicate and
 `kill-session` in one queue. preserve validate → close owned terminal connections
 → revalidate/delete ordering. deleting one ordinary grouped session may leave
 shared windows/processes alive through another. no group-wide destruction.
 
-stop retains the terminal and targets captured current work. close reports halt
+stop retains the terminal and sends one interruption key. close reports input
 and terminal closure separately; closure never proves halt. provider pending input
 may remain and saved history is retained. terminal-only close requests no halt.
 
-[native interaction](native-agent-observation.md) owns provider state, capabilities,
-output and delivery. terminal operations are explicit, never fallback. browser
-keys are `r` view replies,
-`s` stop tracked conversation, `c` stop it and close terminal, `x` close terminal
-only. capture and confirm the exact conversation and terminal effects.
+[native interaction](native-agent-observation.md) owns explicit provider capabilities.
+browser `s` sends an interrupt, `c` then independently closes the entire session,
+and `x` closes without input, on all fresh terminals in every view. capture exact
+pane/session/machine effects. `r` remains the notification owner's responsibility.
 
 codex terminal association is automatic at skid creation only. manual linking,
 reassignment and clearing have no command or browser action. direct native

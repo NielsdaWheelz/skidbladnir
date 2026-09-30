@@ -251,7 +251,8 @@ internal data class TmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: AgentRuntime? = null,
-    val conversation: ConversationRuntime? = null,
+    val conversation: Conversation? = null,
+    val terminalStatus: TerminalStatus,
     val connection: RemoteConnection? = null,
 )
 
@@ -349,7 +350,8 @@ private data class WireTmuxSession(
     val activeCommand: String? = null,
     val attachedClients: Int,
     val agent: WireAgentRuntime? = null,
-    val conversation: ConversationRuntime? = null,
+    val conversation: Conversation? = null,
+    val terminalStatus: TerminalStatus,
     val connection: WireRemoteConnection? = null,
 )
 
@@ -577,8 +579,7 @@ internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.
  * close control, so the spoken description and the dialog title cannot name different sessions.
  */
 internal fun closeActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
-    if (target.session.conversation == null || terminalOnly) "close terminal only: ${target.session.tmuxName} on ${label.text}"
-    else "stop tracked conversation and close terminal: ${target.session.tmuxName} on ${label.text}"
+    "${if (terminalOnly) TERMINAL_ONLY_CLOSE_ACTION else TERMINAL_CLOSE_ACTION}: ${target.session.tmuxName} on ${label.text}"
 internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
     closeActionLabel(label, target, terminalOnly) + "?"
 
@@ -591,7 +592,7 @@ internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, 
     val group: String? = null,
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
-@Serializable private data class CloseTerminalRequest(val tmuxName: String, val identityToken: String)
+@Serializable private data class CloseTerminalRequest(val identityToken: String)
 @Serializable private data class RenameSessionRequest(
     val tmuxName: String,
     val newTmuxName: String,
@@ -665,7 +666,7 @@ internal fun encodeCreateSessionRequest(draft: ForgeDraft): String = productJson
 internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
     productJson.encodeToString(DirectoryListingRequest(directory.encoded))
 internal fun encodeCloseTerminalRequest(session: TmuxSession): String =
-    productJson.encodeToString(CloseTerminalRequest(session.tmuxName, session.identityToken))
+    productJson.encodeToString(CloseTerminalRequest(session.identityToken))
 internal fun encodeRenameSessionRequest(target: SessionTarget, newTmuxName: String): String =
     productJson.encodeToString(
         RenameSessionRequest(
@@ -906,6 +907,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     DirectoryListingUnavailable("DirectoryListingUnavailable"), DirectoryListingTooLarge("DirectoryListingTooLarge"),
     DirectorySearchUnavailable("DirectorySearchUnavailable"), DirectorySearchTooLarge("DirectorySearchTooLarge"),
     TerminalContextUnavailable("TerminalContextUnavailable"),
+    TerminalTargetChanged("TerminalTargetChanged"), TerminalUnavailable("TerminalUnavailable"), TerminalInputBlocked("TerminalInputBlocked"),
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
     SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
@@ -930,6 +932,9 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.DirectorySearchUnavailable -> "Directory search is unavailable on this machine."
     ApiErrorCode.DirectorySearchTooLarge -> "Too many directory search results. Narrow the search."
     ApiErrorCode.TerminalContextUnavailable -> "Remote context is unavailable."
+    ApiErrorCode.TerminalTargetChanged -> "the terminal changed. refresh before trying again."
+    ApiErrorCode.TerminalUnavailable -> "the terminal is unavailable. open it to inspect before trying again."
+    ApiErrorCode.TerminalInputBlocked -> "send unavailable for this screen. open the terminal or use text/keys."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
     ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
     ApiErrorCode.GroupInvalid -> GROUP_INVALID
@@ -952,7 +957,7 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
-internal data class SessionStatusContent(val label: String, val accessibilityLabel: String)
+internal data class SessionStatusContent(val label: String, val accessibilityLabel: String, val detail: String? = null)
 
 internal fun replyAvailabilityLabel(replies: ReplyPresentation): String? = when {
     replies.storeUnavailable -> "unread unavailable"
@@ -960,25 +965,27 @@ internal fun replyAvailabilityLabel(replies: ReplyPresentation): String? = when 
     else -> null
 }
 
-internal fun sessionStatusContent(status: AgentStatus?, fresh: Boolean, replies: ReplyPresentation = ReplyPresentation(), conversation: Conversation? = null, untrackedCodex: Boolean = false): SessionStatusContent {
-    val state = when (status?.state) {
-        AgentState.Working -> "working"
-        AgentState.Blocked -> "waiting"
-        AgentState.Idle -> "idle"
-        AgentState.Done -> "done"
-        AgentState.Failed -> "failed"
-        AgentState.Stopped -> "stopped"
-        AgentState.Unknown -> "status unavailable"
-        null -> if (untrackedCodex) "conversation not tracked" else "terminal"
+internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, replies: ReplyPresentation = ReplyPresentation()): SessionStatusContent {
+    val inferred = session.terminalStatus.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
+    val state = when {
+        session.terminalStatus.source == TerminalStatusSource.Unavailable -> "status unavailable"
+        !inferred -> "terminal"
+        else -> when (session.terminalStatus.state) {
+            TerminalState.Working -> "working"
+            TerminalState.Blocked -> "waiting"
+            TerminalState.Idle -> "idle"
+            TerminalState.Unknown -> "status unknown"
+        }
     }
-    val reply = if (!replies.unread) "" else if (replies.previousAgent) "new reply · previous agent" else "new reply"
-    val spoken = if (!replies.unread) state else if (replies.previousAgent) {
-        "terminal. new reply from the previous agent, unread on this device."
-    } else "$state. new reply, unread on this device."
-    val tracking = conversation?.let { "tracking ${it.conversationId.takeLast(8)}" }
+    val observed = if (fresh) state else "last observed: $state"
+    val reply = if (!replies.unread) null else if (replies.previousAgent) "new reply · previous agent" else "new reply"
+    val spokenReply = if (!replies.unread) "" else if (replies.previousAgent) {
+        ". new reply from the previous agent, unread on this device."
+    } else ". new reply, unread on this device."
     return SessionStatusContent(
-        listOfNotNull(tracking, state, reply.takeIf(String::isNotEmpty)).joinToString("\n"),
-        (tracking?.let { "tracking ${conversation.conversationId}. " } ?: "") + (if (fresh) "" else "last observed: ") + spoken,
+        listOfNotNull(observed, reply).joinToString("\n"),
+        observed + (if (inferred) "; inferred from terminal" else "") + spokenReply,
+        if (inferred) "inferred from terminal" else session.activeCommand.takeIf { session.connection == null },
     )
 }
 
@@ -990,6 +997,7 @@ private fun JsonObject.requireSessionOptionalFields() {
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
     (this["conversation"] as? JsonObject)?.requireNativeValues()
+    (this["terminalStatus"] as? JsonObject)?.requireAbsentOrNonNull(setOf("state", "source"))
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size
@@ -1018,6 +1026,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     attachedClients = session.attachedClients,
     agent = session.agent?.let(::acceptAgentRuntime),
     conversation = session.conversation,
+    terminalStatus = session.terminalStatus,
     connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
 ).also(::acceptSession)
 

@@ -23,7 +23,7 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
-	facts := [][2]string{{"session", value.Name}, {"terminal on", row.label}, {"machine id", row.machine}}
+	facts := [][2]string{{"session", value.Name}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}}
 	switch current.Kind {
 	case "remote":
 		facts = append(facts, [2]string{"running on", current.Label})
@@ -57,9 +57,10 @@ func (m *model) details(row *listedRow) [][2]string {
 		}
 	}
 	if value.Conversation != nil {
-		facts = append(facts, [2]string{"tracking", value.Conversation.Binding.Conversation.ConversationID}, [2]string{"state", fleetclient.StatusText(value.Conversation.Status)})
+		facts = append(facts, [2]string{"recorded native conversation", value.Conversation.ConversationID + "; may differ from terminal"})
 	}
 
+	facts = append(facts, [2]string{"state", fleetclient.SessionStatusDetail(value)})
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}

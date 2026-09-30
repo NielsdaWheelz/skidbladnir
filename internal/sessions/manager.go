@@ -128,7 +128,8 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	observedAt := time.Now().UTC()
 	sessions := make([]Session, 0, len(observations))
 	for _, observation := range observations {
-		sessions = append(sessions, manager.enrichSession(ctx, observation))
+		session, _ := manager.enrichSession(ctx, observation) // justify-ignore-error: optional foreground failure omits presence; terminal enrichment independently reports its source.
+		sessions = append(sessions, session)
 	}
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return Inventory{}, err
@@ -319,7 +320,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		return ObservedSession{}, err
 	}
 	observedAt := time.Now().UTC()
-	projected := manager.enrichSession(ctx, session)
+	projected, _ := manager.enrichSession(ctx, session) // justify-ignore-error: creation does not promise available foreground observation or terminal status.
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return ObservedSession{}, err
 	}
@@ -341,40 +342,24 @@ func mapWorkingDirectoryError(err error) error {
 	}
 }
 
+// Kill deletes only the captured session lifetime. Pane/process changes and
+// display names do not participate in authority. The tmux queue owns the guard.
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
-	return manager.kill(ctx, input, nil)
-}
-
-func (manager *Manager) kill(ctx context.Context, input KillInput, target *AgentTarget) error {
-	identity, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
+	identity, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return err
 	}
-	if target != nil {
-		if _, err := manager.agentTerminalKillInput(ctx, *target); err != nil {
-			return err
-		}
+	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, identity)
+	if errors.Is(err, tmuxclient.ErrDeleteUnknown) {
+		return ErrSessionDeleteUnknown
 	}
-	killed, err := manager.tmux.KillSessionIfIdentity(ctx, input.TmuxID, input.TmuxName, identity)
 	if err != nil {
-		return manager.classifyMissingSession(ctx, input.TmuxID, err)
+		return err
 	}
 	if !killed {
-		if _, identityErr := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken); identityErr != nil {
-			return identityErr
-		}
 		return sessionIdentityMismatch()
 	}
 	return nil
-}
-
-func (manager *Manager) ValidateKill(ctx context.Context, input KillInput) error {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
-	return err
 }
 
 func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
@@ -506,23 +491,29 @@ func (manager *Manager) inspectRequired(
 	if err != nil {
 		return inspectedSession{}, false, err
 	}
-	inspected := inspectedSession{session: Session{
+	return manager.inspectAnchor(ctx, Session{
 		TmuxID: observed.id, TmuxName: observed.tmuxName,
 		IdentityToken: identityToken, Character: observed.character,
-	}}
-	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", observed.id,
+		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
+	})
+}
+
+func (manager *Manager) inspectAnchor(ctx context.Context, session Session) (inspectedSession, bool, error) {
+	inspected := inspectedSession{session: session}
+	id := session.TmuxID
+	anchor, err := manager.tmux.Output(ctx, "read-card-anchor", "display-message", "-p", "-t", id,
 		"#{session_id}|#{pane_id}|#{pane_pid}|#{session_attached}")
 	if err != nil {
-		return manager.reconcileFailedInspection(ctx, observed.id, fmt.Errorf("read required tmux card anchor: %w", err))
+		return manager.reconcileFailedInspection(ctx, id, fmt.Errorf("read required tmux card anchor: %w", err))
 	}
 	fields := strings.Split(anchor, "|")
-	if len(fields) != 4 || fields[0] != observed.id {
-		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
+	if len(fields) != 4 || fields[0] != id {
+		return manager.reconcileFailedInspection(ctx, id, errors.New("tmux returned an invalid card anchor"))
 	}
 	panePID, paneErr := strconv.Atoi(fields[2])
 	attached, attachedErr := strconv.Atoi(fields[3])
 	if !paneIDPattern.MatchString(fields[1]) || paneErr != nil || panePID < 0 || attachedErr != nil || attached < 0 {
-		return manager.reconcileFailedInspection(ctx, observed.id, errors.New("tmux returned an invalid card anchor"))
+		return manager.reconcileFailedInspection(ctx, id, errors.New("tmux returned an invalid card anchor"))
 	}
 	inspected.paneID = fields[1]
 	inspected.panePID = processinfo.PID(panePID)
@@ -530,7 +521,7 @@ func (manager *Manager) inspectRequired(
 	return inspected, true, nil
 }
 
-func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
+func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) (Session, error) {
 	session := inspected.session
 	session.ActivePaneID = inspected.paneID
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
@@ -558,18 +549,20 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 		}
 	}
 	if encoded, err := manager.sessionOption(ctx, session.TmuxID, conversationOption); err == nil && encoded != "" {
-		if conversation, err := decodeConversation(encoded); err == nil && conversation.Provider == agentruntime.ProviderCodex {
-			session.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}, Status: agentruntime.Status{State: "unknown", Source: "unavailable"}, Methods: agentruntime.Methods{Read: "unavailable", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}}
+		if conversation, err := decodeConversation(encoded); err == nil {
+			session.Conversation = &conversation
 		}
 	}
-	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	var foregroundErr error
+	session.Agent, session.foreground, foregroundErr = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	manager.projectClaudeConversation(&session)
 	if session.foreground != nil {
 		foreground := *session.foreground
 		if transport, _, recognized := observedTransport(foreground, nil); recognized {
 			environment, err := processinfo.ObserveForegroundEnvironment(inspected.panePID, foreground)
 			if errors.Is(err, processinfo.ErrForegroundMismatch) {
 				session.Agent, session.foreground = nil, nil
-				return session
+				return session, err
 			}
 			_, id, _ := observedTransport(foreground, environment)
 			session.Connection = &Connection{Transport: transport, ID: id}
@@ -577,7 +570,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 			session.CWD = ""
 		}
 	}
-	return session
+	return session, foregroundErr
 }
 
 func (manager *Manager) TerminalContext(connectionID string) (TerminalContext, error) {

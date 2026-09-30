@@ -33,7 +33,6 @@ type Request struct {
 	CWD            string
 	Text           string
 	Keys           []string
-	Mode           string
 	Scope          string
 	Input          string
 	Delivery       string
@@ -45,17 +44,11 @@ type Request struct {
 	GroupFilter    group.Filter
 }
 
-type ProcessReference struct {
-	PaneID        string `json:"paneId"`
-	PID           int    `json:"pid"`
-	StartIdentity string `json:"startIdentity"`
-}
-
 type Reference struct {
 	Machine       string                            `json:"machine"`
 	TmuxID        string                            `json:"tmuxId,omitempty"`
 	IdentityToken string                            `json:"identityToken,omitempty"`
-	Agent         *ProcessReference                 `json:"agent,omitempty"`
+	PaneID        string                            `json:"paneId,omitempty"`
 	Conversation  *agentruntime.ConversationRuntime `json:"conversation,omitempty"`
 }
 
@@ -75,17 +68,12 @@ func DecodeReference(encoded string) (Reference, error) {
 	if _, err := machine.Parse(ref.Machine); err != nil {
 		return Reference{}, invalid
 	}
-	if ref.Agent != nil && (!tmuxAddress(ref.Agent.PaneID, '%') || ref.Agent.PID <= 0 || ref.Agent.StartIdentity == "") {
-		return Reference{}, invalid
-	}
-	if ref.TmuxID == "" {
-		if ref.IdentityToken != "" || ref.Agent != nil || ref.Conversation == nil {
+	if ref.Conversation != nil {
+		var fields map[string]json.RawMessage
+		if strictjson.Decode(data, &fields) != nil || fields["tmuxId"] != nil || fields["identityToken"] != nil || fields["paneId"] != nil || !validConversationRuntime(*ref.Conversation) {
 			return Reference{}, invalid
 		}
-	} else if !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" {
-		return Reference{}, invalid
-	}
-	if ref.Conversation != nil && !validConversationRuntime(*ref.Conversation) {
+	} else if !tmuxAddress(ref.TmuxID, '$') || ref.IdentityToken == "" || !tmuxAddress(ref.PaneID, '%') {
 		return Reference{}, invalid
 	}
 	return ref, nil
@@ -96,9 +84,9 @@ func (ref Reference) Encode() string {
 	return base64.RawURLEncoding.EncodeToString(encoded)
 }
 
-// SessionEqual deliberately ignores the observed foreground process and name.
+// SessionEqual compares session lifetime, independently of pane selection and name.
 func (ref Reference) SessionEqual(other Reference) bool {
-	return ref.Machine == other.Machine && ref.TmuxID == other.TmuxID && ref.IdentityToken == other.IdentityToken
+	return ref.TmuxID != "" && ref.Machine == other.Machine && ref.TmuxID == other.TmuxID && ref.IdentityToken == other.IdentityToken
 }
 
 func (request Request) Valid() bool {
@@ -108,10 +96,7 @@ func (request Request) Valid() bool {
 	if request.Operation != "start" && request.Operation != "group" && !request.Group.IsUnassigned() || request.Operation != "list" && request.GroupFilter.Kind() != group.FilterAll {
 		return false
 	}
-	if request.Mode != "" && request.Mode != "native" && request.Mode != "terminal" {
-		return false
-	}
-	if request.Operation != "read" && request.MaxBytes != 0 || request.Operation != "read" && request.Operation != "stop" && request.Mode != "" {
+	if request.Operation != "read" && request.MaxBytes != 0 {
 		return false
 	}
 	if request.Operation != "send" && request.Operation != "text" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
@@ -137,11 +122,11 @@ func (request Request) Valid() bool {
 		if request.Name != "" || request.Machine != "" {
 			return false
 		}
-		if ref, err := DecodeReference(request.Ref); err != nil || ref.TmuxID == "" && (request.Operation == "enter" || request.Operation == "close" || request.Operation == "text" || request.Operation == "keys" || request.Operation == "shell" || request.Operation == "group" || request.Mode == "terminal") {
+		if ref, err := DecodeReference(request.Ref); err != nil || ref.Conversation != nil && request.Operation != "read" && request.Operation != "send" && request.Operation != "stop" && request.Operation != "wait" && request.Operation != "inspect" {
 			return false
 		}
 	} else if request.ConversationID != "" {
-		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Name != "" {
+		if request.Ref != "" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Name != "" {
 			return false
 		}
 		if request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
@@ -150,15 +135,33 @@ func (request Request) Valid() bool {
 	} else if request.Name == "" {
 		return false
 	}
+	native := request.ConversationID != ""
+	if request.Ref != "" {
+		ref, _ := DecodeReference(request.Ref)
+		native = ref.Conversation != nil
+	}
+	if !native && (request.Scope != "" || request.Input != "" || request.Delivery != "") {
+		return false
+	}
 	switch request.Operation {
 	case "read":
-		return request.MaxBytes >= 0 && request.MaxBytes <= 32768 && (request.Mode == "terminal" && request.Scope == "" || request.Mode != "terminal" && (request.Scope == "" || request.Scope == "latest" || request.Scope == "history"))
+		return request.MaxBytes >= 0 && request.MaxBytes <= 32768 && (request.Scope == "" || request.Scope == "latest" || request.Scope == "history")
 	case "send":
-		return validInputText(request.Text) && (request.Input == "peer" || request.Input == "user") && (request.Delivery == "direct" || request.Delivery == "queue")
+		return validInputText(request.Text) && (request.Input == "" || request.Input == "peer" || request.Input == "user") && (request.Delivery == "" || request.Delivery == "direct" || request.Delivery == "queue")
 	case "text":
 		return validInputText(request.Text)
 	case "wait":
-		return (request.State == "" || request.State == "idle" || request.State == "blocked" || request.State == "done" || request.State == "failed" || request.State == "stopped") && request.WaitTimeout >= 0 && request.WaitTimeout <= time.Hour
+		if request.WaitTimeout < 0 || request.WaitTimeout > time.Hour {
+			return false
+		}
+		switch request.State {
+		case "", "idle", "blocked":
+			return true
+		case "done", "failed", "stopped":
+			return native
+		default:
+			return false
+		}
 	case "keys":
 		if len(request.Keys) < 1 || len(request.Keys) > 16 {
 			return false

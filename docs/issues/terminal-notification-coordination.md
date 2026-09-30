@@ -10,10 +10,12 @@ clear it using another conversation's inferred working state. replacing a native
 status field mechanically would not preserve the notification contract.
 
 evidence: [native qualification](../native-agent-qualification.md) records a -> b
--> a navigation with unchanged process and skid binding. the notification plan's
+-> a navigation with unchanged process and skid binding. [terminal qualification](../terminal-agent-control-qualification.md)
+also proves same-process resume b with recorded a for both stock providers.
+the notification plan's
 composition/reducer consumes `source:native,state:working` and captures that
 binding for visits; the terminal plan replaces ordinary status with terminal
-evidence. source review only; no new live qualification.
+evidence. notification composition itself remains unqualified.
 
 user decision: notification semantics remain with that pr. this plan neither
 redesigns them nor treats heuristic idle as native completion evidence.

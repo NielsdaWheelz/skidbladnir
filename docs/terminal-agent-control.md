@@ -1,10 +1,12 @@
 # terminal status and control
 
-status: implementation plan; production unchanged. this owns the hard cutover
+status: implemented; isolated qualification and engineering checks passed.
+[qualification](terminal-agent-control-qualification.md) records evidence and limits.
+this owns the hard cutover
 of ordinary terminal observation and orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
-[agent control](agent-control.md), and [client controls](agent-control-ux.md) at
-implementation cutover. retain native integration as a separate capability.
+[agent control](agent-control.md), and [client controls](agent-control-ux.md).
+retain native integration as a separate capability.
 
 ## 1. outcome, scope and decisions
 
@@ -64,6 +66,7 @@ define terminal status at the sessions domain owner; keep native status validati
 separate. sessions never imports its higher-level observer.
 preserve metadata-only claude identity projection from its validated registration
 and codex's recorded identity; neither requires helper calls. inventory/create
+retain recorded metadata when present; claude projection fills only absence.
 never fabricate native methods or turns. explicit native resolution obtains its
 runtime through native inspect; captured native references keep their exact turn.
 
@@ -75,6 +78,10 @@ or native-fallback composition. inspect at most 8 kib of the current visible
 screen and its last eight joined lines, never old scrollback. adapt the existing
 bounded tmux capture primitive to select visible screen versus retained tail;
 keep utf-8 truncation, byte limits and capture cleanup at that owner.
+visible observation may retain bounded sgr styling to distinguish a dim provider
+placeholder from typed input; terminal reads remain plain text. parse only the
+consumed presentation evidence; unknown styling/layout refuses guarded send.
+no placeholder-text whitelist, new terminal emulator or confidence claim.
 
 precedence: recognized dialog/blocker -> positive working indicator -> recognized
 prompt/footer idle pattern -> unknown. identify codex/claude from fresh process
@@ -144,7 +151,10 @@ ordinary append/paste-and-submit semantics. send/text reuse the same unique-buff
 paste plus one submit primitive. stage that buffer before final foreground
 revalidation; both paste and enter belong inside the successful tmux predicate
 branch. refusal executes neither; cleanup deletes only this operation's buffer.
-an observed foreground change refuses, without generic-key substitution.
+bounded buffer cleanup may continue for one second after request cancellation;
+it removes staged input only and never dispatches another effect.
+an observed provider-foreground change refuses guarded send, without generic-key
+substitution; deliberate text/keys require terminal authority only.
 no peer attribution, native admission, queue or completion
 claim. preparation failures before possible input are `not_sent`; possible input
 with lost confirmation is `unknown`; neither is automatically retried.
@@ -331,12 +341,12 @@ owner governs its planned colors. labels survive no-color display; no success cl
 | root integrator | `docs/`, `cmd/skidbladnir/` only if composition needs it; coordinated release metadata | contract/adjacent-pr integration, verification and hard cutover |
 | adversarial verifier | read-only; no production/test files | challenge contracts, red-test sensitivity, green behavior and refactor |
 
-primary existing files: `sessions/{control,types,manager,agent}.go`,
-`tmux/{control,client}.go`, `agentcontrol/{service,actions,native,create}.go`,
-`gateway/{agent_control,conversations,dto,gateway}.go`,
+primary files: `sessions/{control,types,manager,agent}.go`,
+`tmux/{control,client}.go`, `agentcontrol/{service,terminal,detect,native,create}.go`,
+`gateway/{terminal_control,native_response,conversations,dto,gateway}.go`,
 `fleetclient/{request,response,client,wait}.go`, `agentcli/run.go`,
 `sessionui/{session,view,details,navigation}.go`; android `AgentControl.kt`, `GatewayClient.kt`,
-`ProductModel.kt`, `SkidbladnirController.kt`, `SessionCard.kt`, `TerminalScreen.kt`.
+`TerminalControl.kt`, `ProductModel.kt`, `SkidbladnirController.kt`, `SessionCard.kt`, `TerminalScreen.kt`.
 split terminal policy from native policy within the existing owner if needed;
 no generic provider framework. consolidate one capture/input validator, one
 interruption-key selector and one closure operation. remove old session-native
@@ -394,5 +404,6 @@ differently; foreground changes cannot be atomic with key consumption; remote
 controls use generic terminal behavior; closure may leave detached/shared work;
 request cancellation can leave close incomplete; creation retains its native
 dependency; coordinated schemas invalidate old refs;
+reserved forge clearance reduces the phone's visible list height;
 retained native code needs upkeep; deleting tests forfeits automatic regression
 protection. none warrants a new runtime, history store or compatibility layer.

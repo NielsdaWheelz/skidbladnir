@@ -56,15 +56,18 @@ func (snapshot UnreadSnapshot) Record(key UnreadKey) (UnreadRecord, bool) {
 	}
 	return UnreadRecord{}, false
 }
-func (snapshot UnreadSnapshot) Conversation(ref Reference, paneID string) (agentruntime.Conversation, bool) {
+func (snapshot UnreadSnapshot) Conversation(ref Reference, session Session) (agentruntime.Conversation, bool) {
 	if ref.Conversation != nil {
 		return ref.Conversation.Binding.Conversation, true
 	}
-	if ref.Agent != nil {
+	if session.Conversation != nil {
+		return *session.Conversation, true
+	}
+	if session.Agent != nil {
 		return agentruntime.Conversation{}, false
 	}
 	for _, association := range snapshot.Associations {
-		if association.Machine == ref.Machine && association.TmuxID == ref.TmuxID && association.IdentityToken == ref.IdentityToken && association.PaneID == paneID && association.Conversation.Provider == agentruntime.ProviderClaude {
+		if association.Machine == ref.Machine && association.TmuxID == ref.TmuxID && association.IdentityToken == ref.IdentityToken && association.PaneID == session.ActivePaneID && association.Conversation.Provider == agentruntime.ProviderClaude {
 			return association.Conversation, true
 		}
 	}
@@ -173,10 +176,10 @@ func (store *UnreadStore) Sync(peers []Peer, machines []Machine) (UnreadSnapshot
 			}
 			for _, session := range peer.Sessions {
 				ref, _ := DecodeReference(session.Ref)
-				if ref.Conversation == nil || ref.Conversation.Binding.Conversation.Provider != agentruntime.ProviderClaude {
+				if session.Conversation == nil || session.Conversation.Provider != agentruntime.ProviderClaude {
 					continue
 				}
-				association := UnreadAssociation{Machine: peer.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken, PaneID: session.ActivePaneID, Conversation: ref.Conversation.Binding.Conversation}
+				association := UnreadAssociation{Machine: peer.Machine, TmuxID: ref.TmuxID, IdentityToken: ref.IdentityToken, PaneID: session.ActivePaneID, Conversation: *session.Conversation}
 				found := false
 				for index, previous := range snapshot.Associations {
 					if previous.Machine == association.Machine && previous.TmuxID == association.TmuxID && previous.IdentityToken == association.IdentityToken && previous.PaneID == association.PaneID {
