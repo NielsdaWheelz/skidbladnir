@@ -8,18 +8,17 @@ application database or coordinator.
 observation, explicit conversation association, native messaging, client-side
 waits and device-local acknowledgement. stock codex installation and native
 conversation targets are independent of terminal selection. `stop` retains the terminal;
-`close` reports halt and terminal closure separately. [isolated source
-qualification](native-agent-qualification.md) records evidence and limits;
-historical fleet evidence does not qualify this change.
+`close` reports halt and terminal closure separately.
+[qualification](native-agent-qualification.md) records source, installed-host
+and phone evidence with their limits.
 
-2026-09-25 restoration scope: this original tmux product coexists independently
-with herdr-mobile. [the deployment handoff](dev-server-handoff.md) owns the
-namespace handback, existing provider accounts, scoped shell setup, helper pins, and
-qualification status. source preparation does not authorize publication,
-installation, or modification of the other product's runtime.
-all products retain the existing providers, account homes, histories, memories
-and native integrations. neither product provisions separate provider homes;
-hook coexistence is qualified at the actual integration boundary.
+2026-09-29: skid v0.10.6 runs on macbook, devbox, arch and android. herdr and
+herdr-mobile are retired. [the deployment handoff](dev-server-handoff.md) owns
+installation, existing provider accounts, scoped shell setup and helper pins.
+jarvis consumes the current skid cli for workers; its shared codex cognition
+remains separate and may stay down. provider accounts/history, skid pairings
+and ordinary tmux workers are preserved. no legacy transport, reader, hook,
+gate, coexistence guard or private cognition process is retained.
 
 this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),

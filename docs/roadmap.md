@@ -7,11 +7,14 @@ this index records present scope and open work, not a release diary.
 
 ## skid-only cutover
 
-jarvis worker control moves to the current cli; captured-target inspection and
-retired herdr coexistence guards are the bounded skid changes. provider accounts,
-history and terminal lifetimes remain independent. signed release, installed
-fleet and phone qualification are pending. jarvis cognition remains a separate
-shared-app-server consumer; its recovery does not gate this cutover.
+2026-09-29: captured-target inspection is published in v0.10.6 and installed on
+macbook, devbox, arch and android. herdr/mobile servers, hooks, gates, units,
+owned ingress/state and phone package are removed. jarvis's worker adapter and
+archive cut are delivered in [pr 43](https://github.com/NielsdaWheelz/jarvis/pull/43);
+its actual service uid reads all three production gateways. jarvis stays disabled
+and paused until its separate shared-cognition repair. installed native lifecycle
+and owner phone attachment pass on all three hosts. [qualification](native-agent-qualification.md)
+separates those checks from remaining phone-native interaction acceptance.
 
 ## native interaction source delivery
 
@@ -24,11 +27,12 @@ experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
 v0.10.4 is published historical output under the former selected-view contract.
-the coordinated stock helper/gateway/client generation is released as v0.10.5.
+the coordinated stock helper/gateway/client generation was released as v0.10.5;
+v0.10.6 adds captured conversation inspection.
 [qualification](native-agent-qualification.md) records stock evidence;
 [release qualification](issues/native-agent-release-qualification.md) tracks remaining
-installed-fleet boundaries. temporary behavioral tests are deleted
-after verification; no installed-fleet/physical-phone pass is claimed.
+phone-native interaction boundaries. temporary behavioral tests are deleted
+after verification; owner attachment does not establish native-output unread behavior.
 
 ## original-product restoration
 

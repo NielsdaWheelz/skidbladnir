@@ -1,9 +1,49 @@
 # native conversation qualification
 
-2026-09-29 · stock-provider source qualified; signed artifacts verified and pinned.
-no installed-fleet acceptance.
+2026-09-29 · stock-provider source qualified; signed v0.10.6 verified, pinned and
+installed on all three hosts and android. retirement boundaries below pass;
+broader phone-native interaction retains its separate acceptance scope.
 [contract](native-agent-observation.md) owns target behavior. new evidence below
 applies only to its named boundary; compilation is not behavioral acceptance.
+
+## skid-only retirement
+
+release source `a58aa8dd7acb652ea86e5d65862d96bd8fccfca9`, immutable v0.10.6;
+normal published-release verification passed, including all five asset digests,
+retained android signer and hosted verify run `36660066651`.
+
+| exercised boundary | macbook | devbox | arch |
+| --- | --- | --- | --- |
+| installed gateway → pinned helper → stock codex: creation, captured inspect, native send, exact-turn finalized history, stop retaining terminal, confirmed close | pass | pass | pass |
+| captured inspect after untracking and terminal closure; isolated fixture cleanup | pass | pass | pass |
+| installed desktop cli over real tls; preserved machine identity | pass | pass | pass |
+| actual jarvis uid/private config under relevant service restrictions → production gateway | pass | pass | pass |
+| pinned herdr public stop, restart disable, five-home uninstall, exact ssh gate/state/units and `8444 /v1` removal | pass | pass | pass |
+| owner phone attachment with retained pairing | pass | pass | pass |
+| normal host/gateway apply; no retired runtime, hook or instruction resurrection | pass | pass | pass |
+
+normal apply upgraded stock codex to 0.159.2 on all three hosts; the installed
+native lifecycle and cleanup were repeated successfully afterward. all previously
+observed shared-provider pid/start identities survived: macbook 37, devbox 6.
+arch began with none and used normal personal-account daemon startup. devbox and
+arch defer their ordinary system reboot; neither was rebooted.
+
+the phone was updated in place from 0.10.3 to 0.10.6 with its retained signer and
+first-install identity. the owner confirms attachment on all three hosts;
+`dev.niels.herdr.mobile` is absent. updating hosts before clients briefly made
+old clients reject the inventory schema. retained 0.10.3 cli reproduced
+`protocol_error`; 0.10.6 read the same live workers. client update/reopen restored
+visibility, confirmed by the owner. no worker recreation or compatibility decoder.
+
+jarvis source is delivered separately and installed inactive. its main service
+remains disabled, paused and stopped. shared cognition and full activation are
+unrun, explicitly outside retirement. github billing prevented its hosted job
+from starting; clean local verification and actual worker-client checks passed.
+
+temporary source/cli/provider/action/archive/ownership probes were reviewed and
+deleted after their sensitive red/green results. final installed smoke drivers
+and operator staging were removed after post-install verification. no permanent
+behavioral harness.
 
 ## accepted isolated boundaries
 
@@ -50,10 +90,11 @@ temporary integration/live tests and fixtures were deleted after red/green and
 adversarial review. exact owned processes, sockets and provider homes were cleaned
 up; no retained behavioral suite was added. engineering checks run after deletion.
 
-the model boundary used a disposable controlled local response server, with
+these earlier isolated checks used a disposable controlled local response server, with
 actual stock provider execution/history and the real gateway/client transport.
-authenticated model access, installed fleet and physical-phone interaction are
-NOT_RUN. no deployment, real-account mutation or phone operation occurred.
+authenticated model access, installed fleet and physical-phone interaction were
+NOT_RUN in that qualification. the retirement section above records subsequent
+installed-fleet, real-account and phone checks.
 
 ## superseded evidence
 
