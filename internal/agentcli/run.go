@@ -29,6 +29,7 @@ const usage = `usage: skid [--config PATH] COMMAND [options]
 skid                                      open the session browser
 skid list [--machine HOST] [--group LABEL | --unassigned]
 skid info NAME                            metadata and exact reference
+skid inspect --ref REF                    captured conversation and current observation
 skid enter NAME                           enter terminal; ctrl-] d detaches
 skid read NAME [--history | --terminal] [--max-bytes N]
 skid replies NAME                         view replies; acknowledge known replies
@@ -77,6 +78,7 @@ use a captured --ref when replacement must fail. names resolve once per invocati
 separate named commands may address replacements. attributed peer text grants no authority.
 native acceptance earns send exit 0; errors earn exit 1.
 --json preserves structured results and errors. read/info never acknowledge unread replies.
+inspect preserves its captured target on native failure; observedRef requires a new authorized action.
 config defaults to ~/.config/skidbladnir/client.json
 `
 
@@ -205,6 +207,10 @@ func parse(args []string) (command, error) {
 			return result, errors.New("start requires name")
 		}
 		result.request.Name = operands[0]
+	case "inspect":
+		if len(operands) != 0 || result.request.Ref == "" {
+			return result, errors.New("inspect requires --ref")
+		}
 	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell", "track", "untrack":
 		if result.request.Ref == "" && (result.request.ConversationID == "" || result.request.Operation == "track") {
 			if len(operands) == 0 {
@@ -394,6 +400,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	}
+	if parsed.request.Operation == "inspect" {
+		return render(parsed, client.InspectReference(ctx, parsed.request.Ref), stdout, stderr)
+	}
 	if parsed.replies {
 		capture := parsed.request
 		paneID := ""
@@ -508,6 +517,32 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		return 1
 	}
 	switch command.request.Operation {
+	case "inspect":
+		value := result.Value.(fleetclient.InspectedReference)
+		if _, err := fmt.Fprintf(stdout, "machine: %s\ncaptured conversation: %s\ncaptured reference: %s\n", value.Label, value.Target.Conversation.ConversationID, value.Target.Ref); err != nil {
+			return 1
+		}
+		if value.Target.Turn != nil {
+			if _, err := fmt.Fprintln(stdout, "captured turn: "+value.Target.Turn.ID); err != nil {
+				return 1
+			}
+		}
+		if !value.Inspection.OK {
+			fmt.Fprintln(stderr, "inspection unavailable: "+value.Inspection.Error.Code)
+			break
+		}
+		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
+		if _, err := fmt.Fprintln(stdout, "observed state: "+fleetclient.StatusText(runtime.Status)); err != nil {
+			return 1
+		}
+		if runtime.Turn != nil {
+			if _, err := fmt.Fprintln(stdout, "observed turn: "+runtime.Turn.ID); err != nil {
+				return 1
+			}
+		}
+		if _, err := fmt.Fprintln(stdout, "observed reference: "+value.ObservedRef+"\nuse the observed reference only for a separately authorized action."); err != nil {
+			return 1
+		}
 	case "list":
 		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)

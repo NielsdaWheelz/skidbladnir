@@ -5,6 +5,14 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## skid-only cutover
+
+jarvis worker control moves to the current cli; captured-target inspection and
+retired herdr coexistence guards are the bounded skid changes. provider accounts,
+history and terminal lifetimes remain independent. signed release, installed
+fleet and phone qualification are pending. jarvis cognition remains a separate
+shared-app-server consumer; its recovery does not gate this cutover.
+
 ## native interaction source delivery
 
 [native conversations](native-agent-observation.md): source implemented and

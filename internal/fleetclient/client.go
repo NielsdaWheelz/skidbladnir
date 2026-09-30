@@ -53,6 +53,29 @@ type Client struct {
 	http           *http.Client
 }
 
+// InspectReference retains the locally admitted target even when native inspection
+// fails. Execute's internal inspect result remains the provider runtime envelope.
+func (client *Client) InspectReference(ctx context.Context, encoded string) Result {
+	ref, err := DecodeReference(encoded)
+	if err != nil || ref.Conversation == nil {
+		return Failed("invalid_input", "not_sent")
+	}
+	selected, found := client.peerByMachine(ref.Machine)
+	if !found {
+		return Failed("machine_unknown", "not_sent")
+	}
+	value := InspectedReference{Label: selected.Label, Machine: selected.Machine}
+	value.Target.Ref = encoded
+	value.Target.Conversation = ref.Conversation.Binding.Conversation
+	value.Target.Turn = ref.Conversation.Turn
+	value.Inspection = client.Execute(ctx, Request{Operation: "inspect", Ref: encoded})
+	if value.Inspection.OK {
+		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
+		value.ObservedRef = (Reference{Machine: ref.Machine, Conversation: &runtime}).Encode()
+	}
+	return success(value)
+}
+
 // Execute never retries a write, including after a lost acknowledgement.
 func (client *Client) Execute(ctx context.Context, request Request) Result {
 	if request.Operation == "wait" {
@@ -593,6 +616,9 @@ func (result Result) Encode(operation string) ([]byte, error) {
 
 func (result Result) ExitCode(operation string) int {
 	if !result.OK {
+		return 1
+	}
+	if value, ok := result.Value.(InspectedReference); ok && !value.Inspection.OK {
 		return 1
 	}
 	switch operation {

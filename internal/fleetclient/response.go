@@ -139,6 +139,19 @@ type ObservedSession struct {
 	ObservedAt string  `json:"observedAt"`
 	Session    Session `json:"session"`
 }
+
+// InspectedReference separates captured action identity from current observation.
+type InspectedReference struct {
+	Label   string `json:"label"`
+	Machine string `json:"machine"`
+	Target  struct {
+		Ref          string                    `json:"ref"`
+		Conversation agentruntime.Conversation `json:"conversation"`
+		Turn         *agentruntime.Turn        `json:"turn,omitempty"`
+	} `json:"target"`
+	Inspection  Result `json:"inspection"`
+	ObservedRef string `json:"observedRef,omitempty"`
+}
 type ReadResult struct {
 	Observation  *agentruntime.Observation `json:"observation,omitempty"`
 	OutputState  string                    `json:"outputState,omitempty"`

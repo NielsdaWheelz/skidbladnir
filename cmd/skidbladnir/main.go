@@ -123,7 +123,7 @@ func run(arguments []string, stdin *os.File, stdout, stderr io.Writer) int {
 			_, _ = io.WriteString(stderr, "usage: skidbladnir agent-hook --host-config=PATH Claude SessionStart\n") // justify-ignore-error: a broken CLI output stream cannot be recovered.
 			return exitUsage
 		}
-		if os.Getenv("SKIDBLADNIR_AGENT") != "1" || os.Getenv("HERDR_ENV") == "1" {
+		if os.Getenv("SKIDBLADNIR_AGENT") != "1" {
 			return 0
 		}
 		preparedInput := prepareAgentHookInput(flags.Arg(0), flags.Arg(1), stdin)
@@ -331,7 +331,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(name, "HERDR_") || strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || name == "SKIDBLADNIR_CONNECTION" || name == "SKIDBLADNIR_TERMINAL_CONTEXT" || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
+		if strings.HasPrefix(name, "SKIDBLADNIR_STARTUP_") || name == "SKIDBLADNIR_CONNECTION" || name == "SKIDBLADNIR_TERMINAL_CONTEXT" || name == "SKIDBLADNIR_SHELL" || name == "SKIDBLADNIR_CLAUDE_COMMAND" || name == "SKIDBLADNIR_AGENT" {
 			if err := os.Unsetenv(name); err != nil {
 				return errors.New("clear inherited product environment")
 			}

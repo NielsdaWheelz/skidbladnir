@@ -115,8 +115,8 @@ that table changes the contract; callers cannot invent a profile. the gateway
 starts the configured login shell in the new pane. one private startup envelope
 launches the selected native provider as its foreground child with the selected
 home/flags in the requested cwd. provider exit returns to that shell without
-closing the tmux session. inherited `HERDR_*` and provider homes are cleared at
-the launch boundary. existing tmux server/session environments remain untouched. the
+closing the tmux session. inherited provider homes and skid launch context are
+cleared at the launch boundary. existing tmux server/session environments remain untouched. the
 codex creation first starts the stock account daemon, captures its returned
 conversation id, names it after the chosen terminal name and prepares its
 persistence with exact native resume without starting a turn. later terminal
@@ -128,7 +128,7 @@ leaves existing provider hook files untouched. absent/unloaded hooks omit
 registered identity without blocking launch. new skid shell terminals use
 existing personal accounts; skid-owned bash/zsh startup functions select
 those accounts for bare commands and existing homes for account commands,
-only in marked skid terminals. ordinary shells and herdr panes retain their
+only in marked skid terminals. ordinary shells retain their
 existing commands and account state; no global provider rerouting is installed.
 manual claude-personal leaves `CLAUDE_CONFIG_DIR` unset to preserve native
 defaults, including `~/.claude.json`; it has no forge row. these functions call
@@ -411,7 +411,7 @@ inventory schedule. pressure has its own coalesced polling lane.
 [identity registration](agent-identity-projection.md) is content-free and bound
 to the exact foreground process lifetime. the explicitly loaded claude plugin
 calls `agent-hook Claude SessionStart`. only a skid provider launch marked
-`SKIDBLADNIR_AGENT=1` outside a herdr pane may reach input/config admission. its
+`SKIDBLADNIR_AGENT=1` may reach input/config admission. its
 bounded decoder reads only the documented session id and writes
 `@skid_agent_runtime` after PID/start/tty/profile validation. the current
 projection consumes claude registration only; the unused codex writer is retired.
@@ -597,8 +597,12 @@ use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
 default private peer configuration
 is `~/.config/skidbladnir/client.json`. exact names select across complete live
 inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
-identity. cli and tui consume one fleetclient projection. jarvis uses herdr
-directly; skid does not provision or alter jarvis's configuration or credentials.
+identity. cli and tui consume one fleetclient projection. jarvis consumes the
+current cli using its own private peer configuration and existing write policy.
+skid does not provision jarvis credentials. `inspect --ref` projects the captured
+conversation separately from its current native observation; only a later
+explicitly authorized action may choose the separate `observedRef`. terminal
+reassociation or deletion does not retarget captured conversation inspection.
 [agent-control ux](agent-control-ux.md) owns schemas, selection, and exit contracts.
 the tui's `n` immediately creates and attaches a home terminal on the visible
 machine or configured default; `N` opens the advanced form. mobile retains

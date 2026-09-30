@@ -1,15 +1,6 @@
 # shellcheck shell=bash
 # source after normal bash/zsh login and interactive setup, only in skid shells.
-[[ "${SKIDBLADNIR_SHELL:-}" == 1 && "${HERDR_ENV:-}" != 1 ]] || return 0
-
-if [[ -n "${ZSH_VERSION:-}" ]]; then
-  unset -m 'HERDR_*'
-else
-  for _skid_environment_name in "${!HERDR_@}"; do
-    unset "$_skid_environment_name"
-  done
-  unset _skid_environment_name
-fi
+[[ "${SKIDBLADNIR_SHELL:-}" == 1 ]] || return 0
 
 # reset shared aliases after startup; explicit account commands always win.
 unalias codex codex-personal codex-work codex-work2 claude claude-personal claude-work 2>/dev/null || :

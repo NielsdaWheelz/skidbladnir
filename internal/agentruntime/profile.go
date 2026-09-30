@@ -115,7 +115,7 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 			if !environmentPattern.MatchString(variable.Name) || !utf8.ValidString(variable.Value) || strings.ContainsRune(variable.Value, 0) {
 				return nil, fmt.Errorf("profile %s environment is invalid", profile.Key)
 			}
-			if strings.HasPrefix(variable.Name, "HERDR_") || variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" || variable.Name == "SKIDBLADNIR_AGENT" || variable.Name == "SKIDBLADNIR_CONNECTION" || variable.Name == "SKIDBLADNIR_TERMINAL_CONTEXT" || variable.Name == "SKIDBLADNIR_STARTUP_PID" || variable.Name == "SKIDBLADNIR_STARTUP_CWD" || variable.Name == "SKIDBLADNIR_STARTUP_HELPER" || variable.Name == "SKIDBLADNIR_STARTUP_AGENT" {
+			if variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" || variable.Name == "SKIDBLADNIR_AGENT" || variable.Name == "SKIDBLADNIR_CONNECTION" || variable.Name == "SKIDBLADNIR_TERMINAL_CONTEXT" || variable.Name == "SKIDBLADNIR_STARTUP_PID" || variable.Name == "SKIDBLADNIR_STARTUP_CWD" || variable.Name == "SKIDBLADNIR_STARTUP_HELPER" || variable.Name == "SKIDBLADNIR_STARTUP_AGENT" {
 				return nil, fmt.Errorf("profile %s environment belongs to another launch context", profile.Key)
 			}
 			if _, found := environmentNames[variable.Name]; found {
