@@ -17,6 +17,15 @@ and host-switch races in the
 [directory row](../terminal-continuity.md#6-delivery-and-adversarial-acceptance)
 have no recorded final-release live result and remain `NOT_RUN`.
 
+2026-09-30 desktop source change: the form now searches ordinary words while
+typing, previews a ranked match, cycles with left/right and accepts with tab.
+blank defaults to home; literal paths remain literal. temporary model-event
+checks cover typing/paste, selection, exact creation cwd, home/literal paths,
+cancellation, stale query/machine replies and empty/error results. a local tls
+fixture also exercises debounced request terms, the real client decoder, and
+preview bounds. these checks do not exercise real gateway/zoxide/tty behavior; that boundary remains
+`NOT_RUN`. phone behavior is unchanged.
+
 resolved when: with current-turn approval, run those cases against test-owned
 directories and the actual configured host zoxide paths. prove selection edits
 only the draft cwd and creation revalidates the path. retain content-free
