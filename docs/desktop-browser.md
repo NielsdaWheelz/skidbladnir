@@ -63,7 +63,7 @@ or none. the machine filter applies to every view.
 
 | view | rows and order |
 | --- | --- |
-| agents | one row per agent in its current execution context across all groups, including resolved remote agents (always unknown) and retained unavailable rows: blocked, failed, done, idle, unknown, working, stopped; unavailable hosts last; ties keep configured peer then host-published name/id order |
+| agents | one row per agent in its current execution context across all groups, including resolved remote agents (always unknown) and retained unavailable rows: blocked, failed, done, idle, unknown, working, stopped; unavailable hosts last; ties keep configured peer then numeric tmux-id order |
 | all groups | every session, including terminals, in existing `Groups` order, each group under a heading |
 | unassigned, `group: <label>` | that group's sessions in `Groups` order; named views are the sorted observations, preserving a selected empty label |
 

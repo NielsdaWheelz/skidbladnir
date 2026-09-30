@@ -32,7 +32,7 @@ func (manager *Manager) OpenTerminal(ctx context.Context, input OpenTerminalInpu
 	manager.mutations.Lock()
 	defer manager.mutations.Unlock()
 
-	server, name, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
+	server, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if errors.Is(err, errSessionServerObservation) {
 		return nil, newSessionError(ErrorSessionIdentityMismatch, "The session changed; refresh before opening it.")
 	}
@@ -40,8 +40,8 @@ func (manager *Manager) OpenTerminal(ctx context.Context, input OpenTerminalInpu
 		return nil, err
 	}
 	runtime, err := manager.tmux.StartAttachment(ctx, tmuxclient.AttachmentSpec{
-		SourceID: input.TmuxID, SourceName: name,
-		Columns: input.Columns, Rows: input.Rows, Server: server,
+		SourceID: input.TmuxID,
+		Columns:  input.Columns, Rows: input.Rows, Server: server,
 	})
 	if err != nil {
 		var classified error

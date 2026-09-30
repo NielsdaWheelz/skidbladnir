@@ -36,6 +36,11 @@ reopens the responsible contract.
 [testing policy](rules/testing.md) supersedes retired test recipes in older
 feature plans; those recipes do not recreate removed gates.
 
+[automatic session names and public handles](automatic-session-names.md) owns
+one canonical tmux name, automatic/manual ownership, typed live selectors and
+their acceptance. names describe sessions; exact lifetimes and native references
+target operations.
+
 ## 1. Philosophy
 
 - **tmux is the database and the process supervisor.** Session list, pane
@@ -84,6 +89,7 @@ machine does not block or authorize action against another.
 | agent control | foreground process identity and separate explicit native conversation; sampled native status, bounded native output, explicit native/terminal controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
 | State | tmux owns terminal runtime; providers own execution/history/queues; tmux records explicit conversation associations; clients persist device-local reply ids and acknowledgements. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
+| session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
 | Client | normal cli and small terminal ui; Kotlin/Compose phone dashboard with source-pinned xterm.js terminal |
@@ -104,8 +110,8 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 permission bypasses above on all three hosts. deployment owns these arguments;
 callers supply no permission setting. acceptance requires every declared profile
 to retain its policy through validation and launch, with claude's identity
-plugin and managed name preserved. codex applies `--yolo`'s policy at native
-creation; its remote-resume argv omits the unsupported permission override.
+plugin preserved; skid never supplies a provider conversation name. codex applies its configured `--yolo` policy when its remote terminal starts the
+new conversation; stock owns that conversation and its name.
 existing sessions retain their launch policy;
 remaining provider trust/setup dialogs and project instructions still apply.
 
@@ -116,11 +122,11 @@ launches the selected native provider as its foreground child with the selected
 home/flags in the requested cwd. provider exit returns to that shell without
 closing the tmux session. inherited provider homes and skid launch context are
 cleared at the launch boundary. existing tmux server/session environments remain untouched. the
-codex creation first starts the stock account daemon, captures its returned
-conversation id, names it after the chosen terminal name and prepares its
-persistence with exact native resume without starting a turn. later terminal
-renames are independent. native failure
-ends creation before terminal launch and preserves any captured conversation id. the agent
+codex creation starts only the stock account daemon, then launches a normal new
+remote terminal conversation. skid does not pre-create, name or resume it. new
+codex terminals are untracked until explicit association; existing exact native
+controls remain independent. a daemon-start failure ends creation before terminal
+launch. later terminal naming never writes to either provider. the agent
 retains its ordinary provider configuration and terminal. deployment
 owns one explicitly loaded Claude hook plugin; skid installs no codex hook and
 leaves existing provider hook files untouched. absent/unloaded hooks omit
@@ -314,10 +320,9 @@ creation, and content-free restoration contracts:
   hook registration is not used for native binding or projected identity.
 - grid order: named group headings in the shared ascii-folded/exact utf-8 label
   order, then unassigned. within each group use the current agent-control order:
-  case-folded/exact machine label, machine handle, case-folded/exact tmux name,
-  then local tmux id. no urgency sorting. retained stale rows remain explicitly
-  unavailable and non-actionable. each gateway retains local name/id order;
-  grouping belongs to clients, never the host inventory envelope.
+  case-folded/exact machine label, machine handle, then numeric local tmux id. no urgency sorting. retained stale rows remain explicitly
+  unavailable and non-actionable. clients own numeric local tmux-id ordering and
+  grouping; the host inventory envelope makes no display-order promise.
 
 The Dashboard is one retained Android navigation entry. Opening Terminal does
 not replace that entry: top `Detach` and Android Back return to its same typed
@@ -457,10 +462,10 @@ names the target and sends
    display-safety rules in [groups](groups.md#3-labels-equality-and-ordering).
    invalid input mutates nothing. interactive named-group creation prefills a
    visible editable label; a group supplies no other launch context.
-4. codex creation starts/reuses the stock account daemon, captures native
-   thread/start's id, then one tmux client queue records that conversation and
-   creates the session. native create and terminal create are separate effects;
-   later terminal failure can return an empty saved conversation reference.
+4. codex preparation starts/reuses only the stock account daemon. one tmux queue
+   creates the session; its new remote tui owns conversation creation. no native
+   id or conversation binding is reserved. unknown terminal creation remains
+   unknown and never triggers replay or compensating cleanup.
    the queue creates the session (named
    `optionalTmuxName` or the smallest free `skidbladnir-<profile>-<N>` for an agent,
    `skidbladnir-terminal-<N>` for a terminal),
@@ -472,7 +477,8 @@ names the target and sends
    foreground child of that shell; the shell persists after provider exit.
    terminal uses the same shell without an initial provider. the private
    current-binary entrypoint carries the launch envelope without shell quoting.
-   Managed Claude inserts `--name <tmuxName>` before those arguments; configured
+   omitted names create automatic ownership in that queue. an explicitly
+   supplied name is manual skid intent only. neither provider receives a name; configured
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
    an unproven cleanup kill. No prompt is sent; the opaque agent's own
@@ -535,27 +541,20 @@ entry and the existing metadata mutation/read ordering; a digest-only unresolved
 group can regain its display label from later inventory. exact contracts, file
 ownership, costs, and acceptance are in [groups.md](groups.md).
 
-### Rename
+### session naming
 
-The active Terminal's middle identity control opens one literal tmux-name
-editor. It sends
-`PATCH /v1/sessions/{tmuxId} {tmuxName,newTmuxName,identityToken}` to the pinned
-machine. The desired name uses the Forge's existing 1–64-character ASCII grammar;
-unchanged input is disabled and is `SessionNameConflict` if submitted directly.
+the terminal identity control edits the actual tmux name. saving selects manual
+ownership, including an unchanged automatic name. `use automatic title` restores
+automatic ownership without requiring a usable current title. existing unmarked
+sessions remain manual; an observed external rename relinquishes automation.
 
-Under the gateway's mutation lock, one tmux command queue verifies server
-epoch/PID/start-time, id, and expected current name before `rename-session`
-targets only the id. Tmux owns destination uniqueness.
-The request body has exactly three case-sensitive, non-duplicate string keys.
-destination-failure classification revalidates source identity after observing
-the destination. Stale identity and collision mutate nothing.
-Success is bodyless `204`; Android never retries, supersedes that machine's
-inventory, and requires one later inventory read before replacing the terminal
-target. A content-free transient mutation fence survives terminal Detach until
-that read; no name or history does. The same id/token keeps the active phone
-attachment, process, panes, geometry, character, options, and provider facts;
-only the authoritative tmux name and header change. Provider session names are
-never synchronized.
+the existing inventory boundary reconciles the current active pane's complete
+title. the manager owns ascii64 conversion and collision candidates; tmux owns
+exact utf-8/literal comparison and the lifetime/name/marker/pane/title guard.
+rename precedes marker update in one queue, without rollback or replay. clients
+retain drafts, focus and attachments and reconcile only authoritative inventory.
+[the naming contract](automatic-session-names.md) owns the closed api unions,
+ownership transitions, content and acceptance.
 
 ### Detach
 
@@ -567,11 +566,10 @@ next open attaches fresh with no byte replay.
 ### Kill
 
 `DELETE /v1/sessions/{tmuxId}` routes to the selected machine and requires its
-pinned machine header, local tmux session id, displayed tmux name, and inventory
-`identityToken`. The request field is the hard-cut `tmuxName`; no legacy
-`name` reader exists. The token binds the session id to that server's random epoch
+pinned machine header, local tmux session id and inventory `identityToken`.
+the closed body contains only that token. it binds the session id to the server's random epoch
 plus built-in PID and start time. One
-tmux client command queues the epoch/PID/start-time/id/name predicate and
+tmux client command queues the epoch/PID/start-time/id predicate and
 `kill-session`; stale tokens, including after server restart and id/name reuse,
 cannot reach deletion. the gateway validates, closes its owned terminal
 connections, then revalidates and deletes. group membership is no restriction:
@@ -594,11 +592,12 @@ read, send, text, keys, wait, stop, close, start, shell, and group. `list --grou
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
 use the [groups contract](groups.md#6-cli-and-shared-fleet-presentation).
 default private peer configuration
-is `~/.config/skidbladnir/client.json`. exact names select across complete live
-inventory; `--machine` resolves collisions/outages and `--ref` preserves exact
-identity. cli and tui consume one fleetclient projection. jarvis consumes the
-current cli using its own private peer configuration and existing write policy.
-skid does not provision jarvis credentials. `inspect --ref` projects the captured
+is `~/.config/skidbladnir/client.json`. typed terminal/conversation handles select
+once across complete scoped inventory; `--machine` narrows that scope and `--ref`
+preserves exact captured identity for saved automation. names are creation input
+only. cli and tui consume one fleetclient projection. jarvis consumes the current
+cli using its own private peer configuration and existing write policy. skid does
+not provision jarvis credentials. `inspect --ref` projects the captured
 conversation separately from its current native observation; only a later
 explicitly authorized action may choose the separate `observedRef`. terminal
 reassociation or deletion does not retarget captured conversation inspection.
@@ -757,12 +756,12 @@ history item is `current`.
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
 | `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
-| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without profile; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the existing strict session DTO; creation errors include `code,message,dispatch` and captured `conversation?` for partial outcomes |
+| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without profile; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the existing strict session DTO; creation errors include `code,message,dispatch` and dispatch evidence for uncertain terminal creation |
 | `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/group and session-lifetime gate; no agent predicate |
 | `PUT /v1/sessions/{tmuxId}/group` | exact `{identityToken,group}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
-| `PATCH /v1/sessions/{tmuxId}` | `{tmuxName,newTmuxName,identityToken}`; one-queue expected-name/lifetime rename, bodyless `204`, then client inventory confirmation |
-| `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
-| `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
+| `PATCH /v1/sessions/{tmuxId}` | `{identityToken,expectedNaming,naming}`; closed automatic/manual unions under the [naming contract](automatic-session-names.md), bodyless `204`, then inventory confirmation |
+| `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates server lifetime/id before direct pty/client attachment |
+| `DELETE /v1/sessions/{tmuxId}` | `{identityToken}`; one-queue exact lifetime session deletion |
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
 | `PUT/DELETE /v1/sessions/{tmuxId}/conversation` | explicit codex association/clear; exact terminal lifetime, no inferred tui selection |
 | `POST /v1/sessions/{tmuxId}/agent/{operation}` | explicit terminal `read`, `text`, `keys`, `stop`, and separately reported `close`; [native contract](native-agent-observation.md#4-api-and-behavior) |
@@ -786,10 +785,11 @@ agent-control errors retain their own spec. session and v0 mappings:
 | `DirectorySearchTooLarge` | 422 | `Too many directory search results. Narrow the search.` |
 | `TerminalContextUnavailable` | 404 | `Remote context is unavailable.` |
 | `ProfileUnknown` | 422 | `Choose an available profile.` |
-| `SessionNameInvalid` | 422 | `Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.` |
+| `SessionNameInvalid` | 422 | `use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number.` |
 | `ObjectiveInvalid` | 422 | `Use 1–240 characters without terminal controls.` |
 | `GroupInvalid` | 422 | `use 1–64 nfc characters; only interior ordinary spaces, without display controls.` |
-| `SessionNameConflict` | 409 | `A session with that name already exists.` |
+| `SessionNameConflict` | 409 | `another session on this machine uses that name.` |
+| `SessionNameChanged` | 409 | `the session name changed. review and save again.` |
 | `SessionNotFound` | 404 | `That session no longer exists.` |
 | `SessionIdentityMismatch` | 409 | `The session changed. Refresh and try again.` |
 | `PairingInviteRejected` | 401 | `This fleet invite is invalid, expired, or already used.` |
@@ -971,7 +971,9 @@ enum values are defects, with no protocol branch or compatibility state.
   implementation and proof boundary is
   [`terminal-selection-copy.md`](terminal-selection-copy.md).
 - The terminal header always names machine and session; its middle identity
-  block is the literal Rename control and retains separate presence state. At
+  block is the literal Rename control and retains separate presence state.
+  Context/navigation and actions use separate rows, so close text cannot consume
+  the name control's width; existing viewport measurement absorbs their height. At
   most one active phone terminal exists, and its connection owns one exact
   `SessionTarget`;
   reconnect re-reads that machine before opening WSS.
@@ -1012,10 +1014,11 @@ enum values are defects, with no protocol branch or compatibility state.
 - The terminal endpoint is shell-equivalent authority: Kotlin supplies the
   inventory token outside the WebView in the non-query
   `Skidbladnir-Session-Identity` header; one tmux queue validates the full
-  server lifetime, id, and name before direct pty/client attachment, and the stream
+  server lifetime and id before direct pty/client attachment, and the stream
   closes on mismatch. Android never supplies raw tmux targets, commands, or
   homes.
-- Logs carry names, timings, and typed errors — never terminal bytes, cwd,
+- Logs carry content-free timings and typed errors — never session names, titles,
+  ownership markers, terminal bytes, cwd,
   objectives, prompts, provider session ids/names, provider homes, argv,
   transcript paths, origins, bearers, account data, or other credentials.
   The machine handle may appear in protocol diagnostics; it is opaque and

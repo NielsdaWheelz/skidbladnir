@@ -21,6 +21,7 @@ var (
 )
 
 const (
+	AutoNameOption         = "@skid_auto_name_b64"
 	ServerEpochOption      = "@skid_server_epoch"
 	identityMismatchMarker = "SKIDBLADNIR_IDENTITY_MISMATCH_V1"
 	renameSuccessMarker    = "SKIDBLADNIR_RENAME_SUCCESS_V1"
@@ -31,6 +32,7 @@ const (
 
 var (
 	serverEpochPattern = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
+	paneIDPattern      = regexp.MustCompile(`^%[0-9]+$`)
 	sessionIDPattern   = regexp.MustCompile(`^\$[0-9]+$`)
 	serverPIDPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
 	startTimePattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
@@ -215,11 +217,11 @@ func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error)
 	return identity, nil
 }
 
-func (client Client) KillSessionIfIdentity(ctx context.Context, id, name string, server ServerIdentity) (bool, error) {
-	if !sessionIDPattern.MatchString(id) || name == "" || !server.valid() {
+func (client Client) KillSessionIfIdentity(ctx context.Context, id string, server ServerIdentity) (bool, error) {
+	if !sessionIDPattern.MatchString(id) || !server.valid() {
 		return false, errors.New("tmux kill identity is invalid")
 	}
-	condition := mutationIdentityCondition(id, name, server)
+	condition := andFormatConditions(sessionLifetimeConditions(id, server))
 	output, err := client.Output(ctx, "kill-session-if-identity", "if-shell", "-F", "-t", id, condition,
 		"kill-session -t '"+id+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
@@ -234,43 +236,6 @@ func (client Client) KillSessionIfIdentity(ctx context.Context, id, name string,
 	default:
 		return false, errors.New("tmux conditional kill returned unexpected output")
 	}
-}
-
-func (client Client) RenameSessionIfIdentity(
-	ctx context.Context,
-	id string,
-	expectedName string,
-	newName string,
-	server ServerIdentity,
-) (bool, error) {
-	arguments, err := renameSessionArguments(id, expectedName, newName, server)
-	if err != nil {
-		return false, err
-	}
-	output, err := client.Output(ctx, "rename-session-if-identity", arguments[0], arguments[1:]...)
-	if err != nil {
-		return false, err
-	}
-	switch output {
-	case renameSuccessMarker:
-		return true, nil
-	case identityMismatchMarker:
-		return false, nil
-	default:
-		return false, errors.New("tmux conditional rename returned unexpected output")
-	}
-}
-
-func renameSessionArguments(id, expectedName, newName string, server ServerIdentity) ([]string, error) {
-	if !sessionIDPattern.MatchString(id) || expectedName == "" ||
-		!tmuxCommandTokenPattern.MatchString(newName) || !server.valid() {
-		return nil, errors.New("tmux rename identity is invalid")
-	}
-	return []string{
-		"if-shell", "-F", "-t", id, mutationIdentityCondition(id, expectedName, server),
-		"rename-session -t '" + id + "' '" + newName + "' ; display-message -p -l '" + renameSuccessMarker + "'",
-		"display-message -p -l '" + identityMismatchMarker + "'",
-	}, nil
 }
 
 func (client Client) AssignCharacterIfUnchanged(
@@ -348,11 +313,7 @@ func (client Client) readServerEpoch(ctx context.Context, allowAbsent bool) (str
 }
 
 func formatLiteral(value string) string {
-	return strings.NewReplacer("#", "##", ",", "#,", "}", "#}").Replace(value)
-}
-
-func mutationIdentityCondition(id, name string, server ServerIdentity) string {
-	return andFormatConditions(append(sessionLifetimeConditions(id, server), "#{==:#{session_name},"+formatLiteral(name)+"}"))
+	return "#{l:" + strings.NewReplacer("#", "##", ",", "#,", "}", "#}").Replace(value) + "}"
 }
 
 func sessionLifetimeConditions(id string, server ServerIdentity) []string {
@@ -382,7 +343,13 @@ func (client Client) command(ctx context.Context, stdout *bytes.Buffer, operatio
 }
 
 func (client Client) commandWithStderr(ctx context.Context, stdout, stderr *bytes.Buffer, operation string, args ...string) *exec.Cmd {
-	commandArgs := make([]string, 0, len(args)+5)
+	commandArgs := make([]string, 0, len(args)+6)
+	// Tmux otherwise sanitizes stdout under a non-UTF-8 client locale. Names,
+	// titles and literal comparisons require the exact UTF-8 server values.
+	// Attachment already supplies the same global flag as its first argument.
+	if operation != "-u" {
+		commandArgs = append(commandArgs, "-u")
+	}
 	if client.socketName != "" {
 		commandArgs = append(commandArgs, "-L", client.socketName, "-f", "/dev/null")
 	}

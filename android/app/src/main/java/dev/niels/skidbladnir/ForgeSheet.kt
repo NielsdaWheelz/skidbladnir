@@ -230,7 +230,8 @@ private fun ForgeFormContent(
             },
             modifier = Modifier.fillMaxWidth(),
             enabled = fieldsEnabled,
-            label = { Text("tmux name (optional)") },
+            label = { Text("session name (optional)") },
+            supportingText = { Text("leave blank to follow the terminal title.") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,

@@ -23,7 +23,10 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
-	facts := [][2]string{{"session", value.Name}, {"terminal on", row.label}, {"machine id", row.machine}}
+	facts := [][2]string{{"session", value.Name}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}, {"naming", value.NameMode}}
+	if value.ConversationHandle != "" {
+		facts = append(facts, [2]string{"conversation handle", value.ConversationHandle})
+	}
 	switch current.Kind {
 	case "remote":
 		facts = append(facts, [2]string{"running on", current.Label})

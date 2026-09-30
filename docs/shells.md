@@ -49,7 +49,8 @@ separate ordinary tmux session, never a window, split, or linked session group.
 | android attach header | one-tap terminal-plus action, spoken “new terminal here”, minimum 48dp target; same create-here behavior for any attached session. fit the existing header height and visual language. |
 
 the shortcut has no form: allocate the smallest free `skidbladnir-terminal-N`
-name and an ordinary dwarf identity. each deliberate invocation creates another
+name and an ordinary dwarf identity, then follows the active pane title under
+[automatic naming](automatic-session-names.md). each deliberate invocation creates another
 session. name and group remain editable afterward. closing either session
 preserves the other; detach preserves both. source objective and profile
 environment are not copied. a group is copied once, including unassigned.
@@ -82,13 +83,13 @@ zero profiles does not introduce a generic agent detector.
 cli:
 
 ```text
-skid start name --machine host (--profile key | --terminal) [--cwd path] [--group label] [--json]
-skid shell name [--machine host] [--json]
+skid start [NAME] --machine host (--profile key | --terminal) [--cwd path] [--group label] [--json]
+skid shell t-0123456789abcdef [--machine host] [--json]
 skid shell --ref reference [--json]
 ```
 
-start still requires name and machine; omitted cwd means remote home. shell uses
-the existing mutually exclusive name/machine or exact-ref selectors and returns
+start requires machine; omitted name selects automatic naming and omitted cwd
+means remote home. shell uses mutually exclusive terminal-handle/machine or exact-ref selectors and returns
 the created session without attaching. human output names its machine/name/ref;
 json uses the existing observed-session envelope. `enter` owns cli attachment.
 `--terminal` on start selects launch kind; existing read/send meanings remain.
@@ -271,7 +272,8 @@ the host fixture owns gateway/socket cleanup. no production pairing is changed.
 
 ## 7. accepted costs
 
-- one-tap creation uses a generated name; customization uses the existing form.
+- one-tap creation follows the terminal title after an initial generated name; manual
+  customization uses the existing form.
 - directory/group are host samples; later changes do not synchronize sessions.
 - one small exec helper enforces startup correctness; success promises no ready
   prompt, and startup files may change the shell's initial state.

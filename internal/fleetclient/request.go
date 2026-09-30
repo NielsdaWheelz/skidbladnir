@@ -26,6 +26,7 @@ type Request struct {
 	ConversationID string
 	Operation      string
 	Name           string
+	Handle         string
 	Machine        string
 	Ref            string
 	Kind           LaunchKind
@@ -122,32 +123,38 @@ func (request Request) Valid() bool {
 	}
 	switch request.Operation {
 	case "list":
-		return request.Name == "" && request.Ref == "" && request.ConversationID == ""
+		return request.Name == "" && request.Handle == "" && request.Ref == "" && request.ConversationID == ""
 	case "start":
-		return request.Machine != "" && request.Ref == "" && request.ConversationID == "" &&
+		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
 	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "track", "untrack", "inspect":
 	default:
+		return false
+	}
+	if request.Name != "" {
+		return false
+	}
+	if request.Handle != "" && !validHandle(request.Handle, request.Operation, request.Mode) {
 		return false
 	}
 	if request.Ref != "" {
 		if request.ConversationID != "" && request.Operation != "track" {
 			return false
 		}
-		if request.Name != "" || request.Machine != "" {
+		if request.Handle != "" || request.Machine != "" {
 			return false
 		}
 		if ref, err := DecodeReference(request.Ref); err != nil || ref.TmuxID == "" && (request.Operation == "enter" || request.Operation == "close" || request.Operation == "text" || request.Operation == "keys" || request.Operation == "shell" || request.Operation == "group" || request.Operation == "track" || request.Operation == "untrack" || request.Mode == "terminal") {
 			return false
 		}
 	} else if request.ConversationID != "" {
-		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Operation != "track" && request.Name != "" {
+		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Operation != "track" && request.Handle != "" {
 			return false
 		}
 		if request.Operation != "track" && request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
 			return false
 		}
-	} else if request.Name == "" {
+	} else if request.Handle == "" {
 		return false
 	}
 	switch request.Operation {

@@ -13,9 +13,9 @@ commands capture machine/profile/history scope/conversation id. terminal switche
 never retarget them. terminal commands retain exact tmux/process identity.
 
 codex uses ordinary upstream npm installation and its native owning daemon.
-creation starts/reuses that owner, captures thread/start's id, names the native
-conversation and prepares it with exact native resume without a turn, records it in tmux session metadata
-and launches stock remote/resume. existing conversations require
+creation starts/reuses that owner and launches a stock remote new conversation.
+skid never names providers or pre-creates their conversations. new codex sessions
+remain untracked until explicit association. existing conversations require
 explicit id association. no fork, selected-view protocol, newest-history inference
 or separate provider service. CLI and daemon may upgrade independently; validate
 consumed native methods/fields and fail affected capability closed.

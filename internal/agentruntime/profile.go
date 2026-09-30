@@ -160,7 +160,7 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 				return nil, fmt.Errorf("profile %s has an invalid argument", profile.Key)
 			}
 			if profile.Provider == ProviderClaude && claudeNameArgument(argument) {
-				return nil, fmt.Errorf("profile %s arguments conflict with managed Claude name", profile.Key)
+				return nil, fmt.Errorf("profile %s arguments must not set Claude session names", profile.Key)
 			}
 		}
 
@@ -213,18 +213,6 @@ func MatchProfileEnvironment(profiles []Profile, provider Provider, lookup func(
 		}
 	}
 	return "", false
-}
-
-func LaunchArguments(profile Profile, tmuxName string) []string {
-	arguments := make([]string, 0, len(profile.Arguments)+2)
-	switch profile.Provider {
-	case ProviderCodex:
-	case ProviderClaude:
-		arguments = append(arguments, "--name", tmuxName)
-	default:
-		panic("invalid validated profile provider")
-	}
-	return append(arguments, profile.Arguments...)
 }
 
 func cloneProfile(profile Profile) Profile {

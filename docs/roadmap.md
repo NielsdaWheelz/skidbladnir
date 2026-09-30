@@ -5,6 +5,20 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## automatic session names — source cutover
+
+[automatic names and public handles](automatic-session-names.md) specifies one
+canonical tmux name, manual takeover/reset, terminal-title reconciliation,
+typed live selectors and name-independent targeting/order. source is implemented
+in the isolated branch; host/desktop qualification passes on darwin/linux.
+provider names are entirely provider-owned. new codex sessions start untracked
+until explicit association. actual codex/claude launch and title emission,
+exact-id native controls after association, and both approved physical-phone
+journeys pass. large text exposed a collapsed rename target; separating context
+and action rows repaired it. temporary behavioral tests are removed; final
+`scripts/check verify` passes. this is coordinated source cutover, not
+deployment. the spec records contracts, costs and bounded evidence.
+
 ## skid-only cutover
 
 2026-09-29: captured-target inspection is published in v0.10.6 and installed on
