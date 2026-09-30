@@ -67,7 +67,7 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if !present || inspected.paneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session, _ := manager.enrichSession(ctx, inspected) // justify-ignore-error: the session records a failed foreground sample; the target is still admitted.
+	session := manager.enrichSession(ctx, inspected)
 	if err := manager.requireServerIdentity(ctx, identity); err != nil {
 		return Session{}, ErrTerminalTargetChanged
 	}
@@ -96,7 +96,7 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 	if err != nil {
 		return Session{}, tmuxclient.Capture{}, err
 	}
-	if !sameForeground(before, after) {
+	if !sameForeground(before.foreground, after.foreground) {
 		return after, tmuxclient.Capture{}, ErrTerminalObservationChanged
 	}
 	return after, capture, nil
@@ -111,7 +111,36 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 // ErrTerminalTargetChanged (session lifetime or selected pane changed).
 // Callers check ctx first: an expired context is a timeout at any stage.
 func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
-	panic("contract skeleton: slice a implements ObservePane")
+	if session.ForegroundFailed() {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+	}
+	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
+	switch {
+	case err == nil:
+	case errors.Is(err, tmuxclient.ErrTargetChanged):
+		return tmuxclient.PaneObservation{}, ErrTerminalTargetChanged
+	case errors.Is(err, tmuxclient.ErrObservationChanged), errors.Is(err, tmuxclient.ErrUnavailable):
+		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
+	default:
+		panic("listed terminal target is invalid") // justify-defect: List and ResolveTerminal admit only canonical targets.
+	}
+	// Re-observe as enrichment sampled: an empty pane has no process to read,
+	// and an absent process is no foreground.
+	var foreground *processinfo.Observation
+	if session.panePID != 0 {
+		observed, err := processinfo.ObserveForeground(session.panePID)
+		switch {
+		case err == nil:
+			foreground = &observed
+		case errors.Is(err, processinfo.ErrProcessAbsent):
+		default:
+			return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+		}
+	}
+	if !sameForeground(session.foreground, foreground) {
+		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
+	}
+	return observation, nil
 }
 
 // expected guards provider-specific input. nil deliberately permits generic
@@ -154,7 +183,7 @@ func (manager *Manager) revalidateForeground(ctx context.Context, target Termina
 	if err := requireForeground(after, expected); err != nil {
 		return err
 	}
-	if expected != nil && !sameForeground(before, after) {
+	if expected != nil && !sameForeground(before.foreground, after.foreground) {
 		return ErrTerminalTargetChanged
 	}
 	return nil
@@ -174,11 +203,11 @@ func requireForeground(session Session, expected *agentruntime.AgentRuntime) err
 	return nil
 }
 
-func sameForeground(left, right Session) bool {
-	if left.foreground == nil || right.foreground == nil {
-		return left.foreground == nil && right.foreground == nil
+func sameForeground(left, right *processinfo.Observation) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
 	}
-	return processinfo.SameObservation(*left.foreground, *right.foreground)
+	return processinfo.SameObservation(*left, *right)
 }
 
 func terminalError(err error) error {

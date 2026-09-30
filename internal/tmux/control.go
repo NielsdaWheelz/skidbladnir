@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -32,45 +33,6 @@ type Capture struct {
 	Truncated bool
 }
 
-// ErrObservationChanged means the pane's dimensions or screen changed while a
-// focused observation was being taken; the sample is invalid.
-var ErrObservationChanged = errors.New("terminal pane changed during observation")
-
-type RegionKind string
-
-const (
-	RegionTop    RegionKind = "top"
-	RegionBottom RegionKind = "bottom"
-)
-
-// PaneRegion is a contiguous run of physical visible rows. Every row is
-// self-contained: read from the default style, its SGR sequences reproduce its
-// styling. Rows are complete UTF-8, contain no newline, and are never joined.
-type PaneRegion struct {
-	Kind     RegionKind
-	FirstRow int // zero-based physical row of Rows[0]
-	Rows     []string
-	Clipped  bool // requested rows were dropped at the region's byte limit
-}
-
-// PaneObservation is one bounded sample of the visible screen: the bottom rows
-// and, for a pane taller than the bottom region, the non-overlapping top rows.
-// Regions are in screen order (top first). It is not an atomic snapshot of the
-// program drawing it, and it never includes scrollback.
-type PaneObservation struct {
-	Width     int
-	Height    int
-	Alternate bool
-	Regions   []PaneRegion
-}
-
-// ObservePane samples the exact target's visible rows under its lifetime and
-// selected-pane guard. Errors: ErrInputInvalid, ErrTargetChanged,
-// ErrObservationChanged (dimensions or alternate screen changed), ErrUnavailable.
-func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneObservation, error) {
-	panic("contract skeleton: slice a implements ObservePane")
-}
-
 func (target PaneTarget) valid() bool {
 	return sessionIDPattern.MatchString(target.SessionID) && validPane(target.PaneID) && target.Server.valid()
 }
@@ -87,7 +49,8 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 	}
 	capture := "capture-pane -p -J -t " + target.PaneID + " -S -" + strconv.Itoa(maxBytes)
 	branch := "display-message -p '#{alternate_on}' ; if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
-	output := captureOutput{tail: captureTail{limit: maxBytes}}
+	tail := captureTail{limit: maxBytes}
+	output := captureOutput{body: &tail}
 	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
@@ -99,11 +62,11 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 	if output.header != "0" && output.header != "1" {
 		return Capture{}, ErrUnavailable
 	}
-	text := strings.TrimSuffix(string(output.tail.bytes), "\n")
+	text := strings.TrimSuffix(string(tail.bytes), "\n")
 	for len(text) > 0 && !utf8.RuneStart(text[0]) {
 		text = text[1:]
 	}
-	return Capture{Text: text, Alternate: output.header == "1", Truncated: output.tail.truncated}, nil
+	return Capture{Text: text, Alternate: output.header == "1", Truncated: tail.truncated}, nil
 }
 
 // Paste stages a unique buffer before the caller's final foreground check.
@@ -210,11 +173,11 @@ func validPane(value string) bool {
 	return true
 }
 
-// captureOutput keeps the small protocol header separate from the bounded text.
+// captureOutput keeps the small protocol header separate from the bounded body.
 type captureOutput struct {
 	header     string
 	headerDone bool
-	tail       captureTail
+	body       io.Writer
 }
 
 func (output *captureOutput) Write(contents []byte) (int, error) {
@@ -231,7 +194,7 @@ func (output *captureOutput) Write(contents []byte) (int, error) {
 		output.headerDone = true
 		contents = []byte(rest)
 	}
-	_, err := output.tail.Write(contents)
+	_, err := output.body.Write(contents)
 	return count, err
 }
 

@@ -77,6 +77,7 @@ type RenameInput struct {
 }
 
 type Session struct {
+	panePID          processinfo.PID
 	foreground       *processinfo.Observation
 	foregroundFailed bool
 	TmuxID           string
