@@ -47,14 +47,14 @@ func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTa
 	if !paneIDPattern.MatchString(target.PaneID) || target.PID <= 0 || target.StartIdentity == "" {
 		return Session{}, ErrAgentTargetStale
 	}
-	name, exists, err := manager.sessionIdentity(ctx, target.TmuxID)
+	_, exists, err := manager.sessionIdentity(ctx, target.TmuxID)
 	if err != nil {
 		return Session{}, err
 	}
 	if !exists {
 		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	identity, err := manager.mutationIdentity(ctx, target.TmuxID, name, target.IdentityToken)
+	identity, _, err := manager.sessionLifetimeIdentity(ctx, target.TmuxID, target.IdentityToken)
 	if err != nil {
 		return Session{}, err
 	}
@@ -137,7 +137,7 @@ func (manager *Manager) agentTerminalKillInput(ctx context.Context, target Agent
 	if session.Agent == nil && !manager.AgentProcessExited(target) {
 		return KillInput{}, ErrAgentTargetStale
 	}
-	return KillInput{TmuxID: session.TmuxID, TmuxName: session.TmuxName, IdentityToken: session.IdentityToken}, nil
+	return KillInput{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken}, nil
 }
 
 func (manager *Manager) AgentProcessExited(target AgentTarget) bool {
@@ -165,29 +165,29 @@ func (manager *Manager) KillAgentTerminal(ctx context.Context, target AgentTarge
 func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToken string) error {
 	manager.mutations.RLock()
 	defer manager.mutations.RUnlock()
-	name, exists, err := manager.sessionIdentity(ctx, tmuxID)
+	_, exists, err := manager.sessionIdentity(ctx, tmuxID)
 	if err != nil {
 		return err
 	}
 	if !exists {
 		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	_, err = manager.mutationIdentity(ctx, tmuxID, name, identityToken)
+	_, _, err = manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken)
 	return err
 }
 
 func (manager *Manager) SessionKillInput(ctx context.Context, tmuxID, identityToken string) (KillInput, error) {
 	manager.mutations.RLock()
 	defer manager.mutations.RUnlock()
-	name, exists, err := manager.sessionIdentity(ctx, tmuxID)
+	_, exists, err := manager.sessionIdentity(ctx, tmuxID)
 	if err != nil {
 		return KillInput{}, err
 	}
 	if !exists {
 		return KillInput{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	if _, err := manager.mutationIdentity(ctx, tmuxID, name, identityToken); err != nil {
+	if _, _, err := manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken); err != nil {
 		return KillInput{}, err
 	}
-	return KillInput{TmuxID: tmuxID, TmuxName: name, IdentityToken: identityToken}, nil
+	return KillInput{TmuxID: tmuxID, IdentityToken: identityToken}, nil
 }

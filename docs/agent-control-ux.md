@@ -1,7 +1,8 @@
 # agent control: usable client, direct attachment
 
 [native interaction](native-agent-observation.md) owns the current agent operations,
-references and unread contract. historical qualification below applies only to its
+references and unread contract. [automatic naming and handles](automatic-session-names.md)
+owns naming, live selectors and name-independent attachment/closure. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
 current jarvis workers use nine tools through the installed skid cli: list, info,
@@ -40,8 +41,8 @@ and agents. phone and desktop attach directly to the same tmux session.
 
 - retain ordinary tmux discovery, one active agent per session, existing provider
   observations, direct peer routing, credentials, and three-host phone enrollment.
-- bare names normally suffice. machine qualification resolves collisions; exact
-  returned references support automation. no global name registry.
+- typed live handles select terminals or conversations. optional machine scope
+  bounds inventory; exact returned references support saved automation. no registry.
 - delete skid's tmux shadow grouping and grouped-session refusal. shared window/pane navigation
   is intentional. unrelated user-created groups remain ordinary tmux objects.
 - no search, layouts, scheduler, task schema, coordinator role,
@@ -59,29 +60,30 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | --- | --- |
 | `skid` | open tui; without a tty, print usage and exit 2 |
 | `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
-| `skid info reviewer` | full metadata and fresh reference for this session |
+| `skid info t-0123456789abcdef` | full metadata and fresh reference for this session |
 | `skid inspect --ref VALUE` | captured conversation and optional turn, native inspection outcome, and optional fresh conversation-only reference; preserve captured identity on native failure |
-| `skid enter reviewer` | attach; explicit detach returns to the caller |
-| `skid read reviewer [--history | --terminal] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
-| `skid replies reviewer` | view native output and acknowledge only replies known at opening |
-| `skid send reviewer "review the patch" [--input peer|user] [--queue]` | native peer by default; queue and native claude input are unavailable; `--stdin` accepts literal text |
-| `skid keys reviewer enter` | existing logical key vocabulary; 1–16 keys |
-| `skid text reviewer --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
-| `skid wait reviewer [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
-| `skid stop reviewer` | stop captured current work; retain terminal; pending input may remain |
-| `skid close reviewer [--terminal-only]` | halt and exact terminal closure with separate outcomes; explicit terminal-only bypass |
-| `skid start reviewer --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
-| `skid start terminal-name --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
-| `skid shell reviewer` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
-| `skid group reviewer --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same name/machine/ref selectors; no agent required |
+| `skid enter t-0123456789abcdef` | attach; explicit detach returns to the caller |
+| `skid read c-0123456789abcdef [--history] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
+| `skid replies c-0123456789abcdef` | view native output and acknowledge only replies known at opening |
+| `skid send c-0123456789abcdef "review the patch" [--input peer|user] [--queue]` | native peer by default; queue and native claude input are unavailable; `--stdin` accepts literal text |
+| `skid keys t-0123456789abcdef enter` | existing logical key vocabulary; 1–16 keys |
+| `skid text t-0123456789abcdef --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
+| `skid wait c-0123456789abcdef [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
+| `skid stop c-0123456789abcdef` | stop captured current work; retain terminal; pending input may remain |
+| `skid close t-0123456789abcdef [--terminal-only]` | halt and exact terminal closure with separate outcomes; explicit terminal-only bypass |
+| `skid start [NAME] --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
+| `skid start [NAME] --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
+| `skid shell t-0123456789abcdef` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
+| `skid group t-0123456789abcdef --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same handle/machine/ref selectors; no agent required |
 
-for commands targeting an existing session, replace the name with `--ref VALUE` or add
-`--machine LABEL` to the name. these selector forms are mutually exclusive.
+existing targets use a handle (optionally `--machine LABEL`) or `--ref VALUE`;
+these selector forms are mutually exclusive. terminal capture and interruption
+use `read t-... --terminal` and `stop t-... --terminal`.
 native operations also accept `--conversation ID --profile PROFILE --machine HOST`
 independently of terminal lifetime.
 `--json` works on every noninteractive command. support the shown flag placement
 and `--` for literal operands; publish complete usage in `skid --help`.
-start requires machine, name, and either advertised profile or `--terminal`.
+start requires machine and either an advertised profile or `--terminal`; name is optional.
 commands never infer a host
 from the caller's location. stdin text is exclusive with positional text, bounded
 at the existing 32 kib limit; preserve newlines. normal human reads put text on
@@ -89,24 +91,22 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
 
 ## selection, identity, and results
 
-1. resolve an unqualified name by exact, case-sensitive tmux-name equality across
-   one fresh concurrent fleet inventory. one match succeeds; zero/duplicates fail
-   with a useful error/candidate list. any unavailable peer makes this lookup
-   incomplete: refuse before dispatch and suggest `--machine` or `--ref`.
-2. qualified names query only that peer. references route by machine handle through
-   configured peers and never fall back to a name. all mutations remain one attempt.
-3. references are opaque to callers: unpadded base64url of strict json below,
-   maximum 4096 characters. no credentials, signatures, registry, expiry, or cache.
-   session operations use the session identity; agent operations also require the
-   process identity. the host performs the existing final lifetime validation.
+1. resolve a typed handle against fresh complete inventory of the selected machine,
+   or the whole configured fleet when unscoped. group filters never narrow lookup.
+   deduplicate full conversation tuples before matching. wrong-kind and old name
+   selectors fail before dispatch. commands capture one exact reference and retain it.
+2. exact references route by machine handle and never fall back to names or a fresh
+   handle. all mutations remain one attempt. native reads and waits retain the
+   captured conversation independently of terminal rename, closure or rebinding.
+3. references retain the existing opaque strict-json/base64url format, bounded at
+   4096 characters. [native interaction](native-agent-observation.md) owns the
+   exact reference, process and conversation contracts. no registry, expiry or cache.
 
 ```text
-ref payload = {machine, tmuxId, identityToken,
-               agent?: {paneId, pid, startIdentity, methods, binding?, turn?}}
-row = {name, ref, activePaneId, group?, cwd?, activeCommand?, launchProfile?, attachedClients,
-       agent?: {provider, profile?, providerSession?, status, methods}}
-peer = {label, machine, ok,
-        observedAt?, profiles?, sessions?: [row], error?}
+row = {name, nameMode, terminalHandle, conversationHandle?, ref, activePaneId,
+       group?, cwd?, activeCommand?, launchProfile?, attachedClients,
+       agent?, connection?, execution?, conversation?}
+peer = {label, machine, ok, observedAt?, profiles?, sessions?: [row], error?}
 inventory = {partial: boolean, peers: [peer]}
 success = {ok: true, result: ...}
 failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
@@ -119,18 +119,18 @@ retain the current agent-control schema; terminal-only `close` returns `{termina
 after confirmed deletion. `group` acknowledges `{group: string}`, with empty
 string for clear, only after the host's bodyless `204`; it returns no new ref.
 group filtering keeps every source peer/error in machine scope and never changes
-name-resolution uniqueness. `--json` emits exactly one envelope on stdout, with no
+handle resolution. `--json` emits exactly one envelope on stdout, with no
 human decoration. a partial list is a success envelope with `partial: true` and
-nonzero exit status. local selector codes are `name_not_found`, `name_ambiguous`,
+nonzero exit status. local selector codes are `handle_not_found`, `handle_ambiguous`,
 `inventory_incomplete`, existing `machine_unknown`, and `invalid_input` for malformed
 refs. preserve host stale-target codes. selector failures have `dispatch: not_sent`;
-human errors list ambiguous candidates, json retains the compact code envelope.
+human/json errors retain the failure code; no name-candidate list remains.
 apply the existing 1 mib inventory limit to the final projected envelope; reject
 overflow, never silently omit rows.
 
 names are absent from the reference, so rename does not invalidate it. `info` and
 terminal-only `close` retrieves current metadata from the referenced host and require the same
-session lifetime; terminal-only close supplies the current name to the existing delete contract.
+session lifetime; terminal-only close supplies only `identityToken` to DELETE.
 `info --ref` observes the exact session now, even if its previous agent exited;
 it returns the newly observed agent reference. it never refreshes a mutation target.
 start does not claim an agent is ready. an old agent reference cannot control a
@@ -192,7 +192,7 @@ rename. a session switch ends the connection on detection by the existing two-se
 monitor; bytes can pass before detection. this is not an atomic session lock.
 no additional monitor or mutator-defense machinery.
 
-terminal-only close uses the existing exact identity/name predicate and
+terminal-only close uses the existing exact session-lifetime predicate and
 `kill-session` in one queue. preserve validate → close owned terminal connections
 → revalidate/delete ordering. deleting one ordinary grouped session may leave
 shared windows/processes alive through another. no group-wide destruction.
@@ -207,7 +207,7 @@ keys are `r` view replies,
 `s` stop tracked conversation, `c` stop it and close terminal, `x` close terminal
 only. capture and confirm the exact conversation and terminal effects.
 
-codex terminal association is automatic at skid creation only. manual linking,
+new codex terminals have no native card binding. manual linking,
 reassignment and clearing have no command or browser action. direct native
 conversation selectors do not create or change terminal associations.
 

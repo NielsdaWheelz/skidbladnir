@@ -121,9 +121,8 @@ private data class PendingFleetPersistence(
 )
 internal sealed interface ForgeRecovery {
     val draft: ForgeDraft
-    val conversation: Conversation?
-    data class RefreshRequired(override val draft: ForgeDraft, override val conversation: Conversation? = null) : ForgeRecovery
-    data class ReviewReady(override val draft: ForgeDraft, override val conversation: Conversation? = null) : ForgeRecovery
+    data class RefreshRequired(override val draft: ForgeDraft) : ForgeRecovery
+    data class ReviewReady(override val draft: ForgeDraft) : ForgeRecovery
 }
 internal data class CloseState(
     val machine: PairedMachine,
@@ -226,7 +225,7 @@ internal fun advanceForgeRecovery(
     if (recovery !is ForgeRecovery.RefreshRequired) return recovery
     val machine = machines.singleOrNull { it.machine.handle == recovery.draft.machineHandle }
     return if (machine?.inventory is InventoryState.Fresh) {
-        ForgeRecovery.ReviewReady(recovery.draft, recovery.conversation)
+        ForgeRecovery.ReviewReady(recovery.draft)
     } else {
         recovery
     }
@@ -273,7 +272,6 @@ private fun availableTerminalStatus(
         response.machine.handle == terminal.target.machineHandle &&
         response.sessions.any {
             it.tmuxId == terminal.target.session.tmuxId &&
-                it.tmuxName == terminal.target.session.tmuxName &&
                 it.identityToken == terminal.target.session.identityToken
         }
     return if (exact) available else TerminalUiStatus.ReconnectRequired(
@@ -1115,7 +1113,6 @@ internal class SkidbladnirController(
                             forge = null,
                             forgeRecovery = ForgeRecovery.RefreshRequired(
                                 checkNotNull(activeForge.form.submission()),
-                                (result.failure as? GatewayFailure.Api)?.conversation,
                             ),
                         )
                     }
@@ -1555,11 +1552,16 @@ internal class SkidbladnirController(
         if (updated != rename) state = current.copy(rename = updated)
     }
 
-    fun submitRename() {
+    fun submitRename() = submitNaming(automatic = false)
+
+    fun useAutomaticTitle() = submitNaming(automatic = true)
+
+    private fun submitNaming(automatic: Boolean) {
         val current = state as? SkidbladnirUiState.Terminal ?: return
         val rename = current.rename ?: return
         val sending = beginRenameSending(
             state = rename,
+            automatic = automatic,
             terminalTarget = current.target,
             terminalActionsAdmissible = terminalActionAdmissible(current.machine.canMutate, current.connection),
         ) ?: return
@@ -1571,7 +1573,7 @@ internal class SkidbladnirController(
         runtime.inventoryOperation.submitMutation(
             onReserved = { fence -> requireMetadataInventoryRefresh(current.target.machineHandle, fence) },
         ) { mutationFence ->
-            val result = client.renameSession(credential, sending.target, sending.draft)
+            val result = client.renameSession(credential, sending.target, sending.expectedNaming, requireNotNull(sending.submittedNaming))
             main.post {
                 if (!isCredentialActive(activeGeneration, credential)) return@post
                 if (result is GatewayResult.Failure &&
@@ -1641,7 +1643,6 @@ internal class SkidbladnirController(
                         if (!acceptMachineIdentity(credential, result.value)) return@post
                         val exact = result.value.sessions.any {
                             it.tmuxId == current.target.session.tmuxId &&
-                                it.tmuxName == current.target.session.tmuxName &&
                                 it.identityToken == current.target.session.identityToken
                         }
                         val active = state as? SkidbladnirUiState.Terminal ?: return@post
@@ -2228,7 +2229,7 @@ internal class SkidbladnirController(
             val currentSession = (updated.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.sessions?.singleOrNull {
                 it.tmuxId == terminal.target.session.tmuxId && it.identityToken == terminal.target.session.identityToken
             }
-            val target = if (currentSession != null && terminal.close == null && terminal.rename == null) {
+            val target = if (currentSession != null) {
                 terminal.target.copy(session = currentSession)
             } else terminal.target
             state = terminal.copy(machine = updated, machines = sortedMachineStates(), target = target)

@@ -499,29 +499,13 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 	if createInput.Kind == sessions.LaunchAgent {
 		profile, found := gateway.sessions.Profile(agentruntime.ProfileKey(createInput.Profile))
 		if found && profile.Provider == agentruntime.ProviderCodex {
-			conversation, err := gateway.agents.CreateConversation(request.Context(), profile.Key, createInput.OptionalTmuxName, createInput.CWD)
-			if err != nil {
-				failure := agentFailure(err)
-				if conversation.Valid() {
-					failure.Conversation = &conversation
-				}
-				writeError(writer, failure)
+			if err := gateway.agents.PrepareLaunch(request.Context(), profile.Key); err != nil {
+				writeError(writer, agentFailure(err))
 				return
 			}
-			createInput.Conversation = &conversation
 		}
 	}
 	created, err := gateway.sessions.Create(request.Context(), createInput)
-	if err != nil && createInput.Conversation != nil {
-		failure := sessionFailure(err)
-		failure.Dispatch = "not_sent"
-		if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
-			failure.Dispatch = "unknown"
-		}
-		failure.Conversation = createInput.Conversation
-		writeError(writer, failure)
-		return
-	}
 	gateway.completeCreation(writer, created, err, startedAt)
 }
 
@@ -560,14 +544,10 @@ func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created ses
 	if err != nil {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
-		if created.Session.Conversation != nil {
-			conversation := created.Session.Conversation.Binding.Conversation
-			failure.Conversation = &conversation
-		}
 		writeError(writer, failure)
 		return
 	}
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.TmuxName, created.Session.LaunchProfile, time.Since(startedAt))
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
 	}
@@ -587,11 +567,11 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeError(writer, *failure)
 		return
 	}
-	if input.TmuxName == "" || input.IdentityToken == "" {
+	if input.IdentityToken == "" {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	kill := sessions.KillInput{TmuxID: tmuxID, TmuxName: input.TmuxName, IdentityToken: input.IdentityToken}
+	kill := sessions.KillInput{TmuxID: tmuxID, IdentityToken: input.IdentityToken}
 	gateway.terminalLifecycle.Lock()
 	defer gateway.terminalLifecycle.Unlock()
 	if err := gateway.sessions.ValidateKill(request.Context(), kill); err != nil {
@@ -606,7 +586,7 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeSessionError(writer, err)
 		return
 	}
-	event, eventErr := logging.NewSessionKilled(tmuxID, input.TmuxName, time.Since(startedAt))
+	event, eventErr := logging.NewSessionKilled(tmuxID, time.Since(startedAt))
 	if eventErr != nil {
 		panic("invalid session-killed log event") // justify-defect: sessions accepted the exact owned identity pair.
 	}
@@ -625,17 +605,11 @@ func (gateway *Gateway) renameSession(writer http.ResponseWriter, request *http.
 		writeError(writer, *failure)
 		return
 	}
-	if !input.TmuxName.present || !input.NewTmuxName.present || !input.IdentityToken.present ||
-		input.TmuxName.value == "" || input.IdentityToken.value == "" {
+	if input.ExpectedNaming == nil || input.Naming == nil || !input.IdentityToken.present || input.IdentityToken.value == "" {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	err := gateway.sessions.Rename(request.Context(), sessions.RenameInput{
-		TmuxID:        tmuxID,
-		TmuxName:      input.TmuxName.value,
-		NewTmuxName:   input.NewTmuxName.value,
-		IdentityToken: input.IdentityToken.value,
-	})
+	err := gateway.sessions.Rename(request.Context(), sessions.RenameInput{TmuxID: tmuxID, IdentityToken: input.IdentityToken.value, ExpectedNaming: input.ExpectedNaming.naming(), Naming: input.Naming.naming()})
 	if err != nil {
 		writeSessionError(writer, err)
 		return
@@ -772,6 +746,8 @@ func sessionFailure(err error) apiError {
 		return errorProfileUnknown
 	case sessions.ErrorSessionNameInvalid:
 		return errorSessionNameInvalid
+	case sessions.ErrorSessionNameChanged:
+		return errorSessionNameChanged
 	case sessions.ErrorSessionNameConflict:
 		return errorSessionNameConflict
 	case sessions.ErrorObjectiveInvalid:

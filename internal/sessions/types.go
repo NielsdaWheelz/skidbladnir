@@ -29,10 +29,10 @@ type CreateInput struct {
 	Kind             LaunchKind
 	CWD              string
 	Profile          string
+	preparedName     string
 	OptionalTmuxName string
 	Objective        string
 	Group            group.Label
-	Conversation     *agentruntime.Conversation
 }
 
 type ShellInput struct {
@@ -48,7 +48,6 @@ type SetGroupInput struct {
 
 type KillInput struct {
 	TmuxID        string
-	TmuxName      string
 	IdentityToken string
 }
 
@@ -59,11 +58,22 @@ type OpenTerminalInput struct {
 	Rows          int
 }
 
+type NameMode string
+
+const (
+	NameAutomatic NameMode = "automatic"
+	NameManual    NameMode = "manual"
+)
+
+type Naming struct {
+	Mode NameMode
+	Name string
+}
 type RenameInput struct {
-	TmuxID        string
-	TmuxName      string
-	NewTmuxName   string
-	IdentityToken string
+	TmuxID         string
+	IdentityToken  string
+	ExpectedNaming Naming
+	Naming         Naming
 }
 
 type Session struct {
@@ -71,6 +81,7 @@ type Session struct {
 	TmuxID          string
 	ActivePaneID    string
 	TmuxName        string
+	NameMode        NameMode
 	IdentityToken   string
 	LaunchProfile   agentruntime.ProfileKey
 	Agent           *agentruntime.AgentRuntime
@@ -129,6 +140,7 @@ const (
 	ErrorProfileUnknown              ErrorCode = "ProfileUnknown"
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
+	ErrorSessionNameChanged          ErrorCode = "SessionNameChanged"
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"

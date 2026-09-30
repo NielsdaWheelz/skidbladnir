@@ -13,11 +13,10 @@ commands capture machine/profile/history scope/conversation id. terminal switche
 never retarget them. terminal commands retain exact tmux/process identity.
 
 codex uses ordinary upstream npm installation and its native owning daemon.
-creation starts/reuses that owner, captures thread/start's id, names the native
-conversation and prepares it with exact native resume without a turn, records it in tmux session metadata
-and launches stock remote/resume. manually launched codex terminals remain
-unassociated; there is no manual association, replacement or clearing action.
-direct native conversation addressing remains independent of terminal cards.
+creation starts/reuses that owner and launches a stock remote new conversation.
+skid never names providers or pre-creates their conversations. new codex sessions
+remain unassociated. manual association, replacement and clearing are unavailable.
+existing recorded bindings and direct native conversation commands remain valid.
 no fork, selected-view protocol, newest-history inference
 or separate provider service. CLI and daemon may upgrade independently; validate
 consumed native methods/fields and fail affected capability closed.
@@ -36,7 +35,7 @@ client -> device-local unread store
 
 native inspect/read/send/stop/results use `/v1/conversations/{operation}` and an
 explicit Conversation. start uses creation; wait is client-only. session metadata
-association is written only during creation. foreground Agent describes presence only;
+association is read-only existing metadata; no writer remains. foreground Agent describes presence only;
 Session.conversation owns native state/capabilities. no duplicate state projection.
 
 native read defaults to bounded latest assistant output; history and terminal

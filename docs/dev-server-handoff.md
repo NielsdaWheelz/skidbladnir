@@ -6,6 +6,10 @@ operator. this file's containing commit owns the current source contract;
 dev-server is the sole installation owner. herdr and herdr-mobile are retired;
 installation updates skid in place and preserves existing pairings and identities.
 
+2026-09-29 source amendment: [automatic session names](automatic-session-names.md)
+removes provider naming and codex pre-creation. the launch contract below reflects
+that source; historical release evidence does not qualify this unpublished change.
+
 provider continuity: skid uses the existing provider accounts.
 preserve `.codex`, `.codex-work`, `.codex-work2`, native personal claude's default
 state, and `.claude-work`, including authentication, configuration, history,
@@ -170,7 +174,7 @@ exact schema (all named members required unless marked optional):
   executable base or absolute argument zero required. use the template's native
   signatures. overlapping signatures across providers are invalid.
 - arguments: string array. claude forbids configured `-n`, `--name`, or
-  `--name=...`; skid supplies the generated tmux name itself.
+  `--name=...`; skid never supplies a provider conversation name.
 
 unknown/duplicate/null members, wrong types, relative required paths, wrong
 runtime platform, or invalid profile order are rejected. config must be one
@@ -194,19 +198,19 @@ the user's existing provider setup owns those files and its normal login flow.
 
 | forge key | provider home relative to `HOME` | native argv after executable |
 | --- | --- | --- |
-| `personal` | `.codex` | `--remote unix://<account-socket> --cd <cwd> resume <captured-id>` |
+| `personal` | `.codex` | configured permission arguments, then `--remote unix://<account-socket> --cd <cwd>` |
 | `work` | `.codex-work` | same |
 | `work2` | `.codex-work2` | same |
-| `claude-work` | `.claude-work` | `--name <tmuxName> --dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
+| `claude-work` | `.claude-work` | `--dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
 
 codex rows set only their `CODEX_HOME`; claude sets `CLAUDE_CONFIG_DIR`.
-for skid-created codex conversations, the host first invokes stock
-`app-server daemon start`, captures native thread/start's id and sets its native
-name, prepares the exact empty thread with native resume without a turn, then launches the
-remote tui and records that id in tmux metadata. native creation applies the
-configured `--yolo` policy; remote resume restores it and omits that unsupported
-override from terminal argv. ordinary manual terminal commands
-remain stock and unassociated; skid offers no manual codex association action.
+for skid-created codex terminals, the host first invokes stock
+`app-server daemon start`, then launches the remote tui to create its own new
+conversation. configured permission arguments, including `--yolo`, remain in
+terminal argv. skid neither creates nor names the conversation and records no
+conversation id at creation. new codex terminals have no native card binding;
+manual association is unavailable. existing recorded bindings and direct native
+conversation commands remain valid. ordinary manual terminal commands stay stock.
 manual `claude`/`claude-personal` leave `CLAUDE_CONFIG_DIR` unset to retain native
 default behavior, including `~/.claude.json`; setting it to `~/.claude` is not
 assumed equivalent. personal claude is never a forge profile. its unconfigured
@@ -368,7 +372,7 @@ variable before selecting their own.
 
 ## hooks
 
-skid installs no codex hooks. foreground presence and creation-associated native
+skid installs no codex hooks. foreground presence and explicitly tracked native
 conversation are separate projections. no selected-view interface remains. the unused codex writer and
 template are retired; existing `hooks.json` remains untouched by skid setup.
 no hook merger is needed. stage the supplied

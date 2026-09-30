@@ -9,7 +9,7 @@ targets. providers own execution/history; tmux owns terminals.
 ## 1. outcome and scope
 
 keep cards, direct tmux attachment, existing accounts, machine routing, sorting
-and visual language. a codex card tracks the conversation captured at creation. status
+and visual language. a card may retain an existing native conversation binding. status
 and unread describe that conversation even when its terminal displays another
 conversation or a shell. omit blocking reasons.
 
@@ -17,9 +17,9 @@ conversation or a shell. omit blocking reasons.
   retargets a command addressing a.
 - codex uses upstream `@openai/codex`, its owning app-server and existing helper.
   no source patch, custom package, view registry or exact-version gate.
-- creation captures `thread/start`'s returned id. manual association, reassignment
-  and clearing are unavailable. manually launched codex terminals remain
-  unassociated. never infer from cwd, clocks, screens, process
+- codex's remote terminal creates its own new conversation without a card binding.
+  manual association, reassignment and clearing are unavailable. existing bindings
+  and direct native conversation commands remain valid. never infer from cwd, clocks, screens, process
   presence or the newest transcript.
 - claude retains native listing, sdk history/results and exact background-worker
   stop. native input remains unavailable after failed recipient qualification;
@@ -46,38 +46,25 @@ reuse profiles, strict envelopes, bounded native transport, terminal primitives
 and refresh owners. the short-lived helper owns no provider lifetime and answers
 no other client's approvals.
 
-for codex creation, choose the terminal name with the existing creation preflight,
-run configured stock `app-server daemon start` under the selected `CODEX_HOME`,
-create the native thread, set its native name and prepare that exact thread with
-native `thread/resume`, then launch
-`codex --remote unix:// --cd CWD resume ID`. explicit remote mode does not
-start a server; ordinary codex may embed one. another server never attaches to
-an independently running agent. manual ordinary codex terminals stay unassociated.
+for codex creation, run configured stock `app-server daemon start` under the
+selected `CODEX_HOME`, then launch a normal new conversation with
+`codex --remote unix://SOCKET --cd CWD` and the configured permission arguments.
+explicit remote mode does not start a server; ordinary codex may embed one.
+skid never pre-creates, names or resumes a new conversation. its normal tui owns
+first-input persistence. new terminals remain unassociated; manual linking is
+unavailable. claude receives its normal configured argv, never a skid name.
+
+native launch forwards the configured profile arguments to the normal remote-new
+tui. configured `--yolo` still selects `never`/`dangerFullAccess` before its first
+turn; without overrides stock tui chooses its normal startup policy. callers supply no permission settings. another server
+never attaches to an independently running agent.
 
 the helper uses the account's default unix control socket, currently
 `CODEX_HOME/app-server-control/app-server-control.sock`, derived from the existing
-home. remove duplicate profile endpoint configuration. npm CLI and running daemon
+home. no duplicate profile endpoint configuration. npm CLI and running daemon
 may have different versions; upstream management owns daemon updates. install,
-read and status never replace a responding owner.
-
-stock empty threads need preparation before terminal adoption. `thread/name/set`
-records the chosen session name; paginated history stores that metadata without
-materializing the tui's required rollout. creation then calls native
-`thread/resume` with only that exact `threadId` and validates the returned id.
-this prepares persistence without starting a turn. the name is initial, not a
-synchronized alias: subsequent terminal renames remain independent. require both
-steps before terminal launch; no fabricated turn, history injection or alternate
-creation path. unsupported preparation fails creation with its captured id.
-
-native creation preserves the configured profile's permission policy before any
-turn starts. the private helper create input is `{name, cwd, bypassPermissions:boolean}`;
-host derives the flag from configured `--yolo`. true means native
-`approvalPolicy:never` and `sandbox:danger-full-access`; false inherits account
-defaults. remote resume restores saved permissions; omit configured `--yolo`
-from its argv because stock codex rejects that override after creation.
-callers never supply permission settings. native creation accepts only empty
-profile arguments or the configured single `--yolo`; other argument overrides
-are unavailable before daemon start, rather than partly interpreted.
+read and status never replace a responding owner. the pinned helper and its
+independent protocol remain unchanged; skid no longer calls helper creation.
 
 validate consumed methods/fields. incompatible upgrades disable the affected
 capability with a useful `AgentUnavailable` error; no alternate server or
@@ -103,20 +90,19 @@ fields. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
 it identifies history storage, not credentials. host validates profile/provider/
 scope before calls. client references contain no home, endpoint or credential.
 
-one `@skid_conversation_b64` session option records the codex Conversation
-captured at creation. creation is its only writer; no api, cli or client action
-replaces or clears it. pane/foreground/tui navigation never changes it. claude's
-exact identity hook can supply its current conversation projection; hooks publish no status,
+existing `@skid_conversation_b64` session metadata identifies a recorded codex
+Conversation. no creation, api, cli or client writer remains. earlier releases
+stored manual and creation bindings identically; retain valid existing metadata
+without guessing its origin or adding a migration. pane/foreground/tui navigation
+never changes the binding. claude's exact identity hook can supply its current
+conversation projection; hooks publish no status,
 history or prompt data. tracking never proves what the terminal displays.
-existing valid associations retain their meaning: earlier releases stored manual
-and creation associations identically, so this cutover neither guesses their
-origin nor clears live metadata. no provenance store or migration is added.
 
-`NAME --machine HOST` resolves its recorded conversation once. direct
+`c-<handle> [--machine HOST]` resolves a recorded conversation once. direct
 `--conversation ID --profile PROFILE --machine HOST` works independently of
-terminal lifetime; opaque refs retain the captured structured target. fresh named
-commands may resolve a replacement terminal or current claude identity; running
-commands keep their original conversation. no alias store or second account table. return-address
+terminal lifetime; opaque refs retain the captured structured target. fresh handle
+commands use complete scoped inventory; running commands keep their
+original conversation. no alias store or second account table. return-address
 text is ordinary delegation metadata, never authority.
 
 `skid inspect --ref REF --json` observes a captured conversation independently
@@ -150,17 +136,17 @@ absent fields are omitted, not null. reject old schemas/view fields outright.
 | terminal read/text/keys/stop | existing exact terminal/process targets; explicit terminal mode |
 | close | exact terminal target and optional explicit native conversation/turn or terminal halt; separate outcomes |
 
-start reuses profile/cwd/name validation and normal generated-name selection.
-gateway runs native daemon start/create/name/resume before tmux creation and
-writes the association with the terminal. tmux creation rechecks name occupancy;
-preflight reserves nothing. do not add callbacks or a transaction framework.
-naming, preparation or tmux failure after native creation returns its captured
-reference as a partial outcome;
-preserve dispatch certainty, never delete history or replay creation.
-private create errors may include `sessionId` once known; a failed naming or
-preparation step keeps its error code and reports overall `unknown`, since creation already had
-an effect. the gateway exposes that exact Conversation. a later tmux failure's
-dispatch describes terminal creation separately, with the Conversation retained.
+start reuses profile/cwd/name validation and generated initial tmux names.
+for codex, gateway starts only the native daemon before tmux creation. the stock
+remote tui creates its own conversation, with no skid name or reserved id. new
+codex terminals remain unassociated, with no manual linking action.
+claude's existing process-bound identity registration remains independent.
+
+neither provider receives skid conversation naming. tmux creation rechecks name
+occupancy; preflight reserves nothing. uncertain terminal creation retains its
+existing dispatch contract, without captured native-id attribution, history
+cleanup or replay. exact native controls on existing associated conversations
+retain their existing schemas and lifecycle checks.
 
 ```text
 Observation = {binding, status, turn?}
@@ -289,8 +275,8 @@ labels are presentation only, never command targets.
 | installer | dev-server ordinary npm install, fork/build deletion, account env, helper install |
 | adapter | llm-calling stock create/read/send/interrupt/results and native Claude capture |
 | host | runtime/session/agentcontrol/gateway/hostconfig; conversation routes, recorded association |
-| cli/desktop | fleetclient/agentcli/sessionui; names/direct ids, wait, native output, local acknowledgement |
-| android | gateway/models/controller/cards; creation association display, native output, acknowledgement |
+| cli/desktop | fleetclient/agentcli/sessionui; handles/exact references/direct ids, wait, native output, local acknowledgement |
+| android | gateway/models/controller/cards; existing binding display, native output, acknowledgement |
 | root | architecture/spec/roadmap, pins/manifests, integration, final evidence |
 
 use temporary meaningful integration/live red–green–refactor tests; review then
@@ -298,8 +284,8 @@ delete before commit. engineering checks are not behavioral acceptance. tmux use
 owned isolated -L sockets; phone/adb/fleet need their approval. logs/evidence
 contain no output, prompts, token or account data.
 
-acceptance: stock npm install/repeat/upgrade; same owner for tui/helper; created-id
-capture, native name and empty-thread tui adoption before its first terminal input;
+acceptance: stock npm install/repeat/upgrade; same owner for tui/helper;
+absence of provider naming, normal remote-new codex launch without association;
 manual association commands/routes/forms absent; a→b→a switches/terminal exit never
 retarget a; read never resumes; exact-turn interruption cannot cancel successor;
 unsupported methods/fields/queue fail without fallback; CLI/daemon version skew
@@ -314,11 +300,10 @@ terminal primitives. immutable v0.10.4 is historical fork-contract output; ship
 a new coordinated release, never mutate artifacts. rollback uses prior complete
 release. no installed-fleet/phone pass without actual boundary.
 
-accepted costs: manually launched codex terminals have no native card association;
-existing associations retain their recorded identity without origin classification;
-experimental method/socket drift may disable capabilities; independent
+accepted costs: all new codex terminals lack native card status, unread and controls;
+existing bindings remain without origin classification; direct native commands
+require an exact target. experimental method/socket drift may disable capabilities; independent
 daemon updates may interrupt work; native creation excludes other profile-argument
-overrides; possible empty thread after terminal-create
-failure; sampled wait latency; unavailable user queueing; bounded output can omit
+overrides; unknown terminal-create outcomes without attribution; sampled wait latency; unavailable user queueing; bounded output can omit
 older text; baseline/restore/deletion limits above. no fork, copied history or
 skid lifecycle supervisor.

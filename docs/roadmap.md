@@ -5,6 +5,21 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## automatic session names — source cutover
+
+[automatic names and public handles](automatic-session-names.md) specifies one
+canonical tmux name, manual takeover/reset, terminal-title reconciliation,
+typed live selectors and name-independent targeting/order. source is implemented
+in the isolated branch; host/desktop qualification passes on darwin/linux.
+provider names are entirely provider-owned. new codex sessions remain unassociated;
+manual linking is removed below. the earlier naming qualification predates that
+removal: actual codex/claude launch and title emission,
+exact-id native controls after association, and both approved physical-phone
+journeys pass. large text exposed a collapsed rename target; separating context
+and action rows repaired it. temporary behavioral tests are removed; final
+`scripts/check verify` passes. this is coordinated source cutover, not
+deployment. the spec records contracts, costs and bounded evidence.
+
 ## skid-only cutover
 
 2026-09-29: captured-target inspection is published in v0.10.6 and installed on
@@ -20,15 +35,16 @@ separates those checks from remaining phone-native interaction acceptance.
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, creation-time id association and native
+ordinary upstream npm plus its owning daemon, existing recorded bindings and native
 operations. the selected-view fork/build and terminal-opening unread acknowledgement
 are retired. clients acknowledge known replies only after native output opens.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
 manual conversation association is removed from source: no mobile/browser form,
-cli track/untrack command or host mutation route remains. creation captures codex
-identity automatically; manually launched codex terminals remain unassociated.
+cli track/untrack command or host mutation route remains. normal remote-new
+codex startup creates no card binding; all new codex terminals remain unassociated.
+existing bindings and direct native conversation commands remain available.
 existing valid metadata is retained because earlier manual and creation bindings
 have the same representation. this source change does not assert deployment.
 

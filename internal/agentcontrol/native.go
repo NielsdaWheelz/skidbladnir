@@ -8,8 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -33,20 +31,9 @@ type nativeRequest struct {
 }
 
 type nativeFailure struct {
-	Code      string  `json:"code"`
-	Dispatch  string  `json:"dispatch"`
-	SessionID *string `json:"sessionId,omitempty"`
+	Code     string `json:"code"`
+	Dispatch string `json:"dispatch"`
 }
-
-type nativeCreateError struct {
-	sessionID string
-	cause     error
-}
-
-func (err *nativeCreateError) Error() string { return err.cause.Error() }
-func (err *nativeCreateError) Unwrap() error { return err.cause }
-
-var nativeCodexIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type nativeEnvelope struct {
 	OK     bool            `json:"ok"`
@@ -72,7 +59,7 @@ func (buffer *outputBuffer) Write(contents []byte) (int, error) {
 }
 
 func (service *Service) native(ctx context.Context, profile agentruntime.Profile, operation string, targets []nativeTarget, input any, result any) error {
-	mutation := operation == "create" || operation == "send" || operation == "stop" || operation == "interrupt"
+	mutation := operation == "send" || operation == "stop" || operation == "interrupt"
 	dispatch := "not_sent"
 	if mutation {
 		dispatch = "unknown"
@@ -120,24 +107,10 @@ func (service *Service) native(ctx context.Context, profile agentruntime.Profile
 	if strictjson.Decode(output.data.Bytes(), &envelope) != nil {
 		return unavailable
 	}
-	if envelope.Error != nil && envelope.Error.SessionID != nil {
-		if operation != "create" || profile.Provider != agentruntime.ProviderCodex ||
-			envelope.OK || len(envelope.Result) != 0 || envelope.Error.Dispatch != "unknown" ||
-			!nativeCodexIDPattern.MatchString(*envelope.Error.SessionID) ||
-			!slices.Contains([]string{"stale", "unavailable", "rejected", "unknown"}, envelope.Error.Code) {
-			return unavailable
-		}
-		sessionID := *envelope.Error.SessionID
-		envelope.Error.SessionID = nil
-		return &nativeCreateError{sessionID: sessionID, cause: decodeNativeEnvelope(envelope, result, unavailable)}
-	}
 	return decodeNativeEnvelope(envelope, result, unavailable)
 }
 
 func decodeNativeEnvelope(envelope nativeEnvelope, result any, unavailable *UnavailableError) error {
-	if envelope.Error != nil && envelope.Error.SessionID != nil {
-		return unavailable
-	}
 	if envelope.OK && envelope.Error == nil && len(envelope.Result) > 0 && string(envelope.Result) != "null" {
 		if strictjson.Decode(envelope.Result, result) == nil {
 			return nil

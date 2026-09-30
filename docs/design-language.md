@@ -602,3 +602,14 @@ colour never carries meaning alone: every status is a word, and the cursor is a
 glyph plus bold. faint varies by terminal and disappears under mosh; the hierarchy
 then flattens without losing information. one rule separates content from
 controls. no boxes, fret, runes, icons or motion.
+
+## 20. session naming content
+
+[automatic naming](automatic-session-names.md#names-and-content) owns exact copy.
+one actual tmux name occupies the existing card/header; rename preserves draft,
+focus and attachment. automatic ticks add no toast, icon or announcement. manual
+mode offers `use automatic title`; saving selects manual ownership. desktop
+handles identify control targets in cli output/details, with no added phone row.
+terminal context/navigation and actions occupy separate rows. give the name its
+own weighted space and bound the close label within the action row; large text
+must not collapse the rename target. existing viewport sizing absorbs the height.

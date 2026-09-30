@@ -10,14 +10,6 @@ import (
 
 const conversationOption = "@skid_conversation_b64"
 
-func encodeConversation(conversation agentruntime.Conversation) (string, error) {
-	encoded, err := json.Marshal(conversation)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(encoded), nil
-}
-
 func decodeConversation(encoded string) (agentruntime.Conversation, error) {
 	var conversation agentruntime.Conversation
 	if len(encoded) > 2048 {

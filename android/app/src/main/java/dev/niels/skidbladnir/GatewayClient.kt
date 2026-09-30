@@ -11,7 +11,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.JsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -47,7 +46,7 @@ internal sealed interface GatewayResult<out Value> {
 internal enum class MutationDispatch { NotSent, Unknown }
 
 internal sealed interface GatewayFailure {
-    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null, val conversation: Conversation? = null) : GatewayFailure
+    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null) : GatewayFailure
     data object Transport : GatewayFailure
 }
 
@@ -57,7 +56,7 @@ internal fun gatewayFailureMessage(failure: GatewayFailure): String = when (fail
 }
 
 internal fun createFailureIsDefinitive(failure: GatewayFailure): Boolean =
-    failure is GatewayFailure.Api && failure.dispatch == MutationDispatch.NotSent && failure.conversation == null
+    failure is GatewayFailure.Api && failure.dispatch == MutationDispatch.NotSent
 
 internal fun closeFailureIsDefinitive(failure: GatewayFailure): Boolean = when (failure) {
     GatewayFailure.Transport -> false
@@ -276,11 +275,12 @@ internal class GatewayClient {
     fun renameSession(
         credential: MachineCredential,
         target: SessionTarget,
-        newTmuxName: String,
+        expectedNaming: SessionNaming,
+        naming: SessionNaming,
     ): GatewayResult<Unit> {
         require(target.machineHandle == credential.machine.handle)
         return executeBodyless(
-            request = renameRequest(credential, target, newTmuxName),
+            request = renameRequest(credential, target, expectedNaming, naming),
             decodeFailure = ::decodeRenameHttpFailure,
         )
     }
@@ -288,11 +288,12 @@ internal class GatewayClient {
     internal fun renameRequest(
         credential: MachineCredential,
         target: SessionTarget,
-        newTmuxName: String,
+        expectedNaming: SessionNaming,
+        naming: SessionNaming,
     ): Request {
         require(target.machineHandle == credential.machine.handle)
         return authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId))
-            .patch(encodeRenameSessionRequest(target, newTmuxName).toRequestBody(jsonMediaType))
+            .patch(encodeRenameSessionRequest(target, expectedNaming, naming).toRequestBody(jsonMediaType))
             .build()
     }
 
@@ -487,24 +488,14 @@ internal fun decodePressureHttpFailure(status: Int, encoded: String): GatewayFai
 
 internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailure {
     if (status == 502 || status == 503 || status == 504) return GatewayFailure.Transport
-    return decodeProtocol {
-        val envelope = nativeJsonObject(encoded)
-        val conversation = envelope["conversation"]?.let { productJson.decodeFromJsonElement<Conversation>(it) }
-        val code = parseApiErrorCode(envelope.requiredString("code"))
-        val error = JsonObject(envelope - "conversation").toString()
-        val failure = if (code in setOf(ApiErrorCode.AgentUnavailable, ApiErrorCode.AgentTargetStale, ApiErrorCode.AgentInputInvalid)) {
-            decodeAgentHttpFailure(status, error)
-        } else {
-            decodeMutationHttpFailure(status, error, setOf(
-                ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
-                ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable,
-                ApiErrorCode.ProfileUnknown, ApiErrorCode.SessionNameInvalid, ApiErrorCode.ObjectiveInvalid,
-                ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
-                ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
-            ))
-        }
-        (failure as GatewayFailure.Api).copy(conversation = conversation)
-    }
+    return decodeMutationHttpFailure(status, encoded, setOf(
+        ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
+        ApiErrorCode.WorkingDirectoryInvalid, ApiErrorCode.WorkingDirectoryUnavailable,
+        ApiErrorCode.ProfileUnknown, ApiErrorCode.SessionNameInvalid, ApiErrorCode.ObjectiveInvalid,
+        ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
+        ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
+        ApiErrorCode.AgentUnavailable,
+    ))
 }
 
 internal fun decodeCloseTerminalHttpFailure(status: Int, encoded: String): GatewayFailure =
@@ -546,6 +537,7 @@ internal fun decodeRenameHttpFailure(status: Int, encoded: String): GatewayFailu
             ApiErrorCode.RequestTooLarge,
             ApiErrorCode.SessionNameInvalid,
             ApiErrorCode.SessionNameConflict,
+            ApiErrorCode.SessionNameChanged,
             ApiErrorCode.SessionNotFound,
             ApiErrorCode.SessionIdentityMismatch,
             ApiErrorCode.MachineIdentityMismatch,
@@ -605,6 +597,7 @@ private fun apiErrorHttpStatus(code: ApiErrorCode): Int = when (code) {
         ApiErrorCode.GroupInvalid,
     -> 422
     ApiErrorCode.SessionNameConflict,
+    ApiErrorCode.SessionNameChanged,
     ApiErrorCode.SessionIdentityMismatch,
     ApiErrorCode.MachineIdentityMismatch,
     -> 409
