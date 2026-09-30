@@ -303,11 +303,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.inform("opening terminal on " + value.Label + "…")
 			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
 			return m, tea.Exec(&attachment{ctx: m.ctx, client: m.client, request: request, input: m.input, output: m.output}, func(err error) tea.Msg { return attachedMsg{err: err} })
-		case "track":
-			m.page = ""
-			m.inform("tracking " + m.pending.ConversationID)
-		case "untrack":
-			m.inform("conversation not tracked")
 		case "group":
 			m.groupChecking = true
 			m.groupAcknowledged = true
@@ -392,9 +387,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if m.page == "track" && m.field == 1 {
-				m.form[1] += singleLine(message.Content)
-			}
 			if m.page == "group-edit" && !m.groupChecking {
 				m.groupDraft += message.Content
 			}
@@ -450,9 +442,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.pending = fleetclient.Request{}
 			}
 			return m, nil
-		}
-		if m.page == "track" {
-			return m, m.editTracking(message)
 		}
 		if m.page == "create" {
 			return m, m.editForm(message)
@@ -556,19 +545,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// The rule names this captured target until the action completes.
 		m.pendingName, m.pendingLabel = row.session.Name, row.label
 		switch key {
-		case "t":
-			profiles := m.trackingProfiles()
-			if len(profiles) == 0 {
-				m.inform("tracking unavailable")
-				return m, nil
-			}
-			m.pending = request
-			m.form = [5]string{profiles[0].Key, ""}
-			m.field, m.page = 1, "track"
-			return m, nil
-		case "u":
-			request.Operation = "untrack"
-			return m, m.execute(request)
 		case "T":
 			if row.session.Connection != nil {
 				m.inform("new terminal on " + row.label + ": use n or N")
@@ -982,60 +958,4 @@ func (presentation *replyPresentation) Run() error {
 		}
 	}
 	return acknowledgementErr
-}
-
-func (m *model) trackingProfiles() []fleetclient.Profile {
-	profiles := []fleetclient.Profile{}
-	for _, peer := range m.peers {
-		if peer.Label == m.pendingLabel {
-			for _, profile := range peer.Profiles {
-				if profile.Provider == "Codex" && profile.HistoryScope != "" {
-					profiles = append(profiles, profile)
-				}
-			}
-			break
-		}
-	}
-	return profiles
-}
-func (m *model) editTracking(message tea.KeyPressMsg) tea.Cmd {
-	key := message.String()
-	switch key {
-	case "esc":
-		m.page = ""
-		return nil
-	case "tab", "shift+tab":
-		m.field = 1 - m.field
-	case "left", "right":
-		if m.field == 0 {
-			profiles := m.trackingProfiles()
-			for index, profile := range profiles {
-				if profile.Key == m.form[0] {
-					delta := 1
-					if key == "left" {
-						delta = -1
-					}
-					m.form[0] = profiles[(index+delta+len(profiles))%len(profiles)].Key
-					break
-				}
-			}
-		}
-	case "enter":
-		request := m.pending
-		request.Operation, request.Profile, request.ConversationID = "track", m.form[0], m.form[1]
-		if !request.Valid() {
-			m.fail("enter an explicit conversation id")
-			return nil
-		}
-		return m.execute(request)
-	case "backspace":
-		if m.field == 1 && m.form[1] != "" {
-			m.form[1] = m.form[1][:len(m.form[1])-1]
-		}
-	default:
-		if m.field == 1 && message.Text != "" {
-			m.form[1] += singleLine(message.Text)
-		}
-	}
-	return nil
 }

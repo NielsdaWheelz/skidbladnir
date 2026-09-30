@@ -5,7 +5,7 @@ each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
 [native interaction and unread replies](native-agent-observation.md) owns native
-observation, explicit conversation association, native messaging, client-side
+observation, creation-time codex conversation association, native messaging, client-side
 waits and device-local acknowledgement. stock codex installation and native
 conversation targets are independent of terminal selection. `stop` retains the terminal;
 `close` reports halt and terminal closure separately.
@@ -47,7 +47,7 @@ feature plans; those recipes do not recreate removed gates.
   presence separately from a captured native conversation, and offers bounded
   reads and explicit controls.
   native status/history/results and qualified controls use a short-lived helper.
-  codex native commands target an explicitly recorded conversation; foreground
+  codex native commands target the conversation recorded at creation; foreground
   terminal selection never changes that target.
   explicit terminal reads/text/keys remain separate. no history is copied into
   a skid store, and no helper
@@ -82,7 +82,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; sampled native status, bounded native output, explicit native/terminal controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux records explicit conversation associations; clients persist device-local reply ids and acknowledgements. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux records codex conversation associations at creation only; clients persist device-local reply ids and acknowledgements. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
@@ -764,7 +764,6 @@ history item is `current`.
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates the full server lifetime, id, and name before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{tmuxName,identityToken}`; one-queue exact lifetime/name session deletion |
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
-| `PUT/DELETE /v1/sessions/{tmuxId}/conversation` | explicit codex association/clear; exact terminal lifetime, no inferred tui selection |
 | `POST /v1/sessions/{tmuxId}/agent/{operation}` | explicit terminal `read`, `text`, `keys`, `stop`, and separately reported `close`; [native contract](native-agent-observation.md#4-api-and-behavior) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 

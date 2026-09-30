@@ -62,7 +62,6 @@ internal fun SessionCard(
     onClose: () -> Unit,
     onGroup: () -> Unit,
     onReplies: () -> Unit,
-    onTrack: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
@@ -191,9 +190,6 @@ internal fun SessionCard(
                 ) {
                     if (conversation != null || replies.previousAgent) {
                         GroupTextAction("view replies", machine.canMutate, onReplies)
-                    }
-                    if (snapshot.inventory.profiles.any { it.provider == AgentProvider.Codex }) {
-                        GroupTextAction("track conversation", machine.canMutate, onTrack)
                     }
                     GroupTextAction(
                         label = "change group", enabled = machine.canMutate, onClick = onGroup,

@@ -253,13 +253,6 @@ internal class GatewayClient {
         }, decodeFailure = ::decodeAgentHttpFailure, timeoutMillis = AGENT_CALL_TIMEOUT_MILLIS,
     )
 
-    fun associateConversation(credential: MachineCredential, target: SessionTarget, conversation: Conversation?): GatewayResult<Unit> {
-        require(target.machineHandle == credential.machine.handle)
-        val request = authorizedRequest(credential, listOf("v1", "sessions", target.session.tmuxId, "conversation"))
-        val body = encodeConversationAssociationRequest(target, conversation).toRequestBody(jsonMediaType)
-        return executeBodyless((if (conversation == null) request.delete(body) else request.put(body)).build(), ::decodeAgentHttpFailure)
-    }
-
     fun readAgentResults(credential: MachineCredential, conversation: Conversation, cursor: String?): GatewayResult<AgentResultPage> = executeJson(
         request = authorizedRequest(credential, listOf("v1", "conversations", "results"))
             .post(encodeAgentResultsRequest(conversation, cursor).toRequestBody(jsonMediaType)).build(),

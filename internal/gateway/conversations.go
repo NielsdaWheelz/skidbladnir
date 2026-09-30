@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -110,64 +109,6 @@ func (gateway *Gateway) conversationOperation(writer http.ResponseWriter, reques
 		return
 	}
 	writeJSON(writer, http.StatusOK, result)
-}
-
-type associationRequest struct {
-	IdentityToken stringField                `json:"identityToken"`
-	Conversation  *agentruntime.Conversation `json:"conversation"`
-}
-
-func (input *associationRequest) UnmarshalJSON(encoded []byte) error {
-	var members map[string]json.RawMessage
-	if err := strictjson.Decode(encoded, &members); err != nil {
-		return err
-	}
-	for _, value := range members {
-		if bytes.Equal(value, []byte("null")) {
-			return errors.New("association request member cannot be null")
-		}
-	}
-	type wire associationRequest
-	var decoded wire
-	if err := strictjson.Decode(encoded, &decoded); err != nil {
-		return err
-	}
-	*input = associationRequest(decoded)
-	return nil
-}
-
-func (gateway *Gateway) setConversation(writer http.ResponseWriter, request *http.Request) {
-	id, valid := parseSessionPath(strings.TrimSuffix(request.URL.Path, "/conversation"))
-	if !valid {
-		writeError(writer, errorInvalidRequest)
-		return
-	}
-	input, failure := decodeJSON[associationRequest](writer, request)
-	if failure != nil {
-		writeError(writer, *failure)
-		return
-	}
-	if input.IdentityToken.value == "" || request.Method == http.MethodPut && (input.Conversation == nil || !input.Conversation.Valid() || input.Conversation.Provider != agentruntime.ProviderCodex) || request.Method == http.MethodDelete && input.Conversation != nil {
-		writeError(writer, errorAgentInputInvalid)
-		return
-	}
-	var err error
-	if input.Conversation == nil {
-		err = gateway.sessions.SetConversation(request.Context(), id, input.IdentityToken.value, nil)
-	} else {
-		err = gateway.agents.Associate(request.Context(), id, input.IdentityToken.value, *input.Conversation)
-	}
-	if errors.Is(err, sessions.ErrConversationDispatchUnknown) {
-		failure := errorInternal
-		failure.Dispatch = "unknown"
-		writeError(writer, failure)
-		return
-	}
-	if err != nil {
-		writeAgentError(writer, err)
-		return
-	}
-	writer.WriteHeader(http.StatusNoContent)
 }
 
 // The caller holds terminalLifecycle; no foreground provider identity is required.

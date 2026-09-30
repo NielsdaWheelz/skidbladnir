@@ -129,7 +129,7 @@ internal fun TerminalScreen(
                 modifier = Modifier.width(48.dp),
             )
             if (state.target.session.conversation != null || state.target.session.agent != null ||
-                state.machine.inventory.lastSnapshot()?.inventory?.profiles?.any { it.provider == AgentProvider.Codex } == true) {
+                state.machine.replies[state.target.session.identityToken]?.previousAgent == true) {
                 var expanded by remember(state.attempt) { mutableStateOf(false) }
                 Box {
                     HeaderChip(
@@ -142,10 +142,6 @@ internal fun TerminalScreen(
                             expanded = false
                             controller.openReplies(state.target)
                         }, enabled = state.target.session.conversation != null || state.machine.replies[state.target.session.identityToken]?.previousAgent == true)
-                        DropdownMenuItem(text = { Text("track conversation") }, onClick = {
-                            expanded = false
-                            controller.openConversationTracking(state.target)
-                        }, enabled = state.machine.inventory.lastSnapshot()?.inventory?.profiles?.any { it.provider == AgentProvider.Codex } == true)
                         DropdownMenuItem(text = { Text("stop tracked conversation") }, onClick = {
                             expanded = false
                             controller.stopAgent()

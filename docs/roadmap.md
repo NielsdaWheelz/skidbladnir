@@ -20,11 +20,17 @@ separates those checks from remaining phone-native interaction acceptance.
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, explicit id association and native
+ordinary upstream npm plus its owning daemon, creation-time id association and native
 operations. the selected-view fork/build and terminal-opening unread acknowledgement
 are retired. clients acknowledge known replies only after native output opens.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
+
+manual conversation association is removed from source: no mobile/browser form,
+cli track/untrack command or host mutation route remains. creation captures codex
+identity automatically; manually launched codex terminals remain unassociated.
+existing valid metadata is retained because earlier manual and creation bindings
+have the same representation. this source change does not assert deployment.
 
 v0.10.4 is published historical output under the former selected-view contract.
 the coordinated stock helper/gateway/client generation was released as v0.10.5;

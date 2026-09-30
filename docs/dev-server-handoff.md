@@ -206,7 +206,7 @@ name, prepares the exact empty thread with native resume without a turn, then la
 remote tui and records that id in tmux metadata. native creation applies the
 configured `--yolo` policy; remote resume restores it and omits that unsupported
 override from terminal argv. ordinary manual terminal commands
-remain stock and unassociated until an explicit conversation id is tracked.
+remain stock and unassociated; skid offers no manual codex association action.
 manual `claude`/`claude-personal` leave `CLAUDE_CONFIG_DIR` unset to retain native
 default behavior, including `~/.claude.json`; setting it to `~/.claude` is not
 assumed equivalent. personal claude is never a forge profile. its unconfigured
@@ -368,7 +368,7 @@ variable before selecting their own.
 
 ## hooks
 
-skid installs no codex hooks. foreground presence and explicitly tracked native
+skid installs no codex hooks. foreground presence and creation-associated native
 conversation are separate projections. no selected-view interface remains. the unused codex writer and
 template are retired; existing `hooks.json` remains untouched by skid setup.
 no hook merger is needed. stage the supplied
