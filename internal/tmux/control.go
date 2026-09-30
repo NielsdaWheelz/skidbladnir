@@ -89,9 +89,9 @@ func (client Client) Paste(ctx context.Context, target PaneTarget, text string, 
 	}
 	name := "skid-input-" + hex.EncodeToString(entropy[:])
 	defer func() {
-		cleanup, cancel := context.WithTimeout(ctx, time.Second)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		defer cancel()
-		_ = client.Run(cleanup, "clear-terminal-input", "-N", "delete-buffer", "-b", name) // justify-ignore-error: cleanup only addresses this operation's transient buffer; cancellation may prevent it.
+		_ = client.Run(cleanup, "clear-terminal-input", "-N", "delete-buffer", "-b", name) // justify-ignore-error: bounded cleanup only removes this operation's transient buffer; tmux may already be unavailable.
 	}()
 	load := client.command(ctx, nil, "-N", "load-buffer", "-b", name, "-")
 	load.Stdin = strings.NewReader(text)

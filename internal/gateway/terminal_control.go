@@ -128,12 +128,18 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		result, err = gateway.agents.TerminalStop(ctx, target)
 	case "close":
 		// Admission is the session lifetime, not the current pane or foreground.
-		if err := gateway.sessions.ResolveSession(ctx, id, target.IdentityToken); err != nil {
-			writeError(writer, terminalFailure(err))
+		deadline, _ := ctx.Deadline()
+		validationContext, cancelValidation := context.WithDeadline(ctx, deadline.Add(-2*time.Second))
+		validationErr := gateway.sessions.ResolveSession(validationContext, id, target.IdentityToken)
+		if validationErr == nil {
+			validationErr = validationContext.Err()
+		}
+		cancelValidation()
+		if validationErr != nil {
+			writeError(writer, terminalFailure(validationErr))
 			return
 		}
 		closed := terminalCloseResult{Interrupt: "not_sent", Terminal: "not_closed"}
-		deadline, _ := ctx.Deadline()
 		stopDeadline := time.Now().Add(2 * time.Second)
 		if cap := deadline.Add(-8 * time.Second); cap.Before(stopDeadline) {
 			stopDeadline = cap
@@ -181,19 +187,21 @@ func (gateway *Gateway) lockTerminalLifecycle(ctx context.Context) error {
 	}
 }
 
+// ctx carries the operation's absolute deadline; all waits consume that budget.
 func (gateway *Gateway) closeSessionTerminal(ctx context.Context, id, identityToken string) error {
 	startedAt := time.Now()
 	deadline, _ := ctx.Deadline()
 	admissionContext, cancelAdmission := context.WithDeadline(ctx, deadline.Add(-2*time.Second))
+	defer cancelAdmission()
 	err := gateway.lockTerminalLifecycle(admissionContext)
-	cancelAdmission()
 	if err != nil {
 		return err
 	}
 	defer func() { <-gateway.terminalLifecycle }()
-	if err := gateway.sessions.ResolveSession(ctx, id, identityToken); err != nil {
+	if err := gateway.sessions.ResolveSession(admissionContext, id, identityToken); err != nil {
 		return err
 	}
+	cancelAdmission()
 	cleanupDeadline := time.Now().Add(6 * time.Second)
 	if cap := deadline.Add(-2 * time.Second); cap.Before(cleanupDeadline) {
 		cleanupDeadline = cap

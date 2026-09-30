@@ -99,7 +99,7 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 		return Session{}, tmuxclient.Capture{}, err
 	}
 	if !sameForeground(before, after) {
-		return Session{}, tmuxclient.Capture{}, ErrTerminalObservationChanged
+		return after, tmuxclient.Capture{}, ErrTerminalObservationChanged
 	}
 	return after, capture, nil
 }

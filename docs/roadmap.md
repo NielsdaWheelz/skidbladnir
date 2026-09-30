@@ -40,6 +40,8 @@ tests are removed by policy;
 engineering verification passes. accepted inference/sampling/closing-boundary/
 concurrent-client costs are explicit in the spec. [Claude history completeness](issues/claude-history-completeness.md)
 remains an independent native-provider issue, no longer a notification prerequisite.
+[terminal qualification](terminal-agent-control-qualification.md) records the
+remaining detector/input/deletion hardening and current-main composition checks.
 
 ## skid-only cutover
 

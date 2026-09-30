@@ -238,7 +238,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshAfterAction = true
 		}
 		if !message.result.OK {
-			failureText := fleetclient.ErrorMessage(*message.result.Error, message.operation, message.operation == "read")
+			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
 			m.fail(failureText)
 			failure := message.result.Error
 			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {

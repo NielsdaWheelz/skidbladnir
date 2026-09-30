@@ -211,7 +211,7 @@ internal fun DashboardMain(
         // every dashboard state including zero machines, where it is cold.
         // Absence is displayed, not hidden. The 16dp margin is the wrapper's,
         // not the seal's — padding threaded into ForgeSeal would grow its
-        // semantics bounds past its ink, and the grid's bottom inset below is
+        // semantics bounds past its ink, and the grid's viewport clearance below is
         // measured against those bounds.
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             ForgeSeal(canForge = canForge, onClick = controller::openForge)
@@ -384,9 +384,10 @@ private fun DashboardDwarfGrid(
     onGroup: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
-    val bottomPadding = 84.dp
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val emptyItemHeight = (maxHeight - topPadding - bottomPadding).coerceAtLeast(0.dp)
+    // Reserve the seal's 16dp margin + 56dp target + 12dp gap outside the scroll
+    // viewport. Trailing content padding alone lets visible controls scroll under it.
+    BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 84.dp)) {
+        val emptyItemHeight = (maxHeight - topPadding).coerceAtLeast(0.dp)
         LazyVerticalGrid(
             columns = GridCells.Adaptive(170.dp),
             modifier = Modifier.fillMaxSize(),
@@ -395,7 +396,6 @@ private fun DashboardDwarfGrid(
                 start = 12.dp,
                 top = topPadding,
                 end = 12.dp,
-                bottom = bottomPadding,
             ),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
