@@ -19,17 +19,60 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select build inputs
+        id: inputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          host=false
+          android=false
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == 0000000000000000000000000000000000000000 ]]; then
+            host=true
+            android=true
+          else
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            git diff --name-only --no-renames -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/verify-inputs"
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                *.go | go.mod | go.sum | deployment/*) host=true ;;
+                android/* | scripts/gen-ornament | scripts/build-terminal-xterm | scripts/check-terminal-assets) android=true ;;
+                docs/* | evidence/* | AGENTS.md | release-pin.json) ;;
+                *) host=true; android=true ;;
+              esac
+            done < "$RUNNER_TEMP/verify-inputs"
+          fi
+          if [[ "$host" == true && "$android" == true ]]; then
+            scope=all
+          elif [[ "$host" == true ]]; then
+            scope=host
+          elif [[ "$android" == true ]]; then
+            scope=android
+          else
+            scope=none
+          fi
+          printf 'scope=%s\n' "$scope" >> "$GITHUB_OUTPUT"
+          printf 'build scope: %s\n' "$scope"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        if: steps.inputs.outputs.scope == 'all' || steps.inputs.outputs.scope == 'android'
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle.kts
+            android/gradle.properties
+            android/gradle/wrapper/gradle-wrapper.properties
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        if: steps.inputs.outputs.scope == 'all' || steps.inputs.outputs.scope == 'android'
         with:
           packages: ""
       - name: Install Android API 36
+        if: steps.inputs.outputs.scope == 'all' || steps.inputs.outputs.scope == 'android'
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Engineering checks
-        run: ./scripts/check verify
+        env:
+          CHECK_SCOPE: ${{ steps.inputs.outputs.scope }}
+        run: ./scripts/check verify "$CHECK_SCOPE"
