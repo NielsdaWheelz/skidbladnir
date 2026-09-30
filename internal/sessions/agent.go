@@ -9,8 +9,9 @@ import (
 )
 
 // paneForeground samples the foreground process of a pane's terminal. An empty
-// pane (no root process) and an exited root process have no foreground; other
-// kernel failures remain distinguishable from a successful sample.
+// pane (no root process), an exited root process and an exited foreground
+// process-group leader have no foreground; other kernel failures remain
+// distinguishable from a successful sample.
 func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 	if panePID == 0 {
 		return nil, nil

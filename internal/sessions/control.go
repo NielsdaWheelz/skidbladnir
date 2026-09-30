@@ -96,25 +96,30 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 	if err != nil {
 		return Session{}, tmuxclient.Capture{}, err
 	}
-	if !sameForeground(before.foreground, after.foreground) {
+	if !sameForeground(before, after) {
 		return after, tmuxclient.Capture{}, ErrTerminalObservationChanged
 	}
 	return after, capture, nil
 }
 
 // ObservePane captures the bounded screen regions of session's exact target and
-// then revalidates its foreground against session's own sample. session comes
-// from List or ResolveTerminal in the same request and is never re-resolved.
-// It succeeds only when the pane's foreground is still present and identical
-// to the sample; an absent foreground cannot vouch for the captured screen.
-// Errors: ErrTerminalProcessFailed (no foreground sample, or revalidation
-// failed), ErrTerminalCaptureFailed (tmux failure or dimension/screen change),
-// ErrTerminalObservationChanged (foreground absent or different in the same
-// target), ErrTerminalTargetChanged (session lifetime or selected pane changed).
+// then revalidates the pane foreground against session's own sample. session
+// comes from List or ResolveTerminal in the same request and is never
+// re-resolved. Precondition: the session's foreground sample either failed or
+// found a foreground (Agent != nil guarantees one); a session sampled without a
+// foreground is a caller defect.
+// Errors: ErrTerminalProcessFailed (the session's foreground sample failed, or
+// re-observing it failed), ErrTerminalCaptureFailed (tmux failure or
+// dimension/screen change), ErrTerminalObservationChanged (foreground absent or
+// different in the same target), ErrTerminalTargetChanged (session lifetime or
+// selected pane changed).
 // Callers check ctx first: an expired context is a timeout at any stage.
 func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
 	if session.ForegroundFailed() {
 		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+	}
+	if session.foreground == nil {
+		panic("observed terminal session has no foreground") // justify-defect: callers observe only a recognized agent, whose sample holds its foreground.
 	}
 	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
 	switch {
@@ -124,13 +129,13 @@ func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxc
 	case errors.Is(err, tmuxclient.ErrObservationChanged), errors.Is(err, tmuxclient.ErrUnavailable):
 		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
 	default:
-		panic("listed terminal target is invalid") // justify-defect: List and ResolveTerminal admit only canonical targets.
+		panic("observed terminal target is invalid") // justify-defect: List, ResolveTerminal and creation return only canonical targets.
 	}
 	foreground, err := paneForeground(session.panePID)
 	if err != nil {
 		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
 	}
-	if foreground == nil || !sameForeground(session.foreground, foreground) {
+	if foreground == nil || !processinfo.SameObservation(*session.foreground, *foreground) {
 		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
 	}
 	return observation, nil
@@ -176,7 +181,7 @@ func (manager *Manager) revalidateForeground(ctx context.Context, target Termina
 	if err := requireForeground(after, expected); err != nil {
 		return err
 	}
-	if expected != nil && !sameForeground(before.foreground, after.foreground) {
+	if expected != nil && !sameForeground(before, after) {
 		return ErrTerminalTargetChanged
 	}
 	return nil
@@ -196,11 +201,11 @@ func requireForeground(session Session, expected *agentruntime.AgentRuntime) err
 	return nil
 }
 
-func sameForeground(left, right *processinfo.Observation) bool {
-	if left == nil || right == nil {
-		return left == nil && right == nil
+func sameForeground(left, right Session) bool {
+	if left.foreground == nil || right.foreground == nil {
+		return left.foreground == nil && right.foreground == nil
 	}
-	return processinfo.SameObservation(*left, *right)
+	return processinfo.SameObservation(*left.foreground, *right.foreground)
 }
 
 func terminalError(err error) error {

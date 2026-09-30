@@ -147,11 +147,10 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 	if ctx.Err() != nil {
 		return ErrUnavailable
 	}
-	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	// A dead pane is positively unavailable; a different active pane/lifetime is stale.
+	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	var output strings.Builder
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'",
-		target.refusal(inputUnavailableMarker))
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", target.refusal(inputUnavailableMarker))
 	command.Stdout = &output
 	if err := command.Start(); err != nil {
 		return ErrUnavailable

@@ -114,7 +114,7 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	// The capture runs only while the target and the screen read above are
 	// unchanged; the refusal distinguishes a changed screen from a stale target.
 	condition := andFormatConditions([]string{target.condition(), "#{==:" + paneScreenFormat + "," + formatLiteral(screen) + "}"})
-	rows := observedRows{topCount: top, expected: len(requested), top: observedRegion{limit: topRegionBytes}, bottom: observedRegion{limit: bottomRegionBytes}}
+	rows := observedRows{topCount: top, expected: len(requested), top: observedRegion{remaining: topRegionBytes}, bottom: observedRegion{remaining: bottomRegionBytes}}
 	output := captureOutput{body: &rows}
 	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch.String(), target.refusal(observationChangedMarker))
 	command.Stdout = &output
@@ -158,10 +158,9 @@ type observedRows struct {
 }
 
 type observedRegion struct {
-	limit   int
-	size    int
-	rows    []string
-	clipped bool
+	remaining int // bytes the region may still keep
+	rows      []string
+	clipped   bool
 }
 
 func (output *observedRows) Write(contents []byte) (int, error) {
@@ -175,7 +174,7 @@ func (output *observedRows) Write(contents []byte) (int, error) {
 			region = &output.top
 		}
 		line, rest, complete := bytes.Cut(contents, []byte{'\n'})
-		if !region.clipped && region.size+len(output.row)+len(line) <= region.limit {
+		if !region.clipped && len(output.row)+len(line) <= region.remaining {
 			output.row = append(output.row, line...)
 		} else {
 			region.clipped = true
@@ -186,7 +185,7 @@ func (output *observedRows) Write(contents []byte) (int, error) {
 					return 0, errors.New("observation row is not UTF-8")
 				}
 				region.rows = append(region.rows, string(output.row))
-				region.size += len(output.row)
+				region.remaining -= len(output.row)
 			}
 			output.row = output.row[:0]
 			output.received++
