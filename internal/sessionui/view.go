@@ -70,12 +70,9 @@ func (m *model) header() string {
 	}
 	for index, filter := range m.groupOptions()[1:] {
 		label := singleLine(filter.Label().String())
-		switch trimmed := strings.TrimSpace(label); {
-		case filter.Kind() == group.FilterUnassigned:
+		if filter.Kind() == group.FilterUnassigned {
 			tabs = append(tabs, tab{fixed: "unassigned"})
-		case trimmed == "agents" || trimmed == "all" || trimmed == "unassigned" || strings.HasPrefix(trimmed, "group: "):
-			tabs = append(tabs, tab{fixed: "group: ", label: label})
-		default:
+		} else {
 			tabs = append(tabs, tab{label: label})
 		}
 		if !m.agentsView && filter == m.groupFilter {

@@ -6,10 +6,9 @@ prints some as spaces (u+200b, u+2060, u+feff, u+00ad) and passes others through
 u+200b prints blank, and `all` followed by u+034f prints as a bare `all`.
 
 impact: two groups can read alike wherever labels print: the desktop strip,
-group headings, details and phone pickers. the desktop strip prefixes a label
-that prints as one of skid's words (`agents`, `all`, `unassigned`) with
-`group: `, but it compares printed text, so a passed-through invisible character
-defeats the prefix and a group tab can read as `all` or `agents`.
+group headings, details and phone pickers. named labels now display without a
+prefix by request; removing the former desktop collision prefix leaves this
+independent display-safety issue unresolved.
 
 evidence: 2026-09-29, `group.Parse` returned `"a\u200bb"`, `"\u200ball"`,
 `"\u2060all"`, `"\u200b"` and `"agents\u00ad"` unchanged. the desktop strip drew

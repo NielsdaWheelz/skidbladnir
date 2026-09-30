@@ -97,7 +97,7 @@ internal fun GroupField(
                     shape = NidavellirShapes.Card, containerColor = DeepSurface,
                     tonalElevation = 0.dp, shadowElevation = 0.dp) {
                     labels.forEach { label ->
-                        GroupTextAction("group: ${label.text}", enabled,
+                        GroupTextAction(label.text, enabled,
                             { onChange(label.text); expanded = false }, Modifier.fillMaxWidth())
                     }
                 }
@@ -131,7 +131,7 @@ internal fun GroupSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("change group", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
             Text("${editor.target.session.tmuxName} on ${machine.machine.label.text}", fontFamily = NidavellirType.Data)
-            Text("current: ${editor.target.session.group?.let { "group: ${it.text}" } ?: "unassigned"}", color = Muted)
+            Text("current: ${editor.target.session.group?.text ?: "unassigned"}", color = Muted)
             GroupField(GroupDraft.Chosen(editor.draft), labels, editor.phase == GroupPhase.Editing, onChange)
             if (sending) Text("changing group", color = Gold)
             if (editor.phase is GroupPhase.Checking) Text("checking current membership", color = Gold)
