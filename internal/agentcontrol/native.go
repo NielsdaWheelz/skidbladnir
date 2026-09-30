@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
-	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -162,7 +161,7 @@ func decodeNativeEnvelope(envelope nativeEnvelope, result any, unavailable *Unav
 
 func (service *Service) nativeEnvironment(profile agentruntime.Profile) []string {
 	values := make(map[string]string)
-	for _, value := range runtimeenv.WithoutHerdr(os.Environ()) {
+	for _, value := range os.Environ() {
 		name, contents, ok := strings.Cut(value, "=")
 		if ok {
 			values[name] = contents

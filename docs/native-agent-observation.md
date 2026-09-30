@@ -116,6 +116,22 @@ commands may resolve a replacement association; running commands keep their
 original conversation. no alias store or second account table. return-address
 text is ordinary delegation metadata, never authority.
 
+`skid inspect --ref REF --json` observes a captured conversation independently
+of its terminal. after local reference/configuration admission, its outer result
+is `{label, machine, target:{ref, conversation, turn?}, inspection, observedRef?}`.
+`target` retains the original reference bytes, conversation and captured turn;
+`inspection` is the existing native success/error envelope. native, transport
+or protocol failure keeps that target and exits one. malformed references,
+references without a conversation and unknown machines fail the outer envelope.
+names and direct conversation arguments are not accepted by this command.
+
+successful inspection must match the captured conversation. only then,
+`observedRef` encodes that same conversation's newly sampled runtime and turn,
+without terminal/process identity. it is a separate target for a later explicitly
+authorized action; inspection never substitutes it into an existing write.
+terminal reassociation or deletion does not affect this read. the internal native
+inspection result used by the browser and other clients remains unchanged.
+
 ## 4. api and behavior
 
 reuse gateway authentication, pinned machine identity and closed envelopes.

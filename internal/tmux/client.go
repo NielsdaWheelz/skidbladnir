@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/runtimeenv"
 )
 
 var (
@@ -406,7 +405,7 @@ func tmuxEnvironment() []string {
 
 func filterTmuxEnvironment(environment []string) []string {
 	filtered := make([]string, 0, len(environment))
-	for _, entry := range runtimeenv.WithoutHerdr(environment) {
+	for _, entry := range environment {
 		if strings.HasPrefix(entry, "TMUX=") || strings.HasPrefix(entry, "TMUX_PANE=") {
 			continue
 		}
