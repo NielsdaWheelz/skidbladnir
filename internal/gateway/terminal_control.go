@@ -105,6 +105,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	var err error
 	switch operation {
 	case "inspect":
+		// TerminalInspect resolves the target itself, so a failure's duration includes resolution.
 		startedAt := time.Now()
 		var status sessions.TerminalStatus
 		var diagnostics agentcontrol.Diagnostics
@@ -117,13 +118,17 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 			return
 		}
 		if status.Source == sessions.SourceUnavailable {
-			gateway.logObservationFailure(agentcontrol.ObservationFailure{TmuxID: id, Reason: status.Reason, Elapsed: time.Since(startedAt)})
+			gateway.logObservationFailure(id, status.Reason, time.Since(startedAt))
 		}
 		inspected := struct {
 			TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
 			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
 		}{TerminalStatus: status}
 		if input.Explain != nil && *input.Explain {
+			// A nil slice is zero rules, but encoding/json writes it as null.
+			if diagnostics.Rules == nil {
+				diagnostics.Rules = []agentcontrol.DiagnosticRule{}
+			}
 			inspected.Diagnostics = &diagnostics
 		}
 		result = inspected

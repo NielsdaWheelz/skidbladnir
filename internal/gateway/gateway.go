@@ -427,7 +427,7 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		return
 	}
 	for _, failure := range gateway.agents.Enrich(request.Context(), inventory.Sessions) {
-		gateway.logObservationFailure(failure)
+		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
 	}
 	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
 	if err != nil {
@@ -546,12 +546,14 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		writeSessionError(writer, err)
 		return
 	}
-	// Session.Created times creation alone. The response also carries the new
-	// terminal's status, from one focused observation.
-	createdElapsed := time.Since(startedAt)
+	// Session.Created times creation alone; the status observation below is response latency.
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
+	if eventErr != nil {
+		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
+	}
 	observed := []sessions.Session{created.Session}
 	for _, failure := range gateway.agents.Enrich(ctx, observed) {
-		gateway.logObservationFailure(failure)
+		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
 	}
 	created.Session = observed[0]
 	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
@@ -560,10 +562,6 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 		failure.Dispatch = "unknown"
 		writeError(writer, failure)
 		return
-	}
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, createdElapsed)
-	if eventErr != nil {
-		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusCreated, response)
@@ -856,8 +854,8 @@ func requestRoute(path string) logging.Route {
 	}
 }
 
-func (gateway *Gateway) logObservationFailure(failure agentcontrol.ObservationFailure) {
-	event, err := logging.NewTerminalObservationFailed(failure.TmuxID, failure.Reason, failure.Elapsed)
+func (gateway *Gateway) logObservationFailure(tmuxID string, reason sessions.StatusReason, elapsed time.Duration) {
+	event, err := logging.NewTerminalObservationFailed(tmuxID, reason, elapsed)
 	if err != nil {
 		panic("invalid terminal-observation-failed log event") // justify-defect: only a valid unavailable status of a canonical session reaches this event.
 	}
