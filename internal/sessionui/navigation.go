@@ -6,10 +6,8 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
-
-// attention keeps inferred waiting and idle ahead of unknown and working.
-var attention = []string{"blocked", "idle", "unknown", "working"}
 
 func sameSession(a, b fleetclient.Session) bool {
 	left, _ := fleetclient.DecodeReference(a.Ref)
@@ -40,7 +38,7 @@ func (m *model) rebuild() {
 				}
 				return 1
 			}
-			return cmp.Compare(slices.Index(attention, statusState(a.session)), slices.Index(attention, statusState(b.session)))
+			return cmp.Compare(attentionRank(a.session.TerminalStatus), attentionRank(b.session.TerminalStatus))
 		})
 	} else {
 		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
@@ -48,6 +46,10 @@ func (m *model) rebuild() {
 				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
 			}
 		}
+	}
+	// The filter narrows the chosen view without reordering it; stale rows never qualify.
+	if m.needsInputOnly {
+		m.rows = slices.DeleteFunc(m.rows, func(row listedRow) bool { return !fleetclient.NeedsInput(row.session.TerminalStatus, row.available) })
 	}
 	m.cursor = -1
 	for index, row := range m.rows {
@@ -128,6 +130,24 @@ func (m *model) move(delta int) {
 	}
 }
 
-func statusState(session fleetclient.Session) string {
-	return session.TerminalStatus.State
+// attentionRank puts what may be waiting on the operator first: requests and
+// menus, then idle, then unknown (including unavailable), then starting or
+// working. The sort is stable within a rank.
+func attentionRank(status sessions.TerminalStatus) int {
+	switch status.Interaction {
+	case sessions.InteractionPermission, sessions.InteractionQuestion, sessions.InteractionConfirmation, sessions.InteractionSetup, sessions.InteractionInput, sessions.InteractionMenu:
+		return 0
+	case sessions.InteractionNone, sessions.InteractionUnknown:
+	default:
+		panic("invalid owned terminal interaction") // justify-defect: ingress admits only Valid statuses.
+	}
+	switch status.Activity {
+	case sessions.ActivityIdle:
+		return 1
+	case sessions.ActivityUnknown:
+		return 2
+	case sessions.ActivityStarting, sessions.ActivityWorking:
+		return 3
+	}
+	panic("invalid owned terminal activity") // justify-defect: ingress admits only Valid statuses.
 }

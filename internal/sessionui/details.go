@@ -62,10 +62,8 @@ func (m *model) details(row *listedRow) [][2]string {
 		facts = append(facts, [2]string{"recorded native conversation", value.Conversation.ConversationID + "; may differ from terminal"})
 	}
 
-	facts = append(facts, [2]string{"state", m.rowStatus(*row)})
-	if value.Agent != nil && value.TerminalStatus.Source == "terminal" {
-		facts = append(facts, [2]string{"source", "inferred from terminal"})
-	}
+	view := m.statusView(*row)
+	facts = append(facts, [2]string{"state", view.Detail()}, [2]string{"status reason", view.Reason})
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}

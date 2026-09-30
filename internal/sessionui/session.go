@@ -66,6 +66,7 @@ type model struct {
 	picker                         int
 	metadata                       *metadataEditor
 	agentsView                     bool
+	needsInputOnly                 bool
 	top                            int
 	pageName, pageMachine, pageRef string
 	searchRevision                 int
@@ -222,7 +223,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
 			// Confirmed creation reveals the new session in its group.
-			m.page, m.agentsView = "", false
+			m.page, m.agentsView, m.needsInputOnly = "", false, false
 			if m.machine != "" && m.machine != value.Label {
 				m.machine = value.Label
 				m.scopeReady = false
@@ -434,6 +435,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "a":
 			m.showAgents()
+			return m, nil
+		case "f":
+			m.needsInputOnly = !m.needsInputOnly
+			m.rebuildForFilter()
 			return m, nil
 		case "up", "k":
 			m.move(-1)

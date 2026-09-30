@@ -21,9 +21,9 @@ var (
 	faint    = ansi.Style{}.Faint()
 	wordmark = ansi.Style{}.Reverse(true)
 	here     = ansi.Style{}.ForegroundColor(ansi.BrightYellow)
-	working  = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff})
-	ready    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
-	idle     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
+	frost    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff})
+	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
+	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
 	alarm    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
 	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
 )
@@ -182,7 +182,7 @@ func (m *model) footerLines() []string {
 	width := m.width - 2
 	notices := m.noticeLines(width)
 	keys := keyLines(width, m.hints()...)
-	legend, detail, position := "", []string{}, ""
+	legend, detail, position, end := "", []string{}, "", ""
 	switch m.page {
 	case "":
 		if m.busy {
@@ -194,6 +194,13 @@ func (m *model) footerLines() []string {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
+		// The filter hides rows, so it reads plainly beside the table's position.
+		if m.needsInputOnly {
+			end = " needs input"
+			if position != "" {
+				position = "· " + position
+			}
+		}
 	case "confirm":
 		legend = target(m.pendingName, m.pendingLabel, width)
 	case "details", "group-edit", "name-edit":
@@ -201,7 +208,10 @@ func (m *model) footerLines() []string {
 	case "create":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
 	}
-	lines := append(notices, rule(legend, position, width))
+	if position != "" {
+		end += faint.Styled(" " + position)
+	}
+	lines := append(notices, rule(legend, end, width))
 	lines = append(lines, detail...)
 	return append(lines, keys...)
 }
@@ -295,7 +305,11 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	filter := hint{"f", "needs input"}
+	if m.needsInputOnly {
+		filter.label = "needs input off"
+	}
+	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, filter, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -331,17 +345,17 @@ func keyLines(width int, groups ...[]hint) []string {
 }
 
 // rule is the one boundary between content and controls; its legend names the
-// target, and a scrolled table reports the cursor position at its end.
-func rule(legend, position string, width int) string {
-	if position != "" {
-		position = faint.Styled(" " + position + " ──")
+// target, and its styled end carries the table's filter and scrolled position.
+func rule(legend, end string, width int) string {
+	if end != "" {
+		end += faint.Styled(" ──")
 	}
-	fill := width - ansi.StringWidth(position)
+	fill := width - ansi.StringWidth(end)
 	if legend == "" {
-		return faint.Styled(strings.Repeat("─", fill)) + position
+		return faint.Styled(strings.Repeat("─", fill)) + end
 	}
 	legend = ansi.Truncate(legend, max(1, fill-5), "…")
-	return faint.Styled("── ") + legend + " " + faint.Styled(strings.Repeat("─", max(0, fill-4-ansi.StringWidth(legend)))) + position
+	return faint.Styled("── ") + legend + " " + faint.Styled(strings.Repeat("─", max(0, fill-4-ansi.StringWidth(legend)))) + end
 }
 
 func target(name, machine string, width int) string {
@@ -351,18 +365,13 @@ func target(name, machine string, width int) string {
 
 func (m *model) rowDetailLines(row listedRow, width int) []string {
 	current := m.current(&row)
-	facts := m.rowStatus(row)
-	if !row.available {
-		facts = fleetclient.SessionStatus(row.session)
-	}
-	if row.session.Agent != nil && row.session.TerminalStatus.Source == "terminal" {
-		facts += " · inferred from terminal"
-	}
+	facts := m.statusView(row).Detail()
 	if row.session.Agent == nil && row.session.ActiveCommand != "" {
 		facts += ": " + row.session.ActiveCommand
 	}
 	if !row.available {
-		facts = m.rowStatus(row) + "; last observed: " + facts
+		host, _ := m.tableStatus(row)
+		facts = host + "; " + facts
 	}
 	where := current.CWD
 	if where == "" {
@@ -528,6 +537,8 @@ func (m *model) bodyLines(height int) []string {
 		switch {
 		case !m.scopeReady:
 			return []string{"checking inventory"}
+		case m.needsInputOnly:
+			return []string{"no sessions currently need input in this view"}
 		case partial:
 			return []string{"no matching sessions in available inventory"}
 		case m.agentsView:
@@ -656,7 +667,8 @@ func (m *model) tableLines(width int) []string {
 	name, status, agent, label, machine := 4, 0, 0, 0, 0
 	for _, row := range m.rows {
 		name = max(name, ansi.StringWidth(singleLine(row.session.Name)))
-		status = max(status, ansi.StringWidth(m.rowStatus(row)))
+		printed, _ := m.tableStatus(row)
+		status = max(status, ansi.StringWidth(printed))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
 		if m.agentsView {
 			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
@@ -697,19 +709,11 @@ func (m *model) tableLines(width int) []string {
 		if m.opensGroup(index) {
 			lines = append(lines, faint.Styled(ansi.Truncate(singleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
 		}
-		// the printed status alone keys colour; unavailable rows recede.
-		gutter, nameStyle, statusStyle, printed := "  ", plain, plain, m.rowStatus(row)
-		switch {
-		case !row.available:
-			nameStyle, statusStyle = faint, faint
-		case printed == "working":
-			statusStyle = working
-		case printed == "ready":
-			statusStyle = ready
-		case printed == "idle":
-			statusStyle = idle
-		case printed == "waiting":
-			statusStyle = alarm
+		// the projected tone keys colour; unavailable rows recede.
+		gutter, nameStyle := "  ", plain
+		printed, statusStyle := m.tableStatus(row)
+		if !row.available {
+			nameStyle = faint
 		}
 		if index == m.cursor {
 			gutter, nameStyle = here.Styled("▌")+" ", bold
@@ -735,20 +739,36 @@ func (m *model) tableLines(width int) []string {
 	return lines
 }
 
-// rowStatus names a row without remote actions by why: its host failed a read,
-// or a scoped read is still checking it. otherwise it is the attention state alone.
-func (m *model) rowStatus(row listedRow) string {
-	switch {
-	case !row.available:
+// statusView projects a row's terminal status. A row without remote actions
+// is stale; readiness also requires a working notification store.
+func (m *model) statusView(row listedRow) fleetclient.StatusView {
+	return fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+}
+
+// tableStatus is a row's status cell. a row without remote actions names why:
+// its host failed a read, or a scoped read is still checking it. otherwise it
+// is the projected label in its tone.
+func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
+	if !row.available {
 		for _, peer := range m.peers {
 			if peer.Machine == row.machine && peer.Error != nil {
-				return "unavailable"
+				return "unavailable", faint
 			}
 		}
-		return "checking"
+		return "checking", faint
 	}
-
-	return fleetclient.AttentionText(row.session, row.machine, row.available && !m.notificationFailed, m.notificationSnapshot)
+	view := m.statusView(row)
+	switch view.Tone {
+	case fleetclient.ToneMuted:
+		return view.Label, muted
+	case fleetclient.ToneBlue:
+		return view.Label, frost
+	case fleetclient.ToneEmber:
+		return view.Label, alarm
+	case fleetclient.ToneGreen:
+		return view.Label, moss
+	}
+	panic("invalid status tone") // justify-defect: Tone is a closed enum.
 }
 
 // agentText is the configured profile label, per terminal continuity's identity copy.

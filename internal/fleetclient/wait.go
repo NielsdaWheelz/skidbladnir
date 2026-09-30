@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 func (client *Client) wait(parent context.Context, request Request) Result {
@@ -71,11 +72,21 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		matched := false
 		if captured.Conversation == nil {
 			status := sampled.Value.(TerminalInspectResult).TerminalStatus
-			if status.Source == "unavailable" {
+			if status.Source == sessions.SourceUnavailable {
 				return Failed("TerminalUnavailable", "not_sent")
 			}
 			result.TerminalStatus = &status
-			matched = status.State == state
+			// Each state tests its own dimensions; an unknown tested dimension never matches.
+			switch state {
+			case "idle":
+				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
+			case "working":
+				matched = status.Activity == sessions.ActivityWorking
+			case "needs-input":
+				matched = NeedsInput(status, true)
+			default:
+				panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
+			}
 		} else {
 			runtime := sampled.Value.(agentruntime.ConversationRuntime)
 			if !runtime.Binding.Equal(captured.Conversation.Binding) {
