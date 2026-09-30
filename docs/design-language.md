@@ -149,12 +149,14 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Muted | `#AAA69D` | 8.01 | Secondary text |
 | Gold | `#D6A85F` | 8.91 | Primary accent; cursor; selected/armed states |
 | Ember | `#E46C55` | 6.09 | Error; destructive; `HOT` |
-| Moss | `#76B082` | 7.69 | working; healthy |
-| Frost | `#78A9C6` | 7.67 | Informational |
+| Moss | `#76B082` | 7.69 | ready; healthy |
+| Frost | `#78A9C6` | 7.67 | working; informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-sampled status mapping is working Moss, blocked/failed Ember, all other states
-and a plain terminal Muted. Pressure history and detail rows keep Normal
+terminal status mapping is working Frost, ready Moss, blocked Ember, idle/unknown
+and a plain terminal Muted. [terminal attention](reply-notifications.md) owns
+the exclusive projection and green suppression during stale/uncertain samples
+and visits. Pressure history and detail rows keep Normal
 Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
 collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
 Muted, informational/normal values are Bone, and only Warm/Hot values and marks
@@ -174,7 +176,8 @@ a surface may reach for; it is what one tone resolves to.
 Two rules follow, and both are load-bearing:
 
 - **Staleness is absence, not failure.** degraded machine-freshness notices use
-  Muted; stale cards retain their sampled status color with motion/actions off.
+  Muted; stale cards retain their last observed status with motion/actions off,
+  but never retain green readiness styling.
   freshness remains separate from status under the honesty
   law (§1.4): absence is displayed, not alarmed.
   Ember spent on routine staleness is Ember spent on nothing — in a federation
@@ -577,11 +580,10 @@ those plans do not override current testing policy or claim human acceptance.
 ## 19. terminal browser
 
 the [desktop browser](desktop-browser.md) is this language with every ornament
-deleted (§1.2), drawn in the operator's own terminal. it speaks only the
-sixteen-colour protocol: the operator's theme is the ground, its default foreground
-the ink, and the browser never paints a background. under §10's table the bright
-slots are the accents verbatim, so the browser renders exactly in this palette;
-any other theme renders it in that theme's colours.
+deleted (§1.2), drawn in the operator's own terminal. the operator's theme supplies
+the ground and default ink; the browser paints no background. navigation/error
+accents use bright slots. terminal attention uses explicit frost/moss/muted RGB
+values for working/ready/idle. NO_COLOR strips styling and preserves every label.
 
 | intensity | sgr | carries |
 | --- | --- | --- |
@@ -594,12 +596,14 @@ any other theme renders it in that theme's colours.
 | --- | --- | --- |
 | Gold | bright yellow | you are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
 | Ember | bright red | blocked or failed status, a failed outcome, the stop/kill question |
-| Moss | bright green | working |
+| Frost | RGB `#78A9C6` | working |
+| Moss | RGB `#76B082` | ready |
+| Muted | RGB `#AAA69D` | idle |
 
 status colour follows §5's sampled status mapping, keyed by the printed word:
-`working` is moss, `waiting` (blocked) and `failed` are ember, every other word
-plain. ember never appears in hints, so blocked and failed stay the only red in
-the table and are found at a glance. colour never carries meaning alone: every
+`working` is frost, `ready` is moss, `idle` is muted, `waiting` (blocked) is ember,
+every other word plain. ember never appears in hints, so blocked status stays the only red in
+the table and is found at a glance. colour never carries meaning alone: every
 status is a word; the cursor is a glyph plus bold; the current view is bold,
 between gold `‹ ›` at the table; form chevrons stay faint because the `▌` gutter
 marks focus. faint varies by terminal and disappears under mosh; the hierarchy

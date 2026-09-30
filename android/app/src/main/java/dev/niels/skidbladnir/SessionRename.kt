@@ -182,6 +182,7 @@ internal fun completeRenameHttp(
             ApiErrorCode.DirectorySearchUnavailable,
             ApiErrorCode.DirectorySearchTooLarge,
             ApiErrorCode.TerminalContextUnavailable,
+            ApiErrorCode.TerminalTargetChanged, ApiErrorCode.TerminalUnavailable, ApiErrorCode.TerminalInputBlocked,
             ApiErrorCode.ProfileUnknown,
             ApiErrorCode.ObjectiveInvalid, ApiErrorCode.GroupInvalid,
             ApiErrorCode.PairingInviteRejected,

@@ -126,4 +126,6 @@ native Claude input remains
 unavailable under [recipient qualification](issues/native-message-qualification.md);
 [background stop](issues/restoration-native-control.md) retains its separate
 source/fleet evidence. release pins identify sources and digests, not deployment.
-[release issue](issues/native-agent-release-qualification.md) owns deployment.
+[deployment handoff](dev-server-handoff.md) owns installed-fleet evidence.
+the human native-output viewer and unread qualification are retired with that
+feature; [terminal attention](reply-notifications.md) owns current client behavior.

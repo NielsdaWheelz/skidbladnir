@@ -62,7 +62,7 @@ type Gateway struct {
 	unsupportedMetrics   []pressure.Metric
 	unsupportedMetricSet map[pressure.Metric]struct{}
 
-	terminalLifecycle sync.Mutex
+	terminalLifecycle chan struct{}
 	liveMutex         sync.Mutex
 	liveTerminals     map[uint64]*liveTerminal
 	nextLiveTerminal  uint64
@@ -98,6 +98,7 @@ func New(config Config) *Gateway {
 		unsupportedMetrics:   unsupportedMetrics,
 		unsupportedMetricSet: unsupportedMetricSet,
 		liveTerminals:        make(map[uint64]*liveTerminal),
+		terminalLifecycle:    make(chan struct{}, 1),
 	}
 }
 
@@ -105,6 +106,9 @@ func (gateway *Gateway) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	tracked := &trackedResponseWriter{ResponseWriter: writer}
 	if request.Method == http.MethodPut && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/group") ||
 		request.Method == http.MethodPost && (request.URL.Path == "/v1/sessions" || strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.HasSuffix(request.URL.Path, "/shell")) {
+		tracked.errorDispatch = "not_sent"
+	}
+	if strings.HasPrefix(request.URL.Path, "/v1/sessions/") && (strings.Contains(request.URL.Path, "/terminal/") || request.Method == http.MethodDelete) {
 		tracked.errorDispatch = "not_sent"
 	}
 	startedAt := time.Now()
@@ -181,8 +185,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.setSessionGroup(writer, request)
 	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/conversations/"):
 		gateway.conversationOperation(writer, request)
-	case request.Method == http.MethodPost && strings.Contains(request.URL.Path, "/agent/"):
-		gateway.agentOperation(writer, request)
+	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/v1/sessions/") && strings.Contains(request.URL.Path, "/terminal/"):
+		gateway.terminalOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
 		gateway.listSessions(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/sessions":
@@ -556,9 +560,10 @@ func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created ses
 }
 
 func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
-	startedAt := time.Now()
-	tmuxID, validPath := parseSessionPath(request.URL.Path)
-	if !validPath {
+	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
+	defer cancel()
+	tmuxID, valid := parseSessionPath(request.URL.Path)
+	if !valid {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
@@ -567,30 +572,18 @@ func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Re
 		writeError(writer, *failure)
 		return
 	}
-	if input.IdentityToken == "" {
+	if input.IdentityToken.value == "" {
 		writeError(writer, errorInvalidRequest)
 		return
 	}
-	kill := sessions.KillInput{TmuxID: tmuxID, IdentityToken: input.IdentityToken}
-	gateway.terminalLifecycle.Lock()
-	defer gateway.terminalLifecycle.Unlock()
-	if err := gateway.sessions.ValidateKill(request.Context(), kill); err != nil {
-		writeSessionError(writer, err)
+	if err := gateway.sessions.ResolveSession(ctx, tmuxID, input.IdentityToken.value); err != nil {
+		writeError(writer, terminalFailure(err))
 		return
 	}
-	if err := gateway.closeLiveTerminals(request.Context(), tmuxID); err != nil {
-		writeError(writer, errorInternal)
+	if err := gateway.closeSessionTerminal(ctx, tmuxID, input.IdentityToken.value); err != nil {
+		writeError(writer, terminalFailure(err))
 		return
 	}
-	if err := gateway.sessions.Kill(request.Context(), kill); err != nil {
-		writeSessionError(writer, err)
-		return
-	}
-	event, eventErr := logging.NewSessionKilled(tmuxID, time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid session-killed log event") // justify-defect: sessions accepted the exact owned identity pair.
-	}
-	gateway.log(event)
 	writer.WriteHeader(http.StatusNoContent)
 }
 
@@ -836,8 +829,10 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteDirectorySearches
 	case strings.HasPrefix(path, "/v1/terminal-contexts/"):
 		return logging.RouteTerminalContexts
-	case strings.HasPrefix(path, "/v1/conversations/") || strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/agent/"):
-		return logging.RouteAgentControl
+	case strings.HasPrefix(path, "/v1/conversations/"):
+		return logging.RouteConversations
+	case strings.HasPrefix(path, "/v1/sessions/") && strings.Contains(path, "/terminal/"):
+		return logging.RouteTerminalControl
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/shell"):
 		return logging.RouteSessionShell
 	case strings.HasPrefix(path, "/v1/sessions/") && strings.HasSuffix(path, "/group"):

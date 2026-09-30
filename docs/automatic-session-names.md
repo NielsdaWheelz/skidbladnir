@@ -25,7 +25,7 @@ phone acceptance passed on the separately approved physical device.
 - saving a name selects manual ownership. `use automatic title` restores
   automatic ownership. an observed external tmux rename relinquishes automation.
 - terminal and native conversation identities remain separate. terminal titles
-  never establish agent identity, conversation binding, work state or unread.
+  never establish agent identity, conversation binding, work state or terminal attention.
 - orchestration uses short typed handles or existing exact references. session
   names cease to be selectors. existing conversation controls and explicit
   bindings retain their semantics; manual association is unavailable and no
@@ -78,7 +78,7 @@ the content designer owns these literals and their phone/desktop placement:
 good content states the effect and names the actual target. retain the existing
 two-line card name, ellipsis, full accessible label, literal machine context,
 48dp controls and inline errors. no second session name, success toast, new icon
-or announcement on every title tick. retain existing native conversation-id/status
+or announcement on every title tick. retain recorded native conversation-id
 disclosure; it describes a separate control target, not another session name.
 the terminal header separates context/navigation from actions into two rows;
 close text cannot consume the weighted name control's space. existing viewport
@@ -230,14 +230,14 @@ only for optional `start [NAME]`; add `Handle` for selection.
 
 | target | public commands |
 | --- | --- |
-| terminal handle | `info`, `enter`, `text`, `keys`, `shell`, `group`, `close` |
-| conversation handle | `read`, `replies`, `send`, `wait`, `stop` |
-| terminal handle, explicit terminal mode | `read --terminal`, `stop --terminal` |
+| terminal handle | `info`, `enter`, `read`, `send`, `wait`, `text`, `keys`, `stop`, `shell`, `group`, `close` |
+| conversation handle | explicit native `read`, `send`, `wait`, `stop` |
 
-`info t-...` returns both handles; `info c-...` is invalid. inspection remains
-internal; no new public command. retain full-reference/direct-native admission.
-`close t-...` retains existing combined stop/close behavior by capturing the
-current binding once; `--terminal-only` captures only the terminal.
+`info t-...` returns both handles; `info c-...` is invalid.
+`inspect --ref` observes a captured native conversation. retain full-reference/
+direct-native admission. terminal handles select terminal operations without a
+mode flag; close attempts interruption then independently closes the session.
+`--terminal-only` skips interruption. human `replies` and the viewer are removed.
 
 resolve once against fresh complete inventory of `--machine HOST`, or all
 configured peers if omitted; ignore group filters. derive conversations only
@@ -246,14 +246,9 @@ then match handles. a conversation match constructs a conversation-only existing
 reference, never an arbitrarily selected terminal. commands and waits retain
 that full target after resolution; later rename/rebinding never retargets them.
 
-expose the existing resolver as
-`Client.Capture(ctx, Request) (Reference, *Failure)`: validate a target-bearing
-request, apply the existing timeout and delegate to `resolve`; reject list/start.
-`replies` captures its native-read request once, then reads using only the returned
-`Ref`, scope and byte limit. the reference owns machine selection, even without
-`--machine`; never reconstruct it from a label or route `c-...` through `info`.
-retain existing exact-ref/direct-native admission and unread acknowledgement:
-capture unread ids before reading; acknowledge those ids only after native rendering.
+reuse the existing resolver. a conversation match captures its metadata identity,
+then explicit native inspect obtains runtime/turn; it never reinterprets failure
+as terminal input. no native status/history calls during ordinary inventory.
 
 malformed/wrong-kind/old-name selectors return `invalid_input`; absent match
 `handle_not_found`; distinct full identities sharing a handle `handle_ambiguous`;
@@ -365,7 +360,7 @@ requires the applicable current-turn authorization in `AGENTS.md`. every unexecu
 4. a cli/gateway journey proves stable typed handles across rename, replacement
    rejection with exact refs, complete-scope admission, duplicate conversation
    binding deduplication, wrong-kind/name rejection and captured-target behavior
-   across rebinding, including `replies c-...`. review the collision branch and
+   across rebinding, including explicit native `read c-...`. review the collision branch and
    use one temporary resolver fixture for forced ambiguity; do not brute-force hashes or add production
    test hooks. native saved targets remain usable after terminal closure.
 5. qualify actual managed codex/claude launch: neither omitted nor supplied skid

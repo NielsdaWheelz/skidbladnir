@@ -63,12 +63,6 @@ type SendResult struct {
 	TurnID   string `json:"turnId,omitempty"`
 }
 
-type CloseResult struct {
-	Agent    string `json:"agent"`
-	Terminal string `json:"terminal"`
-	Reason   string `json:"reason,omitempty"`
-}
-
 type ResultsResult struct {
 	Conversation agentruntime.Conversation `json:"conversation"`
 	ResultIDs    []string                  `json:"resultIds"`
@@ -78,59 +72,20 @@ type ResultsResult struct {
 func (service *Service) Enrich(parent context.Context, inventory *sessions.Inventory) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
-	groups := make(map[agentruntime.ProfileKey][]int)
+	var work sync.WaitGroup
 	for index := range inventory.Sessions {
 		session := &inventory.Sessions[index]
-		if session.Conversation == nil && session.Agent != nil && session.Agent.Provider == agentruntime.ProviderClaude && session.Agent.ProviderSession != nil {
-			profile, found := service.sessions.Profile(session.Agent.Profile)
-			if !found || profile.Provider != agentruntime.ProviderClaude {
-				continue
-			}
-			scope, err := agentruntime.HistoryScope(profile)
-			if err != nil {
-				continue
-			}
-			conversation := agentruntime.Conversation{Provider: profile.Provider, ProfileKey: profile.Key, HistoryScope: scope, ConversationID: session.Agent.ProviderSession.ID()}
-			if !conversation.Valid() {
-				continue
-			}
-			session.Conversation = &agentruntime.ConversationRuntime{Binding: agentruntime.Binding{Conversation: conversation}}
-		}
-		if session.Conversation == nil {
-			continue
-		}
-		session.Conversation.Status = agentruntime.Status{State: "unknown", Source: "unavailable"}
-		session.Conversation.Methods = agentruntime.Methods{Read: "unavailable", SendPeer: "unavailable", SendUser: "unavailable", QueueUser: "unavailable", Stop: "unavailable"}
-		if profile, _, err := service.conversationTarget(session.Conversation.Binding.Conversation); err == nil {
-			groups[profile.Key] = append(groups[profile.Key], index)
-		}
-	}
-	var work sync.WaitGroup
-	for key, indices := range groups {
 		work.Add(1)
 		go func() {
 			defer work.Done()
-			profile, _ := service.sessions.Profile(key)
-			targets := make([]nativeTarget, len(indices))
-			for i, index := range indices {
-				targets[i] = nativeTarget{SessionID: inventory.Sessions[index].Conversation.Binding.Conversation.ConversationID}
-			}
-			var results []nativeEnvelope
-			if service.native(ctx, profile, "inspect", targets, nil, &results) != nil || len(results) != len(indices) {
+			observed, result, err := service.sample(ctx, sessions.TargetOf(*session))
+			if err != nil {
+				// justify-ignore-error: inventory projects capture failure as unavailable; explicit operations retain the error.
+				session.TerminalStatus = sessions.TerminalStatus{State: "unknown", Source: "unavailable"}
 				return
 			}
-			for i, result := range results {
-				var inspected nativeInspection
-				if decodeNativeEnvelope(result, &inspected, &UnavailableError{Dispatch: "not_sent"}) != nil {
-					continue
-				}
-				observation, err := service.observation(profile, inspected)
-				session := &inventory.Sessions[indices[i]]
-				if err != nil || !session.Conversation.Binding.Equal(observation.Binding) {
-					continue
-				}
-				session.Conversation = &agentruntime.ConversationRuntime{Binding: observation.Binding, Status: observation.Status, Methods: inspected.Methods, Turn: observation.Turn}
-			}
+			*session = observed
+			session.TerminalStatus = sessions.TerminalStatus{State: result.state, Source: "terminal"}
 		}()
 	}
 	work.Wait()
@@ -199,26 +154,6 @@ func (service *Service) bound(ctx context.Context, conversation agentruntime.Con
 		err = sessions.ErrAgentTargetStale
 	}
 	return profile, target, inspected, observation, err
-}
-
-func (service *Service) TerminalRead(parent context.Context, target sessions.AgentTarget, maxBytes int) (ReadResult, error) {
-	if maxBytes == 0 {
-		maxBytes = 16384
-	}
-	if maxBytes < 1 || maxBytes > 32768 {
-		return ReadResult{}, ErrInvalidInput
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
-	capture, err := service.sessions.CaptureAgent(ctx, target, maxBytes)
-	if err != nil {
-		return ReadResult{}, err
-	}
-	scope := "terminal_history"
-	if capture.Alternate {
-		scope = "visible"
-	}
-	return ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
 }
 
 func (service *Service) Read(parent context.Context, conversation agentruntime.Conversation, scope string, maxBytes int) (ReadResult, error) {

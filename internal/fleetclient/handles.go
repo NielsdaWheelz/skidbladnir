@@ -24,13 +24,12 @@ func terminalHandle(ref Reference) string {
 func conversationHandle(machine string, conversation agentruntime.Conversation) string {
 	return handle("c-", []string{"skid-conversation-handle", machine, string(conversation.Provider), string(conversation.ProfileKey), conversation.HistoryScope, conversation.ConversationID})
 }
-func validHandle(value, operation, mode string) bool {
+func validHandle(value, operation string) bool {
 	if len(value) != 18 || strings.Trim(value[2:], "0123456789abcdef") != "" {
 		return false
 	}
-	terminal := operation == "info" || operation == "enter" || operation == "text" || operation == "keys" || operation == "shell" || operation == "group" || operation == "close" || (operation == "read" || operation == "stop") && mode == "terminal"
-	if terminal {
-		return strings.HasPrefix(value, "t-")
+	if strings.HasPrefix(value, "t-") {
+		return operation == "info" || operation == "enter" || operation == "read" || operation == "send" || operation == "text" || operation == "keys" || operation == "wait" || operation == "stop" || operation == "shell" || operation == "group" || operation == "close"
 	}
 	return (operation == "read" || operation == "send" || operation == "wait" || operation == "stop") && strings.HasPrefix(value, "c-")
 }

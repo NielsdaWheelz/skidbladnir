@@ -200,8 +200,9 @@ internal fun DashboardMain(
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
                 onClose = controller::requestClose,
+                onStop = controller::stopTerminal,
+                onTerminalClose = controller::requestTerminalClose,
                 onGroup = controller::openGroupEditor,
-                onReplies = controller::openReplies,
             )
         }
 
@@ -234,8 +235,9 @@ internal fun DashboardDwarfCollection(
     onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
+    onStop: (SessionTarget) -> Unit,
+    onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
-    onReplies: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
     val machines = state.machines.filter { machine ->
@@ -270,8 +272,9 @@ internal fun DashboardDwarfCollection(
                 motionEnabled,
                 onOpen,
                 onClose,
+                onStop,
+                onTerminalClose,
                 onGroup,
-                onReplies,
             )
         }
     } else {
@@ -284,8 +287,9 @@ internal fun DashboardDwarfCollection(
             motionEnabled,
             onOpen,
             onClose,
+            onStop,
+            onTerminalClose,
             onGroup,
-            onReplies,
         )
     }
 }
@@ -375,8 +379,9 @@ private fun DashboardDwarfGrid(
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
+    onStop: (SessionTarget) -> Unit,
+    onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
-    onReplies: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
     val bottomPadding = 84.dp
@@ -437,8 +442,10 @@ private fun DashboardDwarfGrid(
                                 motionEnabled = motionEnabled,
                                 onOpen = { onOpen(visible.target) },
                                 onClose = { onClose(visible.target) },
+                                onStop = { onStop(visible.target) },
+                                onTerminalClose = { onTerminalClose(visible.target) },
+                                terminalControlPending = state.terminalControlPending,
                                 onGroup = { onGroup(visible.target) },
-                                onReplies = { onReplies(visible.target) },
                             )
                         }
                     }
@@ -587,8 +594,7 @@ internal fun CloseConfirmation(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val stoppingAgent = state.target.session.conversation != null && !state.terminalOnly
-    val verb = if (stoppingAgent) "stop tracked conversation and close terminal" else "close terminal only"
+    val verb = if (state.terminalOnly) TERMINAL_ONLY_CLOSE_ACTION else TERMINAL_CLOSE_ACTION
     // No ornament near destructive surfaces (design-language.md §7): the close
     // dialog carries the cut-corner shape and nothing decorative.
     AlertDialog(
@@ -600,8 +606,7 @@ internal fun CloseConfirmation(
                 !actionAdmissible ->
                     "${state.machine.label.text} inventory is not fresh. $verb is disabled. " +
                         "Cancel, return to Dwarves, then pull down to check again."
-                stoppingAgent -> "stop tracked conversation ${state.target.session.conversation?.binding?.conversation?.conversationId}, then close this terminal. pending input may remain. saved provider history is retained."
-                else -> "Close only this tmux session. Work shared with another session or hosted separately may continue."
+                else -> closeConfirmationBody(state.machine.label, state.target, state.terminalOnly)
             })
         },
         confirmButton = {

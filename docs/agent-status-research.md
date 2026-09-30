@@ -6,11 +6,11 @@ three parallel source reviews covered herdr/codex, claude/comparators, and
 skid/identity/unread integration. official documentation and content-free native
 read probes supplement the source review.
 
-the subsequent [implementation plan](native-agent-observation.md) owns decisions.
-the user's later instruction selects native-only agent surfaces and temporary
-red–green–refactor tests deleted after verification. the plan's names-first
-operations are start/read/send/wait/stop/close: stop affects work; close combines
-stopping work with terminal closure and reports their separate outcomes.
+the decisions below are historical. [terminal control](terminal-agent-control.md)
+now owns ordinary observation and interaction; [terminal attention](reply-notifications.md)
+replaces unread results and human acknowledgement. [native conversations](native-agent-observation.md)
+retain explicit machine capabilities. those specifications supersede this research's
+native-only surfaces and unread recommendations.
 
 ## settled product decisions
 

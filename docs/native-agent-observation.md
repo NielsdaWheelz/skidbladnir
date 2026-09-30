@@ -1,17 +1,17 @@
-# native conversations and unread replies
+# explicit native conversations
 
 2026-09-29 · stock-provider source qualified; no installed-fleet acceptance.
 [qualification](native-agent-qualification.md) owns evidence. this contract
-supersedes selected-view registration, the codex fork, terminal-opening
-acknowledgement and native user queueing. terminal and conversation are separate
+supersedes selected-view registration, the codex fork and native user queueing. terminal and conversation are separate
 targets. providers own execution/history; tmux owns terminals.
 
 ## 1. outcome and scope
 
-keep cards, direct tmux attachment, existing accounts, machine routing, sorting
-and visual language. a card may retain an existing native conversation binding. status
-and unread describe that conversation even when its terminal displays another
-conversation or a shell. omit blocking reasons.
+[terminal control](terminal-agent-control.md) owns ordinary cards, terminal input,
+waits and closure. this contract owns explicit native targets and stock creation.
+[terminal attention](reply-notifications.md) owns notices and human terminal visits.
+recorded native identity may differ from the terminal; it never supplies ordinary
+status or gates terminal actions.
 
 - native commands capture a conversation id. switching terminal a→b never
   retargets a command addressing a.
@@ -26,9 +26,8 @@ conversation or a shell. omit blocking reasons.
   prompting stays deliberate terminal input.
 - native reads never resume/load. unsupported, malformed or missing evidence is
   unavailable; no terminal fallback, invented idle or successful empty history.
-- unread means newly observed provider-finalized text, not success. opening
-  native output acknowledges only replies known at opening; later replies remain
-  unread. terminal attachment acknowledges nothing.
+- explicit native reads never mutate terminal attention. there is no human
+  native-output viewer or acknowledgement action.
 
 non-goals: conversation browser/inbox, cross-device unread, counts, push, copied
 history, skid scheduling/queues, approval ui, per-pane servers, new supervisors,
@@ -39,7 +38,6 @@ compatibility readers or unrelated rendering changes.
 ```text
 client -> existing target-machine gateway -> sessions / tmux / kernel
                                          -> agentcontrol -> native helper -> provider
-client -> device-local unread store
 ```
 
 reuse profiles, strict envelopes, bounded native transport, terminal primitives
@@ -81,12 +79,11 @@ Status = {state: working|blocked|idle|done|failed|stopped|unknown,
 Turn = {id, state: inProgress|completed|failed|interrupted}
 Methods = {read, sendPeer, sendUser, queueUser, stop: native|unavailable}
 ConversationRuntime = {binding, status, methods, turn?}
-Session += {conversation?: ConversationRuntime}
+Session += {conversation?: Conversation} // identity metadata only
 ```
 
-`Agent` describes foreground process/provider presence. native state has ONE
-projection, `Session.conversation`. remove agent state duplication and view
-fields. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
+`Agent` describes foreground process/provider presence. explicit native inspect
+returns ConversationRuntime; ordinary inventory makes no native status/history call. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
 it identifies history storage, not credentials. host validates profile/provider/
 scope before calls. client references contain no home, endpoint or credential.
 
@@ -101,7 +98,7 @@ history or prompt data. tracking never proves what the terminal displays.
 `c-<handle> [--machine HOST]` resolves a recorded conversation once. direct
 `--conversation ID --profile PROFILE --machine HOST` works independently of
 terminal lifetime; opaque refs retain the captured structured target. fresh handle
-commands use complete scoped inventory; running commands keep their
+commands use complete scoped inventory and one explicit native inspection; running commands keep their
 original conversation. no alias store or second account table. return-address
 text is ordinary delegation metadata, never authority.
 
@@ -133,8 +130,7 @@ absent fields are omitted, not null. reject old schemas/view fields outright.
 | `POST /v1/conversations/send` | conversation, peer/user input, direct/queue delivery, text → native receipt |
 | `POST /v1/conversations/stop` | conversation plus captured active codex turn → exact interruption |
 | `POST /v1/conversations/results` | conversation, optional cursor → finalized reply ids only |
-| terminal read/text/keys/stop | existing exact terminal/process targets; explicit terminal mode |
-| close | exact terminal target and optional explicit native conversation/turn or terminal halt; separate outcomes |
+| terminal operations | [terminal contract](terminal-agent-control.md#4-api-and-client-commands); no native method switch or session-native compound close |
 
 start reuses profile/cwd/name validation and generated initial tmux names.
 for codex, gateway starts only the native daemon before tmux creation. the stock
@@ -155,14 +151,13 @@ read = {text, source:native, scope, truncated, observation,
 send = {method:native, input, delivery, outcome:accepted, turnId}
 wait = {outcome:matched|timeout|target_changed, target:captured-ref,
         observation?:Observation}
-close = {agent, terminal} // independent outcomes; no queue-stop promise
 ```
 
 output identity belongs to the assistant output, not current work. finalized
 requires §5's predicate; absent evidence is unknown. none requires a successful
 read with no assistant text. output is 16 kib default/32 kib max; text ≤32 kib;
 envelopes ≤64 kib. retain 2-second status, 10-second operation, 15-second client
-budgets and close's separate terminal-closure budget.
+budgets. terminal closure has its own contract.
 
 codex user send uses `turn/start.input`; peer send uses standalone
 `turn/start.toolOutput` namespace `skid`. preserve native sender metadata when
@@ -186,24 +181,18 @@ zero.
 
 stop interrupts captured work only: no successor chasing, terminal closure or
 provider queue purge. idle/no work returns finished without dispatch. terminal
-keys confirm bytes written only. compound close explicitly names a conversation
-and terminal and reports their outcomes separately; native close requires no
-foreground-process identity. terminal halt still requires exact process proof.
-closure does not establish that another displayed thread stopped. terminal-only
-close reuses exact session deletion; never kill the shared daemon or erase history.
+keys confirm bytes written only. native stop never becomes a session-native
+compound close. terminal closure is independent and never kills the shared daemon
+or erases provider history.
 
 preserve dispatch unknown after possible mutation; never replay. unsupported
 capability returns AgentUnavailable/not_sent. retain malformed/stale distinctions.
 references capture identity and turns, not permanent capability availability;
-the host checks native methods at execution. well-formed compound close still
-attempts its exact terminal effect when native halt is unavailable or stale,
-returning conversation stop unconfirmed. malformed input rejects before closure.
+the host checks native methods at execution. malformed input rejects before effects.
 
-## 5. unread recovery and acknowledgement
+## 5. explicit native result enumeration
 
 ```text
-device key = (machine, provider, historyScope, conversationId)
-record = {acknowledgedIds: set<string>, unreadIds: set<string>}
 results = {conversation, resultIds: string[], nextCursor?}
 ```
 
@@ -216,30 +205,11 @@ this does not prove success.
 enumerate independently of newest/running work, ≤128 unique ids per page in
 native history order. helper cursors anchor to history identity; HistoryChanged
 restarts enumeration idempotently. unavailable/incomplete history is never an
-empty success. first complete enumeration atomically establishes baseline;
-failed baseline staging remains uninitialized. thereafter retain successful pages
-even if later pages fail. restored first-seen history counts unread; no clock or
-lexical id ordering.
-
-reuse serialized local-store merges: disjoint acknowledged/unread sets, growing
-union, acknowledgement wins same-id races. opening captures exact conversation
-and known unread ids. first successful bounded native output presentation
-acknowledges exactly that capture. failed read/presentation or precommit storage
-failure acknowledges nothing; later replies remain unread. an error after atomic
-storage commit can leave acknowledgement written: report unconfirmed, retain known
-markers until successful observation, never claim no effect. selection, terminal Hello/attachment,
-reconnect, polling and staying in an output view never acknowledge later replies.
-
-codex uses host-recorded association, never a remembered pane guess. unassociated
-codex has no native status/unread. claude retains same-pane previous-agent recovery.
-card deletion ends polling; retain reply records for exact reappearance.
-unavailable inventory is not deletion. use existing foreground refresh, one
-result call per host/client, fair scans across represented conversations.
-
-reuse Android's separate unread datastore and desktop's shared 0600 unread file,
-stable-sidecar lock and read/merge/atomic-replace. store no text/prompts/credentials.
-expose storage failure without false acknowledgement or silent reset. no new store,
-migration reader or retained behavioral suite.
+empty success. [claude completeness](issues/claude-history-completeness.md)
+records the unresolved SDK boundary limitation. this explicit native capability
+is retained under terminal control's preservation exception; clients do not poll
+it for notifications. historical final text cannot establish current work or
+terminal readiness. no local result-id store remains.
 
 ## 6. content contract
 
@@ -249,24 +219,21 @@ existing typography/status bay/chips; no new visual system.
 
 | feature | required copy / behavior |
 | --- | --- |
-| association | phone cards and `skid list`: tracking <last 8 id characters>; desktop: the selected row's facts line reads `tracking <last 8> · <status>` and table rows show the status text alone; full id in details; never current tui selection |
-| unassociated codex | conversation not tracked; no asserted native status/unread |
-| native output | view replies; conversation id visible; successful opening clears captured known replies only |
-| state | working/waiting/idle/done/failed/stopped; status unavailable; no reasons |
-| unread | static new reply; no count/pulse/sorting; claude recovery new reply · previous agent |
-| unavailable | retain known marker; replies unavailable / unread unavailable |
+| association | recorded native conversation; may differ from terminal; full id in desktop details/info, secondary metadata note in phone terminal |
+| unassociated codex | no recorded conversation; terminal operations remain available |
+| native output | explicit machine read; captured conversation visible; no notification effect |
+| native state | working/waiting/idle/done/failed/stopped; status unavailable; no reasons |
+| terminal attention | owned by reply-notifications.md; no native-history notification projection |
+| unavailable | affected explicit native capability unavailable; no terminal fallback |
 | send | message accepted; peer/user kind; no completion claim |
-| stop/close | stop tracked conversation / stop tracked conversation and close terminal; pending input may remain; close terminal only |
-| partial close | terminal closed; conversation stop unconfirmed |
+| stop | stop captured conversation; pending input may remain; terminal remains |
 | uncertain mutation | could not confirm the request. inspect the conversation before trying again |
 
-association/state/unread survive narrow layouts before directory detail.
-accessibility announces tracked id plus state/unread once, without unchanged-poll
-repetition or color-only distinctions. only fresh native working uses existing
-motion. terminal attachment and native output are separate visible actions.
-manual tracking controls are absent. use suffixes because
-contemporaneous uuidv7 conversations share their timestamp prefixes; shortened
-labels are presentation only, never command targets.
+recorded association is secondary metadata, disclosed as potentially different
+from the terminal. ordinary status/attention/accessibility belongs to terminal
+control and terminal attention. native output has no human viewer.
+manual tracking controls are absent. native ids and typed handles target explicit
+native operations independently; presentation never infers the current tui target.
 
 ## 7. delivery and acceptance
 
@@ -275,8 +242,8 @@ labels are presentation only, never command targets.
 | installer | dev-server ordinary npm install, fork/build deletion, account env, helper install |
 | adapter | llm-calling stock create/read/send/interrupt/results and native Claude capture |
 | host | runtime/session/agentcontrol/gateway/hostconfig; conversation routes, recorded association |
-| cli/desktop | fleetclient/agentcli/sessionui; handles/exact references/direct ids, wait, native output, local acknowledgement |
-| android | gateway/models/controller/cards; existing binding display, native output, acknowledgement |
+| cli/desktop | fleetclient/agentcli/sessionui; handles/exact references/direct ids, explicit native wait and machine read |
+| android | gateway/models/controller/cards; existing binding metadata, terminal interaction |
 | root | architecture/spec/roadmap, pins/manifests, integration, final evidence |
 
 use temporary meaningful integration/live red–green–refactor tests; review then
@@ -289,21 +256,21 @@ absence of provider naming, normal remote-new codex launch without association;
 manual association commands/routes/forms absent; a→b→a switches/terminal exit never
 retarget a; read never resumes; exact-turn interruption cannot cancel successor;
 unsupported methods/fields/queue fail without fallback; CLI/daemon version skew
-handled by consumed capabilities; native-output captured-only acknowledgement,
-failed open, later reply, concurrent local merges, offline/restart recovery,
+handled by consumed capabilities; native read leaves terminal attention unchanged;
 unassociated terminal; truthful separate close outcomes; Claude saved history and
 background stop preserved; coordinated schemas/pins and checks after test deletion.
 
 hard-cut viewId/revision/expectedView, selected-view registry, fork/source/build,
-duplicate native state and terminal-opening acknowledgement. retain explicit
+duplicate native state and human native-output acknowledgement. retain explicit
 terminal primitives. immutable v0.10.4 is historical fork-contract output; ship
 a new coordinated release, never mutate artifacts. rollback uses prior complete
 release. no installed-fleet/phone pass without actual boundary.
 
-accepted costs: all new codex terminals lack native card status, unread and controls;
+accepted costs: resolving a native handle adds one native inspection request; all
+new codex terminals lack recorded native identity and native controls;
 existing bindings remain without origin classification; direct native commands
 require an exact target. experimental method/socket drift may disable capabilities; independent
 daemon updates may interrupt work; native creation excludes other profile-argument
 overrides; unknown terminal-create outcomes without attribution; sampled wait latency; unavailable user queueing; bounded output can omit
-older text; baseline/restore/deletion limits above. no fork, copied history or
+older text; SDK completeness limitations above. no fork, copied history or
 skid lifecycle supervisor.

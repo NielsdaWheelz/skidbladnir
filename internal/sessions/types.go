@@ -85,7 +85,8 @@ type Session struct {
 	IdentityToken   string
 	LaunchProfile   agentruntime.ProfileKey
 	Agent           *agentruntime.AgentRuntime
-	Conversation    *agentruntime.ConversationRuntime
+	Conversation    *agentruntime.Conversation
+	TerminalStatus  TerminalStatus
 	Connection      *Connection
 	Objective       string
 	Group           group.Label
@@ -93,6 +94,20 @@ type Session struct {
 	CWD             string
 	ActiveCommand   string
 	AttachedClients int
+}
+
+type TerminalStatus struct {
+	State  string `json:"state"`
+	Source string `json:"source"`
+}
+
+func (status TerminalStatus) Valid() bool {
+	switch status.State {
+	case "working", "blocked", "idle", "unknown":
+	default:
+		return false
+	}
+	return status.Source == "terminal" || status.Source == "unavailable" && status.State == "unknown"
 }
 
 type Connection struct {

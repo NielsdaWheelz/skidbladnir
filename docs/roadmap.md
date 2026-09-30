@@ -20,6 +20,27 @@ and action rows repaired it. temporary behavioral tests are removed; final
 `scripts/check verify` passes. this is coordinated source cutover, not
 deployment. the spec records contracts, costs and bounded evidence.
 
+## terminal control and attention — source cutover
+
+[terminal control](terminal-agent-control.md) replaces ordinary native-first
+observation/control with exact terminal operations. explicit native targets stay
+separate; stock launch, provider-owned names and existing bindings are preserved.
+[terminal attention](reply-notifications.md) replaces human unread/viewer paths
+with exclusive inferred `ready`, working/idle colors and presentation-owned visits.
+unknown/outage breaks transition continuity; first qualified post-visit observation
+is quiet. revision comparisons prevent stale polls from restoring consumed state.
+
+desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
+Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
+corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
+native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
+source, not deployment or cloud/native completion. the additional [merged phone
+composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
+tests are removed by policy;
+engineering verification passes. accepted inference/sampling/closing-boundary/
+concurrent-client costs are explicit in the spec. [Claude history completeness](issues/claude-history-completeness.md)
+remains an independent native-provider issue, no longer a notification prerequisite.
+
 ## skid-only cutover
 
 2026-09-29: captured-target inspection is published in v0.10.6 and installed on
@@ -36,8 +57,8 @@ separates those checks from remaining phone-native interaction acceptance.
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
 ordinary upstream npm plus its owning daemon, existing recorded bindings and native
-operations. the selected-view fork/build and terminal-opening unread acknowledgement
-are retired. clients acknowledge known replies only after native output opens.
+operations. the selected-view fork/build and human unread/viewer paths are retired.
+ordinary status/input is terminal-based; explicit native history/control remains separate.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
@@ -52,9 +73,9 @@ v0.10.4 is published historical output under the former selected-view contract.
 the coordinated stock helper/gateway/client generation was released as v0.10.5;
 v0.10.6 adds captured conversation inspection.
 [qualification](native-agent-qualification.md) records stock evidence;
-[release qualification](issues/native-agent-release-qualification.md) tracks remaining
-phone-native interaction boundaries. temporary behavioral tests are deleted
-after verification; owner attachment does not establish native-output unread behavior.
+temporary behavioral tests are deleted after verification. human native-output
+viewer qualification is retired with that feature; native-provider limitations
+remain with their independent issue owners.
 
 ## original-product restoration
 
@@ -83,7 +104,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| native status/history, qualified controls, bounded waits, stop/close and device-local unread | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
+| inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
@@ -99,8 +120,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.10.5` from
-`223bc923ea43f90f9d870562a63306062c5fd43a`; it does not assert the
+source and artifact digests. it pins immutable `v0.10.6` from
+`a58aa8dd7acb652ea86e5d65862d96bd8fccfca9`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.

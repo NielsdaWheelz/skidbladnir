@@ -9,140 +9,186 @@ import (
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
+// Native callers retain their separate exact-conversation stale error.
 var ErrAgentTargetStale = errors.New("agent target changed")
-var ErrAgentWriteUnknown = errors.New("agent input delivery is unknown")
+var (
+	ErrTerminalTargetChanged      = errors.New("terminal target changed")
+	ErrTerminalUnavailable        = errors.New("terminal unavailable")
+	ErrTerminalObservationChanged = errors.New("terminal foreground changed during observation")
+	ErrTerminalWriteUnknown       = errors.New("terminal input delivery is unknown")
+	ErrSessionDeleteUnknown       = errors.New("session deletion is unknown")
+)
 
-type AgentTarget struct {
-	TmuxID        string                    `json:"-"`
-	IdentityToken string                    `json:"identityToken"`
-	PaneID        string                    `json:"paneId"`
-	PID           processinfo.PID           `json:"pid"`
-	StartIdentity processinfo.StartIdentity `json:"startIdentity"`
+type TerminalTarget struct {
+	TmuxID        string `json:"-"`
+	IdentityToken string `json:"identityToken"`
+	PaneID        string `json:"paneId"`
 }
 
-func TargetOf(session Session) AgentTarget {
-	return AgentTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.Agent.PaneID, PID: session.Agent.PID, StartIdentity: session.Agent.StartIdentity}
+func TargetOf(session Session) TerminalTarget {
+	return TerminalTarget{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken, PaneID: session.ActivePaneID}
 }
 
-func (manager *Manager) ResolveAgent(ctx context.Context, target AgentTarget) (Session, error) {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	return manager.resolveAgent(ctx, target)
+// Called only after resolution has accepted this exact lifetime token.
+func (target TerminalTarget) paneTarget() tmuxclient.PaneTarget {
+	identity, _ := parseIdentityToken(target.IdentityToken, target.TmuxID)
+	return tmuxclient.PaneTarget{SessionID: target.TmuxID, PaneID: target.PaneID, Server: identity}
 }
 
-func (manager *Manager) resolveAgent(ctx context.Context, target AgentTarget) (Session, error) {
-	session, err := manager.resolveAgentTerminal(ctx, target)
-	if err != nil {
-		return Session{}, err
+// Terminal observations/effects require no manager mutex: immutable configuration
+// is read here, and tmux synchronously guards each effect against external clients.
+func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarget) (Session, error) {
+	if ctx.Err() != nil {
+		return Session{}, ErrTerminalUnavailable
 	}
-	if session.Agent == nil || session.Agent.PID != target.PID || session.Agent.StartIdentity != target.StartIdentity {
-		return Session{}, ErrAgentTargetStale
-	}
-	return session, nil
-}
-
-// resolveAgentTerminal is called with the manager lock held. Its pane check is
-// also used after a native stop, when the original process may have exited.
-func (manager *Manager) resolveAgentTerminal(ctx context.Context, target AgentTarget) (Session, error) {
-	if !paneIDPattern.MatchString(target.PaneID) || target.PID <= 0 || target.StartIdentity == "" {
-		return Session{}, ErrAgentTargetStale
-	}
-	_, exists, err := manager.sessionIdentity(ctx, target.TmuxID)
-	if err != nil {
-		return Session{}, err
-	}
-	if !exists {
-		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
+	if !paneIDPattern.MatchString(target.PaneID) {
+		return Session{}, ErrTerminalTargetChanged
 	}
 	identity, _, err := manager.sessionLifetimeIdentity(ctx, target.TmuxID, target.IdentityToken)
 	if err != nil {
-		return Session{}, err
+		return Session{}, terminalError(err)
 	}
 	observed, found, err := manager.scanSession(ctx, target.TmuxID)
 	if err != nil {
-		return Session{}, err
+		return Session{}, terminalError(err)
 	}
 	if !found {
 		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
-	inspected, present, err := manager.inspectRequired(ctx, observed, identity)
+	inspected, present, err := manager.inspectAnchor(ctx, Session{
+		TmuxID: target.TmuxID, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
+		IdentityToken: target.IdentityToken, Character: observed.character,
+		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
+	})
 	if err != nil {
-		return Session{}, err
+		return Session{}, terminalError(err)
 	}
 	if !present || inspected.paneID != target.PaneID {
-		return Session{}, ErrAgentTargetStale
+		return Session{}, ErrTerminalTargetChanged
 	}
-	session := inspected.session
-	session.ActivePaneID = inspected.paneID
-	session.Agent, session.foreground = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	session, foregroundErr := manager.enrichSession(ctx, inspected)
+	if foregroundErr == nil {
+		session.TerminalStatus = TerminalStatus{State: "unknown", Source: "terminal"}
+	}
+	if err := manager.requireServerIdentity(ctx, identity); err != nil {
+		return Session{}, ErrTerminalTargetChanged
+	}
+	if ctx.Err() != nil {
+		return Session{}, ErrTerminalUnavailable
+	}
 	return session, nil
 }
 
-func (manager *Manager) CaptureAgent(ctx context.Context, target AgentTarget, maxBytes int) (tmuxclient.Capture, error) {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, err := manager.resolveAgent(ctx, target)
-	if err != nil {
-		return tmuxclient.Capture{}, err
+func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarget, maxBytes int, visible bool) (Session, tmuxclient.Capture, error) {
+	before, err := manager.ResolveTerminal(ctx, target)
+	if err == nil && before.TerminalStatus.Source == "unavailable" {
+		err = ErrTerminalUnavailable
 	}
-	return manager.tmux.CapturePane(ctx, target.PaneID, maxBytes)
+	if err != nil {
+		return Session{}, tmuxclient.Capture{}, err
+	}
+	capture, err := manager.tmux.CapturePane(ctx, target.paneTarget(), maxBytes, visible)
+	if err != nil {
+		return Session{}, tmuxclient.Capture{}, terminalError(err)
+	}
+	after, err := manager.ResolveTerminal(ctx, target)
+	if err == nil && after.TerminalStatus.Source == "unavailable" {
+		err = ErrTerminalUnavailable
+	}
+	if err != nil {
+		return Session{}, tmuxclient.Capture{}, err
+	}
+	if !sameForeground(before, after) {
+		return Session{}, tmuxclient.Capture{}, ErrTerminalObservationChanged
+	}
+	return after, capture, nil
 }
 
-func (manager *Manager) SendAgent(ctx context.Context, target AgentTarget, text string) error {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, err := manager.resolveAgent(ctx, target)
+// expected guards provider-specific input. nil deliberately permits generic
+// input without requiring process recognition or an available kernel sample.
+func (manager *Manager) SendTerminal(ctx context.Context, target TerminalTarget, text string, expected *agentruntime.AgentRuntime) error {
+	session, err := manager.ResolveTerminal(ctx, target)
 	if err != nil {
 		return err
 	}
-	if err := manager.tmux.Paste(ctx, target.PaneID, text); err != nil {
-		if errors.Is(err, tmuxclient.ErrInputInvalid) {
+	if err := requireForeground(session, expected); err != nil {
+		return err
+	}
+	err = manager.tmux.Paste(ctx, target.paneTarget(), text, func() error {
+		return manager.revalidateForeground(ctx, target, session, expected)
+	})
+	return terminalError(err)
+}
+
+func (manager *Manager) TerminalKeys(ctx context.Context, target TerminalTarget, keys []string, expected *agentruntime.AgentRuntime) error {
+	session, err := manager.ResolveTerminal(ctx, target)
+	if err != nil {
+		return err
+	}
+	if err := requireForeground(session, expected); err != nil {
+		return err
+	}
+	if expected != nil {
+		if err := manager.revalidateForeground(ctx, target, session, expected); err != nil {
 			return err
 		}
-		return ErrAgentWriteUnknown
+	}
+	return terminalError(manager.tmux.Keys(ctx, target.paneTarget(), keys))
+}
+
+func (manager *Manager) revalidateForeground(ctx context.Context, target TerminalTarget, before Session, expected *agentruntime.AgentRuntime) error {
+	after, err := manager.ResolveTerminal(ctx, target)
+	if err != nil {
+		return err
+	}
+	if err := requireForeground(after, expected); err != nil {
+		return err
+	}
+	if expected != nil && !sameForeground(before, after) {
+		return ErrTerminalTargetChanged
 	}
 	return nil
 }
 
-func (manager *Manager) AgentKeys(ctx context.Context, target AgentTarget, keys []string) error {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, err := manager.resolveAgent(ctx, target)
-	if err != nil {
-		return err
+func requireForeground(session Session, expected *agentruntime.AgentRuntime) error {
+	if expected == nil {
+		return nil
 	}
-	if err := manager.tmux.Keys(ctx, target.PaneID, keys); err != nil {
-		if errors.Is(err, tmuxclient.ErrInputInvalid) {
-			return err
-		}
-		return ErrAgentWriteUnknown
+	if session.foreground == nil {
+		return ErrTerminalUnavailable
+	}
+	agent := session.Agent
+	if agent == nil || agent.PaneID != expected.PaneID || agent.PID != expected.PID || agent.StartIdentity != expected.StartIdentity || agent.Provider != expected.Provider || agent.Profile != expected.Profile {
+		return ErrTerminalTargetChanged
 	}
 	return nil
 }
 
-func (manager *Manager) AgentTerminalKillInput(ctx context.Context, target AgentTarget) (KillInput, error) {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	return manager.agentTerminalKillInput(ctx, target)
+func sameForeground(left, right Session) bool {
+	if left.foreground == nil || right.foreground == nil {
+		return left.foreground == nil && right.foreground == nil
+	}
+	return processinfo.SameObservation(*left.foreground, *right.foreground)
 }
 
-func (manager *Manager) agentTerminalKillInput(ctx context.Context, target AgentTarget) (KillInput, error) {
-	session, err := manager.resolveAgentTerminal(ctx, target)
-	if err != nil {
-		return KillInput{}, err
+func terminalError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, tmuxclient.ErrTargetChanged):
+		return ErrTerminalTargetChanged
+	case errors.Is(err, tmuxclient.ErrWriteUnknown):
+		return ErrTerminalWriteUnknown
+	case errors.Is(err, tmuxclient.ErrInputInvalid):
+		return err
+	case errors.Is(err, ErrTerminalTargetChanged), errors.Is(err, ErrTerminalUnavailable):
+		return err
 	}
-	if session.foreground == nil || session.Agent != nil && (session.Agent.PID != target.PID || session.Agent.StartIdentity != target.StartIdentity) {
-		return KillInput{}, ErrAgentTargetStale
+	var sessionErr *Error
+	if errors.As(err, &sessionErr) {
+		return err
 	}
-	if session.Agent == nil && !manager.AgentProcessExited(target) {
-		return KillInput{}, ErrAgentTargetStale
-	}
-	return KillInput{TmuxID: session.TmuxID, IdentityToken: session.IdentityToken}, nil
-}
-
-func (manager *Manager) AgentProcessExited(target AgentTarget) bool {
-	observed, err := processinfo.Observe(target.PID)
-	return errors.Is(err, processinfo.ErrProcessAbsent) || err == nil && observed.StartIdentity != target.StartIdentity
+	return ErrTerminalUnavailable
 }
 
 func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profile, bool) {
@@ -150,44 +196,7 @@ func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profi
 	return profile, found
 }
 
-// KillAgentTerminal rechecks the pane and foreground after client detach, under the same mutation lock as the exact-session kill.
-func (manager *Manager) KillAgentTerminal(ctx context.Context, target AgentTarget) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
-	input, err := manager.agentTerminalKillInput(ctx, target)
-	if err != nil {
-		return err
-	}
-	return manager.kill(ctx, input, &target)
-}
-
-// ResolveSession validates the surviving terminal lifetime without requiring an agent.
 func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToken string) error {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, exists, err := manager.sessionIdentity(ctx, tmuxID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	_, _, err = manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken)
+	_, _, err := manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken)
 	return err
-}
-
-func (manager *Manager) SessionKillInput(ctx context.Context, tmuxID, identityToken string) (KillInput, error) {
-	manager.mutations.RLock()
-	defer manager.mutations.RUnlock()
-	_, exists, err := manager.sessionIdentity(ctx, tmuxID)
-	if err != nil {
-		return KillInput{}, err
-	}
-	if !exists {
-		return KillInput{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	if _, _, err := manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken); err != nil {
-		return KillInput{}, err
-	}
-	return KillInput{TmuxID: tmuxID, IdentityToken: identityToken}, nil
 }

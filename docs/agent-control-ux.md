@@ -1,7 +1,8 @@
 # agent control: usable client, direct attachment
 
-[native interaction](native-agent-observation.md) owns the current agent operations,
-references and unread contract. [automatic naming and handles](automatic-session-names.md)
+[terminal control](terminal-agent-control.md) owns ordinary session operations and
+references; [native interaction](native-agent-observation.md) owns explicit native
+capabilities. [terminal attention](reply-notifications.md) owns notices and visits. [automatic naming and handles](automatic-session-names.md)
 owns naming, live selectors and name-independent attachment/closure. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
@@ -63,22 +64,22 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid info t-0123456789abcdef` | full metadata and fresh reference for this session |
 | `skid inspect --ref VALUE` | captured conversation and optional turn, native inspection outcome, and optional fresh conversation-only reference; preserve captured identity on native failure |
 | `skid enter t-0123456789abcdef` | attach; explicit detach returns to the caller |
-| `skid read c-0123456789abcdef [--history] [--max-bytes N]` | native latest assistant output by default; explicit history or terminal capture |
-| `skid replies c-0123456789abcdef` | view native output and acknowledge only replies known at opening |
-| `skid send c-0123456789abcdef "review the patch" [--input peer|user] [--queue]` | native peer by default; queue and native claude input are unavailable; `--stdin` accepts literal text |
+| `skid read t-0123456789abcdef [--max-bytes N]` | bounded rendered terminal output; c-handles retain explicit native latest/history reads |
+| `skid send t-0123456789abcdef "review the patch"` | guarded terminal paste/submit; `--stdin` accepts literal text; native input/queue flags require an explicit native target |
 | `skid keys t-0123456789abcdef enter` | existing logical key vocabulary; 1–16 keys |
 | `skid text t-0123456789abcdef --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
-| `skid wait c-0123456789abcdef [--state idle] [--timeout 60s]` | bounded client-side sampling of one captured target |
-| `skid stop c-0123456789abcdef` | stop captured current work; retain terminal; pending input may remain |
-| `skid close t-0123456789abcdef [--terminal-only]` | halt and exact terminal closure with separate outcomes; explicit terminal-only bypass |
+| `skid wait t-0123456789abcdef [--state idle] [--timeout 60s]` | bounded inferred terminal sampling; c-handles retain native waits |
+| `skid stop t-0123456789abcdef` | one interruption key on the captured pane; retain terminal; c-handles retain exact native interruption |
+| `skid close t-0123456789abcdef [--terminal-only]` | interruption attempt and independent exact session closure; terminal-only skips input |
 | `skid start [NAME] --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
 | `skid start [NAME] --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
 | `skid shell t-0123456789abcdef` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
 | `skid group t-0123456789abcdef --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same handle/machine/ref selectors; no agent required |
 
 existing targets use a handle (optionally `--machine LABEL`) or `--ref VALUE`;
-these selector forms are mutually exclusive. terminal capture and interruption
-use `read t-... --terminal` and `stop t-... --terminal`.
+these selector forms are mutually exclusive. terminal operations need no mode flag;
+`--terminal` remains only on start. read/send/wait/stop accept either target kind,
+with the captured kind selecting one contract before dispatch.
 native operations also accept `--conversation ID --profile PROFILE --machine HOST`
 independently of terminal lifetime.
 `--json` works on every noninteractive command. support the shown flag placement
@@ -99,13 +100,15 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
    handle. all mutations remain one attempt. native reads and waits retain the
    captured conversation independently of terminal rename, closure or rebinding.
 3. references retain the existing opaque strict-json/base64url format, bounded at
-   4096 characters. [native interaction](native-agent-observation.md) owns the
-   exact reference, process and conversation contracts. no registry, expiry or cache.
+   4096 characters. terminal refs pin machine/tmuxId/identityToken/paneId; native
+   refs pin ConversationRuntime and exact turn. terminal authority survives same-pane
+   foreground changes; session replacement/pane switch rejects input. no registry,
+   expiry or cache. reject old mixed references.
 
 ```text
 row = {name, nameMode, terminalHandle, conversationHandle?, ref, activePaneId,
        group?, cwd?, activeCommand?, launchProfile?, attachedClients,
-       agent?, connection?, execution?, conversation?}
+       terminalStatus, agent?, connection?, execution?, conversation?: Conversation}
 peer = {label, machine, ok, observedAt?, profiles?, sessions?: [row], error?}
 inventory = {partial: boolean, peers: [peer]}
 success = {ok: true, result: ...}
@@ -128,14 +131,13 @@ human/json errors retain the failure code; no name-candidate list remains.
 apply the existing 1 mib inventory limit to the final projected envelope; reject
 overflow, never silently omit rows.
 
-names are absent from the reference, so rename does not invalidate it. `info` and
-terminal-only `close` retrieves current metadata from the referenced host and require the same
-session lifetime; terminal-only close supplies only `identityToken` to DELETE.
+names are absent from the reference, so rename does not invalidate it. `info`
+reads current metadata for the exact session lifetime. terminal-only close uses
+its captured lifetime directly, supplying only `identityToken` to DELETE.
 `info --ref` observes the exact session now, even if its previous agent exited;
-it returns the newly observed agent reference. it never refreshes a mutation target.
-start does not claim an agent is ready. an old agent reference cannot control a
-replacement process or newly selected pane. an old session reference cannot bind
-to a recreated session. callers never reconstruct the host's six-field target.
+it returns a newly observed terminal reference. it never refreshes a mutation target.
+start does not claim readiness. a captured pane rejects selection changes; an old
+session lifetime cannot bind to a recreated session.
 
 exit 0: complete result with the requested effect confirmed to the returned
 contract (`written` means input delivered, never task completed). exit 1: operational
@@ -197,15 +199,14 @@ terminal-only close uses the existing exact session-lifetime predicate and
 → revalidate/delete ordering. deleting one ordinary grouped session may leave
 shared windows/processes alive through another. no group-wide destruction.
 
-stop retains the terminal and targets captured current work. close reports halt
+stop retains the terminal and sends one interruption key. close reports input
 and terminal closure separately; closure never proves halt. provider pending input
 may remain and saved history is retained. terminal-only close requests no halt.
 
-[native interaction](native-agent-observation.md) owns provider state, capabilities,
-output and delivery. terminal operations are explicit, never fallback. browser
-keys are `r` view replies,
-`s` stop tracked conversation, `c` stop it and close terminal, `x` close terminal
-only. capture and confirm the exact conversation and terminal effects.
+[native interaction](native-agent-observation.md) owns explicit provider capabilities.
+browser `s` sends an interrupt, `c` then independently closes the entire session,
+and `x` closes without input on all fresh terminals. capture exact pane/session/
+machine effects. the human reply viewer and `r` shortcut are removed.
 
 new codex terminals have no native card binding. manual linking,
 reassignment and clearing have no command or browser action. direct native
@@ -228,18 +229,17 @@ reuse terminal protocol codecs in both directions. the groups extension adds
 only its specified membership endpoint; the terminal/agent routes are unchanged.
 
 agent integrations consume the installed cli and its common json projection.
-spawn exact argv, never a shell, and pass text through `--stdin`. use native
-`read`, attributed `send`, explicit `text`/`keys`, bounded `wait`, work-only `stop`
-and compound `close`. the previous jarvis interrupt/kill adapter is historical;
+spawn exact argv, never a shell, and pass text through `--stdin`. use terminal
+`read`, guarded `send`, explicit `text`/`keys`, inferred `wait`, interrupt `stop`
+and separate-effects `close`. native read/send/wait/stop require explicit native targets. the previous jarvis interrupt/kill adapter is historical;
 it must change with the coordinated release, not receive compatibility aliases.
 parse envelopes before interpreting exit status: exit 1 with `ok: true` retains
 partial inventory or unconfirmed outcomes, rather than becoming malformed output.
 before preparatory lookups, writes require current owner input. native writes
 inspect the original captured conversation; terminal metadata grounds its name
 only when the terminal still tracks that conversation. missing or reassociated
-terminals do not erase conversation authority. terminal writes inspect the exact
-terminal; compound close inspects both targets and retains captured identity even
-when native inspection fails. persist/execute the ORIGINAL reference, never a
+terminals do not erase conversation authority. terminal writes retain the captured pane/session; close has only terminal effects
+and never inspects or halts a native conversation. persist/execute the ORIGINAL reference, never a
 fresh `info` reference or `inspect`'s `observedRef`.
 share the existing controller between tool composition and the dispatcher; no
 second adapter or preparation subsystem. start needs no metadata read.

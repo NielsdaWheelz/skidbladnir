@@ -60,21 +60,20 @@ internal fun SessionCard(
     motionEnabled: Boolean,
     onOpen: () -> Unit,
     onClose: () -> Unit,
+    onStop: () -> Unit,
+    onTerminalClose: () -> Unit,
+    terminalControlPending: Boolean,
     onGroup: () -> Unit,
-    onReplies: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
     val context = visibleSession.context
-    val replies = machine.replies[session.identityToken] ?: ReplyPresentation()
-    val conversation = session.conversation
-    val status = if (conversation != null) sessionStatusContent(conversation.status, machine.canMutate, replies, conversation.binding.conversation) else when (context) {
-        is ExecutionContext.Local -> sessionStatusContent(null, fresh = machine.canMutate, replies = replies,
-            untrackedCodex = session.agent?.provider == AgentProvider.Codex)
-        is ExecutionContext.Remote -> SessionStatusContent("REMOTE", "remote status unknown")
-        ExecutionContext.RemoteUnknown -> SessionStatusContent("REMOTE UNKNOWN", "remote context unknown")
+    val notification = machine.notifications[NotificationKey(visibleSession.target)] ?: NotificationPresentation()
+    val status = sessionStatusContent(session, machine.canMutate, notification)
+    val observedState = session.terminalStatus.state.takeIf {
+        session.terminalStatus.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
     }
-    val tone = sessionStatusColor(conversation?.status?.state)
+    val tone = sessionStatusColor(status.tone)
     val profile = when (context) {
         is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
         is ExecutionContext.Remote -> remoteAgentLabel(context, machines)
@@ -107,9 +106,9 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                working = conversation?.status?.state == AgentState.Working,
+                working = observedState == TerminalState.Working,
                 activityTone = tone,
-                animateActivity = machine.canMutate && motionEnabled && conversation?.status?.source == AgentMethod.Native,
+                animateActivity = machine.canMutate && motionEnabled,
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -128,7 +127,7 @@ internal fun SessionCard(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            replyAvailabilityLabel(replies)?.let {
+            status.secondary?.let {
                 Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
                     fontFamily = NidavellirType.Data, modifier = Modifier.padding(top = 8.dp))
             }
@@ -188,18 +187,24 @@ internal fun SessionCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (conversation != null || replies.previousAgent) {
-                        GroupTextAction("view replies", machine.canMutate, onReplies)
-                    }
+
                     GroupTextAction(
                         label = "change group", enabled = machine.canMutate, onClick = onGroup,
                         description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
                             (session.group?.let { "group: ${it.text}" } ?: "unassigned"),
                     )
+                    GroupTextAction(
+                        label = TERMINAL_STOP_ACTION, enabled = machine.canMutate && !terminalControlPending, onClick = onStop,
+                        description = "send one interrupt to the selected pane of ${session.tmuxName} on ${visibleSession.machine.label.text}; stopping is unconfirmed",
+                    )
+                    GroupTextAction(
+                        label = TERMINAL_ONLY_CLOSE_ACTION, enabled = machine.canMutate && !terminalControlPending, onClick = onTerminalClose,
+                        description = closeActionLabel(visibleSession.machine.label, visibleSession.target, terminalOnly = true),
+                    )
                     CloseButton(
                         machineLabel = visibleSession.machine.label,
                         target = visibleSession.target,
-                        enabled = machine.canMutate && session.conversation?.methods?.stop != AgentMethod.Unavailable,
+                        enabled = machine.canMutate && !terminalControlPending,
                         onClick = onClose,
                     )
                 }
@@ -318,6 +323,7 @@ private fun SessionStatusBay(status: SessionStatusContent, tone: Color, modifier
                 .padding(horizontal = 3.dp, vertical = 4.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
+            Column {
             Text(
                 text = status.label,
                 color = tone,
@@ -325,6 +331,10 @@ private fun SessionStatusBay(status: SessionStatusContent, tone: Color, modifier
                 fontFamily = NidavellirType.Data,
                 fontWeight = FontWeight.Bold,
             )
+            status.detail?.let {
+                Text(it, color = tone, style = MaterialTheme.typography.labelSmall, fontFamily = NidavellirType.Data)
+            }
+            }
         }
     }
 }

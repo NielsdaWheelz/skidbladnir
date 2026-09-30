@@ -2,8 +2,9 @@
 
 implemented. one table with agents and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
-[native interaction](native-agent-observation.md) adds native status, separate
-unread and stop/close semantics; its content contract owns those fields.
+[terminal control](terminal-agent-control.md) owns inferred status and ordinary
+read/send/wait/stop/close. [terminal attention](reply-notifications.md) owns notices
+and visits. native history/control remains explicitly addressed.
 [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
 skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
@@ -64,7 +65,7 @@ or none. the machine filter applies to every view.
 
 | view | rows and order |
 | --- | --- |
-| agents | one row per agent in its current execution context across all groups, including resolved remote agents (ordered as unknown) and retained unavailable rows: blocked, failed, done, idle, unknown, working, stopped; unavailable hosts last; ties keep configured peer then numeric tmux-id order |
+| agents | one row per agent in its current execution context across all groups, including resolved remote agents (ordered as unknown) and retained unavailable rows: blocked, idle, unknown, working; unavailable hosts last; ties keep configured peer then numeric tmux-id order |
 | all | every session, including terminals, in existing `Groups` order, each group under a heading |
 | a named group, unassigned | that group's sessions in `Groups` order |
 
@@ -81,12 +82,11 @@ it, otherwise selects its first row. up/down (also j/k) move the cursor, clampin
 agent the next is one key away. movement never attaches or fetches output.
 changing machine uses the same keep-if-matching/otherwise-first rule.
 
-the agents view puts what may be waiting on the operator first. codex reports a
-finished turn as idle, and unknown can be an unrecognized dialog; only working
-affirmatively needs nothing. the order updates on every refresh. the cursor follows
+the agents view puts what may be waiting on the operator first. a recognized
+prompt/footer is inferred idle; unknown can be an unrecognized dialog. no state
+establishes task completion. the order updates on every refresh. the cursor follows
 its session's lifetime, never a row position, so a reorder moves rows but never
-retargets a key. done keeps its native-completion meaning, never unread state;
-unknown is not offline. the contract publishes no transition age, so nothing is
+retargets a key. an exited agent remains in terminal/group views; unknown is not offline. the contract publishes no transition age, so nothing is
 ordered by time.
 
 named labels read `group: <label>` in group headings and details. the agents
@@ -109,14 +109,13 @@ copy.
 | context | keys/behavior |
 | --- | --- |
 | ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
-| selected row | spacebar full metadata; `r` bounded read, `s` stop current work and `c` stop work and close terminal for local agents only; `x` close terminal; `e` change group; `T` (shift+t) terminal-here, refused for remote connections; existing remote capability/availability guards; local metadata remains readable when unavailable |
+| selected row | spacebar full metadata; `s` sends one interrupt on every fresh terminal, `c` then independently closes the entire session, `x` closes without input; `e` changes group; `T` terminal-here retains its remote guard; metadata remains readable when unavailable |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
 | operation in flight | every key, `ctrl-c` included, is refused with the in-flight notice; nothing quits |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
-| presented `r` output | enter returns; `ctrl-c` is ignored |
 
 stop/close name and pin their target/effect before confirmation. inventory cannot
-substitute a replacement process. keep the existing single pending-operation lane,
+substitute a replacement pane or session lifetime. keep the existing single pending-operation lane,
 duplicate suppression, completion guards, and unknown-outcome/no-replay behavior.
 modal close returns to the table; refresh reconciliation still applies.
 
@@ -166,18 +165,16 @@ machines are in scope), and the current directory in the remaining width,
 truncated from the left and omitted below 8 cells; remote work reads `host:path`
 and an unresolved connection `remote context unknown`. columns shrink
 widest-first to fit. in the all view a faint heading (`group: <label>` or
-`unassigned`) precedes each group. status is the status text alone:
-`working`, `waiting`, `idle`, `done`, `failed`, `stopped` or `status unavailable`
-for a tracked conversation; `conversation not tracked` for untracked local codex;
-`status unavailable` for any other agent, every resolved remote agent included,
-and any unresolved remote connection;
-`terminal` without a recognized agent; `unavailable` once its host has failed a
-read; or `checking` while a scoped read is still outstanding. unavailable and
-checking rows are faint, name included.
+`unassigned`) precedes each group. local-agent status is inferred `working`,
+`waiting`, `idle`, `status unknown` or `status unavailable`. a qualified pending
+working-to-idle transition projects exclusive green `ready`; working is blue and
+idle grey. stale/unknown/visiting/closing baselines hide readiness. recorded native
+identity never supplies status. shell/remote rows use `terminal`/existing unknown
+context; unavailable/checking hosts retain their existing faint treatment.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, only when the table scrolls, the cursor position at its end; the selected
-session's association, state and device-local unread, attached clients and full
+session's terminal status/attention and recorded native identity, attached clients and full
 directory; the keys.
 while an action is in flight the rule names that action's captured target instead.
 observed text is sanitized for display: controls, format characters such as bidi
@@ -189,14 +186,13 @@ of hints stays on one line when it fits and otherwise wraps by whole hints; the
 key is bold, the label plain. navigation and session keys are in `--help`.
 
 pages keep row 1 and the rule. the page title is bold, and labels right-align on
-one axis. the rule names the captured target (pending action, details or output
+one axis. the rule names the captured target (pending action or details
 snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal
-only`, `enter stop tracked conversation` or `enter stop tracked conversation and
-close terminal`.
-bounded output remains an explicit snapshot; its title and source/scope/truncation
-stay pinned while the body scrolls, and refresh cannot relabel it. page scrolling
-uses the visible body height; forms keep the focused field visible.
+only`, `enter interrupt terminal` or `enter interrupt and close terminal`.
+details pin the captured session lifetime; refresh may update its observed name
+and facts without retargeting. page scrolling uses the visible body height; forms
+keep the focused field visible.
 
 cursor, current view, unavailability and failure never rely on color: the cursor
 is a glyph plus bold, the current view is bold, and every status and unavailable
@@ -211,8 +207,9 @@ do not change fullscreen terminal geometry/admission.
 
 `internal/sessionui` owns state, projection, layout and existing actions as one
 cohesive bubble tea model; `internal/agentcli` owns the browser's help text.
-styles are `x/ansi` values over the sixteen basic colors. bubble tea downsamples
-per detected profile and honours NO_COLOR. layout works on plain sanitized text
+styles are `x/ansi` values: bright slots for navigation/error, explicit
+frost/moss/muted RGB for working/ready/idle. bubble tea downsamples per detected
+profile; NO_COLOR strips styles without losing labels. layout works on plain sanitized text
 and styles only finished fragments, each closing its own style. styled text never
 passes back through sanitization, which would turn escapes into spaces. no public
 component api, presentation framework or new dependency: lipgloss 2.0.6 would pull
@@ -266,10 +263,9 @@ accepted costs:
   markers. labels differing only in invisible characters read alike, and one can
   read as `all` or `agents`
   ([issue](issues/group-label-invisible-characters.md)).
-- association: `status unavailable` reads the same for a tracked conversation
-  whose status is unavailable, an untracked non-codex agent, a resolved remote
-  agent (codex included) and an unresolved remote connection. tracking shows
-  only on the selected row's facts line and in details.
+- inference: unknown/unavailable layouts do not establish idle; sampled working-to-idle
+  attention may miss work between polls or treat cancellation/navigation as ready.
+  recorded native identity is secondary and cannot repair that epistemic limit.
 - appearance follows the operator's terminal theme. bright yellow (the cursor bar
   and the view chevrons) is weak on light themes; bold carries both marks. faint
   rendering varies and disappears under mosh.

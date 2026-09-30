@@ -23,7 +23,7 @@ func (m *model) current(row *listedRow) fleetclient.ExecutionContext {
 func (m *model) details(row *listedRow) [][2]string {
 	value := row.session
 	current := m.current(row)
-	facts := [][2]string{{"session", value.Name}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}, {"naming", value.NameMode}}
+	facts := [][2]string{{"session", value.Name}, {"selected pane", value.ActivePaneID}, {"terminal on", row.label}, {"machine id", row.machine}, {"terminal handle", value.TerminalHandle}, {"naming", value.NameMode}}
 	if value.ConversationHandle != "" {
 		facts = append(facts, [2]string{"conversation handle", value.ConversationHandle})
 	}
@@ -60,9 +60,13 @@ func (m *model) details(row *listedRow) [][2]string {
 		}
 	}
 	if value.Conversation != nil {
-		facts = append(facts, [2]string{"tracking", value.Conversation.Binding.Conversation.ConversationID}, [2]string{"state", fleetclient.StatusText(value.Conversation.Status)})
+		facts = append(facts, [2]string{"recorded native conversation", value.Conversation.ConversationID + "; may differ from terminal"})
 	}
 
+	facts = append(facts, [2]string{"state", m.rowStatus(*row)})
+	if value.Agent != nil && value.TerminalStatus.Source == "terminal" {
+		facts = append(facts, [2]string{"source", "inferred from terminal"})
+	}
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}

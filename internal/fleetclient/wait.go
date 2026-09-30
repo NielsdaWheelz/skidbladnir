@@ -35,9 +35,6 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		return *failure
 	}
 	result := WaitResult{Target: captured.Encode(), Outcome: "timeout"}
-	if captured.Conversation == nil {
-		return Failed("AgentUnavailable", "not_sent")
-	}
 	target, _ := client.peerByMachine(captured.Machine)
 	// justify-polling: one foreground waiter watches one captured target. Each
 	// sample finishes before the next five-second cadence; no work is mutated.
@@ -49,8 +46,14 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return success(result)
 		}
 		sampleContext, cancelSample := context.WithTimeout(ctx, Timeout)
-		encoded, _ := json.Marshal(map[string]any{"conversation": captured.Conversation.Binding.Conversation})
-		sampled := client.call(sampleContext, target, "inspect", "/v1/conversations/inspect", encoded)
+		operation, path := "terminal_inspect", "/v1/sessions/"+captured.TmuxID+"/terminal/inspect"
+		body := map[string]any{"identityToken": captured.IdentityToken, "paneId": captured.PaneID}
+		if captured.Conversation != nil {
+			operation, path = "inspect", "/v1/conversations/inspect"
+			body = map[string]any{"conversation": captured.Conversation.Binding.Conversation}
+		}
+		encoded, _ := json.Marshal(body)
+		sampled := client.call(sampleContext, target, operation, path, encoded)
 		cancelSample()
 		if parent.Err() != nil {
 			return Failed("cancelled", "not_sent")
@@ -59,20 +62,33 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			return success(result)
 		}
 		if !sampled.OK {
-			if sampled.Error.Code == "AgentTargetStale" {
-				return success(WaitResult{Target: result.Target, Outcome: "target_changed"})
+			if sampled.Error.Code == "AgentTargetStale" || sampled.Error.Code == "TerminalTargetChanged" || sampled.Error.Code == "SessionNotFound" || sampled.Error.Code == "SessionIdentityMismatch" {
+				result.Outcome = "target_changed"
+				return success(result)
 			}
 			return sampled
 		}
-		runtime := sampled.Value.(agentruntime.ConversationRuntime)
-		if !runtime.Binding.Equal(captured.Conversation.Binding) {
-			return success(WaitResult{Target: result.Target, Outcome: "target_changed"})
+		matched := false
+		if captured.Conversation == nil {
+			status := sampled.Value.(TerminalInspectResult).TerminalStatus
+			if status.Source == "unavailable" {
+				return Failed("TerminalUnavailable", "not_sent")
+			}
+			result.TerminalStatus = &status
+			matched = status.State == state
+		} else {
+			runtime := sampled.Value.(agentruntime.ConversationRuntime)
+			if !runtime.Binding.Equal(captured.Conversation.Binding) {
+				result.Outcome = "target_changed"
+				return success(result)
+			}
+			if runtime.Status.Source != "native" {
+				return Failed("AgentUnavailable", "not_sent")
+			}
+			result.Observation = &agentruntime.Observation{Binding: runtime.Binding, Status: runtime.Status, Turn: runtime.Turn}
+			matched = runtime.Status.State == state
 		}
-		if runtime.Status.Source != "native" {
-			return Failed("AgentUnavailable", "not_sent")
-		}
-		result.Observation = &agentruntime.Observation{Binding: runtime.Binding, Status: runtime.Status, Turn: runtime.Turn}
-		if runtime.Status.State == state {
+		if matched {
 			result.Outcome = "matched"
 			return success(result)
 		}

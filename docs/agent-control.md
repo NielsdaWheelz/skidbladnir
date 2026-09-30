@@ -1,7 +1,8 @@
 # agent control
 
-[native conversations](native-agent-observation.md) owns schemas, behavior and
-acceptance. [qualification](native-agent-qualification.md) records actual evidence;
+[terminal control](terminal-agent-control.md) owns ordinary session operations.
+[native conversations](native-agent-observation.md) owns explicit native capabilities.
+[terminal attention](reply-notifications.md) owns notifications and terminal visits. [qualification](native-agent-qualification.md) records actual evidence;
 [roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
 installed-fleet acceptance remains open.
 
@@ -30,40 +31,35 @@ following failed exact-recipient qualification. terminal prompting stays explici
 ```text
 client -> target-machine gateway -> sessions/tmux/kernel
                                 -> agentcontrol -> short-lived helper -> provider
-client -> device-local unread store
+client -> serialized device-local terminal notification owner
 ```
 
-native inspect/read/send/stop/results use `/v1/conversations/{operation}` and an
-explicit Conversation. start uses creation; wait is client-only. session metadata
-association is read-only existing metadata; no writer remains. foreground Agent describes presence only;
-Session.conversation owns native state/capabilities. no duplicate state projection.
+ordinary inspect/read/send/wait/stop/close use the captured terminal pane.
+read returns rendered terminal text; send performs a fresh detector/composer check
+before paste/submit. text/keys are deliberate input. stop sends one interrupt;
+close then independently deletes the exact session. uncertainty never disables
+stop or closure. terminal-only close skips interruption. receipts prove bytes
+written or exact session closure, never provider admission or task completion.
 
-native read defaults to bounded latest assistant output; history and terminal
-capture are explicit choices. reads never resume. send distinguishes native peer
-and user input; experimental queue is unavailable before dispatch. stop captures
-exact active turn; idle proves no task completion. mutations are one attempt,
-native admission receipts never imply completion, and uncertain delivery is not
-replayed. native failure never sends keys or selects another provider server.
+explicit native inspect/read/send/stop/results use `/v1/conversations/{operation}`
+and a captured Conversation. native resolution inspects identity metadata once;
+ordinary inventory never calls native status/history. native read defaults to
+bounded latest assistant output, never resumes, and never falls back to terminal.
+experimental queue and Claude native input remain unavailable. native commands
+never retarget after terminal switches or loss. uncertain mutations are not replayed.
 
-close explicitly targets a terminal and optional conversation halt. outcomes are
-separate; closure preserves saved history and cannot assert provider queues or
-another displayed conversation stopped. terminal-only close reuses exact deletion.
+## presentation and attention
 
-## presentation and acknowledgement
-
-phone cards and `skid list` explicitly show tracking <conversation id>; the
-desktop shows it on the selected row's facts line and in details. their
-status/unread describes that recorded conversation, which may differ from
-terminal contents. unassociated codex has no asserted native state or unread.
-blocking reasons are omitted.
-
-native output is a separate view replies action. opening captures known unread
-ids; first successful native output presentation acknowledges exactly those ids.
-failed reads/presentation or precommit storage failures acknowledge nothing;
-postcommit errors report acknowledgement unconfirmed. later replies stay unread.
-terminal Hello/attachment/reconnect and staying open never acknowledge.
-reuse local reply-id stores and serialized merges; no copied content or cross-device
-sync. claude same-pane previous-agent recovery retains its existing contract.
+ordinary status is inferred from the current local terminal: working, waiting,
+idle or unknown/unavailable. native recorded identity is secondary metadata.
+`ready` is exclusive green attention after a qualified working-to-idle transition;
+working is blue and idle grey. it asserts no unseen text or task result.
+first actual terminal output presentation clears attention; the whole visit and
+first qualified post-visit observation are quiet. unknown/stale/outage breaks
+continuity. no reply viewer, result-id scan/store or human acknowledgement remains.
+notification failure is secondary and never disconnects the terminal.
+[terminal attention](reply-notifications.md) owns exact identities, revisions,
+serialized merges, failure semantics, content and acceptance.
 
 ## boundaries
 
