@@ -46,37 +46,24 @@ type ExecutionContext struct {
 	Agent   *ExecutionAgent `json:"agent,omitempty"`
 }
 type Session struct {
-	TerminalStatus  TerminalStatus             `json:"terminalStatus"`
-	ActivePaneID    string                     `json:"activePaneId"`
-	Name            string                     `json:"name"`
-	Ref             string                     `json:"ref"`
-	CWD             string                     `json:"cwd,omitempty"`
-	ActiveCommand   string                     `json:"activeCommand,omitempty"`
-	LaunchProfile   string                     `json:"launchProfile,omitempty"`
-	AttachedClients int                        `json:"attachedClients"`
-	Agent           *Agent                     `json:"agent,omitempty"`
-	Connection      *Connection                `json:"connection,omitempty"`
-	Execution       *ExecutionContext          `json:"execution,omitempty"`
-	Group           group.Label                `json:"-"`
-	Conversation    *agentruntime.Conversation `json:"conversation,omitempty"`
+	TerminalStatus     TerminalStatus             `json:"terminalStatus"`
+	ActivePaneID       string                     `json:"activePaneId"`
+	Name               string                     `json:"name"`
+	NameMode           string                     `json:"nameMode"`
+	TerminalHandle     string                     `json:"terminalHandle"`
+	ConversationHandle string                     `json:"conversationHandle,omitempty"`
+	Ref                string                     `json:"ref"`
+	CWD                string                     `json:"cwd,omitempty"`
+	ActiveCommand      string                     `json:"activeCommand,omitempty"`
+	LaunchProfile      string                     `json:"launchProfile,omitempty"`
+	AttachedClients    int                        `json:"attachedClients"`
+	Agent              *Agent                     `json:"agent,omitempty"`
+	Connection         *Connection                `json:"connection,omitempty"`
+	Execution          *ExecutionContext          `json:"execution,omitempty"`
+	Group              group.Label                `json:"-"`
+	Conversation       *agentruntime.Conversation `json:"conversation,omitempty"`
 }
 
-// sessionJSON is the string-speaking boundary for the owned session label.
-type sessionJSON struct {
-	TerminalStatus  TerminalStatus             `json:"terminalStatus"`
-	ActivePaneID    string                     `json:"activePaneId"`
-	Name            string                     `json:"name"`
-	Ref             string                     `json:"ref"`
-	CWD             string                     `json:"cwd,omitempty"`
-	ActiveCommand   string                     `json:"activeCommand,omitempty"`
-	LaunchProfile   string                     `json:"launchProfile,omitempty"`
-	AttachedClients int                        `json:"attachedClients"`
-	Agent           *Agent                     `json:"agent,omitempty"`
-	Connection      *Connection                `json:"connection,omitempty"`
-	Execution       *ExecutionContext          `json:"execution,omitempty"`
-	Group           groupField                 `json:"group,omitzero"`
-	Conversation    *agentruntime.Conversation `json:"conversation,omitempty"`
-}
 type groupField struct{ label group.Label }
 
 func (value groupField) IsZero() bool                 { return value.label.IsUnassigned() }
@@ -94,7 +81,11 @@ func (value *groupField) UnmarshalJSON(encoded []byte) error {
 	return nil
 }
 func (s Session) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sessionJSON{TerminalStatus: s.TerminalStatus, ActivePaneID: s.ActivePaneID, Name: s.Name, Ref: s.Ref, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: s.AttachedClients, Agent: s.Agent, Connection: s.Connection, Execution: s.Execution, Conversation: s.Conversation, Group: groupField{s.Group}})
+	type sessionJSON Session
+	return json.Marshal(struct {
+		sessionJSON
+		Group groupField `json:"group,omitzero"`
+	}{sessionJSON(s), groupField{s.Group}})
 }
 
 type Profile struct {
@@ -143,6 +134,19 @@ type ObservedSession struct {
 	ObservedAt string  `json:"observedAt"`
 	Session    Session `json:"session"`
 }
+
+// InspectedReference separates captured action identity from current observation.
+type InspectedReference struct {
+	Label   string `json:"label"`
+	Machine string `json:"machine"`
+	Target  struct {
+		Ref          string                    `json:"ref"`
+		Conversation agentruntime.Conversation `json:"conversation"`
+		Turn         *agentruntime.Turn        `json:"turn,omitempty"`
+	} `json:"target"`
+	Inspection  Result `json:"inspection"`
+	ObservedRef string `json:"observedRef,omitempty"`
+}
 type ReadResult struct {
 	Observation  *agentruntime.Observation `json:"observation,omitempty"`
 	OutputState  string                    `json:"outputState,omitempty"`
@@ -186,6 +190,7 @@ type hostSession struct {
 	ActivePaneID   string          `json:"activePaneId"`
 	TmuxID         string          `json:"tmuxId"`
 	TmuxName       string          `json:"tmuxName"`
+	NameMode       string          `json:"nameMode"`
 	IdentityToken  string          `json:"identityToken"`
 	Character      struct {
 		Key         string `json:"key"`
@@ -217,11 +222,14 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
-	row := Session{TerminalStatus: *s.TerminalStatus, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
+	row := Session{TerminalStatus: *s.TerminalStatus, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
 	if s.Agent != nil {
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
 	row.Ref = ref.Encode()
+	if s.Conversation != nil {
+		row.ConversationHandle = conversationHandle(machine, *s.Conversation)
+	}
 	return row
 }
 
@@ -284,6 +292,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			}
 			observed.Sessions = append(observed.Sessions, s.project(target.Machine))
 		}
+		slices.SortStableFunc(observed.Sessions, compareSessions)
 		return observed, true
 	case "start", "shell":
 		var value *hostObservedSession
@@ -387,6 +396,9 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 }
 
 func validSession(s hostSession) bool {
+	if s.NameMode != "automatic" && s.NameMode != "manual" {
+		return false
+	}
 	if !tmuxAddress(s.ActivePaneID, '%') || !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 || s.TerminalStatus == nil || !validTerminalStatus(*s.TerminalStatus) {
 		return false
 	}
@@ -412,10 +424,9 @@ func validConnection(connection Connection) bool {
 // evidence never becomes a definite rejection through control-route inference.
 func decodeMutationFailure(operation string, encoded []byte, status int) *Failure {
 	var value struct {
-		Code         string                     `json:"code"`
-		Message      string                     `json:"message"`
-		Dispatch     string                     `json:"dispatch"`
-		Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		Dispatch string `json:"dispatch"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value.Dispatch != "not_sent" && value.Dispatch != "unknown" {
 		return nil
@@ -449,9 +460,9 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 		case "ProfileUnknown":
 			wantMessage = "Choose an available profile."
 		case "SessionNameInvalid":
-			wantMessage = "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
+			wantMessage = "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number."
 		case "SessionNameConflict":
-			wantStatus, wantMessage = http.StatusConflict, "A session with that name already exists."
+			wantStatus, wantMessage = http.StatusConflict, "another session on this machine uses that name."
 		case "ObjectiveInvalid":
 			wantMessage = "Use 1–240 characters without terminal controls."
 		}
@@ -473,7 +484,7 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 	if status != wantStatus || value.Message != wantMessage || value.Code != "InternalError" && value.Code != "AgentUnavailable" && value.Code != "AgentTargetStale" && value.Dispatch != "not_sent" {
 		return nil
 	}
-	return &Failure{Code: value.Code, Dispatch: value.Dispatch, Conversation: value.Conversation}
+	return &Failure{Code: value.Code, Dispatch: value.Dispatch}
 }
 
 type SendResult struct {

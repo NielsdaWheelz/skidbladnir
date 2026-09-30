@@ -20,7 +20,8 @@ Normative code and proof rules remain [docs/rules](rules/index.md), especially
 
 2026-09-17 operator simplification: installation and qr pairing are independent
 commands. `scripts/install-android <apk>` performs a noninteractive, data-preserving
-installation or same-version replacement after package/signature checks. it
+installation or same-version replacement after package/signature checks. existing
+app data and pairings are preserved; updates require no new invitation. it
 requires one connected device with usb debugging already authorized, android sdk
 build-tools 36.1.0, and adb. `ANDROID_HOME` may select the sdk; defaults are
 `~/Library/Android/sdk` on macos and `~/Android/Sdk` on linux. no visual acceptance,
@@ -33,9 +34,9 @@ and client provisioning. installation guarantees remain with `dev-server`; old
 acceptance results below remain historical. `provision-clients` validates the
 complete three-host identity/origin/credential set and distributes private user
 client files on macbook, devbox and arch, without release or runtime-health
-prerequisites. jarvis's independent herdr configuration is never provisioned by
-skid. only `fleet verify` needs
-the explicit dev-server checkout. run provisioning after initial gateway setup
+prerequisites. jarvis uses the skid cli with a private client config supplied by
+its deployment; `provision-clients` does not write jarvis's config. only
+`fleet verify` needs the explicit dev-server checkout. run provisioning after initial gateway setup
 and before fleet verification. the installer must publish both `skid` and
 `skidbladnir`; verification checks their exact links and uses each installed
 desktop client to read the fixed three-peer inventory. session contents are

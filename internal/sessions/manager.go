@@ -13,7 +13,6 @@ import (
 	"math"
 	"os"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,7 +83,12 @@ func (manager *Manager) Profiles() []agentruntime.Profile {
 
 func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			manager.mutations.Unlock()
+		}
+	}()
 
 	ids, err := manager.tmux.ListSessionIDs(ctx)
 	if err != nil {
@@ -110,6 +114,10 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	if err != nil {
 		return Inventory{}, err
 	}
+	visible, err = manager.normalizeNames(ctx, visible, scan.names, server)
+	if err != nil {
+		return Inventory{}, err
+	}
 	observations := make([]inspectedSession, 0, len(visible))
 	for _, observed := range visible {
 		sessionObservation, present, err := manager.inspectRequired(ctx, observed, server)
@@ -126,6 +134,8 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	// One clock for the whole projection, minted only once the snapshot and the
 	// server identity that produced it are both validated.
 	observedAt := time.Now().UTC()
+	manager.mutations.Unlock()
+	locked = false
 	sessions := make([]Session, 0, len(observations))
 	for _, observation := range observations {
 		session, _ := manager.enrichSession(ctx, observation) // justify-ignore-error: optional foreground failure omits presence; terminal enrichment independently reports its source.
@@ -206,6 +216,10 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	}
 	name := input.OptionalTmuxName
 	if name == "" {
+		name = input.preparedName
+	}
+	_, occupiedPrepared := scan.names[name]
+	if name == "" || input.OptionalTmuxName == "" && occupiedPrepared {
 		prefix := string(profile.Key)
 		if input.Kind == LaunchTerminal {
 			prefix = "terminal"
@@ -218,15 +232,9 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	launch := ""
 	if input.Kind == LaunchAgent {
-		nativeLaunch := agentruntime.NewLaunch(profile, name)
+		nativeLaunch := agentruntime.NewLaunch(profile)
 		if profile.Provider == agentruntime.ProviderCodex {
-			if input.Conversation == nil || input.Conversation.Provider != profile.Provider || input.Conversation.ProfileKey != profile.Key {
-				return ObservedSession{}, errors.New("codex launch requires its explicitly created conversation")
-			}
-			// Native creation already saved the profile's permission policy. Stock
-			// remote resume refuses a second permission override.
-			nativeLaunch.Arguments = slices.DeleteFunc(nativeLaunch.Arguments, func(argument string) bool { return argument == "--yolo" })
-			nativeLaunch.Arguments = append(nativeLaunch.Arguments, "--remote", "unix://"+agentruntime.CodexEndpoint(profile), "--cd", cwd.String(), "resume", input.Conversation.ConversationID)
+			nativeLaunch.Arguments = append(nativeLaunch.Arguments, "--remote", "unix://"+agentruntime.CodexEndpoint(profile), "--cd", cwd.String())
 		}
 		launch, err = agentruntime.EncodeLaunch(nativeLaunch)
 		if err != nil {
@@ -242,13 +250,9 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs = append(commandArgs, ";", "set-option", "-soq", tmuxclient.ServerEpochOption, epochCandidate)
 	if input.Kind == LaunchAgent {
 		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_profile", string(profile.Key))
-		if input.Conversation != nil {
-			encoded, err := encodeConversation(*input.Conversation)
-			if err != nil {
-				return ObservedSession{}, err
-			}
-			commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", conversationOption, encoded)
-		}
+	}
+	if input.OptionalTmuxName == "" {
+		commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", tmuxclient.AutoNameOption, encodeAutoName(name))
 	}
 	commandArgs = append(commandArgs, ";", "set-option", "-t", exactName, "--", "@skid_character", character.Key)
 	if input.Objective != "" {
@@ -362,123 +366,6 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	return nil
 }
 
-func (manager *Manager) ValidateKill(ctx context.Context, input KillInput) error {
-	_, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
-	return err
-}
-
-func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
-	manager.mutations.Lock()
-	defer manager.mutations.Unlock()
-
-	if err := validateTmuxName(input.NewTmuxName); err != nil {
-		return err
-	}
-	identity, err := manager.mutationIdentity(ctx, input.TmuxID, input.TmuxName, input.IdentityToken)
-	if err != nil {
-		return err
-	}
-	if input.NewTmuxName == input.TmuxName {
-		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
-	}
-	renamed, err := manager.tmux.RenameSessionIfIdentity(
-		ctx, input.TmuxID, input.TmuxName, input.NewTmuxName, identity,
-	)
-	if err != nil {
-		return manager.classifyRenameFailure(ctx, input, identity, err)
-	}
-	if !renamed {
-		return manager.classifyRenameFailure(
-			ctx, input, identity, errors.New("tmux conditional rename rejected an exact preflight identity"),
-		)
-	}
-	return nil
-}
-
-func (manager *Manager) mutationIdentity(
-	ctx context.Context,
-	tmuxID string,
-	tmuxName string,
-	identityToken string,
-) (tmuxclient.ServerIdentity, error) {
-	if !sessionIDPattern.MatchString(tmuxID) {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	server, validToken := parseIdentityToken(identityToken, tmuxID)
-	if tmuxName == "" || !validToken {
-		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
-	}
-	name, found, err := manager.sessionIdentity(ctx, tmuxID)
-	if err != nil {
-		return tmuxclient.ServerIdentity{}, err
-	}
-	if !found {
-		return tmuxclient.ServerIdentity{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	if name != tmuxName {
-		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
-	}
-	observed, err := manager.tmux.ServerIdentity(ctx)
-	if err != nil || observed != server {
-		return tmuxclient.ServerIdentity{}, sessionIdentityMismatch()
-	}
-	return server, nil
-}
-
-func (manager *Manager) classifyRenameFailure(
-	ctx context.Context,
-	input RenameInput,
-	expectedServer tmuxclient.ServerIdentity,
-	cause error,
-) error {
-	name, found, err := manager.sessionIdentity(ctx, input.TmuxID)
-	if err != nil {
-		return fmt.Errorf("reread failed rename source: %w", err)
-	}
-	if !found {
-		return newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
-	}
-	server, err := manager.tmux.ServerIdentity(ctx)
-	if err != nil || server != expectedServer {
-		return sessionIdentityMismatch()
-	}
-	if name == input.NewTmuxName {
-		return fmt.Errorf("tmux rename failed after the source acquired the desired name: %w", cause)
-	}
-	if name != input.TmuxName {
-		return sessionIdentityMismatch()
-	}
-	destinationID, occupied, err := manager.sessionIDNamed(ctx, input.NewTmuxName)
-	if err != nil {
-		return fmt.Errorf("reread failed rename destination: %w", err)
-	}
-	if occupied && destinationID != input.TmuxID {
-		_, identityErr := manager.mutationIdentity(
-			ctx, input.TmuxID, input.TmuxName, input.IdentityToken,
-		)
-		if identityErr != nil {
-			return identityErr
-		}
-		return newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
-	}
-	return fmt.Errorf("tmux rename failed for an unchanged exact identity: %w", cause)
-}
-
-func (manager *Manager) sessionIDNamed(ctx context.Context, name string) (string, bool, error) {
-	output, err := manager.tmux.Output(ctx, "read-session-name-owner", "list-sessions",
-		"-f", "#{==:#{session_name},"+name+"}", "-F", "#{session_id}")
-	if err != nil {
-		return "", false, err
-	}
-	if output == "" {
-		return "", false, nil
-	}
-	if strings.ContainsRune(output, '\n') || !sessionIDPattern.MatchString(output) {
-		return "", false, errors.New("tmux returned an invalid session name owner")
-	}
-	return output, true, nil
-}
-
 func sessionIdentityMismatch() *Error {
 	return newSessionError(ErrorSessionIdentityMismatch, "The session changed. Refresh and try again.")
 }
@@ -497,7 +384,7 @@ func (manager *Manager) inspectRequired(
 		return inspectedSession{}, false, err
 	}
 	return manager.inspectAnchor(ctx, Session{
-		TmuxID: observed.id, TmuxName: observed.tmuxName,
+		TmuxID: observed.id, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
 		IdentityToken: identityToken, Character: observed.character,
 		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
 	})
@@ -656,6 +543,7 @@ func (manager *Manager) classifyRequiredObservationFailure(
 type scannedSession struct {
 	id           string
 	tmuxName     string
+	autoMarker   string
 	characterRaw string
 	character    catalog.Character
 }
@@ -702,6 +590,10 @@ func (manager *Manager) scanSession(ctx context.Context, id string) (scannedSess
 		return scannedSession{}, found, err
 	}
 	observed := scannedSession{id: id, tmuxName: name}
+	observed.autoMarker, found, err = manager.sessionOptionIfPresent(ctx, id, tmuxclient.AutoNameOption)
+	if err != nil || !found {
+		return scannedSession{}, found, err
+	}
 	observed.characterRaw, found, err = manager.sessionOptionIfPresent(ctx, id, "@skid_character")
 	if err != nil || !found {
 		return scannedSession{}, found, err

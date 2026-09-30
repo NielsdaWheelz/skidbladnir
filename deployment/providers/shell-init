@@ -1,15 +1,6 @@
 # shellcheck shell=bash
 # source after normal bash/zsh login and interactive setup, only in skid shells.
-[[ "${SKIDBLADNIR_SHELL:-}" == 1 && "${HERDR_ENV:-}" != 1 ]] || return 0
-
-if [[ -n "${ZSH_VERSION:-}" ]]; then
-  unset -m 'HERDR_*'
-else
-  for _skid_environment_name in "${!HERDR_@}"; do
-    unset "$_skid_environment_name"
-  done
-  unset _skid_environment_name
-fi
+[[ "${SKIDBLADNIR_SHELL:-}" == 1 ]] || return 0
 
 # reset shared aliases after startup; explicit account commands always win.
 unalias codex codex-personal codex-work codex-work2 claude claude-personal claude-work 2>/dev/null || :
@@ -56,10 +47,15 @@ if [[ "${SKIDBLADNIR_STARTUP_PID:-}" == "$$" ]] && ! typeset -f _skid_startup >/
       return 0
     fi
     if [[ -n "$_skid_agent" ]]; then
+      if [[ ! -t 0 || ! -t 1 ]]; then
+        printf 'skidbladnir: initial agent not started: stdin and stdout must be terminals\n' >&2
+        return 0
+      fi
       if "$_skid_helper" agent-exec "$_skid_agent"; then
         :
       else
-        printf 'skidbladnir: initial agent exited or failed\n' >&2
+        local _skid_exit_status=$?
+        printf 'skidbladnir: initial agent command exited with status %s\n' "$_skid_exit_status" >&2
       fi
     fi
     return 0

@@ -1,17 +1,20 @@
 # Jarvis: shared local Codex control
 
-restoration amendment: this document and its subsequent skid integration are
-historical. jarvis now uses herdr directly; original skid must not provision
-jarvis's configuration or credentials or change its services. the current
-[deployment boundary](dev-server-handoff.md#owned-installation-and-runtime)
-supersedes the old integration and cutover directions below.
+current worker contract: jarvis uses the installed skid cli for `agent.list`,
+`agent.info`, `agent.start`, `agent.read`, `agent.send`, `agent.text`, `agent.keys`,
+`agent.stop` and `agent.close`. jarvis deployment supplies its private skid client
+config; skid's human fleet provisioning does not write jarvis's service config.
+the current [deployment boundary](dev-server-handoff.md#owned-installation-and-runtime)
+and [native interaction](native-agent-observation.md) supersede the worker
+integration and cutover directions below, which remain historical.
 
-the accepted [agent-control target](agent-control.md) supersedes this document's
-worker routing, tools, launcher, and worker permission rules. workers now use
-direct peer `agent.*` controls; codex uses terminal state/history/control, and
-claude-work adds native state/history/stop. shared codex supervision and jarvis
-cognition remain governed by their existing owners. the text below records the
-earlier shared-codex design and its unaffected runtime decisions.
+skid owns opaque references, native conversation control and explicit terminal
+input. jarvis preserves existing owner gating, action recording and no-replay
+settlement; it does not decode refs or operate providers directly. cognition
+retains its existing shared codex process and remains governed by its owners.
+it may remain down while worker control and herdr retirement proceed; no private
+cognition server is introduced. the text below records the earlier shared-codex
+design and its unaffected runtime decisions.
 
 Approved target, amended 2026-09-09. Implementation and routine proofs are
 merged; live acceptance remains incomplete.

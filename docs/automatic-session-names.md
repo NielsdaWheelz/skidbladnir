@@ -1,16 +1,22 @@
 # automatic session names and public handles
 
-status: implementation plan; production unchanged. this is the target
-contract for one canonical tmux/skid name, automatic naming, and short live
-selectors. it supersedes conflicting naming/selector details in
-[rename](session-renaming.md), [architecture](architecture.md), and
-[native interaction](native-agent-observation.md) at coordinated cutover.
+status: implemented and verified in the isolated worktree. source cutover is
+complete; temporary tests/harnesses are removed. deployment is outside this slice.
+this is the contract for one canonical tmux/skid name, automatic naming and short
+live selectors. canonical documents use this contract. 2026-09-29 accepted
+amendment: skid never names provider conversations; codex starts a normal new
+remote conversation and remains unassociated. manual association is removed;
+existing bindings and direct native commands remain available. physical
+phone acceptance passed on the separately approved physical device.
 [testing policy](rules/testing.md) governs temporary tests and their deletion.
 
 ## outcome and scope
 
 - `session_name` is the only session name. cards, terminal headers, desktop
   tables and tmux display that actual name; there is no display alias.
+- names flow from the running program's terminal title into skid. skid changes
+  only the tmux session name; it never sets pane titles, process/tui names or
+  provider conversation names.
 - a supplied creation name is manual. an omitted name, including new terminal
   here and desktop quick creation, selects automatic naming. existing/unmarked
   sessions remain manual, even when their names resemble generated defaults.
@@ -19,13 +25,13 @@ selectors. it supersedes conflicting naming/selector details in
 - saving a name selects manual ownership. `use automatic title` restores
   automatic ownership. an observed external tmux rename relinquishes automation.
 - terminal and native conversation identities remain separate. terminal titles
-  never establish agent identity, conversation binding, work state or unread.
+  never establish agent identity, conversation binding, work state or terminal attention.
 - orchestration uses short typed handles or existing exact references. session
-  names cease to be selectors. existing conversation controls and creation
-  association retain their semantics; manual linking is removed and no
+  names cease to be selectors. existing conversation controls and explicit
+  bindings retain their semantics; manual association is unavailable and no
   `tracking: <name>` is added.
 
-non-goals: provider title reads, transcript parsing, model-generated skid names,
+non-goals: direct provider-name apis, transcript parsing, model-generated skid names,
 name synchronization into providers, title/status parsing, progress, notifications,
 new hooks, polling services, registries, copied history, new terminal transport,
 new dashboard actions, provider discovery, deployment or publication.
@@ -72,8 +78,11 @@ the content designer owns these literals and their phone/desktop placement:
 good content states the effect and names the actual target. retain the existing
 two-line card name, ellipsis, full accessible label, literal machine context,
 48dp controls and inline errors. no second session name, success toast, new icon
-or announcement on every title tick. retain existing native conversation-id/status
+or announcement on every title tick. retain recorded native conversation-id
 disclosure; it describes a separate control target, not another session name.
+the terminal header separates context/navigation from actions into two rows;
+close text cannot consume the weighted name control's space. existing viewport
+measurement absorbs the height; do not force a terminal size or shrink text.
 
 ## ownership and state
 
@@ -122,10 +131,11 @@ canonical name/lifetime facts retains existing machine-inventory failure behavio
 
 reuse and qualify `formatLiteral` at its existing owner. arbitrary titles need
 literal format expressions, including tmux's `#[...]` special case; the current
-bare escaping is insufficient. use escaped `#{l:...}` expressions and prove
-exact comparison on supported tmux versions before adopting it. no shell, raw
+bare escaping is insufficient. use escaped `#{l:...}` expressions. request tmux utf-8 output explicitly with
+`-u`; otherwise tmux sanitizes control/non-ascii bytes under a non-utf-8 locale
+before skid can validate or compare them. no shell, raw
 format interpolation, truncated-title predicate or regex screen parser.
-[qualification issue](issues/tmux-name-literal-comparison.md) records the evidence.
+qualification below records the evidence.
 
 ## capability and api contract
 
@@ -174,14 +184,25 @@ tmux name in a separate internal prepared field. do not infer manual intent
 from a generated string. create the automatic marker in the existing creation
 queue before returning the session. supplied names have no automatic marker.
 
-only an explicitly supplied name may seed the native provider name once.
-claude omits `--name` otherwise. codex's private helper create input becomes
-`{cwd, bypassPermissions, name?}`: omitted name skips `thread/name/set`, but
-**still performs exact `thread/resume` preparation**. preserve permissions,
-captured conversation ids and partial-failure semantics. reject empty/null name.
-update the pinned `llm-calling` helper and skid together; no old-helper fallback.
-later tmux changes never rename a provider or alter provider configuration.
-some providers may still emit generic titles; useful titles are not guaranteed.
+skid never names either provider, including when the user supplies a manual skid
+name. claude never receives a skid-generated `--name`. keep the existing ban on
+configured claude name flags. codex preparation starts only the existing owning
+daemon; its remote terminal interface starts the new conversation itself, with
+no reserved id or `resume` argument. preserve cwd, account, configured permission
+arguments and owner; stock tui owns its ordinary no-override startup policy.
+remove skid's native conversation creation, partial-created-id error fields and
+recovery disclosure;
+there is no helper create request or helper-pin change in this slice.
+
+new codex sessions remain unassociated; manual tracking actions are removed.
+existing tracked conversations and
+saved exact references retain their contracts. claude's existing process-bound
+identity registration remains its observation path. titles never supply either
+binding. no new hook or native-id capture machinery is added.
+
+normal session creation still preserves uncertain terminal outcomes without
+replay. later tmux changes never rename a provider or alter its configuration.
+some providers emit generic titles; useful titles are not guaranteed.
 
 ## short handles and orchestration
 
@@ -209,14 +230,14 @@ only for optional `start [NAME]`; add `Handle` for selection.
 
 | target | public commands |
 | --- | --- |
-| terminal handle | `info`, `enter`, `text`, `keys`, `shell`, `group`, `close` |
-| conversation handle | `read`, `replies`, `send`, `wait`, `stop` |
-| terminal handle, explicit terminal mode | `read --terminal`, `stop --terminal` |
+| terminal handle | `info`, `enter`, `read`, `send`, `wait`, `text`, `keys`, `stop`, `shell`, `group`, `close` |
+| conversation handle | explicit native `read`, `send`, `wait`, `stop` |
 
-`info t-...` returns both handles; `info c-...` is invalid. inspection remains
-internal; no new public command. retain full-reference/direct-native admission.
-`close t-...` retains existing combined stop/close behavior by capturing the
-current binding once; `--terminal-only` captures only the terminal.
+`info t-...` returns both handles; `info c-...` is invalid.
+`inspect --ref` observes a captured native conversation. retain full-reference/
+direct-native admission. terminal handles select terminal operations without a
+mode flag; close attempts interruption then independently closes the session.
+`--terminal-only` skips interruption. human `replies` and the viewer are removed.
 
 resolve once against fresh complete inventory of `--machine HOST`, or all
 configured peers if omitted; ignore group filters. derive conversations only
@@ -225,15 +246,9 @@ then match handles. a conversation match constructs a conversation-only existing
 reference, never an arbitrarily selected terminal. commands and waits retain
 that full target after resolution; later rename/rebinding never retargets them.
 
-expose the existing resolver as
-`Client.Capture(ctx, Request) (Reference, *Failure)`: validate a target-bearing
-request, apply the existing timeout and delegate to `resolve`; reject list/start.
-explicit native `read` captures its request once, then reads using only the
-returned `Ref`, scope and byte limit. the reference owns machine selection,
-even without `--machine`; never reconstruct it from a label or route `c-...`
-through `info`. retain exact-ref/direct-native admission. native reads have no
-notification effect; [terminal attention](reply-notifications.md) owns that policy
-and removes `replies` and human read receipts.
+reuse the existing resolver. a conversation match captures its metadata identity,
+then explicit native inspect obtains runtime/turn; it never reinterprets failure
+as terminal input. no native status/history calls during ordinary inventory.
 
 malformed/wrong-kind/old-name selectors return `invalid_input`; absent match
 `handle_not_found`; distinct full identities sharing a handle `handle_ambiguous`;
@@ -282,13 +297,15 @@ update help/return-address examples to use handles or exact refs.
 | marker records current ownership only | external rename-away-and-back between samples is undetectable |
 | preserve old/unmarked sessions as manual | existing generated names require explicit automatic selection |
 | stable session-id order | alphabetical session-name ordering is removed |
+| separate terminal context and action rows | at least 48dp of additional header height; large action labels may wrap, and existing viewport sizing absorbs the space |
 | short live selectors plus existing exact refs | short selectors need complete scoped inventory and have the stated collision limit |
-| optional native launch name | coordinated helper change and empty-thread adoption qualification are required |
+| provider-owned conversation names | new codex sessions have no native card binding; useful terminal titles remain provider-dependent |
+| ordinary remote codex startup | without configured overrides, stock tui policy is read-only rather than the former private pre-creation default; configured permission arguments remain intact |
 
 ## implementation slices and adversarial review
 
 root owns this spec and canonical documentation. builders own disjoint paths;
-interface amendments return to root. each builder reviews its contract before
+interface amendments return to root; accepted amendments are stated here. each builder reviews its contract before
 coding, observes a behavioral red, implements green, then obtains independent
 adversarial review before refactoring. the reviewer writes no production/test
 file. the content designer owns the table above and checks rendered meaning,
@@ -296,17 +313,16 @@ truncation, focus and action copy for both naming and handle features.
 
 | order / owner | exclusive implementation paths | acceptance focus |
 | --- | --- | --- |
-| 1 native launch | `internal/agentruntime/{launch,profile}.go`, `internal/agentcontrol/create.go`; separate pinned `llm-calling` checkout: `src/provider_runtime/agent_runtime/{codex_control,native_control_cli}.py` | omitted name, explicit name, empty-thread adoption, permissions and partial outcomes |
+| 1 native launch | `internal/agentruntime/{launch,profile}.go`, `internal/agentcontrol/{create,native}.go` | no provider naming, new remote codex launch, permissions, native-control preservation |
 | 2 host naming and identity | `internal/sessions/`, `internal/tmux/`, `internal/gateway/{dto,gateway}.go`, `internal/logging/logger.go` | ownership races, literal boundaries, names, collision handling, name-independent attach/close |
 | 3 desktop and handles | `internal/fleetclient/`, `internal/agentcli/run.go`, `internal/sessionui/` | typed selectors, exact refs, complete scope, capture once, stable ordering/content |
-| 4 android and content | `android/app/src/main/java/dev/niels/skidbladnir/{ProductModel,GatewayClient,SkidbladnirController,SessionRename,ForgeSheet,SessionCard,TerminalScreen,WorkingDirectoryPicker}.kt` | strict schema/exhaustive error handling, rename/reset, reconciliation, focus/attachment/order |
-| 5 root integrator | `deployment/native-control/pin.json`, affected `docs/`; no check-composition change | coordinated cutover, stale contract removal, reviewed evidence |
+| 4 android and content | `android/app/src/main/java/dev/niels/skidbladnir/{ProductModel,GatewayClient,SkidbladnirController,SessionRename,ForgeSheet,DashboardScreen,SessionCard,TerminalScreen,WorkingDirectoryPicker}.kt` | strict schema/exhaustive error handling, rename/reset, reconciliation, focus/attachment/order; remove obsolete partial-creation disclosure |
+| 5 root integrator | affected `docs/`; helper pin unchanged; no check-composition change | coordinated cutover, stale contract removal, reviewed evidence |
 
 orders 3 and 4 may proceed independently after the host schema is fixed. native
 and host owners agree the prepared-creation seam before editing. temporary tests
 belong to their builder's slice (or its isolated temporary directory), are never
-shared between builders, and are removed before commit. read the separate helper
-repository's instructions before implementing its slice.
+shared between builders, and are removed before commit. the existing helper protocol and pin remain unchanged.
 
 reuse lifetime predicates, local-option reads, format encoding, rename queue,
 mutation lock, strict dto/error mapping, group metadata encoding patterns,
@@ -324,8 +340,7 @@ prompt, terminal bytes, provider/account data or credentials enter evidence/logs
 
 use temporary tests against real boundaries; never recreate retired gates or
 claim builds as behavioral acceptance. executing tmux/live/provider/phone work
-requires the applicable current-turn authorization in `AGENTS.md`; this planning
-turn runs none. every unexecuted boundary remains `NOT_RUN`.
+requires the applicable current-turn authorization in `AGENTS.md`. every unexecuted boundary remains `NOT_RUN`.
 
 1. on both supported host platforms, an authenticated gateway plus isolated
    `tmux -L` and disposable title emitter proves automatic creation, normalized
@@ -345,14 +360,15 @@ turn runs none. every unexecuted boundary remains `NOT_RUN`.
 4. a cli/gateway journey proves stable typed handles across rename, replacement
    rejection with exact refs, complete-scope admission, duplicate conversation
    binding deduplication, wrong-kind/name rejection and captured-target behavior
-   across rebinding, including `replies c-...`. review the collision branch and
+   across rebinding, including explicit native `read c-...`. review the collision branch and
    use one temporary resolver fixture for forced ambiguity; do not brute-force hashes or add production
    test hooks. native saved targets remain usable after terminal closure.
-5. qualify actual managed codex/claude launch: omitted name remains unseeded,
-   explicit name is preserved, codex empty-thread terminal adoption works without
-   a fabricated turn. record whether each provider emits a useful title; lack of
-   emission is a documented capability limit, not a naming failure. preserve
-   permission policy and partial-created-id reporting. use only disposable test
+5. qualify actual managed codex/claude launch: neither omitted nor supplied skid
+   names reach a provider naming operation. codex starts its own zero-turn remote
+   conversation, remains unassociated, and accepts the first terminal input. direct
+   native controls retain exact-id targeting independently of the card. record
+   whether each provider emits a useful title; lack of emission is a documented
+   capability limit, not a naming failure. preserve cwd/account/permission policy. use only disposable test
    sessions; existing user sessions/accounts are not cleanup targets.
 6. one separately approved physical-phone journey proves unchanged-name freeze,
    automatic reset, unknown-outcome reconciliation, strict schema, same-lifetime
@@ -370,9 +386,50 @@ proofs and `scripts/check verify`. delete temporary tests/harness files before
 commit, run engineering checks again, and retain only content-free outcomes tied
 to the tested source. no retained behavioral-regression protection is claimed.
 
-hard-cut gateway, clients and helper together. reject old rename/delete schemas
+hard-cut gateway and clients together; retain the existing helper pin/protocol. reject old rename/delete schemas
 and old name selectors; keep no version branch, migration, dual reader or fallback.
 at implementation completion reconcile `session-renaming.md`, architecture,
 roadmap, agent-control docs, native observation, desktop/browser and design-language
 contracts; remove superseded naming/selector acceptance text. whole-release
 rollback remains external to this feature and requires no compatibility code.
+
+## implementation evidence — 2026-09-29
+
+branch: `codex/automatic-session-names`; baseline `edf85f8`. helper pin remains
+`992e7915caf1111ffad3a82d6593a1c8673dcf1f`; helper source/protocol is unchanged.
+no deployment/publication or existing-session mutation is part of this work.
+the recorded association check below predates manual-linking removal; it is
+historical evidence, not a supported current action.
+
+| boundary | observed outcome |
+| --- | --- |
+| real authenticated gateway, isolated tmux/pty, darwin + linux | original implementation red; candidate automatic/manual/reset, panes, collision retention, restart, external rename, stale lifetime, residual ownership and lost-response/no-replay journeys green |
+| exact tmux literal/guard boundary, tmux 3.7c on both platforms | format/style-looking values, punctuation, interior newline/unicode, positive/negative equality, stale guards and destination races green; explicit `LC_ALL=C` caught output sanitization and passes with `-u` |
+| desktop cli/fleetclient over real loopback HTTP/TLS | handles/capture/rebinding, complete scope, closed mode schema, numeric order, prior claude reply recovery and definite creation errors green; isolated forced-hash fixture proves ambiguity/dedup without a production hook |
+| android production-source JVM harness | same-name takeover, invalid-draft reset, fresh-state conflict/rebase, pending dismissal, strict creation errors and attachment/order transitions green (39 assertions); a definite rejection keeps the editor even when another writer matches its draft |
+| actual managed codex 0.159.1 | real gateway remote-new startup creates one unnamed zero-turn conversation; first terminal input, explicit association, bound native read, identity-only close and saved native read afterward green; configured `--yolo` survives |
+| actual pinned claude 2.1.284 | explicit/omitted skid names never reach provider argv; real interactive input/response green |
+| actual provider title emission | both providers replace a controlled pane-title sentinel; sleep respawn preserves it. settled titles stayed unchanged after the test turn; codex native name remained absent and claude's native observation contract exposes no name |
+| engineering | `scripts/check verify` passed after all temporary tests/harnesses were removed; go build and focused vet passed on the qualified host source |
+| physical phone | both real companion-package tests green: naming/focus/order, lost acknowledgement/no replay, WSS/input/reconnect and identity-only close; 1.3× text, long-title rename/reset, positive visual bounds, 48dp touch bounds and button roles pass; packages/forwarding removed and exact font scale restored |
+| cleanup | temporary tests, source copies, companion artifacts/config/keys and isolated fixtures removed; owned sessions and native daemon processes verified absent; existing user sessions/provider homes/app data untouched |
+
+host reds ran against the baseline before implementation. desktop loopback HTTP
+qualification also reran archived original source after implementation to confirm
+sensitivity; creation-error repair observed a fresh red before its fix. literal
+qualification caught a real linux failure, reproduced it under the C locale on
+darwin, then verified the responsible shared-output repair on both platforms.
+recovery evidence constructs the post-rename/pre-marker state; it does not claim
+mid-queue crash injection. tmux evidence qualifies 3.7c, not every tmux release. the additional actual
+gateway/cli composition uses only process-local fixture certificate roots through
+a temporary launcher; it does not qualify unchanged-executable macos certificate
+trust. no-override codex startup follows stock tui policy (observed read-only),
+rather than the former private thread/start default (workspace-write); configured
+production `--yolo` still gives `never`/`dangerFullAccess`.
+physical qualification exposed and repaired zero-width name controls caused by
+the single-row header's unbounded close label. separate context/actions rows
+passed both physical journeys afterward. touch-size assertions use compose's
+actual touch bounds; material button layout bounds can be smaller.
+phone companion isolation does not qualify installed pairing migration or full
+three-peer reachability; large-font geometry/semantics is not human readability
+or full screen-reader navigation. no retained behavioral protection is promised.

@@ -662,7 +662,7 @@ internal fun forgeRecoveryMessage(
         it.machine.handle == recovery.draft.machineHandle
     }
     val label = target?.machine?.label?.text ?: "Machine"
-    val message = when (recovery) {
+    return when (recovery) {
         is ForgeRecovery.RefreshRequired -> {
             val repair = when (target?.access) {
                 null, MachineAccess.IdentityChanged ->
@@ -685,7 +685,6 @@ internal fun forgeRecoveryMessage(
         is ForgeRecovery.ReviewReady ->
             "$label refreshed. Review its sessions before resuming this draft."
     }
-    return message + (recovery.conversation?.let { " saved conversation: ${it.conversationId} (${it.profileKey}). terminal creation remains unconfirmed. inspect it before creating again." } ?: "")
 }
 
 internal fun dashboardSummary(sessionCount: Int, machineCount: Int): String =

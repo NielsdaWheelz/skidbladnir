@@ -1,4 +1,4 @@
-// Package fleetclient owns direct peer routing, name resolution, and exact references.
+// Package fleetclient owns direct peer routing, handle resolution, and exact references.
 package fleetclient
 
 import (
@@ -29,16 +29,14 @@ const (
 
 type Failure struct {
 	terminalInputMessage string
-	Code                 string                     `json:"code"`
-	Conversation         *agentruntime.Conversation `json:"conversation,omitempty"`
-	Dispatch             string                     `json:"dispatch"`
+	Code                 string `json:"code"`
+	Dispatch             string `json:"dispatch"`
 }
 type Result struct {
 	OK bool `json:"ok"`
 	// Values are decoded at the owning transport boundary.
-	Value      any      `json:"result,omitempty"`
-	Error      *Failure `json:"error,omitempty"`
-	Candidates []string `json:"-"`
+	Value any      `json:"result,omitempty"`
+	Error *Failure `json:"error,omitempty"`
 }
 
 func Failed(code, dispatch string) Result {
@@ -52,6 +50,29 @@ type Client struct {
 	peers          []peer
 	defaultMachine string
 	http           *http.Client
+}
+
+// InspectReference retains the locally admitted target even when native inspection
+// fails. Execute's internal inspect result remains the provider runtime envelope.
+func (client *Client) InspectReference(ctx context.Context, encoded string) Result {
+	ref, err := DecodeReference(encoded)
+	if err != nil || ref.Conversation == nil {
+		return Failed("invalid_input", "not_sent")
+	}
+	selected, found := client.peerByMachine(ref.Machine)
+	if !found {
+		return Failed("machine_unknown", "not_sent")
+	}
+	value := InspectedReference{Label: selected.Label, Machine: selected.Machine}
+	value.Target.Ref = encoded
+	value.Target.Conversation = ref.Conversation.Binding.Conversation
+	value.Target.Turn = ref.Conversation.Turn
+	value.Inspection = client.Execute(ctx, Request{Operation: "inspect", Ref: encoded})
+	if value.Inspection.OK {
+		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
+		value.ObservedRef = (Reference{Machine: ref.Machine, Conversation: &runtime}).Encode()
+	}
+	return success(value)
 }
 
 // Execute never retries a write, including after a lost acknowledgement.
@@ -303,16 +324,8 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		if failure != nil {
 			return Reference{}, ObservedSession{}, failure
 		}
-		encoded, _ := json.Marshal(map[string]any{"conversation": conversation})
-		inspected := client.call(ctx, selected, "inspect", "/v1/conversations/inspect", encoded)
-		if !inspected.OK {
-			return Reference{}, ObservedSession{}, &inspected
-		}
-		runtime := inspected.Value.(agentruntime.ConversationRuntime)
-		if runtime.Binding.Conversation != conversation {
-			return fail("protocol_error")
-		}
-		return Reference{Machine: selected.Machine, Conversation: &runtime}, ObservedSession{}, nil
+		ref, failure := client.inspectConversation(ctx, selected, conversation)
+		return ref, ObservedSession{}, failure
 	}
 	label := request.Machine
 	if request.Ref != "" {
@@ -339,6 +352,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return fail("inventory_incomplete")
 	}
 	matches := make([]ObservedSession, 0)
+	seen := map[string]bool{}
 	for _, peer := range listed.Peers {
 		for _, row := range peer.Sessions {
 			current, err := DecodeReference(row.Ref)
@@ -349,8 +363,28 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 				if !current.SessionEqual(ref) {
 					continue
 				}
-			} else if row.Name != request.Name {
-				continue
+			} else if strings.HasPrefix(request.Handle, "c-") {
+				if row.Conversation == nil {
+					continue
+				}
+				conversation := *row.Conversation
+				tuple, _ := json.Marshal([]string{peer.Machine, string(conversation.Provider), string(conversation.ProfileKey), conversation.HistoryScope, conversation.ConversationID})
+				if seen[string(tuple)] {
+					continue
+				}
+				seen[string(tuple)] = true
+				if conversationHandle(peer.Machine, conversation) != request.Handle {
+					continue
+				}
+			} else {
+				key := Reference{Machine: current.Machine, TmuxID: current.TmuxID, IdentityToken: current.IdentityToken}.Encode()
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				if terminalHandle(current) != request.Handle {
+					continue
+				}
 			}
 			if request.Operation == "info" && row.Connection == nil {
 				current := row.Current(peer)
@@ -363,20 +397,35 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		if request.Ref != "" {
 			return fail("SessionIdentityMismatch")
 		}
-		return fail("name_not_found")
+		return fail("handle_not_found")
 	}
 	if len(matches) > 1 {
-		result := Failed("name_ambiguous", "not_sent")
-		for _, match := range matches {
-			result.Candidates = append(result.Candidates, match.Label+" / "+match.Session.Name)
-		}
-		return Reference{}, ObservedSession{}, &result
+		return fail("handle_ambiguous")
 	}
 	observed := matches[0]
+	if strings.HasPrefix(request.Handle, "c-") {
+		selected, _ := client.peerByMachine(observed.Machine)
+		ref, failure := client.inspectConversation(ctx, selected, *observed.Session.Conversation)
+		return ref, ObservedSession{}, failure
+	}
 	if request.Ref == "" {
 		ref, _ = DecodeReference(observed.Session.Ref)
 	}
 	return ref, observed, nil
+}
+
+func (client *Client) inspectConversation(ctx context.Context, selected peer, conversation agentruntime.Conversation) (Reference, *Result) {
+	encoded, _ := json.Marshal(map[string]any{"conversation": conversation})
+	inspected := client.call(ctx, selected, "inspect", "/v1/conversations/inspect", encoded)
+	if !inspected.OK {
+		return Reference{}, &inspected
+	}
+	runtime := inspected.Value.(agentruntime.ConversationRuntime)
+	if runtime.Binding.Conversation != conversation {
+		failure := Failed("protocol_error", "not_sent")
+		return Reference{}, &failure
+	}
+	return Reference{Machine: selected.Machine, Conversation: &runtime}, nil
 }
 
 // OpenTerminal shares the configured transport and identity binding with control calls.
@@ -523,10 +572,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 
 func decodeFailure(encoded []byte, dispatch string) *Failure {
 	var value *struct {
-		Code         string                     `json:"code"`
-		Message      string                     `json:"message"`
-		Dispatch     string                     `json:"dispatch,omitempty"`
-		Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		Dispatch string `json:"dispatch,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil || value.Code == "" {
 		return nil
@@ -538,7 +586,7 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 	} else if knownRejection(value.Code) {
 		dispatch = "not_sent"
 	}
-	failure := &Failure{Code: value.Code, Dispatch: dispatch, Conversation: value.Conversation}
+	failure := &Failure{Code: value.Code, Dispatch: dispatch}
 	if value.Code == "TerminalInputBlocked" {
 		switch value.Message {
 		case "respond to the dialog in the terminal.", "terminal contains a draft. open it before sending.":
@@ -574,6 +622,9 @@ func (result Result) Encode(operation string) ([]byte, error) {
 
 func (result Result) ExitCode(operation string) int {
 	if !result.OK {
+		return 1
+	}
+	if value, ok := result.Value.(InspectedReference); ok && !value.Inspection.OK {
 		return 1
 	}
 	switch operation {

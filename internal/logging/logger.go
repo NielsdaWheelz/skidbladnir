@@ -87,6 +87,7 @@ const (
 	ErrorSessionNameInvalid          ErrorCode = "SessionNameInvalid"
 	ErrorObjectiveInvalid            ErrorCode = "ObjectiveInvalid"
 	ErrorGroupInvalid                ErrorCode = "GroupInvalid"
+	ErrorSessionNameChanged          ErrorCode = "SessionNameChanged"
 	ErrorSessionNameConflict         ErrorCode = "SessionNameConflict"
 	ErrorSessionNotFound             ErrorCode = "SessionNotFound"
 	ErrorSessionIdentityMismatch     ErrorCode = "SessionIdentityMismatch"
@@ -111,6 +112,7 @@ func (code ErrorCode) valid() bool {
 		ErrorSessionNameInvalid,
 		ErrorObjectiveInvalid,
 		ErrorGroupInvalid,
+		ErrorSessionNameChanged,
 		ErrorSessionNameConflict,
 		ErrorSessionNotFound,
 		ErrorSessionIdentityMismatch,
@@ -183,7 +185,6 @@ type Event struct {
 	errorCode     ErrorCode
 	count         uint64
 	tmuxID        string
-	tmuxName      string
 	launchProfile agentruntime.ProfileKey
 	level         PressureLevel
 	reasons       []PressureReason
@@ -209,8 +210,8 @@ func NewSessionsListed(count uint64, duration time.Duration) (Event, error) {
 	return event, nil
 }
 
-func NewSessionCreated(tmuxID, tmuxName string, launchProfile agentruntime.ProfileKey, duration time.Duration) (Event, error) {
-	event := Event{kind: eventSessionCreated, tmuxID: tmuxID, tmuxName: tmuxName, launchProfile: launchProfile, duration: duration}
+func NewSessionCreated(tmuxID string, launchProfile agentruntime.ProfileKey, duration time.Duration) (Event, error) {
+	event := Event{kind: eventSessionCreated, tmuxID: tmuxID, launchProfile: launchProfile, duration: duration}
 	if !event.valid() {
 		return Event{}, errors.New("invalid session-created log event")
 	}
@@ -254,7 +255,7 @@ func (event Event) valid() bool {
 		return event.duration >= 0
 	case eventSessionCreated:
 		_, profileErr := agentruntime.ParseProfileKey(string(event.launchProfile))
-		return validTmuxID(event.tmuxID) && validTmuxName(event.tmuxName) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
+		return validTmuxID(event.tmuxID) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
 	case eventSessionKilled:
 		return validTmuxID(event.tmuxID) && event.duration >= 0
 	case eventPressureSampled:
@@ -280,10 +281,6 @@ func (event Event) valid() bool {
 }
 
 func validTmuxID(value string) bool { return tmuxIDPattern.MatchString(value) }
-
-func validTmuxName(value string) bool {
-	return value != ""
-}
 
 type Logger struct{ output io.Writer }
 
@@ -315,7 +312,6 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionCreated:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
-		fields["skidbladnir.session.tmux_name"] = event.tmuxName
 		if event.launchProfile != "" {
 			fields["skidbladnir.session.launch_profile"] = event.launchProfile
 		}

@@ -98,6 +98,15 @@ internal fun TerminalScreen(
                 onClick = controller::openRename,
                 modifier = Modifier.weight(1f),
             )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             val shellEnabled = !state.shellPending && state.close == null && state.rename == null &&
                 terminalActionAdmissible(state.machine.canMutate, state.connection)
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
@@ -297,6 +306,7 @@ internal fun TerminalScreen(
             onDraftChange = controller::updateRenameDraft,
             onDismiss = controller::dismissRename,
             onSubmit = controller::submitRename,
+            onAutomatic = controller::useAutomaticTitle,
         )
     }
     terminalTextSizeSheet(state.textSize, state.connection)?.let { textSize ->

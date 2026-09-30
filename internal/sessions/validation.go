@@ -62,7 +62,7 @@ func newSessionError(code ErrorCode, message string) *Error {
 	return &Error{Code: code, Message: message}
 }
 
-// PreflightCreate rejects known request failures before a native conversation is created.
+// PreflightCreate rejects known request failures before provider launch preparation.
 func (manager *Manager) PreflightCreate(ctx context.Context, input CreateInput) (CreateInput, error) {
 	manager.mutations.RLock()
 	defer manager.mutations.RUnlock()
@@ -79,7 +79,7 @@ func (manager *Manager) PreflightCreate(ctx context.Context, input CreateInput) 
 		if input.Kind == LaunchTerminal {
 			prefix = "terminal"
 		}
-		input.OptionalTmuxName = generatedTmuxName(scan.names, prefix)
+		input.preparedName = generatedTmuxName(scan.names, prefix)
 	} else if _, exists := scan.names[input.OptionalTmuxName]; exists {
 		return CreateInput{}, newSessionError(ErrorSessionNameConflict, "A tmux session already uses that name.")
 	}

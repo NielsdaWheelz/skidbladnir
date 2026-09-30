@@ -238,10 +238,26 @@ internal data class AgentRuntime(
     }
 }
 
+@Serializable internal enum class NameMode {
+    @kotlinx.serialization.SerialName("automatic") Automatic,
+    @kotlinx.serialization.SerialName("manual") Manual,
+}
+
+internal sealed interface SessionNaming {
+    data object Automatic : SessionNaming
+    data class Manual(val name: String) : SessionNaming
+}
+
+internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
+    NameMode.Automatic -> SessionNaming.Automatic
+    NameMode.Manual -> SessionNaming.Manual(tmuxName)
+}
+
 internal data class TmuxSession(
     val tmuxId: String,
     val activePaneId: String,
     val tmuxName: String,
+    val nameMode: NameMode,
     val identityToken: String,
     val character: CharacterSummary,
     val launchProfile: ProfileKey? = null,
@@ -341,6 +357,7 @@ private data class WireTmuxSession(
     val tmuxId: String,
     val activePaneId: String,
     val tmuxName: String,
+    val nameMode: NameMode,
     val identityToken: String,
     val character: CharacterSummary,
     val launchProfile: String? = null,
@@ -593,11 +610,17 @@ internal fun closeConfirmationTitle(label: MachineLabel, target: SessionTarget, 
 )
 @Serializable private data class DirectoryListingRequest(val directory: String)
 @Serializable private data class CloseTerminalRequest(val identityToken: String)
+@Serializable private data class WireSessionNaming(val mode: NameMode, val name: String? = null)
 @Serializable private data class RenameSessionRequest(
-    val tmuxName: String,
-    val newTmuxName: String,
     val identityToken: String,
+    val expectedNaming: WireSessionNaming,
+    val naming: WireSessionNaming,
 )
+
+private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
+    SessionNaming.Automatic -> WireSessionNaming(NameMode.Automatic)
+    is SessionNaming.Manual -> WireSessionNaming(NameMode.Manual, name)
+}
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = strictJsonObject(encoded)
@@ -667,14 +690,13 @@ internal fun encodeDirectoryListingRequest(directory: HomeDirectory): String =
     productJson.encodeToString(DirectoryListingRequest(directory.encoded))
 internal fun encodeCloseTerminalRequest(session: TmuxSession): String =
     productJson.encodeToString(CloseTerminalRequest(session.identityToken))
-internal fun encodeRenameSessionRequest(target: SessionTarget, newTmuxName: String): String =
-    productJson.encodeToString(
-        RenameSessionRequest(
-            tmuxName = target.session.tmuxName,
-            newTmuxName = newTmuxName,
-            identityToken = target.session.identityToken,
-        ),
-    )
+internal fun encodeRenameSessionRequest(
+    target: SessionTarget,
+    expectedNaming: SessionNaming,
+    naming: SessionNaming,
+): String = productJson.encodeToString(
+    RenameSessionRequest(target.session.identityToken, expectedNaming.toWire(), naming.toWire()),
+)
 
 internal data class InventorySnapshot(val inventory: SessionsResponse, val receivedAtElapsedMillis: Long)
 
@@ -897,9 +919,7 @@ internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope
     .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
         .thenBy { it.machine.label.text }
         .thenBy { it.machine.handle.encoded }
-        .thenBy { it.target.session.tmuxName.lowercase(Locale.ROOT) }
-        .thenBy { it.target.session.tmuxName }
-        .thenBy { it.target.session.tmuxId })
+        .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
 
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
@@ -909,7 +929,7 @@ internal enum class ApiErrorCode(val wireName: String) {
     TerminalContextUnavailable("TerminalContextUnavailable"),
     TerminalTargetChanged("TerminalTargetChanged"), TerminalUnavailable("TerminalUnavailable"), TerminalInputBlocked("TerminalInputBlocked"),
     ProfileUnknown("ProfileUnknown"), SessionNameInvalid("SessionNameInvalid"), ObjectiveInvalid("ObjectiveInvalid"), GroupInvalid("GroupInvalid"),
-    SessionNameConflict("SessionNameConflict"), SessionNotFound("SessionNotFound"),
+    SessionNameConflict("SessionNameConflict"), SessionNameChanged("SessionNameChanged"), SessionNotFound("SessionNotFound"),
     SessionIdentityMismatch("SessionIdentityMismatch"),
     PairingInviteRejected("PairingInviteRejected"),
     MachineIdentityMismatch("MachineIdentityMismatch"), InternalError("InternalError"),
@@ -936,10 +956,11 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
     ApiErrorCode.TerminalUnavailable -> "the terminal is unavailable. open it to inspect before trying again."
     ApiErrorCode.TerminalInputBlocked -> "send unavailable for this screen. open the terminal or use text/keys."
     ApiErrorCode.ProfileUnknown -> "Choose an available profile."
-    ApiErrorCode.SessionNameInvalid -> "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number."
+    ApiErrorCode.SessionNameInvalid -> "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number."
     ApiErrorCode.GroupInvalid -> GROUP_INVALID
     ApiErrorCode.ObjectiveInvalid -> "Use 1–240 characters without terminal controls."
-    ApiErrorCode.SessionNameConflict -> "A session with that name already exists."
+    ApiErrorCode.SessionNameConflict -> "another session on this machine uses that name."
+    ApiErrorCode.SessionNameChanged -> RENAME_STALE_EDIT
     ApiErrorCode.SessionNotFound -> "That session no longer exists."
     ApiErrorCode.SessionIdentityMismatch -> "The session changed. Refresh and try again."
     ApiErrorCode.PairingInviteRejected -> "This fleet invite is invalid, expired, or already used."
@@ -1018,6 +1039,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     tmuxId = session.tmuxId,
     activePaneId = session.activePaneId,
     tmuxName = session.tmuxName,
+    nameMode = session.nameMode,
     identityToken = session.identityToken,
     character = session.character,
     launchProfile = session.launchProfile?.let { requireNotNull(ProfileKey.parse(it)) },
@@ -1048,7 +1070,7 @@ private fun acceptProviderSessionFacts(facts: WireProviderSessionFacts): Provide
 }
 
 private fun acceptSession(session: TmuxSession) {
-    require(session.tmuxId.isNotEmpty() && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
+    require(session.tmuxId.matches(Regex("\\$[0-9]+")) && session.tmuxName.isNotEmpty() && session.identityToken.isNotEmpty())
     require(session.activePaneId.matches(Regex("%[0-9]+")))
     require(session.agent == null || session.agent.paneId == session.activePaneId)
     require(session.attachedClients >= 0)

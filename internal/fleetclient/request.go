@@ -27,6 +27,7 @@ type Request struct {
 	ConversationID string
 	Operation      string
 	Name           string
+	Handle         string
 	Machine        string
 	Ref            string
 	Kind           LaunchKind
@@ -108,40 +109,46 @@ func (request Request) Valid() bool {
 	}
 	switch request.Operation {
 	case "list":
-		return request.Name == "" && request.Ref == "" && request.ConversationID == ""
+		return request.Name == "" && request.Handle == "" && request.Ref == "" && request.ConversationID == ""
 	case "start":
-		return request.Machine != "" && request.Ref == "" && request.ConversationID == "" &&
+		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
 	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "inspect":
 	default:
+		return false
+	}
+	if request.Name != "" {
+		return false
+	}
+	if request.Handle != "" && !validHandle(request.Handle, request.Operation) {
 		return false
 	}
 	if request.Ref != "" {
 		if request.ConversationID != "" {
 			return false
 		}
-		if request.Name != "" || request.Machine != "" {
+		if request.Handle != "" || request.Machine != "" {
 			return false
 		}
 		if ref, err := DecodeReference(request.Ref); err != nil || ref.Conversation != nil && request.Operation != "read" && request.Operation != "send" && request.Operation != "stop" && request.Operation != "wait" && request.Operation != "inspect" {
 			return false
 		}
 	} else if request.ConversationID != "" {
-		if request.Ref != "" || request.Machine == "" || request.Profile == "" || !validNativeID(request.ConversationID) || request.Name != "" {
+		if request.Ref != "" || request.Machine == "" || request.Profile == "" || !validNativeID(request.ConversationID) || request.Handle != "" {
 			return false
 		}
 		if request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
 			return false
 		}
-	} else if request.Name == "" {
+	} else if request.Handle == "" {
 		return false
 	}
-	native := request.ConversationID != ""
+	native := request.ConversationID != "" || strings.HasPrefix(request.Handle, "c-")
 	if request.Ref != "" {
 		ref, _ := DecodeReference(request.Ref)
 		native = ref.Conversation != nil
 	}
-	if !native && (request.Scope != "" || request.Input != "" || request.Delivery != "") {
+	if !native && (request.Operation == "inspect" || request.Scope != "" || request.Input != "" || request.Delivery != "") {
 		return false
 	}
 	switch request.Operation {

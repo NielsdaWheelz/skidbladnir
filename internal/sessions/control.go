@@ -44,7 +44,7 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if !paneIDPattern.MatchString(target.PaneID) {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	identity, name, err := manager.sessionLifetimeIdentity(ctx, target.TmuxID, target.IdentityToken)
+	identity, _, err := manager.sessionLifetimeIdentity(ctx, target.TmuxID, target.IdentityToken)
 	if err != nil {
 		return Session{}, terminalError(err)
 	}
@@ -56,7 +56,8 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 		return Session{}, newSessionError(ErrorSessionNotFound, "That tmux session no longer exists.")
 	}
 	inspected, present, err := manager.inspectAnchor(ctx, Session{
-		TmuxID: target.TmuxID, TmuxName: name, IdentityToken: target.IdentityToken, Character: observed.character,
+		TmuxID: target.TmuxID, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
+		IdentityToken: target.IdentityToken, Character: observed.character,
 		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
 	})
 	if err != nil {
@@ -198,12 +199,4 @@ func (manager *Manager) Profile(key agentruntime.ProfileKey) (agentruntime.Profi
 func (manager *Manager) ResolveSession(ctx context.Context, tmuxID, identityToken string) error {
 	_, _, err := manager.sessionLifetimeIdentity(ctx, tmuxID, identityToken)
 	return err
-}
-
-func (manager *Manager) SessionKillInput(ctx context.Context, tmuxID, identityToken string) (KillInput, error) {
-	input := KillInput{TmuxID: tmuxID, IdentityToken: identityToken}
-	if err := manager.ValidateKill(ctx, input); err != nil {
-		return KillInput{}, err
-	}
-	return input, nil
 }

@@ -1,7 +1,9 @@
 package fleetclient
 
 import (
+	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -17,12 +19,14 @@ type Group struct {
 	Rows  []Row
 }
 
-// Groups preserves source order within groups, including retained unavailable rows.
+// Groups preserves machine order and orders sessions by numeric tmux id.
 func Groups(peers []Peer, filter group.Filter) []Group {
 	groups := []Group{}
 	indices := map[group.Label]int{}
 	for _, peer := range peers {
-		for _, session := range peer.Sessions {
+		sessions := slices.Clone(peer.Sessions)
+		slices.SortStableFunc(sessions, compareSessions)
+		for _, session := range sessions {
 			if !filter.Matches(session.Group) {
 				continue
 			}
@@ -56,9 +60,13 @@ func GroupHeading(label group.Label) string {
 	return "group: " + label.String()
 }
 
-func GroupFilterHeading(filter group.Filter) string {
-	if filter.Kind() == group.FilterAll {
-		return "all groups"
+func compareSessions(a, b Session) int {
+	left, _ := DecodeReference(a.Ref)
+	right, _ := DecodeReference(b.Ref)
+	l := strings.TrimLeft(strings.TrimPrefix(left.TmuxID, "$"), "0")
+	r := strings.TrimLeft(strings.TrimPrefix(right.TmuxID, "$"), "0")
+	if order := cmp.Compare(len(l), len(r)); order != 0 {
+		return order
 	}
-	return GroupHeading(filter.Label())
+	return strings.Compare(l, r)
 }

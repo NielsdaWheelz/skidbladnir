@@ -7,6 +7,8 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -15,17 +17,17 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
 	"github.com/NielsdaWheelz/skidbladnir/internal/pressure"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type apiError struct {
-	Conversation *agentruntime.Conversation `json:"conversation,omitempty"`
-	Dispatch     string                     `json:"dispatch,omitempty"`
-	Code         string                     `json:"code"`
-	Message      string                     `json:"message"`
-	Status       int                        `json:"-"`
-	logCode      logging.ErrorCode
+	Dispatch string `json:"dispatch,omitempty"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Status   int    `json:"-"`
+	logCode  logging.ErrorCode
 }
 
 var (
@@ -40,8 +42,9 @@ var (
 	errorDirectorySearchTooLarge     = apiError{Code: "DirectorySearchTooLarge", Message: "Too many directory search results. Narrow the search.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectorySearchTooLarge}
 	errorTerminalContextUnavailable  = apiError{Code: "TerminalContextUnavailable", Message: "Remote context is unavailable.", Status: http.StatusNotFound, logCode: logging.ErrorTerminalContextUnavailable}
 	errorProfileUnknown              = apiError{Code: "ProfileUnknown", Message: "Choose an available profile.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorProfileUnknown}
-	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "Use 1–64 letters, numbers, underscores, or hyphens, beginning with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
-	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "A session with that name already exists.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
+	errorSessionNameInvalid          = apiError{Code: "SessionNameInvalid", Message: "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorSessionNameInvalid}
+	errorSessionNameChanged          = apiError{Code: "SessionNameChanged", Message: "the session name changed. review and save again.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameChanged}
+	errorSessionNameConflict         = apiError{Code: "SessionNameConflict", Message: "another session on this machine uses that name.", Status: http.StatusConflict, logCode: logging.ErrorSessionNameConflict}
 	errorObjectiveInvalid            = apiError{Code: "ObjectiveInvalid", Message: "Use 1–240 characters without terminal controls.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorObjectiveInvalid}
 	errorGroupInvalid                = apiError{Code: "GroupInvalid", Message: group.ErrInvalid.Error(), Status: http.StatusUnprocessableEntity, logCode: logging.ErrorGroupInvalid}
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
@@ -87,6 +90,7 @@ type sessionDTO struct {
 	TmuxID          string                     `json:"tmuxId"`
 	ActivePaneID    string                     `json:"activePaneId"`
 	TmuxName        string                     `json:"tmuxName"`
+	NameMode        sessions.NameMode          `json:"nameMode"`
 	IdentityToken   string                     `json:"identityToken"`
 	Character       characterDTO               `json:"character"`
 	LaunchProfile   string                     `json:"launchProfile,omitempty"`
@@ -204,10 +208,31 @@ type killSessionRequest struct {
 	IdentityToken stringField `json:"identityToken"`
 }
 
+type namingRequest struct {
+	Mode stringField `json:"mode"`
+	Name stringField `json:"name"`
+}
+
+func (field *namingRequest) UnmarshalJSON(encoded []byte) error {
+	type wire namingRequest
+	var decoded wire
+	if err := strictjson.Decode(encoded, &decoded); err != nil {
+		return err
+	}
+	if !decoded.Mode.present || decoded.Mode.value != "automatic" && decoded.Mode.value != "manual" || decoded.Mode.value == "automatic" && decoded.Name.present || decoded.Mode.value == "manual" && !decoded.Name.present {
+		return errors.New("invalid naming shape")
+	}
+	*field = namingRequest(decoded)
+	return nil
+}
+func (field namingRequest) naming() sessions.Naming {
+	return sessions.Naming{Mode: sessions.NameMode(field.Mode.value), Name: field.Name.value}
+}
+
 type renameSessionRequest struct {
-	TmuxName      stringField `json:"tmuxName"`
-	NewTmuxName   stringField `json:"newTmuxName"`
-	IdentityToken stringField `json:"identityToken"`
+	ExpectedNaming *namingRequest `json:"expectedNaming"`
+	Naming         *namingRequest `json:"naming"`
+	IdentityToken  stringField    `json:"identityToken"`
 }
 
 type setSessionGroupRequest struct {
@@ -321,6 +346,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		TmuxID:          session.TmuxID,
 		ActivePaneID:    session.ActivePaneID,
 		TmuxName:        session.TmuxName,
+		NameMode:        session.NameMode,
 		IdentityToken:   session.IdentityToken,
 		Character:       characterDTO{Key: session.Character.Key, DisplayName: session.Character.DisplayName},
 		LaunchProfile:   string(session.LaunchProfile),
@@ -334,7 +360,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.IdentityToken == "" ||
+	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}
@@ -363,8 +389,10 @@ func mapSessionsResponse(
 		cards[index] = card
 	}
 	sort.Slice(cards, func(left, right int) bool {
-		if cards[left].TmuxName != cards[right].TmuxName {
-			return cards[left].TmuxName < cards[right].TmuxName
+		leftID, _ := strconv.ParseUint(strings.TrimPrefix(cards[left].TmuxID, "$"), 10, 64)
+		rightID, _ := strconv.ParseUint(strings.TrimPrefix(cards[right].TmuxID, "$"), 10, 64)
+		if leftID != rightID {
+			return leftID < rightID
 		}
 		return cards[left].TmuxID < cards[right].TmuxID
 	})

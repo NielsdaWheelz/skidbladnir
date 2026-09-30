@@ -10,14 +10,6 @@ import (
 
 const conversationOption = "@skid_conversation_b64"
 
-func encodeConversation(conversation agentruntime.Conversation) (string, error) {
-	encoded, err := json.Marshal(conversation)
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(encoded), nil
-}
-
 func decodeConversation(encoded string) (agentruntime.Conversation, error) {
 	var conversation agentruntime.Conversation
 	if len(encoded) > 2048 {
@@ -31,7 +23,7 @@ func decodeConversation(encoded string) (agentruntime.Conversation, error) {
 	return conversation, err
 }
 
-// Recorded creation metadata takes precedence; registration only supplies
+// Recorded native metadata takes precedence; registration only supplies
 // otherwise absent Claude identity, without native status/history calls.
 func (manager *Manager) projectClaudeConversation(session *Session) {
 	agent := session.Agent

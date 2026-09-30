@@ -17,8 +17,10 @@ type Launch struct {
 	Environment []EnvironmentVariable `json:"environment"`
 }
 
-func NewLaunch(profile Profile, name string) Launch {
-	return Launch{Command: profile.Command, Arguments: LaunchArguments(profile, name), Environment: profile.Environment}
+func NewLaunch(profile Profile) Launch {
+	arguments := make([]string, len(profile.Arguments))
+	copy(arguments, profile.Arguments)
+	return Launch{Command: profile.Command, Arguments: arguments, Environment: profile.Environment}
 }
 
 func EncodeLaunch(launch Launch) (string, error) {

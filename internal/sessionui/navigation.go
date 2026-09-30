@@ -75,21 +75,27 @@ func (m *model) rebuildForFilter() {
 	m.top = 0
 }
 
+// groupOptions is the view sequence after agents: all, then each group observed
+// in scope plus the current one, in group order, so unassigned comes last.
+// step walks it and header draws it, so drawn and stepped order are one.
 func (m *model) groupOptions() []group.Filter {
-	labels := fleetclient.ObservedGroups(m.scopedPeers())
-	if m.groupFilter.Kind() == group.FilterNamed && !slices.Contains(labels, m.groupFilter.Label()) {
+	labels := []group.Label{}
+	for _, observed := range fleetclient.Groups(m.scopedPeers(), group.Filter{}) {
+		labels = append(labels, observed.Label)
+	}
+	if m.groupFilter.Kind() != group.FilterAll && !slices.Contains(labels, m.groupFilter.Label()) {
 		labels = append(labels, m.groupFilter.Label())
 		slices.SortFunc(labels, group.Compare)
 	}
-	options := []group.Filter{{}, group.UnassignedFilter()}
+	options := []group.Filter{{}}
 	for _, label := range labels {
 		options = append(options, filterFor(label))
 	}
 	return options
 }
 
-// step moves along agents, all groups, unassigned, then each named group.
-// the agents view always spans all groups.
+// step moves along the strip's views: agents, all, then each group. the
+// agents view always spans all groups.
 func (m *model) step(delta int) {
 	options := m.groupOptions()
 	index := 0

@@ -230,3 +230,12 @@ production accounts, app pairings and existing terminals were untouched. this
 qualifies terminal inference and client behavior, not cloud/native completion or
 installed-fleet deployment. temporary tests and harnesses are removed by policy.
 `scripts/check verify` passed after removal; it supplies engineering checks only.
+
+main integration preserves automatic naming, typed handles, browser strip/Escape,
+provider-owned names and launch descriptor ordering. the focused isolated-tmux
+host composition and TLS/HTTP desktop selector/browser/attention checks pass;
+independent reviews found no runtime merge blocker. the cli example’s wrong
+native-handle assumption produced RED assertions, then passed using terminal
+handles. the additional merged phone probe compiled but was skipped by explicit
+user direction after adb found no device: [NOT_RUN](issues/reply-notifications-phone-composition.md),
+not a pass or an invalidation of earlier source-attributed live evidence.

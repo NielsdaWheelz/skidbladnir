@@ -1,8 +1,8 @@
 # agent control
 
-[terminal control](terminal-agent-control.md) owns ordinary session status, input,
-waits and closure. [native conversations](native-agent-observation.md) owns explicitly
-addressed native operations. [qualification](native-agent-qualification.md) records native evidence;
+[terminal control](terminal-agent-control.md) owns ordinary session operations.
+[native conversations](native-agent-observation.md) owns explicit native capabilities.
+[terminal attention](reply-notifications.md) owns notifications and terminal visits. [qualification](native-agent-qualification.md) records actual evidence;
 [roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
 installed-fleet acceptance remains open.
 
@@ -11,15 +11,13 @@ installed-fleet acceptance remains open.
 a terminal and native conversation are separate targets. tmux owns terminal
 lifetimes/processes; providers own conversations, work and history. exact native
 commands capture machine/profile/history scope/conversation id. terminal switches
-never retarget them. terminal commands retain the exact tmux lifetime and pane;
-foreground process facts select heuristic rules and interruption keys only.
+never retarget them. terminal commands retain exact tmux/process identity.
 
 codex uses ordinary upstream npm installation and its native owning daemon.
-creation starts/reuses that owner, captures thread/start's id, names the native
-conversation and prepares it with exact native resume without a turn, records it in tmux session metadata
-and launches stock remote/resume. manually launched codex terminals remain
-unassociated; there is no manual association, replacement or clearing action.
-direct native conversation addressing remains independent of terminal cards.
+creation starts/reuses that owner and launches a stock remote new conversation.
+skid never names providers or pre-creates their conversations. new codex sessions
+remain unassociated. manual association, replacement and clearing are unavailable.
+existing recorded bindings and direct native conversation commands remain valid.
 no fork, selected-view protocol, newest-history inference
 or separate provider service. CLI and daemon may upgrade independently; validate
 consumed native methods/fields and fail affected capability closed.
@@ -33,42 +31,35 @@ following failed exact-recipient qualification. terminal prompting stays explici
 ```text
 client -> target-machine gateway -> sessions/tmux/kernel
                                 -> agentcontrol -> short-lived helper -> provider
-client -> device-local terminal attention store
+client -> serialized device-local terminal notification owner
 ```
 
-native inspect/read/send/stop/results use `/v1/conversations/{operation}` and an
-explicit Conversation. start uses creation; wait is client-only. session metadata
-association is written only during creation. foreground Agent describes presence only;
-Session.conversation is recorded identity metadata. Session.terminalStatus is a
-terminal inference; explicit native inspect supplies native runtime/capabilities.
+ordinary inspect/read/send/wait/stop/close use the captured terminal pane.
+read returns rendered terminal text; send performs a fresh detector/composer check
+before paste/submit. text/keys are deliberate input. stop sends one interrupt;
+close then independently deletes the exact session. uncertainty never disables
+stop or closure. terminal-only close skips interruption. receipts prove bytes
+written or exact session closure, never provider admission or task completion.
 
-ordinary terminal read captures bounded rendered text; guarded send uses one
-fresh heuristic check. text/keys are deliberate input. stop sends one interrupt
-key on any terminal. close attempts that key then independently closes the exact
-session; terminal-only close skips input. neither delivery nor closure proves
-work stopped. inferred idle is advisory; wait never proves task completion.
+explicit native inspect/read/send/stop/results use `/v1/conversations/{operation}`
+and a captured Conversation. native resolution inspects identity metadata once;
+ordinary inventory never calls native status/history. native read defaults to
+bounded latest assistant output, never resumes, and never falls back to terminal.
+experimental queue and Claude native input remain unavailable. native commands
+never retarget after terminal switches or loss. uncertain mutations are not replayed.
 
-explicit native read defaults to bounded latest assistant output; native history
-remains explicit. reads never resume. native send distinguishes peer
-and user input; experimental queue is unavailable before dispatch. stop captures
-exact active turn; idle proves no task completion. mutations are one attempt,
-native admission receipts never imply completion, and uncertain delivery is not
-replayed. native failure never sends keys or selects another provider server.
+## presentation and attention
 
-native stop and terminal deletion are separate capabilities. no session metadata
-selects a native stop automatically. uncertain outcomes are never replayed.
-
-## presentation and terminal attention
-
-cards follow terminal evidence for both providers and retain controls for shells,
-unknown programs and remote transports. details label any recorded native
-identity as potentially different from the terminal. metadata is never a gate.
-
-[terminal attention](reply-notifications.md) owns the exclusive working/ready/idle
-projection, real-output entry clearing and whole-visit closing baseline. native
-history never supplies human notifications. there is no reply viewer or read
-receipt. explicit machine native read remains available and never clears notices.
-inferred readiness is no native work identity or completion evidence.
+ordinary status is inferred from the current local terminal: working, waiting,
+idle or unknown/unavailable. native recorded identity is secondary metadata.
+`ready` is exclusive green attention after a qualified working-to-idle transition;
+working is blue and idle grey. it asserts no unseen text or task result.
+first actual terminal output presentation clears attention; the whole visit and
+first qualified post-visit observation are quiet. unknown/stale/outage breaks
+continuity. no reply viewer, result-id scan/store or human acknowledgement remains.
+notification failure is secondary and never disconnects the terminal.
+[terminal attention](reply-notifications.md) owns exact identities, revisions,
+serialized merges, failure semantics, content and acceptance.
 
 ## boundaries
 

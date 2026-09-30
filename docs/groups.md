@@ -132,8 +132,8 @@ folding, or kotlin's default utf-16 order. equality still uses exact text.
 place unassigned after every named group; omit empty headings.
 
 within each group, retain the client's present order: cli/tui configured peer
-order then host-published name/id order; android case-folded/exact machine label,
-machine handle, case-folded/exact tmux name, then tmux id. no urgency sorting,
+order then numeric tmux-id order; android case-folded/exact machine
+label, machine handle, then numeric tmux id. no urgency sorting,
 manual ordering, collapsing, nested groups, or completeness-implying counters.
 desktop group views retain this order; the desktop agents view has the
 [explicit status order](desktop-browser.md#3-selection-and-navigation).
@@ -207,8 +207,8 @@ existing-session assignment:
    never retry the queue or infer dispatch from a later label.
 
 factor the common lifetime terms from the tmux identity predicates in
-`internal/tmux/client.go`. keep name-sensitive rename/kill/attachment predicates
-as explicit wrappers over them, preserving behavior. reuse the lifetime-only
+`internal/tmux/client.go`. rename alone adds naming guards; closure and attachment use the same lifetime-only
+predicate under [automatic naming](automatic-session-names.md). reuse the lifetime-only
 validation currently named `terminalIdentity` in `internal/sessions/attachment.go`,
 giving it a session-oriented name and retaining existing callers. add one narrow
 `SetSessionGroupIfIdentity` operation, not an arbitrary-option setter. use existing
@@ -288,8 +288,8 @@ result first. do not increase bounds for this feature.
 
 ```text
 skid list [--machine host] [--group label | --unassigned] [--json]
-skid start name --machine host --profile profile [--cwd '~'] [--group label] [--json]
-skid group name [--machine host] (--set label | --clear) [--json]
+skid start [NAME] --machine host --profile profile [--cwd '~'] [--group label] [--json]
+skid group t-0123456789abcdef [--machine host] (--set label | --clear) [--json]
 skid group --ref reference (--set label | --clear) [--json]
 ```
 
@@ -301,8 +301,8 @@ ordering, `--flag=value`, `--` literal operands, duplicate rejection, and usage
 exit 2. bare `skid` remains the tui; no initial-filter flags are added in this pr.
 all groups includes unassigned sessions.
 
-`group` reuses exact-name/machine/ref selection, timeout, and result envelopes.
-unqualified names still require complete fleet uniqueness, regardless of group.
+`group` reuses typed terminal-handle/machine or exact-ref selection, timeout, and
+result envelopes. handle resolution requires complete scoped inventory regardless of group.
 `--ref` routes directly by machine and retains supplied session identity; never
 fetch a replacement agent or require `ref.agent`. assignment uses the new host
 route, not `agent/{operation}` or the existing kill-name preparation.
@@ -324,16 +324,17 @@ groups array, or second envelope.
 normal `list` prints named headings and unassigned over existing table columns.
 print unavailable peers once outside headings even with zero matching rows.
 reuse one fleetclient-owned pure row/group projection for cli and tui, retaining
-input peer/name order within groups. renderers do not own equality/filter/sort.
+input peer/numeric tmux-id order within groups. renderers do not own equality/filter/sort.
 headings are presentation only. `info` includes membership with its other facts.
 
 ## 7. collection behavior and creation
 
 machine and group are independent selectors. each has an all state; group also
-has unassigned and named. display named picker entries as `group: <label>` to
-distinguish labels from selector states. selected empty labels remain in the
-selected control; other empty labels need not remain suggestions. no collapsed
-group state exists.
+has unassigned and named. the phone displays named picker entries as
+`group: <label>` to distinguish labels from selector states; the desktop strip
+prefixes only colliding labels ([desktop browser §5](desktop-browser.md#5-presentation)).
+selected empty labels remain in the selected control; other empty labels need
+not remain suggestions. no collapsed group state exists.
 
 named group headings also use `group: <label>`; the unassigned heading is
 `unassigned`. the unresolved selected control says `previously selected group`
@@ -493,8 +494,8 @@ terminal sizing, input, back, detach, and provider presentation stay unchanged.
 
 controller owns one optional dashboard editor, mutually exclusive with forge and
 destructive dialogs. it contains original `SessionTarget`, draft, and
-`editing | sending | checking` phase. equality excludes name/agent; do not reuse
-rename's `sameSessionAuthority` unchanged because it includes the expected name.
+`editing | sending | checking` phase. equality excludes name/agent; naming owns
+its separate `expectedNaming` guard, never a name-based lifetime predicate.
 polls do not overwrite the draft or substitute another lifetime.
 
 submit through the machine's existing `inventoryOperation.submitMutation`:
@@ -627,7 +628,7 @@ cross-owner adversarial reviews make no test or production edits.
 | --- | --- |
 | `internal/group/group.go`, matching tests | pure shared go label/filter/order owner |
 | `internal/sessions/{types,manager,attachment,validation}.go`, new `group.go` if useful, matching tests | typed property/input, pane-independent metadata, create/set, lifetime validation reuse |
-| `internal/tmux/client.go`, matching tests | common lifetime terms, conditional encoded set/unset; preserve name-sensitive wrappers |
+| `internal/tmux/client.go`, matching tests | common lifetime terms, conditional encoded set/unset; naming alone adds name guards |
 | `internal/gateway/{dto,gateway}.go`, matching tests | field, put route/body, error/dispatch; reuse strict decoding and session projection |
 | `internal/logging/logger.go`, matching tests | normalized route, put method, error code; no labels |
 | `internal/fleetclient/{request,response,client,config}.go`, new `groups.go`, matching tests | request/projection/dispatch, bodyless result, shared grouping, safe machine-picker data |

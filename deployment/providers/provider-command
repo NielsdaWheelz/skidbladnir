@@ -10,9 +10,6 @@ claude_command=@CLAUDE_SHELL@
 account="${1:-}"
 [[ "$#" -gt 0 ]] || { printf 'provider account is required\n' >&2; exit 64; }
 shift
-for name in "${!HERDR_@}"; do
-  unset "$name"
-done
 unset CODEX_HOME CLAUDE_CONFIG_DIR SKIDBLADNIR_SHELL SKIDBLADNIR_AGENT SKIDBLADNIR_CLAUDE_COMMAND
 unset SKIDBLADNIR_CONNECTION SKIDBLADNIR_TERMINAL_CONTEXT
 for name in "${!SKIDBLADNIR_STARTUP_@}"; do

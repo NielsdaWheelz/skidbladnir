@@ -239,9 +239,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !message.result.OK {
 			failureText := fleetclient.ErrorMessage(*message.result.Error, message.operation, message.operation == "read")
-			if message.result.Error.Conversation != nil {
-				failureText += " created conversation: " + message.result.Error.Conversation.ConversationID + "; terminal creation unconfirmed"
-			}
 			m.fail(failureText)
 			failure := message.result.Error
 			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
@@ -394,6 +391,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.inform("operation in flight; delivery will be reported")
 			return m, nil
 		}
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
@@ -469,8 +469,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch key {
-		case "q", "esc":
+		case "q":
 			return m, tea.Quit
+		case "esc":
+			// escape closes pages; the table is its floor, never an exit.
+			return m, nil
 		case "a":
 			m.showAgents()
 			return m, nil

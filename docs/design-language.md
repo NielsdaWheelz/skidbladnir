@@ -580,29 +580,43 @@ those plans do not override current testing policy or claim human acceptance.
 ## 19. terminal browser
 
 the [desktop browser](desktop-browser.md) is this language with every ornament
-deleted (§1.2), drawn in the operator's own terminal. it speaks only the
-sixteen-colour protocol: the operator's theme is the ground, its default foreground
-the ink, and the browser never paints a background. under §10's table the bright
-slots are the accents verbatim, so the browser renders exactly in this palette;
-any other theme renders it in that theme's colours.
+deleted (§1.2), drawn in the operator's own terminal. the operator's theme supplies
+the ground and default ink; the browser paints no background. navigation/error
+accents use bright slots. terminal attention uses explicit frost/moss/muted RGB
+values for working/ready/idle. NO_COLOR strips styling and preserves every label.
 
 | intensity | sgr | carries |
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
-| bold | 1 | the cursor row's name, keys, page titles, the rule's target |
+| bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
 | plain | — | everything that must be read: names, status words, key labels, notices |
-| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable rows |
+| faint | 2 | what may recede: group headings, agent, machine, directory, the rule, the selected session's facts, unavailable and checking rows, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |
-| Gold | bright yellow | you are here: the cursor bar `▌` and the focused form field |
+| Gold | bright yellow | you are here: the cursor bar `▌`, the focused form field and the current view's `‹ ›` at the table |
 | Ember | bright red | blocked or failed status, a failed outcome, the stop/kill question |
-| Frost | bright blue | working |
-| Moss | bright green | ready |
+| Frost | RGB `#78A9C6` | working |
+| Moss | RGB `#76B082` | ready |
+| Muted | RGB `#AAA69D` | idle |
 
-status colour follows §5's sampled status mapping. ember never appears in hints,
-so blocked and failed stay the only red in the table and are found at a glance.
-colour never carries meaning alone: every status is a word, and the cursor is a
-glyph plus bold. faint varies by terminal and disappears under mosh; the hierarchy
+status colour follows §5's sampled status mapping, keyed by the printed word:
+`working` is frost, `ready` is moss, `idle` is muted, `waiting` (blocked) is ember,
+every other word plain. ember never appears in hints, so blocked status stays the only red in
+the table and is found at a glance. colour never carries meaning alone: every
+status is a word; the cursor is a glyph plus bold; the current view is bold,
+between gold `‹ ›` at the table; form chevrons stay faint because the `▌` gutter
+marks focus. faint varies by terminal and disappears under mosh; the hierarchy
 then flattens without losing information. one rule separates content from
 controls. no boxes, fret, runes, icons or motion.
+
+## 20. session naming content
+
+[automatic naming](automatic-session-names.md#names-and-content) owns exact copy.
+one actual tmux name occupies the existing card/header; rename preserves draft,
+focus and attachment. automatic ticks add no toast, icon or announcement. manual
+mode offers `use automatic title`; saving selects manual ownership. desktop
+handles identify control targets in cli output/details, with no added phone row.
+terminal context/navigation and actions occupy separate rows. give the name its
+own weighted space and bound the close label within the action row; large text
+must not collapse the rename target. existing viewport sizing absorbs the height.

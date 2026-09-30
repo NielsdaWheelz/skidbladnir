@@ -5,62 +5,77 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## terminal status and control source composition
-
-[terminal control](terminal-agent-control.md) makes heuristic observation and
-terminal input the ordinary session workflow. stop/close work without an agent
-or conversation identity; explicit native integration is retained separately.
-the plan owns replacement schemas, disjoint slices, content and temporary
-red/green/refactor acceptance. inferred idle is advisory. terminal attention
-consumes this same status contract. the notification worktree includes a source
-snapshot of the concurrent terminal-control prerequisite; notification composition
-is qualified. broader terminal-control acceptance and deployment remain separate.
-
-## planned automatic session names
+## automatic session names — source cutover
 
 [automatic names and public handles](automatic-session-names.md) specifies one
 canonical tmux name, manual takeover/reset, terminal-title reconciliation,
-typed live selectors and name-independent targeting/order. source is not yet
-implemented. the plan owns disjoint work slices, the native-helper prerequisite,
-content, temporary red/green/refactor acceptance and hard cutover. literal tmux
-comparisons need [qualification](issues/tmux-name-literal-comparison.md).
+typed live selectors and name-independent targeting/order. source is implemented
+in the isolated branch; host/desktop qualification passes on darwin/linux.
+provider names are entirely provider-owned. new codex sessions remain unassociated;
+manual linking is removed below. the earlier naming qualification predates that
+removal: actual codex/claude launch and title emission,
+exact-id native controls after association, and both approved physical-phone
+journeys pass. large text exposed a collapsed rename target; separating context
+and action rows repaired it. temporary behavioral tests are removed; final
+`scripts/check verify` passes. this is coordinated source cutover, not
+deployment. the spec records contracts, costs and bounded evidence.
 
-## terminal attention source delivery
+## terminal control and attention — source cutover
 
-[terminal attention](reply-notifications.md) replaces history-driven unread with
-observed working-to-idle `ready`, whole-visit and resumed-work clearing,
-blue/green/grey presentation and human viewer deletion. the user approved this
-explicit weaker meaning after native-boundary qualification failed. native
-machine read remains separate; the SDK completeness issue remains unresolved.
-implemented on `codex/reply-notifications`. its spec records temporary
-red/green/refactor, real desktop/provider boundaries and isolated physical-phone
-acceptance, including rendered colors, visits, races, restart and storage errors.
-temporary tests are removed; deployment and installed-fleet qualification remain
-separate.
+[terminal control](terminal-agent-control.md) replaces ordinary native-first
+observation/control with exact terminal operations. explicit native targets stay
+separate; stock launch, provider-owned names and existing bindings are preserved.
+[terminal attention](reply-notifications.md) replaces human unread/viewer paths
+with exclusive inferred `ready`, working/idle colors and presentation-owned visits.
+unknown/outage breaks transition continuity; first qualified post-visit observation
+is quiet. revision comparisons prevent stale polls from restoring consumed state.
+
+desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
+Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
+corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
+native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
+source, not deployment or cloud/native completion. the additional [merged phone
+composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
+tests are removed by policy;
+engineering verification passes. accepted inference/sampling/closing-boundary/
+concurrent-client costs are explicit in the spec. [Claude history completeness](issues/claude-history-completeness.md)
+remains an independent native-provider issue, no longer a notification prerequisite.
+
+## skid-only cutover
+
+2026-09-29: captured-target inspection is published in v0.10.6 and installed on
+macbook, devbox, arch and android. herdr/mobile servers, hooks, gates, units,
+owned ingress/state and phone package are removed. jarvis's worker adapter and
+archive cut are delivered in [pr 43](https://github.com/NielsdaWheelz/jarvis/pull/43);
+its actual service uid reads all three production gateways. jarvis stays disabled
+and paused until its separate shared-cognition repair. installed native lifecycle
+and owner phone attachment pass on all three hosts. [qualification](native-agent-qualification.md)
+separates those checks from remaining phone-native interaction acceptance.
 
 ## native interaction source delivery
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, creation-time id association and native
-operations. the selected-view fork/build is retired. human native-output viewing
-and read receipts are removed under terminal attention; machine native
-reads have no notification effect.
+ordinary upstream npm plus its owning daemon, existing recorded bindings and native
+operations. the selected-view fork/build and human unread/viewer paths are retired.
+ordinary status/input is terminal-based; explicit native history/control remains separate.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
 
 manual conversation association is removed from source: no mobile/browser form,
-cli track/untrack command or host mutation route remains. creation captures codex
-identity automatically; manually launched codex terminals remain unassociated.
+cli track/untrack command or host mutation route remains. normal remote-new
+codex startup creates no card binding; all new codex terminals remain unassociated.
+existing bindings and direct native conversation commands remain available.
 existing valid metadata is retained because earlier manual and creation bindings
 have the same representation. this source change does not assert deployment.
 
 v0.10.4 is published historical output under the former selected-view contract.
-the coordinated stock helper/gateway/client generation is released as v0.10.5.
+the coordinated stock helper/gateway/client generation was released as v0.10.5;
+v0.10.6 adds captured conversation inspection.
 [qualification](native-agent-qualification.md) records stock evidence;
-[release qualification](issues/native-agent-release-qualification.md) tracks remaining
-installed-fleet boundaries. temporary behavioral tests are deleted
-after verification; no installed-fleet/physical-phone pass is claimed.
+temporary behavioral tests are deleted after verification. human native-output
+viewer qualification is retired with that feature; native-provider limitations
+remain with their independent issue owners.
 
 ## original-product restoration
 
@@ -89,7 +104,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| explicit native status/history and qualified native controls | [agent control](agent-control.md), [native interaction](native-agent-observation.md) |
+| inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
@@ -105,8 +120,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.10.5` from
-`223bc923ea43f90f9d870562a63306062c5fd43a`; it does not assert the
+source and artifact digests. it pins immutable `v0.10.6` from
+`a58aa8dd7acb652ea86e5d65862d96bd8fccfca9`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.

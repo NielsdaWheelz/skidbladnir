@@ -115,7 +115,7 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 			if !environmentPattern.MatchString(variable.Name) || !utf8.ValidString(variable.Value) || strings.ContainsRune(variable.Value, 0) {
 				return nil, fmt.Errorf("profile %s environment is invalid", profile.Key)
 			}
-			if strings.HasPrefix(variable.Name, "HERDR_") || variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" || variable.Name == "SKIDBLADNIR_AGENT" || variable.Name == "SKIDBLADNIR_CONNECTION" || variable.Name == "SKIDBLADNIR_TERMINAL_CONTEXT" || variable.Name == "SKIDBLADNIR_STARTUP_PID" || variable.Name == "SKIDBLADNIR_STARTUP_CWD" || variable.Name == "SKIDBLADNIR_STARTUP_HELPER" || variable.Name == "SKIDBLADNIR_STARTUP_AGENT" {
+			if variable.Name == "SKIDBLADNIR_SHELL" || variable.Name == "SKIDBLADNIR_CLAUDE_COMMAND" || variable.Name == "SKIDBLADNIR_AGENT" || variable.Name == "SKIDBLADNIR_CONNECTION" || variable.Name == "SKIDBLADNIR_TERMINAL_CONTEXT" || variable.Name == "SKIDBLADNIR_STARTUP_PID" || variable.Name == "SKIDBLADNIR_STARTUP_CWD" || variable.Name == "SKIDBLADNIR_STARTUP_HELPER" || variable.Name == "SKIDBLADNIR_STARTUP_AGENT" {
 				return nil, fmt.Errorf("profile %s environment belongs to another launch context", profile.Key)
 			}
 			if _, found := environmentNames[variable.Name]; found {
@@ -160,7 +160,7 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 				return nil, fmt.Errorf("profile %s has an invalid argument", profile.Key)
 			}
 			if profile.Provider == ProviderClaude && claudeNameArgument(argument) {
-				return nil, fmt.Errorf("profile %s arguments conflict with managed Claude name", profile.Key)
+				return nil, fmt.Errorf("profile %s arguments must not set Claude session names", profile.Key)
 			}
 		}
 
@@ -213,18 +213,6 @@ func MatchProfileEnvironment(profiles []Profile, provider Provider, lookup func(
 		}
 	}
 	return "", false
-}
-
-func LaunchArguments(profile Profile, tmuxName string) []string {
-	arguments := make([]string, 0, len(profile.Arguments)+2)
-	switch profile.Provider {
-	case ProviderCodex:
-	case ProviderClaude:
-		arguments = append(arguments, "--name", tmuxName)
-	default:
-		panic("invalid validated profile provider")
-	}
-	return append(arguments, profile.Arguments...)
 }
 
 func cloneProfile(profile Profile) Profile {
