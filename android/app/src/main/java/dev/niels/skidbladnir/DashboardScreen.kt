@@ -424,7 +424,7 @@ private fun DashboardDwarfGrid(
                 ) { item ->
                     when (item) {
                         is DashboardItem.Heading -> {
-                            val label = item.label?.let { "group: ${it.text}" } ?: "unassigned"
+                            val label = item.label?.text ?: "unassigned"
                             Text(label, fontFamily = NidavellirType.Data, color = Muted,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics {
                                     heading()

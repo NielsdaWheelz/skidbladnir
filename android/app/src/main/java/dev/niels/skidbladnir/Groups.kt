@@ -92,7 +92,7 @@ internal fun DashboardGroupSelection.matches(label: GroupLabel?): Boolean = when
 internal fun DashboardGroupSelection.displayLabel(): String = when (this) {
     DashboardGroupSelection.All -> "all groups"
     DashboardGroupSelection.Unassigned -> "unassigned"
-    is DashboardGroupSelection.Named -> label?.let { "group: ${it.text}" } ?: "previously selected group"
+    is DashboardGroupSelection.Named -> label?.text ?: "previously selected group"
 }
 
 internal sealed interface GroupDraft {

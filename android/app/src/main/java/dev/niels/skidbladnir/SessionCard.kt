@@ -191,7 +191,7 @@ internal fun SessionCard(
                     GroupTextAction(
                         label = "change group", enabled = machine.canMutate, onClick = onGroup,
                         description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
-                            (session.group?.let { "group: ${it.text}" } ?: "unassigned"),
+                            (session.group?.text ?: "unassigned"),
                     )
                     GroupTextAction(
                         label = TERMINAL_STOP_ACTION, enabled = machine.canMutate && !terminalControlPending, onClick = onStop,

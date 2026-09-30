@@ -89,7 +89,7 @@ its session's lifetime, never a row position, so a reorder moves rows but never
 retargets a key. an exited agent remains in terminal/group views; unknown is not offline. the contract publishes no transition age, so nothing is
 ordered by time.
 
-named labels read `group: <label>` in group headings and details. the agents
+named labels read as bare labels in group headings and details. the agents
 view's group column shows bare labels and stays blank for unassigned sessions; a
 label cannot be empty.
 
@@ -156,10 +156,9 @@ input-reader cancellation/joining, geometry, and session preservation.
 row 1 is the reversed ` skid ` wordmark, the view strip and, only when a machine
 filter narrows the scope, `machine: <label>` (at most 24 cells) at the right
 edge; its absence means all machines. one blank row follows. the strip reads
-`agents`, `all`, then each group as its bare label or `unassigned`; a label that
-prints as `agents`, `all` or `unassigned`, or begins `group: `, reads
-`group: <label>`, so no label reads as one of skid's words except through
-invisible characters (§7's costs). the current tab is bold,
+`agents`, `all`, then each group as its bare label or `unassigned`. named labels
+receive no prefix, including labels that match skid's selector words.
+the current tab is bold,
 between gold `‹ ›` at the table while no operation is in flight; nothing in the
 strip is faint. skid's words never truncate; `agents`, `all` and the current tab
 never hide. other labels share one cap, 24 cells down to 7, that does not change
@@ -177,7 +176,7 @@ unknown`), group (agents view only), machine (the terminal's owner, only when al
 machines are in scope), and the current directory in the remaining width,
 truncated from the left and omitted below 8 cells; remote work reads `host:path`
 and an unresolved connection `remote context unknown`. columns shrink
-widest-first to fit. in the all view a faint heading (`group: <label>` or
+widest-first to fit. in the all view a faint heading (the bare label or
 `unassigned`) precedes each group. local-agent status is inferred `working`,
 `waiting`, `idle`, `status unknown` or `status unavailable`. a qualified pending
 working-to-idle transition projects exclusive green `ready`; working is blue and

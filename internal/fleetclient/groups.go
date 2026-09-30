@@ -57,7 +57,7 @@ func GroupHeading(label group.Label) string {
 	if label.IsUnassigned() {
 		return "unassigned"
 	}
-	return "group: " + label.String()
+	return label.String()
 }
 
 func compareSessions(a, b Session) int {
