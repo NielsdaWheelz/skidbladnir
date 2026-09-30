@@ -314,8 +314,7 @@ func paneTerminalAncestry(ancestry []processinfo.Observation, paneTerminal proce
 
 func matchesSignature(observation processinfo.Observation, signature ForegroundSignature) bool {
 	return (signature.ExecutableBase == "" || observation.ExecutableBase() == signature.ExecutableBase) &&
-		(signature.Argument0 == "" || observation.Argument(0) == signature.Argument0) &&
-		(signature.Argument1 == "" || observation.Argument(1) == signature.Argument1)
+		(signature.ExecutablePath == "" || observation.Executable == signature.ExecutablePath)
 }
 
 func claudeName(argv []string) string {

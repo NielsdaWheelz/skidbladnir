@@ -386,7 +386,6 @@ func (manager *Manager) inspectRequired(
 	return manager.inspectAnchor(ctx, Session{
 		TmuxID: observed.id, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
 		IdentityToken: identityToken, Character: observed.character,
-		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
 	})
 }
 
@@ -447,13 +446,14 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	}
 	var foregroundErr error
 	session.Agent, session.foreground, foregroundErr = manager.observeAgent(ctx, inspected.paneID, inspected.panePID)
+	session.foregroundFailed = foregroundErr != nil
 	manager.projectClaudeConversation(&session)
 	if session.foreground != nil {
 		foreground := *session.foreground
 		if transport, _, recognized := observedTransport(foreground, nil); recognized {
 			environment, err := processinfo.ObserveForegroundEnvironment(inspected.panePID, foreground)
 			if errors.Is(err, processinfo.ErrForegroundMismatch) {
-				session.Agent, session.foreground = nil, nil
+				session.Agent, session.foreground, session.foregroundFailed = nil, nil, true
 				return session, err
 			}
 			_, id, _ := observedTransport(foreground, environment)

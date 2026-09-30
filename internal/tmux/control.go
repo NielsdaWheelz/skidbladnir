@@ -32,6 +32,45 @@ type Capture struct {
 	Truncated bool
 }
 
+// ErrObservationChanged means the pane's dimensions or screen changed while a
+// focused observation was being taken; the sample is invalid.
+var ErrObservationChanged = errors.New("terminal pane changed during observation")
+
+type RegionKind string
+
+const (
+	RegionTop    RegionKind = "top"
+	RegionBottom RegionKind = "bottom"
+)
+
+// PaneRegion is a contiguous run of physical visible rows. Every row is
+// self-contained: read from the default style, its SGR sequences reproduce its
+// styling. Rows are complete UTF-8, contain no newline, and are never joined.
+type PaneRegion struct {
+	Kind     RegionKind
+	FirstRow int // zero-based physical row of Rows[0]
+	Rows     []string
+	Clipped  bool // requested rows were dropped at the region's byte limit
+}
+
+// PaneObservation is one bounded sample of the visible screen: the bottom rows
+// and, for a pane taller than the bottom region, the non-overlapping top rows.
+// Regions are in screen order (top first). It is not an atomic snapshot of the
+// program drawing it, and it never includes scrollback.
+type PaneObservation struct {
+	Width     int
+	Height    int
+	Alternate bool
+	Regions   []PaneRegion
+}
+
+// ObservePane samples the exact target's visible rows under its lifetime and
+// selected-pane guard. Errors: ErrInputInvalid, ErrTargetChanged,
+// ErrObservationChanged (dimensions or alternate screen changed), ErrUnavailable.
+func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneObservation, error) {
+	panic("contract skeleton: slice a implements ObservePane")
+}
+
 func (target PaneTarget) valid() bool {
 	return sessionIDPattern.MatchString(target.SessionID) && validPane(target.PaneID) && target.Server.valid()
 }
@@ -40,24 +79,14 @@ func (target PaneTarget) condition() string {
 	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+target.PaneID+"}"))
 }
 
-// CapturePane retains SGR for visible observation; retained-tail/public reads
-// stay plain, including alternate screens. Both use the same exact target guard.
-func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int, visible bool) (Capture, error) {
+// CapturePane is the public plain-text read: the retained tail, or the visible
+// screen of an alternate-screen program, under the exact target guard.
+func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int) (Capture, error) {
 	if !target.valid() || maxBytes < 1 || maxBytes > 32768 {
 		return Capture{}, ErrInputInvalid
 	}
-	capture := "capture-pane -p -J -t " + target.PaneID
-	if visible {
-		capture += " -e"
-	} else {
-		capture += " -S -" + strconv.Itoa(maxBytes)
-	}
-	branch := "display-message -p '#{alternate_on}' ; "
-	if visible {
-		branch += capture
-	} else {
-		branch += "if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
-	}
+	capture := "capture-pane -p -J -t " + target.PaneID + " -S -" + strconv.Itoa(maxBytes)
+	branch := "display-message -p '#{alternate_on}' ; if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
 	output := captureOutput{tail: captureTail{limit: maxBytes}}
 	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	command.Stdout = &output

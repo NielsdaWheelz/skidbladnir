@@ -18,29 +18,11 @@ func (err *TerminalInputBlockedError) Error() string         { return "terminal 
 func (err *TerminalInputBlockedError) Unwrap() error         { return ErrTerminalInputBlocked }
 func (err *TerminalInputBlockedError) DispatchState() string { return "not_sent" }
 
-func (service *Service) sample(ctx context.Context, target sessions.TerminalTarget) (sessions.Session, detection, error) {
-	session, capture, err := service.sessions.CaptureTerminal(ctx, target, 8192, true)
-	result := detection{state: "unknown", composer: "unknown"}
-	if errors.Is(err, sessions.ErrTerminalObservationChanged) {
-		return session, result, nil
-	}
-	if err != nil {
-		return session, result, err
-	}
-	if session.Agent != nil && session.Connection == nil && !capture.Truncated {
-		result = detect(session.Agent.Provider, capture.Text)
-	}
-	return session, result, nil
-}
-
-func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (sessions.TerminalStatus, error) {
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
-	defer cancel()
-	_, result, err := service.sample(ctx, target)
-	if err != nil {
-		return sessions.TerminalStatus{State: "unknown", Source: "unavailable"}, err
-	}
-	return sessions.TerminalStatus{State: result.state, Source: "terminal"}, nil
+// TerminalInspect resolves target fresh and observes it once. Target,
+// identity and resolution failures are errors; a later failed stage is an
+// unavailable status. Diagnostics always describe this same sample.
+func (service *Service) TerminalInspect(parent context.Context, target sessions.TerminalTarget) (sessions.TerminalStatus, Diagnostics, error) {
+	panic("contract skeleton: slice b implements TerminalInspect")
 }
 
 func (service *Service) TerminalRead(parent context.Context, target sessions.TerminalTarget, maxBytes int) (ReadResult, error) {
@@ -52,7 +34,7 @@ func (service *Service) TerminalRead(parent context.Context, target sessions.Ter
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	_, capture, err := service.sessions.CaptureTerminal(ctx, target, maxBytes, false)
+	_, capture, err := service.sessions.CaptureTerminal(ctx, target, maxBytes)
 	if errors.Is(err, sessions.ErrTerminalObservationChanged) {
 		err = sessions.ErrTerminalUnavailable
 	}
@@ -66,26 +48,10 @@ func (service *Service) TerminalRead(parent context.Context, target sessions.Ter
 	return ReadResult{Text: capture.Text, Source: "terminal", Scope: scope, Truncated: capture.Truncated}, nil
 }
 
+// TerminalSend pastes only into a fresh local provider's empty ordinary
+// composer: activity working or idle, interaction none, notice none.
 func (service *Service) TerminalSend(parent context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {
-	if !validText(text) {
-		return WriteResult{}, ErrInvalidInput
-	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
-	session, result, err := service.sample(ctx, target)
-	if err != nil {
-		return WriteResult{}, err
-	}
-	if result.state == "blocked" {
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
-	}
-	if result.composer == "draft" {
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
-	}
-	if session.Agent == nil || result.state != "working" && result.state != "idle" || result.composer != "empty" {
-		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
-	}
-	return terminalWriteResult(service.sessions.SendTerminal(ctx, target, text, session.Agent))
+	panic("contract skeleton: slice b implements TerminalSend")
 }
 
 func (service *Service) Text(parent context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {

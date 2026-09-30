@@ -130,8 +130,7 @@ type environmentVariableDTO struct {
 
 type foregroundSignatureDTO struct {
 	ExecutableBase stringField `json:"executableBase"`
-	Argument0      stringField `json:"argument0"`
-	Argument1      stringField `json:"argument1"`
+	ExecutablePath stringField `json:"executablePath"`
 }
 
 func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
@@ -195,8 +194,7 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
 			signatures[signatureIndex] = agentruntime.ForegroundSignature{
 				ExecutableBase: signature.ExecutableBase.value,
-				Argument0:      signature.Argument0.value,
-				Argument1:      signature.Argument1.value,
+				ExecutablePath: signature.ExecutablePath.value,
 			}
 		}
 		arguments := make([]string, len(*candidate.Arguments))
