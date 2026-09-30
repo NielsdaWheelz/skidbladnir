@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -28,6 +30,7 @@ type terminalRequest struct {
 	Text          stringField `json:"text"`
 	Keys          *[]string   `json:"keys"`
 	MaxBytes      *int        `json:"maxBytes"`
+	Explain       *bool       `json:"explain"`
 }
 
 func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
@@ -50,7 +53,8 @@ func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
 }
 
 func (input terminalRequest) valid(operation string) bool {
-	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 ||
+		input.Explain != nil && operation != "inspect" {
 		return false
 	}
 	switch operation {
@@ -102,11 +106,21 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	var err error
 	switch operation {
 	case "inspect":
-		var status sessions.TerminalStatus
-		status, err = gateway.agents.TerminalInspect(ctx, target)
-		result = struct {
-			TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
-		}{status}
+		startedAt := time.Now()
+		status, diagnostics, inspectErr := gateway.agents.TerminalInspect(ctx, target)
+		if inspectErr != nil {
+			writeError(writer, terminalFailure(inspectErr))
+			return
+		}
+		inspected, mapErr := mapTerminalInspectResponse(status, diagnostics, input.Explain != nil && *input.Explain)
+		if mapErr != nil {
+			writeError(writer, errorInternal)
+			return
+		}
+		if status.Source == sessions.SourceUnavailable {
+			gateway.logObservationFailure(agentcontrol.ObservationFailure{TmuxID: id, Reason: status.Reason, Elapsed: time.Since(startedAt)})
+		}
+		result = inspected
 	case "read":
 		maxBytes := 0
 		if input.MaxBytes != nil {
@@ -170,6 +184,50 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 type terminalCloseResult struct {
 	Interrupt string `json:"interrupt"`
 	Terminal  string `json:"terminal"`
+}
+
+var diagnosticRuleID = regexp.MustCompile(`^[a-z0-9_.-]{1,48}$`)
+
+// Diagnostics are present iff the request asked for an explanation.
+type terminalInspectResponse struct {
+	TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
+	Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
+}
+
+// mapTerminalInspectResponse sends only a valid status and a bounded,
+// content-free explanation; anything else is a producer defect.
+func mapTerminalInspectResponse(status sessions.TerminalStatus, diagnostics agentcontrol.Diagnostics, explain bool) (terminalInspectResponse, error) {
+	if !status.Valid() {
+		return terminalInspectResponse{}, errors.New("invalid terminal status")
+	}
+	if !explain {
+		return terminalInspectResponse{TerminalStatus: status}, nil
+	}
+	if len(diagnostics.Rules) > 8 {
+		return terminalInspectResponse{}, errors.New("too many diagnostic rules")
+	}
+	for _, rule := range diagnostics.Rules {
+		switch rule.Region {
+		case agentcontrol.DiagnosticTop, agentcontrol.DiagnosticBottom, agentcontrol.DiagnosticCompound:
+		default:
+			return terminalInspectResponse{}, errors.New("invalid diagnostic rule region")
+		}
+		if !diagnosticRuleID.MatchString(rule.ID) {
+			return terminalInspectResponse{}, errors.New("invalid diagnostic rule id")
+		}
+	}
+	if diagnostics.Rules == nil {
+		diagnostics.Rules = []agentcontrol.DiagnosticRule{}
+	}
+	if diagnostics.Capture != nil && (diagnostics.Capture.Width < 1 || diagnostics.Capture.Height < 1) {
+		return terminalInspectResponse{}, errors.New("invalid diagnostic capture dimensions")
+	}
+	for _, elapsed := range []*int64{diagnostics.ElapsedMs.Resolve, diagnostics.ElapsedMs.Capture, diagnostics.ElapsedMs.Classify} {
+		if elapsed != nil && (*elapsed < 0 || *elapsed > math.MaxInt32) {
+			return terminalInspectResponse{}, errors.New("invalid diagnostic stage duration")
+		}
+	}
+	return terminalInspectResponse{TerminalStatus: status, Diagnostics: &diagnostics}, nil
 }
 
 // terminalLifecycle orders attachment admission and exact session deletion.

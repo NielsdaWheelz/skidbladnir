@@ -192,9 +192,23 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		}
 		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
+			executablePath := ""
+			if signature.ExecutablePath.present {
+				if !validAbsolutePath(signature.ExecutablePath.value) {
+					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
+				}
+				// The kernel reports the resolved executable image, whatever
+				// spelling launched it. Resolve the configured spelling once, at
+				// admission: a later relink is seen only after a configuration reload.
+				resolved, err := filepath.EvalSymlinks(signature.ExecutablePath.value)
+				if err != nil {
+					return nil, fmt.Errorf("host config profile %s foreground executable path is unresolvable", candidate.Key.value)
+				}
+				executablePath = resolved
+			}
 			signatures[signatureIndex] = agentruntime.ForegroundSignature{
 				ExecutableBase: signature.ExecutableBase.value,
-				ExecutablePath: signature.ExecutablePath.value,
+				ExecutablePath: executablePath,
 			}
 		}
 		arguments := make([]string, len(*candidate.Arguments))

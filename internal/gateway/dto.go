@@ -342,6 +342,18 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 			return sessionDTO{}, errors.New("invalid session launch profile")
 		}
 	}
+	// A status reason must agree with the foreground facts of the same sample:
+	// only a local agent is observed; a remote shell or unrecognized program is not.
+	reason := session.TerminalStatus.Reason
+	var statusAgrees bool
+	switch {
+	case connection != nil:
+		statusAgrees = reason == sessions.ReasonRemoteContext
+	case agent != nil:
+		statusAgrees = reason != sessions.ReasonProviderUnrecognized && reason != sessions.ReasonRemoteContext
+	default:
+		statusAgrees = reason == sessions.ReasonProviderUnrecognized || reason == sessions.ReasonProcessFailed
+	}
 	card := sessionDTO{
 		TmuxID:          session.TmuxID,
 		ActivePaneID:    session.ActivePaneID,
@@ -360,7 +372,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		ActiveCommand:   session.ActiveCommand,
 		AttachedClients: session.AttachedClients,
 	}
-	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
+	if !card.TerminalStatus.Valid() || !statusAgrees || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
 	}

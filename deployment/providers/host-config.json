@@ -24,7 +24,9 @@
         }
       ],
       "arguments": [
-        "--yolo"
+        "--yolo",
+        "-c",
+        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
       ]
     },
     {
@@ -44,7 +46,9 @@
         }
       ],
       "arguments": [
-        "--yolo"
+        "--yolo",
+        "-c",
+        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
       ]
     },
     {
@@ -64,7 +68,9 @@
         }
       ],
       "arguments": [
-        "--yolo"
+        "--yolo",
+        "-c",
+        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
       ]
     },
     {
@@ -80,7 +86,7 @@
       ],
       "foregroundSignatures": [
         {
-          "argument0": "@CLAUDE@"
+          "executablePath": "@CLAUDE@"
         }
       ],
       "arguments": [
