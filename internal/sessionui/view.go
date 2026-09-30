@@ -201,7 +201,7 @@ func (m *model) footerLines() []string {
 		legend = target(m.pendingName, m.pendingLabel, width)
 	case "details":
 		legend = target(m.pageName, m.pageMachine, width)
-	case "create", "search":
+	case "create":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
 	}
 	lines := append(notices, rule(legend, position, width))
@@ -266,13 +266,13 @@ func (m *model) hints() [][]hint {
 		if m.field == 4 {
 			enter.label = "create"
 		}
-		hints := []hint{{"tab", "next"}, {"shift-tab", "back"}, {"←→", "choose"}, enter, {"ctrl-u", "unassigned"}, {"escape", "cancel"}}
+		hints := []hint{{"tab", "next"}, {"shift-tab", "back"}, {"←→", "choose"}, enter, {"escape", "cancel"}}
 		if m.field == 3 {
-			hints = append(hints, hint{"z words", "search visited directories"})
+			hints = append(hints, hint{"ctrl-u", "home"})
+		} else if m.field == 4 {
+			hints = append(hints, hint{"ctrl-u", "unassigned"})
 		}
 		return [][]hint{hints}
-	case "search":
-		return [][]hint{{{"↑↓", "choose"}, {"enter", "use directory"}, {"escape", "back"}}}
 	case "details":
 		return [][]hint{{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}}
 	}
@@ -437,6 +437,12 @@ func (m *model) bodyLines(height int) []string {
 		focusStart, focusEnd := 0, 0
 		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
 			value := m.form[index]
+			if index == 3 && strings.TrimSpace(value) == "" {
+				value = ""
+				if m.field != 3 {
+					value = "home (~)"
+				}
+			}
 			if index == 4 {
 				value = groupDraftDisplay(value)
 			}
@@ -444,11 +450,26 @@ func (m *model) bodyLines(height int) []string {
 				focusStart = len(lines)
 			}
 			lines = append(lines, field(label, value, index == m.field, index < 2, 9, width)...)
+			if index == 3 && m.field == 3 {
+				if strings.TrimSpace(value) == "" {
+					lines[len(lines)-1] += faint.Styled(" home (~); type to search")
+				}
+				switch {
+				case m.searching:
+					lines = append(lines, field("", "searching…", false, false, 9, width)...)
+				case len(m.searchDirectories) > 0:
+					preview := fmt.Sprintf("‹ %d/%d › %s", m.searchCursor+1, len(m.searchDirectories), m.searchDirectories[m.searchCursor])
+					lines = append(lines, field("use", preview, false, false, 9, width)...)
+				}
+			}
 			if index == m.field {
 				focusEnd = len(lines)
 			}
 		}
-		lines = append(lines, "", "leave blank to follow the terminal title.")
+		lines = append(lines, "", "name: leave blank to follow the terminal title.")
+		if m.field == 3 {
+			lines = append(lines, "type search words or a path (/… or ~/…); tab uses the match.")
+		}
 		if !m.createAvailable() {
 			lines = append(lines, "host unavailable; create disabled")
 		}
@@ -456,36 +477,6 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
 		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
-	case "search":
-		lines := []string{bold.Styled("directory search on " + ansi.Truncate(singleLine(m.form[0]), width-24, "…")), ""}
-		switch {
-		case m.searching:
-			lines = append(lines, "searching…")
-		case len(m.searchDirectories) == 0:
-			lines = append(lines, "no matching directories")
-		}
-		focusStart, focusEnd := 0, 0
-		for index, directory := range m.searchDirectories {
-			if index == m.searchCursor {
-				focusStart = len(lines)
-			}
-			// Ranked paths show in full, wrapped under their marker.
-			for part, text := range strings.Split(ansi.Hardwrap(singleLine(directory), width-2, true), "\n") {
-				switch {
-				case index == m.searchCursor && part == 0:
-					text = here.Styled("▌") + " " + bold.Styled(text)
-				case index == m.searchCursor:
-					text = "  " + bold.Styled(text)
-				default:
-					text = "  " + text
-				}
-				lines = append(lines, text)
-			}
-			if index == m.searchCursor {
-				focusEnd = len(lines)
-			}
-		}
-		return window(lines, focusStart, focusEnd, height)
 	case "details":
 		title := bold.Styled(m.page)
 		// The title stays pinned; only the captured snapshot scrolls.

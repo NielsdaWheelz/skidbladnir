@@ -144,14 +144,16 @@ environment observation; it adds no codex hook.
 
 ### directory search
 
-ordinary shell `z` uses existing shell setup. optional launch directory entry
-accepts existing literal paths or `z <words>`; the explicit prefix opens ranked
-results, never launches the top match. words are literal whitespace-separated
-terms; quotes, variables and substitutions have no shell meaning. parse this
-prefix before path validation; leading whitespace is invalid; bare `z` requests
-words; `/path/z foo` stays literal. mobile also
-offers `search visited directories` in its existing chooser. both entrances use
-one search transition per client. selection fills cwd.
+ordinary shell `z` uses existing shell setup. desktop launch directory entry
+uses [the form's live search](desktop-browser.md#4-actions-and-return): empty means
+home, ordinary words search directly, and `/…` or `~…` remain literal path drafts.
+ranked results preview beneath the query; left/right cycles and tab or enter
+accepts the chosen cwd and advances. no `z` prefix or separate results page.
+mobile retains its exact-path `z <words>` entrance and `search visited directories`
+page. mobile parses that prefix before path validation; leading whitespace is
+invalid, bare `z` requests words, and `/path/z foo` stays literal. words are literal
+whitespace-separated terms; quotes, variables and substitutions have no shell
+meaning. selection fills cwd; neither client creates a session from a search reply.
 
 ```text
 POST /v1/directory-searches {terms: string[]}

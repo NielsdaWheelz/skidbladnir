@@ -121,9 +121,22 @@ modal close returns to the table; refresh reconciliation still applies.
 
 `n` creates a terminal at home on the target machine (the machine filter,
 otherwise the configured default; never the first reachable peer) in the selected
-named group. `N` opens the five-field machine/launch/name/cwd/group form; `z
-<words>` in its directory field searches visited directories on that machine, and
-a chosen path only edits the draft. `n`, `N` and `T` share one completion path:
+named group. `N` opens the five-field machine/launch/name/cwd/group form. its
+directory field starts empty, visibly defaulting to home: typing ordinary words
+searches that machine's visited directories after a 150 ms pause, without a `z`
+prefix, enter, or a separate page. `/…` and `~…` stay literal path drafts;
+creation still admits only absolute paths and exact `~`/`~/…` expansion.
+the first ranked match appears beneath the unchanged query, with its full path
+and position. left/right cycles the matches with wraparound. tab or enter accepts
+the selected path and advances; shift-tab goes back without accepting. ctrl-u
+clears the field to home. empty results, pending search and failures cannot be
+accepted or submitted as a cwd. final-field creation returns to directory if a
+query has not been accepted, including one bypassed with shift-tab.
+machine changes restore the empty home default;
+editing, cancellation and machine changes invalidate and cancel pending search.
+late results cannot alter another draft. selection only edits the draft;
+creation remains the separate final-field action and revalidates the chosen path.
+`n`, `N` and `T` share one completion path:
 it reveals and selects the returned session in its group view, leaving the agents
 view, then attaches it. the pending request and page adopt the completion: `n`
 and `T` from the table, `N` from its form. detach or attachment failure leaves
@@ -216,6 +229,16 @@ component api, presentation framework or new dependency: lipgloss 2.0.6 would pu
 an ultraviolet revision that bubble tea 2.0.9 was not released with.
 
 ## 7. acceptance and delivery
+
+desktop directory search acceptance: open `N`, reach directory and type familiar
+words without clearing home; see the first full path without enter; cycle left
+and right, then tab directly to group. create must use that selected path. blank
+and ctrl-u mean home; literal paths containing spaces or `z` remain literal.
+typing/paste must discard old matches immediately. delayed replies after another
+query, machine change or cancellation cannot supply a cwd. no matches and search
+failure keep the query editable; no pending or unresolved query can create a
+session. the [directory qualification issue](issues/terminal-continuity-directory-qualification.md)
+records the boundary of current evidence.
 
 | criterion | proof |
 | --- | --- |

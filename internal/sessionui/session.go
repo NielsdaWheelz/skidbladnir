@@ -72,10 +72,10 @@ type model struct {
 	top                              int
 	pageName, pageMachine, pageRef   string
 	searchRevision                   int
+	searchCancel                     context.CancelFunc
 	searching                        bool
 	searchDirectories                []string
 	searchCursor                     int
-	searchOmitted                    bool
 	notificationStore                *fleetclient.NotificationStore
 	notificationSnapshot             fleetclient.NotificationSnapshot
 	notificationFailed               bool
@@ -83,7 +83,9 @@ type model struct {
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
-	_, err := tea.NewProgram(newModel(ctx, client, input, output), tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
+	m := newModel(ctx, client, input, output)
+	defer m.clearDirectorySearch()
+	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
 	return err
 }
 func newModel(ctx context.Context, client *fleetclient.Client, input, output *os.File) *model {
@@ -332,7 +334,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, m.refresh()
 	case searchMsg:
-		if m.page != "search" || m.form[0] != message.machine || m.searchRevision != message.revision {
+		if m.page != "create" || m.form[0] != message.machine || m.searchRevision != message.revision {
 			return m, nil
 		}
 		m.searching = false
@@ -343,13 +345,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				case "DirectorySearchTooLarge":
 					m.inform("too many results; narrow your search")
 				case "invalid_input":
-					m.inform("enter 1–8 search words")
+					m.inform("enter 1–8 search words, at most 256 bytes")
 				}
 			}
 			return m, nil
 		}
 		value := message.result.Value.(fleetclient.DirectorySearchResult)
-		m.searchDirectories, m.searchOmitted, m.searchCursor = value.Directories, value.Omitted, 0
+		m.searchDirectories, m.searchCursor = value.Directories, 0
 		m.inform("")
 		if len(value.Directories) == 0 {
 			m.inform("no matching directories")
@@ -383,6 +385,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.form[m.field] += singleLine(message.Content)
 				}
+				if m.field == 3 {
+					return m, m.searchDirectory()
+				}
 			}
 		}
 	case tea.KeyPressMsg:
@@ -392,6 +397,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if key == "ctrl+c" {
+			m.clearDirectorySearch()
 			return m, tea.Quit
 		}
 		if m.width < 80 || m.height < 24 {
@@ -435,23 +441,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "create" {
 			return m, m.editForm(message)
-		}
-		if m.page == "search" {
-			switch key {
-			case "esc", "q":
-				m.page = "create"
-			case "up", "k":
-				m.searchCursor = max(0, m.searchCursor-1)
-			case "down", "j":
-				m.searchCursor = min(max(0, len(m.searchDirectories)-1), m.searchCursor+1)
-			case "enter":
-				if !m.searching && len(m.searchDirectories) > 0 {
-					m.form[3] = m.searchDirectories[m.searchCursor]
-					m.field, m.page = 3, "create"
-					m.inform("")
-				}
-			}
-			return m, nil
 		}
 		if m.page != "" {
 			switch key {
@@ -517,7 +506,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.page, m.field = "create", 0
-			m.form = [5]string{peer.Label, "terminal", "", "~", m.groupFilter.Label().String()}
+			m.clearDirectorySearch()
+			m.form = [5]string{peer.Label, "terminal", "", "", m.groupFilter.Label().String()}
 			m.inform("")
 			return m, nil
 		}
@@ -731,144 +721,6 @@ func (m *model) selectedRow() *listedRow {
 		return nil
 	}
 	return &m.rows[m.cursor]
-}
-
-func (m *model) createAvailable() bool {
-	if !m.scopeReady {
-		return false
-	}
-	for _, peer := range m.peers {
-		if peer.Label != m.form[0] || !peer.OK {
-			continue
-		}
-		if m.form[1] == "terminal" {
-			return true
-		}
-		for _, profile := range peer.Profiles {
-			if profile.Key == m.form[1] {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
-	switch key.String() {
-	case "esc":
-		m.page = ""
-	case "tab":
-		m.field = (m.field + 1) % 5
-	case "shift+tab":
-		m.field = (m.field + 4) % 5
-	case "enter":
-		if m.field == 3 && (m.form[3] == "z" || strings.HasPrefix(m.form[3], "z ")) {
-			terms := strings.Fields(strings.TrimPrefix(m.form[3], "z"))
-			if len(terms) == 0 || len(terms) > 8 {
-				m.inform("enter 1–8 search words")
-				return nil
-			}
-			m.searchRevision++
-			m.searching, m.searchDirectories, m.searchCursor, m.searchOmitted = true, nil, 0, false
-			m.page = "search"
-			m.inform("searching…")
-			machine, revision := m.form[0], m.searchRevision
-			return func() tea.Msg {
-				return searchMsg{machine: machine, revision: revision, result: m.client.SearchDirectories(m.ctx, machine, terms)}
-			}
-		}
-		if m.field < 4 {
-			m.field++
-			return nil
-		}
-		if !m.createAvailable() {
-			m.inform("host unavailable; refresh before creating")
-			return nil
-		}
-		label, err := group.ParseDraft(m.form[4])
-		if err != nil {
-			m.inform(group.ErrInvalid.Error())
-			return nil
-		}
-		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: m.form[3], Group: label}
-		if m.form[1] == "terminal" {
-			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
-		}
-		if !request.Valid() {
-			m.inform("machine, launch, and directory are required")
-			return nil
-		}
-		return m.execute(request)
-	case "left", "right":
-		if m.field == 4 {
-			m.form[4] = m.nextGroupDraft(m.form[4], key.String() == "left")
-			return nil
-		}
-		if m.field > 1 {
-			return nil
-		}
-		options := []string{}
-		for _, peer := range m.peers {
-			if !peer.OK {
-				continue
-			}
-			if m.field == 0 {
-				options = append(options, peer.Label)
-			}
-			if m.field == 1 && peer.Label == m.form[0] {
-				for _, profile := range peer.Profiles {
-					options = append(options, profile.Key)
-				}
-				options = append(options, "terminal")
-			}
-		}
-		if len(options) == 0 {
-			return nil
-		}
-		index := 0
-		for i, value := range options {
-			if value == m.form[m.field] {
-				index = i
-				break
-			}
-		}
-		if key.String() == "left" {
-			index = (index + len(options) - 1) % len(options)
-		} else {
-			index = (index + 1) % len(options)
-		}
-		m.form[m.field] = options[index]
-		if m.field == 0 {
-			m.form[3] = "~"
-			if m.form[1] != "terminal" {
-				m.form[1] = "terminal"
-				for _, peer := range m.peers {
-					if peer.Label == m.form[0] && len(peer.Profiles) != 0 {
-						m.form[1] = peer.Profiles[0].Key
-						break
-					}
-				}
-			}
-		}
-	case "ctrl+u":
-		if m.field == 4 {
-			m.form[4] = ""
-		}
-	case "backspace":
-		if m.field >= 2 && m.form[m.field] != "" {
-			_, size := utf8.DecodeLastRuneInString(m.form[m.field])
-			m.form[m.field] = m.form[m.field][:len(m.form[m.field])-size]
-		}
-	default:
-		if m.field >= 2 {
-			if m.field == 4 {
-				m.form[m.field] += key.Text
-			} else {
-				m.form[m.field] += singleLine(key.Text)
-			}
-		}
-	}
-	return nil
 }
 
 // singleLine replaces controls, invisible format characters such as bidi
