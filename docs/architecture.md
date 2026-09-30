@@ -12,6 +12,8 @@ never selects terminal operations. stop retains the terminal; close reports
 interruption and terminal closure separately.
 [qualification](native-agent-qualification.md) records source, installed-host
 and phone evidence with their limits.
+[terminal qualification](terminal-agent-control-qualification.md) records the
+terminal cutover separately from current-main release composition.
 
 2026-09-29: skid v0.10.6 runs on macbook, devbox, arch and android. herdr and
 herdr-mobile are retired. [the deployment handoff](dev-server-handoff.md) owns

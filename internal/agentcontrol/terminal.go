@@ -22,7 +22,7 @@ func (service *Service) sample(ctx context.Context, target sessions.TerminalTarg
 	session, capture, err := service.sessions.CaptureTerminal(ctx, target, 8192, true)
 	result := detection{state: "unknown", composer: "unknown"}
 	if errors.Is(err, sessions.ErrTerminalObservationChanged) {
-		err = sessions.ErrTerminalUnavailable
+		return session, result, nil
 	}
 	if err != nil {
 		return session, result, err

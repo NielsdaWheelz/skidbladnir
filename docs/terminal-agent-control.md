@@ -1,7 +1,8 @@
 # terminal status and control
 
-status: source snapshot composed into `codex/reply-notifications`; broader
-qualification and deployment remain separate. this owns the hard cutover
+status: source implemented; [qualification](terminal-agent-control-qualification.md)
+records the full terminal checks and current-main composition limits.
+this owns the hard cutover
 of ordinary terminal observation and orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
 [agent control](agent-control.md), and [client controls](agent-control-ux.md) at
@@ -76,6 +77,9 @@ or native-fallback composition. inspect at most 8 kib of the current visible
 screen and its last eight joined lines, never old scrollback. adapt the existing
 bounded tmux capture primitive to select visible screen versus retained tail;
 keep utf-8 truncation, byte limits and capture cleanup at that owner.
+visible observation may retain bounded sgr styling to distinguish a dim provider
+placeholder from typed input; terminal reads remain plain text. unknown
+styling/layout refuses guarded send. no placeholder whitelist or terminal emulator.
 
 precedence: recognized dialog/blocker -> positive working indicator -> recognized
 prompt/footer idle pattern -> unknown. identify codex/claude from fresh process
@@ -90,6 +94,10 @@ working/blocker evidence may produce it. it does not establish turn completion,
 input admission, an empty queue or task success. qualify current provider screens;
 document known false-positive cases rather than claiming authoritative state.
 no synthetic certainty score, status timestamp, transition ledger or debounce.
+when a composer is present, working chrome must be adjacent through whitespace
+or its paired provider border; intervening output makes it ambiguous. preserve
+codex's fullscreen status/shortcut rows, exact footer inset and spacing boundary;
+title-generation spinners and passive warnings are metadata, never turn activity.
 
 sample exact session/pane and foreground before capture; recheck them afterward.
 discard evidence on observed change. `/exit` stops applying the former agent's
@@ -145,7 +153,10 @@ ordinary append/paste-and-submit semantics. send/text reuse the same unique-buff
 paste plus one submit primitive. stage that buffer before final foreground
 revalidation; both paste and enter belong inside the successful tmux predicate
 branch. refusal executes neither; cleanup deletes only this operation's buffer.
-an observed foreground change refuses, without generic-key substitution.
+bounded buffer cleanup may continue for one second after request cancellation;
+it removes staged input only and never dispatches another effect.
+an observed provider-foreground change refuses guarded send, without generic-key
+substitution; deliberate text/keys require terminal authority only.
 no peer attribution, native admission, queue or completion
 claim. preparation failures before possible input are `not_sent`; possible input
 with lost confirmation is `unknown`; neither is automatically retried.
@@ -291,6 +302,8 @@ accessibility; never duplicate detector logic in clients.
 | stop receipt | `interrupt key sent; stopping is unconfirmed.` |
 | guarded send refused | `send unavailable for this screen. open the terminal or use text/keys.`; dialog: `respond to the dialog in the terminal.`; draft: `terminal contains a draft. open it before sending.` |
 | unknown write | `could not confirm terminal input. inspect the terminal before trying again.` |
+| lost combined-close response | `could not confirm terminal interruption or deletion. inspect the terminal if available and refresh before taking another action.` |
+| lost terminal-only close response | `could not confirm terminal deletion. refresh before taking another action.` |
 | partial close | `terminal closed; interruption unconfirmed.` |
 | target change | `the terminal changed. refresh before trying again.` |
 | inferred wait match | `observed idle (inferred).` or `observed waiting (inferred).` |
@@ -331,12 +344,12 @@ owner governs its colors. labels survive no-color display; no success claim.
 | root integrator | `docs/`, `cmd/skidbladnir/` only if composition needs it; coordinated release metadata | contract/adjacent-pr integration, verification and hard cutover |
 | adversarial verifier | read-only; no production/test files | challenge contracts, red-test sensitivity, green behavior and refactor |
 
-primary existing files: `sessions/{control,types,manager,agent}.go`,
-`tmux/{control,client}.go`, `agentcontrol/{service,actions,native,create}.go`,
-`gateway/{agent_control,conversations,dto,gateway}.go`,
+primary files: `sessions/{control,types,manager,agent}.go`,
+`tmux/{control,client}.go`, `agentcontrol/{service,terminal,detect,native,create}.go`,
+`gateway/{terminal_control,native_response,conversations,dto,gateway}.go`,
 `fleetclient/{request,response,client,wait}.go`, `agentcli/run.go`,
 `sessionui/{session,view,details,navigation}.go`; android `AgentControl.kt`, `GatewayClient.kt`,
-`ProductModel.kt`, `SkidbladnirController.kt`, `SessionCard.kt`, `TerminalScreen.kt`.
+`TerminalControl.kt`, `ProductModel.kt`, `SkidbladnirController.kt`, `SessionCard.kt`, `TerminalScreen.kt`.
 split terminal policy from native policy within the existing owner if needed;
 no generic provider framework. consolidate one capture/input validator, one
 interruption-key selector and one closure operation. remove old session-native
@@ -394,5 +407,6 @@ differently; foreground changes cannot be atomic with key consumption; remote
 controls use generic terminal behavior; closure may leave detached/shared work;
 request cancellation can leave close incomplete; creation retains its native
 dependency; coordinated schemas invalidate old refs;
+reserved forge clearance reduces the phone's visible list height;
 retained native code needs upkeep; deleting tests forfeits automatic regression
 protection. none warrants a new runtime, history store or compatibility layer.

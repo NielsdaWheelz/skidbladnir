@@ -427,7 +427,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			ref, _ := fleetclient.DecodeReference(command.request.Ref)
 			native = native || ref.Conversation != nil
 		}
-		message := fleetclient.ErrorMessage(*result.Error, command.request.Operation, native)
+		message := fleetclient.ErrorMessage(*result.Error, command.request, native)
 		fmt.Fprintln(stderr, message)
 
 		switch result.Error.Code {

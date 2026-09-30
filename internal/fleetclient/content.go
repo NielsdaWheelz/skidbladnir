@@ -9,13 +9,19 @@ func SessionStatusDetail(session Session) string {
 }
 
 // ErrorMessage is shared by command output and the desktop browser.
-func ErrorMessage(failure Failure, operation string, native bool) string {
+func ErrorMessage(failure Failure, request Request, native bool) string {
 	if failure.Dispatch == "unknown" {
-		if operation == "start" || operation == "shell" {
+		if request.Operation == "start" || request.Operation == "shell" {
 			return "could not confirm terminal creation. refresh before taking another action."
 		}
 		if native {
 			return "could not confirm the native request. inspect the conversation before trying again."
+		}
+		if request.Operation == "close" {
+			if request.TerminalOnly {
+				return "could not confirm terminal deletion. refresh before taking another action."
+			}
+			return "could not confirm terminal interruption or deletion. inspect the terminal if available and refresh before taking another action."
 		}
 		return "could not confirm terminal input. inspect the terminal before trying again."
 	}

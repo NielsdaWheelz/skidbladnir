@@ -165,8 +165,8 @@ reports a fact the app holds (`MachineState.canForge`), never activity.
   layout modifier on the same node, so threading it through the control would
   report semantics bounds 32dp larger than the octagon a user can see — and the
   clearance below is measured against exactly those bounds.
-- The grid's bottom `contentPadding` becomes `16 + 56 + 12 = 84dp`; the last row
-  never sits under the seal.
+- reserve `16 + 56 + 12 = 84dp` below the grid's scroll viewport. trailing
+  content padding alone allows intermediate controls to scroll under the seal.
 - `contentDescription = "New dwarf"`; `Role.Button`; `enabled = canForge` so
   disabled state is spoken; 56dp ≥ the 48dp floor, so no
   `minimumInteractiveComponentSize()`.
@@ -179,7 +179,7 @@ Box(fillMaxSize, Ink, systemBarsPadding)
 |  |- DashboardTopBar            <- title + summary; fixed 64dp; no click surface
 |  |- MachineFilters / MachineStrip* / notices / recovery
 |  `- PullToRefreshBox           <- P2R
-|     `- LazyVerticalGrid        <- contentPadding bottom 84dp
+|     `- Box / LazyVerticalGrid  <- viewport bottom clearance 84dp
 `- ForgeSeal(align = BottomEnd, padding 16dp)
       canForge -> field + metal
       click    -> controller.openForge()
