@@ -179,18 +179,18 @@ const (
 )
 
 type Event struct {
-	kind          eventKind
-	method        Method
-	route         Route
-	status        int
-	duration      time.Duration
-	errorCode     ErrorCode
-	count         uint64
-	tmuxID        string
-	launchProfile agentruntime.ProfileKey
-	observation   sessions.StatusReason
-	level         PressureLevel
-	reasons       []PressureReason
+	kind              eventKind
+	method            Method
+	route             Route
+	status            int
+	duration          time.Duration
+	errorCode         ErrorCode
+	count             uint64
+	tmuxID            string
+	launchProfile     agentruntime.ProfileKey
+	observationReason sessions.StatusReason
+	level             PressureLevel
+	reasons           []PressureReason
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
@@ -232,7 +232,7 @@ func NewSessionKilled(tmuxID string, duration time.Duration) (Event, error) {
 // NewTerminalObservationFailed records one observation whose status is
 // unavailable: the failed stage's reason and how long the observation took.
 func NewTerminalObservationFailed(tmuxID string, reason sessions.StatusReason, duration time.Duration) (Event, error) {
-	event := Event{kind: eventTerminalObservationFailed, tmuxID: tmuxID, observation: reason, duration: duration}
+	event := Event{kind: eventTerminalObservationFailed, tmuxID: tmuxID, observationReason: reason, duration: duration}
 	if !event.valid() {
 		return Event{}, errors.New("invalid terminal-observation-failed log event")
 	}
@@ -272,7 +272,7 @@ func (event Event) valid() bool {
 	case eventSessionKilled:
 		return validTmuxID(event.tmuxID) && event.duration >= 0
 	case eventTerminalObservationFailed:
-		switch event.observation {
+		switch event.observationReason {
 		case sessions.ReasonObservationTimeout, sessions.ReasonCaptureFailed, sessions.ReasonProcessFailed:
 			return validTmuxID(event.tmuxID) && event.duration >= 0
 		default:
@@ -341,7 +341,7 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventTerminalObservationFailed:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
-		fields["skidbladnir.observation.reason"] = event.observation
+		fields["skidbladnir.observation.reason"] = event.observationReason
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventPressureSampled:
 		fields["skidbladnir.pressure.level"] = event.level

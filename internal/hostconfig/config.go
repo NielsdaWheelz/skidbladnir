@@ -63,25 +63,11 @@ func Load(path string, runtime platform.Kind) (config Config, resultErr error) {
 	if len(encoded) > maximumConfigBytes {
 		return Config{}, errors.New("host config is too large")
 	}
-	config, err = parse(encoded, runtime)
-	if err != nil {
-		return Config{}, fmt.Errorf("parse host config: %w", err)
-	}
-	return config, nil
-}
-
-func parse(encoded []byte, runtime platform.Kind) (Config, error) {
-	if len(encoded) == 0 || len(encoded) > maximumConfigBytes {
-		return Config{}, errors.New("host config has invalid size")
-	}
-	if runtime != platform.KindLinux && runtime != platform.KindDarwin {
-		return Config{}, errors.New("runtime platform is unsupported")
-	}
 	var wire *configDTO
 	if err := strictjson.Decode(encoded, &wire); err != nil || wire == nil {
 		return Config{}, errors.New("host config is not canonical JSON")
 	}
-	return wire.validate(runtime)
+	return wire.admit(runtime)
 }
 
 func ValidateTmuxVersion(version string) error {
@@ -133,7 +119,9 @@ type foregroundSignatureDTO struct {
 	ExecutablePath stringField `json:"executablePath"`
 }
 
-func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
+// admit validates the decoded document and resolves the foreground executable
+// paths it names; a path that does not resolve to an executable file fails.
+func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
 	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.ZoxidePath.present || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
 		return Config{}, errors.New("host config omits a required member")
 	}
@@ -197,12 +185,17 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 				if !validAbsolutePath(signature.ExecutablePath.value) {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
 				}
-				// The kernel reports the resolved executable image, whatever
-				// spelling launched it. Resolve the configured spelling once, at
-				// admission: a later relink is seen only after a configuration reload.
+				// The kernel reports the executable image, whatever spelling
+				// launched it, so admission resolves the configured spelling once.
+				// The gateway sees a later relink only after restart; agent-hook
+				// and validate-host-config re-admit on every run.
 				resolved, err := filepath.EvalSymlinks(signature.ExecutablePath.value)
 				if err != nil {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is unresolvable", candidate.Key.value)
+				}
+				info, err := os.Stat(resolved)
+				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+					return nil, fmt.Errorf("host config profile %s foreground executable path is not an executable file", candidate.Key.value)
 				}
 				executablePath = resolved
 			}

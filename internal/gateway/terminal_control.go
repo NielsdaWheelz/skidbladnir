@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -107,18 +105,29 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	switch operation {
 	case "inspect":
 		startedAt := time.Now()
-		status, diagnostics, inspectErr := gateway.agents.TerminalInspect(ctx, target)
-		if inspectErr != nil {
-			writeError(writer, terminalFailure(inspectErr))
-			return
+		var status sessions.TerminalStatus
+		var diagnostics agentcontrol.Diagnostics
+		status, diagnostics, err = gateway.agents.TerminalInspect(ctx, target)
+		if err != nil {
+			break
 		}
-		inspected, mapErr := mapTerminalInspectResponse(status, diagnostics, input.Explain != nil && *input.Explain)
-		if mapErr != nil {
+		if !status.Valid() {
 			writeError(writer, errorInternal)
 			return
 		}
 		if status.Source == sessions.SourceUnavailable {
 			gateway.logObservationFailure(agentcontrol.ObservationFailure{TmuxID: id, Reason: status.Reason, Elapsed: time.Since(startedAt)})
+		}
+		inspected := struct {
+			TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
+			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
+		}{TerminalStatus: status}
+		if input.Explain != nil && *input.Explain {
+			// The wire contract sends rules as an array, never null.
+			if diagnostics.Rules == nil {
+				diagnostics.Rules = []agentcontrol.DiagnosticRule{}
+			}
+			inspected.Diagnostics = &diagnostics
 		}
 		result = inspected
 	case "read":
@@ -184,50 +193,6 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 type terminalCloseResult struct {
 	Interrupt string `json:"interrupt"`
 	Terminal  string `json:"terminal"`
-}
-
-var diagnosticRuleID = regexp.MustCompile(`^[a-z0-9_.-]{1,48}$`)
-
-// Diagnostics are present iff the request asked for an explanation.
-type terminalInspectResponse struct {
-	TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
-	Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
-}
-
-// mapTerminalInspectResponse sends only a valid status and a bounded,
-// content-free explanation; anything else is a producer defect.
-func mapTerminalInspectResponse(status sessions.TerminalStatus, diagnostics agentcontrol.Diagnostics, explain bool) (terminalInspectResponse, error) {
-	if !status.Valid() {
-		return terminalInspectResponse{}, errors.New("invalid terminal status")
-	}
-	if !explain {
-		return terminalInspectResponse{TerminalStatus: status}, nil
-	}
-	if len(diagnostics.Rules) > 8 {
-		return terminalInspectResponse{}, errors.New("too many diagnostic rules")
-	}
-	for _, rule := range diagnostics.Rules {
-		switch rule.Region {
-		case agentcontrol.DiagnosticTop, agentcontrol.DiagnosticBottom, agentcontrol.DiagnosticCompound:
-		default:
-			return terminalInspectResponse{}, errors.New("invalid diagnostic rule region")
-		}
-		if !diagnosticRuleID.MatchString(rule.ID) {
-			return terminalInspectResponse{}, errors.New("invalid diagnostic rule id")
-		}
-	}
-	if diagnostics.Rules == nil {
-		diagnostics.Rules = []agentcontrol.DiagnosticRule{}
-	}
-	if diagnostics.Capture != nil && (diagnostics.Capture.Width < 1 || diagnostics.Capture.Height < 1) {
-		return terminalInspectResponse{}, errors.New("invalid diagnostic capture dimensions")
-	}
-	for _, elapsed := range []*int64{diagnostics.ElapsedMs.Resolve, diagnostics.ElapsedMs.Capture, diagnostics.ElapsedMs.Classify} {
-		if elapsed != nil && (*elapsed < 0 || *elapsed > math.MaxInt32) {
-			return terminalInspectResponse{}, errors.New("invalid diagnostic stage duration")
-		}
-	}
-	return terminalInspectResponse{TerminalStatus: status, Diagnostics: &diagnostics}, nil
 }
 
 // terminalLifecycle orders attachment admission and exact session deletion.
