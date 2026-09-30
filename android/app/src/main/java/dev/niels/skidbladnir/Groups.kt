@@ -121,17 +121,15 @@ internal sealed interface DashboardItem {
 }
 
 /**
- * The dashboard's one ordered projection: headings by label with unassigned last, sessions by machine
- * then tmux id. Filtering before grouping leaves no empty heading.
+ * The dashboard's one ordered projection of the scoped [machines]: headings by label with unassigned
+ * last, sessions by machine then tmux id. Filtering before grouping leaves no empty heading.
  */
 internal fun dashboardItems(
     machines: List<MachineState>,
-    scope: DashboardScope,
     group: DashboardGroupSelection,
     needsInputOnly: Boolean,
 ): List<DashboardItem> {
     val grouped = machines
-        .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
         .flatMap { state ->
             state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
                 .filter { group.matches(it.group) && (!needsInputOnly || sessionNeedsInput(it, state.canMutate)) }

@@ -154,7 +154,7 @@ internal fun DashboardMain(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val items = dashboardItems(state.machines, scope, entry.group, entry.needsInputOnly)
+    val items = dashboardItems(machines, entry.group, entry.needsInputOnly)
     val canForge = machines.any(MachineState::canForge)
     val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
@@ -208,6 +208,7 @@ internal fun DashboardMain(
             DashboardDwarfCollection(
                 state = state,
                 entry = entry,
+                machines = machines,
                 items = items,
                 onVerify = onVerify,
                 onRestore = controller::restoreDashboardOnce,
@@ -244,6 +245,7 @@ internal fun DashboardMain(
 internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
+    machines: List<MachineState>,
     items: List<DashboardItem>,
     onVerify: () -> Unit,
     onRestore: (List<DashboardItemKey>) -> Unit,
@@ -254,12 +256,6 @@ internal fun DashboardDwarfCollection(
     onGroup: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
-    val machines = state.machines.filter { machine ->
-        when (scope) {
-            DashboardScope.All -> true
-            is DashboardScope.Machine -> machine.machine.handle == scope.handle
-        }
-    }
     val keys = items.map(DashboardItem::key)
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)

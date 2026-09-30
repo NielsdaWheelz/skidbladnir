@@ -103,8 +103,7 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                working = session.agent != null && session.connection == null &&
-                    session.terminalStatus.activity == TerminalActivity.Working,
+                working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
                 activityTone = tone,
                 animateActivity = machine.canMutate && motionEnabled,
             )

@@ -131,13 +131,16 @@ internal class DashboardEntryState {
         currentGroup = selected.copy(label = label)
     }
 
-    /** Confirmed creation reveals the created session; whether it needs input is unknown until a later poll. */
+    /**
+     * Confirmed creation reveals the created session. Dashboard membership follows the next inventory
+     * sample, not the creation sample, so the needs-input filter clears (desktop parity).
+     */
     fun followCreatedMembership(label: GroupLabel?) {
-        val group = currentGroup.takeIf { it.matches(label) }
-            ?: label?.let { DashboardGroupSelection.Named(groupFingerprint(it), it) }
-            ?: DashboardGroupSelection.Unassigned
-        if (group == currentGroup && !currentNeedsInputOnly) return
-        currentGroup = group
+        val groupMatches = currentGroup.matches(label)
+        if (groupMatches && !currentNeedsInputOnly) return
+        if (!groupMatches) {
+            currentGroup = label?.let { DashboardGroupSelection.Named(groupFingerprint(it), it) } ?: DashboardGroupSelection.Unassigned
+        }
         currentNeedsInputOnly = false
         pendingSnapshot = null
         ownedGridState = LazyGridState()

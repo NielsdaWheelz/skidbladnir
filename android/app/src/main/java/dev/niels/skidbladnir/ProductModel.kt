@@ -253,6 +253,7 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     NameMode.Manual -> SessionNaming.Manual(tmuxName)
 }
 
+/** An [agent] is always the local foreground: ingress rejects one beside a [connection]. */
 internal data class TmuxSession(
     val tmuxId: String,
     val activePaneId: String,
@@ -970,8 +971,7 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
 
 internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
 internal data class SessionStatusContent(
-    val label: String, val accessibilityLabel: String, val detail: String? = null,
-    val tone: SessionStatusTone = SessionStatusTone.Muted, val secondary: String? = null,
+    val label: String, val accessibilityLabel: String, val detail: String?, val tone: SessionStatusTone, val secondary: String?,
 )
 
 /**
@@ -979,9 +979,9 @@ internal data class SessionStatusContent(
  * first matching row wins. A response request, menu or current notice outranks visible work, which
  * then survives as `work continues`. Only a local agent's terminal sample makes an inference claim.
  */
-internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation = NotificationPresentation()): SessionStatusContent {
+internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation): SessionStatusContent {
     val status = session.terminalStatus
-    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
+    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null
     val requestMenuOrNotice = when (status.interaction) {
         TerminalInteraction.Permission -> "needs permission" to SessionStatusTone.Attention
         TerminalInteraction.Question -> "needs answer" to SessionStatusTone.Attention

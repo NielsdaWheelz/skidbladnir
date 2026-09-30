@@ -82,7 +82,7 @@ import kotlinx.serialization.json.jsonObject
                     revision = notificationRevision(unselected), foreground = null, pending = false, baselinePending = false,
                 )
             }
-            val foreground = session.agent?.takeIf { session.connection == null }?.let(::NotificationForeground)
+            val foreground = session.agent?.let(::NotificationForeground)
             val positiveExit = foreground == null && session.terminalStatus.source == TerminalStatusSource.Terminal
             val replaced = foreground != null && old?.foreground != foreground || positiveExit
             val revision = notificationRevision(old)
@@ -118,9 +118,8 @@ import kotlinx.serialization.json.jsonObject
 
     /** Saved ready shows only on a READY observation of the exact foreground it was recorded for; pending excludes a baseline. */
     fun presentsReady(key: NotificationKey, session: TmuxSession): Boolean {
-        val agent = session.agent?.takeIf { session.connection == null } ?: return false
         val saved = record(key) ?: return false
-        return saved.pending && saved.foreground == NotificationForeground(agent) &&
+        return saved.pending && saved.foreground == session.agent?.let(::NotificationForeground) &&
             readyObservation(session.terminalStatus) == ReadyObservation.Ready
     }
 
