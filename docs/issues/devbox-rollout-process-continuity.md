@@ -9,9 +9,10 @@ cannot be claimed from this rollout's broad executable sample.
 
 evidence, 2026-09-30: devbox pid `2762947`, ppid `2762535`, start tick
 `120047046`; neither pid remained. no tty, cgroup or session association was
-captured. bounded rollout journal queries found no records for either pid or
-a coredump. the gateway restarted at 15:37:43 utc with `KillMode=process` and
-result success; no causal link to the departure is established.
+captured. bounded rollout journal queries found no records for either pid and
+no coredump record in that window. the gateway restarted at 15:37:43 utc;
+current unit metadata reports `KillMode=process` and result success. no causal
+link to the departure is established.
 
 all captured tmux server pid/start identities survived. sampled codex identities
 survived on macbook 43/43, arch 2/2 and devbox 7/8; macbook gained three.
