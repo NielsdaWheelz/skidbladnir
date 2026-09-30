@@ -92,7 +92,7 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 	}
 	store, storeErr := fleetclient.DefaultNotificationStore()
-	return &model{notificationStore: store, notificationFailed: storeErr != nil, predecessors: map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor{}, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true, agentsView: true}
+	return &model{notificationStore: store, notificationFailed: storeErr != nil, predecessors: map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor{}, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true}
 }
 func (m *model) Init() tea.Cmd { return tea.Batch(m.fetch(), tick()) }
 func tick() tea.Cmd            { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }

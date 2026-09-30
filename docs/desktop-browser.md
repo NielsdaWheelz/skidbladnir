@@ -60,7 +60,7 @@ are local. refresh cannot rewrite a draft, captured action reference, or read sn
 
 ## 3. selection and navigation
 
-initial state: all machines, agents view; select the first row after inventory,
+initial state: all machines, all view; select the first row after inventory,
 or none. the machine filter applies to every view.
 
 | view | rows and order |
