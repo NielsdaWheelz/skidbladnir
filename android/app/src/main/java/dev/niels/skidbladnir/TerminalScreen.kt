@@ -164,7 +164,7 @@ internal fun TerminalScreen(
         }
         val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
         val content = sessionStatusContent(state.target.session, state.machine.canMutate, notification)
-        Text(listOfNotNull(content.label.replace("\n", " · "), content.detail).joinToString(" · "), color = sessionStatusColor(content.tone), style = MaterialTheme.typography.labelSmall,
+        Text(listOfNotNull(content.label, content.detail).joinToString(" · "), color = sessionStatusColor(content.tone), style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                 .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
         if (state.target.session.conversation != null) {

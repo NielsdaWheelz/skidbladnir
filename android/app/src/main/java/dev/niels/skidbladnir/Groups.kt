@@ -47,7 +47,7 @@ internal class GroupLabel private constructor(val text: String) {
 internal fun groupFingerprint(label: GroupLabel): String {
     val bytes = label.text.encodeToByteArray()
     val digest = MessageDigest.getInstance("SHA-256")
-    // The schema-2 selection fingerprint keeps its original domain across the product rename.
+    // The selection fingerprint keeps its original domain across the product rename.
     digest.update("skidbladnir.space-label.v1".encodeToByteArray())
     digest.update(byteArrayOf(
         (bytes.size ushr 24).toByte(), (bytes.size ushr 16).toByte(),
@@ -119,12 +119,19 @@ internal sealed interface DashboardItem {
     data class Session(val visible: VisibleSession) : DashboardItem { override val key = visible.cardKey }
 }
 
+/** One ordered heading/session projection; filtering before grouping leaves no empty heading. */
 internal fun dashboardItems(
     machines: List<MachineState>,
     scope: DashboardScope,
     group: DashboardGroupSelection,
+    needsInputOnly: Boolean,
 ): List<DashboardItem> {
-    val grouped = visibleSessions(machines, scope).filter { group.matches(it.target.session.group) }
+    val grouped = visibleSessions(machines, scope)
+        .filter { visible ->
+            group.matches(visible.target.session.group) && (!needsInputOnly || sessionNeedsInput(
+                visible.target.session, machines.single { it.machine.handle == visible.target.machineHandle }.canMutate,
+            ))
+        }
         .groupBy { it.target.session.group }
     val labels = grouped.keys.filterNotNull()
         .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }

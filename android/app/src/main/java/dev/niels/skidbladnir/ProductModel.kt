@@ -978,38 +978,70 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
-internal enum class SessionStatusTone { Working, Ready, Waiting, Muted }
+internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
 internal data class SessionStatusContent(
     val label: String, val accessibilityLabel: String, val detail: String? = null,
     val tone: SessionStatusTone = SessionStatusTone.Muted, val secondary: String? = null,
 )
 
+/**
+ * Single status projection for the card and the terminal header (spec §6): the first matching
+ * row wins. A response request, menu or current notice outranks visible work, which then survives
+ * as `work continues`. Only a local agent's terminal sample makes an inference claim.
+ */
 internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation = NotificationPresentation()): SessionStatusContent {
-    val inferred = session.terminalStatus.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
-    val state = when {
-        session.terminalStatus.source == TerminalStatusSource.Unavailable -> "status unavailable"
-        !inferred -> "terminal"
-        else -> when (session.terminalStatus.state) {
-            TerminalState.Working -> "working"
-            TerminalState.Blocked -> "waiting"
-            TerminalState.Idle -> if (fresh && notification.ready) "ready" else "idle"
-            TerminalState.Unknown -> "status unknown"
+    val status = session.terminalStatus
+    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
+    val requestMenuOrNotice = when (status.interaction) {
+        TerminalInteraction.Permission -> "needs permission" to SessionStatusTone.Attention
+        TerminalInteraction.Question -> "needs answer" to SessionStatusTone.Attention
+        TerminalInteraction.Setup -> "needs setup" to SessionStatusTone.Attention
+        TerminalInteraction.Confirmation -> "needs review" to SessionStatusTone.Attention
+        TerminalInteraction.Input -> "needs input" to SessionStatusTone.Attention
+        TerminalInteraction.Menu -> "menu open" to SessionStatusTone.Muted
+        TerminalInteraction.None, TerminalInteraction.Unknown -> when (status.notice) {
+            TerminalNotice.Interrupted -> "interruption shown" to SessionStatusTone.Muted
+            TerminalNotice.Error -> "error shown" to SessionStatusTone.Attention
+            TerminalNotice.None -> null
         }
     }
-    val label = if (fresh) state else "last observed: $state"
-    val tone = if (!fresh || !inferred) SessionStatusTone.Muted else when (session.terminalStatus.state) {
-        TerminalState.Working -> SessionStatusTone.Working
-        TerminalState.Blocked -> SessionStatusTone.Waiting
-        TerminalState.Idle -> if (notification.ready) SessionStatusTone.Ready else SessionStatusTone.Muted
-        TerminalState.Unknown -> SessionStatusTone.Muted
+    val (state, tone) = when {
+        status.source == TerminalStatusSource.Unavailable -> "status unavailable" to SessionStatusTone.Muted
+        !inferred -> "terminal" to SessionStatusTone.Muted
+        requestMenuOrNotice != null -> requestMenuOrNotice
+        else -> when (status.activity) {
+            TerminalActivity.Starting -> "starting" to SessionStatusTone.Working
+            TerminalActivity.Working -> "working" to SessionStatusTone.Working
+            // No request, menu or notice remains, so interaction is none or unknown here.
+            TerminalActivity.Idle -> when {
+                status.interaction == TerminalInteraction.Unknown -> "status unknown" to SessionStatusTone.Muted
+                fresh && notification.ready -> "ready" to SessionStatusTone.Ready
+                else -> "idle" to SessionStatusTone.Muted
+            }
+            TerminalActivity.Unknown -> "status unknown" to SessionStatusTone.Muted
+        }
     }
+    val workContinues = inferred && requestMenuOrNotice != null && status.activity == TerminalActivity.Working
+    val label = if (fresh) state else "last observed: $state"
     val secondary = if (notification.unavailable) "notifications unavailable" else null
     return SessionStatusContent(
         label,
-        label + (if (inferred) "; inferred from terminal" else "") + (secondary?.let { "; $it" } ?: ""),
-        if (inferred) "inferred from terminal" else session.activeCommand.takeIf { session.connection == null },
-        tone, secondary,
+        label + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
+            (secondary?.let { "; $it" } ?: ""),
+        if (inferred) listOfNotNull("work continues".takeIf { workContinues }, "inferred from terminal").joinToString(" · ")
+        else session.activeCommand.takeIf { session.connection == null },
+        if (fresh) tone else SessionStatusTone.Muted, secondary,
     )
+}
+
+/**
+ * The needs-input filter (spec §6): a fresh sample showing a response request, whatever its
+ * activity, notice or reason. An unavailable sample never carries an interaction.
+ */
+internal fun sessionNeedsInput(session: TmuxSession, fresh: Boolean): Boolean = fresh && when (session.terminalStatus.interaction) {
+    TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,
+    TerminalInteraction.Setup, TerminalInteraction.Input -> true
+    TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
 }
 
 private fun JsonObject.requireSessionOptionalFields() {
@@ -1020,7 +1052,6 @@ private fun JsonObject.requireSessionOptionalFields() {
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
     (this["conversation"] as? JsonObject)?.requireNativeValues()
-    (this["terminalStatus"] as? JsonObject)?.requireAbsentOrNonNull(setOf("state", "source"))
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size

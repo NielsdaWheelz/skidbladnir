@@ -85,36 +85,42 @@ import kotlinx.serialization.json.jsonObject
             val foreground = session.agent?.takeIf { session.connection == null }?.let(::NotificationForeground)
             val positiveExit = foreground == null && session.terminalStatus.source == TerminalStatusSource.Terminal
             val replaced = foreground != null && old?.foreground != foreground || positiveExit
-            val qualified = foreground != null && session.terminalStatus.source == TerminalStatusSource.Terminal &&
-                session.terminalStatus.state != TerminalState.Unknown
             val revision = notificationRevision(old)
             val prior = predecessors[key]?.takeIf { it.foreground == foreground && it.revision == old?.revision }
             var pending = old?.pending == true
             var baselinePending = old?.baselinePending == true
             if (replaced || key == visiting) pending = false
             if (positiveExit) baselinePending = false
-            if (qualified) {
-                if (baselinePending) {
+            // Every observation disarms: only this one's arming survives into next, so no gap bridges work to idle.
+            if (foreground != null) when (readyObservation(session.terminalStatus)) {
+                ReadyObservation.Arming -> {
                     pending = false
                     baselinePending = false
-                } else if (key != visiting && !replaced && session.terminalStatus.state == TerminalState.Idle && prior != null) {
-                    pending = true
+                    if (key != visiting) next[key] = NotificationPredecessor(foreground, revision)
                 }
-                when (session.terminalStatus.state) {
-                    TerminalState.Working -> {
-                        pending = false
-                        if (key != visiting) next[key] = NotificationPredecessor(checkNotNull(foreground), revision)
-                    }
-                    TerminalState.Blocked -> pending = false
-                    TerminalState.Idle -> Unit
-                    TerminalState.Unknown -> error("qualified unknown notification sample") // justify-defect: qualified excludes unknown.
+                ReadyObservation.Clearing -> {
+                    pending = false
+                    baselinePending = false
                 }
+                ReadyObservation.Ready -> {
+                    if (!baselinePending && key != visiting && !replaced && prior != null) pending = true
+                    baselinePending = false
+                }
+                ReadyObservation.Neutral -> Unit
             }
             records[key] = NotificationRecord(
                 key, revision, foreground ?: old?.foreground?.takeUnless { positiveExit }, pending, baselinePending,
             )
         }
         return NotificationUpdate(copy(terminals = records.values.toList()), next)
+    }
+
+    /** Saved ready shows only on a READY observation of the exact foreground it was recorded for; pending excludes a baseline. */
+    fun presentsReady(key: NotificationKey, session: TmuxSession): Boolean {
+        val agent = session.agent?.takeIf { session.connection == null } ?: return false
+        val saved = record(key) ?: return false
+        return saved.pending && saved.foreground == NotificationForeground(agent) &&
+            readyObservation(session.terminalStatus) == ReadyObservation.Ready
     }
 
     fun consume(key: NotificationKey, closing: Boolean): NotificationSnapshot {
@@ -126,6 +132,33 @@ import kotlinx.serialization.json.jsonObject
 internal data class NotificationPredecessor(val foreground: NotificationForeground, val revision: Long)
 internal data class NotificationUpdate(val snapshot: NotificationSnapshot, val predecessors: Map<NotificationKey, NotificationPredecessor>)
 internal data class NotificationPresentation(val ready: Boolean = false, val unavailable: Boolean = false)
+
+/**
+ * One fresh local sample's effect on ready attention (spec §6). Arming is working with no request,
+ * menu or notice; ready is the same shape at idle. Any request or menu (whatever the activity), any
+ * notice, starting or other work clears. Everything else, unavailable samples included since they
+ * classify nothing, only disarms and keeps pending ready.
+ */
+private enum class ReadyObservation { Arming, Clearing, Ready, Neutral }
+
+private fun readyObservation(status: TerminalStatus): ReadyObservation {
+    val interactionNone = when (status.interaction) {
+        TerminalInteraction.None -> true
+        TerminalInteraction.Unknown -> false
+        TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,
+        TerminalInteraction.Setup, TerminalInteraction.Input, TerminalInteraction.Menu -> return ReadyObservation.Clearing
+    }
+    when (status.notice) {
+        TerminalNotice.None -> Unit
+        TerminalNotice.Interrupted, TerminalNotice.Error -> return ReadyObservation.Clearing
+    }
+    return when (status.activity) {
+        TerminalActivity.Starting -> ReadyObservation.Clearing
+        TerminalActivity.Working -> if (interactionNone) ReadyObservation.Arming else ReadyObservation.Clearing
+        TerminalActivity.Idle -> if (interactionNone) ReadyObservation.Ready else ReadyObservation.Neutral
+        TerminalActivity.Unknown -> ReadyObservation.Neutral
+    }
+}
 
 private fun notificationRevision(record: NotificationRecord?): Long {
     if (record?.revision == Long.MAX_VALUE) throw IOException("notification revision exhausted")

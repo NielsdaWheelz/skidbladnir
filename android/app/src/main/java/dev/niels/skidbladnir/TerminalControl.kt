@@ -4,15 +4,53 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.decodeFromJsonElement
 
-@Serializable internal enum class TerminalState {
-    @SerialName("working") Working, @SerialName("blocked") Blocked,
-    @SerialName("idle") Idle, @SerialName("unknown") Unknown,
+@Serializable internal enum class TerminalActivity {
+    @SerialName("starting") Starting, @SerialName("working") Working, @SerialName("idle") Idle, @SerialName("unknown") Unknown,
+}
+@Serializable internal enum class TerminalInteraction {
+    @SerialName("none") None, @SerialName("permission") Permission, @SerialName("question") Question,
+    @SerialName("confirmation") Confirmation, @SerialName("setup") Setup, @SerialName("input") Input,
+    @SerialName("menu") Menu, @SerialName("unknown") Unknown,
+}
+@Serializable internal enum class TerminalNotice {
+    @SerialName("none") None, @SerialName("interrupted") Interrupted, @SerialName("error") Error,
 }
 @Serializable internal enum class TerminalStatusSource {
     @SerialName("terminal") Terminal, @SerialName("unavailable") Unavailable,
 }
-@Serializable internal data class TerminalStatus(val state: TerminalState, val source: TerminalStatusSource) {
-    init { require(source == TerminalStatusSource.Terminal || state == TerminalState.Unknown) }
+@Serializable internal enum class TerminalStatusReason {
+    @SerialName("recognized") Recognized, @SerialName("partial") Partial, @SerialName("layout_unknown") LayoutUnknown,
+    @SerialName("evidence_clipped") EvidenceClipped, @SerialName("evidence_conflict") EvidenceConflict,
+    @SerialName("provider_unrecognized") ProviderUnrecognized, @SerialName("remote_context") RemoteContext,
+    @SerialName("foreground_changed") ForegroundChanged, @SerialName("observation_timeout") ObservationTimeout,
+    @SerialName("capture_failed") CaptureFailed, @SerialName("process_failed") ProcessFailed,
+}
+
+/** One screen observation. The host's sessions.TerminalStatus owns the legal combinations; init mirrors its Valid. */
+@Serializable internal data class TerminalStatus(
+    val activity: TerminalActivity,
+    val interaction: TerminalInteraction,
+    val notice: TerminalNotice,
+    val source: TerminalStatusSource,
+    val reason: TerminalStatusReason,
+) {
+    init {
+        // justify-service-invariant-check: the reason ties source and the count of classified dimensions
+        // together; five independent wire enums cannot encode that product in Kotlin's type system.
+        val activityKnown = activity != TerminalActivity.Unknown
+        val interactionKnown = interaction != TerminalInteraction.Unknown
+        val terminal = source == TerminalStatusSource.Terminal
+        require(when (reason) {
+            TerminalStatusReason.ObservationTimeout, TerminalStatusReason.CaptureFailed, TerminalStatusReason.ProcessFailed ->
+                !terminal && !activityKnown && !interactionKnown && notice == TerminalNotice.None
+            TerminalStatusReason.ProviderUnrecognized, TerminalStatusReason.RemoteContext, TerminalStatusReason.ForegroundChanged ->
+                terminal && !activityKnown && !interactionKnown && notice == TerminalNotice.None
+            TerminalStatusReason.Recognized -> terminal && activityKnown && interactionKnown
+            TerminalStatusReason.Partial -> terminal && activityKnown != interactionKnown
+            TerminalStatusReason.LayoutUnknown -> terminal && !activityKnown && !interactionKnown
+            TerminalStatusReason.EvidenceClipped, TerminalStatusReason.EvidenceConflict -> terminal && (!activityKnown || !interactionKnown)
+        })
+    }
 }
 @Serializable internal enum class TerminalWriteOutcome {
     @SerialName("written") Written, @SerialName("unknown") Unknown,
