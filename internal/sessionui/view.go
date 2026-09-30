@@ -306,8 +306,10 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	// f toggles the filter; the rule's end shows when it is on.
-	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, {"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	// f toggles the filter; the rule's end shows when it is on. The strip's
+	// chevrons and --help teach ←→, so the global keys keep one 80-column line
+	// for host labels up to 9 cells.
+	return [][]hint{session, {{"a", "agents"}, {"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by

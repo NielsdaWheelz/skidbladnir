@@ -25,7 +25,7 @@ func (m *model) rebuild() {
 	if m.agentsView {
 		for _, peer := range m.scopedPeers() {
 			for _, session := range peer.Sessions {
-				row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
 				if m.current(&row).Agent != nil {
 					m.rows = append(m.rows, row)
 				}
@@ -43,7 +43,7 @@ func (m *model) rebuild() {
 	} else {
 		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
 			for _, row := range group.Rows {
-				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
+				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available && m.scopeReady})
 			}
 		}
 	}
@@ -136,20 +136,14 @@ func (m *model) move(delta int) {
 // unknown interaction is labelled status unknown and ranks with it. The sort is
 // stable within a rank.
 func attentionRank(status sessions.TerminalStatus) int {
-	switch status.Interaction {
-	case sessions.InteractionPermission, sessions.InteractionQuestion, sessions.InteractionConfirmation, sessions.InteractionSetup, sessions.InteractionInput, sessions.InteractionMenu:
+	switch {
+	case fleetclient.NeedsInput(status) || status.Interaction == sessions.InteractionMenu:
 		return 0
-	case sessions.InteractionNone, sessions.InteractionUnknown:
-	default:
-		panic("invalid owned terminal interaction") // justify-defect: ingress admits only Valid statuses.
+	case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone:
+		return 1
 	}
 	switch status.Activity {
-	case sessions.ActivityIdle:
-		if status.Interaction == sessions.InteractionNone {
-			return 1
-		}
-		return 2
-	case sessions.ActivityUnknown:
+	case sessions.ActivityIdle, sessions.ActivityUnknown:
 		return 2
 	case sessions.ActivityStarting, sessions.ActivityWorking:
 		return 3

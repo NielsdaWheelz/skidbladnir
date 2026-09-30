@@ -29,6 +29,9 @@ type StatusView struct {
 // view names its last observation and is never ready.
 func ProjectStatus(session Session, fresh, ready bool) StatusView {
 	status := session.TerminalStatus
+	if !status.Valid() {
+		panic("invalid owned terminal status") // justify-defect: ingress admits only Valid statuses.
+	}
 	local := session.Agent != nil && session.Connection == nil
 	// The first matching row names the status. overlay marks a request, menu or
 	// notice row, which outranks visible activity; inspect marks the rows only
@@ -39,22 +42,16 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 		label, inspect = "status unavailable", true
 	case !local:
 		label = "terminal"
-	case NeedsInput(status):
-		tone, overlay = ToneEmber, true
-		switch status.Interaction {
-		case sessions.InteractionPermission:
-			label = "needs permission"
-		case sessions.InteractionQuestion:
-			label = "needs answer"
-		case sessions.InteractionSetup:
-			label = "needs setup"
-		case sessions.InteractionConfirmation:
-			label = "needs review"
-		case sessions.InteractionInput:
-			label = "needs input"
-		default:
-			panic("needs-input interaction without a label") // justify-defect: NeedsInput admits exactly these.
-		}
+	case status.Interaction == sessions.InteractionPermission:
+		label, tone, overlay = "needs permission", ToneEmber, true
+	case status.Interaction == sessions.InteractionQuestion:
+		label, tone, overlay = "needs answer", ToneEmber, true
+	case status.Interaction == sessions.InteractionSetup:
+		label, tone, overlay = "needs setup", ToneEmber, true
+	case status.Interaction == sessions.InteractionConfirmation:
+		label, tone, overlay = "needs review", ToneEmber, true
+	case status.Interaction == sessions.InteractionInput:
+		label, tone, overlay = "needs input", ToneEmber, true
 	case status.Interaction == sessions.InteractionMenu:
 		label, overlay = "menu open", true
 	case status.Notice == sessions.NoticeInterrupted:
@@ -107,7 +104,7 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 	case sessions.ReasonProcessFailed:
 		reason = "foreground process could not be identified"
 	default:
-		panic("invalid owned terminal status reason") // justify-defect: ingress admits only Valid statuses.
+		panic("terminal status reason without copy") // justify-defect: the copy covers every reason Valid admits.
 	}
 	if inspect {
 		reason += "; open the terminal to inspect"

@@ -15,10 +15,11 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 )
 
+// listedRow is a session as its peer's inventory listed it at observedAt.
 type listedRow struct {
-	label, machine string
-	session        fleetclient.Session
-	available      bool
+	label, machine, observedAt string
+	session                    fleetclient.Session
+	available                  bool
 }
 type inventoryMsg struct {
 	machine         string
@@ -169,8 +170,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					if previous.Machine != received.Machine {
 						continue
 					}
+					// A failed host keeps its last sessions with the time that observed them.
 					if !received.OK {
-						received.Sessions = previous.Sessions
+						received.Sessions, received.ObservedAt = previous.Sessions, previous.ObservedAt
 					}
 					m.peers[index] = received
 					found = true

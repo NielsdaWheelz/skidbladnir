@@ -52,7 +52,7 @@ native targets: --conversation ID --profile PROFILE --machine HOST
 terminal read captures rendered text; --history is native-only
 native send defaults to peer; --input and --queue are native-only
 --queue and native claude input are unavailable
-terminal wait states: idle (no request or notice), working, needs-input
+terminal wait states: idle (no request, menu or notice), working, needs-input
 native wait states: idle, blocked, done, failed, stopped
 wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
 info --explain samples the terminal once more and prints that sample's status evidence
