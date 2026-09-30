@@ -204,8 +204,8 @@ and terminal closure separately; closure never proves halt. provider pending inp
 may remain and saved history is retained. terminal-only close requests no halt.
 
 [native interaction](native-agent-observation.md) owns explicit provider capabilities.
-browser `s` sends an interrupt, `c` then independently closes the entire session,
-and `x` closes without input on all fresh terminals. capture exact pane/session/
+browser `s` sends an interrupt; `x` sends one interrupt, then independently closes
+the entire session on all fresh terminals. capture exact pane/session/
 machine effects. the human reply viewer and `r` shortcut are removed.
 
 new codex terminals have no native card binding. manual linking,

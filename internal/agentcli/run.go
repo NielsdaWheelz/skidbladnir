@@ -62,7 +62,7 @@ browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
   a selects agents; m chooses machine; n opens terminal; N opens options
   enter attaches; space shows details; T opens a terminal here; e edits group
-  s sends interrupt; c interrupts and closes terminal; x closes terminal only
+  s sends interrupt; x interrupts and closes terminal
   ctrl-r refreshes; escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 

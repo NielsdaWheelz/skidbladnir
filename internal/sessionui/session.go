@@ -312,15 +312,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "close":
-			if _, ok := message.result.Value.(fleetclient.TerminalCloseResult); ok {
-				m.inform("terminal closed; work shared elsewhere or running remotely may continue.")
+			text := fleetclient.CloseText(message.result.Value.(fleetclient.CloseResult))
+			if message.result.ExitCode("close") != 0 {
+				m.fail(text)
 			} else {
-				text := fleetclient.CloseText(message.result.Value.(fleetclient.CloseResult))
-				if message.result.ExitCode("close") != 0 {
-					m.fail(text)
-				} else {
-					m.inform(text)
-				}
+				m.inform(text)
 			}
 		default:
 			receipt := message.result.Value.(fleetclient.WriteResult)
@@ -550,12 +546,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.enter(request)
 		case "x":
 			request.Operation = "close"
-			request.TerminalOnly = true
 		case "s":
 			request.Operation = "stop"
-		case "c":
-			request.Operation = "close"
-
 		}
 		if request.Operation == "stop" || request.Operation == "close" {
 			m.pending = request
