@@ -28,7 +28,16 @@ not_run() {
 }
 
 case "$gate" in
-  static)
+  static | verify)
+    scope="${1:-all}"
+    if [[ "$#" -gt 1 ]]; then
+      printf 'usage: scripts/check %s [all|host|android|none]\n' "$gate" >&2
+      exit 64
+    fi
+    case "$scope" in
+      all | host | android | none) ;;
+      *) printf 'unknown check scope: %s\n' "$scope" >&2; exit 64 ;;
+    esac
     cd "$repo_dir"
     run diff-check git diff --check
     # shellcheck disable=SC2016 # The inner shell owns this variable.
@@ -63,9 +72,19 @@ for name in sys.argv[1:]:
     run catalogue ./scripts/check-catalogue
     run terminal-assets ./scripts/check-terminal-assets
     run ornament ./scripts/gen-ornament --check
-    run go-mod-verify go mod verify
-    run go-vet go vet ./...
-    run android-static ./scripts/build android-static
+    if [[ "$scope" == all || "$scope" == host ]]; then
+      run go-mod-verify go mod verify
+      run go-vet go vet ./...
+      if [[ "$gate" == verify ]]; then
+        run go-build go build ./...
+      fi
+    fi
+    if [[ "$scope" == all || "$scope" == android ]]; then
+      run "android-$gate" ./scripts/build "android-$gate"
+    fi
+    if [[ "$gate" == verify ]]; then
+      printf 'engineering checks passed (build scope: %s); behavioral tests are absent\n' "$scope"
+    fi
     ;;
   published-release)
     [[ "$#" -eq 2 ]] || {
@@ -196,13 +215,8 @@ for name in sys.argv[1:]:
     }
     "$repo_dir/scripts/check-release-repository" run "$published_sha" "$published_run_id"
     ;;
-  verify)
-    "$0" static
-    "$repo_dir/scripts/build"
-    printf 'engineering checks passed; behavioral tests are absent\n'
-    ;;
   '')
-    printf 'usage: %s {static|verify|published-release TAG SOURCE_SHA}\n' "$0" >&2
+    printf 'usage: %s {static|verify [all|host|android|none]|published-release TAG SOURCE_SHA}\n' "$0" >&2
     exit 64
     ;;
   *)

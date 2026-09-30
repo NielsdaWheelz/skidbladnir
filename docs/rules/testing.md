@@ -22,7 +22,11 @@ current commands:
 - `scripts/check static`: formatting, syntax, shell/go/android lint, dependency
   integrity, and catalogue/generated-asset checks.
 - `scripts/build`: go and android debug builds.
-- `scripts/check verify`: static checks and builds; also the hosted ci command.
+- `scripts/check verify`: static checks and builds, with android lint and debug
+  assembly in one gradle invocation.
+- `scripts/check {static|verify} [all|host|android|none]`: select the expensive
+  platform checks; omitted scope means `all`. formatting, shell/python syntax,
+  shell lint, catalogue, terminal assets and ornament checks always run.
 - `scripts/release TAG`: build and verify signed artifacts once, then create a
   draft release. signing uses the private key; publication remains a separate action.
 - `scripts/check-release [--source SOURCE_DIRECTORY] RELEASE_DIRECTORY TAG SOURCE_SHA`:
@@ -34,6 +38,16 @@ there is no current behavioral test command. the former unit, integration,
 provider-live, live, platform, product, second-phone, and full gates are removed.
 tmux and phone operations still require explicit current-turn approval under
 `AGENTS.md`. release integrity is independent of behavioral acceptance.
+
+hosted ci keeps one `verify` job on every pull request and main push.
+it selects platform checks from the complete changed-path diff, including both
+sides of renames: go/module/deployment changes select host; android and terminal
+asset/generator changes select android; documentation/evidence/release-pin
+changes select neither. catalogue, check/build scripts, workflow and unrecognized
+paths select both. an initial push without a base selects both. failed diff
+collection fails the job. android setup is conditional; gradle dependencies,
+wrapper and cacheable task outputs are cached. a successful scoped run proves
+only its selected engineering checks, never unexecuted platform checks or behavior.
 
 [the coverage gap](../issues/test-system-reset.md) remains explicit; temporary
 tests do not close it.

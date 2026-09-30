@@ -52,10 +52,14 @@ require_android_signing() {
 }
 
 case "$target" in
-  android-static)
+  android-static | android-verify)
     cd "$repo_dir"
     node --check android/app/src/main/assets/terminal/terminal.js
-    android_gradle :app:compileDebugKotlin lintDebug
+    if [[ "$target" == android-static ]]; then
+      android_gradle :app:compileDebugKotlin :app:lintDebug
+    else
+      android_gradle :app:lintDebug :app:assembleDebug
+    fi
     ;;
   release-assets)
     [[ "$#" -eq 4 ]] || {
