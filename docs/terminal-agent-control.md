@@ -1,5 +1,9 @@
 # terminal status and control
 
+planned observation amendment: [non-native terminal observation](terminal-observation.md)
+supersedes the status schema, screen evidence and guarded-send admission below
+at implementation cutover. existing behavior and evidence remain recorded here.
+
 status: source implemented; [qualification](terminal-agent-control-qualification.md)
 records the full terminal checks and current-main composition limits.
 this owns the hard cutover

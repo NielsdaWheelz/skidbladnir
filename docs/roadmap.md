@@ -5,6 +5,19 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## non-native status and needs input — accepted plan
+
+[terminal observation](terminal-observation.md) specifies the next coordinated
+status cutover: bounded screen regions, provider-specific activity/request
+recognition, guarded composer reuse, diagnostics, managed codex run-state chrome
+and desktop/phone needs-input filtering. manual claude executable recognition is
+a prerequisite. screen ambiguity remains unknown; titles/progress are excluded.
+the plan assigns exclusive writers, content designers and adversarial review,
+with temporary red/green/refactor integration/live checks deleted before commit.
+no implementation, provider configuration, deployment or live acceptance is
+claimed. [detection](issues/terminal-status-detection.md) and
+[input](issues/agent-needs-input.md) remain open until qualified.
+
 ## automatic session names — source cutover
 
 [automatic names and public handles](automatic-session-names.md) specifies one

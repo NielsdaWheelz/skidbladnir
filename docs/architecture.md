@@ -1038,6 +1038,15 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
+2026-09-30 accepted implementation scope: [non-native terminal observation](terminal-observation.md)
+replaces ordinary terminal status and screen classification at coordinated
+host/client cutover. it adds independent activity/input facts, bounded diagnostic
+explanations, managed codex statusline cues and a needs-input filter; it includes
+the manual claude recognition prerequisite. obscured state may be unknown.
+no title/progress watcher, native status dependency, request store or new poller
+is authorized. the plan owns acceptance and narrow changes to §4 and feature
+contracts. this is accepted work, not implemented behavior or live qualification.
+
 agent control, groups, terminal creation and the organized desktop browser are
 accepted and implemented. their detailed specifications own their limits.
 [the composition plan](groups-and-shells.md) leaves terminal embedding as a
