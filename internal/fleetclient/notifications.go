@@ -219,7 +219,7 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 					quiet := status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
 					arming = quiet && status.Activity == sessions.ActivityWorking
 					ready = quiet && status.Activity == sessions.ActivityIdle
-					clearing = NeedsInput(status, true) || status.Interaction == sessions.InteractionMenu || status.Notice != sessions.NoticeNone || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
+					clearing = NeedsInput(status) || status.Interaction == sessions.InteractionMenu || status.Notice != sessions.NoticeNone || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
 				}
 				switch {
 				case record.BaselinePending && (clearing || ready || terminal && foreground == nil):

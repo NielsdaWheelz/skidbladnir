@@ -63,7 +63,7 @@ func (m *model) details(row *listedRow) [][2]string {
 	}
 
 	view := m.statusView(*row)
-	facts = append(facts, [2]string{"state", view.Detail()}, [2]string{"status reason", view.Reason})
+	facts = append(facts, [2]string{"state", view.Detail}, [2]string{"status reason", view.Reason})
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
@@ -93,15 +93,12 @@ func (m *model) rowForReference(encoded string) *listedRow {
 	return nil
 }
 
+// refreshInfo follows info's lifetime through each inventory. A lifetime that
+// leaves scoped inventory keeps its last observed facts, labelled unavailable.
 func (m *model) refreshInfo() {
-	if row := m.rowForReference(m.pageRef); row != nil {
-		m.facts = m.details(row)
-		m.pageName = row.session.Name
+	if row := m.rowForReference(m.pageRow.session.Ref); row != nil {
+		m.pageRow = *row
 		return
 	}
-	for index := range m.facts {
-		if m.facts[index][0] == "state" {
-			m.facts[index][1] = "unavailable"
-		}
-	}
+	m.pageRow.available = false
 }

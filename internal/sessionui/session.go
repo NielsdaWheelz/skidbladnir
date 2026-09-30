@@ -43,41 +43,42 @@ type attachedMsg struct {
 	notificationErr error
 }
 type model struct {
-	ctx                            context.Context
-	client                         *fleetclient.Client
-	input, output                  *os.File
-	peers                          []fleetclient.Peer
-	rows                           []listedRow
-	cursor                         int
-	refreshing, busy               bool
-	refreshAfterAction             bool
-	width, height                  int
-	notice, page                   string
-	noticeFailure                  bool
-	facts                          [][2]string
-	offset                         int
-	pending                        fleetclient.Request
-	pendingLabel, pendingName      string
-	form                           [5]string
-	field                          int
-	machine                        string
-	groupFilter                    group.Filter
-	scopeReady                     bool
-	picker                         int
-	metadata                       *metadataEditor
-	agentsView                     bool
-	needsInputOnly                 bool
-	top                            int
-	pageName, pageMachine, pageRef string
-	searchRevision                 int
-	searchCancel                   context.CancelFunc
-	searching                      bool
-	searchDirectories              []string
-	searchCursor                   int
-	notificationStore              *fleetclient.NotificationStore
-	notificationSnapshot           fleetclient.NotificationSnapshot
-	notificationFailed             bool
-	predecessors                   map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor
+	ctx                       context.Context
+	client                    *fleetclient.Client
+	input, output             *os.File
+	peers                     []fleetclient.Peer
+	rows                      []listedRow
+	cursor                    int
+	refreshing, busy          bool
+	refreshAfterAction        bool
+	width, height             int
+	notice, page              string
+	noticeFailure             bool
+	offset                    int
+	pending                   fleetclient.Request
+	pendingLabel, pendingName string
+	form                      [5]string
+	field                     int
+	machine                   string
+	groupFilter               group.Filter
+	scopeReady                bool
+	picker                    int
+	metadata                  *metadataEditor
+	agentsView                bool
+	needsInputOnly            bool
+	top                       int
+	// pageRow is info's captured lifetime as last observed; refresh follows it
+	// without retargeting.
+	pageRow              listedRow
+	searchRevision       int
+	searchCancel         context.CancelFunc
+	searching            bool
+	searchDirectories    []string
+	searchCursor         int
+	notificationStore    *fleetclient.NotificationStore
+	notificationSnapshot fleetclient.NotificationSnapshot
+	notificationFailed   bool
+	predecessors         map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -491,8 +492,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == "space" || key == " " {
 			m.page, m.offset = "details", 0
-			m.pageName, m.pageMachine, m.pageRef = row.session.Name, row.label, row.session.Ref
-			m.facts = m.details(row)
+			m.pageRow = *row
 			return m, nil
 		}
 		if !row.available {

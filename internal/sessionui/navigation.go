@@ -49,7 +49,7 @@ func (m *model) rebuild() {
 	}
 	// The filter narrows the chosen view without reordering it; stale rows never qualify.
 	if m.needsInputOnly {
-		m.rows = slices.DeleteFunc(m.rows, func(row listedRow) bool { return !fleetclient.NeedsInput(row.session.TerminalStatus, row.available) })
+		m.rows = slices.DeleteFunc(m.rows, func(row listedRow) bool { return !row.available || !fleetclient.NeedsInput(row.session.TerminalStatus) })
 	}
 	m.cursor = -1
 	for index, row := range m.rows {
@@ -132,7 +132,9 @@ func (m *model) move(delta int) {
 
 // attentionRank puts what may be waiting on the operator first: requests and
 // menus, then idle, then unknown (including unavailable), then starting or
-// working. The sort is stable within a rank.
+// working. Idle ranks by the facts that label a row idle or ready; idle with an
+// unknown interaction is labelled status unknown and ranks with it. The sort is
+// stable within a rank.
 func attentionRank(status sessions.TerminalStatus) int {
 	switch status.Interaction {
 	case sessions.InteractionPermission, sessions.InteractionQuestion, sessions.InteractionConfirmation, sessions.InteractionSetup, sessions.InteractionInput, sessions.InteractionMenu:
@@ -143,7 +145,10 @@ func attentionRank(status sessions.TerminalStatus) int {
 	}
 	switch status.Activity {
 	case sessions.ActivityIdle:
-		return 1
+		if status.Interaction == sessions.InteractionNone {
+			return 1
+		}
+		return 2
 	case sessions.ActivityUnknown:
 		return 2
 	case sessions.ActivityStarting, sessions.ActivityWorking:

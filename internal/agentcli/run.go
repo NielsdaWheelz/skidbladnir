@@ -259,6 +259,14 @@ func parse(args []string) (command, error) {
 	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
 	}
+	if operation == "wait" {
+		if !seen["--state"] {
+			result.request.State = "idle"
+		}
+		if !seen["--timeout"] {
+			result.request.WaitTimeout = time.Minute
+		}
+	}
 	if operation == "start" {
 		result.request.Kind = fleetclient.LaunchAgent
 		if seen["--terminal"] {
@@ -510,9 +518,8 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 						}
 					}
 				}
-				// Listed rows come from available peers, so they are fresh; the cli
-				// keeps no notification store, so none is ready.
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, true, false).Detail(), current.CWD)
+				// The cli keeps no notification store, so no row is ready.
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, current.CWD)
 			}
 		}
 		if len(groups) == 0 {
@@ -567,7 +574,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			// info resolves a complete inventory, so its status is fresh; the cli
 			// keeps no notification store, so it is never ready.
 			view := fleetclient.ProjectStatus(row, true, false)
-			fmt.Fprintln(stdout, "state: "+view.Detail())
+			fmt.Fprintln(stdout, "state: "+view.Detail)
 			if value.Diagnostics == nil {
 				fmt.Fprintln(stdout, "status reason: "+view.Reason)
 			}
@@ -646,11 +653,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		case "matched":
 			if value.TerminalStatus != nil {
 				// A terminal match proves exactly the requested state's dimensions.
-				state := command.request.State
-				if state == "" {
-					state = "idle"
-				}
-				fmt.Fprintln(stdout, "observed "+state+" (inferred).")
+				fmt.Fprintln(stdout, "observed "+command.request.State+" (inferred).")
 			} else {
 				fmt.Fprintln(stdout, "observed: "+fleetclient.StatusText(value.Observation.Status))
 			}

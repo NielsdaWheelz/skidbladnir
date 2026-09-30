@@ -16,15 +16,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 	if !request.Valid() {
 		return Failed("invalid_input", "not_sent")
 	}
-	timeout := request.WaitTimeout
-	if timeout == 0 {
-		timeout = time.Minute
-	}
-	state := request.State
-	if state == "" {
-		state = "idle"
-	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
+	ctx, cancel := context.WithTimeout(parent, request.WaitTimeout)
 	defer cancel()
 	resolveContext, cancelResolve := context.WithTimeout(ctx, Timeout)
 	captured, _, failure := client.resolve(resolveContext, request)
@@ -77,13 +69,13 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			}
 			result.TerminalStatus = &status
 			// Each state tests its own dimensions; an unknown tested dimension never matches.
-			switch state {
+			switch request.State {
 			case "idle":
 				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
 			case "working":
 				matched = status.Activity == sessions.ActivityWorking
 			case "needs-input":
-				matched = NeedsInput(status, true)
+				matched = NeedsInput(status)
 			default:
 				panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
 			}
@@ -97,7 +89,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 				return Failed("AgentUnavailable", "not_sent")
 			}
 			result.Observation = &agentruntime.Observation{Binding: runtime.Binding, Status: runtime.Status, Turn: runtime.Turn}
-			matched = runtime.Status.State == state
+			matched = runtime.Status.State == request.State
 		}
 		if matched {
 			result.Outcome = "matched"

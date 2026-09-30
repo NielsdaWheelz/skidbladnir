@@ -24,7 +24,7 @@ var (
 	frost    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x78, G: 0xA9, B: 0xC6, A: 0xff})
 	moss     = ansi.Style{}.ForegroundColor(color.RGBA{R: 0x76, G: 0xB0, B: 0x82, A: 0xff})
 	muted    = ansi.Style{}.ForegroundColor(color.RGBA{R: 0xAA, G: 0xA6, B: 0x9D, A: 0xff})
-	alarm    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
+	ember    = ansi.Style{}.ForegroundColor(ansi.BrightRed)
 	danger   = ansi.Style{}.Bold().ForegroundColor(ansi.BrightRed)
 )
 
@@ -182,9 +182,10 @@ func (m *model) footerLines() []string {
 	width := m.width - 2
 	notices := m.noticeLines(width)
 	keys := keyLines(width, m.hints()...)
-	legend, detail, position, end := "", []string{}, "", ""
+	legend, detail, end := "", []string{}, ""
 	switch m.page {
 	case "":
+		position := ""
 		if m.busy {
 			legend = target(m.pendingName, m.pendingLabel, width)
 		} else if row := m.selectedRow(); row != nil {
@@ -194,22 +195,22 @@ func (m *model) footerLines() []string {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
-		// The filter hides rows, so it reads plainly beside the table's position.
+		// The filter hides rows, so it reads plainly; the scrolled position recedes.
 		if m.needsInputOnly {
 			end = " needs input"
-			if position != "" {
+		}
+		if position != "" {
+			if end != "" {
 				position = "· " + position
 			}
+			end += faint.Styled(" " + position)
 		}
 	case "confirm":
 		legend = target(m.pendingName, m.pendingLabel, width)
 	case "details", "group-edit", "name-edit":
-		legend = target(m.pageName, m.pageMachine, width)
+		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
 	case "create":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
-	}
-	if position != "" {
-		end += faint.Styled(" " + position)
 	}
 	lines := append(notices, rule(legend, end, width))
 	lines = append(lines, detail...)
@@ -224,7 +225,7 @@ func (m *model) outcomeLines(width int) []string {
 	}
 	style := plain
 	if m.noticeFailure {
-		style = alarm
+		style = ember
 	}
 	for _, line := range wrapped(m.notice, width) {
 		lines = append(lines, style.Styled(line))
@@ -270,7 +271,7 @@ func (m *model) hints() [][]hint {
 			keys = append([]hint{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}}, keys...)
 		} else {
 			keys[0].label = "save name"
-			if row := m.rowForReference(m.pageRef); row != nil && row.available && row.session.NameMode == "manual" {
+			if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
 				keys = append(keys, hint{"ctrl-a", "use automatic title"})
 			}
 		}
@@ -289,7 +290,7 @@ func (m *model) hints() [][]hint {
 		return [][]hint{hints}
 	case "details":
 		keys := []hint{{"↑↓", "scroll"}, {"pgup pgdn", "page"}, {"escape", "back"}}
-		if row := m.rowForReference(m.pageRef); row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
+		if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
 			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
 		}
 		return [][]hint{keys}
@@ -305,11 +306,8 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	filter := hint{"f", "needs input"}
-	if m.needsInputOnly {
-		filter.label = "needs input off"
-	}
-	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, filter, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	// f toggles the filter; the rule's end shows when it is on.
+	return [][]hint{session, {{"a", "agents"}, {"←→", "view"}, {"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -365,7 +363,7 @@ func target(name, machine string, width int) string {
 
 func (m *model) rowDetailLines(row listedRow, width int) []string {
 	current := m.current(&row)
-	facts := m.statusView(row).Detail()
+	facts := m.statusView(row).Detail
 	if row.session.Agent == nil && row.session.ActiveCommand != "" {
 		facts += ": " + row.session.ActiveCommand
 	}
@@ -601,8 +599,8 @@ func (m *model) suggestions(width int) []string {
 func (m *model) detailLines() []string {
 	width := m.width - 2
 	lines := []string{}
-	row := m.rowForReference(m.pageRef)
-	for _, fact := range m.facts {
+	row := m.rowForReference(m.pageRow.session.Ref)
+	for _, fact := range m.details(&m.pageRow) {
 		label := fact[0]
 		if row != nil && row.available && (m.metadata == nil || !m.metadata.checking) {
 			if label == "name" {
@@ -761,11 +759,11 @@ func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
 	switch view.Tone {
 	case fleetclient.ToneMuted:
 		return view.Label, muted
-	case fleetclient.ToneBlue:
+	case fleetclient.ToneFrost:
 		return view.Label, frost
 	case fleetclient.ToneEmber:
-		return view.Label, alarm
-	case fleetclient.ToneGreen:
+		return view.Label, ember
+	case fleetclient.ToneMoss:
 		return view.Label, moss
 	}
 	panic("invalid status tone") // justify-defect: Tone is a closed enum.

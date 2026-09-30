@@ -169,11 +169,12 @@ func (request Request) Valid() bool {
 	case "text":
 		return validInputText(request.Text)
 	case "wait":
-		if request.WaitTimeout < 0 || request.WaitTimeout > time.Hour {
+		// A request names its state and timeout; the cli owns skid's documented defaults.
+		if request.WaitTimeout <= 0 || request.WaitTimeout > time.Hour {
 			return false
 		}
 		switch request.State {
-		case "", "idle":
+		case "idle":
 			return true
 		case "working", "needs-input":
 			return !native

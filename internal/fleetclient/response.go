@@ -374,9 +374,15 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		var value *struct {
 			TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
 			Diagnostics    *struct {
-				Rules     []agentcontrol.DiagnosticRule    `json:"rules"`
-				Capture   *agentcontrol.CaptureDiagnostics `json:"capture"`
-				ElapsedMs *agentcontrol.StageElapsed       `json:"elapsedMs"`
+				Rules   []agentcontrol.DiagnosticRule `json:"rules"`
+				Capture *struct {
+					Width         int   `json:"width"`
+					Height        int   `json:"height"`
+					Alternate     *bool `json:"alternate"`
+					TopClipped    *bool `json:"topClipped"`
+					BottomClipped *bool `json:"bottomClipped"`
+				} `json:"capture"`
+				ElapsedMs *agentcontrol.StageElapsed `json:"elapsedMs"`
 			} `json:"diagnostics"`
 		}
 		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.TerminalStatus.Valid() || (value.Diagnostics != nil) != (operation == "terminal_explain") {
@@ -384,7 +390,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		}
 		result := TerminalInspectResult{TerminalStatus: value.TerminalStatus}
 		if diagnostics := value.Diagnostics; diagnostics != nil {
-			if diagnostics.Rules == nil || len(diagnostics.Rules) > 8 || diagnostics.ElapsedMs == nil || diagnostics.Capture != nil && (diagnostics.Capture.Width < 1 || diagnostics.Capture.Height < 1) {
+			if diagnostics.Rules == nil || len(diagnostics.Rules) > 8 || diagnostics.ElapsedMs == nil {
 				return nil, false
 			}
 			for _, rule := range diagnostics.Rules {
@@ -397,7 +403,13 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 					return nil, false
 				}
 			}
-			result.Diagnostics = &agentcontrol.Diagnostics{Rules: diagnostics.Rules, Capture: diagnostics.Capture, ElapsedMs: *diagnostics.ElapsedMs}
+			result.Diagnostics = &agentcontrol.Diagnostics{Rules: diagnostics.Rules, ElapsedMs: *diagnostics.ElapsedMs}
+			if capture := diagnostics.Capture; capture != nil {
+				if capture.Width < 1 || capture.Height < 1 || capture.Alternate == nil || capture.TopClipped == nil || capture.BottomClipped == nil {
+					return nil, false
+				}
+				result.Diagnostics.Capture = &agentcontrol.CaptureDiagnostics{Width: capture.Width, Height: capture.Height, Alternate: *capture.Alternate, TopClipped: *capture.TopClipped, BottomClipped: *capture.BottomClipped}
+			}
 		}
 		return result, true
 	case "inspect":
@@ -564,7 +576,9 @@ func validConversationRuntime(value agentruntime.ConversationRuntime) bool {
 	return value.Binding.Valid() && value.Status.Valid() && value.Methods.Valid() && (value.Turn == nil || value.Turn.Valid())
 }
 
+// TerminalInspectResult is one decoded inspect sample; Diagnostics are present
+// exactly when explain was requested.
 type TerminalInspectResult struct {
-	TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
-	Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
+	TerminalStatus sessions.TerminalStatus
+	Diagnostics    *agentcontrol.Diagnostics
 }
