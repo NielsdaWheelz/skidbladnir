@@ -75,7 +75,6 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid start [NAME] --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
 | `skid shell t-0123456789abcdef` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
 | `skid group t-0123456789abcdef --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same handle/machine/ref selectors; no agent required |
-| `skid track t-0123456789abcdef --conversation ID --profile PROFILE --machine HOST` / `skid untrack t-0123456789abcdef --machine HOST` | explicitly record or clear a codex conversation association; never select the terminal's displayed thread |
 
 existing targets use a handle (optionally `--machine LABEL`) or `--ref VALUE`;
 these selector forms are mutually exclusive. terminal capture and interruption
@@ -204,9 +203,13 @@ may remain and saved history is retained. terminal-only close requests no halt.
 
 [native interaction](native-agent-observation.md) owns provider state, capabilities,
 output and delivery. terminal operations are explicit, never fallback. browser
-keys are `r` view replies, `t` track an explicit id, `u` clear tracking,
+keys are `r` view replies,
 `s` stop tracked conversation, `c` stop it and close terminal, `x` close terminal
 only. capture and confirm the exact conversation and terminal effects.
+
+new codex terminals have no native card binding. manual linking,
+reassignment and clearing have no command or browser action. direct native
+conversation selectors do not create or change terminal associations.
 
 ## composition and deletion
 

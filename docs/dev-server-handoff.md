@@ -208,8 +208,9 @@ for skid-created codex terminals, the host first invokes stock
 `app-server daemon start`, then launches the remote tui to create its own new
 conversation. configured permission arguments, including `--yolo`, remain in
 terminal argv. skid neither creates nor names the conversation and records no
-conversation id at creation. native controls require explicit tracking; ordinary
-manual terminal commands remain stock and unassociated until explicitly tracked.
+conversation id at creation. new codex terminals have no native card binding;
+manual association is unavailable. existing recorded bindings and direct native
+conversation commands remain valid. ordinary manual terminal commands stay stock.
 manual `claude`/`claude-personal` leave `CLAUDE_CONFIG_DIR` unset to retain native
 default behavior, including `~/.claude.json`; setting it to `~/.claude` is not
 assumed equivalent. personal claude is never a forge profile. its unconfigured

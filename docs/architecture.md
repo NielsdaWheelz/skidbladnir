@@ -5,7 +5,7 @@ each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
 [native interaction and unread replies](native-agent-observation.md) owns native
-observation, explicit conversation association, native messaging, client-side
+observation, existing codex conversation bindings, native messaging, client-side
 waits and device-local acknowledgement. stock codex installation and native
 conversation targets are independent of terminal selection. `stop` retains the terminal;
 `close` reports halt and terminal closure separately.
@@ -87,7 +87,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; sampled native status, bounded native output, explicit native/terminal controls under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux records explicit conversation associations; clients persist device-local reply ids and acknowledgements. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no writer remains; clients persist device-local reply ids and acknowledgements. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -124,7 +124,7 @@ closing the tmux session. inherited provider homes and skid launch context are
 cleared at the launch boundary. existing tmux server/session environments remain untouched. the
 codex creation starts only the stock account daemon, then launches a normal new
 remote terminal conversation. skid does not pre-create, name or resume it. new
-codex terminals are untracked until explicit association; existing exact native
+codex terminals remain unassociated; manual linking is unavailable. existing exact native
 controls remain independent. a daemon-start failure ends creation before terminal
 launch. later terminal naming never writes to either provider. the agent
 retains its ordinary provider configuration and terminal. deployment
@@ -763,7 +763,6 @@ history item is `current`.
 | `GET /v1/sessions/{tmuxId}/terminal` | WSS upgrade requires the inventory `identityToken` in `Skidbladnir-Session-Identity`; one queue validates server lifetime/id before direct pty/client attachment |
 | `DELETE /v1/sessions/{tmuxId}` | `{identityToken}`; one-queue exact lifetime session deletion |
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
-| `PUT/DELETE /v1/sessions/{tmuxId}/conversation` | explicit codex association/clear; exact terminal lifetime, no inferred tui selection |
 | `POST /v1/sessions/{tmuxId}/agent/{operation}` | explicit terminal `read`, `text`, `keys`, `stop`, and separately reported `close`; [native contract](native-agent-observation.md#4-api-and-behavior) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
 

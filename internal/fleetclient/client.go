@@ -161,15 +161,6 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		case operation == "group":
 			body["group"] = request.Group.String()
 			path += "/group"
-		case operation == "track":
-			conversation, failed := client.conversationByProfile(ctx, selected, request.Profile, request.ConversationID)
-			if failed != nil {
-				return *failed
-			}
-			body["conversation"] = conversation
-			path += "/conversation"
-		case operation == "untrack":
-			path += "/conversation"
 		case operation == "close" && request.TerminalOnly:
 			operation = "terminal_close"
 		case operation == "inspect" || operation == "send" || operation == "read" && request.Mode != "terminal" || operation == "stop" && request.Mode != "terminal" || operation == "close":
@@ -337,7 +328,7 @@ func (client *Client) resolve(ctx context.Context, request Request) (Reference, 
 		return Reference{}, ObservedSession{}, &result
 	}
 	var ref Reference
-	if request.ConversationID != "" && request.Operation != "track" {
+	if request.ConversationID != "" {
 		selected, found := client.peerByLabel(request.Machine)
 		if !found {
 			return fail("machine_unknown")
@@ -523,10 +514,10 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "list" || operation == "terminal_context" {
 		method = http.MethodGet
 	} else {
-		if operation == "group" || operation == "track" {
+		if operation == "group" {
 			method = http.MethodPut
 		}
-		if operation == "terminal_close" || operation == "untrack" {
+		if operation == "terminal_close" {
 			method = http.MethodDelete
 		}
 		// No GetBody: net/http cannot replay a possibly delivered mutation.
@@ -561,12 +552,9 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if len(encoded) > limit {
 		return Failed("output_limit", dispatch)
 	}
-	if (operation == "terminal_close" || operation == "group" || operation == "track" || operation == "untrack") && response.StatusCode == http.StatusNoContent {
+	if (operation == "terminal_close" || operation == "group") && response.StatusCode == http.StatusNoContent {
 		if len(encoded) != 0 {
 			return Failed("protocol_error", dispatch)
-		}
-		if operation == "track" || operation == "untrack" {
-			return success(struct{}{})
 		}
 		if operation == "group" {
 			return success(GroupResult{})
@@ -581,7 +569,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if operation == "start" || operation == "shell" {
 		expected = http.StatusCreated
 	}
-	if operation == "terminal_close" || operation == "group" || operation == "track" || operation == "untrack" {
+	if operation == "terminal_close" || operation == "group" {
 		expected = http.StatusNoContent
 	}
 	if response.StatusCode != expected {

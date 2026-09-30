@@ -23,13 +23,3 @@ func (service *Service) PrepareLaunch(parent context.Context, profileKey agentru
 	}
 	return nil
 }
-
-func (service *Service) Associate(parent context.Context, tmuxID, identityToken string, conversation agentruntime.Conversation) error {
-	if conversation.Provider != agentruntime.ProviderCodex {
-		return ErrInvalidInput
-	}
-	if _, err := service.Inspect(parent, conversation); err != nil {
-		return err
-	}
-	return service.sessions.SetConversation(parent, tmuxID, identityToken, &conversation)
-}

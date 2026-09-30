@@ -11,8 +11,9 @@ this index records present scope and open work, not a release diary.
 canonical tmux name, manual takeover/reset, terminal-title reconciliation,
 typed live selectors and name-independent targeting/order. source is implemented
 in the isolated branch; host/desktop qualification passes on darwin/linux.
-provider names are entirely provider-owned. new codex sessions start untracked
-until explicit association. actual codex/claude launch and title emission,
+provider names are entirely provider-owned. new codex sessions remain unassociated;
+manual linking is removed below. the earlier naming qualification predates that
+removal: actual codex/claude launch and title emission,
 exact-id native controls after association, and both approved physical-phone
 journeys pass. large text exposed a collapsed rename target; separating context
 and action rows repaired it. temporary behavioral tests are removed; final
@@ -34,11 +35,18 @@ separates those checks from remaining phone-native interaction acceptance.
 
 [native conversations](native-agent-observation.md): source implemented and
 isolated contract qualified. native conversation and terminal targets are separate; codex uses
-ordinary upstream npm plus its owning daemon, explicit id association and native
+ordinary upstream npm plus its owning daemon, existing recorded bindings and native
 operations. the selected-view fork/build and terminal-opening unread acknowledgement
 are retired. clients acknowledge known replies only after native output opens.
 experimental queueing is unavailable; Claude native input remains unavailable
 following [failed recipient qualification](issues/native-message-qualification.md).
+
+manual conversation association is removed from source: no mobile/browser form,
+cli track/untrack command or host mutation route remains. normal remote-new
+codex startup creates no card binding; all new codex terminals remain unassociated.
+existing bindings and direct native conversation commands remain available.
+existing valid metadata is retained because earlier manual and creation bindings
+have the same representation. this source change does not assert deployment.
 
 v0.10.4 is published historical output under the former selected-view contract.
 the coordinated stock helper/gateway/client generation was released as v0.10.5;

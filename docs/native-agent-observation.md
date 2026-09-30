@@ -9,7 +9,7 @@ targets. providers own execution/history; tmux owns terminals.
 ## 1. outcome and scope
 
 keep cards, direct tmux attachment, existing accounts, machine routing, sorting
-and visual language. a card may explicitly track a native conversation. status
+and visual language. a card may retain an existing native conversation binding. status
 and unread describe that conversation even when its terminal displays another
 conversation or a shell. omit blocking reasons.
 
@@ -17,8 +17,9 @@ conversation or a shell. omit blocking reasons.
   retargets a command addressing a.
 - codex uses upstream `@openai/codex`, its owning app-server and existing helper.
   no source patch, custom package, view registry or exact-version gate.
-- codex's remote terminal creates its own new conversation. new and existing codex
-  terminals require explicit association by id for native controls. never infer from cwd, clocks, screens, process
+- codex's remote terminal creates its own new conversation without a card binding.
+  manual association, reassignment and clearing are unavailable. existing bindings
+  and direct native conversation commands remain valid. never infer from cwd, clocks, screens, process
   presence or the newest transcript.
 - claude retains native listing, sdk history/results and exact background-worker
   stop. native input remains unavailable after failed recipient qualification;
@@ -50,8 +51,8 @@ selected `CODEX_HOME`, then launch a normal new conversation with
 `codex --remote unix://SOCKET --cd CWD` and the configured permission arguments.
 explicit remote mode does not start a server; ordinary codex may embed one.
 skid never pre-creates, names or resumes a new conversation. its normal tui owns
-first-input persistence. new terminals remain unassociated until explicitly
-tracked. claude receives its normal configured argv, never a skid name.
+first-input persistence. new terminals remain unassociated; manual linking is
+unavailable. claude receives its normal configured argv, never a skid name.
 
 native launch forwards the configured profile arguments to the normal remote-new
 tui. configured `--yolo` still selects `never`/`dangerFullAccess` before its first
@@ -89,10 +90,12 @@ fields. `historyScope` is lowercase sha256 of `provider + NUL + realpath(home)`;
 it identifies history storage, not credentials. host validates profile/provider/
 scope before calls. client references contain no home, endpoint or credential.
 
-one `@skid_conversation_b64` session option records explicitly tracked codex
-Conversation. creation writes no binding. explicit association replaces or
-clears it; pane/foreground/tui navigation never does. claude's exact identity
-hook can supply its current conversation projection; hooks publish no status,
+existing `@skid_conversation_b64` session metadata identifies a recorded codex
+Conversation. no creation, api, cli or client writer remains. earlier releases
+stored manual and creation bindings identically; retain valid existing metadata
+without guessing its origin or adding a migration. pane/foreground/tui navigation
+never changes the binding. claude's exact identity hook can supply its current
+conversation projection; hooks publish no status,
 history or prompt data. tracking never proves what the terminal displays.
 
 `c-<handle> [--machine HOST]` resolves a recorded conversation once. direct
@@ -115,7 +118,7 @@ successful inspection must match the captured conversation. only then,
 `observedRef` encodes that same conversation's newly sampled runtime and turn,
 without terminal/process identity. it is a separate target for a later explicitly
 authorized action; inspection never substitutes it into an existing write.
-terminal reassociation or deletion does not affect this read. the internal native
+terminal navigation or deletion does not affect this read. the internal native
 inspection result used by the browser and other clients remains unchanged.
 
 ## 4. api and behavior
@@ -130,21 +133,19 @@ absent fields are omitted, not null. reject old schemas/view fields outright.
 | `POST /v1/conversations/send` | conversation, peer/user input, direct/queue delivery, text → native receipt |
 | `POST /v1/conversations/stop` | conversation plus captured active codex turn → exact interruption |
 | `POST /v1/conversations/results` | conversation, optional cursor → finalized reply ids only |
-| `PUT /v1/sessions/{id}/conversation` | exact terminal lifetime + explicit Conversation; validate without resume, record |
-| `DELETE /v1/sessions/{id}/conversation` | exact terminal lifetime; clear association only |
 | terminal read/text/keys/stop | existing exact terminal/process targets; explicit terminal mode |
 | close | exact terminal target and optional explicit native conversation/turn or terminal halt; separate outcomes |
 
 start reuses profile/cwd/name validation and generated initial tmux names.
 for codex, gateway starts only the native daemon before tmux creation. the stock
 remote tui creates its own conversation, with no skid name or reserved id. new
-codex terminals are untracked until the existing explicit association action.
+codex terminals remain unassociated, with no manual linking action.
 claude's existing process-bound identity registration remains independent.
 
 neither provider receives skid conversation naming. tmux creation rechecks name
 occupancy; preflight reserves nothing. uncertain terminal creation retains its
 existing dispatch contract, without captured native-id attribution, history
-cleanup or replay. exact native controls on explicitly associated conversations
+cleanup or replay. exact native controls on existing associated conversations
 retain their existing schemas and lifecycle checks.
 
 ```text
@@ -178,7 +179,7 @@ claude peer/user/queue input rejects unavailable/not_sent before discovery.
 wait is client-only: capture once, sample immediately, then existing five-second
 cadence with one request in flight. default idle/60 seconds, max one hour; cap
 requests by the monotonic remaining deadline. terminal switches, closure and
-reassociation never retarget it. profile/history-scope changes end it. timeout
+provider identity changes never retarget it. profile/history-scope changes end it. timeout
 returns last observation; cancellation stops waiter only. idle is neither job
 completion nor empty queue. native unavailability is an error; only matched exits
 zero.
@@ -263,7 +264,7 @@ association/state/unread survive narrow layouts before directory detail.
 accessibility announces tracked id plus state/unread once, without unchanged-poll
 repetition or color-only distinctions. only fresh native working uses existing
 motion. terminal attachment and native output are separate visible actions.
-tracking takes an explicit id, never an inferred chooser. use suffixes because
+manual tracking controls are absent. use suffixes because
 contemporaneous uuidv7 conversations share their timestamp prefixes; shortened
 labels are presentation only, never command targets.
 
@@ -275,7 +276,7 @@ labels are presentation only, never command targets.
 | adapter | llm-calling stock create/read/send/interrupt/results and native Claude capture |
 | host | runtime/session/agentcontrol/gateway/hostconfig; conversation routes, recorded association |
 | cli/desktop | fleetclient/agentcli/sessionui; handles/exact references/direct ids, wait, native output, local acknowledgement |
-| android | gateway/models/controller/cards; explicit association, native output, acknowledgement |
+| android | gateway/models/controller/cards; existing binding display, native output, acknowledgement |
 | root | architecture/spec/roadmap, pins/manifests, integration, final evidence |
 
 use temporary meaningful integration/live red–green–refactor tests; review then
@@ -284,8 +285,8 @@ owned isolated -L sockets; phone/adb/fleet need their approval. logs/evidence
 contain no output, prompts, token or account data.
 
 acceptance: stock npm install/repeat/upgrade; same owner for tui/helper;
-absence of provider naming, normal remote-new codex launch and explicit association;
-explicit existing association; a→b→a switches/terminal exit never
+absence of provider naming, normal remote-new codex launch without association;
+manual association commands/routes/forms absent; a→b→a switches/terminal exit never
 retarget a; read never resumes; exact-turn interruption cannot cancel successor;
 unsupported methods/fields/queue fail without fallback; CLI/daemon version skew
 handled by consumed capabilities; native-output captured-only acknowledgement,
@@ -299,8 +300,9 @@ terminal primitives. immutable v0.10.4 is historical fork-contract output; ship
 a new coordinated release, never mutate artifacts. rollback uses prior complete
 release. no installed-fleet/phone pass without actual boundary.
 
-accepted costs: manual existing-thread association; weaker automatic terminal
-association; experimental method/socket drift may disable capabilities; independent
+accepted costs: all new codex terminals lack native card status, unread and controls;
+existing bindings remain without origin classification; direct native commands
+require an exact target. experimental method/socket drift may disable capabilities; independent
 daemon updates may interrupt work; native creation excludes other profile-argument
 overrides; unknown terminal-create outcomes without attribution; sampled wait latency; unavailable user queueing; bounded output can omit
 older text; baseline/restore/deletion limits above. no fork, copied history or

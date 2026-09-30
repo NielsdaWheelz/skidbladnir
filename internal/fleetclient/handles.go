@@ -28,7 +28,7 @@ func validHandle(value, operation, mode string) bool {
 	if len(value) != 18 || strings.Trim(value[2:], "0123456789abcdef") != "" {
 		return false
 	}
-	terminal := operation == "info" || operation == "enter" || operation == "text" || operation == "keys" || operation == "shell" || operation == "group" || operation == "track" || operation == "untrack" || operation == "close" || (operation == "read" || operation == "stop") && mode == "terminal"
+	terminal := operation == "info" || operation == "enter" || operation == "text" || operation == "keys" || operation == "shell" || operation == "group" || operation == "close" || (operation == "read" || operation == "stop") && mode == "terminal"
 	if terminal {
 		return strings.HasPrefix(value, "t-")
 	}

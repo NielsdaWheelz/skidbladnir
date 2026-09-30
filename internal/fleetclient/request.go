@@ -127,7 +127,7 @@ func (request Request) Valid() bool {
 	case "start":
 		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
-	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "track", "untrack", "inspect":
+	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "inspect":
 	default:
 		return false
 	}
@@ -138,28 +138,26 @@ func (request Request) Valid() bool {
 		return false
 	}
 	if request.Ref != "" {
-		if request.ConversationID != "" && request.Operation != "track" {
+		if request.ConversationID != "" {
 			return false
 		}
 		if request.Handle != "" || request.Machine != "" {
 			return false
 		}
-		if ref, err := DecodeReference(request.Ref); err != nil || ref.TmuxID == "" && (request.Operation == "enter" || request.Operation == "close" || request.Operation == "text" || request.Operation == "keys" || request.Operation == "shell" || request.Operation == "group" || request.Operation == "track" || request.Operation == "untrack" || request.Mode == "terminal") {
+		if ref, err := DecodeReference(request.Ref); err != nil || ref.TmuxID == "" && (request.Operation == "enter" || request.Operation == "close" || request.Operation == "text" || request.Operation == "keys" || request.Operation == "shell" || request.Operation == "group" || request.Mode == "terminal") {
 			return false
 		}
 	} else if request.ConversationID != "" {
-		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Operation != "track" && request.Handle != "" {
+		if request.Ref != "" || request.Mode == "terminal" || request.Machine == "" || request.Profile == "" || !validReplyID(request.ConversationID) || request.Handle != "" {
 			return false
 		}
-		if request.Operation != "track" && request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
+		if request.Operation != "read" && request.Operation != "send" && request.Operation != "wait" && request.Operation != "stop" && request.Operation != "inspect" {
 			return false
 		}
 	} else if request.Handle == "" {
 		return false
 	}
 	switch request.Operation {
-	case "track":
-		return request.ConversationID != "" && request.Profile != "" && validReplyID(request.ConversationID)
 	case "read":
 		return request.MaxBytes >= 0 && request.MaxBytes <= 32768 && (request.Mode == "terminal" && request.Scope == "" || request.Mode != "terminal" && (request.Scope == "" || request.Scope == "latest" || request.Scope == "history"))
 	case "send":

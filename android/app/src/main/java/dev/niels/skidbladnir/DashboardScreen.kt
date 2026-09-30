@@ -202,7 +202,6 @@ internal fun DashboardMain(
                 onClose = controller::requestClose,
                 onGroup = controller::openGroupEditor,
                 onReplies = controller::openReplies,
-                onTrack = controller::openConversationTracking,
             )
         }
 
@@ -237,7 +236,6 @@ internal fun DashboardDwarfCollection(
     onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
     onReplies: (SessionTarget) -> Unit,
-    onTrack: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
     val machines = state.machines.filter { machine ->
@@ -274,7 +272,6 @@ internal fun DashboardDwarfCollection(
                 onClose,
                 onGroup,
                 onReplies,
-                onTrack,
             )
         }
     } else {
@@ -289,7 +286,6 @@ internal fun DashboardDwarfCollection(
             onClose,
             onGroup,
             onReplies,
-            onTrack,
         )
     }
 }
@@ -381,7 +377,6 @@ private fun DashboardDwarfGrid(
     onClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
     onReplies: (SessionTarget) -> Unit,
-    onTrack: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
     val bottomPadding = 84.dp
@@ -444,7 +439,6 @@ private fun DashboardDwarfGrid(
                                 onClose = { onClose(visible.target) },
                                 onGroup = { onGroup(visible.target) },
                                 onReplies = { onReplies(visible.target) },
-                                onTrack = { onTrack(visible.target) },
                             )
                         }
                     }

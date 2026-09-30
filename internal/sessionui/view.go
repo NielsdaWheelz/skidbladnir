@@ -145,8 +145,6 @@ func (m *model) hints() [][]hint {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "close"}}}
 		}
 		return [][]hint{{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}, {"enter", "save"}, {"escape", "cancel"}}}
-	case "track":
-		return [][]hint{{{"tab", "field"}, {"←→", "profile"}, {"enter", "track"}, {"escape", "cancel"}}}
 	case "create":
 		enter := hint{"enter", "next"}
 		if m.field == 4 {
@@ -168,10 +166,7 @@ func (m *model) hints() [][]hint {
 		if _, readable := m.replyReference(*row); readable {
 			session = append(session, hint{"r", "view replies"})
 		}
-		session = append(session, hint{"e", "group"}, hint{"t", "track id"})
-		if row.session.Conversation != nil {
-			session = append(session, hint{"u", "clear tracking"})
-		}
+		session = append(session, hint{"e", "group"})
 		if row.session.Connection == nil {
 			session = append(session, hint{"T", "here"})
 		}
@@ -275,12 +270,6 @@ func (m *model) rowDetail(row listedRow) string {
 func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
-	case "track":
-		lines := []string{bold.Styled("track conversation"), ""}
-		lines = append(lines, field("profile", m.form[0], m.field == 0, true, 16, width)...)
-		lines = append(lines, field("conversation id", m.form[1], m.field == 1, false, 16, width)...)
-		lines = append(lines, "", "tracking does not identify the terminal selection.")
-		return window(lines, 0, 0, height)
 	case "confirm":
 		action, effect := "close terminal only", "close this session. work shared through another session may survive."
 		if m.pending.Operation == "stop" {

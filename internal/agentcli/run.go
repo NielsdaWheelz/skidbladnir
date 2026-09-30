@@ -50,8 +50,6 @@ read/stop use conversation handles; --terminal selects a terminal handle
 replies/send/wait use conversation handles; other target commands use terminal handles
 inspect requires an exact --ref
 native targets: --conversation ID --profile PROFILE --machine HOST
-skid track HANDLE --conversation ID --profile PROFILE --machine HOST
-skid untrack HANDLE --machine HOST
 --json emits one structured envelope; -- separates literal operands
 read defaults to native latest assistant output; history remains bounded
 send defaults to peer; --queue and native claude input are unavailable
@@ -65,7 +63,7 @@ browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through agents/groups
   a selects agents; m chooses machine; n opens terminal; N opens options
   enter attaches; space shows details; T opens a terminal here; e edits group
-  r views replies; t tracks an id; u clears tracking
+  r views replies
   s stops tracked conversation; c stops it and closes; x closes terminal only
   ctrl-r refreshes; q/escape quits
 
@@ -218,8 +216,8 @@ func parse(args []string) (command, error) {
 		if len(operands) != 0 || result.request.Ref == "" {
 			return result, errors.New("inspect requires --ref")
 		}
-	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell", "track", "untrack":
-		if result.request.Ref == "" && (result.request.ConversationID == "" || result.request.Operation == "track") {
+	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell":
+		if result.request.Ref == "" && result.request.ConversationID == "" {
 			if len(operands) == 0 {
 				return result, errors.New("missing target")
 			}
@@ -657,10 +655,6 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			text = "terminal closed; conversation stop unconfirmed."
 		}
 		fmt.Fprintln(stdout, text)
-	case "track":
-		fmt.Fprintln(stdout, "tracking "+command.request.ConversationID)
-	case "untrack":
-		fmt.Fprintln(stdout, "conversation not tracked")
 	case "group":
 		text := "group assigned\n"
 		if command.request.Group.IsUnassigned() {

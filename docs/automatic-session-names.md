@@ -5,7 +5,8 @@ complete; temporary tests/harnesses are removed. deployment is outside this slic
 this is the contract for one canonical tmux/skid name, automatic naming and short
 live selectors. canonical documents use this contract. 2026-09-29 accepted
 amendment: skid never names provider conversations; codex starts a normal new
-remote conversation and remains untracked until explicit association. physical
+remote conversation and remains unassociated. manual association is removed;
+existing bindings and direct native commands remain available. physical
 phone acceptance passed on the separately approved physical device.
 [testing policy](rules/testing.md) governs temporary tests and their deletion.
 
@@ -27,7 +28,8 @@ phone acceptance passed on the separately approved physical device.
   never establish agent identity, conversation binding, work state or unread.
 - orchestration uses short typed handles or existing exact references. session
   names cease to be selectors. existing conversation controls and explicit
-  association retain their semantics; no `tracking: <name>` is added.
+  bindings retain their semantics; manual association is unavailable and no
+  `tracking: <name>` is added.
 
 non-goals: direct provider-name apis, transcript parsing, model-generated skid names,
 name synchronization into providers, title/status parsing, progress, notifications,
@@ -192,8 +194,8 @@ remove skid's native conversation creation, partial-created-id error fields and
 recovery disclosure;
 there is no helper create request or helper-pin change in this slice.
 
-new codex sessions begin untracked. the existing explicit tracking action records
-an exact conversation for native control. existing tracked conversations and
+new codex sessions remain unassociated; manual tracking actions are removed.
+existing tracked conversations and
 saved exact references retain their contracts. claude's existing process-bound
 identity registration remains its observation path. titles never supply either
 binding. no new hook or native-id capture machinery is added.
@@ -228,7 +230,7 @@ only for optional `start [NAME]`; add `Handle` for selection.
 
 | target | public commands |
 | --- | --- |
-| terminal handle | `info`, `enter`, `text`, `keys`, `shell`, `group`, `track`, `untrack`, `close` |
+| terminal handle | `info`, `enter`, `text`, `keys`, `shell`, `group`, `close` |
 | conversation handle | `read`, `replies`, `send`, `wait`, `stop` |
 | terminal handle, explicit terminal mode | `read --terminal`, `stop --terminal` |
 
@@ -302,7 +304,7 @@ update help/return-address examples to use handles or exact refs.
 | stable session-id order | alphabetical session-name ordering is removed |
 | separate terminal context and action rows | at least 48dp of additional header height; large action labels may wrap, and existing viewport sizing absorbs the space |
 | short live selectors plus existing exact refs | short selectors need complete scoped inventory and have the stated collision limit |
-| provider-owned conversation names | new codex sessions start untracked and require explicit association for native control; useful terminal titles remain provider-dependent |
+| provider-owned conversation names | new codex sessions have no native card binding; useful terminal titles remain provider-dependent |
 | ordinary remote codex startup | without configured overrides, stock tui policy is read-only rather than the former private pre-creation default; configured permission arguments remain intact |
 
 ## implementation slices and adversarial review
@@ -368,8 +370,8 @@ requires the applicable current-turn authorization in `AGENTS.md`. every unexecu
    test hooks. native saved targets remain usable after terminal closure.
 5. qualify actual managed codex/claude launch: neither omitted nor supplied skid
    names reach a provider naming operation. codex starts its own zero-turn remote
-   conversation, remains untracked, and accepts the first terminal input. explicit
-   association then enables existing native controls for its exact id. record
+   conversation, remains unassociated, and accepts the first terminal input. direct
+   native controls retain exact-id targeting independently of the card. record
    whether each provider emits a useful title; lack of emission is a documented
    capability limit, not a naming failure. preserve cwd/account/permission policy. use only disposable test
    sessions; existing user sessions/accounts are not cleanup targets.
@@ -401,6 +403,8 @@ rollback remains external to this feature and requires no compatibility code.
 branch: `codex/automatic-session-names`; baseline `edf85f8`. helper pin remains
 `992e7915caf1111ffad3a82d6593a1c8673dcf1f`; helper source/protocol is unchanged.
 no deployment/publication or existing-session mutation is part of this work.
+the recorded association check below predates manual-linking removal; it is
+historical evidence, not a supported current action.
 
 | boundary | observed outcome |
 | --- | --- |

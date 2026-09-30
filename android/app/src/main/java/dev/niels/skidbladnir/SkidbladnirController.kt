@@ -130,17 +130,11 @@ internal data class CloseState(
     val pending: Boolean,
     val terminalOnly: Boolean = false,
 )
-internal sealed interface ConversationSheetState {
-    data class Tracking(
-        val target: SessionTarget, val profiles: List<ProfileChoice>, val profile: ProfileKey?,
-        val id: String, val pending: Boolean = false, val error: String? = null,
-    ) : ConversationSheetState
-    data class Replies(
-        val machine: PairedMachine, val conversation: Conversation, val capture: UnreadCapture?,
-        val output: ConversationOutput? = null, val loading: Boolean = true,
-        val error: String? = null, val acknowledgementAttempted: Boolean = false,
-    ) : ConversationSheetState
-}
+internal data class ConversationSheetState(
+    val machine: PairedMachine, val conversation: Conversation, val capture: UnreadCapture?,
+    val output: ConversationOutput? = null, val loading: Boolean = true,
+    val error: String? = null, val acknowledgementAttempted: Boolean = false,
+)
 
 internal sealed interface TerminalUiStatus {
     data object Preparing : TerminalUiStatus
@@ -1259,12 +1253,12 @@ internal class SkidbladnirController(
         val conversation = target.session.conversation?.binding?.conversation ?: unreadSnapshot?.conversation(target) ?: return
         val key = ConversationKey(target.machineHandle, conversation)
         val capture = unreadSnapshot?.record(key)?.let { UnreadCapture(key, it.unreadIds.toSet()) }
-        conversationSheet = ConversationSheetState.Replies(machine.machine, conversation, capture)
+        conversationSheet = ConversationSheetState(machine.machine, conversation, capture)
         readReplies()
     }
 
     fun readReplies() {
-        val sheet = conversationSheet as? ConversationSheetState.Replies ?: return
+        val sheet = conversationSheet ?: return
         val credential = credentials[sheet.machine.handle] ?: return
         val activeGeneration = generation
         val pending = sheet.copy(loading = true, error = null)
@@ -1281,71 +1275,21 @@ internal class SkidbladnirController(
         }
     }
 
-    fun repliesPresented(sheet: ConversationSheetState.Replies) {
+    fun repliesPresented(sheet: ConversationSheetState) {
         if (conversationSheet !== sheet || sheet.output == null || sheet.acknowledgementAttempted) return
         conversationSheet = sheet.copy(acknowledgementAttempted = true)
         val capture = sheet.capture ?: return
         unreadStore.acknowledge(capture, ::acceptUnreadSnapshot, {
             unreadStoreUnavailable()
-            val current = conversationSheet as? ConversationSheetState.Replies
+            val current = conversationSheet
             if (current?.conversation == sheet.conversation && current.machine == sheet.machine) {
                 conversationSheet = current.copy(error = "unread unavailable. acknowledgement could not be confirmed.")
             }
         })
     }
 
-    fun openConversationTracking(target: SessionTarget) {
-        val machine = machineStates[target.machineHandle] ?: return
-        if (!machine.canMutate) return
-        val profiles = machine.inventory.lastSnapshot()?.inventory?.profiles.orEmpty()
-            .filter { it.provider == AgentProvider.Codex && it.historyScope != null }
-        val current = target.session.conversation?.binding?.conversation
-        val selected = profiles.singleOrNull { it.key.encoded == current?.profileKey }
-            ?: profiles.singleOrNull { it.key == target.session.agent?.profile }
-            ?: profiles.singleOrNull { it.key == target.session.launchProfile }
-            ?: profiles.firstOrNull()
-        conversationSheet = ConversationSheetState.Tracking(target, profiles, selected?.key, current?.conversationId.orEmpty())
-    }
-
-    fun editConversationTracking(id: String? = null, profile: ProfileKey? = null) {
-        val sheet = conversationSheet as? ConversationSheetState.Tracking ?: return
-        if (!sheet.pending) conversationSheet = sheet.copy(id = id ?: sheet.id, profile = profile ?: sheet.profile, error = null)
-    }
-
-    fun saveConversationTracking(clear: Boolean = false) {
-        val sheet = conversationSheet as? ConversationSheetState.Tracking ?: return
-        if (sheet.pending) return
-        val machine = machineStates[sheet.target.machineHandle] ?: return
-        if (!machine.canMutate) return
-        val conversation = if (clear) null else {
-            val profile = sheet.profiles.singleOrNull { it.key == sheet.profile } ?: return
-            if (!validNativeId(sheet.id)) return
-            Conversation(profile.provider, profile.key.encoded, requireNotNull(profile.historyScope), sheet.id)
-        }
-        val credential = credentials[sheet.target.machineHandle] ?: return
-        val runtime = polling[sheet.target.machineHandle] ?: return
-        val activeGeneration = generation
-        val pending = sheet.copy(pending = true, error = null)
-        conversationSheet = pending
-        runtime.inventoryOperation.submitMutation(onReserved = { fence -> requireInventoryRefresh(sheet.target.machineHandle, fence) }) {
-            val result = client.associateConversation(credential, sheet.target, conversation)
-            main.post {
-                if (!isCredentialActive(activeGeneration, credential)) return@post
-                if (conversationSheet === pending) {
-                    conversationSheet = when (result) {
-                        is GatewayResult.Success -> null
-                        is GatewayResult.Failure -> pending.copy(pending = false, error =
-                            if (result.failure is GatewayFailure.Api && result.failure.dispatch == MutationDispatch.NotSent) machineError(machine.machine, result.failure)
-                            else "could not confirm the request. inspect the conversation before trying again.")
-                    }
-                }
-                awaitInventory(sheet.target.machineHandle, activeGeneration)
-            }
-        }
-    }
-
     fun dismissConversationSheet() {
-        if ((conversationSheet as? ConversationSheetState.Tracking)?.pending != true) conversationSheet = null
+        conversationSheet = null
     }
 
     fun openTerminal(target: SessionTarget) {
