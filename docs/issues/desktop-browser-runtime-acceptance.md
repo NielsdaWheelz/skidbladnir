@@ -32,3 +32,12 @@ the terminal. temporary browser/client checks against a loopback tls fixture
 pass confirmation/cancellation, exact-target dispatch, busy duplicate suppression,
 partial-close feedback and removed-key behavior. provider/tmux closure for this
 change remains `NOT_RUN`; include `s`/`x` in the approved live journey.
+
+2026-09-30 info editing adds [a6](../desktop-browser.md#7-acceptance-and-delivery):
+space → `r`/`g` → save/cancel must return to the captured info lifetime.
+regrouping out of the table view must keep info usable. prove same-name manual
+takeover, automatic reset, naming conflicts, lost acknowledgements without
+replay, fresh-read fences and unavailable/replaced targets. temporary model and
+loopback HTTP fixtures qualify client behavior, not the real gateway/tmux write
+or terminal interaction. the live editing journey is `NOT_RUN`; current-turn
+tmux approval is the remaining prerequisite.

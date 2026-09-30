@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
@@ -44,42 +43,40 @@ type attachedMsg struct {
 	notificationErr error
 }
 type model struct {
-	ctx                              context.Context
-	client                           *fleetclient.Client
-	input, output                    *os.File
-	peers                            []fleetclient.Peer
-	rows                             []listedRow
-	cursor                           int
-	refreshing, busy                 bool
-	refreshAfterAction               bool
-	width, height                    int
-	notice, page                     string
-	noticeFailure                    bool
-	facts                            [][2]string
-	offset                           int
-	pending                          fleetclient.Request
-	pendingLabel, pendingName        string
-	form                             [5]string
-	field                            int
-	machine                          string
-	groupFilter                      group.Filter
-	scopeReady                       bool
-	picker                           int
-	groupDraft                       string
-	groupChecking, groupAcknowledged bool
-	groupFailure                     *fleetclient.Failure
-	agentsView                       bool
-	top                              int
-	pageName, pageMachine, pageRef   string
-	searchRevision                   int
-	searchCancel                     context.CancelFunc
-	searching                        bool
-	searchDirectories                []string
-	searchCursor                     int
-	notificationStore                *fleetclient.NotificationStore
-	notificationSnapshot             fleetclient.NotificationSnapshot
-	notificationFailed               bool
-	predecessors                     map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor
+	ctx                            context.Context
+	client                         *fleetclient.Client
+	input, output                  *os.File
+	peers                          []fleetclient.Peer
+	rows                           []listedRow
+	cursor                         int
+	refreshing, busy               bool
+	refreshAfterAction             bool
+	width, height                  int
+	notice, page                   string
+	noticeFailure                  bool
+	facts                          [][2]string
+	offset                         int
+	pending                        fleetclient.Request
+	pendingLabel, pendingName      string
+	form                           [5]string
+	field                          int
+	machine                        string
+	groupFilter                    group.Filter
+	scopeReady                     bool
+	picker                         int
+	metadata                       *metadataEditor
+	agentsView                     bool
+	top                            int
+	pageName, pageMachine, pageRef string
+	searchRevision                 int
+	searchCancel                   context.CancelFunc
+	searching                      bool
+	searchDirectories              []string
+	searchCursor                   int
+	notificationStore              *fleetclient.NotificationStore
+	notificationSnapshot           fleetclient.NotificationSnapshot
+	notificationFailed             bool
+	predecessors                   map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -184,43 +181,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.rebuild()
-		if m.page == "group-edit" || m.groupChecking {
-			target := m.pendingRow()
-			if target == nil && m.pendingPeerAvailable() {
-				m.page = ""
-				m.groupChecking = false
-				m.inform("session unavailable; editor closed")
-			} else if target != nil && target.available && m.groupChecking {
-				m.groupChecking = false
-				if m.groupAcknowledged {
-					m.page = ""
-					m.inform("group assigned")
-					if m.pending.Group.IsUnassigned() {
-						m.inform("group cleared")
-					}
-				}
-			}
-		}
+		m.reconcileMetadata()
 		m.observeNotifications(message)
-		if m.page == "details" {
-			target, _ := fleetclient.DecodeReference(m.pageRef)
-			found := false
-			for _, row := range m.rows {
-				ref, _ := fleetclient.DecodeReference(row.session.Ref)
-				if ref.SessionEqual(target) {
-					m.facts = m.details(&row)
-					m.pageName = row.session.Name
-					found = true
-					break
-				}
-			}
-			if !found {
-				for index := range m.facts {
-					if m.facts[index][0] == "state" {
-						m.facts[index][1] = "unavailable"
-					}
-				}
-			}
+		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
+			m.refreshInfo()
 		}
 		return m, nil
 	case actionMsg:
@@ -243,14 +207,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
 			m.fail(failureText)
 			failure := message.result.Error
-			if message.operation == "group" && (failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch") {
-				m.groupChecking = true
-				m.groupAcknowledged = false
-				if failure.Dispatch == "unknown" {
-					m.groupFailure = failure
+			if message.operation == "group" || message.operation == "rename" {
+				m.metadata.failure = failure
+				if failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch" || failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged" {
+					m.metadata.checking = true
+					m.metadata.acknowledged = false
+					m.invalidatePendingPeer()
+					return m, m.refresh()
 				}
-				m.invalidatePendingPeer()
-				return m, m.refresh()
 			}
 			return m, nil
 		}
@@ -302,14 +266,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.inform("opening terminal on " + value.Label + "…")
 			request := fleetclient.Request{Operation: "enter", Ref: value.Session.Ref}
 			return m, m.enter(request)
-		case "group":
-			m.groupChecking = true
-			m.groupAcknowledged = true
+		case "group", "rename":
+			m.metadata.checking = true
+			m.metadata.acknowledged = true
 			m.invalidatePendingPeer()
-			m.inform("group assigned; checking inventory")
-			if m.pending.Group.IsUnassigned() {
-				m.inform("group cleared; checking inventory")
-			}
+			m.inform("metadata saved; checking inventory")
 
 		case "close":
 			text := fleetclient.CloseText(message.result.Value.(fleetclient.CloseResult))
@@ -372,8 +333,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if m.page == "group-edit" && !m.groupChecking {
-				m.groupDraft += message.Content
+			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking {
+				m.metadata.draft += message.Content
 			}
 			if m.page == "create" && m.field >= 2 {
 				if m.field == 4 {
@@ -414,13 +375,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "machine-picker" {
 			return m, m.editPicker(key)
 		}
-		if m.page == "group-edit" {
-			return m, m.editGroup(message)
+		if m.page == "group-edit" || m.page == "name-edit" {
+			return m, m.editMetadata(message)
 		}
 		if m.page == "confirm" {
 			switch key {
 			case "y", "enter":
-				current := m.pendingRow()
+				current := m.rowForReference(m.pending.Ref)
 				if current == nil || !current.available || !m.scopeReady {
 					m.inform("session unavailable; refresh before confirming")
 					return m, nil
@@ -438,6 +399,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "create" {
 			return m, m.editForm(message)
 		}
+		if m.page == "details" && (key == "r" || key == "g") {
+			operation := "group"
+			if key == "r" {
+				operation = "rename"
+			}
+			m.openMetadata(operation)
+			return m, nil
+		}
 		if m.page != "" {
 			switch key {
 			case "q", "esc":
@@ -451,6 +420,10 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "pgdown":
 				m.offset = min(max(0, len(m.detailLines())-m.pageCapacity()), m.offset+m.pageCapacity())
 			}
+			return m, nil
+		}
+		if m.metadata != nil && m.metadata.checking && (key == "m" || key == "N") {
+			m.inform("checking metadata change; refresh before changing machine")
 			return m, nil
 		}
 		switch key {
@@ -532,15 +505,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			request.Operation = "shell"
 			m.inform("opening new shell on " + row.label + "…")
 			return m, m.execute(request)
-		case "e":
-			request.Operation = "group"
-			m.pending = request
-			m.groupDraft = row.session.Group.String()
-			m.groupChecking, m.groupAcknowledged = false, false
-			m.groupFailure = nil
-			m.page = "group-edit"
-			m.inform("")
-			return m, nil
 		case "enter":
 			request.Operation = "enter"
 			return m, m.enter(request)
@@ -578,27 +542,6 @@ func (m *model) scopedPeers() []fleetclient.Peer {
 		}
 	}
 	return nil
-}
-func (m *model) pendingRow() *listedRow {
-	target, _ := fleetclient.DecodeReference(m.pending.Ref)
-	for _, peer := range m.peers {
-		for _, session := range peer.Sessions {
-			ref, _ := fleetclient.DecodeReference(session.Ref)
-			if ref.SessionEqual(target) {
-				return &listedRow{peer.Label, peer.Machine, session, peer.OK}
-			}
-		}
-	}
-	return nil
-}
-func (m *model) pendingPeerAvailable() bool {
-	target, _ := fleetclient.DecodeReference(m.pending.Ref)
-	for _, peer := range m.peers {
-		if peer.Machine == target.Machine {
-			return peer.OK
-		}
-	}
-	return false
 }
 func (m *model) invalidatePendingPeer() {
 	target, _ := fleetclient.DecodeReference(m.pending.Ref)
@@ -665,48 +608,6 @@ func (m *model) nextGroupDraft(draft string, previous bool) string {
 		index = (index + 1) % len(options)
 	}
 	return options[index]
-}
-func (m *model) editGroup(key tea.KeyPressMsg) tea.Cmd {
-	if key.String() == "esc" {
-		m.page = ""
-		m.groupChecking = false
-		m.groupAcknowledged = false
-		return nil
-	}
-	if m.groupChecking {
-		return nil
-	}
-	switch key.String() {
-	case "enter", "ctrl+s":
-		label, err := group.ParseDraft(m.groupDraft)
-		if err != nil {
-			m.inform(group.ErrInvalid.Error())
-			return nil
-		}
-		current := m.pendingRow()
-		if current == nil || !current.available {
-			m.inform("session unavailable; refresh before saving")
-			return nil
-		}
-		if current.session.Group == label {
-			return nil
-		}
-		m.pending.Group = label
-		m.groupFailure = nil
-		return m.execute(m.pending)
-	case "ctrl+u":
-		m.groupDraft = ""
-	case "left", "right":
-		m.groupDraft = m.nextGroupDraft(m.groupDraft, key.String() == "left")
-	case "backspace":
-		if m.groupDraft != "" {
-			_, size := utf8.DecodeLastRuneInString(m.groupDraft)
-			m.groupDraft = m.groupDraft[:len(m.groupDraft)-size]
-		}
-	default:
-		m.groupDraft += key.Text
-	}
-	return nil
 }
 func (m *model) selectedRow() *listedRow {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {

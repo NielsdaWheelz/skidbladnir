@@ -430,6 +430,12 @@ peer retains its previous rows as unavailable; an unqueried peer is not reported
 as freshly checked. no per-filter row histories. returning to all performs an
 all-machine read before enabling its collection.
 
+desktop group editing opens with `g` inside the session's spacebar info page;
+save/cancel returns to that captured info, without changing the table's view.
+info resolves its lifetime from the underlying inventory even after regrouping
+removes the table row. [desktop browser](desktop-browser.md#4-actions-and-return)
+owns the shared metadata-editing and unknown-outcome return rules.
+
 the group editor has the pinned machine/name, current membership, one text field,
 observed suggestions, explicit unassigned, and save/cancel. selecting a suggestion
 fills the draft, never submits. blank means unassigned in an ordinary editor.

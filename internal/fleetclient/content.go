@@ -11,6 +11,12 @@ func SessionStatusDetail(session Session) string {
 // ErrorMessage is shared by command output and the desktop browser.
 func ErrorMessage(failure Failure, request Request, native bool) string {
 	if failure.Dispatch == "unknown" {
+		if request.Operation == "rename" {
+			return "name change outcome unknown. checking tmux."
+		}
+		if request.Operation == "group" {
+			return "group change outcome unknown. checking tmux."
+		}
 		if request.Operation == "start" || request.Operation == "shell" {
 			return "could not confirm terminal creation. refresh before taking another action."
 		}
@@ -26,6 +32,12 @@ func ErrorMessage(failure Failure, request Request, native bool) string {
 		return "could not confirm terminal input. inspect the terminal before trying again."
 	}
 	switch failure.Code {
+	case "SessionNameInvalid":
+		return "use 1–64 letters, numbers, underscores, or hyphens; start with a letter or number."
+	case "SessionNameConflict":
+		return "another session on this machine uses that name."
+	case "SessionNameChanged":
+		return "the session name changed. review and save again."
 	case "TerminalTargetChanged", "SessionIdentityMismatch", "SessionNotFound":
 		return "the terminal changed. refresh before trying again."
 	case "TerminalInputBlocked":

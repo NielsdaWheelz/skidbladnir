@@ -44,6 +44,8 @@ type Request struct {
 	MaxBytes       int
 	Group          group.Label
 	GroupFilter    group.Filter
+	ExpectedNaming *Naming
+	Naming         *Naming
 }
 
 type Reference struct {
@@ -92,6 +94,13 @@ func (ref Reference) SessionEqual(other Reference) bool {
 }
 
 func (request Request) Valid() bool {
+	if request.Operation == "rename" {
+		if request.ExpectedNaming == nil || request.Naming == nil || !request.ExpectedNaming.valid() || !request.Naming.valid() || request.Naming.Mode == "manual" && !ValidSessionName(request.Naming.Name) {
+			return false
+		}
+	} else if request.ExpectedNaming != nil || request.Naming != nil {
+		return false
+	}
 	if request.Operation != "read" && request.Scope != "" || request.Operation != "send" && (request.Input != "" || request.Delivery != "") || request.Operation != "wait" && (request.State != "" || request.WaitTimeout != 0) || request.Operation != "close" && request.TerminalOnly {
 		return false
 	}
@@ -113,7 +122,7 @@ func (request Request) Valid() bool {
 	case "start":
 		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
 			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
-	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "shell", "inspect":
+	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "rename", "shell", "inspect":
 	default:
 		return false
 	}
