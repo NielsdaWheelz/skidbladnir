@@ -19,7 +19,10 @@ var (
 	ErrWriteUnknown  = errors.New("terminal input delivery is unknown")
 )
 
-const inputWrittenMarker = "SKIDBLADNIR_INPUT_WRITTEN"
+const (
+	inputWrittenMarker     = "SKIDBLADNIR_INPUT_WRITTEN"
+	inputUnavailableMarker = "SKIDBLADNIR_INPUT_UNAVAILABLE"
+)
 
 type PaneTarget struct {
 	SessionID string
@@ -39,6 +42,13 @@ func (target PaneTarget) valid() bool {
 
 func (target PaneTarget) condition() string {
 	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+target.PaneID+"}"))
+}
+
+// refusal is the else branch of a guard that extends target.condition(). It
+// prints marker when the target still holds, so only the extension failed, and
+// identityMismatchMarker when the target itself changed.
+func (target PaneTarget) refusal(marker string) string {
+	return "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l " + marker + "' 'display-message -p -l " + identityMismatchMarker + "'"
 }
 
 // CapturePane is the public plain-text read: the retained tail, or the visible
@@ -139,9 +149,9 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 	}
 	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	// A dead pane is positively unavailable; a different active pane/lifetime is stale.
-	refusal := "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l SKIDBLADNIR_INPUT_UNAVAILABLE' 'display-message -p -l " + identityMismatchMarker + "'"
 	var output strings.Builder
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", refusal)
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'",
+		target.refusal(inputUnavailableMarker))
 	command.Stdout = &output
 	if err := command.Start(); err != nil {
 		return ErrUnavailable
@@ -154,7 +164,7 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 		return nil
 	case identityMismatchMarker:
 		return ErrTargetChanged
-	case "SKIDBLADNIR_INPUT_UNAVAILABLE":
+	case inputUnavailableMarker:
 		return ErrUnavailable
 	default:
 		return ErrWriteUnknown

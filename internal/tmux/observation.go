@@ -26,6 +26,8 @@ const (
 
 	observedMarker           = "SKIDBLADNIR_OBSERVED"
 	observationChangedMarker = "SKIDBLADNIR_OBSERVATION_CHANGED"
+	// paneScreenFormat is read once and then required unchanged by the capture.
+	paneScreenFormat = "#{pane_width} #{pane_height} #{alternate_on}"
 )
 
 type RegionKind string
@@ -35,12 +37,17 @@ const (
 	RegionBottom RegionKind = "bottom"
 )
 
-// PaneRegion is a contiguous run of physical visible rows. Every row is
-// self-contained: read from the default style, its SGR sequences reproduce its
-// styling. Rows are complete UTF-8, contain no newline, and are never joined.
+// PaneRegion is a contiguous run of physical visible rows: Rows covers rows
+// FirstRow through FirstRow+len(Rows)-1, zero-based. Every row is
+// self-contained: parsed from the default terminal state, its escape sequences
+// (SGR, OSC 8 hyperlinks carrying their URI, SO/SI charset shifts) reproduce its
+// styling, and no state carries to the next row. Rows are complete UTF-8,
+// contain no newline, and are never joined. A clipped region may hold no rows
+// when its anchored row alone exceeds the byte limit; the bottom region then
+// has FirstRow == Height.
 type PaneRegion struct {
 	Kind     RegionKind
-	FirstRow int // zero-based physical row of Rows[0]
+	FirstRow int
 	Rows     []string
 	Clipped  bool // requested rows were dropped at the region's byte limit
 }
@@ -64,7 +71,7 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 		return PaneObservation{}, ErrInputInvalid
 	}
 	screen, err := client.Output(ctx, "read-pane-screen", "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(),
-		"display-message -p -t '"+target.PaneID+"' '#{pane_width} #{pane_height} #{alternate_on}'",
+		"display-message -p -t '"+target.PaneID+"' '"+paneScreenFormat+"'",
 		"display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		return PaneObservation{}, ErrUnavailable
@@ -78,40 +85,38 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	}
 	width, widthErr := strconv.Atoi(fields[0])
 	height, heightErr := strconv.Atoi(fields[1])
-	if widthErr != nil || heightErr != nil || width < 1 || height < 1 || fields[2] != "0" && fields[2] != "1" {
+	if widthErr != nil || heightErr != nil || width < 1 || height < 1 {
 		return PaneObservation{}, ErrUnavailable
 	}
-
-	top := 0
-	if height > bottomRegionRows {
-		top = min(topRegionRows, height-bottomRegionRows)
+	if fields[2] != "0" && fields[2] != "1" {
+		return PaneObservation{}, ErrUnavailable
 	}
+	alternate := fields[2] == "1"
+
+	top := min(topRegionRows, max(0, height-bottomRegionRows))
 	bottom := min(bottomRegionRows, height)
 	// Each row is its own capture: one capture carries style state from row to
 	// row, so only a fresh capture starts a row from the default style. The
 	// bottom region is read upward so both regions arrive nearest-edge first.
-	rows := make([]int, 0, top+bottom)
+	requested := make([]int, 0, top+bottom)
 	for row := range top {
-		rows = append(rows, row)
+		requested = append(requested, row)
 	}
 	for row := height - 1; row >= height-bottom; row-- {
-		rows = append(rows, row)
+		requested = append(requested, row)
 	}
 	var branch strings.Builder
 	branch.WriteString("display-message -p -l '" + observedMarker + "'")
-	for _, row := range rows {
+	for _, row := range requested {
 		line := strconv.Itoa(row)
 		branch.WriteString(" ; capture-pane -p -e -t '" + target.PaneID + "' -S " + line + " -E " + line)
 	}
 	// The capture runs only while the target and the screen read above are
 	// unchanged; the refusal distinguishes a changed screen from a stale target.
-	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_width}," + strconv.Itoa(width) + "}",
-		"#{==:#{pane_height}," + strconv.Itoa(height) + "}", "#{==:#{alternate_on}," + fields[2] + "}"})
-	refusal := "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l " +
-		observationChangedMarker + "' 'display-message -p -l " + identityMismatchMarker + "'"
-	regions := observedRows{topRows: top, expected: len(rows), top: observedRegion{limit: topRegionBytes}, bottom: observedRegion{limit: bottomRegionBytes}}
-	output := captureOutput{body: &regions}
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch.String(), refusal)
+	condition := andFormatConditions([]string{target.condition(), "#{==:" + paneScreenFormat + "," + formatLiteral(screen) + "}"})
+	rows := observedRows{topCount: top, expected: len(requested), top: observedRegion{limit: topRegionBytes}, bottom: observedRegion{limit: bottomRegionBytes}}
+	output := captureOutput{body: &rows}
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch.String(), target.refusal(observationChangedMarker))
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
 		return PaneObservation{}, ErrUnavailable
@@ -125,25 +130,26 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	default:
 		return PaneObservation{}, ErrUnavailable
 	}
-	if regions.received != regions.expected || len(regions.row) != 0 {
+	if rows.received != rows.expected {
 		return PaneObservation{}, ErrUnavailable
 	}
-	observation := PaneObservation{Width: width, Height: height, Alternate: fields[2] == "1"}
+	observation := PaneObservation{Width: width, Height: height, Alternate: alternate}
 	if top > 0 {
-		observation.Regions = append(observation.Regions, PaneRegion{Kind: RegionTop, Rows: regions.top.rows, Clipped: regions.top.clipped})
+		observation.Regions = append(observation.Regions, PaneRegion{Kind: RegionTop, Rows: rows.top.rows, Clipped: rows.top.clipped})
 	}
-	slices.Reverse(regions.bottom.rows)
+	slices.Reverse(rows.bottom.rows)
 	observation.Regions = append(observation.Regions, PaneRegion{
-		Kind: RegionBottom, FirstRow: height - len(regions.bottom.rows), Rows: regions.bottom.rows, Clipped: regions.bottom.clipped,
+		Kind: RegionBottom, FirstRow: height - len(rows.bottom.rows), Rows: rows.bottom.rows, Clipped: rows.bottom.clipped,
 	})
 	return observation, nil
 }
 
-// observedRows receives the rows in capture order. Each region keeps rows
-// until the next would exceed its byte limit; the rest of that region is
-// discarded as it arrives, so memory stays within the two limits.
+// observedRows receives the rows in capture order and refuses any byte past the
+// expected last row. Each region keeps rows until the next would exceed its
+// byte limit; the rest of that region is discarded as it arrives, so memory
+// stays within the two limits.
 type observedRows struct {
-	topRows  int // leading rows that belong to the top region
+	topCount int // leading rows that belong to the top region
 	expected int
 	received int
 	row      []byte
@@ -165,7 +171,7 @@ func (output *observedRows) Write(contents []byte) (int, error) {
 			return 0, errors.New("unexpected observation row")
 		}
 		region := &output.bottom
-		if output.received < output.topRows {
+		if output.received < output.topCount {
 			region = &output.top
 		}
 		line, rest, complete := bytes.Cut(contents, []byte{'\n'})

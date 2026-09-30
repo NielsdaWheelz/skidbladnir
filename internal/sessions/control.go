@@ -105,10 +105,12 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 // ObservePane captures the bounded screen regions of session's exact target and
 // then revalidates its foreground against session's own sample. session comes
 // from List or ResolveTerminal in the same request and is never re-resolved.
+// It succeeds only when the pane's foreground is still present and identical
+// to the sample; an absent foreground cannot vouch for the captured screen.
 // Errors: ErrTerminalProcessFailed (no foreground sample, or revalidation
 // failed), ErrTerminalCaptureFailed (tmux failure or dimension/screen change),
-// ErrTerminalObservationChanged (a different foreground in the same target),
-// ErrTerminalTargetChanged (session lifetime or selected pane changed).
+// ErrTerminalObservationChanged (foreground absent or different in the same
+// target), ErrTerminalTargetChanged (session lifetime or selected pane changed).
 // Callers check ctx first: an expired context is a timeout at any stage.
 func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
 	if session.ForegroundFailed() {
@@ -124,20 +126,11 @@ func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxc
 	default:
 		panic("listed terminal target is invalid") // justify-defect: List and ResolveTerminal admit only canonical targets.
 	}
-	// Re-observe as enrichment sampled: an empty pane has no process to read,
-	// and an absent process is no foreground.
-	var foreground *processinfo.Observation
-	if session.panePID != 0 {
-		observed, err := processinfo.ObserveForeground(session.panePID)
-		switch {
-		case err == nil:
-			foreground = &observed
-		case errors.Is(err, processinfo.ErrProcessAbsent):
-		default:
-			return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
-		}
+	foreground, err := paneForeground(session.panePID)
+	if err != nil {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
 	}
-	if !sameForeground(session.foreground, foreground) {
+	if foreground == nil || !sameForeground(session.foreground, foreground) {
 		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
 	}
 	return observation, nil

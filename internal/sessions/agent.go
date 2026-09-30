@@ -8,30 +8,39 @@ import (
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 )
 
-func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
-	// An empty tmux pane has no process to observe or registered identity to accept.
+// paneForeground samples the foreground process of a pane's terminal. An empty
+// pane (no root process) and an exited root process have no foreground; other
+// kernel failures remain distinguishable from a successful sample.
+func paneForeground(panePID processinfo.PID) (*processinfo.Observation, error) {
 	if panePID == 0 {
-		return nil, nil, nil
+		return nil, nil
 	}
+	foreground, err := processinfo.ObserveForeground(panePID)
+	if errors.Is(err, processinfo.ErrProcessAbsent) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &foreground, nil
+}
+
+func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID processinfo.PID) (*agentruntime.AgentRuntime, *processinfo.Observation, error) {
+	foreground, err := paneForeground(panePID)
+	if err != nil || foreground == nil {
+		return nil, nil, err
+	}
+	// Project accepts a registration only for this foreground's exact lifetime.
 	registration := ""
 	if observedRegistration, optionErr := manager.paneOption(ctx, paneID, agentruntime.PaneOption); optionErr == nil {
 		registration = observedRegistration
 	}
-	// Stable process absence is an empty terminal. Other kernel failures remain
-	// distinguishable from a successful unsupported-provider sample.
-	foreground, err := processinfo.ObserveForeground(panePID)
-	if errors.Is(err, processinfo.ErrProcessAbsent) {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	agent, found := agentruntime.Project(manager.profiles, foreground, registration)
+	agent, found := agentruntime.Project(manager.profiles, *foreground, registration)
 	if !found {
-		return nil, &foreground, nil
+		return nil, foreground, nil
 	}
 	if agent.Provider == agentruntime.ProviderCodex {
-		environment, readErr := processinfo.ObserveForegroundEnvironment(panePID, foreground)
+		environment, readErr := processinfo.ObserveForegroundEnvironment(panePID, *foreground)
 		if errors.Is(readErr, processinfo.ErrForegroundMismatch) {
 			return nil, nil, readErr
 		}
@@ -40,7 +49,7 @@ func (manager *Manager) observeAgent(ctx context.Context, paneID string, panePID
 		}
 	}
 	agent.PaneID = paneID
-	return &agent, &foreground, nil
+	return &agent, foreground, nil
 }
 
 func observeRemoteAgent(foreground processinfo.Observation, environment map[string]string, profiles []agentruntime.Profile) *agentruntime.AgentRuntime {

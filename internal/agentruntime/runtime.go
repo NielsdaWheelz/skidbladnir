@@ -129,7 +129,8 @@ func HookOrigin(
 	matches := 0
 	for _, observation := range terminalAncestry {
 		if foreground, found := ClassifyForeground(profiles, observation); found {
-			origin, matches = foreground, matches+1
+			origin = foreground
+			matches++
 		}
 	}
 	if matches != 1 || origin.PID != terminalAncestry[0].ForegroundProcessGroup {
