@@ -402,6 +402,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.inform("operation in flight; delivery will be reported")
 			return m, nil
 		}
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
@@ -477,8 +480,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch key {
-		case "q", "esc":
+		case "q":
 			return m, tea.Quit
+		case "esc":
+			// escape closes pages; the table is its floor, never an exit.
+			return m, nil
 		case "a":
 			m.showAgents()
 			return m, nil

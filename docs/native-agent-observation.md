@@ -249,7 +249,7 @@ existing typography/status bay/chips; no new visual system.
 
 | feature | required copy / behavior |
 | --- | --- |
-| association | tracking <last 8 id characters>; full id in details; never current tui selection |
+| association | phone cards and `skid list`: tracking <last 8 id characters>; desktop: the selected row's facts line reads `tracking <last 8> · <status>` and table rows show the status text alone; full id in details; never current tui selection |
 | unassociated codex | conversation not tracked; no asserted native status/unread |
 | native output | view replies; conversation id visible; successful opening clears captured known replies only |
 | state | working/waiting/idle/done/failed/stopped; status unavailable; no reasons |

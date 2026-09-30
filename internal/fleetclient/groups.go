@@ -60,13 +60,6 @@ func GroupHeading(label group.Label) string {
 	return "group: " + label.String()
 }
 
-func GroupFilterHeading(filter group.Filter) string {
-	if filter.Kind() == group.FilterAll {
-		return "all groups"
-	}
-	return GroupHeading(filter.Label())
-}
-
 func compareSessions(a, b Session) int {
 	left, _ := DecodeReference(a.Ref)
 	right, _ := DecodeReference(b.Ref)

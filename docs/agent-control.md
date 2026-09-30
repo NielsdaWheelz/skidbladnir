@@ -51,9 +51,11 @@ another displayed conversation stopped. terminal-only close reuses exact deletio
 
 ## presentation and acknowledgement
 
-cards explicitly show tracking <conversation id>. their status/unread describes
-that recorded conversation, which may differ from terminal contents. unassociated
-codex has no asserted native state or unread. blocking reasons are omitted.
+phone cards and `skid list` explicitly show tracking <conversation id>; the
+desktop shows it on the selected row's facts line and in details. their
+status/unread describes that recorded conversation, which may differ from
+terminal contents. unassociated codex has no asserted native state or unread.
+blocking reasons are omitted.
 
 native output is a separate view replies action. opening captures known unread
 ids; first successful native output presentation acknowledges exactly those ids.
