@@ -244,11 +244,9 @@ func (m *model) noticeLines(width int) []string {
 func (m *model) hints() [][]hint {
 	switch m.page {
 	case "confirm":
-		effect := "close terminal only"
+		effect := "interrupt and close terminal"
 		if m.pending.Operation == "stop" {
 			effect = "send interrupt"
-		} else if !m.pending.TerminalOnly {
-			effect = "interrupt and close terminal"
 		}
 		return [][]hint{{{"enter", effect}, {"escape", "cancel"}}}
 	case "machine-picker":
@@ -280,8 +278,7 @@ func (m *model) hints() [][]hint {
 		if row.session.Connection == nil {
 			session = append(session, hint{"T", "here"})
 		}
-		session = append(session, hint{"s", "send interrupt"}, hint{"c", "interrupt and close terminal"})
-		session = append(session, hint{"x", "close terminal only"})
+		session = append(session, hint{"s", "send interrupt"}, hint{"x", "interrupt and close terminal"})
 	} else if row != nil {
 		session = append(session, hint{"space", "info"})
 	}
@@ -375,12 +372,9 @@ func (m *model) bodyLines(height int) []string {
 	width := m.width - 2
 	switch m.page {
 	case "confirm":
-		action, effect := "close terminal only", "close this entire session without interruption. work shared elsewhere or running remotely may continue."
+		action, effect := "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
 		if m.pending.Operation == "stop" {
 			action, effect = "send interrupt", "send one interrupt to the selected pane; retain this session. stopping is unconfirmed."
-		}
-		if m.pending.Operation == "close" && !m.pending.TerminalOnly {
-			action, effect = "interrupt and close terminal", "send one interrupt to the selected pane, then close this entire session. closure proceeds even if interruption fails. work shared elsewhere or running remotely may continue."
 		}
 		lines := []string{}
 		for _, line := range wrapped(action+" "+capturedHeading(m.pendingName, m.pendingLabel, width-len(action)-2)+"?", width) {

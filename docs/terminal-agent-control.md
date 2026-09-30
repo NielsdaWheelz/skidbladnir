@@ -26,8 +26,8 @@ only provider-specific detector rules and interruption keys differ.
 | text / keys | deliberate terminal input, independent of inferred state/provider |
 | wait | wait for an inferred terminal state on one captured terminal target |
 | `s` / stop | one interruption request; keep the terminal |
-| `c` / close | one interruption request, then independently close the exact session |
-| `x` / close --terminal-only | close the exact session without interruption |
+| `x` / close | one interruption request, then independently close the exact session |
+| close --terminal-only | close the exact session without interruption; explicit cli/mobile control |
 
 all terminals support read/text/keys/stop/close, including shells, other programs,
 unregistered agents and ssh/mosh. existing machine freshness/authentication and
@@ -314,7 +314,7 @@ combined copy: `send one interrupt to the selected pane, then close this entire
 session. closure proceeds even if interruption fails.` both closure variants:
 `work shared elsewhere or running remotely may continue.` same-lifetime rename
 does not retarget the confirmation. no extra confirmation cascade.
-desktop s/c/x appear in agents and terminal/group views; mobile equivalents appear
+desktop s/x appear in agents and terminal/group views; mobile equivalents appear
 on cards and terminal screens. availability never depends on agent presence or
 configured profiles; retain freshness checks and explicit failure feedback.
 remove routine `conversation not tracked`, tracking chips and native-method gates.
@@ -379,7 +379,7 @@ red failures. reproduce changed behavior against the exact recorded base revisio
 | --- | --- |
 | observation | real codex/claude working/dialog/prompt/unknown; narrow/wrapped/clipped screens, quoted lookalikes, old scrollback and capture failure; sampled source is truthful |
 | lifecycle | a -> resume b -> exit -> shell -> other program -> new agent: terminal remains usable without association; old native id/status cannot affect card or controls |
-| generic controls | s/c/x through desktop and mobile on shell, long-running foreground command, both providers, unknown program, ssh/mosh and dead pane; no native dependency or hidden escalation |
+| generic controls | desktop s/x and mobile stop/close controls on shell, long-running foreground command, both providers, unknown program, ssh/mosh and dead pane; no native dependency or hidden escalation |
 | exact effects | pane switch/replacement, session/server reuse and rename; no other session/socket affected; stale interruption can coexist with exact-session closure; unrelated/background work not claimed stopped |
 | transport/results | real unique-buffer paste and keys; guard loss after staging submits nothing; cleanup error/timeout cannot consume deletion budget; pre-write failure vs possible write; lost responses/cancellation preserve separate outcomes; no replay |
 | orchestration | send refuses dialogs/unknown and visible drafts; active-work send qualifies independently; text remains available; bounded read/utf-8/alternate screen; wait match/timeout/cancel/foreground changes/pane selection changes |

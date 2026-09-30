@@ -26,3 +26,9 @@ creation without replay. [pr 4](https://github.com/NielsdaWheelz/skidbladnir/pul
 passed temporary component checks but explicitly left the rebased browser's
 live fleet run unperformed. the `v0.10.3` delivery did not record this browser
 journey. these cases remain `NOT_RUN` and belong in the same approved proof.
+
+2026-09-30: browser `x` now interrupts then closes; `c` is removed and `s` retains
+the terminal. temporary browser/client checks against a loopback tls fixture
+pass confirmation/cancellation, exact-target dispatch, busy duplicate suppression,
+partial-close feedback and removed-key behavior. provider/tmux closure for this
+change remains `NOT_RUN`; include `s`/`x` in the approved live journey.

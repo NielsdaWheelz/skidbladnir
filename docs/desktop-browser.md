@@ -109,7 +109,7 @@ copy.
 | context | keys/behavior |
 | --- | --- |
 | ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
-| selected row | spacebar full metadata; `s` sends one interrupt on every fresh terminal, `c` then independently closes the entire session, `x` closes without input; `e` changes group; `T` terminal-here retains its remote guard; metadata remains readable when unavailable |
+| selected row | spacebar full metadata; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `e` changes group; `T` terminal-here retains its remote guard; metadata remains readable when unavailable |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
 | operation in flight | every key, `ctrl-c` included, is refused with the in-flight notice; nothing quits |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
