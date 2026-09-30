@@ -26,7 +26,9 @@ current stock-native generation: [v0.10.6](https://github.com/NielsdaWheelz/skid
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
 owns its qualified helper. [current qualification](native-agent-qualification.md)
-records isolated source checks and artifact verification; this generation has no fleet/phone acceptance.
+records isolated source checks, artifact verification, installed native lifecycles
+and owner-confirmed phone attachment. broader phone-native interaction retains
+its separate acceptance scope.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
