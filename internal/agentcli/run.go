@@ -61,7 +61,9 @@ unknown delivery is never replayed; a nonzero exit alone permits no retry
 browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
   a selects agents; m chooses machine; n opens terminal; N opens options
-  enter attaches; space shows details; T opens a terminal here; e edits group
+  enter attaches; space shows details; e edits group
+  shift+t creates and enters a shell on the selected session's machine,
+  in its current directory and group; the original session keeps running
   s sends interrupt; x interrupts and closes terminal
   ctrl-r refreshes; escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight

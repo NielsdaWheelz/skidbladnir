@@ -186,16 +186,23 @@ context; unavailable/checking hosts retain their existing faint treatment.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, only when the table scrolls, the cursor position at its end; the selected
-session's terminal status/attention and recorded native identity, attached clients and full
-directory; the keys.
+session's terminal status/attention and recorded native identity and attached
+clients; its directory on a separate line; the keys. for an available local
+session, the directory line ends with `shift+t new shell here`, with the key
+bold and the label plain. reserve two spaces before the action and truncate a
+long directory from the left so its final components remain visible. the action
+is absent for ssh/mosh sources, unavailable sessions, modal pages and pending
+operations. it creates and enters an independent shell on the named target's
+machine, in its current directory and group; the original session keeps running.
 while an action is in flight the rule names that action's captured target instead.
 observed text is sanitized for display: controls, format characters such as bidi
 overrides, and line separators become spaces.
 
-hints list actions, not navigation: the selected session's verbs, then
+hints list actions, not navigation: the selected session's remaining verbs, then
 `a agents  ←→ view  m machine  n terminal on <host>  N options  q quit`. each set
 of hints stays on one line when it fits and otherwise wraps by whole hints; the
-key is bold, the label plain. navigation and session keys are in `--help`.
+key is bold, the label plain. the directory owns the shell-here hint; do not
+repeat it in this list. navigation and session keys are in `--help`.
 
 pages keep row 1 and the rule. the page title is bold, and labels right-align on
 one axis. the rule names the captured target (pending action or details
