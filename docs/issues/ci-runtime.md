@@ -12,6 +12,8 @@ spent 3m08s on android compile/lint and 1m08s on a separate apk build. local
 full verification passes with one 38s gradle invocation; host and cheap scopes
 pass in 2.4s and 0.8s respectively. temporary git-diff checks pass for scopes,
 renames, deletions, multi-commit pushes, absent bases and failed diff collection.
+the first hosted combined build exhausted the former 768mb gradle heap during
+dex merging; the combined build now has a 2gb heap, pending hosted verification.
 
 resolved when: hosted runs demonstrate gradle cache restore and record warm
 android, host-only and docs-only job durations. scoped main runs require the
