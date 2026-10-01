@@ -38,13 +38,15 @@ var (
 	codexResumeRule = regexp.MustCompile(`^─+ (\d+ ?/ ?\d+…? · )?\d+% ─$`)
 )
 
-// detectCodex reads the codex 0.159.2 screen grammar of research/codex.md,
-// sections 2-4. E (end) is the last non-blank row; every surface is anchored
-// on it and tried in the grammar's order, and the first that matches decides.
-// Rows are pane rows, so a read above the bottom region continues into the top
-// region by index. A row that was not parsed (dropped by the capture, or
-// unreadable) is missing evidence: it stops a read, and a rule that needs it
-// falls through or, where the grammar says so, reads clipped.
+// detectCodex reads the codex 0.159.2 screen grammar of
+// docs/terminal-observation-codex.md, sections 2-4. E (end) is the last
+// non-blank row; every surface is anchored on it and tried in the grammar's
+// order, and the first that matches decides. Rows are pane rows, so a read
+// above the bottom region continues into the top region by index. A row that
+// was not parsed stops a read. A dropped row is missing evidence: a rule that
+// needs it falls through or, where the grammar says so, reads clipped. An
+// unparseable row is present but unrecognized: it matches no rule and leaves
+// what it would decide unknown, never clipped.
 func detectCodex(parsed screen) reading {
 	end := len(parsed.rows) - 1
 	for end >= 0 && parsed.rows[end].blank() {
@@ -53,9 +55,12 @@ func detectCodex(parsed screen) reading {
 	switch {
 	case end < 0:
 		return unknownReading(causeUnrecognized)
-	case parsed.rows[end].presence != rowParsed:
-		// The screen continues into a row that was not parsed (2.0 step 1).
+	case parsed.rows[end].presence == rowAbsent:
+		// The screen continues into a dropped row (2.0 step 1).
 		return unknownReading(causeClipped)
+	case parsed.rows[end].presence == rowUnparseable:
+		// Every surface anchors on E, which no rule recognizes.
+		return unknownReading(causeUnrecognized)
 	}
 	// 2.0 step 4: the surfaces in the grammar's order; the first match wins.
 	for _, surface := range [...]func(screen, int) (reading, bool){codexApproval, codexForm, codexAsyncEditor,
@@ -296,12 +301,13 @@ func codexPager(screen screen, end int) (reading, bool) {
 		return reading{}, false
 	}
 	header := screen.rows[0]
-	if header.presence != rowParsed {
+	if header.presence == rowAbsent {
 		read := codexOverlay(sessions.InteractionUnknown)
 		read.interactionCause = causeClipped
 		return read, true
 	}
-	// The dim `/ <title>` header over a `/ / /` fill.
+	// The dim `/ <title>` header over a `/ / /` fill; an unparseable header
+	// has no cells, so it is no title.
 	title, isPager := strings.CutPrefix(cellText(codexCells(header, 0)), "/ ")
 	if !isPager || !header.cell(0).style.dim {
 		return codexOverlay(sessions.InteractionUnknown), true
@@ -379,10 +385,12 @@ func codexPicker(screen screen, end int) (reading, bool) {
 	for index := selected - 1; index >= 0; index-- {
 		row := screen.rows[index]
 		if row.presence != rowParsed {
-			// The missing row could have decided setup or confirmation: the one
-			// partial match that is final.
+			// The row could have decided setup or confirmation: the one partial
+			// match that is final. Only a dropped row is clipped.
 			read := unknownReading(causeUnrecognized)
-			read.interactionCause = causeClipped
+			if row.presence == rowAbsent {
+				read.interactionCause = causeClipped
+			}
 			if footered {
 				read.composer = composerBlocked
 			}
@@ -471,7 +479,8 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	// F, the run of non-blank rows ending at E, holds at most three rows; B,
 	// the blank row above it, is the composer's bottom padding; C is the first
 	// column-0 row above B over blank and indented rows. The last rule, so a
-	// row this anchoring needs that was not parsed leaves the screen clipped.
+	// dropped row this anchoring needs leaves the screen clipped; an
+	// unparseable one is no B or C, so the screen is unrecognized.
 	footerFirst := end
 	for footerFirst > end-2 && footerFirst > 0 && screen.rows[footerFirst-1].presence == rowParsed && !screen.rows[footerFirst-1].blank() {
 		footerFirst--
@@ -481,7 +490,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	}
 	padding := footerFirst - 1
 	switch {
-	case screen.rows[padding].presence != rowParsed:
+	case screen.rows[padding].presence == rowAbsent:
 		return unknownReading(causeClipped), true
 	case !screen.rows[padding].blank():
 		return reading{}, false
@@ -491,9 +500,9 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		inputRow--
 	}
 	switch {
-	case inputRow < 0:
+	case inputRow < 0 || screen.rows[inputRow].presence == rowUnparseable:
 		return reading{}, false
-	case screen.rows[inputRow].presence != rowParsed:
+	case screen.rows[inputRow].presence == rowAbsent:
 		return unknownReading(causeClipped), true
 	}
 	input := screen.rows[inputRow]
@@ -647,10 +656,12 @@ func codexComposer(screen screen, end int) (reading, bool) {
 			read.rules = append(read.rules, screen.rule("codex.activity.prompt_pending", scan.stop, statusLine))
 		case scan.ending == codexUnproven:
 			read.activityCause = causeClipped
+		case scan.ending == codexUnreadable:
+			// An unparseable row hides the transcript's end: unknown, not clipped.
 		case scan.ending == codexSettled:
 			read.activity, readyFirst = sessions.ActivityIdle, scan.stop
 		default:
-			panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open or unproven.
+			panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open, unproven or unreadable.
 		}
 	case scan.ending == codexUnproven:
 		read.activityCause = causeClipped
@@ -717,9 +728,10 @@ func codexGoalActive(row row) bool {
 type codexEnding uint8
 
 const (
-	codexSettled  codexEnding = iota // a terminator ends it
-	codexOpen                        // a prompt ends it: a submitted turn has not started
-	codexUnproven                    // no stop before pane row 0 or a row that was not parsed
+	codexSettled    codexEnding = iota // a terminator ends it
+	codexOpen                          // a prompt ends it: a submitted turn has not started
+	codexUnproven                      // no stop before pane row 0 or a dropped row
+	codexUnreadable                    // an unparseable row, which could be the stop
 )
 
 // codexTranscript is what the upward transcript scan found: how the
@@ -737,13 +749,17 @@ type codexTranscript struct {
 
 // codexScan is the transcript scan (2.2): from start upward, the first stop
 // (a prompt or a terminator) classifies the transcript's end. Every other row
-// is passed over, never skipped by its text. A row that was not parsed stops
-// it unproven: it could hide the stop.
+// is passed over, never skipped by its text. A row that was not parsed could
+// be the stop, so it ends the scan: unproven when dropped, unreadable when
+// unparseable.
 func codexScan(screen screen, start int) codexTranscript {
 	scan := codexTranscript{ending: codexUnproven, stop: -1, status: -1, otherThread: -1, questions: -1, banner: -1}
 	for index := start; index >= 0; index-- {
 		row := screen.rows[index]
 		if row.presence != rowParsed {
+			if row.presence == rowUnparseable {
+				scan.ending = codexUnreadable
+			}
 			return scan
 		}
 		switch {

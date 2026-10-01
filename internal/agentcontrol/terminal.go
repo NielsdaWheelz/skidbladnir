@@ -192,20 +192,15 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	if err != nil {
 		return WriteResult{}, err
 	}
-	if status.Source == sessions.SourceUnavailable {
+	switch {
+	case status.Source == sessions.SourceUnavailable:
 		return WriteResult{}, sessions.ErrTerminalUnavailable
-	}
-	switch status.Interaction {
-	case sessions.InteractionPermission, sessions.InteractionQuestion, sessions.InteractionConfirmation, sessions.InteractionSetup, sessions.InteractionInput:
+	case status.Interaction.Request():
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "dialog"}
-	case sessions.InteractionNone, sessions.InteractionMenu, sessions.InteractionUnknown:
-	default:
-		panic("invalid terminal interaction") // justify-defect: sample returns only valid statuses.
-	}
-	if composerState == composerDraft {
+	case composerState == composerDraft:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
-	}
-	if (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) || status.Interaction != sessions.InteractionNone || status.Notice != sessions.NoticeNone || composerState != composerEmpty {
+	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
+		status.Interaction != sessions.InteractionNone || status.Notice != sessions.NoticeNone || composerState != composerEmpty:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
 	}
 	// Only a classified screen has an empty composer, so session.Agent is the

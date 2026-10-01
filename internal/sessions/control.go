@@ -68,11 +68,14 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 		return Session{}, ErrTerminalTargetChanged
 	}
 	session := manager.enrichSession(ctx, inspected)
-	if err := manager.requireServerIdentity(ctx, identity); err != nil {
-		return Session{}, ErrTerminalTargetChanged
-	}
+	err = manager.requireServerIdentity(ctx, identity)
+	// An expired ctx fails the identity read and degrades enrichment without
+	// saying anything about the target, so it outranks the read's failure.
 	if ctx.Err() != nil {
 		return Session{}, ErrTerminalUnavailable
+	}
+	if err != nil {
+		return Session{}, ErrTerminalTargetChanged
 	}
 	return session, nil
 }

@@ -75,6 +75,18 @@ func (reason StatusReason) Failed() bool {
 	}
 }
 
+// Request reports an interaction that asks the human for a response, the one
+// owner of the request set; a menu is navigation, not a request.
+func (interaction Interaction) Request() bool {
+	switch interaction {
+	case InteractionPermission, InteractionQuestion, InteractionConfirmation, InteractionSetup, InteractionInput:
+		return true
+	case InteractionNone, InteractionMenu, InteractionUnknown:
+		return false
+	}
+	panic("invalid terminal interaction") // justify-defect: callers ask only of a Valid status.
+}
+
 // Valid admits exactly the closed combinations. Only a failed stage is
 // unavailable; recognized, partial and layout_unknown count the classified
 // dimensions; clipping and conflict must have cost at least one dimension.

@@ -32,6 +32,10 @@ type row struct {
 	cells []cell
 }
 
+// presence is how a pane row reached the grammars, which both read it by one
+// rule: an absent row is missing evidence, so a read that needs it is
+// clipped; an unparseable row is present but unrecognized, so it matches no
+// rule and is never clipped evidence.
 type presence uint8
 
 const (
