@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -69,10 +70,35 @@ type ResultsResult struct {
 }
 
 // Enrich sets each session's TerminalStatus from one focused observation of
-// the identity List captured, sharing one two-second budget. It returns the
-// content-free failed observations for logging.
+// the identity List or creation captured, never resolving it again. Every
+// session is observed concurrently under one shared two-second deadline. It
+// returns the unavailable observations, each timed from Enrich's start, for
+// content-free logging.
 func (service *Service) Enrich(parent context.Context, observed []sessions.Session) []ObservationFailure {
-	panic("contract skeleton: slice b implements Enrich")
+	startedAt := time.Now()
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	elapsed := make([]time.Duration, len(observed))
+	var work sync.WaitGroup
+	for index := range observed {
+		work.Go(func() {
+			status, _, _, err := service.sample(ctx, observed[index])
+			if errors.Is(err, sessions.ErrTerminalTargetChanged) {
+				// justify-ignore-error: inventory has no target to reject, so a lifetime or pane change during capture is a failed capture; explicit operations return it.
+				status = sessions.UnknownStatus(sessions.ReasonCaptureFailed)
+			}
+			observed[index].TerminalStatus = status
+			elapsed[index] = time.Since(startedAt)
+		})
+	}
+	work.Wait()
+	var failures []ObservationFailure
+	for index, session := range observed {
+		if session.TerminalStatus.Source == sessions.SourceUnavailable {
+			failures = append(failures, ObservationFailure{TmuxID: session.TmuxID, Reason: session.TerminalStatus.Reason, Elapsed: elapsed[index]})
+		}
+	}
+	return failures
 }
 
 func (service *Service) conversationTarget(conversation agentruntime.Conversation) (agentruntime.Profile, nativeTarget, error) {
