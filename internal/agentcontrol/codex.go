@@ -44,8 +44,7 @@ var (
 // Rows are pane rows, so a read above the bottom region continues into the top
 // region by index. A row that was not parsed (dropped by the capture, or
 // unreadable) is missing evidence: it stops a read, and a rule that needs it
-// falls through or, where the grammar says so, reads clipped. Codex draws no
-// current notice structure, so the notice is always none (2.9).
+// falls through or, where the grammar says so, reads clipped.
 func detectCodex(parsed screen) reading {
 	end := len(parsed.rows) - 1
 	for end >= 0 && parsed.rows[end].blank() {
@@ -53,10 +52,10 @@ func detectCodex(parsed screen) reading {
 	}
 	switch {
 	case end < 0:
-		return codexUnknown()
+		return unknownReading(causeUnrecognized)
 	case parsed.rows[end].presence != rowParsed:
 		// The screen continues into a row that was not parsed (2.0 step 1).
-		return codexClipped()
+		return unknownReading(causeClipped)
 	}
 	// 2.0 step 4: the surfaces in the grammar's order; the first match wins.
 	for _, surface := range [...]func(screen, int) (reading, bool){codexApproval, codexForm, codexAsyncEditor,
@@ -65,26 +64,13 @@ func detectCodex(parsed screen) reading {
 			return read
 		}
 	}
-	return codexUnknown()
-}
-
-func codexUnknown() reading {
-	return reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone}
-}
-
-// codexClipped is a screen whose deciding rows include one that was not
-// parsed: neither dimension is proven.
-func codexClipped() reading {
-	read := codexUnknown()
-	read.activityCause, read.interactionCause = causeClipped, causeClipped
-	return read
+	return unknownReading(causeUnrecognized)
 }
 
 // codexOverlay is the reading of a surface that hides the composer: activity
 // starts unknown and nothing is carried forward (2.0 step 5).
 func codexOverlay(interaction sessions.Interaction, rules ...DiagnosticRule) reading {
-	return reading{activity: sessions.ActivityUnknown, interaction: interaction, notice: sessions.NoticeNone,
-		composer: composerBlocked, rules: rules}
+	return reading{activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked, rules: rules}
 }
 
 // codexApproval is rule 1, the `Press` footer (2.3). It word-wraps upward
@@ -94,7 +80,7 @@ func codexApproval(screen screen, end int) (reading, bool) {
 		return reading{}, false
 	}
 	first := end
-	for !strings.HasPrefix(codexText(codexCells(screen.rows[first], 2)), "Press ") {
+	for !strings.HasPrefix(cellText(codexCells(screen.rows[first], 2)), "Press ") {
 		first--
 		if first < 0 || !codexIndented(screen.rows[first]) || screen.rows[first].blank() {
 			return reading{}, false
@@ -197,7 +183,7 @@ func codexApprovalActions(screen screen, start int) bool {
 			return false
 		}
 		marker := row.cell(2).text + row.cell(3).text
-		match := codexOption.FindStringSubmatch(codexText(codexCells(row, 4)))
+		match := codexOption.FindStringSubmatch(cellText(codexCells(row, 4)))
 		if !codexIndented(row) || marker != "› " && marker != "  " || match == nil {
 			continue
 		}
@@ -253,7 +239,7 @@ func codexHints(screen screen, end int, separator string) (first int, counted bo
 		for _, member := range codexSplit(codexCells(screen.rows[index], 2), separator) {
 			switch key := codexKey(member); {
 			case key > 0:
-				labels = append(labels, codexText(member[key:]))
+				labels = append(labels, cellText(member[key:]))
 			case len(member) > 0 && codexOptionTip(member) == len(member):
 				// The count, shown when the options do not fit.
 			default:
@@ -267,7 +253,7 @@ func codexHints(screen screen, end int, separator string) (first int, counted bo
 // codexOptionTip is the width of the dim `option N/M` count leading cells, or
 // 0.
 func codexOptionTip(cells []cell) int {
-	tip := len(codexOptionCount.FindString(codexText(cells))) // ASCII: one cell per byte
+	tip := len(codexOptionCount.FindString(cellText(cells))) // ASCII: one cell per byte
 	if tip == 0 || !codexDim(cells[:tip]) {
 		return 0
 	}
@@ -290,7 +276,7 @@ func codexResume(screen screen, end int) (reading, bool) {
 	}
 	first := codexSplit(codexCells(footer, 1), "   ")[0]
 	key := codexKey(first)
-	switch label := codexText(first[key:]); {
+	switch label := cellText(first[key:]); {
 	case key > 0 && (label == " resume" || label == " fork" || label == " restore"):
 		return codexOverlay(sessions.InteractionMenu, screen.rule("codex.menu.resume", ruleRow, end)), true
 	default:
@@ -300,7 +286,7 @@ func codexResume(screen screen, end int) (reading, bool) {
 
 func codexResumeRuleRow(row row) bool {
 	return row.presence == rowParsed && row.cell(0).text == "─" && row.cell(0).style.dim &&
-		codexResumeRule.MatchString(codexText(codexCells(row, 0)))
+		codexResumeRule.MatchString(cellText(codexCells(row, 0)))
 }
 
 // codexPager is rule 6, the fullscreen pager (2.7). Its header is pane row 0,
@@ -316,7 +302,7 @@ func codexPager(screen screen, end int) (reading, bool) {
 		return read, true
 	}
 	// The dim `/ <title>` header over a `/ / /` fill.
-	title, isPager := strings.CutPrefix(codexText(codexCells(header, 0)), "/ ")
+	title, isPager := strings.CutPrefix(cellText(codexCells(header, 0)), "/ ")
 	if !isPager || !header.cell(0).style.dim {
 		return codexOverlay(sessions.InteractionUnknown), true
 	}
@@ -352,7 +338,7 @@ func codexWarnings(screen screen, end int) (reading, bool) {
 		if key == 0 {
 			break
 		}
-		labels = append(labels, codexText(member[key:]))
+		labels = append(labels, cellText(member[key:]))
 	}
 	if len(labels) < 2 || labels[0] != " keep & next" || labels[1] != " dismiss & close" {
 		return reading{}, false
@@ -395,7 +381,7 @@ func codexPicker(screen screen, end int) (reading, bool) {
 		if row.presence != rowParsed {
 			// The missing row could have decided setup or confirmation: the one
 			// partial match that is final.
-			read := codexUnknown()
+			read := unknownReading(causeUnrecognized)
 			read.interactionCause = causeClipped
 			if footered {
 				read.composer = composerBlocked
@@ -409,7 +395,7 @@ func codexPicker(screen screen, end int) (reading, bool) {
 			break
 		}
 		if head := row.cell(2); codexIndented(row) && head.text != " " && head.style.bold && !head.style.dim {
-			titleRow, title = index, codexText(codexCells(row, 2))
+			titleRow, title = index, cellText(codexCells(row, 2))
 			break
 		}
 	}
@@ -496,7 +482,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	padding := footerFirst - 1
 	switch {
 	case screen.rows[padding].presence != rowParsed:
-		return codexClipped(), true
+		return unknownReading(causeClipped), true
 	case !screen.rows[padding].blank():
 		return reading{}, false
 	}
@@ -508,7 +494,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	case inputRow < 0:
 		return reading{}, false
 	case screen.rows[inputRow].presence != rowParsed:
-		return codexClipped(), true
+		return unknownReading(causeClipped), true
 	}
 	input := screen.rows[inputRow]
 	if input.cell(0).text == " " {
@@ -553,7 +539,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		quit := codexToken(cells, key, " quit")
 		disconnected = key > 0 && quit >= 0 &&
 			!slices.ContainsFunc(cells[key:quit], func(cell cell) bool { return cell.style.dim || cell.style.bold })
-		editor = codexText(cells[:key]) == "Save and close external editor to continue." && (key == len(cells) || cells[key].text == " ")
+		editor = cellText(cells[:key]) == "Save and close external editor to continue." && (key == len(cells) || cells[key].text == " ")
 	}
 
 	// The band: the top padding C-1, C, its continuation rows and B; remote
@@ -574,7 +560,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		for after < len(input.cells) && input.cells[after].style.dim {
 			after++
 		}
-		run = strings.TrimRight(codexText(input.cells[2:after]), " ")
+		run = strings.TrimRight(cellText(input.cells[2:after]), " ")
 	}
 	clean := run != "" && input.cell(1).text == " " && len(codexCells(input, after)) == 0 && !images &&
 		codexRow(screen, inputRow-1).blank() && !slices.ContainsFunc(screen.rows[inputRow+1:padding], func(row row) bool { return !row.blank() })
@@ -585,7 +571,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	}
 	main, side := showing("Ask Codex to do anything"), showing("Ask a follow-up question")
 
-	read := reading{notice: sessions.NoticeNone}
+	var read reading
 	// Composer (4), first match wins.
 	switch {
 	case disabled || dimmed || side || editor:
@@ -652,6 +638,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	case state == codexReady:
 		switch {
 		case !enabled && !dimmed || !main || editor:
+			// Ready without idle's composer qualifications stays unknown (3 step 4).
 		case codexGoalActive(screen.rows[statusLine]):
 			read.activityCause = causeConflict
 			read.rules = append(read.rules, screen.rule("codex.activity.goal_active", statusLine, statusLine))
@@ -699,7 +686,7 @@ func codexReadRunState(row row) codexRunState {
 	if !codexIndented(row) {
 		return codexNoRunState
 	}
-	word, _, _ := strings.Cut(codexText(codexCells(row, 2)), " · ")
+	word, _, _ := strings.Cut(cellText(codexCells(row, 2)), " · ")
 	word, _, _ = strings.Cut(word, "  ")
 	switch word {
 	case "Starting":
@@ -774,12 +761,12 @@ func codexScan(screen screen, start int) codexTranscript {
 			continue
 		}
 		label := codexCells(row, 2)
-		text := codexText(label)
+		text := cellText(label)
 		switch {
 		case strings.HasPrefix(text, "! Approval needed") && label[0].style.bold && label[0].style.fg == codexRed:
 			scan.otherThread = index
 		case strings.HasPrefix(text, "? ") && label[0].style.dim &&
-			codexQuestionCount.MatchString(codexText(label[2:2+codexKey(label[2:])])):
+			codexQuestionCount.MatchString(cellText(label[2:2+codexKey(label[2:])])):
 			scan.questions = index
 		case codexDim(label) && strings.HasPrefix(text, "Press a number to choose"):
 			if _, found := codexOptionScan(screen, index-1); found {
@@ -811,7 +798,7 @@ func codexTerminator(row row) bool {
 	if !codexIndented(row) || len(cells) == 0 || cells[0].text == " " {
 		return false
 	}
-	text := codexText(cells)
+	text := cellText(cells)
 	name := codexSpells(cells, 3, "OpenAI Codex")
 	return codexDim(row.cells) && (strings.HasPrefix(text, "Worked for ") || codexClock.MatchString(text)) ||
 		strings.HasPrefix(text, ">_ ") && name >= 0 && !slices.ContainsFunc(cells[3:name], func(cell cell) bool { return !cell.style.bold })
@@ -821,7 +808,7 @@ func codexTerminator(row row) bool {
 // dim: an image-only prompt in the transcript, or remote images in the band.
 func codexImageRow(row row) bool {
 	cells := codexCells(row, 2)
-	return codexIndented(row) && codexImageLabels.MatchString(codexText(cells)) &&
+	return codexIndented(row) && codexImageLabels.MatchString(cellText(cells)) &&
 		!slices.ContainsFunc(cells, func(cell cell) bool {
 			return cell.text != " " && (cell.style.fg.kind == colorDefault || cell.style.dim)
 		})
@@ -844,10 +831,10 @@ func codexStatusRow(row row) bool {
 		if cells[open].text != "(" || !cells[open].style.dim || cells[open-1].text != " " {
 			continue
 		}
-		after := open + 1 + len(codexDuration.FindString(codexText(cells[open+1:]))) // D is ASCII: one cell per byte
+		after := open + 1 + len(codexDuration.FindString(cellText(cells[open+1:]))) // D is ASCII: one cell per byte
 		// Cut: dim through ` • `, then the key's bold run, then dim; the `…`
 		// takes the style of whatever it follows.
-		if cells[last].text == "…" && codexCutGroup.MatchString(codexText(cells[open+1:last])) {
+		if cells[last].text == "…" && codexCutGroup.MatchString(cellText(cells[open+1:last])) {
 			key := codexSpells(cells, after, " • ")
 			if key < 0 {
 				key = last
@@ -895,14 +882,6 @@ func codexCells(row row, from int) []cell {
 		return nil
 	}
 	return row.cells[from:last]
-}
-
-func codexText(cells []cell) string {
-	var text strings.Builder
-	for _, cell := range cells {
-		text.WriteString(cell.text)
-	}
-	return text.String()
 }
 
 // codexDim reports that every glyph is dim; spaces may carry any style.

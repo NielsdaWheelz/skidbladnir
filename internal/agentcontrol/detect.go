@@ -27,18 +27,21 @@ const (
 )
 
 // reading is what one grammar read on a screen: each dimension's value, or the
-// cause it stayed unknown; the independent notice; the composer; and the rules
-// that decided them, in grammar order. A grammar returns a reading, never a
-// status, so only detect chooses the reason and every detection is a valid
-// successful terminal status.
+// cause it stayed unknown; the composer; and the rules that decided them, in
+// grammar order. A grammar returns a reading, never a status, so only detect
+// chooses the reason and every detection is a valid successful terminal status.
 type reading struct {
 	activity         sessions.Activity
 	activityCause    unknownCause // given only when activity is unknown
 	interaction      sessions.Interaction
 	interactionCause unknownCause // given only when interaction is unknown
-	notice           sessions.Notice
 	composer         composer
 	rules            []DiagnosticRule
+}
+
+// unknownReading is a reading that classified neither dimension, for cause.
+func unknownReading(cause unknownCause) reading {
+	return reading{activity: sessions.ActivityUnknown, activityCause: cause, interaction: sessions.InteractionUnknown, interactionCause: cause}
 }
 
 // unknownCause says why a dimension stayed unknown.
@@ -103,7 +106,10 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	case unknown == 2:
 		reason = sessions.ReasonLayoutUnknown
 	}
-	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: read.notice, Source: sessions.SourceTerminal, Reason: reason}
+	// No grammar qualifies a current notice structure: codex draws none
+	// (research/codex.md 2.9), and claude's interruption and error rows are
+	// transcript (research/claude.md 2.8). Spec section 2 then claims none.
+	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: sessions.NoticeNone, Source: sessions.SourceTerminal, Reason: reason}
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}

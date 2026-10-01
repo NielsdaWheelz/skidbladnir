@@ -3,7 +3,10 @@ package agentcontrol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
@@ -18,6 +21,52 @@ type TerminalInputBlockedError struct{ Reason string }
 func (err *TerminalInputBlockedError) Error() string         { return "terminal input blocked: " + err.Reason }
 func (err *TerminalInputBlockedError) Unwrap() error         { return ErrTerminalInputBlocked }
 func (err *TerminalInputBlockedError) DispatchState() string { return "not_sent" }
+
+// Enrich sets each session's TerminalStatus from one focused observation of
+// the identity List or creation captured, never resolving it again. Every
+// session is observed concurrently under one shared two-second deadline. It
+// returns the unavailable observations, each timed from Enrich's start, for
+// content-free logging.
+func (service *Service) Enrich(parent context.Context, observed []sessions.Session) []ObservationFailure {
+	startedAt := time.Now()
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	elapsed := make([]time.Duration, len(observed))
+	defects := make([]string, len(observed))
+	var work sync.WaitGroup
+	for index := range observed {
+		work.Go(func() {
+			// A panic on a worker goroutine would end the gateway; the defect is
+			// raised again below on the caller's goroutine, where net/http confines
+			// it to the one request, as it does for inspect and send.
+			defer func() {
+				if defect := recover(); defect != nil {
+					defects[index] = fmt.Sprintf("%v\n\n%s", defect, debug.Stack())
+				}
+			}()
+			status, _, _, err := service.sample(ctx, observed[index])
+			if errors.Is(err, sessions.ErrTerminalTargetChanged) {
+				// justify-ignore-error: inventory has no target to reject, so a lifetime or pane change during capture is a failed capture; explicit operations return it.
+				status = sessions.UnknownStatus(sessions.ReasonCaptureFailed)
+			}
+			observed[index].TerminalStatus = status
+			elapsed[index] = time.Since(startedAt)
+		})
+	}
+	work.Wait()
+	for _, defect := range defects {
+		if defect != "" {
+			panic(defect) // justify-defect: a worker's classifier or observation defect, with the worker's stack.
+		}
+	}
+	var failures []ObservationFailure
+	for index, session := range observed {
+		if session.TerminalStatus.Source == sessions.SourceUnavailable {
+			failures = append(failures, ObservationFailure{TmuxID: session.TmuxID, Reason: session.TerminalStatus.Reason, Elapsed: elapsed[index]})
+		}
+	}
+	return failures
+}
 
 // sample is the one observation that inventory, inspect and guarded send
 // share. A failed foreground sample leaves Agent and Connection unknown, not
@@ -156,7 +205,7 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	if composerState == composerDraft {
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
 	}
-	if status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle || status.Interaction != sessions.InteractionNone || status.Notice != sessions.NoticeNone || composerState != composerEmpty {
+	if (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) || status.Interaction != sessions.InteractionNone || status.Notice != sessions.NoticeNone || composerState != composerEmpty {
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
 	}
 	// Only a classified screen has an empty composer, so session.Agent is the

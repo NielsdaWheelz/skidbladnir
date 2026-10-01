@@ -30,7 +30,7 @@ func detectClaude(parsed screen) reading {
 			// The captured rows are blank: the lowest drawn row lies in the cut.
 			return screen.clipped()
 		}
-		return reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone}
+		return unknownReading(causeUnrecognized)
 	}
 	if read, ok := claudeStartupSR(screen, last); ok {
 		return read
@@ -50,7 +50,7 @@ func detectClaude(parsed screen) reading {
 	if screen.cut {
 		return screen.clipped()
 	}
-	return reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone}
+	return unknownReading(causeUnrecognized)
 }
 
 // claudeScreen is a screen as the claude grammar reads it. Rows floor..end
@@ -74,7 +74,7 @@ type claudeLine struct {
 func newClaudeLine(row row) claudeLine {
 	line := claudeLine{row: row, col: -1}
 	if row.presence == rowParsed {
-		line.plain = strings.TrimRight(strings.ReplaceAll(row.text(), "\u00a0", " "), " ")
+		line.plain = strings.TrimRight(strings.ReplaceAll(cellText(row.cells), "\u00a0", " "), " ")
 		if line.plain != "" {
 			line.col = len(line.plain) - len(strings.TrimLeft(line.plain, " "))
 		}
@@ -129,11 +129,9 @@ func (screen *claudeScreen) find(from int, match func(claudeLine) bool) (int, bo
 
 // clipped is the reading of a screen whose deciding rows were not captured.
 func (screen *claudeScreen) clipped() reading {
-	return reading{
-		activity: sessions.ActivityUnknown, activityCause: causeClipped,
-		interaction: sessions.InteractionUnknown, interactionCause: causeClipped,
-		notice: sessions.NoticeNone, rules: []DiagnosticRule{screen.clippedRule()},
-	}
+	read := unknownReading(causeClipped)
+	read.rules = []DiagnosticRule{screen.clippedRule()}
+	return read
 }
 
 // clippedRule names the captured row just below the cut, or the bottom
@@ -228,7 +226,7 @@ var claudeTmuxNotices = []string{
 }
 
 // blockTop is the top row of the logical block at column c ending at row end
-// (research 2.0, blk): the rows from end upward that are drawn, within one
+// (2.0, blk): the rows from end upward that are drawn, within one
 // column of c, and neither an option marker nor a box row. It is end+1 when
 // end itself does not belong.
 func (screen *claudeScreen) blockTop(c, end int) int {
@@ -243,7 +241,7 @@ func (screen *claudeScreen) blockTop(c, end int) int {
 }
 
 // block is the text of a hint or anchor block at column c ending at row end
-// (research 2.0): it holds only when its top row is at exactly c, which keeps
+// (2.0): it holds only when its top row is at exactly c, which keeps
 // transcript text, drawn from column 2, out of lower columns.
 func (screen *claudeScreen) block(c, end int) (text string, top int, ok bool) {
 	top = screen.blockTop(c, end)
@@ -264,8 +262,8 @@ func (screen *claudeScreen) joined(top, end int) string {
 	return strings.Join(texts, " ")
 }
 
-// above is the block at c ending at the first drawn row above row (research
-// 2.0): any column within one of c may top it.
+// above is the block at c ending at the first drawn row above row (2.0): any
+// column within one of c may top it.
 func (screen *claudeScreen) above(c, row int) (text string, top, end int, ok bool) {
 	end, found := screen.find(row-1, func(line claudeLine) bool { return !line.blank() })
 	if !found {
@@ -349,7 +347,7 @@ func claudeParseOptions(lines []claudeLine, c int) ([]claudeOption, bool) {
 	return options, len(options) > 0 && selected <= 1
 }
 
-// options reads the numbered options at column c (research 2.0): past blank
+// options reads the numbered options at column c (2.0): past blank
 // rows at and above from, the contiguous option rows.
 func (screen *claudeScreen) options(c, from int) (options []claudeOption, top int, ok bool) {
 	bottom := from
@@ -374,7 +372,7 @@ func (screen *claudeScreen) options(c, from int) (options []claudeOption, top in
 	return options, top, ok
 }
 
-// unnumbered reads the unnumbered options at column c (research 2.0): past
+// unnumbered reads the unnumbered options at column c (2.0): past
 // blank rows at and above from, the contiguous option rows (labels at c+2, at
 // most one pointer at c), joined. A wrapped label continues where an
 // unselected option starts, so only the whole text is meaningful.
@@ -425,19 +423,19 @@ func claudeStartupSR(screen *claudeScreen, last int) (reading, bool) {
 	case "[Screen Reader Mode: on via flag]", "[Screen Reader Mode: on via env]",
 		"[Screen Reader Mode: on via settings]", "[Screen Reader Mode: on]":
 		return reading{
-			activity: sessions.ActivityStarting, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone,
+			activity: sessions.ActivityStarting, interaction: sessions.InteractionUnknown,
 			rules: []DiagnosticRule{screen.rule("claude.activity.starting_sr", last, last)},
 		}, true
 	}
 	return reading{}, false
 }
 
-// claudeEffortSR is the screen reader's effort notification (research 2.5).
+// claudeEffortSR is the screen reader's effort notification (2.5).
 var claudeEffortSR = regexp.MustCompile(`^effort: (?:low|medium|high|xhigh|max)(?: · ultracode)? · /effort$`)
 
 // claudeSurfaceSR reads the screen reader's input row `$`, the notification
 // blocks above it, its flattened mode row and the pinned column above that
-// (research 2.5).
+// (2.5).
 func claudeSurfaceSR(screen *claudeScreen, last int) (reading, bool) {
 	input := screen.lines[last]
 	if input.presence != rowParsed || input.cells[0].text != "$" || len(input.cells) > 1 && input.cells[1].text != "\u00a0" {
@@ -486,12 +484,11 @@ func claudeSurfaceSR(screen *claudeScreen, last int) (reading, bool) {
 		first++ // only the notification rows were read
 	}
 	layout := screen.rule("claude.layout.sr", first, last)
-	unknown := reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone,
-		rules: []DiagnosticRule{layout}}
+	unknown := unknownReading(causeUnrecognized)
 	if !ok && screen.clippedAt(mode) {
 		unknown = screen.clipped()
-		unknown.rules = append(unknown.rules, layout)
 	}
+	unknown.rules = append(unknown.rules, layout)
 	segments, parsed := claudeModeSR(line.plain)
 	if !ok || !parsed {
 		return unknown, true
@@ -504,7 +501,7 @@ func claudeSurfaceSR(screen *claudeScreen, last int) (reading, bool) {
 		return unknown, true
 	}
 
-	read := reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionNone, notice: sessions.NoticeNone, composer: composerDraft}
+	read := reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionNone, composer: composerDraft}
 	if input.plain == "$" {
 		read.composer = composerEmpty
 	}
@@ -554,7 +551,7 @@ func claudeSurfaceSR(screen *claudeScreen, last int) (reading, bool) {
 
 // The screen reader's live request row and the anchors of a setup, a
 // permission and a question (its tab row, its header, or its `> …?` prompt)
-// (research 2.5).
+// (2.5).
 var (
 	claudeRequestRowSR = regexp.MustCompile(`^(?:Select with numbers \[1-\d+\]|Enter text for option \d+ |Enter y/n:$|Press Enter to continue…$)`)
 	claudeSetupSR      = regexp.MustCompile(`^(?:Permission Required: )?(?:Accessing workspace:|Detected a custom API key in your environment|` +
@@ -609,15 +606,15 @@ func claudeRequestSR(screen *claudeScreen, last int) (reading, bool) {
 	case screen.clippedAt(r):
 		return screen.clipped(), true
 	default:
-		return reading{activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone}, true
+		return unknownReading(causeUnrecognized), true
 	}
 	return reading{
-		activity: sessions.ActivityUnknown, interaction: interaction, notice: sessions.NoticeNone, composer: composerBlocked,
+		activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked,
 		rules: []DiagnosticRule{screen.rule(id, first, last), screen.composerRule(composerBlocked, first, last)},
 	}, true
 }
 
-// claudeComposer reads the composer surface (research 2.3): the input row
+// claudeComposer reads the composer surface (2.3): the input row
 // between a top and a bottom rule, the footer below them and the slot row
 // above them. Only the first full rule at or above the lowest row is tried, so
 // a dead process's frame above a newer surface never anchors it.
@@ -676,10 +673,9 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 	if footer.kind == claudeFooterVoid {
 		// Anything the grammar cannot account for may be drawn over this
 		// surface: a dead process's frame, autocomplete, a focused panel.
-		return reading{
-			activity: sessions.ActivityUnknown, interaction: sessions.InteractionUnknown, notice: sessions.NoticeNone,
-			rules: []DiagnosticRule{layout},
-		}, true
+		read := unknownReading(causeUnrecognized)
+		read.rules = []DiagnosticRule{layout}
+		return read, true
 	}
 	slot, kind := claudeSlot(screen, top)
 	// Claude draws the usage-limit wait only in its pinned column, between the
@@ -699,7 +695,7 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 	complete := ready && ordinary && footer.kind == claudeFooterOrdinary && !footer.extra && footer.proven &&
 		footer.classes&^claudeTolerated == 0 && (kind == claudeSlotNone || kind == claudeSlotOther) && !waiting
 
-	read := reading{activity: sessions.ActivityUnknown, notice: sessions.NoticeNone}
+	read := reading{activity: sessions.ActivityUnknown}
 	var activity DiagnosticRule
 	// The panel, the waiting row and a work pill are independent of the
 	// chevron and the slot, so they decide before any conflict.
@@ -908,11 +904,11 @@ func claudeCompletion(text string) bool {
 }
 
 // claudeLimitCopy is the usage-limit wait's fixed status copy, every default
-// wrap-up lead and the default next-line copy (research 2.3, 2.5).
+// wrap-up lead and the default next-line copy (2.3, 2.5).
 var claudeLimitCopy = regexp.MustCompile(`Usage limit reached|Your usage limit has reset|Continuing automatically |Continuing shortly · esc to cancel|Press enter to continue`)
 
 // claudeBandLegend is the legend of an optional prompt drawn above the
-// composer that takes a single key typed into it (research 2.3, digit band):
+// composer that takes a single key typed into it (2.3, digit band):
 // the column-2 legends, then the column-0 ones.
 var claudeBandLegend = regexp.MustCompile(`^(?:` +
 	`  (?:1: Bad|y: Yes|1: Yes, run /web-setup|Enter to (?:send|skip) · Esc to (?:clear|skip))\b|` +
@@ -1035,7 +1031,7 @@ func claudeReadFooter(screen *claudeScreen, bottom, last int, bash bool) claudeF
 	return footer
 }
 
-// claudeSegmentClass is a footer segment's class (research 2.4).
+// claudeSegmentClass is a footer segment's class (2.4).
 type claudeSegmentClass uint8
 
 const (
@@ -1324,7 +1320,7 @@ func claudeModeFull(line claudeLine, width int) (claudeModeRow, bool) {
 }
 
 // claudeModeEvidence classifies the mode row's segments and decides whether
-// the row proves the pill slot (research 2.4, P0-P2): a visible task pill is
+// the row proves the pill slot (2.4, P0-P2): a visible task pill is
 // never hidden behind what the row shows.
 func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
 	// P0: claude draws the cycle hint in a non-default mode only without a pill.
@@ -1374,7 +1370,7 @@ func claudeModeSR(plain string) ([]string, bool) {
 	return strings.Split(body, " · "), true
 }
 
-// claudeFamily reads the request and menu families (research 2.6), which
+// claudeFamily reads the request and menu families (2.6), which
 // replace the composer, in their table order. Their hint block or options end
 // at the hint row, the lowest row once at most two trailing right-aligned rows
 // are passed; every column is exact, so quoted transcript text cannot reach
@@ -1395,7 +1391,7 @@ func claudeFamily(screen *claudeScreen, last int) (reading, bool) {
 	} {
 		if id, interaction, first, ok := family(screen, hint); ok {
 			return reading{
-				activity: sessions.ActivityUnknown, interaction: interaction, notice: sessions.NoticeNone, composer: composerBlocked,
+				activity: sessions.ActivityUnknown, interaction: interaction, composer: composerBlocked,
 				rules: []DiagnosticRule{screen.rule(id, first, hint), screen.composerRule(composerBlocked, first, hint)},
 			}, true
 		}
@@ -1403,7 +1399,7 @@ func claudeFamily(screen *claudeScreen, last int) (reading, bool) {
 	return reading{}, false
 }
 
-// The agents view's hint and its counts row (research 2.6).
+// The agents view's hint and its counts row (2.6).
 var (
 	claudeAgentsViewHint   = regexp.MustCompile(`^(?:.* · )?enter to return(?: · |$)`)
 	claudeAgentsViewCounts = regexp.MustCompile(`\d+ awaiting input · \d+ working · \d+ completed`)
