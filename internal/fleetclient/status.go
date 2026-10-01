@@ -117,11 +117,5 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 // already implies a terminal source (TerminalStatus.Valid). Callers own
 // freshness: a stale observation never needs input.
 func NeedsInput(status sessions.TerminalStatus) bool {
-	switch status.Interaction {
-	case sessions.InteractionPermission, sessions.InteractionQuestion, sessions.InteractionConfirmation, sessions.InteractionSetup, sessions.InteractionInput:
-		return true
-	case sessions.InteractionNone, sessions.InteractionMenu, sessions.InteractionUnknown:
-		return false
-	}
-	panic("invalid owned terminal interaction") // justify-defect: ingress admits only Valid statuses.
+	return status.Interaction.Request()
 }

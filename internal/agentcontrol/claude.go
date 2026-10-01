@@ -13,12 +13,12 @@ import (
 )
 
 // detectClaude reads a claude 2.1.286 screen by the frozen grammar of
-// research/claude.md sections 2-3, whose section numbers the comments below
-// cite. It finds the lowest drawn row and tries the surfaces in order:
-// screen-reader startup, the screen-reader input row, a screen-reader
-// request, the composer, then the request and menu families. Idle comes only
-// from a complete current ready layout; a request or menu never reports
-// activity, because it replaces the spinner, pill and panel.
+// docs/terminal-observation-claude.md sections 2-3, whose section numbers the
+// comments below cite. It finds the lowest drawn row and tries the surfaces
+// in order: screen-reader startup, the screen-reader input row, a
+// screen-reader request, the composer, then the request and menu families.
+// Idle comes only from a complete current ready layout; a request or menu
+// never reports activity, because it replaces the spinner, pill and panel.
 func detectClaude(parsed screen) reading {
 	screen := newClaudeScreen(parsed)
 	last := len(screen.lines) - 1

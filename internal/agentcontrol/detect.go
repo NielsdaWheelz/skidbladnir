@@ -107,8 +107,9 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 		reason = sessions.ReasonLayoutUnknown
 	}
 	// No grammar qualifies a current notice structure: codex draws none
-	// (research/codex.md 2.9), and claude's interruption and error rows are
-	// transcript (research/claude.md 2.8). Spec section 2 then claims none.
+	// (docs/terminal-observation-codex.md 2.9), and claude's interruption and
+	// error rows are transcript (docs/terminal-observation-claude.md 2.8).
+	// Spec section 2 then claims none.
 	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: sessions.NoticeNone, Source: sessions.SourceTerminal, Reason: reason}
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
