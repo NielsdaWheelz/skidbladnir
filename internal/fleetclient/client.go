@@ -145,13 +145,16 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 			client.resolveObserved(ctx, &observed)
 			if request.Explain {
 				// The explained status replaces the inventory's, so the printed
-				// status and its evidence come from one sample.
+				// status and its evidence come from one sample. The inspect
+				// response carries no clock, so observedAt becomes the client
+				// time it arrived.
 				encoded, _ := json.Marshal(map[string]any{"identityToken": ref.IdentityToken, "paneId": ref.PaneID, "explain": true})
 				inspected := client.call(ctx, selected, "terminal_explain", "/v1/sessions/"+ref.TmuxID+"/terminal/inspect", encoded)
 				if !inspected.OK {
 					return inspected
 				}
 				value := inspected.Value.(TerminalInspectResult)
+				observed.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 				observed.Session.TerminalStatus, observed.Diagnostics = value.TerminalStatus, value.Diagnostics
 			}
 			result = success(observed)

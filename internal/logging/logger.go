@@ -270,12 +270,7 @@ func (event Event) valid() bool {
 	case eventSessionKilled:
 		return validTmuxID(event.tmuxID) && event.duration >= 0
 	case eventTerminalObservationFailed:
-		switch event.observationReason {
-		case sessions.ReasonObservationTimeout, sessions.ReasonCaptureFailed, sessions.ReasonProcessFailed:
-			return validTmuxID(event.tmuxID) && event.duration >= 0
-		default:
-			return false
-		}
+		return event.observationReason.Failed() && validTmuxID(event.tmuxID) && event.duration >= 0
 	case eventPressureSampled:
 		if !event.level.valid() || event.duration < 0 {
 			return false

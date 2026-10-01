@@ -34,10 +34,7 @@ func (service *Service) TerminalRead(parent context.Context, target sessions.Ter
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	_, capture, err := service.sessions.CaptureTerminal(ctx, target, maxBytes)
-	if errors.Is(err, sessions.ErrTerminalObservationChanged) {
-		err = sessions.ErrTerminalUnavailable
-	}
+	capture, err := service.sessions.CaptureTerminal(ctx, target, maxBytes)
 	if err != nil {
 		return ReadResult{}, err
 	}

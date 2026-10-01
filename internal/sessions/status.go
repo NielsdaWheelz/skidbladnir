@@ -64,6 +64,17 @@ const (
 	ReasonProcessFailed        StatusReason = "process_failed"
 )
 
+// Failed reports the reasons of a failed observation stage, the only reasons
+// of an unavailable status.
+func (reason StatusReason) Failed() bool {
+	switch reason {
+	case ReasonObservationTimeout, ReasonCaptureFailed, ReasonProcessFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Valid admits exactly the closed combinations. Only a failed stage is
 // unavailable; recognized, partial and layout_unknown count the classified
 // dimensions; clipping and conflict must have cost at least one dimension.
@@ -87,9 +98,10 @@ func (status TerminalStatus) Valid() bool {
 	activity := status.Activity != ActivityUnknown
 	interaction := status.Interaction != InteractionUnknown
 	terminal := status.Source == SourceTerminal
-	switch status.Reason {
-	case ReasonObservationTimeout, ReasonCaptureFailed, ReasonProcessFailed:
+	if status.Reason.Failed() {
 		return status.Source == SourceUnavailable && !activity && !interaction && status.Notice == NoticeNone
+	}
+	switch status.Reason {
 	case ReasonProviderUnrecognized, ReasonRemoteContext, ReasonForegroundChanged:
 		return terminal && !activity && !interaction && status.Notice == NoticeNone
 	case ReasonRecognized:
@@ -110,8 +122,7 @@ func (status TerminalStatus) Valid() bool {
 // successful terminal sample.
 func UnknownStatus(reason StatusReason) TerminalStatus {
 	source := SourceTerminal
-	switch reason {
-	case ReasonObservationTimeout, ReasonCaptureFailed, ReasonProcessFailed:
+	if reason.Failed() {
 		source = SourceUnavailable
 	}
 	status := TerminalStatus{Activity: ActivityUnknown, Interaction: InteractionUnknown, Notice: NoticeNone, Source: source, Reason: reason}

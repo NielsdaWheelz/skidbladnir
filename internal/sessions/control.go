@@ -77,29 +77,29 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	return session, nil
 }
 
-func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarget, maxBytes int) (Session, tmuxclient.Capture, error) {
+// CaptureTerminal is the public plain-text read between two full resolutions
+// of target. A foreground that could not be sampled, or that differs between
+// the resolutions, makes the read ErrTerminalUnavailable.
+func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarget, maxBytes int) (tmuxclient.Capture, error) {
 	before, err := manager.ResolveTerminal(ctx, target)
 	if err == nil && before.ForegroundFailed() {
 		err = ErrTerminalUnavailable
 	}
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, err
+		return tmuxclient.Capture{}, err
 	}
 	capture, err := manager.tmux.CapturePane(ctx, target.paneTarget(), maxBytes)
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, terminalError(err)
+		return tmuxclient.Capture{}, terminalError(err)
 	}
 	after, err := manager.ResolveTerminal(ctx, target)
-	if err == nil && after.ForegroundFailed() {
+	if err == nil && (after.ForegroundFailed() || !sameForeground(before, after)) {
 		err = ErrTerminalUnavailable
 	}
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, err
+		return tmuxclient.Capture{}, err
 	}
-	if !sameForeground(before, after) {
-		return after, tmuxclient.Capture{}, ErrTerminalObservationChanged
-	}
-	return after, capture, nil
+	return capture, nil
 }
 
 // ObservePane captures the bounded screen regions of session's exact target and
@@ -126,7 +126,7 @@ func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxc
 	case err == nil:
 	case errors.Is(err, tmuxclient.ErrTargetChanged):
 		return tmuxclient.PaneObservation{}, ErrTerminalTargetChanged
-	case errors.Is(err, tmuxclient.ErrObservationChanged), errors.Is(err, tmuxclient.ErrUnavailable):
+	case errors.Is(err, tmuxclient.ErrScreenChanged), errors.Is(err, tmuxclient.ErrUnavailable):
 		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
 	default:
 		panic("observed terminal target is invalid") // justify-defect: List, ResolveTerminal and creation return only canonical targets.
