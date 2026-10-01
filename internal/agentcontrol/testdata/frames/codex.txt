@@ -12,18 +12,6 @@
 ;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
 ;       {osc:URL}/{/osc}=OSC 8 open/close.
 
-#frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id>[@top|@compound],...|none
-; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
-; rules are listed in byte order (the classifier emits them in decision order, so compare sorted lists); rule regions
-; default to bottom. obs=... describes the PaneObservation the classifier receives (rows above <row> dropped by the byte
-; cap, Clipped set); painting alone does not reproduce it.
-; tags: {b}1 {d}2 {i}3 {u}4 {r}7 {br}1;7 {bd}1;2 {/}0 {/fg}39 {red}38;5;1 {grn}38;5;2 {yel}38;5;3 {mag}38;5;5
-;       {cyan}38;5;6 {acc}38;2;99;168;248 {run}38;2;200;169;238 {mdl}38;2;246;226;183 {dir}38;2;171;223;167
-;       {gly}1;38;2;128;128;128 {ora}38;2;255;178;66 {key}38;2;64;64;64 {sec}38;2;115;115;115 {run2}38;2;131;64;218
-;       {mdl2}38;2;156;105;35 {hl}1;38;2;0;0;46;48;2;164;205;251 {pbg}48;2;240;240;240 {lgly}1;38;2;32;32;32
-;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
-;       {osc:URL}/{/osc}=OSC 8 open/close.
-
 #frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Checking the dummy files.

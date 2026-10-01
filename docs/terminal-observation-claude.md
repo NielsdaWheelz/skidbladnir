@@ -105,7 +105,7 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 63 | left-labelled top rule (`── History N/M ──…`) | P | interaction and composer unknown | — | source-only |
 | 64 | other panes (/mcp, /agents, /permissions, /effort, task detail) | P | unknown unless a menu rule matches | — | source-only |
 | 65 | interruption row `⎿  Interrupted · What should Claude do instead?` as the transcript's last row above the composer | R | notice interrupted | `claude.notice.interrupted` | darwin |
-| 66 | error row `⏺ API Error: …` as the last row above the turn's completion row (or the composer) | R | notice error | `claude.notice.error` | darwin |
+| 66 | failure block (`⏺ API Error: …`, a model or usage-limit message) as the turn's last block: glyph and text in one explicit colour | R | notice error | `claude.notice.error` | darwin |
 | 67 | footer notifications: effort (right-aligned), tmux notices | P | `notification` rows (2.0) | — | darwin (tmux notices drawn because the pane's own `TMUX` is set) |
 | 68 | composer empty / draft / blocked / unknown | R | §3 | `claude.composer.*` | darwin, linux |
 | 69 | quoted chrome in the transcript | R neg | ignored | — | source-only (authored) |
@@ -882,8 +882,12 @@ past at most six notification rows and blank rows (as the slot walk does):
 
 - the first row is `  ⎿  Interrupted…` at column 2 → notice interrupted
   (`claude.notice.interrupted`);
-- the first row, or the first row above a completion row (`✻ <verb> for …`), is
-  `⏺ API Error…` at column 0 → notice error (`claude.notice.error`);
+- the turn's last block (above a completion row `✻ <verb> for …` when one is drawn,
+  read from its column-0 head past wrapped continuation rows) is a `⏺` block whose
+  glyph and text share one explicit colour → notice error (`claude.notice.error`).
+  claude draws api errors, model and usage-limit failures that way (red, the
+  warning colour, the inactive grey); replies, tool calls and agent notices never
+  colour glyph and text alike;
 - otherwise none. the same rows above a later prompt or turn are history and set
   nothing; footer notifications are not task notices.
 
@@ -954,9 +958,12 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c1** activity under every request/menu pane is unknown: the dialog hides panel,
   pill and spinner. for claude, `working + permission|question` is
   unrepresentable.
-- **c2** interruption and error notices (2.8) come from fixed rows, so a reply that ends
-  with a quoted `⎿  Interrupted` row or starts `⏺ API Error` reads that notice; the
-  screen-reader surface reads none.
+- **c2** notices (2.8) come from the turn's last row or block, so a reply that ends with
+  a quoted `⎿  Interrupted` row reads interrupted, and any turn-ending system message
+  drawn in one colour (an auto-continuing usage limit included) reads error; the
+  screen-reader surface reads none. claude cancels a turn interrupted before any
+  output or tool call silently, restoring the prompt as a draft, so that turn reads
+  idle without a notice.
 - **c3** a loading chevron with no corroborator is unknown. teammate views never
   reach idle.
 - **c4** idle is lost when:
