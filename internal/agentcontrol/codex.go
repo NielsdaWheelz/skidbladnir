@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
@@ -12,6 +11,8 @@ import (
 const (
 	codexMainPlaceholder = "Ask Codex to do anything"
 	codexSidePlaceholder = "Ask a follow-up question"
+	// codexD is D, the status row's elapsed time (fmt_elapsed_compact).
+	codexD = `\d+s|\d+m \d\ds|\d+h \d\dm \d\ds`
 )
 
 var (
@@ -19,13 +20,12 @@ var (
 	codexMagenta = color{kind: colorPalette, value: 5}
 	codexCyan    = color{kind: colorPalette, value: 6}
 
-	// codexDuration is the status row's elapsed time (fmt_elapsed_compact).
-	codexDuration = regexp.MustCompile(`^(\d+s|\d+m \d\ds|\d+h \d\dm \d\ds)`)
-	// codexCutGroup is what line_truncation.rs, which cuts after any cell, can
-	// leave of the status row's paren group before its `…`: a proper prefix of
+	codexDuration = regexp.MustCompile(`^(` + codexD + `)`)
+	// codexCutGroup is what the status row's truncation, which cuts after any
+	// cell, can leave of its paren group before the `…`: a proper prefix of
 	// `D • K to interrupt)` or of `D)`, that is part of D, or D followed by
-	// nothing, a space, `)` or ` •…`.
-	codexCutGroup = regexp.MustCompile(`^(\d*|\d+m( \d{0,2})?|\d+h( \d{0,2}| \d\dm( \d{0,2})?)?|(\d+s|\d+m \d\ds|\d+h \d\dm \d\ds)( |\)| •.*)?)$`)
+	// nothing, a space, `)` or ` •` and the rest.
+	codexCutGroup = regexp.MustCompile(`^(\d*|\d+m( \d{0,2})?|\d+h( \d{0,2}| \d\dm( \d{0,2})?)?|(` + codexD + `)( |\)| •.*)?)$`)
 	// codexClock starts a completion separator without its `Worked for` part:
 	// an optional date, then the 12- or 24-hour clock time.
 	codexClock = regexp.MustCompile(`^((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{1,2}(, \d{4})? at )?\d{1,2}:\d\d`)
@@ -34,7 +34,7 @@ var (
 	// codexQuestionCount is the collapsed async questions' bold count.
 	codexQuestionCount = regexp.MustCompile(`^\d+ questions?$`)
 	// codexOptionCount is the question footers' keyless option count.
-	codexOptionCount = regexp.MustCompile(`^option \d+/\d+`)
+	codexOptionCount = regexp.MustCompile(`^option \d+/\d+\b`)
 	// codexOption is a numbered form option read from column 4; its label ends
 	// at the double space before a description.
 	codexOption = regexp.MustCompile(`^\d+\. (\S+(?: \S+)*)`)
@@ -43,14 +43,15 @@ var (
 )
 
 // detectCodex reads the codex 0.159.2 screen grammar: research/codex.md
-// revision 4 with change notes 4.1 and 4.2, sections 2-4. E (end) is the last
-// non-blank row; every surface is anchored on it and tried in the grammar's
-// order, and the first that matches decides. Rows are pane rows, so a read
-// above the bottom region continues into the top region by index. A row that
-// was not parsed (dropped by the capture, or unreadable) is missing evidence:
-// it stops a read, and a rule that needs it reads clipped. Codex draws no
-// current notice structure, so the notice is always none (2.9). Rules are
-// listed in byte order of their ids.
+// revision 4 with change notes 4.1, 4.2 and 4.3, sections 2-4. E (end) is the
+// last non-blank row; every surface is anchored on it and tried in the
+// grammar's order, and the first that matches decides. Rows are pane rows, so
+// a read above the bottom region continues into the top region by index. A
+// row that was not parsed (dropped by the capture, or unreadable) is missing
+// evidence: it stops a read, and a rule that needs it falls through or, where
+// the grammar says so, reads clipped. Codex draws no current notice
+// structure, so the notice is always none (2.9). Rules are listed in byte
+// order of their ids.
 func detectCodex(screen screen) reading {
 	end := len(screen.rows) - 1
 	for end >= 0 && screen.rows[end].blank() {
@@ -108,8 +109,8 @@ func codexClipped() reading {
 	return read
 }
 
-// codexOverlay is a surface that replaces the composer, status row and status
-// line: activity is unknown and nothing is carried forward (2.0 step 5).
+// codexOverlay is the reading of a surface that hides the composer: activity
+// starts unknown and nothing is carried forward (2.0 step 5).
 func codexOverlay(interaction sessions.Interaction, rules ...DiagnosticRule) reading {
 	return reading{activity: sessions.ActivityUnknown, interaction: interaction, notice: sessions.NoticeNone,
 		composer: composerBlocked, rules: rules}
@@ -174,33 +175,38 @@ func codexApproval(screen screen, end int) (reading, bool) {
 	}
 }
 
-// codexForm is rules 2 and 3, the ` | ` footers of the mcp form and the legacy
-// request_user_input view (2.4).
+// codexForm is rules 2 and 3, the ` | ` footers of the legacy
+// request_user_input view and the mcp form (2.4). The legacy view is told by
+// a hint only it renders, and the mcp form then by its submit hint: the mcp
+// form can lose its last hints (`esc to cancel`) to the right edge or to its
+// footer height, and the legacy view always draws its notes hint when it has
+// options.
 func codexForm(screen screen, end int) (reading, bool) {
-	first := codexHintRows(screen, end)
+	first, labels := codexHints(screen, end, " | ")
 	if first < 0 {
 		return reading{}, false
 	}
-	keys, labels, ok := codexHints(screen, first, end, " | ")
-	if !ok {
-		return reading{}, false
-	}
-	last := len(labels) - 1
+	legacy := slices.ContainsFunc(labels, func(label string) bool {
+		switch label {
+		case " to add notes", " or esc to clear notes", " to navigate questions", " change question", " to interrupt",
+			// A notes hint wider than the footer, cut at a word boundary after
+			// its distinguishing words; the mcp form never adds `…`.
+			" to add…", " or esc…", " or esc to…", " or esc to clear…":
+			return true
+		default:
+			return false
+		}
+	})
 	submit := slices.IndexFunc(labels, func(label string) bool {
 		return label == " to submit" || label == " to submit all" || label == " to submit answer"
 	})
 	switch {
-	case keys[last] == "esc" && labels[last] == " to cancel" && submit >= 0:
-		if labels[submit] == " to submit" && codexApprovalActions(screen, first-1) {
-			return codexOverlay(sessions.InteractionPermission, screen.rule("codex.permission.mcp_approval", first, end)), true
-		}
-		return codexOverlay(sessions.InteractionInput, screen.rule("codex.input.mcp_form", first, end)), true
-	case !slices.Contains(labels, " to cancel") && slices.ContainsFunc(labels, func(label string) bool {
-		// The notes hints exist only in this view, and the option count can
-		// push the submit hint into a row the view does not draw.
-		return label == " to submit answer" || label == " to submit all" || label == " to add notes" || label == " or esc to clear notes"
-	}):
+	case legacy:
 		return codexOverlay(sessions.InteractionQuestion, screen.rule("codex.question.legacy", first, end)), true
+	case submit >= 0 && labels[submit] == " to submit" && codexApprovalActions(screen, first-1):
+		return codexOverlay(sessions.InteractionPermission, screen.rule("codex.permission.mcp_approval", first, end)), true
+	case submit >= 0:
+		return codexOverlay(sessions.InteractionInput, screen.rule("codex.input.mcp_form", first, end)), true
 	default:
 		return reading{}, false
 	}
@@ -208,14 +214,18 @@ func codexForm(screen screen, end int) (reading, bool) {
 
 // codexApprovalActions reports an mcp form in approval-action mode: the
 // option block above the footer holds numbered options, all approval actions.
+// A row that was not parsed could hold another option, so it fails the test.
 func codexApprovalActions(screen screen, start int) bool {
 	index := start
 	for index >= 0 && screen.rows[index].blank() {
 		index--
 	}
 	options := 0
-	for ; index >= 0 && screen.rows[index].presence == rowParsed && !screen.rows[index].blank(); index-- {
+	for ; index >= 0 && !screen.rows[index].blank(); index-- {
 		row := screen.rows[index]
+		if row.presence != rowParsed {
+			return false
+		}
 		marker := row.cell(2).text + row.cell(3).text
 		match := codexOption.FindStringSubmatch(codexText(codexCells(row, 4)))
 		if !codexIndented(row) || marker != "› " && marker != "  " || match == nil {
@@ -234,12 +244,8 @@ func codexApprovalActions(screen screen, start int) bool {
 // codexAsyncEditor is rule 4, the expanded async questions editor (2.5). It
 // replaces the composer and status line; the status row stays above it.
 func codexAsyncEditor(screen screen, end int) (reading, bool) {
-	first := codexHintRows(screen, end)
-	if first < 0 {
-		return reading{}, false
-	}
-	_, labels, ok := codexHints(screen, first, end, "   ")
-	if !ok || !slices.Contains(labels, " submit") || !slices.Contains(labels, " skip") {
+	first, labels := codexHints(screen, end, "   ")
+	if first < 0 || !slices.Contains(labels, " submit") || !slices.Contains(labels, " skip") {
 		return reading{}, false
 	}
 	read := codexOverlay(sessions.InteractionQuestion, screen.rule("codex.question.async_editor", first, end))
@@ -253,49 +259,46 @@ func codexAsyncEditor(screen screen, end int) (reading, bool) {
 	return read, true
 }
 
-// codexHintRows returns the first of the hint rows ending at E, or -1 when E
-// is not one. Question footers wrap whole hints, so a hint row is indented and
-// starts at column 2 with a key, or with the option count, which can lead a
-// wrapped row (2.4, 2.5).
-func codexHintRows(screen screen, end int) int {
+// codexHints reads a question footer (2.4, 2.5): the run of hint rows ending
+// at E, each indented and starting at column 2 with a key or with the option
+// count, which can lead a wrapped row. The selected option and the notes row
+// start there with a bold `›`, which no key label is, and can sit right above
+// the footer. It returns the first row and the labels of the members joined
+// by separator, each a key and its label; first is -1 when there is no hint
+// row, no keyed member, or a member that is neither keyed nor the count.
+func codexHints(screen screen, end int, separator string) (first int, labels []string) {
 	hintRow := func(row row) bool {
 		cells := codexCells(row, 2)
-		return codexIndented(row) && len(cells) > 0 && cells[0].text != " " && (codexKey(cells) > 0 || codexOptionTip(cells) > 0)
+		return codexIndented(row) && len(cells) > 0 && cells[0].text != " " && cells[0].text != "›" &&
+			(codexKey(cells) > 0 || codexOptionTip(cells) > 0)
 	}
-	if !hintRow(screen.rows[end]) {
-		return -1
-	}
-	first := end
+	first = end + 1
 	for first > 0 && hintRow(screen.rows[first-1]) {
 		first--
 	}
-	return first
-}
-
-// codexHints reads the hint rows first..end as members joined by separator,
-// each a key and its label. The option count is the one keyless member and is
-// skipped; any other keyless member, or no keyed one, is no footer.
-func codexHints(screen screen, first, end int, separator string) (keys, labels []string, ok bool) {
 	for index := first; index <= end; index++ {
 		for _, member := range codexSplit(codexCells(screen.rows[index], 2), separator) {
-			key, tip := codexKey(member), codexOptionTip(member)
-			switch {
+			switch key := codexKey(member); {
 			case key > 0:
-				keys, labels = append(keys, codexText(member[:key])), append(labels, codexText(member[key:]))
-			case tip == 0 || tip < len(member):
-				return nil, nil, false
+				labels = append(labels, codexText(member[key:]))
+			case len(member) > 0 && codexOptionTip(member) == len(member):
+				// The count, shown when the options do not fit.
+			default:
+				return -1, nil
 			}
 		}
 	}
-	return keys, labels, len(labels) > 0
+	if len(labels) == 0 {
+		return -1, nil
+	}
+	return first, labels
 }
 
-// codexOptionTip is the length of the dim `option N/M` count leading cells,
-// or 0. The legacy and async question views show it when their options do not
-// fit (request_user_input/render.rs:344-353, async_questions/render.rs:195,232-239).
+// codexOptionTip is the width of the dim `option N/M` count leading cells, or
+// 0.
 func codexOptionTip(cells []cell) int {
-	tip := len(codexOptionCount.FindString(codexText(cells))) // ASCII: one byte per cell
-	if tip == 0 || !codexDim(cells[:tip]) || tip < len(cells) && cells[tip].text != " " {
+	tip := len(codexOptionCount.FindString(codexText(cells))) // ASCII: one cell per byte
+	if tip == 0 || !codexDim(cells[:tip]) {
 		return 0
 	}
 	return tip
@@ -546,7 +549,7 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	glyph := input.cell(0)
 	continuation := screen.rows[inputRow+1 : padding]
 	allDim, typed := true, false
-	for _, row := range append([]row{input}, continuation...) {
+	for _, row := range screen.rows[inputRow:padding] {
 		for column, cell := range row.cells {
 			if column > 0 && cell.text != " " && !cell.style.dim {
 				allDim, typed = false, typed || column >= 2
@@ -578,21 +581,22 @@ func codexComposer(screen screen, end int) (reading, bool) {
 	if hint >= 0 && codexIndented(screen.rows[hint]) {
 		cells := codexCells(screen.rows[hint], 2)
 		key := codexKey(cells)
-		disconnected = key > 0 && codexToken(cells, key, " quit") &&
-			!slices.ContainsFunc(cells[key:key+len(" quit")], func(cell cell) bool { return cell.style.dim || cell.style.bold })
+		quit := codexToken(cells, key, " quit")
+		disconnected = key > 0 && quit >= 0 &&
+			!slices.ContainsFunc(cells[key:quit], func(cell cell) bool { return cell.style.dim || cell.style.bold })
 		editor = codexText(cells[:key]) == "Save and close external editor to continue." && (key == len(cells) || cells[key].text == " ")
 	}
 
 	// The band: the top padding C-1, C, its continuation rows and B; remote
-	// image rows add themselves and one more padding row above them.
-	image := inputRow - 2
-	for codexImageRow(codexRow(screen, image)) {
-		image--
-	}
-	images := image < inputRow-2
+	// image rows add themselves and one more padding row above them. The
+	// transcript scan starts above the band.
 	start := inputRow - 2
+	for codexImageRow(codexRow(screen, start)) {
+		start--
+	}
+	images := start < inputRow-2
 	if images {
-		start = image - 1
+		start-- // the padding row above the image rows
 	}
 	// The placeholder is the dim run at column 2; the band is clean when it and
 	// the glyph are its only glyphs.
@@ -745,8 +749,8 @@ func codexReadRunState(row row) codexRunState {
 // goal states are not the indicator.
 func codexGoalActive(row row) bool {
 	for column := range row.cells {
-		if codexToken(row.cells, column, "Pursuing goal") &&
-			!slices.ContainsFunc(row.cells[column:column+len("Pursuing goal")], func(cell cell) bool { return cell.style.fg != codexMagenta }) {
+		if next := codexToken(row.cells, column, "Pursuing goal"); next >= 0 &&
+			!slices.ContainsFunc(row.cells[column:next], func(cell cell) bool { return cell.style.fg != codexMagenta }) {
 			return true
 		}
 	}
@@ -839,9 +843,9 @@ func codexTerminator(row row) bool {
 		return false
 	}
 	text := codexText(cells)
+	name := codexSpells(cells, 3, "OpenAI Codex")
 	return codexDim(row.cells) && (strings.HasPrefix(text, "Worked for ") || codexClock.MatchString(text)) ||
-		strings.HasPrefix(text, ">_ ") && codexSpells(cells, 3, "OpenAI Codex") &&
-			!slices.ContainsFunc(cells[3:3+len("OpenAI Codex")], func(cell cell) bool { return !cell.style.bold })
+		strings.HasPrefix(text, ">_ ") && name >= 0 && !slices.ContainsFunc(cells[3:name], func(cell cell) bool { return !cell.style.bold })
 }
 
 // codexImageRow is a row of `[Image #N]` labels at column 2, coloured and not
@@ -860,7 +864,9 @@ func codexImageRow(row row) bool {
 // optionally followed by dim ` · ` details.
 func codexStatusRow(row row) bool {
 	cells := codexCells(row, 0)
-	if len(cells) == 0 || cells[0].text == " " {
+	// History cells, the hook row and the reduced-motion static bullet start
+	// with a dim `• `; the status glyph never does.
+	if len(cells) == 0 || cells[0].text == " " || cells[0].text == "•" && cells[0].style.dim && row.cell(1).text == " " {
 		return false
 	}
 	last := len(cells) - 1
@@ -869,25 +875,28 @@ func codexStatusRow(row row) bool {
 		if cells[open].text != "(" || !cells[open].style.dim || cells[open-1].text != " " {
 			continue
 		}
-		// Cut: every glyph but the key is dim; the `…` takes the style of
-		// whatever it follows.
-		if cells[last].text == "…" && codexCutGroup.MatchString(codexText(cells[open+1:last])) &&
-			!slices.ContainsFunc(cells[open:last], func(cell cell) bool { return cell.text != " " && !cell.style.dim && !cell.style.bold }) {
-			return true
+		after := open + 1 + len(codexDuration.FindString(codexText(cells[open+1:]))) // D is ASCII: one cell per byte
+		// Cut: dim up to its bullet, and only the key is bold after it; the `…`
+		// takes the style of whatever it follows.
+		if cells[last].text == "…" && codexCutGroup.MatchString(codexText(cells[open+1:last])) {
+			key := last
+			if bullet := codexSpells(cells, after, " •"); bullet >= 0 {
+				key = bullet
+			}
+			if codexDim(cells[open:key]) &&
+				!slices.ContainsFunc(cells[key:last], func(cell cell) bool { return cell.text != " " && !cell.style.dim && !cell.style.bold }) {
+				return true
+			}
 		}
-		// D is ASCII, so its byte length is its cell count.
-		after := open + 1 + len(codexDuration.FindString(codexText(cells[open+1:])))
 		if after == open+1 || !codexDim(cells[open:after]) {
 			continue
 		}
-		bullet := after + utf8.RuneCountInString(" • ")
-		switch {
-		case codexSpells(cells, after, ")") && cells[after].style.dim && tail(after+1):
+		if closed := codexSpells(cells, after, ")"); closed >= 0 && cells[after].style.dim && tail(closed) {
 			return true
-		case codexSpells(cells, after, " • ") && codexDim(cells[after:bullet]):
+		}
+		if bullet := codexSpells(cells, after, " • "); bullet >= 0 && codexDim(cells[after:bullet]) {
 			key := bullet + codexKey(cells[bullet:])
-			if key > bullet && codexSpells(cells, key, " to interrupt)") &&
-				codexDim(cells[key:key+len(" to interrupt)")]) && tail(key+len(" to interrupt)")) {
+			if end := codexSpells(cells, key, " to interrupt)"); key > bullet && end >= 0 && codexDim(cells[key:end]) && tail(end) {
 				return true
 			}
 		}
@@ -942,34 +951,36 @@ func codexKey(cells []cell) int {
 	return key
 }
 
-// codexSpells reports that cells from at spell token, one rune per cell.
-func codexSpells(cells []cell, at int, token string) bool {
+// codexSpells reports the column after token when cells from at spell it, one
+// rune per cell, or -1.
+func codexSpells(cells []cell, at int, token string) int {
 	for _, char := range token {
 		if at >= len(cells) || cells[at].text != string(char) {
-			return false
+			return -1
 		}
 		at++
 	}
-	return true
+	return at
 }
 
-// codexToken reports that cells from at spell token as a whole word: the
-// cells end after it or continue with a space.
-func codexToken(cells []cell, at int, token string) bool {
-	next := at + utf8.RuneCountInString(token)
-	return codexSpells(cells, at, token) && (next >= len(cells) || cells[next].text == " ")
+// codexToken is codexSpells for a whole word: the cells end after token or
+// continue with a space.
+func codexToken(cells []cell, at int, token string) int {
+	next := codexSpells(cells, at, token)
+	if next < 0 || next < len(cells) && cells[next].text != " " {
+		return -1
+	}
+	return next
 }
 
 // codexSplit splits cells into members at separator.
 func codexSplit(cells []cell, separator string) [][]cell {
-	width := utf8.RuneCountInString(separator)
 	var members [][]cell
 	from := 0
-	for column := 0; column+width <= len(cells); column++ {
-		if codexSpells(cells, column, separator) {
+	for column := 0; column < len(cells); column++ {
+		if next := codexSpells(cells, column, separator); next >= 0 {
 			members = append(members, cells[from:column])
-			from = column + width
-			column = from - 1
+			from, column = next, next-1
 		}
 	}
 	return append(members, cells[from:])
