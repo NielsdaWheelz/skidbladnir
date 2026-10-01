@@ -3,8 +3,9 @@
 [terminal control](terminal-agent-control.md) owns ordinary session operations.
 [native conversations](native-agent-observation.md) owns explicit native capabilities.
 [terminal attention](reply-notifications.md) owns notifications and terminal visits. [qualification](native-agent-qualification.md) records actual evidence;
-[roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
-installed-fleet acceptance remains open.
+[roadmap](roadmap.md) indexes delivery. stock native source passes isolated
+acceptance; installed-fleet acceptance remains open. the terminal-observation
+status below is not qualified.
 
 ## targets and ownership
 
@@ -55,8 +56,9 @@ activity, interaction and notice facts
 ([terminal observation](terminal-observation.md)): a working agent can also need
 an answer, and ambiguity is unknown rather than guessed. native recorded identity
 is secondary metadata. `ready` is exclusive green attention after a working-to-idle
-transition with no request, menu or notice; starting/working is blue, requests
-are ember and idle grey. it asserts no unseen text or task result.
+transition with no request, menu or notice;
+[observation §6](terminal-observation.md#6-content-attention-and-filtering) owns
+every other label and tone. it asserts no unseen text or task result.
 first actual terminal output presentation clears attention; the whole visit and
 first qualified post-visit observation are quiet. unknown/stale/outage breaks
 continuity. no reply viewer, result-id scan/store or human acknowledgement remains.

@@ -1,7 +1,9 @@
 # terminal attention notifications
 
-status: implemented and behaviorally qualified on `codex/reply-notifications`;
-deployment is outside this change.
+status: implemented in source. the 2026-09-30 behavioral qualification on
+`codex/reply-notifications` covers the earlier working/blocked/idle machine; the
+arming/clearing/ready machine below is unqualified. deployment is outside this
+change.
 replaces the former native-work/head prerequisite and human unread/viewer rules.
 [terminal observation](terminal-observation.md) owns status facts;
 [terminal control](terminal-agent-control.md) owns exact targeting.
@@ -16,25 +18,26 @@ completion, admission nor an empty queue. codex and claude use one policy.
 | event | effect |
 | --- | --- |
 | consecutive arming -> ready outside a visit | green `ready` |
-| arming: working, interaction none, notice none | clear pending; arm predecessor |
-| clearing: any request or menu, any notice, starting or other working | clear pending; disarm |
+| arming sample | clear pending; arm predecessor |
+| other clearing sample | clear pending; disarm |
 | ready without an armed predecessor | pending unchanged; disarm |
-| unknown/unavailable/stale/offline, idle with unknown interaction | disarm; retain pending, hide green |
-| startup/foreground recovery first sample | quiet baseline; preserve matching pending; working may arm |
+| any other sample; stale/offline | disarm; retain pending, hide green |
+| startup/foreground recovery first sample | quiet baseline; preserve matching pending; an arming sample arms |
 | positive foreground replacement/exit | clear former pending and predecessor |
 | first successfully presented output on entry | immediately clear exact terminal pending |
 | active terminal visit | suppress pending and predecessors |
 | successful visit ends | clear; persist outstanding closing baseline |
-| first post-visit clearing or ready sample | clear closing flag; ready stays quiet; arming may follow |
+| first post-visit clearing or ready sample | clear closing flag; ready stays quiet; an arming sample arms |
 | entry fails before any output presentation | clear nothing |
 
 only a fresh successful terminal-source sample of a local foreground agent
 qualifies. arming is working + interaction none + notice none. clearing is any
 permission/question/confirmation/setup/input or menu interaction, any notice, or
-activity starting or working. ready is idle + interaction none + notice none.
-everything else only disarms: unknown breaks continuity even after successful
-capture, and a request clears even when activity is unknown. never bridge
-`working -> unknown -> idle`. cached status cannot mutate notices.
+activity starting or working; every arming sample also clears. ready is idle +
+interaction none + notice none. everything else only disarms: unknown breaks
+continuity even after successful capture, and a request clears even when activity
+is unknown. never bridge `working -> unknown -> idle`. cached status cannot mutate
+notices.
 positive shell/non-agent observation may settle a closing boundary; absent
 identity on unavailable observation does not prove agent exit.
 
@@ -107,14 +110,14 @@ capture expected record revision before network dispatch; compare under store
 serialization. mismatch discards that sample's notification processing and
 predecessor, without replay/rebasing. ready sets pending only when its predecessor
 was armed for this exact foreground at the previous revision; otherwise pending is
-unchanged. baseline preserves matching saved pending but cannot create it; arming
-may follow. visiting clears pending and never arms. clearing clears. neutral
-samples preserve pending and disarm. replacement clears and starts quietly.
+unchanged. baseline preserves matching saved pending but cannot create it; an
+arming sample still arms. visiting clears pending and never arms. clearing clears.
+other samples preserve pending and disarm. replacement clears and starts quietly.
 Presented and EndVisit advance the revision, so no predecessor armed before them
-can make a later ready pending: the first post-visit ready is quiet, and arming
-may follow. the first clearing or ready sample, or a positive exit, clears
-baselinePending; unknown/unavailable/stale leave it set. no decision reads the
-flag ([issue](issues/notification-baseline-pending.md)).
+can make a later ready pending: the first post-visit ready is quiet. the first
+clearing or ready sample, or a positive exit, clears baselinePending;
+unknown/unavailable/stale leave it set. no decision reads the flag
+([issue](issues/notification-baseline-pending.md)).
 
 Presented clears and advances revision even if already clear. EndVisit also sets
 baselinePending. call only once on actual presentation and only end a presented

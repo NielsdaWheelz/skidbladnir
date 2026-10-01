@@ -392,9 +392,9 @@ after confirmed creation, use the returned session's observed membership. retain
 the current group filter if it admits that session; otherwise select the returned
 named group or unassigned. phone and desktop also clear the
 [needs-input filter](terminal-observation.md#6-content-attention-and-filtering):
-dashboard membership follows the next inventory sample, not the creation sample,
-so a kept filter could hide the created session. when either filter changes,
-cancel saved restoration and reset viewport to top.
+a new session rarely shows a request, so a kept filter would hide the session just
+created. when any filter changes, cancel saved restoration and reset viewport to
+top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
 admission and returns to the resulting filter. existing post-create machine
@@ -568,8 +568,8 @@ of machine filter. resolution does not change selection or cancel restoration.
 no match retains the filter as `previously selected group`; never switch to all
 or unassigned. later polls may resolve it. initial unresolved host reads may
 show checking; a modeled unavailable outcome must allow restoration to settle.
-missing pairing retains the reset-to-all/top rule, resets both filters and turns
-the needs-input filter off.
+missing pairing retains the reset-to-all/top rule and resets the machine, group
+and needs-input filters.
 
 ### rendered keys and task schema
 
@@ -627,10 +627,10 @@ geometry clamps normally. reveal the selected machine chip; the compact group
 control always shows selection and needs no horizontal-offset persistence.
 
 terminal access loss still selects its affected machine and resets viewport to
-top; retain the group filter. machine notices are outside group filtering, so
-the reason stays visible. detach/back and supported task recreation preserve both
-filters and the needs-input filter; recreation lands on dashboard, never resumes
-attachment or mutation.
+top; retain the group and needs-input filters. machine notices are outside group
+filtering, so the reason stays visible. detach/back and supported task recreation
+preserve the machine, group and needs-input filters; recreation lands on
+dashboard, never resumes attachment or mutation.
 
 ## 11. reuse, removals, and files
 
@@ -708,13 +708,14 @@ not label values, terminal bytes, prompts, credentials, or provider output.
 proof shape:
 
 1. use small temporary host, fleet, and phone boundary checks for strict wire,
-   filtering, schema-2 restoration, and the updated copy. feed restoration a
-   capsule captured from the pre-rename code, rather than generating both sides
-   with the new code. remove the checks after green and review.
+   filtering, schema-3 restoration including `needsInputOnly`, the older-capsule
+   reset, and the updated copy. feed the reset a schema-2 capsule captured from
+   the pre-rename code, rather than generating both sides with the new code.
+   remove the checks after green and review.
 2. use exact test-owned sessions on an isolated tmux socket for assignment,
    inheritance, lifetime, and metadata continuity. linux and darwin live results
    retain separate attribution. do not launch a paid provider for this rename.
-3. a real phone journey covers the editor, both filters, saved heading position,
+3. a real phone journey covers the editor, every filter, saved heading position,
    detach/back, and the host request. a fixture or build cannot establish device
    acceptance. phone/adb requires explicit current-turn approval.
 4. run `scripts/check verify` for engineering checks. it contains no behavioral

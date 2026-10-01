@@ -2,8 +2,8 @@
 
 Status: reviewed design reference, updated 2026-08-31. This document owns visual
 identity: color, shape, ornament, typography, iconography, motion, and the
-terminal theme. [agent control](agent-control.md) owns current sampled status
-and its presentation; no terminal-activity field remains.
+terminal theme. [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering)
+owns status copy and tone; no terminal-activity field remains.
 [`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. §17 links the implemented component contracts. changes follow the
@@ -153,16 +153,15 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 | Frost | `#78A9C6` | 7.67 | working; informational |
 | Bronze | `#CD7F32` | 6.18 | Warm material accent; no runtime-state meaning |
 
-terminal status tone is starting/working Frost, ready Moss, every `needs …`
-request and `error shown` Ember, and everything else Muted: idle, menu open,
-interruption shown, status unknown/unavailable, a plain terminal and every stale
-`last observed:` label. [terminal attention](reply-notifications.md) owns
-the exclusive projection and green suppression during stale/uncertain samples
-and visits. Pressure history and detail rows keep Normal
-Moss · Warm Gold · Hot Ember · Unknown/missing Muted · Informational Frost. The
-collapsed pressure rail is deliberately quieter: labels and `i/N` marks are
-Muted, informational/normal values are Bone, and only Warm/Hot values and marks
-spend Gold/Ember.
+terminal status tones are
+[observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
+blue, green, ember and muted, drawn in Frost, Moss, Ember and Muted.
+[terminal attention](reply-notifications.md) owns the exclusive projection and
+green suppression during stale/uncertain samples and visits. Pressure history
+and detail rows keep Normal Moss · Warm Gold · Hot Ember · Unknown/missing Muted ·
+Informational Frost. The collapsed pressure rail is deliberately quieter: labels
+and `i/N` marks are Muted, informational/normal values are Bone, and only
+Warm/Hot values and marks spend Gold/Ember.
 
 ### Severity tones
 
@@ -602,17 +601,16 @@ and bright-red ember. NO_COLOR strips styling and preserves every label.
 | Moss | RGB `#76B082` | ready |
 | Muted | RGB `#AAA69D` | every other status |
 
-status colour follows the projected tone (§5), never the printed word: frost
-covers `starting`/`working`; ember covers every `needs …` label and `error shown`;
-moss covers `ready`; muted covers `idle`, `menu open`, `interruption shown`,
-`terminal`, `status unknown`/`status unavailable` and every stale `last observed:`
-label. ember never appears in hints, so requests and shown errors stay the
-table's only red statuses and are found at a glance. colour never carries
-meaning alone: every status is a word; the cursor is a glyph plus bold; the
-current view is bold, between gold `‹ ›` at the table; form chevrons stay faint
-because the `▌` gutter marks focus. faint varies by terminal and disappears
-under mosh; the hierarchy then flattens without losing information. one rule
-separates content from controls. no boxes, fret, runes, icons or motion.
+status colour follows the projected tone (§5), never the printed word. a stale
+row reads faint `unavailable` or `checking` instead
+([desktop browser §5](desktop-browser.md#5-presentation)). ember never appears in
+hints, so requests and shown errors stay the table's only red statuses and are
+found at a glance. colour never carries meaning alone: every status is a word;
+the cursor is a glyph plus bold; the current view is bold, between gold `‹ ›` at
+the table; form chevrons stay faint because the `▌` gutter marks focus. faint
+varies by terminal and disappears under mosh; the hierarchy then flattens
+without losing information. one rule separates content from controls. no boxes,
+fret, runes, icons or motion.
 
 ## 20. session naming content
 

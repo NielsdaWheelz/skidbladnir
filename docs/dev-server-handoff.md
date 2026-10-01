@@ -143,7 +143,7 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX@` | absolute installed tmux executable; historically `/usr/bin/tmux` on linux, `/opt/homebrew/bin/tmux` on macbook |
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
-| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. the profile's `executablePath` keeps this spelling and resolves it at each comparison, so a claude update that relinks it is recognized without a restart; a session still running the previous image is then unrecognized and reads as a generic terminal |
+| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. cost: after a claude update relinks it, a session still running the previous image is unrecognized and reads as a generic terminal |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 the shared provider installer installs ordinary upstream `@openai/codex` through
@@ -200,8 +200,9 @@ configured `executablePath` to resolve to an executable regular file. it does no
 invoke tmux, start a provider, inspect credentials, or prove other
 executable/dependency availability. the installer separately checks the declared
 executables and helper pins. an installed generation whose config still carries
-`argument0` fails gateway startup, `agent-hook` and this validator; re-render it
-from the current template in the same cutover.
+`argument0` fails gateway startup and this validator, and `agent-hook` publishes
+nothing, so claude sessions start unregistered; re-render it from the current
+template in the same cutover.
 
 ## profiles and shell defaults
 

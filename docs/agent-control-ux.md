@@ -117,11 +117,13 @@ failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
 
 reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
-`info` and `start` return `{label, machine, observedAt, session: row}`; `info
---explain` adds `diagnostics` beside `session`. other results
-retain the current agent-control schema; terminal-only `close` returns `{terminal: closed}` only
-after confirmed deletion. `group` acknowledges `{group: string}`, with empty
-string for clear, only after the host's bodyless `204`; it returns no new ref.
+`info` and `start` return `{label, machine, observedAt, session: row}`; with
+`info --explain`, `observedAt` is the client time the inspect response arrived,
+`session.terminalStatus` is the inspect sample's status and `diagnostics` sits
+beside `session`. other results retain the current agent-control schema;
+terminal-only `close` returns `{terminal: closed}` only after confirmed deletion.
+`group` acknowledges `{group: string}`, with empty string for clear, only after
+the host's bodyless `204`; it returns no new ref.
 group filtering keeps every source peer/error in machine scope and never changes
 handle resolution. `--json` emits exactly one envelope on stdout, with no
 human decoration. a partial list is a success envelope with `partial: true` and
@@ -142,8 +144,9 @@ human `info` prints `state:` (the shared projection's label and details) and
 accepts terminal targets only: it resolves once and inspects that terminal with
 [explain](terminal-agent-control.md#4-api-and-client-commands). its state line,
 `observed:` and an indented `status evidence` block come from that one inspect
-sample; other facts come from inventory. the block lists activity, interaction
-and notice separately, then reason copy, rules (`id (region)`, or `none`), capture
+sample; other facts come from inventory. the block's `reason:` replaces the
+`status reason:` line. the block lists activity, interaction and notice
+separately, then reason copy, rules (`id (region)`, or `none`), capture
 (`W × H, main screen|alternate screen, clipped: top, bottom|none`, or `not
 collected`) and per-stage timing (`resolve N ms`, or `resolve not collected`).
 `observed:` is the client time the inspect response arrived. reason copy for

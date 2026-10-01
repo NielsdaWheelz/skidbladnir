@@ -1,14 +1,18 @@
 # terminal status and control
 
 [non-native terminal observation](terminal-observation.md) owns the status facts,
-screen observation, provider classification and guarded-send admission. this
-document keeps terminal targets, effects, routes, wait and their composition.
-observation source is merged except the provider classifier, which is in progress;
-nothing in it is live-qualified.
+provider classification and guarded-send admission. this document keeps terminal
+targets, the tmux capture mechanics, effects, routes, wait and their composition;
+its capture limits supersede those in
+[observation §3](terminal-observation.md#3-composition-and-observation-boundary).
 
-status: source implemented; [qualification](terminal-agent-control-qualification.md)
-records the full terminal checks and current-main composition limits of the
-earlier `{state, source}` observation.
+status: orchestration implemented. of the observation cutover, source has the
+observation boundary, wire, configuration and both clients; the provider
+classifier, its composition for inventory, inspect and send, and the amended
+top region, per-comparison executable-path resolution, diagnostics validation and
+`info --explain` observed time are in progress. nothing of it is
+live-qualified; [qualification](terminal-agent-control-qualification.md) covers
+the earlier `{state, source}` observation.
 this owns the hard cutover
 of ordinary terminal orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
@@ -59,22 +63,15 @@ lifecycle reconstruction, poller, retry or deadline extension.
 
 ```text
 terminal target = {identityToken, paneId} // machine + tmuxId supplied by routing
-terminal status = {activity: starting|working|idle|unknown,
-                   interaction: none|permission|question|confirmation|setup|input|menu|unknown,
-                   notice: none|interrupted|error,
-                   source: terminal|unavailable,
-                   reason: recognized|partial|layout_unknown|evidence_clipped|
-                           evidence_conflict|provider_unrecognized|remote_context|
-                           foreground_changed|observation_timeout|capture_failed|
-                           process_failed}
-session += {terminalStatus: terminal status}
+session += {terminalStatus: TerminalStatus}
 session.conversation? = Conversation // recorded native identity only, no runtime
 ```
 
-[observation §2](terminal-observation.md#2-capability-and-wire-contract) owns each
-value's meaning and the legal combinations. `sessions.TerminalStatus.Valid`
-enforces them; go and kotlin clients check them once at ingress. every member is
-required and non-null; the former `{state, source}` shape is rejected.
+[observation §2](terminal-observation.md#2-capability-and-wire-contract) owns
+`TerminalStatus`: its five fields, their values and the legal combinations.
+`sessions.TerminalStatus.Valid` enforces them; go and kotlin clients check them
+once at ingress. every member is required and non-null; the former
+`{state, source}` shape is rejected.
 retain existing `activePaneId`, foreground `agent?`, connection and account facts;
 do not introduce a second pane/provider identity or per-action capability map.
 native `ConversationRuntime`, status and methods remain on explicit native
@@ -120,17 +117,17 @@ read keeps its own capture.
 explicit inspect and send resolve their target fresh; `ResolveTerminal` is target
 admission, and its errors stay errors. a target change during their capture is
 `TerminalTargetChanged`; inventory reports it as `capture_failed`. inspect samples
-under a two-second deadline. every unavailable result, from inventory or inspect,
-logs one content-free `Terminal.ObservationFailed` event with its reason and the
-milliseconds since the observing call began.
+under a two-second deadline. every unavailable result, from inventory,
+creation/shell responses or inspect, logs one content-free
+`Terminal.ObservationFailed` event with its reason and the milliseconds since the
+observing call began.
 
 a local provider is recognized only from fresh kernel facts that match a
-configured foreground signature: a native executable basename, or a configured
-absolute executable path resolved through symlinks at each comparison
-([deployment schema](dev-server-handoff.md#host-config-and-validator)). npm's node
-launcher leading the foreground is a generic terminal; managed launches and
-`codex` typed in a skid shell run the native binary. a process matching more than
-one provider is unrecognized.
+configured foreground signature: a native executable basename or absolute
+executable path ([deployment schema](dev-server-handoff.md#host-config-and-validator)
+owns matching). npm's node launcher leading the foreground is a generic terminal;
+managed launches and `codex` typed in a skid shell run the native binary. a
+process matching more than one provider is unrecognized.
 
 [observation §4](terminal-observation.md#4-provider-adapters-and-managed-displays)
 owns the provider grammars, managed codex run-state chrome and rule ids. quoted
@@ -186,13 +183,12 @@ second transport. no provider-native call occurs.
 
 send admits only a fresh local provider whose sample shows activity working or
 idle, interaction none, notice none and an empty ordinary composer
-([observation §5](terminal-observation.md#5-controls-and-diagnostic-api)). every
-other sample refuses before writing, with one reason: a permission, question,
+([observation §5](terminal-observation.md#5-controls-and-diagnostic-api)) and
+otherwise writes nothing. a refusal names one reason: a permission, question,
 confirmation, setup or input interaction is `dialog`; otherwise a composer draft
-is `draft`; anything else, including menus, notices, starting, unknown, clipped
-or blocked composers and non-agent terminals, is `unknown`. use text/keys for
-deliberate interaction. never append-and-submit a detectable user draft. this
-heuristic cannot eliminate concurrent edits. text deliberately retains
+is `draft`; otherwise `unknown`. use text/keys for deliberate interaction. never
+append-and-submit a detectable user draft. this heuristic cannot eliminate
+concurrent edits. text deliberately retains
 ordinary append/paste-and-submit semantics. send/text reuse the same unique-buffer
 paste plus one submit primitive. stage that buffer before final foreground
 revalidation; both paste and enter belong inside the successful tmux predicate
@@ -359,7 +355,7 @@ accessibility; never duplicate classifier logic in clients.
 
 | feature | required content / behavior |
 | --- | --- |
-| inferred agent state | [observation §6](terminal-observation.md#6-content-attention-and-filtering) labels, from `starting` and `working` through `needs permission`, `menu open`, `error shown`, `idle` and `status unknown`; details: `work continues`, `inferred from terminal` |
+| inferred agent state | [observation §6](terminal-observation.md#6-content-attention-and-filtering) labels; details: `work continues`, `inferred from terminal` |
 | observation failure | `status unavailable`; retain terminal actions |
 | ordinary shell/program | `terminal`; retain current command/profile context when known |
 | stop / combined close / immediate close | `send interrupt` / `interrupt and close terminal` / `close terminal only` |

@@ -74,16 +74,16 @@ offset `O`:
    on Dashboard and never restores an attachment, terminal target, or bytes.
 8. A fresh task, app-data reset, or restored machine absent from the accepted
    fleet starts all machines/all groups at top with needs input off. temporary
-   outage never clears either filter. an unresolved named group retains its
+   outage never clears any filter. an unresolved named group retains its
    fingerprint selection.
 9. Selecting a different filter cancels pending restoration and uses normal
    stable-key clamping; selecting the active filter is a no-op. No per-filter
    viewport history is created.
 10. Terminal access loss remains the explicit exception: atomically select the
-   affected machine, retain the group filter, cancel saved restoration, reset
-   its viewport to top, and
-   show the existing notice. Dashboard-side pending Forge/kill access loss keeps
-   its existing affected-machine selection and live-grid clamping behavior.
+   affected machine, retain the group and needs-input filters, cancel saved
+   restoration, reset its viewport to top, and show the existing notice.
+   Dashboard-side pending Forge/kill access loss keeps its existing
+   affected-machine selection and live-grid clamping behavior.
 
 During saved-task inventory loading, the existing neutral Booting/Reading
 surface may precede the restored grid. An `All`/top or false-empty grid frame
@@ -230,8 +230,9 @@ normalization boundary; after it, invalid scope selection is a caller defect.
   scope is a no-op.
 - `selectTerminalAccessLoss` always selects that machine, cancels restoration,
   and schedules top while preserving group selection and needs input.
-  `resetAll` clears both filters, needs input, pending state, and viewport to
-  all/all/off/top. these are semantic operations, not a boolean viewport policy.
+  `resetAll` clears the machine, group and needs-input filters, pending state,
+  and viewport to all/all/off/top. these are semantic operations, not a boolean
+  viewport policy.
 - `DashboardMain` alone derives the scoped machine list; `dashboardItems`
   consumes it with the group and needs-input filters and owns session order,
   grouping and filtering. inventory targets, pressure visibility, and refresh

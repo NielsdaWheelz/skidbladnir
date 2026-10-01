@@ -226,12 +226,14 @@ recorded native identity never supplies status. shell/remote rows use
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only
 when the table scrolls, the faint cursor position (`· i of n` after the filter
-word, otherwise `i of n`); the selected session's status label with `work
-continues` and `inferred from terminal` when they apply, recorded native identity
-and attached clients; its directory on a separate line; the keys. for an
-available local session, the directory line ends with `shift+t new shell here`,
-with the key bold and the label plain. reserve two spaces before the action and
-truncate a long directory from the left so its final components remain visible.
+word, otherwise `i of n`); the selected session's facts on one line:
+`unavailable; ` or `checking; ` for a row without remote actions, the status
+label with `work continues` and `inferred from terminal` when they apply,
+`: <command>` for a non-agent program, then `· N attached`; its directory on a
+separate line; the keys. for an available local session, the directory line ends
+with `shift+t new shell here`, with the key bold and the label plain. reserve two
+spaces before the action and truncate a long directory from the left so its final
+components remain visible.
 the action is absent for ssh/mosh sources, unavailable sessions, modal pages and
 pending operations. it creates and enters an independent shell on the named
 target's machine, in its current directory and group; the original session keeps
@@ -256,11 +258,11 @@ only`, `enter interrupt terminal` or `enter interrupt and close terminal`.
 info pins the captured session lifetime; refresh may update its observed name
 and facts without retargeting. its `state` fact is the status label with `work
 continues` and `inferred from terminal` when they apply, followed by a `status
-reason` fact; unknown and unavailable reasons end with `; open the terminal to
-inspect`. when the session leaves inventory or its host fails, the page keeps its
-last observed facts and their `observed` time, with `state: last observed: …` and
-`availability: unavailable`. page scrolling uses the visible body height; forms
-keep the focused field visible.
+reason` fact that ends with `; open the terminal to inspect` when the label is
+`status unknown` or `status unavailable`, stale included. when the session leaves
+inventory or its host fails, the page keeps its last observed facts and their
+`observed` time, with `state: last observed: …` and `availability: unavailable`.
+page scrolling uses the visible body height; forms keep the focused field visible.
 
 cursor, current view, unavailability and failure never rely on color: the cursor
 is a glyph plus bold, the current view is bold, and every status and unavailable
