@@ -52,7 +52,9 @@ desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
 Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
 corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
 native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
-source, not deployment or cloud/native completion. the additional [merged phone
+source on the earlier `{state, source}` observation and working/blocked/idle
+attention machine (see the observation cutover above), not deployment or
+cloud/native completion. the additional [merged phone
 composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
 tests are removed by policy;
 engineering verification passes. accepted inference/sampling/closing-boundary/

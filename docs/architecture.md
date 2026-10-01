@@ -4,9 +4,10 @@ tmux owns terminal sessions and pane processes. providers own execution and hist
 each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
-[terminal observation](terminal-observation.md) owns ordinary status, screen
-observation and guarded-send admission; [terminal control](terminal-agent-control.md)
-owns rendered reads and exact terminal effects. [terminal attention](reply-notifications.md)
+[terminal observation](terminal-observation.md) owns status facts, the observed
+screen regions, classification and guarded-send admission;
+[terminal control](terminal-agent-control.md) owns terminal targets, capture
+mechanics, rendered reads and exact terminal effects. [terminal attention](reply-notifications.md)
 owns device-local ready notices and terminal visits. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
@@ -146,11 +147,10 @@ native providers through one closed product launcher, load the identity plugin
 for claude, and never infer from cwd or read hook payloads. shared account
 wrappers are not used. direct raw-provider
 launches bypass that plugin and remain honestly unregistered. A row also owns exact
-foreground-process signatures for honest
-presence detection: a native executable basename or absolute executable path,
-never argv. the shared observer resolves the pane tty's foreground
-process group using Linux `/proc` or native Darwin process facts; a node
-launcher, including npm's codex launcher, is a generic terminal.
+foreground-process signatures for honest presence detection; the
+[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
+matching, including npm's node launcher. the shared observer resolves the pane
+tty's foreground process group using Linux `/proc` or native Darwin process facts.
 
 ### Product language
 
@@ -332,12 +332,11 @@ creation, and content-free restoration contracts:
 - grid order: named group headings in the shared ascii-folded/exact utf-8 label
   order, then unassigned. within each group use the current agent-control order:
   case-folded/exact machine label, machine handle, then numeric local tmux id. no urgency sorting. retained stale rows remain explicitly
-  unavailable and non-actionable. a `needs input` filter chip narrows the
-  machine/group selection to fresh sessions showing a permission, question,
-  confirmation, setup or input request; it keeps that order, draws no empty
-  heading and leaves machine notices outside it. clients own numeric local
-  tmux-id ordering and grouping; the host inventory envelope makes no
-  display-order promise.
+  unavailable and non-actionable. a
+  [`needs input`](terminal-observation.md#6-content-attention-and-filtering)
+  filter chip narrows the machine/group selection and keeps that order. clients
+  own numeric local tmux-id ordering and grouping; the host inventory envelope
+  makes no display-order promise.
 
 The Dashboard is one retained Android navigation entry. Opening Terminal does
 not replace that entry: top `Detach` and Android Back return to its same typed
@@ -1063,11 +1062,8 @@ explanations, managed codex statusline cues and a needs-input filter; it include
 the manual claude recognition prerequisite. obscured state may be unknown.
 no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
-contracts. its observation boundary, wire, configuration and both clients are
-implemented in source; the provider classifier, its composition for inventory,
-inspect and send, and the amended top region, per-comparison executable-path
-resolution, diagnostics validation and `info --explain` observed time are in
-progress. nothing is qualified or deployed.
+contracts. source is partly implemented ([roadmap](roadmap.md)); nothing is
+qualified or deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are
 accepted and implemented. their detailed specifications own their limits.
