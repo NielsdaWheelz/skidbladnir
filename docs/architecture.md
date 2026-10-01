@@ -340,8 +340,8 @@ creation, and content-free restoration contracts:
 
 The Dashboard is one retained Android navigation entry. Opening Terminal does
 not replace that entry: top `Detach` and Android Back return to its same typed
-machine and group filters. those filters restore before inventory verification;
-the semantic first-visible session or heading and offset settle before dashboard
+machine, group and needs-input filters. those filters restore before inventory
+verification; the semantic first-visible session or heading and offset settle before dashboard
 interaction. an unchanged list returns to the same item and pixel offset; live
 insertion/reorder preserves its key; a removed item clamps its former rendered
 index. an empty or unavailable selected machine or group remains
@@ -911,8 +911,8 @@ enum values are defects, with no protocol branch or compatibility state.
   terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
   destination switch and exclusively owns machine/group/needs-input selection, the
   live lazy-grid state, and pending saved restoration. Android saved-instance state
-  may retain one exact-version schema-3 capsule containing only both filter
-  discriminants, the needs-input flag,
+  may retain one exact-version schema-3 capsule containing only the machine and
+  group discriminants, the needs-input flag,
   the machine handle when selected, a comparison-only group-label fingerprint
   when named, a typed session/heading anchor, rendered-item index, and pixel
   offset. [groups](groups.md#10-android-navigation-and-content-free-restoration)

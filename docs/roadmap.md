@@ -14,7 +14,7 @@ desktop/phone needs-input filtering. manual claude executable recognition is a
 prerequisite. screen ambiguity remains unknown; titles/progress are excluded.
 source implements the observation boundary, wire, configuration and both
 clients; the provider classifier, its composition for inventory, inspect and
-send, and the amended top region, per-comparison executable-path resolution,
+send, and a taller top region, per-comparison executable-path resolution,
 diagnostics validation and `info --explain` observed time are in progress. no
 qualification, deployment or live acceptance is claimed.
 [detection](issues/terminal-status-detection.md),
