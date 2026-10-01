@@ -1,25 +1,17 @@
-# terminal observation lacks physical-phone acceptance
+# terminal observation phone acceptance has remaining rows
 
-problem: the [terminal observation](../terminal-observation.md) cutover has no
-gateway → physical-phone run. spec §8's full-product row requires one: work, each
-request label, concurrent work, stale/unavailable, needs-input filter membership
-and order, visits, dashboard return restoration and accessibility with large text.
+problem: the physical-phone run of the [terminal observation](../terminal-observation.md)
+cutover (2026-10-01, [record](../terminal-agent-control-qualification.md#2026-10-01-production-cutover-and-physical-phone))
+did not cover four spec §8 rows: concurrent work with a request (`work continues`),
+the generic `needs input` subtype, a delayed response that must not restore
+consumed ready, and talkback's spoken reading of the chip and status bay.
 
-impact: the android projection, needs-input chip, schema-3 task capsule and ready
-attention are unproven on a device. a device-only defect (talkback reading of the
-chip or status bay, large-text clipping, capsule restoration after a task kill,
-pull-to-refresh with the filter on, the controller's ready gates) would ship
-unseen. engineering checks cannot close it.
+impact: those android paths are proven only by robolectric probes. a device-only
+defect there would ship unseen; the other phone rows passed on the device.
 
-evidence: android probes ran under robolectric only (ingress, projection,
-attention sequences, chip, capsule schema 3, narrow and 2× font layout); the
-controller was constructed but never started. no adb, emulator or phone run is
-recorded for this cutover.
+evidence: claude cannot show work with a request (an accepted cost), and the live
+codex sessions produced no concurrent question or generic input request. the
+accessibility labels were read from the view hierarchy, not spoken.
 
-resolved when: with current-turn approval, a physical phone paired to the real
-gateway passes spec §8's full-product and attention rows (including a visit that
-keeps an unanswered request, a delayed response that cannot restore consumed
-ready, and restoration of the needs-input filter), with content-free results
-recorded in the
-[qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification);
-then delete this record.
+resolved when: each row passes on the phone through the production gateway,
+recorded content-free in the qualification; then delete this record.

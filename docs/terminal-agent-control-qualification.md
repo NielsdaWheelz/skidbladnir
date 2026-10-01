@@ -142,7 +142,7 @@ deleted. the per-family record is each grammar's capability table
 | diagnostics and logs | PASS: explanation agrees with status in all 32 explained samples; rule ids are literals; envelopes, delivered receipts and gateway logs hold no content; `Terminal.ObservationFailed` logs `capture_failed` and `observation_timeout` | inspect diagnostics valid; logs `NOT_RUN` |
 | cost (two-second enrichment budget) | PASS at 16 represented sessions including 120×256 and 100×150 panes: enrich median 27.4 ms, max 41.2 ms, against baseline 471 / 666 ms; one session 8.4 ms; no timeout; gateway inventory median 928 ms against 1307 ms. the production log's peak is 15 sessions | PASS: 16 sessions enrich median 25.8 ms (devbox) and 25.4 ms (arch) against baseline 378 / 289 ms; one session 6.7 ms (devbox) and 8.1 ms (arch); tall panes max 102 ms; no timeout |
 | deadlines | at `4e1b737` a resolve-stage deadline read `TerminalTargetChanged` (14/15); `82c0589` reads `TerminalUnavailable` (15/15). live `observation_timeout` returns 200 with unavailable status and same-sample diagnostics. a stopped tmux server held responses until it resumed (pre-existing); at `2599491` each tmux command returns within 0.1 s of its deadline | `NOT_RUN`; tmux 3.4's identify path matches the source the fix relies on |
-| physical phone | `NOT_RUN` ([pending](issues/terminal-observation-phone-acceptance.md)) | — |
+| physical phone | PASS for the rows in the [2026-10-01 cutover record](#2026-10-01-production-cutover-and-physical-phone); [remaining rows](issues/terminal-observation-phone-acceptance.md) `NOT_RUN` | — |
 
 client changes passed temporary red → green probes: go
 ingress, projection, needs-input, wait, `info --explain`, 15 attention sequences
@@ -184,3 +184,38 @@ of them, only a recorded waiver of the fake-image substitution, so this record
 is that waiver. the controls through the installed claude stay `NOT_RUN`, an
 evidence gap [linux coverage](issues/terminal-observation-linux-coverage.md)
 tracks for every provider.
+
+### 2026-10-01 production cutover and physical phone
+
+source: the root integrator's run on 2026-10-01, appended. release `v0.11.0`
+(source `78b3aa4`) was applied through dev-server to devbox, arch and the
+macbook; each gateway restarted once while its tmux server kept its pid, start
+time and sessions, and `scripts/fleet verify` passed on all three. the phone, a
+physical sm-s906w on android 36, took the release apk in place (`0.10.6` →
+`0.11.0`, pairings kept); `0.10.6` had been failing to decode `v0.10.7`
+inventories since 2026-09-30.
+
+live ordinary-provider smoke, darwin, against the real services in a scratch
+directory: a managed codex 0.159.2 launch read setup (folder trust), then idle
+with the managed run-state line, working during a 40-second shell loop and idle
+after it; claude 2.1.287, launched by its native path with the work account in
+default and plan permission modes, read setup (folder trust, the bypass-mode
+warning), idle, permission, question, review (plan approval) and menu (`/model`).
+guarded send was written into each empty idle composer and refused a permission
+dialog without bytes; `skid wait` matched `idle` and `needs-input`. linux stays
+`NOT_RUN` ([smoke](issues/terminal-observation-provider-smoke.md)).
+
+physical phone, through the production gateway: cards read `needs setup`,
+`working`, `ready` (green, after codex finished), `idle`, `needs permission`,
+`needs answer`, `needs review`, `menu open` and `terminal`, each status bay
+spoken as its label plus `inferred from terminal`; the needs-input chip kept
+exactly the request sessions in view order, excluded the menu, idle and shell
+sessions, and showed the exact empty copy while the host was stale; with the
+filter off, a stale card read `last observed: needs review`; a visit kept an
+unanswered request and consumed ready; the filter and view survived the app
+process's death and the task's return; at font scale 2.0 the status bay stayed
+before the directory. two macbook gateway stops for this (41 s and 13 s) left
+its tmux server untouched. not run on the phone: concurrent work with a request,
+the generic `needs input` subtype, a delayed response against consumed ready,
+and spoken talkback output
+([remaining rows](issues/terminal-observation-phone-acceptance.md)).

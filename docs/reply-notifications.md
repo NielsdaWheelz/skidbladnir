@@ -276,7 +276,8 @@ cell, which cannot show ready, so it proved nothing. the projected stale cell
 desktop-model probes; their live run is `NOT_RUN`
 ([stale and checking cells](issues/terminal-observation-stale-live.md)).
 both clients' stores and projections passed temporary model-level
-probes (go: 15 sequences and visits; android: robolectric); physical-phone and
-linux attention runs are `NOT_RUN`
+probes (go: 15 sequences and visits; android: robolectric). on the physical
+phone, work → idle raised ready and a visit consumed it, and a visit kept an
+unanswered request; its delayed-response row and linux attention runs are `NOT_RUN`
 ([phone](issues/terminal-observation-phone-acceptance.md),
 [linux](issues/terminal-observation-linux-coverage.md)).
