@@ -19,29 +19,24 @@ func (err *TerminalInputBlockedError) Error() string         { return "terminal 
 func (err *TerminalInputBlockedError) Unwrap() error         { return ErrTerminalInputBlocked }
 func (err *TerminalInputBlockedError) DispatchState() string { return "not_sent" }
 
-// sample observes session once, by the composition inventory, inspect and
-// guarded send share. A failed foreground sample is process_failed; a remote
-// connection or an unrecognized foreground is unknown without a capture.
-// Otherwise the focused observation runs; any failure of it is a timeout once
-// ctx has expired, and only otherwise its own failure. A successful capture is
-// classified by its provider's grammar; the composer stays unknown unless a
-// screen was classified. The diagnostics hold the rules, the capture iff one
-// succeeded, and the stages after resolution that ran. The only error is
-// sessions.ErrTerminalTargetChanged: the session's lifetime or selected pane
-// changed during the capture.
+// sample is the one observation that inventory, inspect and guarded send
+// share. A failed foreground sample leaves Agent and Connection unknown, not
+// absent, so it is decided before them. An expired ctx outranks the stage that
+// failed, whose error is then the deadline's doing. Its only error is
+// sessions.ErrTerminalTargetChanged: inventory reports it as capture_failed and
+// explicit operations return it.
 func (service *Service) sample(ctx context.Context, session sessions.Session) (sessions.TerminalStatus, composer, Diagnostics, error) {
-	var diagnostics Diagnostics
 	switch {
 	case session.ForegroundFailed():
-		return sessions.UnknownStatus(sessions.ReasonProcessFailed), composerUnknown, diagnostics, nil
+		return sessions.UnknownStatus(sessions.ReasonProcessFailed), composerUnknown, Diagnostics{}, nil
 	case session.Connection != nil:
-		return sessions.UnknownStatus(sessions.ReasonRemoteContext), composerUnknown, diagnostics, nil
+		return sessions.UnknownStatus(sessions.ReasonRemoteContext), composerUnknown, Diagnostics{}, nil
 	case session.Agent == nil:
-		return sessions.UnknownStatus(sessions.ReasonProviderUnrecognized), composerUnknown, diagnostics, nil
+		return sessions.UnknownStatus(sessions.ReasonProviderUnrecognized), composerUnknown, Diagnostics{}, nil
 	}
 	startedAt := time.Now()
 	observation, err := service.sessions.ObservePane(ctx, session)
-	diagnostics.ElapsedMs.Capture = milliseconds(time.Since(startedAt))
+	diagnostics := Diagnostics{ElapsedMs: StageElapsed{Capture: milliseconds(time.Since(startedAt))}}
 	if err != nil {
 		var reason sessions.StatusReason
 		switch {
@@ -97,12 +92,12 @@ func (service *Service) TerminalInspect(parent context.Context, target sessions.
 	if err != nil {
 		return sessions.TerminalStatus{}, Diagnostics{}, err
 	}
-	resolved := milliseconds(time.Since(startedAt))
+	resolveElapsed := time.Since(startedAt)
 	status, _, diagnostics, err := service.sample(ctx, session)
 	if err != nil {
 		return sessions.TerminalStatus{}, Diagnostics{}, err
 	}
-	diagnostics.ElapsedMs.Resolve = resolved
+	diagnostics.ElapsedMs.Resolve = milliseconds(resolveElapsed)
 	if !diagnostics.Valid() {
 		panic("terminal inspection produced invalid diagnostics") // justify-defect: grammars name content-free rule ids, tmux reports positive dimensions and stages are clamped.
 	}
@@ -194,15 +189,12 @@ func (service *Service) TerminalStop(parent context.Context, target sessions.Ter
 	if err != nil {
 		return WriteResult{}, err
 	}
+	// Agent is nil for a shell or a remote connection, which take an unguarded ctrl-c.
 	key := "ctrl-c"
-	expected := session.Agent
-	if session.Connection != nil {
-		expected = nil
-	}
-	if expected != nil && expected.Provider == agentruntime.ProviderCodex {
+	if session.Agent != nil && session.Agent.Provider == agentruntime.ProviderCodex {
 		key = "escape"
 	}
-	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, []string{key}, expected))
+	return terminalWriteResult(service.sessions.TerminalKeys(ctx, target, []string{key}, session.Agent))
 }
 
 func terminalWriteResult(err error) (WriteResult, error) {
