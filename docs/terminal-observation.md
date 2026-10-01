@@ -1,16 +1,23 @@
 # non-native terminal observation
 
-2026-09-30 · implementation specification; no implementation or live acceptance
-claimed. baseline: `564d32f`. the user approved managed display improvements,
-request badges, a needs-input filter and current-screen evidence with unknown
-when relevant controls are obscured. [research](issues/terminal-status-detection.md) and
-[request analysis](issues/agent-needs-input.md) record the evidence.
+status: implemented in source; not deployed. qualified on darwin and linux
+within the limits the
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+records; physical-phone acceptance is [pending](issues/terminal-observation-phone-acceptance.md),
+and the [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
+indexes every open item. the [codex](terminal-observation-codex.md) and
+[claude](terminal-observation-claude.md) grammars own the frozen capability
+tables, rules, rule ids and provider costs.
+the user approved managed display improvements, request badges, a needs-input
+filter and current-screen evidence with unknown when relevant controls are
+obscured.
 
-at implementation cutover this supersedes observation, status schemas and send
-admission in [terminal control](terminal-agent-control.md), and the affected
-projection/qualification clauses in [terminal attention](reply-notifications.md).
-terminal authority, explicit native operations and attachment ownership remain
-with their existing owners. this is one coordinated host/client cutover.
+this owns the status facts, the observed screen regions and their limits,
+provider classification, guarded-send admission and the terminal wait states;
+[terminal control](terminal-agent-control.md) keeps terminal targets, the tmux
+capture mechanics, effects, routes, wait's polling loop and the observation
+sample's composition, and [terminal attention](reply-notifications.md) keeps the
+ready machine's store and visits. host and clients cut over together.
 
 ## 1. requirements and limits
 
@@ -114,20 +121,36 @@ PaneObservation = {
 ```
 
 - capture the bottom 64 physical visible rows, capped at 64 kib including sgr.
-  for taller panes also capture the top 24 rows, capped at 16 kib; merge overlap.
-  never inspect scrollback. select the region BEFORE applying its byte limit.
+  for taller panes the top region is every row above the bottom region up to row
+  191 (`0..min(h−65, 191)`), capped at 16 kib and read top-down, so a byte cap
+  keeps row 0. tmux refuses a client command over 16 kib, which bounds one
+  guarded per-row capture to 256 rows: rows `192..h−65` of a taller pane are not
+  captured. never inspect scrollback. select the region BEFORE applying its byte
+  limit.
+- regions are contiguous unless a byte cap or that row bound dropped rows; there
+  is no separate gap. a dropped row that a required inference reads is clipped
+  evidence (`evidence_clipped`); a dropped row no required read reaches costs
+  nothing.
 - preserve complete utf-8 rows and style state; `capture-pane -e` without `-J`.
-  rows retain sgr; establish style at each retained region's start. truncation
-  means lost requested evidence, not an omitted middle transcript. a clipped upper region cannot invalidate
-  an intact lower composer; a clipped required boundary invalidates that inference.
-  do not flatten transcript and controls into one text tail or add an emulator.
+  each row is self-contained: it keeps its sgr and parses from the default style
+  ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)).
+  truncation means lost requested evidence, not an omitted middle transcript. a
+  clipped upper region cannot invalidate an intact lower composer; a clipped
+  required boundary invalidates that inference. do not flatten transcript and
+  controls into one text tail or add an emulator.
+- one row parser serves both grammars. it reads sgr as tmux's writer emits it,
+  OSC 8 hyperlinks and SO/SI shifts as zero width, and tmux 3.7c's tab cells as
+  spaces to the next 8-column stop (3.4 writes the blank cells instead). tmux
+  trims the space run after a row's last escape, so no grammar requires a
+  trailing space. any other escape makes only that row unparseable: present but
+  unrecognized in both grammars, never clipped evidence.
 - dimension/alternate-screen changes during capture invalidate the sample.
   reuse before/after exact target and `process.SameObservation` validation.
   this is a bounded sample, not an atomic snapshot of provider execution.
-- inventory passes its existing captured identity into focused observation;
-  remove the two full session-discovery/enrichment passes currently performed
-  per sample. explicit controls resolve fresh. no capture under the metadata
-  mutation lock; no additional poller, retry loop or deadline extension.
+- inventory passes its existing captured identity into focused observation; no
+  full session-discovery or enrichment pass runs per sample. explicit controls
+  resolve fresh. no capture under the metadata mutation lock; no additional
+  poller, retry loop or deadline extension.
 - classify only a freshly recognized local provider. retain ordinary shell and
   ssh/mosh control; their agent status is unknown, not inferred remote state.
 
@@ -143,7 +166,9 @@ cost is unknown behind obscuring views even where herdr would guess from titles.
 ## 4. provider adapters and managed displays
 
 keep one pure entry point in `agentcontrol/detect.go`; separate cohesive codex
-and claude parsers where that makes their grammars readable. share sgr/physical-row
+and claude parsers where that makes their grammars readable. the
+[codex](terminal-observation-codex.md) and [claude](terminal-observation-claude.md)
+grammar documents own each provider's rules. share sgr/physical-row
 parsing and result construction. no provider rule registry, score engine or
 generic regex manifest. each rule names a complete current region, required
 controls, optional variants, conflicting evidence and a content-free rule id.
@@ -187,27 +212,39 @@ dropped or routed through an old detector.
 in json launch arguments, `-c` and the expression are separate argv elements;
 the expression contains no surrounding shell quote characters.
 
-manual claude recognition is a prerequisite, not a footer problem. resolve
-[command-spelling recognition](issues/claude-launch-spelling.md) with optional
-`ForegroundSignature.ExecutablePath` / json `executablePath`: require an absolute
-path, resolve configured symlinks once when admitting host configuration, and
-compare the full result with the existing kernel `Observation.Executable`.
-replace claude's argument0 signature with `{executablePath: "@CLAUDE@"}`; keep
-codex's current signature. populated signature fields remain conjunctive;
+manual claude recognition is a prerequisite, not a footer problem. it uses
+optional `ForegroundSignature.ExecutablePath` / json `executablePath`. admission
+requires the configured path to be absolute and clean and to resolve through
+symlinks to an executable regular file, and keeps the configured spelling.
+matching resolves it again at each comparison and compares the result with the
+kernel's `Observation.Executable`; a failed resolution matches nothing. claude
+relinks its command on every auto-update, so a relink reaches the next launch
+without a configuration refresh, and a session still running the previous image
+is unrecognized. claude's signature is `{executablePath: "@CLAUDE@"}`; codex's is
+`{executableBase: "codex"}`. populated signature fields remain conjunctive;
 multiple signatures are alternatives; cross-provider ambiguity stays unrecognized.
 missing/unresolvable configured paths fail configuration admission; script wrappers
-do not match the native process. no argv fallback, version-basename matching,
-installation scan or new process api. a different installed binary requires
-configuration refresh; a deleted old executable is not guessed from its suffix.
-qualify bare/relative/absolute/symlink launches and provider upgrade/reload on
-darwin/linux before implementation acceptance. native resume identity is separate.
+do not match the native process; a deleted or replaced image matches nothing.
+recognition never reads argv: npm's node launcher leads the foreground group of a
+codex started through it, so that codex is a generic terminal, while managed
+launches and `codex` typed in a skid shell run the native executable. no argv
+fallback, version-basename matching, installation scan or new process api.
+qualification covers bare, relative, absolute and symlink launches and a provider
+upgrade's relink on darwin and linux (§8). native resume identity is separate.
 
 ## 5. controls and diagnostic api
 
 guarded send requires a fresh local provider, activity working/idle,
 interaction none, notice none and ordinary composer empty. question editors,
 menus, drafts, clipped/unknown composers and unknown interactions refuse before
-writing. retain the existing buffer staging, exact guards and dispatch receipts.
+writing. the composer is `empty` when the ordinary composer shows only its
+placeholder, `draft` when it holds input (claude bash mode included), `blocked`
+when it visibly refuses ordinary input (a request or menu replaces it, it is
+disabled, a side view or an external editor holds it), and `unknown` otherwise.
+a refusal names its reason: a request interaction is `dialog`; otherwise a draft
+composer is `draft`; otherwise `unknown`. a failed sample (observation_timeout,
+capture_failed, process_failed) refuses with the existing `TerminalUnavailable`.
+retain the existing buffer staging, exact guards and dispatch receipts.
 better status coverage cannot independently relax composer recognition.
 deliberate text/keys, stop/close and their errors retain their existing contracts.
 
@@ -241,9 +278,14 @@ remain errors. wait still maps unavailable to its existing failure.
 
 diagnostics have at most eight rule entries, ids of at most 48 ascii
 `[a-z0-9_.-]` characters, no raw fragments, titles, paths, prompts, account data
-or provider ids. omit unavailable capture dimensions and unperformed stages;
-elapsed values are integer milliseconds in `0..2147483647`, not task duration. render
-missing measurements as `not collected`, no matched rules as `none`.
+or provider ids. rules follow the grammar's decision order, capped at eight; a
+successful sample may match none. a rule's region holds its decisive rows,
+`compound` when they span both regions; [terminal control
+§4](terminal-agent-control.md#4-api-and-client-commands) names the bounds' code
+owner and its ingress check. omit unavailable capture
+dimensions and unperformed stages; elapsed values are integer milliseconds in
+`0..2147483647`, not task duration. render missing measurements as
+`not collected`, no matched rules as `none`.
 reuse content-free logging for failure stage/duration;
 no new metrics service or trace store. successful partial classification explains
 which dimensions matched; a classifier defect is not disguised as unavailable.
@@ -270,7 +312,14 @@ ready, idle/unknown. when request/menu/notice takes precedence over working, add
 `work continues` in existing detail space. accessibility adds
 `; [work continues;] inferred from terminal` only for a recognized local agent
 with source terminal; unavailable/non-agent labels make no inference claim.
-stale cached facts use muted `last observed: <label>` and never enter the filter.
+rows of a host whose read failed or that is being re-read are never ready and
+stay out of the filter. a failed host's rows keep their stale cached facts as
+muted `last observed: <label>`, and keep that form while the host is re-read.
+the rows of any other re-read host take each client's form:
+the desktop table cell reads faint `checking` and makes no status claim, while
+the selected row's facts read `checking; last observed: <label>`
+([desktop browser §5](desktop-browser.md#5-presentation)); android shows
+`last observed: <label>` under the machine's `REFRESHING · actions disabled`.
 no repeated announcement, pulse or sound for unchanged polls. retain secondary
 `notifications unavailable` independently of live status.
 
@@ -309,6 +358,10 @@ reset/clamping. refresh retains surviving keys; actions never reuse a removed
 row's target.
 
 retain the filter through terminal visits and existing dashboard restoration.
+confirmed creation clears it on both clients, then cancels saved restoration and
+resets the viewport: dashboard membership follows the next inventory sample, and
+the creation response usually observes the instant before the provider draws, so a
+kept filter could hide the new session.
 extend the existing android task capsule to schema 3 with required
 `needsInputOnly: boolean`; default false for a new task. hard-cut older capsules
 using existing invalid-capsule handling, no migration. this resets the old task's
@@ -332,28 +385,17 @@ separately, then reason, matched rules, capture and timing. exact reason copy:
 unknown/unavailable detail may append `open the terminal to inspect`. no raw
 error interpolation; partial never becomes `partially working`.
 
-## 7. exclusive work and review boundaries
+## 7. ownership and review boundaries
 
-freeze the domain/capture interfaces before parallel implementation. root owns
-contracts and assignment changes. each writer creates its temporary acceptance
-probes only inside its assigned paths; a separate verifier writes nothing.
-no agent may edit another slice to make its own work pass.
-
-| slice / writer | exclusive production paths | designer's content deliverable |
-| --- | --- | --- |
-| a: observation boundary | `internal/tmux/`, `internal/sessions/`, `internal/process/`, `internal/agentruntime/{runtime,profile}.go` | explicit capture/recognition failure vocabulary; complete-region examples |
-| b: classifier/policy | `internal/agentcontrol/` | provider screen-family grammar, rule ids, state/composer explanations |
-| c: protocol/configuration | `internal/gateway/`, `internal/hostconfig/`, `internal/logging/`, `deployment/providers/host-config.json` | bounded diagnostics and reviewed managed footer composition |
-| d: go clients | `internal/fleetclient/`, `internal/agentcli/`, `internal/sessionui/` | exact badge/detail/help/filter/empty-state copy from §6 |
-| e: phone | `android/app/src/main/java/dev/niels/skidbladnir/` | same copy in card/header/filter, narrow layout and accessibility |
-| root: integration | `docs/`, root-owned composition files if needed; temporary cross-system probes in one assigned scratch directory | coherent contract and source-attributed qualification |
-
-each slice has a writer, content designer and adversarial reviewer; roles may
-reuse people across sequential slices, but the reviewer does not approve their
-own implementation. use the available three worker slots in dependency order:
-a+b+c, then d+e+independent verification. producer/consumer interface changes
-return to root before either side changes its assumptions. no cross-repository
-deployment producer changes without inspecting and naming that assignment.
+the [codebase map](codebase-map.md) locates each owner's code. a change names its
+writer, content designer (§6 copy) and adversarial reviewer before work starts;
+the reviewer never approves their own implementation. freeze the domain and
+capture interfaces (§2, §3) while dependent work runs; a producer/consumer
+interface change returns to the contract owner before either side changes its
+assumptions. each writer creates temporary acceptance probes only inside its own
+paths, a separate verifier writes nothing, and no writer edits another owner's
+paths to make its own work pass. no cross-repository deployment producer changes
+without inspecting and naming that assignment.
 
 reuse target guards, kernel observations, sgr parsing, fleet routing, strict
 decoders, shared status projection, existing poller and notification owner.
@@ -361,19 +403,24 @@ delete obsolete eight-line/global-truncation logic, terminal blocked mappings,
 old label/sort/wait branches and duplicated capture paths. no compatibility flags,
 legacy classifier, shadow production detector or redundant abstraction.
 
-root reconciles architecture §4/§8, roadmap, terminal-control observation/send,
-reply-notifications qualification, agent-control/ux, desktop-browser,
+a change to this contract reconciles the docs that restate it: architecture
+§4/§8, roadmap, terminal-control observation/send, reply-notifications
+qualification, agent-control/ux, desktop-browser, the
 dashboard-return-continuity/groups capsule contract and codebase-map. append new
 qualification; do not relabel historical passes or `NOT_RUN` results.
 
 ## 8. red / green / refactor acceptance
 
-no behavioral tests or runtime operations in this specification change. later,
-current-turn explicit approval is required for isolated tmux/integration/live;
-physical android/adb requires its own explicit approval under `AGENTS.md`.
-use only the exact sessions on the isolated socket created by the probes.
+this matrix is the acceptance contract for qualification and for every
+requalification after a provider or tmux upgrade
+([codex §7](terminal-observation-codex.md#7-requalification),
+[claude §6](terminal-observation-claude.md#6-requalification)); the
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+records each run. isolated tmux, integration and live runs need current-turn
+explicit approval; physical android/adb needs its own under `AGENTS.md`. use only
+the exact sessions on the isolated socket the probes created.
 
-for every slice: designer specifies expected observations/copy; reviewer attacks
+for every change: designer specifies expected observations/copy; reviewer attacks
 the oracle and negative cases; writer demonstrates the intended red on the
 recorded baseline, implements green, then refactors. reviewer challenges the
 result at the real affected boundary. rerun affected checks after refactoring;
@@ -407,9 +454,9 @@ record exact baseline/candidate revisions, provider/tmux versions, platform,
 dimensions, scenario ids, expected/observed categories and timing. no terminal
 bytes, prompts or account data in logs/evidence, including temporary live captures.
 synthetic test screens use authored dummy content; do not save real session screens.
-before parsers are written,
-freeze a provider/version/configuration capability table with required positive
-families, permitted unknown/none cases and upstream-unavailable variants. notices
+each grammar freezes, before its parser changes, a provider/version/configuration
+capability table with required positive families, permitted unknown/none cases
+and upstream-unavailable variants. notices
 without a distinguishable current structure and obscured state permit unknown/none;
 permissions/questions that the supported provider actually renders require positive
 recognition. unavailable upstream features are not implemented claims or passes;
@@ -423,22 +470,63 @@ unknown and may not be waived by an overall accuracy score.
 one observer, two provider grammars, one public fact model and existing client
 owners. hard-cut all producers/consumers together; no old/new mixed generation.
 coordinate external cli consumers and generated deployment configuration before
-shipping. rollback restores the previous complete release; publishing/installing
-is a later operation, not part of writing this plan.
+shipping. rollback restores the previous complete release; publishing and
+installing are separate operations.
 
-explicit costs: conservative unknown loses some idle waits/ready notices;
-five-second sampling misses brief transitions; managed codex launches replace the
-launch's statusline layout; provider ui upgrades require qualification; broader
-capture costs more per sample; the capsule hard cut resets old dashboard context;
-claude binary-path changes require configuration refresh and may leave an older
-running image unrecognized after refresh unless explicitly configured;
-deleting tests removes automatic future behavioral regression protection.
-none justifies false idle, weaker input admission or silent scope expansion.
+explicit costs:
+
+- conservative unknown loses some idle waits and ready notices; five-second
+  sampling misses brief transitions.
+- codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs-and-residual-ambiguity)):
+  idle needs `Ready`, the main placeholder on a clean band, no external editor and
+  a visible transcript terminator; goal pursuit withholds idle; status describes
+  only the displayed thread, so a v1 sub-agent view reads as the main thread and
+  guarded send types into the sub-agent; cue-less turn starts read idle for
+  their duration and can raise ready, with no two-sample rule (grammar §6 c4
+  names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
+  and plan-mode goal continuations); codex emits no notices; with the
+  under-development `features.default_mode_request_user_input` switched on (off
+  by default; the managed launch never sets it), a default-mode question left
+  untouched resolves itself with empty answers 120 s after it is shown, so an
+  unvisited question leaves the needs-input filter and attention while the turn
+  continues on those answers, and working sampled in that continuation arms ready
+  as usual (stock questions, from plan mode and the mcp prompts, block until
+  answered, and a key or paste in the view stops the timer;
+  [grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
+  managed launches replace the launch's statusline layout; a codex started through
+  npm's node launcher is a generic terminal.
+- claude ([grammar §5](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity)):
+  requests and menus hide activity, so working with a request is unrepresentable;
+  interrupted or failed turns read idle and can raise ready; idle is lost for
+  unproven pill slots, footer links, non-ordinary footers, non-work panel rows,
+  usage-limit copy, colour level 0 and screen-reader sessions without a completion
+  neighbour; remotely configured usage-limit copy without a default anchor reads
+  idle; plugin render hooks are unsupported, and an `AbovePrompt` band is
+  undetectable, so a single-character guarded send can reach it; vim NORMAL mode
+  and a screen-reader draft of only spaces read as an empty composer, so guarded
+  send is admitted there; `← N agents` keeps interaction none; request dialogs
+  without a qualified rule read unknown.
+- tall panes: one capture holds at most 256 rows, so rows `192..h−65` of a taller
+  pane are clipped evidence, and idle there needs the transcript tail within the
+  bottom 64 rows.
+- after a claude update relinks the configured path, a session still running the
+  previous image is unrecognized (a generic terminal) until relaunched; new
+  launches are recognized without a configuration refresh.
+- provider ui upgrades require requalification (each grammar's last section);
+  broader capture costs more per sample; the capsule hard cut resets old dashboard
+  context; deleting tests removes automatic future behavioral regression
+  protection.
+
+the accepted false idles are codex's cue-less turn starts and claude's remote
+usage-limit copy. the accepted send-admission exposures are codex's
+displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode and
+screen-reader whitespace drafts. no other cost justifies false idle, weaker input
+admission or silent scope expansion. codex's unaccepted residuals, among them a
+false idle and a stale request, are [open](issues/codex-residual-ambiguity.md).
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,
 engineering checks pass and docs match the final code. close only resolved
-[status](issues/terminal-status-detection.md),
-[input](issues/agent-needs-input.md) and
-[recognition](issues/claude-launch-spelling.md) issues. record remaining blockers
-individually; no engineering pass can close missing live acceptance.
+issues. remaining blockers are recorded individually; the
+[roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
+indexes them. no engineering pass can close missing live acceptance.

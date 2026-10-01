@@ -2,8 +2,9 @@
 
 status: implemented in source. the 2026-09-30 behavioral qualification on
 `codex/reply-notifications` covers the earlier working/blocked/idle machine; the
-arming/clearing/ready machine below is unqualified. deployment is outside this
-change.
+2026-10-01 qualification at the end of this document covers the
+arming/clearing/ready machine below on the darwin desktop. its phone and linux
+runs are `NOT_RUN`. deployment is outside this change.
 replaces the former native-work/head prerequisite and human unread/viewer rules.
 [terminal observation](terminal-observation.md) owns status facts;
 [terminal control](terminal-agent-control.md) owns exact targeting.
@@ -250,3 +251,32 @@ native-handle assumption produced RED assertions, then passed using terminal
 handles. the additional merged phone probe compiled but was skipped by explicit
 user direction after adb found no device: [NOT_RUN](issues/reply-notifications-phone-composition.md),
 not a pass or an invalidation of earlier source-attributed live evidence.
+
+2026-10-01 arming/clearing/ready qualification, on the
+[terminal observation](terminal-observation.md) source (`4e1b737`, affected rows
+re-run on `82c0589`): darwin 25.4.0, tmux 3.7c, codex 0.159.2 and claude 2.1.286
+against scripted local endpoints, the real gateway and the desktop's real
+notification store on its five-second poll. work → idle reads ready for both
+providers, including claude with production arguments; work → question → idle,
+pending ready → request → idle and starting → idle read idle; a visit keeps an
+unanswered request; unknown, an outage and a foreground change cannot bridge
+working to idle; an outage preserves pending ready; a delayed idle response
+arriving after a visit cannot restore the consumed ready, against a control on
+another session and provider that read ready. with codex's off-by-default
+`features.default_mode_request_user_input` enabled, the unanswered default-mode
+question resolved itself with empty answers after 120 s and returned to idle
+without ready; the scripted endpoint ended each continuation at once, so this
+run sampled no working after the question, and with a real model a continuation
+sampled working arms ready as usual
+([observation §9](terminal-observation.md#9-final-state-costs-and-completion)).
+pending ready → notice → idle is `NOT_RUN`: no grammar emits a current notice.
+the live never-ready check on stale rows ran only on the old faint `unavailable`
+cell, which cannot show ready, so it proved nothing. the projected stale cell
+(`5c59996`) and the checking cell (`131c1df`) are proven by temporary
+desktop-model probes; their live run is `NOT_RUN`
+([stale and checking cells](issues/terminal-observation-stale-live.md)).
+both clients' stores and projections passed temporary model-level
+probes (go: 15 sequences and visits; android: robolectric); physical-phone and
+linux attention runs are `NOT_RUN`
+([phone](issues/terminal-observation-phone-acceptance.md),
+[linux](issues/terminal-observation-linux-coverage.md)).

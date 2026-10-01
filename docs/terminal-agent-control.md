@@ -1,20 +1,22 @@
 # terminal status and control
 
 [non-native terminal observation](terminal-observation.md) owns the status facts,
-the observed screen regions and their limits, provider classification and
-guarded-send admission. this document keeps terminal targets, the tmux capture
-mechanics, effects, routes, wait and the observation sample's composition.
+the observed screen regions and their limits, provider classification,
+guarded-send admission and the terminal wait states. this document keeps
+terminal targets, the tmux capture mechanics, effects, routes, wait's polling
+loop and the observation sample's composition.
 
-status: orchestration implemented; the observation cutover is partly in source
-([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
+status: orchestration implemented; the observation cutover is implemented in
+source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
 records the full terminal checks and composition limits on the earlier
-`{state, source}` source; the observation cutover, including its send-admission
-and wait changes, is unqualified.
-this owns the hard cutover
-of ordinary terminal orchestration. it supersedes conflicting
-session-target behavior in [native interaction](native-agent-observation.md),
-[agent control](agent-control.md), and [client controls](agent-control-ux.md) at
-implementation cutover. retain native integration as a separate capability.
+`{state, source}` source, then the observation cutover: capture, recognition,
+classification and cost on darwin and linux, its send-admission and wait changes
+on darwin only ([linux](issues/terminal-observation-linux-coverage.md) and the
+physical phone are `NOT_RUN`). this owns the hard cutover of ordinary terminal
+orchestration. it supersedes conflicting session-target behavior in
+[native interaction](native-agent-observation.md), [agent control](agent-control.md),
+and [client controls](agent-control-ux.md) at implementation cutover. retain
+native integration as a separate capability.
 
 ## 1. outcome, scope and decisions
 
@@ -52,15 +54,14 @@ from the existing codex creation path. no new tracked-launch command.
 
 ## 2. observation and schemas
 
-in progress ([roadmap](roadmap.md)): `agentcontrol` does not yet compose the
-sample below for inventory, creation, inspect or
-[guarded send](#3-terminal-effects-and-ownership), nor classify its screen.
-
 reuse foreground process classification and the existing five-second inventory
 cadence. inventory observes every represented session once, concurrently and
 outside the session mutation lock, under one shared two-second deadline; creation
 and shell responses observe their new session the same way. no background
-lifecycle reconstruction, poller, retry or deadline extension.
+lifecycle reconstruction, poller, retry or deadline extension. a creation
+response usually samples the instant before the provider draws, so it reads
+`provider_unrecognized` or `layout_unknown`; the next inventory carries the
+provider's state.
 
 ```text
 terminal target = {identityToken, paneId} // machine + tmuxId supplied by routing
@@ -114,12 +115,16 @@ owns the regions and their row and byte limits. the public plain-text read keeps
 its own capture.
 
 explicit inspect and send resolve their target fresh; `ResolveTerminal` is target
-admission, and its errors stay errors. a target change during their capture is
-`TerminalTargetChanged`; inventory reports it as `capture_failed`. inspect
-samples under a two-second deadline. every unavailable result, from inventory,
-creation/shell responses or inspect, logs one content-free
-`Terminal.ObservationFailed` event with its reason and the milliseconds since the
-observing call began.
+admission, and its errors stay errors. a deadline that expires during resolution
+is `TerminalUnavailable`, never a changed target. a target change during their
+capture is `TerminalTargetChanged`; inventory reports it as `capture_failed`.
+inspect samples under a two-second deadline. every tmux command stops waiting for
+its output 100 ms after its context ends, so a stalled tmux server holds an
+inspect, send or wait response at most that long past its budget (a paste's
+bounded buffer cleanup adds up to 1 s); inventory's list has no deadline. every
+unavailable result, from inventory, creation/shell responses or inspect, logs one
+content-free `Terminal.ObservationFailed` event with its reason and the
+milliseconds since the observing call began.
 
 a local provider is recognized only from fresh kernel facts that match a
 configured foreground signature; the
@@ -181,17 +186,15 @@ second transport. no provider-native call occurs.
 
 send writes only when
 [observation §5](terminal-observation.md#5-controls-and-diagnostic-api) admits
-the sample. a refusal names one reason: a permission, question, confirmation, setup or input
-interaction is `dialog`; otherwise a composer draft is `draft`; otherwise
-`unknown`. use text/keys for deliberate interaction. never append-and-submit a
-detectable user draft. this heuristic cannot eliminate concurrent edits. text
-deliberately retains ordinary append/paste-and-submit semantics. send/text reuse
-the same unique-buffer paste plus one submit primitive. stage that buffer before
-final foreground revalidation; both paste and enter belong inside the successful
-tmux predicate branch. refusal executes neither; cleanup deletes only this
-operation's buffer. bounded buffer cleanup may continue for one second after
-request cancellation; it removes staged input only and never dispatches another
-effect.
+the sample; a refusal carries §5's reason. use text/keys for deliberate
+interaction. never append-and-submit a detectable user draft. this heuristic
+cannot eliminate concurrent edits. text deliberately retains ordinary
+append/paste-and-submit semantics. send/text reuse the same unique-buffer paste
+plus one submit primitive. stage that buffer before final foreground
+revalidation; both paste and enter belong inside the successful tmux predicate
+branch. refusal executes neither; cleanup deletes only this operation's buffer.
+bounded buffer cleanup may continue for one second after request cancellation;
+it removes staged input only and never dispatches another effect.
 an observed provider-foreground change refuses guarded send, without generic-key
 substitution; deliberate text/keys require terminal authority only.
 no peer attribution, native admission, queue or completion
@@ -247,7 +250,7 @@ most eight content-free `{id, region}` entries whose ids are 1–48
 `[a-z0-9_.-]` characters; `capture` is present only when a screen was captured;
 `elapsedMs` holds only the stages that ran, as integer milliseconds in
 `0..2147483647`. `agentcontrol.Diagnostics.Valid` owns these bounds and
-fleetclient ingress calls it (in progress: ingress still checks its own copy).
+fleetclient ingress calls it.
 an observation failure after target admission is `200` with an unavailable
 status and, when explained, its diagnostics; target, auth and identity failures
 keep their errors.
@@ -300,11 +303,9 @@ wait reuses the current client loop: capture once, sample immediately, then one
 request per five seconds, default idle/60 seconds, maximum one hour; every request
 is bounded by the monotonic remaining deadline. the cli supplies the defaults;
 the client validates the state against the captured target kind before polling.
-terminal states are `idle` (activity idle, interaction none, notice none),
-`working` (activity working, whatever the interaction) and `needs-input` (a
-permission, question, confirmation, setup or input interaction, whatever the
-activity). native-only waits retain idle/blocked/done/failed/stopped. a sample
-whose tested dimension is unknown continues without matching;
+[observation §5](terminal-observation.md#5-controls-and-diagnostic-api) defines
+the terminal states and their matching; a sample that does not match continues.
+native-only waits retain idle/blocked/done/failed/stopped.
 unavailable-source samples return an unavailable error.
 active-pane selection change, pane destruction or session replacement ends target_changed;
 foreground exit/restart/resume within the same pane remains the same terminal

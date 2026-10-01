@@ -1,45 +1,38 @@
-# claude recognition depends on command spelling
+# installed claude launch spellings are unqualified on linux
 
-problem: the configured claude foreground signature compares only the exact
-absolute `argv[0]`. the same native executable launched with bare `claude`, a
-different symlink, or a relative path can fail recognition. this limits the
-[terminal contract](../terminal-agent-control.md), which requires observation
-and controls to follow the current agent without tracking ceremony.
+problem: recognition compares the kernel's foreground executable with the
+configured `executablePath`, resolved at each comparison, and never reads argv
+([observation §4](../terminal-observation.md#4-provider-adapters-and-managed-displays)),
+so command spelling should not matter. on linux that is proven only with a
+native fake image: the installed claude 2.1.284 was recognized through its
+configured path alone. its bare, relative, second-symlink and exec-wrapper
+launches, and the controls through it, are `NOT_RUN` there.
 
-impact: when recognition fails, claude terminal status is unknown and guarded
-send refuses. terminal read, deliberate text/keys, interrupt and closure remain
-available. skid's own launchers execute the configured absolute command, so
-their success does not qualify ordinary shell invocation.
+impact: if the installed claude reaches a different image under some linux
+spelling (a re-exec or a launcher of its own), that session reads as a generic
+terminal: status unknown and guarded send refused. text, keys, stop and close
+stay available. the failure is safe but would hide ordinary claude work.
 
-evidence, 2026-09-30:
+evidence, from the
+[qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification):
 
-- `deployment/providers/host-config.json` supplies only `argument0` for claude.
-  `internal/agentruntime/runtime.go:matchesSignature` compares it literally;
-  the observed executable does not participate in that signature.
-- a temporary native executable launched through clean macos bash and zsh
-  receives relative `argv[0]` through path lookup and absolute `argv[0]` through
-  an absolute invocation.
-- a temporary probe of the actual `ClassifyForeground` function recognizes an
-  observation with the configured absolute argument, then rejects the same
-  executable/pid/start observation with bare `argv[0]`.
-- installed macbook configuration uses the same argument-only signature. its
-  configured command resolves to an executable whose basename is not `claude`;
-  changing the predicate to that basename alone is not an established repair.
+- darwin meets the original criteria. bare, relative, absolute and symlinked
+  launches of a native image and of claude 2.1.286 are recognized; copies,
+  wrappers and unrelated programs are not; exit, exec replacement,
+  suspend/resume, respawn and relink behave; controls pass through the real
+  provider.
+- linux, devbox and arch, against `/proc` with a native fake image: bare,
+  relative, absolute, second-symlink and exec-wrapper launches recognized; a
+  script wrapper, same-basename copies and an unrelated program unrecognized;
+  exit, exec replacement in both directions, ctrl-z/`fg` and relink behave.
+- linux, installed claude 2.1.284: recognized on both hosts through
+  `executablePath` resolved per comparison to its versioned image, typed through
+  the configured path only. linux controls are `NOT_RUN` for every provider
+  ([linux coverage](terminal-observation-linux-coverage.md)).
 
-the probes were removed. they prove shell and classifier behavior, not the
-installed provider's eventual process arguments: claude could rewrite them.
-actual unmanaged claude, linux, tmux and phone checks are `NOT_RUN` here.
-
-reproduction: on an approved isolated tmux socket, compare the same installed
-claude reached through the skid profile, marked-shell `claude-work`, ordinary
-path lookup, absolute command and another symlink. compare provider presence,
-inferred status and guarded input using content-free results. include normal
-permission modes as well as bypass mode: the current detector requires specific
-footer patterns, so recognition alone does not establish status coverage.
-
-resolved when: supported invocations of the same installed provider classify
-consistently on linux and darwin using verified executable evidence independent
-of command spelling. unrelated programs remain unclassified; exit, replacement
-and suspend/resume lose or restore the correct foreground identity. qualify
-status and controls through the real provider boundary. any expanded signature
-contract belongs to the architecture/configuration owners.
+resolved when: on linux, with current-turn approval, the installed claude
+launched bare, relatively, through a second symlink and through an exec wrapper
+classifies as it does through its configured path, and guarded send, text,
+keys, stop and close pass on one such launch through a real gateway; or a waiver
+of the fake-image substitution is recorded in the qualification. then delete
+this record.

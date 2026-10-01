@@ -120,9 +120,7 @@ observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
 `info` and `start` return `{label, machine, observedAt, session: row}`; with
 `info --explain`, `session.terminalStatus` is the inspect sample's status,
 `diagnostics` sits beside `session` and `observedAt` is the client time the
-inspect response arrived (in progress: the host does not yet compose the inspect
-sample ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
-and source still keeps the inventory time).
+inspect response arrived.
 other results retain the current agent-control schema; terminal-only `close`
 returns `{terminal: closed}` only after confirmed deletion.
 `group` acknowledges `{group: string}`, with empty string for clear, only after
@@ -147,8 +145,8 @@ human `info` prints `state:` (the shared projection's label and details) and
 accepts terminal targets only: it resolves once and inspects that terminal with
 [explain](terminal-agent-control.md#4-api-and-client-commands). its state line
 and an indented `status evidence` block come from that one inspect sample;
-`observed:` is the client time its response arrived (in progress, as above);
-other facts come from inventory. the block's `reason:` replaces the
+`observed:` is the client time its response arrived; other facts come from
+inventory. the block's `reason:` replaces the
 `status reason:` line. the block lists activity, interaction and notice
 separately, then reason copy, rules (`id (region)`, or `none`), capture
 (`W × H`, `main screen` or `alternate screen`, then `clipped: ` with `top`,

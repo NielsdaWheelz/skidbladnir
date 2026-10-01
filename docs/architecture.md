@@ -5,17 +5,19 @@ each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
-screen regions, classification and guarded-send admission;
-[terminal control](terminal-agent-control.md) owns terminal targets, capture
-mechanics, rendered reads and exact terminal effects. [terminal attention](reply-notifications.md)
-owns device-local ready notices and terminal visits. [native interaction](native-agent-observation.md)
+screen regions and their limits, classification, guarded-send admission and the
+terminal wait states; [terminal control](terminal-agent-control.md) owns terminal
+targets, capture mechanics, rendered reads, exact terminal effects and wait's
+polling loop. [terminal attention](reply-notifications.md) owns device-local
+ready notices and terminal visits. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
 interruption and terminal closure separately.
 [qualification](native-agent-qualification.md) records source, installed-host
 and phone evidence with their limits.
 [terminal qualification](terminal-agent-control-qualification.md) records the
-terminal cutover separately from current-main release composition.
+terminal cutover separately from current-main release composition, and then the
+terminal observation cutover.
 
 2026-09-29: skid v0.10.6 runs on macbook, devbox, arch and android. herdr and
 herdr-mobile are retired. [the deployment handoff](dev-server-handoff.md) owns
@@ -1062,8 +1064,12 @@ explanations, managed codex statusline cues and a needs-input filter; it include
 the manual claude recognition prerequisite. obscured state may be unknown.
 no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
-contracts. source is partly implemented ([roadmap](roadmap.md)); nothing is
-qualified or deployed.
+contracts. source implements it, and its
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+passes on darwin, and on linux for capture, recognition, classification and cost,
+within recorded limits; physical-phone acceptance, linux controls and the
+remaining `NOT_RUN` families stay open ([roadmap](roadmap.md)). nothing is
+deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are
 accepted and implemented. their detailed specifications own their limits.
