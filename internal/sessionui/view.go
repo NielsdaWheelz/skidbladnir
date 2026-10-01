@@ -369,8 +369,16 @@ func (m *model) rowDetailLines(row listedRow, width int) []string {
 	if row.session.Agent == nil && row.session.ActiveCommand != "" {
 		facts += ": " + row.session.ActiveCommand
 	}
+	// a row without remote actions names why: its host failed a read, or a
+	// scoped read is still checking it.
 	if !row.available {
-		host, _ := m.tableStatus(row)
+		host := "checking"
+		for _, peer := range m.peers {
+			if peer.Machine == row.machine && peer.Error != nil {
+				host = "unavailable"
+				break
+			}
+		}
 		facts = host + "; " + facts
 	}
 	where := current.CWD
@@ -745,18 +753,10 @@ func (m *model) statusView(row listedRow) fleetclient.StatusView {
 	return fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
 }
 
-// tableStatus is a row's status cell. a row without remote actions names why:
-// its host failed a read, or a scoped read is still checking it. otherwise it
-// is the projected label in its tone.
+// tableStatus is a row's status cell: the projected label in its tone, so a
+// stale row reads its last observation. the host notice and the selected
+// row's facts say why its host is unavailable or being checked.
 func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
-	if !row.available {
-		for _, peer := range m.peers {
-			if peer.Machine == row.machine && peer.Error != nil {
-				return "unavailable", faint
-			}
-		}
-		return "checking", faint
-	}
 	view := m.statusView(row)
 	switch view.Tone {
 	case fleetclient.ToneMuted:
