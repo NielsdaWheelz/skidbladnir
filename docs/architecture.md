@@ -4,8 +4,10 @@ tmux owns terminal sessions and pane processes. providers own execution and hist
 each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
-[terminal control](terminal-agent-control.md) owns ordinary observation, rendered
-reads and exact terminal effects. [terminal attention](reply-notifications.md)
+[terminal observation](terminal-observation.md) owns status facts, the observed
+screen regions, classification and guarded-send admission;
+[terminal control](terminal-agent-control.md) owns terminal targets, capture
+mechanics, rendered reads and exact terminal effects. [terminal attention](reply-notifications.md)
 owns device-local ready notices and terminal visits. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
@@ -105,10 +107,10 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex` |
-| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | `--yolo` | same |
-| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | `--yolo` | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | exact configured Claude argv[0] |
+| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo -c tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]` | native executable basename `codex` |
+| `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | same | same |
+| `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | same | same |
+| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | configured claude `executablePath` |
 
 2026-09-17 accepted launch policy: new agent sessions use the explicit provider
 permission bypasses above on all three hosts. deployment owns these arguments;
@@ -145,10 +147,10 @@ native providers through one closed product launcher, load the identity plugin
 for claude, and never infer from cwd or read hook payloads. shared account
 wrappers are not used. direct raw-provider
 launches bypass that plugin and remain honestly unregistered. A row also owns exact
-foreground-process signatures for honest
-presence detection; the shared observer resolves the pane tty's foreground
-process group using Linux `/proc` or native Darwin process facts and never
-treats every `node` process as an agent.
+foreground-process signatures for honest presence detection; the
+[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
+matching, including npm's node launcher. the shared observer resolves the pane
+tty's foreground process group using Linux `/proc` or native Darwin process facts.
 
 ### Product language
 
@@ -274,7 +276,8 @@ creation, and content-free restoration contracts:
   identity. The dwarf display name remains a smaller Big Shoulders signature.
   a fixed status facet is redundant decoration; the adjacent named status
   bay remains the semantic and accessible source. the exclusive status/attention
-  label reads blue `working`, green `ready`, grey `idle`, or ember `waiting`.
+  label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
+  copy and tone; only `ready` is green.
   readiness is inferred, never proof of unseen text or completion. first actual
   terminal presentation clears it; the visit and first qualified closing sample
   remain quiet. unknown/stale/unavailable retains pending but hides green and
@@ -296,12 +299,14 @@ creation, and content-free restoration contracts:
   write. A concurrent valid writer is accepted after reread; a changed or
   vanished session is never overwritten, and non-convergence fails the
   inventory instead of fabricating a card.
-- **terminal status is inferred, never authority.** states are
-  `working | blocked | idle | unknown`, with source `terminal | unavailable`.
-  both providers use fresh local foreground and bounded visible-screen evidence;
-  ambiguous layout is unknown; failed capture is unavailable. terminal status
-  neither proves task completion nor supplies native admission. it is distinct
-  from inventory freshness and liveness; each effect revalidates its exact target.
+- **terminal status is inferred, never authority.** it is independent activity,
+  interaction and notice facts with a source and a closed reason
+  ([observation §2](terminal-observation.md#2-capability-and-wire-contract)).
+  only a freshly recognized local provider is classified, from bounded
+  current-screen regions; successful ambiguity is unknown with source terminal;
+  a failed stage is unavailable. terminal status neither proves task completion
+  nor supplies native admission. it is distinct from inventory freshness and
+  liveness; each effect revalidates its exact target.
 - a vanished session reconciles out. failed required tmux
   snapshot collection fails that machine's request; optional agent-observation
   failure omits identity or reports unavailable status, never fabricated facts.
@@ -327,13 +332,16 @@ creation, and content-free restoration contracts:
 - grid order: named group headings in the shared ascii-folded/exact utf-8 label
   order, then unassigned. within each group use the current agent-control order:
   case-folded/exact machine label, machine handle, then numeric local tmux id. no urgency sorting. retained stale rows remain explicitly
-  unavailable and non-actionable. clients own numeric local tmux-id ordering and
-  grouping; the host inventory envelope makes no display-order promise.
+  unavailable and non-actionable. a
+  [`needs input`](terminal-observation.md#6-content-attention-and-filtering)
+  filter chip narrows the machine/group selection and keeps that order. clients
+  own numeric local tmux-id ordering and grouping; the host inventory envelope
+  makes no display-order promise.
 
 The Dashboard is one retained Android navigation entry. Opening Terminal does
 not replace that entry: top `Detach` and Android Back return to its same typed
-machine and group filters. those filters restore before inventory verification;
-the semantic first-visible session or heading and offset settle before dashboard
+machine, group and needs-input filters. those filters restore before inventory
+verification; the semantic first-visible session or heading and offset settle before dashboard
 interaction. an unchanged list returns to the same item and pixel offset; live
 insertion/reorder preserves its key; a removed item clamps its former rendered
 index. an empty or unavailable selected machine or group remains
@@ -342,17 +350,18 @@ become interactive; selecting a different filter cancels pending restoration,
 while selecting the active filter is a no-op. terminal access-loss recovery
 selects the affected machine, retains group selection, resets viewport to top,
 and shows its notice. confirmed creation outside the selected group changes that
-group filter before post-create navigation; ordinary membership edits do not.
-the schema-2 task capsule stores a group-label fingerprint and typed heading or
-session anchor, never raw labels. a missing restored label stays selected as
-`previously selected group`; creation then requires an explicit named/unassigned
-choice. schema-1 navigation is discarded, with no compatibility reader.
-Lifecycle stop never consumes pending restoration; only a modeled non-live
-machine outcome may resolve it without an inventory snapshot.
+group filter before post-create navigation, and confirmed creation clears the
+needs-input filter; ordinary membership edits do not.
+the schema-3 task capsule stores the needs-input flag, a group-label fingerprint
+and typed heading or session anchor, never raw labels. a missing restored label
+stays selected as `previously selected group`; creation then requires an
+explicit named/unassigned choice. older navigation is discarded, with no
+compatibility reader. Lifecycle stop never consumes pending restoration; only a
+modeled non-live machine outcome may resolve it without an inventory snapshot.
 The filter strip need not retain its exact horizontal offset, but it reveals the
-selected machine chip before the restored Dashboard is settled.
-Filter changes use the one live grid's stable-key clamping; no per-filter
-viewport history exists.
+selected machine chip before the restored Dashboard is settled. Filter changes
+use the one live grid's stable-key clamping; no per-filter viewport history
+exists.
 
 Pressure remains machine-local per
 [`machine-pressure-rail.md`](machine-pressure-rail.md). `All` omits pressure
@@ -411,12 +420,16 @@ missing and unsupported remain distinct in the protocol.
 
 ### agent observation and identity hooks
 
-[agent control](agent-control.md) owns status and bounded reads/controls.
+[terminal observation](terminal-observation.md) owns status;
+[terminal control](terminal-agent-control.md) owns bounded reads/controls.
 `agentcontrol` enriches the collected tmux inventory outside the session lock,
-using one bounded exact terminal observation per session. a pure provider detector
-interprets the visible screen; ordinary inventory never calls native history/status.
-enrichment is bounded to two seconds and reuses the foreground five-second
-inventory schedule. pressure has its own coalesced polling lane.
+using one focused observation per session: sessions captures bounded screen
+regions of the exact target and revalidates the foreground it sampled
+([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
+then a pure provider classifier interprets them. ordinary inventory never calls
+native history/status. enrichment shares one two-second deadline and reuses the
+foreground five-second inventory schedule. pressure has its own coalesced polling
+lane.
 
 [identity registration](agent-identity-projection.md) is content-free and bound
 to the exact foreground process lifetime. the explicitly loaded claude plugin
@@ -589,7 +602,8 @@ of target, not semantic safety.
 
 the implemented [desktop browser](desktop-browser.md) presents one table: an agents
 view ordered by what may be waiting on the operator, and a view per group label,
-with forms and details in the same frame. it owns the exact selection, keys,
+with forms and details in the same frame; `f` narrows any view to sessions
+needing input. it owns the exact selection, keys,
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
@@ -671,9 +685,11 @@ history item is `current`.
   unclassified.
   Unknown/null members, relative paths, duplicate keys,
   runtime platform mismatch, or a missing/broken/noncanonical tmux executable
-  fail startup. `skidbladnir validate-host-config --host-config=ABSOLUTE_PATH`
-  checks strict config/platform admission without invoking tmux or providers;
-  executable availability and live behavior remain separate checks.
+  fail startup. a foreground signature's `executablePath` must be absolute and
+  clean and resolve to an executable regular file. `skidbladnir validate-host-config
+  --host-config=ABSOLUTE_PATH` checks strict config/platform admission without
+  invoking tmux or providers; other executable availability and live behavior
+  remain separate checks.
   a canonical installed version that differs from `testedVersion`
   remains runnable; `scripts/fleet verify` reports functional fleet health
   without turning advisory tmux-version drift into failure.
@@ -893,9 +909,10 @@ enum values are defects, with no protocol branch or compatibility state.
   ADB provisioning path, or smaller-fleet branch.
 - Grid, selected-machine pressure rail/details sheet, filters, Forge, and
   terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
-  destination switch and exclusively owns machine/group selection, the live lazy-grid
-  state, and pending saved restoration. Android saved-instance state may retain
-  one exact-version schema-2 capsule containing only both filter discriminants,
+  destination switch and exclusively owns machine/group/needs-input selection, the
+  live lazy-grid state, and pending saved restoration. Android saved-instance state
+  may retain one exact-version schema-3 capsule containing only the machine and
+  group discriminants, the needs-input flag,
   the machine handle when selected, a comparison-only group-label fingerprint
   when named, a typed session/heading anchor, rendered-item index, and pixel
   offset. [groups](groups.md#10-android-navigation-and-content-free-restoration)
@@ -1045,7 +1062,8 @@ explanations, managed codex statusline cues and a needs-input filter; it include
 the manual claude recognition prerequisite. obscured state may be unknown.
 no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
-contracts. this is accepted work, not implemented behavior or live qualification.
+contracts. source is partly implemented ([roadmap](roadmap.md)); nothing is
+qualified or deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are
 accepted and implemented. their detailed specifications own their limits.

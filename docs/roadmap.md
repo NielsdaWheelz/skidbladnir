@@ -5,18 +5,23 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## non-native status and needs input — accepted plan
+## non-native status and needs input — source in progress
 
-[terminal observation](terminal-observation.md) specifies the next coordinated
-status cutover: bounded screen regions, provider-specific activity/request
-recognition, guarded composer reuse, diagnostics, managed codex run-state chrome
-and desktop/phone needs-input filtering. manual claude executable recognition is
-a prerequisite. screen ambiguity remains unknown; titles/progress are excluded.
-the plan assigns exclusive writers, content designers and adversarial review,
-with temporary red/green/refactor integration/live checks deleted before commit.
-no implementation, provider configuration, deployment or live acceptance is
-claimed. [detection](issues/terminal-status-detection.md) and
-[input](issues/agent-needs-input.md) remain open until qualified.
+[terminal observation](terminal-observation.md) specifies the coordinated status
+cutover: bounded screen regions, provider-specific activity/request recognition,
+guarded composer reuse, diagnostics, managed codex run-state chrome and
+desktop/phone needs-input filtering. manual claude executable recognition is a
+prerequisite. screen ambiguity remains unknown; titles/progress are excluded.
+source implements the observation boundary, wire, configuration and both
+clients; the provider classifier, its composition for inventory, inspect and
+send, and a taller top region, per-comparison executable-path resolution,
+diagnostics validation and `info --explain` observed time are in progress. no
+qualification, deployment or live acceptance is claimed.
+[detection](issues/terminal-status-detection.md),
+[input](issues/agent-needs-input.md) and
+[claude spelling](issues/claude-launch-spelling.md) remain open until qualified;
+[baselinePending](issues/notification-baseline-pending.md) records the attention
+store's dead field.
 
 ## automatic session names — source cutover
 
@@ -47,7 +52,9 @@ desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
 Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
 corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
 native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
-source, not deployment or cloud/native completion. the additional [merged phone
+source on the earlier `{state, source}` observation and working/blocked/idle
+attention machine (see the observation cutover above), not deployment or
+cloud/native completion. the additional [merged phone
 composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
 tests are removed by policy;
 engineering verification passes. accepted inference/sampling/closing-boundary/

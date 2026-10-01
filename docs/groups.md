@@ -390,7 +390,10 @@ the draft never changes collection filters.
 
 after confirmed creation, use the returned session's observed membership. retain
 the current group filter if it admits that session; otherwise select the returned
-named group or unassigned, cancel saved restoration, and reset viewport to top.
+named group or unassigned. phone and desktop also clear the
+[needs-input filter](terminal-observation.md#6-content-attention-and-filtering),
+so it cannot hide the session just created. when any filter changes, cancel
+saved restoration and reset viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
 admission and returns to the resulting filter. existing post-create machine
@@ -564,7 +567,8 @@ of machine filter. resolution does not change selection or cancel restoration.
 no match retains the filter as `previously selected group`; never switch to all
 or unassigned. later polls may resolve it. initial unresolved host reads may
 show checking; a modeled unavailable outcome must allow restoration to settle.
-missing pairing retains the reset-to-all/top rule and resets both filters.
+missing pairing retains the reset-to-all/top rule and resets the machine, group
+and needs-input filters.
 
 ### rendered keys and task schema
 
@@ -581,12 +585,12 @@ labels never enter compose keys. capture the actual first visible keyed item and
 scroll offset, so a top heading restores without signed card offsets or saved
 neighbours.
 
-hard-cut to task schema **2**, under the same registry key
+the task capsule is schema **3**, under the same registry key
 `dev.niels.skidbladnir.dashboard-entry`. exact primitive-only bundle:
 
 | key | required / value |
 | --- | --- |
-| `version` | integer `2` |
+| `version` | integer `3` |
 | `scopeKind` | `all` or `machine` |
 | `scopeMachine` | iff machine; existing valid handle |
 | `spaceKind` | `all`, `unassigned`, or `named` |
@@ -595,16 +599,17 @@ hard-cut to task schema **2**, under the same registry key
 | `anchorSha256` | iff anchor is session or named group; 64 lowercase hex |
 | `fallbackIndex` | nonnegative integer, now a rendered-item index |
 | `offsetPx` | nonnegative integer, existing scroll-offset meaning |
+| `needsInputOnly` | boolean; false for a new task |
 
-the registry key, version, `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"`,
-and `space:` item-key prefix are the existing schema-2 encoding. one strict
-reader and writer continue to use them without migration.
+`space` in `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"` and the
+`space:` item-key prefix names a group.
 
 no anchor requires index/offset zero. extra keys, wrong primitive types,
 malformed current-version variants, and inconsistent fields are trusted-state
-defects. no capsule or unsupported version starts fresh all/all/top. delete
-schema-1 reader/writer and `anchorLifetimeSha256`; no migration or dual reader.
-upgrade may lose navigation position once; pairing is untouched.
+defects. no capsule or an unsupported version, including schema 1 and 2, starts
+fresh all/all/top with the needs-input filter off. no older reader,
+`anchorLifetimeSha256`, migration or dual reader exists. upgrade may lose
+navigation position once; pairing and notification storage are untouched.
 
 keep the existing restoration sequence: accept fleet, restore filters before
 verification, wait for machine-scope inventory outcomes, resolve saved item key
@@ -614,14 +619,16 @@ empty surface. a vanished session may clamp viewport to a heading, never an acti
 
 retain one live grid object across terminal round trips. no per-filter viewport
 history, saved inventory/order/label map, terminal/editor state, or attachment.
-a different filter cancels pending restoration; the same filter is a no-op.
+a different filter, including a needs-input toggle, cancels pending
+restoration; the same machine or group filter is a no-op.
 geometry clamps normally. reveal the selected machine chip; the compact group
 control always shows selection and needs no horizontal-offset persistence.
 
 terminal access loss still selects its affected machine and resets viewport to
-top; retain the group filter. machine notices are outside group filtering, so
-the reason stays visible. detach/back and supported task recreation preserve both
-filters; recreation lands on dashboard, never resumes attachment or mutation.
+top; retain the group and needs-input filters. machine notices are outside group
+filtering, so the reason stays visible. detach/back and supported task recreation
+preserve the machine, group and needs-input filters; recreation lands on
+dashboard, never resumes attachment or mutation.
 
 ## 11. reuse, removals, and files
 
@@ -692,20 +699,21 @@ not label values, terminal bytes, prompts, credentials, or provider output.
 | a4 · ordering/uncertainty | concurrent absolute assignments yield whole last-applied values; possible dispatch never permits replay; one client write; pre-mutation reads cannot clear phone fence; a later differing label is authoritative without a fabricated failed-write claim |
 | a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; intersecting filters; selector-looking labels distinguishable; peer json and partial status honest |
 | a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; filter changes reveal retained rows; refresh discovers new membership on any host in machine scope; old tui scope result cannot admit new scope |
-| a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed out-of-filter creation changes filters |
-| a8 · navigation | selection follows lifetime or specified clamped session index; heading/card viewport survives detach/back, insertion/reorder and recreation; missing anchor clamps rendered index; absent label stays selected; unavailable restore settles; capsule contains only exact schema-2 primitives |
+| a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed creation changes filters: an out-of-filter group, and the needs-input filter |
+| a8 · navigation | selection follows lifetime or specified clamped session index; heading/card viewport survives detach/back, insertion/reorder and recreation; missing anchor clamps rendered index; absent label stays selected; unavailable restore settles; capsule contains only exact current-schema primitives |
 | a9 · regression/scope | unassigned terminals preserve controls/defaults/host rules; no shell launcher, tmux grouping, provider meaning, launch context, persistent group resource, or compatibility path |
 
 proof shape:
 
 1. use small temporary host, fleet, and phone boundary checks for strict wire,
-   filtering, schema-2 restoration, and the updated copy. feed restoration a
-   capsule captured from the pre-rename code, rather than generating both sides
-   with the new code. remove the checks after green and review.
+   filtering, schema-3 restoration including `needsInputOnly`, the older-capsule
+   reset, and the updated copy. feed the reset a schema-2 capsule captured from
+   the pre-rename code, rather than generating both sides with the new code.
+   remove the checks after green and review.
 2. use exact test-owned sessions on an isolated tmux socket for assignment,
    inheritance, lifetime, and metadata continuity. linux and darwin live results
    retain separate attribution. do not launch a paid provider for this rename.
-3. a real phone journey covers the editor, both filters, saved heading position,
+3. a real phone journey covers the editor, every filter, saved heading position,
    detach/back, and the host request. a fixture or build cannot establish device
    acceptance. phone/adb requires explicit current-turn approval.
 4. run `scripts/check verify` for engineering checks. it contains no behavioral
@@ -749,7 +757,7 @@ release and runtime workflows.
 | phone suggestions and action row | one extra tap opens suggestions; cards gain height to preserve readable context and 48dp actions |
 | saved label fingerprint | disappeared name becomes generic after recreation; creation requires explicit choice; hashes do not conceal guessable labels |
 | rendered-item anchors | a vanished anchor may clamp to a heading; no saved historical neighbour list |
-| task schema 2 | upgrade may reset navigation once; pairing preserved; no old decoder |
+| task schema 3 | upgrade may reset navigation once; pairing preserved; no old decoder |
 | coordinated release | mixed versions unsupported; optional fields can break strict old decoders; rollback restores the coordinated release |
 | bounded proof plan | no new infrastructure or broad provider qualification; unavailable boundaries remain explicit acceptance gaps |
 
