@@ -19,8 +19,9 @@ foreground change cannot bridge working to ready. the false claims
 [spec §9](../terminal-observation.md#9-final-state-costs-and-completion) accepts
 are the exceptions: its false idles can mint ready; codex's stale request after
 a relaunch and wrong picker kind (codex grammar §6 c13, c11) can enter the
-needs-input filter; and narrow mcp requests (c15) and the mcp prompts in the
-legacy question view (c16) read as another request kind.
+needs-input filter; and narrow mcp requests (c15), the mcp tool-approval
+fallback in the legacy question view (c16) and an mcp approval whose option
+block holds an unparsed row (c17) read as another request kind.
 
 two criteria are not met:
 

@@ -50,7 +50,8 @@ classes:
 - AC, ambiguity control: the family must produce exactly the stated values, or
   no evidence, and never a claim stronger than they are. most state unknown or
   none; two mcp rows state the form's input in place of the approval's
-  permission, and the stale-chrome row admits the old request §6 c13 accepts.
+  permission (§6 c15, c17), and the stale-chrome row admits the old request §6
+  c13 accepts.
 - PU, permitted unknown-or-none: when the row carries a rule id, the family is
   recognized if seen.
 - UA, upstream-unavailable in 0.159.2: not implemented, not a pass.
@@ -117,7 +118,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | mcp approval whose option rows draw no label (≤ 21 columns) | AC | the form, not the approval | `codex.input.mcp_form` | darwin | §6 c15 |
 | mcp form, single field | RP | unknown/input/none/blocked | `codex.input.mcp_form` | darwin | — |
 | mcp form, multi-field (`to submit answer` / `to submit all`) | RP | unknown/input/none/blocked | `codex.input.mcp_form` | darwin, including `esc to cancel` or the submit hint cut by the count (20–38 columns) | `mcp_server_elicitation.rs:971-996` |
-| mcp option block holding a row that was not parsed | AC | the form, not the approval | `codex.input.mcp_form` | capture: darwin, linux | 2.4 |
+| mcp option block holding a row that was not parsed | AC | the form, not the approval | `codex.input.mcp_form` | capture: darwin, linux | §6 c17 |
 | url elicitation / app link view | PU | unknown | none | source-only | `bottom_pane/app_link_view.rs` |
 | legacy request_user_input with options, single or multi | RP | unknown/question/none/blocked | `codex.question.legacy` | darwin (single, multi, wrapped footer, notes hint cut at 16–28 columns), linux (single) | `bottom_pane/request_user_input/mod.rs:572-626` |
 | legacy question with hidden options (`option N/M` leading the footer; submit hint pushed out of the drawn rows; the count alone in a one-row footer) | RP | same | same | darwin | `request_user_input/render.rs:344-358`, `mod.rs:632-656`, `layout.rs:150-173` |
@@ -584,8 +585,8 @@ wrapped `esc to cancel` row is no mcp form: the count never leads it.
   tool approvals and message-only elicitations, always one synthesized field). a
   two-field form whose enum offers `Allow` and `Deny` is told apart by its
   navigation member. an option block that holds a row that was not parsed (dropped
-  or unparseable) fails the test, since that row could hold another option, and
-  so do option rows that draw no label (≤ 21 columns).
+  or unparseable) fails the test, since that row could hold another option
+  (§6 c17), and so do option rows that draw no label (≤ 21 columns, §6 c15).
 - `codex.input.mcp_form` → input, for any other form: text, boolean, enum,
   multi-field.
 - result: unknown/<permission|input>/none/blocked.
@@ -914,7 +915,7 @@ composer reaches only guarded send
 ## 6. accepted costs
 
 accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
-each reading as it states. c4 and c11–c14 claim falsely, c15 and c16 can read a
+each reading as it states. c4 and c11–c14 claim falsely, c15–c17 can read a
 request of another subtype, and c2 admits guarded send into a sub-agent, each
 under the conditions it names; spec §9 lists those. the costs:
 
@@ -988,12 +989,15 @@ under the conditions it names; spec §9 lists those. the costs:
   row (seen live). the stale-`Ready` paths of §3 refresh item 1 show such a row
   with `Ready` still on `SL`, so in that millisecond window (from source) a pane
   at most header + 4 columns wide (≤ 22 for `• Compacting context`) reads idle
-  instead of `evidence_conflict`: a false idle, which can raise ready when
-  `/compact` or a review starts within one poll of a turn whose working was
-  sampled. the narrower repair, withholding idle when a col-0 row between the
-  settled stop and the band ends in `…` and does not start with a dim `• `, would
-  cost idle after every long `!cmd` cell on narrow panes until the next turn's
-  separator.
+  instead of `evidence_conflict`: a false idle. it raises ready only when no
+  sample falls between it and a sampled working: `/compact` or a review starting
+  within one poll of a turn whose working was sampled, or the mcp pending turn
+  when no sample caught the startup round before it (that round reads starting,
+  which disarms; by source, `chatwidget/mcp_startup.rs:225-234`,
+  `chatwidget/turn_runtime.rs:34-46`). the narrower repair, withholding idle when
+  a col-0 row between the settled stop and the band ends in `…` and does not
+  start with a dim `• `, would cost idle after every long `!cmd` cell on narrow
+  panes until the next turn's separator.
 - **c15** narrow and short question footers, measured live with options hidden.
   every case reads layout_unknown or a request of another subtype, never none or
   idle:
@@ -1016,6 +1020,11 @@ under the conditions it names; spec §9 lists those. the costs:
   in the legacy question view (2.4), so by source they read question
   (`needs answer`), or as c15 states in narrow or short panes; the approval is a
   permission read as another subtype (not run).
+- **c17** an mcp approval whose option block holds a row that was not parsed
+  (dropped by a region's byte or row limit, or unparseable) reads input (2.4): a
+  permission read as another subtype, with no clipped cause. the row could hold
+  an option that is no approval action, so the test cannot prove approval-action
+  mode (authored frames through real tmux only).
 
 ## 7. requalification
 

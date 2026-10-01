@@ -140,10 +140,11 @@ PaneObservation = {
   controls into one text tail or add an emulator.
 - one row parser serves both grammars. it reads sgr as tmux's writer emits it,
   OSC 8 hyperlinks and SO/SI shifts as zero width, and tmux 3.7c's tab cells as
-  spaces to the next 8-column stop (3.4 writes the blank cells instead). the
-  capture omits `-N`, so tmux trims the space run after a row's last escape and
-  no grammar requires a trailing space. any other escape makes only that row
-  unparseable: present but unrecognized in both grammars, never clipped evidence.
+  spaces to the next 8-column stop (3.4 writes the blank cells instead).
+  `capture-pane` runs without its `-N`, so tmux trims the space run after a row's
+  last escape and no grammar requires a trailing space. any other escape makes
+  only that row unparseable: present but unrecognized in both grammars, never
+  clipped evidence.
 - dimension/alternate-screen changes during capture invalidate the sample.
   reuse before/after exact target and `process.SameObservation` validation.
   this is a bounded sample, not an atomic snapshot of provider execution.
@@ -437,7 +438,7 @@ existing engineering checks. do not recreate a retired gate or production seam.
 | --- | --- |
 | provider behavior | actual stock codex/claude for applicable required §4 families; default/custom display, reduced motion, wrapped/narrow screen, permission modes, active/background/retry, single/multi/free-text/async questions and elicitation |
 | capture | actual isolated tmux normal/alternate screen; >8 kib styled upper output with intact lower controls; top setup modal, tall pane, sgr/utf-8 clipping, dimension change |
-| negatives | composer during active codex work; quoted old chrome; menu versus request; title-generation spinner, static claude title and inherited busy/action-required/progress across provider→shell→same provider; historical errors under current work |
+| negatives | composer during active codex work; quoted old chrome; menu versus request; title-generation spinner, static claude title and inherited busy/action-required/progress across provider→shell→same provider (except §9's accepted false claims); historical errors under current work |
 | recognition | managed, bare, absolute, relative and symlink launches on darwin/linux; unrelated executables, exit/replacement and foreground suspend/resume |
 | full product | real gateway→cli/desktop and gateway→physical phone: work, each request label, concurrent work, stale/unavailable, filter membership/order, visits, return restoration, accessibility/large text |
 | attention | work→idle ready; work→question→idle not ready; pending ready→request/notice→idle stays idle; visit does not dismiss unanswered request; unknown/outage cannot bridge readiness; delayed response cannot restore consumed ready |
@@ -468,8 +469,9 @@ permissions/questions that the supported provider actually renders require posit
 recognition. unavailable upstream features are not implemented claims or passes;
 unexercised required cases are `NOT_RUN` blockers. qualify installed versions
 first; no untested universal-version promise or runtime exact version gate.
-measured supported cases must pass; ambiguity controls must remain
-unknown and may not be waived by an overall accuracy score.
+measured supported cases must pass; ambiguity controls must read as their
+capability rows state (unknown or none, except where a row admits a false claim
+§9 accepts) and may not be waived by an overall accuracy score.
 
 ## 9. final state, costs and completion
 
@@ -492,7 +494,8 @@ explicit costs:
   names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
   and plan-mode goal continuations); `Ready` with surviving background terminals
   reads idle; narrow or short question footers read layout_unknown or a request
-  of another subtype, and the mcp prompts drawn in the legacy question view read
+  of another subtype, an mcp approval whose option block holds an unparsed row
+  reads input, and the mcp prompts drawn in the legacy question view read
   question; codex emits no notices; with the
   under-development `features.default_mode_request_user_input` switched on (off
   by default; the managed launch never sets it), a default-mode question left
@@ -534,12 +537,13 @@ run-state word (c12, read as that word's cue). codex's other accepted false
 claims are a stale request, under a shell that prints nothing, until a
 relaunched codex first draws (about 0.4 s; c13) and a wrong picker kind under a
 transcript row that starts with a listed title (c11), each of which can enter
-the needs-input filter; and a request read as another request subtype (c15,
-c16), which misstates only its label: wait, the needs-input filter, attention,
-ready and guarded send share one request predicate. the accepted send-admission
-exposures are codex's displayed-thread scope and claude's `AbovePrompt` band,
-vim NORMAL mode and screen-reader whitespace drafts. no other cost justifies
-false idle, weaker input admission or silent scope expansion.
+the needs-input filter; and a request read as another request subtype
+(c15–c17), which misstates only the subtype (its label, reported interaction
+and rule id): every client treats all request subtypes alike for wait, the
+needs-input filter, attention, ready and guarded send. the accepted
+send-admission exposures are codex's displayed-thread scope and claude's
+`AbovePrompt` band, vim NORMAL mode and screen-reader whitespace drafts. no other
+cost justifies false idle, weaker input admission or silent scope expansion.
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,

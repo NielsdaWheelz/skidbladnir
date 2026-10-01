@@ -11,12 +11,14 @@ in source with bounded current-screen regions and the
 grammars. recorded evidence
 ([qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification))
 meets these resolution criteria: the capture observes the intended complete
-regions; indistinguishable codex composer states never read idle, except the
-false idles [spec §9](../terminal-observation.md#9-final-state-costs-and-completion)
-accepts; historical content cannot win; status recognition cannot weaken
-composer and draft protection (the composer's own accepted limits are in spec
-§9); every unknown or unavailable result has a content-free cause; and the cost
-of conservative unknown and the unsupported idle waits are explicit (spec §9, the
+regions; indistinguishable codex composer states never read idle, and
+historical content cannot win, except as the false claims
+[spec §9](../terminal-observation.md#9-final-state-costs-and-completion) accepts
+(its false idles, and codex grammar §6 c11 and c13, where a transcript title or
+a killed provider's screen wins); status recognition cannot weaken composer and
+draft protection (the composer's own accepted limits are in spec §9); every
+unknown or unavailable result has a content-free cause; and the cost of
+conservative unknown and the unsupported idle waits are explicit (spec §9, the
 grammars' cost sections).
 
 two criteria are not met: positive live recognition of every supported family,

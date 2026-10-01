@@ -132,7 +132,7 @@ deleted. the per-family record is each grammar's capability table
 | --- | --- | --- |
 | capture | PASS: region bounds at 64–1000 rows; byte caps keep the bottom region's lowest rows and the top region's rows from row 0; rows self-contained; resize and alternate-screen races refuse the sample; OSC 8, SO/SI and tab cells parse; the worst-case 256-row guarded command fits tmux's 16 KiB command limit | PASS on 3.4 and 3.7c: the same; 3.4 writes no tab cell where 3.7c does; OSC 8, URI control bytes, SO/SI, trailing-space trimming and the command limit match (14326 bytes accepted, 16658 refused); 93 chrome code points parse at tmux's column |
 | authored corpora (real tmux, parse, detect) | PASS: codex 160/160 at `82c0589` (`codex.go` unchanged since); claude 184/184 at `e7b7695`; a parser mutation fails them | PASS: codex 160/160 and claude 180/180 per host at `4e1b737`, rows exact, none unparseable |
-| recognition | PASS: bare, relative, absolute and symlinked launches of a native image and of claude 2.1.286; copies, wrappers and unrelated programs unrecognized; suspend/resume, exit, exec replacement and respawn; a relink reaches the next launch and leaves the old image unrecognized; npm-launched codex is a generic terminal (accepted cost) | PASS on both hosts against `/proc`: on a native fake image, bare, relative, absolute, second-symlink and exec-wrapper launches, the negatives, exit, exec replacement both ways, suspend/resume, relink, replace-in-place, prune and a dangling link; the installed claude 2.1.284 recognized through its configured `executablePath` only, its other spellings `NOT_RUN` here ([run 2026-10-01](#2026-10-01-linux-claude-launch-spellings)); admission refuses dangling, non-executable and old-schema (`argument0`) configuration |
+| recognition | PASS: bare, relative, absolute and symlinked launches of a native image and of claude 2.1.286; copies, wrappers and unrelated programs unrecognized; suspend/resume, exit, exec replacement and respawn; a relink reaches the next launch and leaves the old image unrecognized; npm-launched codex is a generic terminal (accepted cost) | PASS on both hosts against `/proc`: on a native fake image, bare, relative, absolute, second-symlink and exec-wrapper launches, the negatives, exit, exec replacement both ways, suspend/resume, relink, replace-in-place, prune and a dangling link; the installed claude 2.1.284 recognized through its configured `executablePath` only, its other spellings `NOT_RUN` here ([2026-10-01 record](#2026-10-01-linux-claude-launch-spellings)); admission refuses dangling, non-executable and old-schema (`argument0`) configuration |
 | provider behavior (live, scripted endpoints) | PASS for every family the grammars mark darwin | PASS for every family the grammars mark linux. claude 2.1.284's numbered theme picker read layout_unknown at `4e1b737` (FAIL, safe direction); it reads setup at `e7b7695` (live on `6618e75`, same behaviour) on both hosts at 26–100 columns, except the [narrow residue](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity), an accepted cost |
 | negatives | PASS: composer during codex work never idle; menu versus request (codex `/model` and f2 warnings, claude `/model` read `menu open` outside the filter); provider → shell → provider for codex (exit, and SIGKILL with tmux keeping the working title) and claude (working, question); historical errors under current work. quoted chrome: authored frames only | PASS: composer during codex work; daemon disconnect; provider → shell. the rest `NOT_RUN` |
 | composition (inventory, inspect, send) | PASS: 340/340 frames through list and inspect; send on the 326 plain frames, and on the 14 clip frames under a real byte cap (14/14); 326/326 again with enrich; every refusal writing no bytes; live idle, working, draft, menu, question, permission, changed target and clipped for both providers. baseline pairs: codex read idle during a held turn and claude read unknown throughout | PASS: the managed create path (daemon-backed codex `--remote`, claude with production arguments and its identity hook) and inspect with same-sample valid diagnostics. guarded send `NOT_RUN` |
@@ -156,8 +156,9 @@ serial tmux commands on darwin (36–57 ms on linux), unchanged from baseline an
 outside the enrichment budget ([issue](issues/session-list-latency.md)).
 
 each `NOT_RUN` above is an evidence gap recorded as an issue, except the
-installed claude's other linux spellings, since run (below), and pending
-ready → notice → idle, which no grammar can reach while none emits a notice; the
+installed claude's other linux spellings, since run or waived (below), and
+pending ready → notice → idle, which no grammar can reach while none emits a
+notice; the
 [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
 indexes them with every other open item.
 `scripts/check static host`, `go vet`, `go build` and `gofmt` passed at every
@@ -176,7 +177,10 @@ and its `/proc/<pid>/exe` equalled the configured path's resolution
 only that kernel fact, through the matching path the linux recognition cell
 qualifies at `4e1b737` with native fake images and relinks (the exec wrapper ran
 only there); darwin met the same criteria with the real claude. the root
-integrator ruled that this resolves the launch-spelling record: the four
-spellings pass recognition, the exec-wrapper spelling rests on the fake image
-(substitution waived), and linux controls through the installed claude stay
-`NOT_RUN` under [linux coverage](issues/terminal-observation-linux-coverage.md).
+integrator ruled the launch-spelling issue resolved on this run, the four
+spellings passing recognition. the exec-wrapper launch and the controls never
+ran with the installed claude, and that issue's resolved-when accepted, in place
+of them, only a recorded waiver of the fake-image substitution, so this record
+is that waiver. the controls through the installed claude stay `NOT_RUN`, an
+evidence gap [linux coverage](issues/terminal-observation-linux-coverage.md)
+tracks for every provider.
