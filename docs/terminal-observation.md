@@ -230,8 +230,8 @@ codex started through it, so that codex is a generic terminal, while managed
 launches and `codex` typed in a skid shell run the native executable. no argv
 fallback, version-basename matching, installation scan or new process api.
 qualification covers bare, relative, absolute and symlink launches and a provider
-upgrade's relink on darwin and linux (§8,
-[recorded](terminal-agent-control-qualification.md#terminal-observation-qualification)).
+upgrade's relink on darwin and linux (§8; the installed claude's linux spellings
+in [their own record](terminal-agent-control-qualification.md#2026-10-01-linux-claude-launch-spellings)).
 native resume identity is separate.
 
 ## 5. controls and diagnostic api
@@ -318,9 +318,10 @@ with source terminal; unavailable/non-agent labels make no inference claim.
 rows of a host whose read failed or that is being re-read are never ready and
 stay out of the filter. a failed host's rows keep their stale cached facts as
 muted `last observed: <label>`, and keep that form while the host is re-read;
-on the desktop that outage form exceeds the status bay, an accepted exception
+on the desktop that form is wider than any fresh label and the other columns
+give way, an accepted exception to the fit rule above
 ([desktop browser §5](desktop-browser.md#5-presentation)). the rows of any other
-re-read host take each client's own form, and the clients need not agree:
+re-read host take each client's form, and the clients need not agree:
 the desktop table cell reads faint `checking` and makes no status claim, while
 the selected row's facts read `checking; last observed: <label>`
 ([desktop browser §5](desktop-browser.md#5-presentation)); android shows
@@ -491,7 +492,8 @@ explicit costs:
   names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
   and plan-mode goal continuations); `Ready` with surviving background terminals
   reads idle; narrow or short question footers read layout_unknown or a request
-  of another subtype; codex emits no notices; with the
+  of another subtype, and the mcp prompts drawn in the legacy question view read
+  question; codex emits no notices; with the
   under-development `features.default_mode_request_user_input` switched on (off
   by default; the managed launch never sets it), a default-mode question left
   untouched resolves itself with empty answers 120 s after it is shown, so an
@@ -525,16 +527,19 @@ explicit costs:
   protection.
 
 the accepted false idles are claude's remote usage-limit copy and three of
-codex's: its cue-less turn starts; its millisecond stale-`Ready` window in a pane
-at most header + 4 columns wide (grammar §6 c14), which can raise ready; and an
-unmanaged status line whose first item is a user value equal to a run-state word
-(c12, read as that word's cue). codex's other accepted false claims are a stale
-request for up to about 0.4 s while a relaunched codex first draws (c13), which
-can enter the needs-input filter, and a wrong picker kind under a transcript row
-that starts with a listed title (c11). the accepted send-admission exposures are
-codex's displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode
-and screen-reader whitespace drafts. no other cost justifies a false claim,
-weaker input admission or silent scope expansion.
+codex's: its cue-less turn starts (grammar §6 c4); its millisecond stale-`Ready`
+window in a pane at most header + 4 columns wide (c14), which can raise ready;
+and an unmanaged status line whose first item is a user value equal to a
+run-state word (c12, read as that word's cue). codex's other accepted false
+claims are a stale request, under a shell that prints nothing, until a
+relaunched codex first draws (about 0.4 s; c13) and a wrong picker kind under a
+transcript row that starts with a listed title (c11), each of which can enter
+the needs-input filter; and a request read as another request subtype (c15,
+c16), which misstates only its label: wait, the needs-input filter, attention,
+ready and guarded send share one request predicate. the accepted send-admission
+exposures are codex's displayed-thread scope and claude's `AbovePrompt` band,
+vim NORMAL mode and screen-reader whitespace drafts. no other cost justifies
+false idle, weaker input admission or silent scope expansion.
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,

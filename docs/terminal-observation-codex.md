@@ -50,7 +50,7 @@ classes:
 - AC, ambiguity control: the family must produce exactly the stated values, or
   no evidence, and never a claim stronger than they are. most state unknown or
   none; two mcp rows state the form's input in place of the approval's
-  permission.
+  permission, and the stale-chrome row admits the old request §6 c13 accepts.
 - PU, permitted unknown-or-none: when the row carries a rule id, the family is
   recognized if seen.
 - UA, upstream-unavailable in 0.159.2: not implemented, not a pass.
@@ -160,7 +160,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | known terminal background (OSC 10/11 answered) | RP | same values | same ids | darwin | `style.rs:60-75,143-153,209-214`, `style/contrast.rs:35-78` |
 | tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.run_state.ready` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
 | tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | `codex.run_state.ready` | darwin, linux | spec §3 |
-| stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown | none | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 c13 |
+| stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown; under a shell that prints nothing, the old request (§6 c13) | none, or the old request's | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 c13 |
 | remote image rows `[Image #N]` above the prompt | RP | composer draft | — | source-only: only rehydrated history from another client attaches remote images | `chat_composer.rs:4927-4932`, `composer_layout.rs:118-129` |
 | Astra sparkle (band except the placeholder span, ≤ 15 s) | PU | layout_unknown, or composer and activity unknown | none | source-only (not observed with the model selected) | `chat_composer/sparkle.rs:344-417` |
 | Max/Ultra ignition sparks (0.9–1.6 s, padding rows only) | PU | composer unknown, activity unknown | none | source-only (not observed) | `bottom_pane/effort_ignition_styles.rs:68-86` |
@@ -554,9 +554,8 @@ count alone fills a one-row footer (the count, when added, comes before it).
     dependency-install prompt (`core/src/mcp_skill_dependencies.rs:299`) and the
     mcp tool-approval prompt used when `features.tool_call_mcp_elicitation`
     (stable, on by default) is off (`core/src/mcp_tool_call.rs:1716`). the two
-    mcp prompts render in this view, so by source they read question
-    (`needs answer`), the approval included; that reading is accepted (not
-    run).
+    mcp prompts render in this view, so by source they read question (not
+    run; §6 c16).
   - with the switch on, a default-mode question is non-blocking. the view
     resolves it after a 60 s hidden grace and a 60 s visible
     `auto-resolves in …` countdown, counted from when the request is shown
@@ -915,9 +914,9 @@ composer reaches only guarded send
 ## 6. accepted costs
 
 accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
-each unknown or none, never a false claim unless the item says otherwise. c4 and
-c11–c14 claim falsely and c2 admits guarded send into a sub-agent, each under
-the conditions it names; spec §9 lists them:
+each reading as it states. c4 and c11–c14 claim falsely, c15 and c16 can read a
+request of another subtype, and c2 admits guarded send into a sub-agent, each
+under the conditions it names; spec §9 lists those. the costs:
 
 - **c1** idle needs `Ready`, the main placeholder on a clean band, no external editor
   and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
@@ -1012,6 +1011,11 @@ the conditions it names; spec §9 lists them:
     enum offering only `Allow` and `Deny` reads permission instead of input.
   - an mcp form narrow enough to draw the count alone on a one-row footer would
     read a legacy question (not observed: 14 and 15 columns drew a second row).
+- **c16** the mcp dependency-install prompt and, with
+  `features.tool_call_mcp_elicitation` off, the mcp tool-approval prompt render
+  in the legacy question view (2.4), so by source they read question
+  (`needs answer`), or as c15 states in narrow or short panes; the approval is a
+  permission read as another subtype (not run).
 
 ## 7. requalification
 

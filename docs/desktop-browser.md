@@ -226,11 +226,11 @@ pending scoped read, or the re-read after a metadata change) is never ready, and
 its cell makes no status claim: it reads faint `checking`. a failed host keeps
 its notice. the stale cell is up to 33 cells (`last observed: status
 unavailable`) against 18 for the widest fresh label, and the status column never
-shrinks, so while a host's read has failed the other columns give way: at 80
-columns names fall from 24 to 12 cells. that truncation is the accepted outage
-form, an exception to the status bay
-([observation §6](terminal-observation.md#6-content-attention-and-filtering)); the
-8-cell `checking` widens nothing.
+shrinks, so while a host's read has failed the other columns give way (in an
+80×24 render with a failed host, names fell from 24 to 12 cells). the outage
+form is accepted with that cost, an exception to
+[observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
+fit rule; the 8-cell `checking` widens nothing.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only

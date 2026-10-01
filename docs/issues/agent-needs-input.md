@@ -17,8 +17,10 @@ cannot fabricate resolution; desktop attention stays consistent through visits,
 answers, provider replacement and reconnection; unknown, an outage and a
 foreground change cannot bridge working to ready. the false claims
 [spec §9](../terminal-observation.md#9-final-state-costs-and-completion) accepts
-are the exceptions: its false idles can mint ready, and codex's stale request
-after a provider relaunch can enter the needs-input filter.
+are the exceptions: its false idles can mint ready; codex's stale request after
+a relaunch and wrong picker kind (codex grammar §6 c13, c11) can enter the
+needs-input filter; and narrow mcp requests (c15) and the mcp prompts in the
+legacy question view (c16) read as another request kind.
 
 two criteria are not met:
 
@@ -34,6 +36,5 @@ request or turn on both clients.
 resolved when: [physical-phone acceptance](terminal-observation-phone-acceptance.md)
 passes its attention and filter rows; an attention run on the desktop and the
 phone records a declined request reading idle and raising no ready unless working
-is sampled after it, and an interrupted turn reading as spec §9 states (an
-interrupted claude turn reads idle and can raise ready, which is accepted:
-ready makes no completion claim). then delete this record.
+is sampled after it, and an interrupted turn reading as spec §9 states (ready
+makes no completion claim). then delete this record.
