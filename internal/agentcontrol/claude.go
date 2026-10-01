@@ -12,11 +12,12 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
-// detectClaude reads a claude 2.1.286 screen by the frozen grammar of
-// docs/terminal-observation-claude.md sections 2-3, whose section numbers the
-// comments below cite. It finds the lowest drawn row and tries the surfaces
-// in order: screen-reader startup, the screen-reader input row, a
-// screen-reader request, the composer, then the request and menu families.
+// detectClaude reads a claude 2.1.286 screen, and 2.1.284's numbered theme
+// picker, by the frozen grammar of docs/terminal-observation-claude.md sections
+// 2-3, whose section numbers the comments below cite. It finds the lowest drawn
+// row and tries the surfaces in order: screen-reader startup, the screen-reader
+// input row, a screen-reader request, the composer, then the request and menu
+// families.
 // Idle comes only from a complete current ready layout; a request or menu
 // never reports activity, because it replaces the spinner, pill and panel.
 func detectClaude(parsed screen) reading {
@@ -1677,9 +1678,10 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 		}
 	}
 	if ok2 && strings.HasPrefix(hint2, "Syntax theme: ") {
-		// The theme choices sit at column 1 above the syntax preview, all in
-		// one form: unnumbered with the check before the current label
-		// (2.1.286), or numbered from 1 with the check after it (2.1.284).
+		// The theme choices sit at column 1 above the syntax preview: unnumbered
+		// (2.1.286), or options numbered from 1 whose labels wrap at column 6
+		// (2.1.284). The run takes rows of either form and those continuations;
+		// claude draws one form per version, so a mixed run is not the picker.
 		numbered := func(line claudeLine) bool {
 			_, _, _, start := claudeOptionStart(line.plain, 1)
 			return start
@@ -1692,14 +1694,14 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 					selected++
 				}
 				line, ok := screen.line(top - 1)
-				if !ok || !theme(line) {
+				if !ok || !theme(line) && line.col < 6 {
 					break
 				}
 				top--
 			}
 			choices := screen.lines[top : bottom+1]
-			_, counted := claudeParseOptions(choices, 1)
-			oneForm := counted || !slices.ContainsFunc(choices, numbered)
+			_, fromOne := claudeParseOptions(choices, 1)
+			oneForm := fromOne || !slices.ContainsFunc(choices, func(line claudeLine) bool { return numbered(line) || line.col >= 6 })
 			_, started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
 			if started && oneForm && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
 				return "claude.setup.theme", sessions.InteractionSetup, top, true
