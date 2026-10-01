@@ -3,7 +3,8 @@
 status: implemented and behaviorally qualified on `codex/reply-notifications`;
 deployment is outside this change.
 replaces the former native-work/head prerequisite and human unread/viewer rules.
-[terminal control](terminal-agent-control.md) owns detection and exact targeting.
+[terminal observation](terminal-observation.md) owns status facts;
+[terminal control](terminal-agent-control.md) owns exact targeting.
 native history supplies no notifications; no helper/provider/pin upgrade.
 
 ## behavior
@@ -14,22 +15,26 @@ completion, admission nor an empty queue. codex and claude use one policy.
 
 | event | effect |
 | --- | --- |
-| consecutive qualified working -> idle outside a visit | green `ready` |
-| qualified working | clear pending; blue `working`; arm predecessor |
-| qualified blocked | clear pending; ember `waiting`; disarm |
-| idle without pending | grey `idle` |
-| unknown/unavailable/stale/offline | disarm; retain pending, hide green |
+| consecutive arming -> ready outside a visit | green `ready` |
+| arming: working, interaction none, notice none | clear pending; arm predecessor |
+| clearing: any request or menu, any notice, starting or other working | clear pending; disarm |
+| ready without an armed predecessor | pending unchanged; disarm |
+| unknown/unavailable/stale/offline, idle with unknown interaction | disarm; retain pending, hide green |
 | startup/foreground recovery first sample | quiet baseline; preserve matching pending; working may arm |
 | positive foreground replacement/exit | clear former pending and predecessor |
 | first successfully presented output on entry | immediately clear exact terminal pending |
 | active terminal visit | suppress pending and predecessors |
 | successful visit ends | clear; persist outstanding closing baseline |
-| first qualified post-visit sample | clear closing flag; quiet baseline; working may arm |
+| first post-visit clearing or ready sample | clear closing flag; ready stays quiet; arming may follow |
 | entry fails before any output presentation | clear nothing |
 
-qualified = fresh successful terminal-source sample + local foreground agent +
-working/blocked/idle. unknown breaks continuity even after successful capture.
-never bridge `working -> unknown -> idle`. cached status cannot mutate notices.
+only a fresh successful terminal-source sample of a local foreground agent
+qualifies. arming is working + interaction none + notice none. clearing is any
+permission/question/confirmation/setup/input or menu interaction, any notice, or
+activity starting or working. ready is idle + interaction none + notice none.
+everything else only disarms: unknown breaks continuity even after successful
+capture, and a request clears even when activity is unknown. never bridge
+`working -> unknown -> idle`. cached status cannot mutate notices.
 positive shell/non-agent observation may settle a closing boundary; absent
 identity on unavailable observation does not prove agent exit.
 
@@ -40,12 +45,12 @@ the same terminal. remote transports/shells have no agent-ready notice.
 
 explicit costs: inference can be wrong; cancellation/navigation may appear ready
 without new text; work between polls and offline completions may be missed; missed
-renewed work may leave old pending until entry or a qualified non-idle sample.
-the first qualified post-visit observation is the selected closing boundary and
-can consume readiness just after detach; outages extend it. concurrent clients
-may conservatively lose transitions. focus is per client/device. old unread
-notices are dropped at cutover; old files stay inert. temporary tests are removed,
-leaving no retained behavioral regression coverage.
+renewed work may leave old pending until entry or a clearing sample.
+the first post-visit clearing or ready observation is the selected closing
+boundary and can consume readiness just after detach; outages extend it.
+concurrent clients may conservatively lose transitions. focus is per
+client/device. old unread notices are dropped at cutover; old files stay inert.
+temporary tests are removed, leaving no retained behavioral regression coverage.
 
 non-goals: proven native reply/turn semantics, inbox/counts, human read receipts,
 cross-device focus, new polls/hooks/supervisors/event ledgers, provider forks,
@@ -100,13 +105,16 @@ request cannot compete with unfinished local acceptance. every rejected or
 invalidated path releases the lane; backgrounding admits no obsolete trailing read.
 capture expected record revision before network dispatch; compare under store
 serialization. mismatch discards that sample's notification processing and
-predecessor, without replay/rebasing. ordinary idle sets pending only when its
-predecessor matches exact foreground and current revision. baseline preserves
-matching saved pending but cannot create it; qualified working may arm afterward.
-visiting clears pending and never arms. working/blocked clear. unknown preserves
-pending and disarms. replacement clears and starts quietly. baselinePending has
-precedence: first qualified sample consumes pending/flag without notifying;
-working may arm. unknown/unavailable/stale cannot settle it.
+predecessor, without replay/rebasing. ready sets pending only when its predecessor
+was armed for this exact foreground at the previous revision; otherwise pending is
+unchanged. baseline preserves matching saved pending but cannot create it; arming
+may follow. visiting clears pending and never arms. clearing clears. neutral
+samples preserve pending and disarm. replacement clears and starts quietly.
+Presented and EndVisit advance the revision, so no predecessor armed before them
+can make a later ready pending: the first post-visit ready is quiet, and arming
+may follow. the first clearing or ready sample, or a positive exit, clears
+baselinePending; unknown/unavailable/stale leave it set. no decision reads the
+flag ([issue](issues/notification-baseline-pending.md)).
 
 Presented clears and advances revision even if already clear. EndVisit also sets
 baselinePending. call only once on actual presentation and only end a presented
@@ -160,20 +168,18 @@ details, terminal header and accessibility.
 
 | fresh local condition | literal / tone |
 | --- | --- |
-| working | `working` / frost blue #78A9C6 |
-| idle + pending outside visit/closing baseline | `ready` / moss green #76B082 |
-| idle without pending | `idle` / muted grey #AAA69D |
-| blocked | `waiting` / existing ember |
-| unknown/unavailable | `status unknown` / `status unavailable`; muted |
+| idle + interaction none + notice none + pending outside visit/closing baseline | `ready` / moss green #76B082 |
+| idle + interaction none + notice none without pending | `idle` / muted grey #AAA69D |
+| any other status | [observation §6](terminal-observation.md#6-content-attention-and-filtering) label and tone; working is frost blue #78A9C6 |
 | stale | existing last-observed treatment; no green |
 | shell/remote | existing `terminal`; no ready |
 
 ready also requires stored foreground equals the fresh inventory foreground;
 new inventory cannot briefly render the former agent's pending before the store
-update commits. visiting clears even on unknown samples, but unknown never
-settles baselinePending. details/accessibility disclose `inferred from terminal`, including ready.
-primary labels are exclusive. storage failure is one muted secondary
-`notifications unavailable`. labels survive NO_COLOR; no counts/pulse,
+update commits. visiting clears even on unknown samples; unknown never clears
+baselinePending. details/accessibility disclose `inferred from terminal`,
+including ready. primary labels are exclusive. storage failure is one muted
+secondary `notifications unavailable`. labels survive NO_COLOR; no counts/pulse,
 unchanged-poll announcements or sorting changes. preserve status before cwd in
 narrow layouts.
 
@@ -201,7 +207,8 @@ both clients -> adversarial review/refactor -> affected green checks -> remove
 temporary tests -> scripts/check verify -> commit. engineering checks are not
 behavioral acceptance. no production test seams or retired harnesses.
 
-prove both providers/clients: working->idle ready; working/blocked clear;
+prove both providers/clients: working->idle ready; working, requests, menus and
+notices clear;
 unknown/stale/outage breaks continuity; successful entry clears only after
 presentation; failed entry preserves; whole visit/first closing sample quiet;
 working closing baseline's later idle notifies; replacement cannot inherit;

@@ -61,14 +61,14 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | --- | --- |
 | `skid` | open tui; without a tty, print usage and exit 2 |
 | `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
-| `skid info t-0123456789abcdef` | full metadata and fresh reference for this session |
+| `skid info t-0123456789abcdef [--explain]` | full metadata, status and fresh reference for this session; `--explain` adds one inspect sample's status evidence |
 | `skid inspect --ref VALUE` | captured conversation and optional turn, native inspection outcome, and optional fresh conversation-only reference; preserve captured identity on native failure |
 | `skid enter t-0123456789abcdef` | attach; explicit detach returns to the caller |
 | `skid read t-0123456789abcdef [--max-bytes N]` | bounded rendered terminal output; c-handles retain explicit native latest/history reads |
 | `skid send t-0123456789abcdef "review the patch"` | guarded terminal paste/submit; `--stdin` accepts literal text; native input/queue flags require an explicit native target |
 | `skid keys t-0123456789abcdef enter` | existing logical key vocabulary; 1–16 keys |
 | `skid text t-0123456789abcdef --stdin` | deliberate terminal paste and submit; no readiness or admission claim |
-| `skid wait t-0123456789abcdef [--state idle] [--timeout 60s]` | bounded inferred terminal sampling; c-handles retain native waits |
+| `skid wait t-0123456789abcdef [--state idle\|working\|needs-input] [--timeout 60s]` | bounded inferred terminal sampling; c-handles retain native waits and their idle/blocked/done/failed/stopped states |
 | `skid stop t-0123456789abcdef` | one interruption key on the captured pane; retain terminal; c-handles retain exact native interruption |
 | `skid close t-0123456789abcdef [--terminal-only]` | interruption attempt and independent exact session closure; terminal-only skips input |
 | `skid start [NAME] --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
@@ -117,7 +117,8 @@ failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
 
 reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
-`info` and `start` return `{label, machine, observedAt, session: row}`. other results
+`info` and `start` return `{label, machine, observedAt, session: row}`; `info
+--explain` adds `diagnostics` beside `session`. other results
 retain the current agent-control schema; terminal-only `close` returns `{terminal: closed}` only
 after confirmed deletion. `group` acknowledges `{group: string}`, with empty
 string for clear, only after the host's bodyless `204`; it returns no new ref.
@@ -136,6 +137,17 @@ reads current metadata for the exact session lifetime. terminal-only close uses
 its captured lifetime directly, supplying only `identityToken` to DELETE.
 `info --ref` observes the exact session now, even if its previous agent exited;
 it returns a newly observed terminal reference. it never refreshes a mutation target.
+human `info` prints `state:` (the shared projection's label and details) and
+`status reason:` from the inventory sample, without a second sample. `--explain`
+accepts terminal targets only: it resolves once and inspects that terminal with
+[explain](terminal-agent-control.md#4-api-and-client-commands). its state line,
+`observed:` and an indented `status evidence` block come from that one inspect
+sample; other facts come from inventory. the block lists activity, interaction
+and notice separately, then reason copy, rules (`id (region)`, or `none`), capture
+(`W × H, main screen|alternate screen, clipped: top, bottom|none`, or `not
+collected`) and per-stage timing (`resolve N ms`, or `resolve not collected`).
+`observed:` is the client time the inspect response arrived. reason copy for
+`status unknown` and `status unavailable` ends with `; open the terminal to inspect`.
 start does not claim readiness. a captured pane rejects selection changes; an old
 session lifetime cannot bind to a recreated session.
 

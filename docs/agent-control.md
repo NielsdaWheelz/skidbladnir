@@ -35,7 +35,7 @@ client -> serialized device-local terminal notification owner
 ```
 
 ordinary inspect/read/send/wait/stop/close use the captured terminal pane.
-read returns rendered terminal text; send performs a fresh detector/composer check
+read returns rendered terminal text; send performs a fresh screen/composer check
 before paste/submit. text/keys are deliberate input. stop sends one interrupt;
 close then independently deletes the exact session. uncertainty never disables
 stop or closure. terminal-only close skips interruption. receipts prove bytes
@@ -50,10 +50,13 @@ never retarget after terminal switches or loss. uncertain mutations are not repl
 
 ## presentation and attention
 
-ordinary status is inferred from the current local terminal: working, waiting,
-idle or unknown/unavailable. native recorded identity is secondary metadata.
-`ready` is exclusive green attention after a qualified working-to-idle transition;
-working is blue and idle grey. it asserts no unseen text or task result.
+ordinary status is inferred from the current local terminal as independent
+activity, interaction and notice facts
+([terminal observation](terminal-observation.md)): a working agent can also need
+an answer, and ambiguity is unknown rather than guessed. native recorded identity
+is secondary metadata. `ready` is exclusive green attention after a working-to-idle
+transition with no request, menu or notice; starting/working is blue, requests
+are ember and idle grey. it asserts no unseen text or task result.
 first actual terminal output presentation clears attention; the whole visit and
 first qualified post-visit observation are quiet. unknown/stale/outage breaks
 continuity. no reply viewer, result-id scan/store or human acknowledgement remains.

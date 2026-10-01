@@ -143,12 +143,14 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX@` | absolute installed tmux executable; historically `/usr/bin/tmux` on linux, `/opt/homebrew/bin/tmux` on macbook |
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
-| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
+| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. the profile's `executablePath` keeps this spelling and resolves it at each comparison, so a claude update that relinks it is recognized without a restart; a session still running the previous image is then unrecognized and reads as a generic terminal |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 the shared provider installer installs ordinary upstream `@openai/codex` through
 npm. profiles resolve its native executable for honest foreground detection;
-no codex fork, source build or custom package is installed. existing account
+no codex fork, source build or custom package is installed. managed launches and
+`codex` typed in a skid shell run that native executable; npm's node launcher
+leading a foreground is a generic terminal, with no argv fallback. existing account
 homes remain shared. CLI and running daemon upgrade independently through upstream
 management; the helper validates consumed methods/fields rather than version parity.
 claude uses the managed native symlink at the qualified version; user update
@@ -170,9 +172,16 @@ exact schema (all named members required unless marked optional):
   `SKIDBLADNIR_CLAUDE_COMMAND`. provider homes unique
   within each provider. other explicitly configured environment values retain
   their existing meaning.
-- signature: optional `executableBase`, `argument0`, `argument1` strings;
-  executable base or absolute argument zero required. use the template's native
-  signatures. overlapping signatures across providers are invalid.
+- signature: optional `executableBase` and `executablePath` strings; at least
+  one is required, and both must match when both are set. `executableBase` is a
+  bare file name. `executablePath` must be absolute and clean and must resolve
+  through symlinks to an executable regular file at admission; a missing or
+  unresolvable path, a directory or a non-executable file is rejected. matching
+  resolves it again at each comparison and compares the kernel's executable
+  image; a failed resolution matches nothing. `argument0` and `argument1` are
+  rejected as unknown members. use the template's native signatures: codex
+  `{"executableBase": "codex"}`, claude `{"executablePath": "@CLAUDE@"}`.
+  overlapping signatures across providers are invalid.
 - arguments: string array. claude forbids configured `-n`, `--name`, or
   `--name=...`; skid never supplies a provider conversation name.
 
@@ -185,10 +194,14 @@ regular non-symlink file, at most 64 kib. validate before switching a generation
 ```
 
 this source candidate adds that command. it performs the same strict config
-load as gateway startup against the current os and returns `0` only on valid
-configuration; diagnostics are content-free. it does not invoke tmux, start a
-provider, inspect credentials, or prove executable/dependency availability.
-the installer separately checks the declared executables and helper pins.
+load as gateway startup and `agent-hook` against the current os and returns `0`
+only on valid configuration; diagnostics are content-free. it requires each
+configured `executablePath` to resolve to an executable regular file. it does not
+invoke tmux, start a provider, inspect credentials, or prove other
+executable/dependency availability. the installer separately checks the declared
+executables and helper pins. an installed generation whose config still carries
+`argument0` fails gateway startup, `agent-hook` and this validator; re-render it
+from the current template in the same cutover.
 
 ## profiles and shell defaults
 
@@ -198,7 +211,7 @@ the user's existing provider setup owns those files and its normal login flow.
 
 | forge key | provider home relative to `HOME` | native argv after executable |
 | --- | --- | --- |
-| `personal` | `.codex` | configured permission arguments, then `--remote unix://<account-socket> --cd <cwd>` |
+| `personal` | `.codex` | configured arguments `--yolo -c tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]`, then `--remote unix://<account-socket> --cd <cwd>` |
 | `work` | `.codex-work` | same |
 | `work2` | `.codex-work2` | same |
 | `claude-work` | `.claude-work` | `--dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |
@@ -207,7 +220,9 @@ codex rows set only their `CODEX_HOME`; claude sets `CLAUDE_CONFIG_DIR`.
 for skid-created codex terminals, the host first invokes stock
 `app-server daemon start`, then launches the remote tui to create its own new
 conversation. configured permission arguments, including `--yolo`, remain in
-terminal argv. skid neither creates nor names the conversation and records no
+terminal argv. the `-c` status-line override is two argv elements without shell
+quotes; it sets only that launch's footer cues, never titles or persistent
+provider settings. skid neither creates nor names the conversation and records no
 conversation id at creation. new codex terminals have no native card binding;
 manual association is unavailable. existing recorded bindings and direct native
 conversation commands remain valid. ordinary manual terminal commands stay stock.

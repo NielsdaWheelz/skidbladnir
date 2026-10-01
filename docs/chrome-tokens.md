@@ -94,8 +94,11 @@ internal fun attentionPulseEnabled(animatorDurationScale: Float): Boolean
 ```
 
 the former `statusColor` mapping and pure JVM proof are retired. current
-[terminal attention](reply-notifications.md) uses `Working→Frost, Ready→Moss,
-Waiting→Ember, Idle/Unknown/Terminal→Muted`; labels survive without color.
+`SessionStatusTone` maps `Working→Frost, Ready→Moss, Attention→Ember,
+Muted→Muted`: attention covers requests and `error shown`; muted covers idle,
+menus, interruptions, unknown, unavailable, terminal and stale labels
+([observation §6](terminal-observation.md#6-content-attention-and-filtering)).
+labels survive without color.
 pressure history and details keep `Normal→Moss, Warm→Gold,
 Hot→Ember, Unknown→Muted`; the collapsed rail independently quiets
 informational/normal values to Bone with Muted labels/marks and spends
