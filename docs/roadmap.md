@@ -13,7 +13,7 @@ by the [codex](terminal-observation-codex.md) and [claude](terminal-observation-
 grammars, guarded composer reuse, diagnostics, managed codex run-state chrome and
 desktop/phone needs-input filtering, with manual claude executable recognition.
 screen ambiguity remains unknown; titles/progress are excluded. source is
-implemented (baseline `564d32f`); nothing is released or deployed.
+implemented; nothing is released or deployed.
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
 within its recorded limits, passes capture, recognition, classification and cost
 on darwin and linux. composition, controls (guarded send and wait), the
@@ -23,7 +23,8 @@ composition covers the managed create path and inspect, and the rest is
 [live provider smoke](issues/terminal-observation-provider-smoke.md),
 required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),
 [claude on darwin](issues/claude-observation-darwin-coverage.md) and
-[linux](issues/terminal-observation-linux-coverage.md),
+[linux](issues/terminal-observation-linux-coverage.md), the installed
+[claude launch spellings on linux](issues/claude-launch-spelling.md),
 [claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md),
 [codex server-driven families](issues/codex-server-driven-families.md), the
 [codex residual ambiguity](issues/codex-residual-ambiguity.md), the

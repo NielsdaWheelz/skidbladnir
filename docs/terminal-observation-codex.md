@@ -23,8 +23,8 @@ notation:
   dim, except inside the `Press` footer (2.3), where user verification dims the
   whole line.
 - `D` (duration) is `\d+s`, `\d+m \d\ds` or `\d+h \d\dm \d\ds`.
-- `E` is the last non-blank row of the screen; `R0` is the bottom region's first
-  row; `F` is the composer footer run (2.1); `C` is the composer row.
+- `E` is the last non-blank row of the screen; `F` is the composer footer run
+  (2.1); `C` is the composer row.
 - style tags: `{d}` dim, `{b}` bold, `{br}` bold+reverse, `{bd}` bold+dim, `{/}`
   reset.
 - columns count cells from 0. a row is one physical row parsed on its own.
@@ -47,8 +47,10 @@ classes:
 
 - RP, required-positive: spec §4 names the family, or codex renders it as a
   permission or question (spec §8).
-- AC, ambiguity control: the family must produce exactly the stated unknown/none
-  values, or no evidence. it must never produce a positive claim.
+- AC, ambiguity control: the family must produce exactly the stated values, or
+  no evidence, and never a claim stronger than they are. most state unknown or
+  none; two mcp rows state the form's input in place of the approval's
+  permission.
 - PU, permitted unknown-or-none: when the row carries a rule id, the family is
   recognized if seen.
 - UA, upstream-unavailable in 0.159.2: not implemented, not a pass.
@@ -58,8 +60,9 @@ versions above. `capture` means authored rows painted through real tmux on that
 platform, classified with the evidence dropped from the real capture (on darwin
 also by a real byte cap): that proves capture and parser mechanics, never
 provider behaviour, and it applies only to rows about dropped evidence.
-`source-only` means upstream source and authored rows only. an RP or AC row is `NOT_RUN` on every platform it does not
-name, and each such `NOT_RUN` is a blocker under spec §8
+`source-only` means upstream source and authored rows only. an RP or AC row is
+`NOT_RUN` on every platform it does not name, and each such `NOT_RUN` is a
+blocker under spec §8
 ([darwin](issues/codex-observation-darwin-coverage.md),
 [linux](issues/terminal-observation-linux-coverage.md),
 [server-driven](issues/codex-server-driven-families.md)). a PU `NOT_RUN` is
@@ -137,8 +140,8 @@ informative. cue-less timing windows are not families; §6 holds them.
 | startup hooks review | PU | setup | `codex.setup.hooks_review` | source-only | `startup_hooks_review.rs:213-275` |
 | daemon recovery (footerless, startup) | PU | setup | `codex.setup.daemon_recovery` | darwin | `daemon_recovery.rs:115-176`, `daemon_startup.rs:119-186` |
 | picker whose title is unproven (a dropped row) | AC | interaction unknown, `evidence_clipped`; composer blocked when footered | none | capture: darwin, linux | 2.6 |
-| a dropped row met while locating the composer surface (after every other rule fell through) | AC | layout_unknown, `evidence_clipped` | none | capture: darwin, linux | 2.0 step 4, 2.1 |
-| blank bottom region on a pane taller than 256 rows (rows `192..h−65` dropped) | AC | layout_unknown, `evidence_clipped` | none | capture: darwin, linux | 2.0 step 1 |
+| a dropped row met while locating the composer surface (after every other rule fell through) | AC | unknown/unknown, `evidence_clipped` | none | capture: darwin, linux | 2.0 step 4, 2.1 |
+| blank bottom region on a pane taller than 256 rows (rows `192..h−65` dropped) | AC | unknown/unknown, `evidence_clipped` | none | capture: darwin, linux | 2.0 step 1 |
 | login follow-ups, cwd, unarchive, oss selection prompts | PU | layout_unknown | none | source-only | `onboarding/auth.rs`, `cwd_prompt.rs`, `unarchive_prompt.rs`, `oss_selection.rs` |
 | user-opened picker, numbered | RP | unknown/menu/none/blocked | `codex.menu.picker` | darwin, linux | `bottom_pane/list_selection_view.rs:640-700` |
 | user-opened searchable picker (unnumbered rows, search row, `↑`/`↓` indicators) | RP | same | same | darwin | `list_selection_view.rs:670-674,1466-1532`, `bottom_pane/picker_style.rs:54-67` |
@@ -181,7 +184,7 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    - `E` is found upward from `h−1` over blank rows, from the bottom region into
      the top region; rules matched wholly in the top region carry region `top`.
    - a dropped row reached before any non-blank row: the screen may continue
-     into rows that were not captured: layout_unknown, `evidence_clipped` (a
+     into rows that were not captured: unknown/unknown, `evidence_clipped` (a
      pre-session screen near the top of a pane taller than 256 rows leaves the
      bottom region blank and rows `192..h−65` dropped).
    - `E` unparseable: every surface anchors on `E`, which no rule recognizes:
@@ -266,7 +269,7 @@ anchoring:
 - `B` = the row above `F`: blank (the composer's bottom padding).
 - scan upward from `B−1` over blank or indented rows to the first col-0 row `C`.
   none → no match.
-- a dropped row where `B` or `C` should be → layout_unknown, `evidence_clipped`
+- a dropped row where `B` or `C` should be → unknown/unknown, `evidence_clipped`
   (2.0 step 4). an unparseable row there is neither blank nor a composer row: no
   match.
 - `C` test, row-local:
@@ -538,21 +541,33 @@ count alone fills a one-row footer (the count, when added, comes before it).
   - options `  › N. label  description` (glyph at col 2);
   - the notes row `  › Add notes`.
 - result: unknown/question/none/blocked.
-- auto-resolve. the TUI owns the timer. a default-mode request_user_input is
-  non-blocking (`core/src/tools/handlers/request_user_input.rs:83` sets
-  `is_blocking` only in plan mode), and the view resolves a non-blocking request
-  after a 60 s hidden grace and a 60 s visible `auto-resolves in …` countdown,
-  counted from when the request is shown
-  (`request_user_input/mod.rs:72-73,263-310`). a key or paste in the view stops
-  the timer (`:1183`, `:1457`); a plan-mode question never resolves itself.
-  resolution submits empty answers (`submit_empty_auto_resolution`, `:892-909`)
-  and the model continues the turn on them, so an unvisited question disappears
-  and the pane reads the continuation: question → idle raises no ready (spec §6),
-  and working sampled in the continuation arms ready as usual. observed on darwin
-  with the 0.159.2 TUI embedded and against daemons 0.159.2 and 0.159.3: each
-  tool output arrived 120.0 s after its question, and the scripted endpoint ended
-  each continuation at once, so no working sample fell between the question and
-  idle.
+- auto-resolve. the TUI owns the timer, and only a non-blocking request runs
+  it. a stock install never shows one:
+  - the model's `request_user_input` is offered only in plan mode
+    (`protocol/src/config_types.rs:700-702`) unless
+    `features.default_mode_request_user_input`, under development and off by
+    default (`features/src/lib.rs:1620-1625`), adds default mode
+    (`core/src/tools/handlers/request_user_input_spec_tests.rs:158-174`).
+  - blocking requests stay until answered: a plan-mode question
+    (`core/src/tools/handlers/request_user_input.rs:83`), the mcp
+    dependency-install prompt (`core/src/mcp_skill_dependencies.rs:299`) and the
+    mcp tool-approval prompt used when `features.tool_call_mcp_elicitation`
+    (stable, on by default) is off (`core/src/mcp_tool_call.rs:1716`). the two
+    mcp prompts render in this view, so by source they read question (not
+    run).
+  - with the switch on, a default-mode question is non-blocking. the view
+    resolves it after a 60 s hidden grace and a 60 s visible
+    `auto-resolves in …` countdown, counted from when the request is shown
+    (`request_user_input/mod.rs:72-73,263-310`); a key or paste in the view stops
+    the timer (`:1183`, `:1457`). resolution submits empty answers
+    (`submit_empty_auto_resolution`, `:892-909`) and the model continues the turn
+    on them, so an unvisited question disappears and the pane reads the
+    continuation: question → idle raises no ready (spec §6), and working sampled
+    in the continuation arms ready as usual.
+  - observed with the switch on, on darwin with the 0.159.2 TUI embedded and
+    against daemons 0.159.2 and 0.159.3: each tool output arrived 120.0 s after
+    its question, and the scripted endpoint ended each continuation at once, so
+    no working sample fell between the question and idle.
 
 mcp form (rule 3): otherwise a member `K to submit`, `K to submit all` or
 `K to submit answer` (`mcp_server_elicitation.rs:971-996`), or a first row led by
@@ -706,11 +721,10 @@ result for resume, warnings and menu pagers: unknown/menu/none/blocked.
   over options marked `{d}{cyan}"> 1. "`. `"  Welcome to "{b}"Codex"…` is
   tolerated.
 - result: unknown/setup/none/blocked.
-- tall panes:
-  - 89 ≤ h ≤ 256: the screen sits in the top region.
-  - 65 ≤ h ≤ 88: a screen that straddles both regions resolves through
-    continuation, region `compound`.
-  - h > 256 with a blank bottom region: layout_unknown, `evidence_clipped`.
+- tall panes: a pre-session screen is top-anchored. for 65 ≤ h ≤ 256 it lies in
+  the top region (region `top`) when it fits rows `0..h−65`, and otherwise
+  straddles both regions and resolves through continuation (region `compound`).
+  h > 256 with a blank bottom region: unknown/unknown, `evidence_clipped`.
 - negative: the history box `╭…╮ │ ✨ Update available! A -> B │ …` left after
   skipping the update is not setup.
 
@@ -889,6 +903,7 @@ composer reaches only guarded send
 | `tui.vim_mode_default` | `Vim: …` on the hint row; composer rules unchanged |
 | `tui.show_tooltips` | completion and working tips (ordinary transcript rows) |
 | `features.goals` (stable, on by default; `features/src/lib.rs:1686-1691`) | `/goal` and automatic goal continuation; the `Pursuing goal` indicator |
+| `features.default_mode_request_user_input` (under development, off by default; `features/src/lib.rs:1620-1625`) | offers `request_user_input` in default mode as well as plan mode; a default-mode question is non-blocking, so its header adds `auto-resolves in …` and it resolves itself (2.4) |
 | `$VISUAL` / `$EDITOR`, ctrl+g | external editor override on the hint row |
 | terminal background known (OSC 10/11) | band and panel fills, highlight-bg selected rows, coloured hint labels; the `C` test ignores backgrounds |
 | `-c` keys outside the daemon allowlist on a local launch | force embedded mode and add `⚠ 1 warning` to the hint row (`daemon_startup.rs:56-104`); the managed `--remote` launch connects to the account daemon with the same `-c` and shows no warning |
@@ -937,16 +952,17 @@ each unknown or none, never a false claim unless the item says otherwise:
   with the same `-c` runs embedded (§5).
 - **c7** tall panes: above 256 rows, rows `192..h−65` are not captured, so `Ready` reads
   unknown, `evidence_clipped`, until the transcript tail passes row `h−64`, and a
-  pre-session screen near the top reads layout_unknown.
+  pre-session screen near the top reads unknown/unknown, `evidence_clipped`.
 - **c8** npm's node launcher leads the foreground group, so a codex started through it
   is a generic terminal; managed launches and `codex` typed in a skid shell run
   the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
 
 residual ambiguity, not accepted: the implementation reads as each item states
-([issue](issues/codex-residual-ambiguity.md)). r6 can read a false idle and r5 a
-stale request; r3 and r4 can claim falsely under the narrower conditions they
-name; r1 is a true idle, narrower than a reader may assume; r2 and r7 read
-unknown or a request of another subtype:
+([issue](issues/codex-residual-ambiguity.md)). r6 can read a false idle in a pane
+at most header + 4 columns wide during a millisecond window; r5 can read a stale
+request after a provider kill under a silent shell; r3 and r4 can claim falsely
+under the conditions they name; r1 is a true idle, narrower than a reader may
+assume; r2 and r7 read unknown or a request of another subtype:
 
 - **r1** `Ready` with surviving background terminals reads idle. that is no false
   claim: spec §2 makes idle the provider's ready-state evidence and a surviving
@@ -996,9 +1012,11 @@ unknown or a request of another subtype:
 
 ## 7. requalification
 
-run this after a codex upgrade, before claiming the new version. it reuses no
-retained harness; every probe is temporary and deleted before commit
-([testing](rules/testing.md)), and every record is content-free.
+run this after a codex upgrade, before claiming the new version, with the
+current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
+requires for isolated tmux and live runs. it reuses no retained harness; every
+probe is temporary and deleted before commit ([testing](rules/testing.md)), and
+every record is content-free.
 
 1. read the upstream diff of the files §1's basis column names, and of anything
    new under `bottom_pane/`, `chatwidget/` and `transcript_view/`. mark each row
@@ -1007,7 +1025,9 @@ retained harness; every probe is temporary and deleted before commit
    `model_provider` with `wire_api="responses"`, SSE events shaped like upstream's
    test responses, `connection: close`, retries 0, a one-model catalog, a trusted
    scratch git cwd and a temporary `CODEX_HOME`. script holds (a turn held until a
-   release), `request_user_input`, an escalated `exec_command` under
+   release), `request_user_input` (a stock session offers it only in plan mode:
+   switch to plan mode, or enable `features.default_mode_request_user_input` for
+   the non-blocking default-mode view), an escalated `exec_command` under
    `-a on-request -s read-only`, goal turns (a continuation-marked input answered
    for N turns, then `update_goal {status: complete}`), and rate-limit headers for
    the usage notice and the rate-limit picker. a closed local port produces the
@@ -1017,7 +1037,8 @@ retained harness; every probe is temporary and deleted before commit
    the cli itself as its daemon package, so copy the installed package in. keep
    socket paths under darwin's 104-byte limit or the daemon updater fails.
 4. run every pane on an isolated tmux server (`tmux -L <own socket> -f /dev/null`,
-   `TMUX`/`TMUX_PANE` unset, `HOME` and `HISTFILE` pointed away from the user),
+   with `TMUX`/`TMUX_PANE` unset in the harness's environment so no command
+   reaches the user's server, and `HOME` and `HISTFILE` pointed away from the user),
    on each platform and tmux version in use, at the default width and at the
    narrow widths §6 names. set `HOME` and `CODEX_HOME` inside the probe directory
    on every codex invocation, `--version` and `--help` included: codex writes
@@ -1031,9 +1052,9 @@ retained harness; every probe is temporary and deleted before commit
    a mutation of the rule flips it.
 6. clean up: stop probe daemons and remove the socket and lock named by the
    sha256 of each probe's control-socket path from the shared daemon socket
-   directory, touching no other entry. if a codex call slipped past the probe
-   home, remove only the `codex-arg0*` directories that call created (its birth
-   time and link targets attribute them).
+   directory (`/tmp/codex-daemon-<uid>/`), touching no other entry. if a codex
+   call slipped past the probe home, remove only the `codex-arg0*` directories
+   that call created (its birth time and link targets attribute them).
 7. update §1's qualified column and versions, record the run in the
    [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
    and file each new `NOT_RUN` required family as an issue.

@@ -602,8 +602,9 @@ and bright-red ember. NO_COLOR strips styling and preserves every label.
 | Muted | RGB `#AAA69D` | every other status |
 
 status colour follows the projected tone (§5 above), never the printed word. a
-stale row's status cell reads muted `last observed: <label>` and is never ready; a
-row whose host is being re-read reads faint `checking`; both names recede faint
+stale row's status cell reads muted `last observed: <label>` and is never ready,
+even while its failed host is re-read; a row of any other host being re-read
+reads faint `checking`; both names recede faint
 ([desktop browser §5](desktop-browser.md#5-presentation)). ember never appears in
 hints, so requests and shown errors stay the table's only red statuses and are
 found at a glance. colour never carries meaning alone: every status is a word;

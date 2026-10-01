@@ -5,10 +5,11 @@ each gateway controls one host; clients compose gateways directly. there is no
 application database or coordinator.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
-screen regions, classification and guarded-send admission;
-[terminal control](terminal-agent-control.md) owns terminal targets, capture
-mechanics, rendered reads and exact terminal effects. [terminal attention](reply-notifications.md)
-owns device-local ready notices and terminal visits. [native interaction](native-agent-observation.md)
+screen regions and their limits, classification, guarded-send admission and the
+terminal wait states; [terminal control](terminal-agent-control.md) owns terminal
+targets, capture mechanics, rendered reads, exact terminal effects and wait's
+polling loop. [terminal attention](reply-notifications.md) owns device-local
+ready notices and terminal visits. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
 interruption and terminal closure separately.

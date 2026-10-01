@@ -9,15 +9,14 @@ loop and the observation sample's composition.
 status: orchestration implemented; the observation cutover is implemented in
 source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
 records the full terminal checks and composition limits on the earlier
-`{state, source}` source, then the observation cutover: capture, recognition and
-cost on darwin and linux, its send-admission and wait changes on darwin only
-([linux](issues/terminal-observation-linux-coverage.md) and the physical phone
-are `NOT_RUN`).
-this owns the hard cutover
-of ordinary terminal orchestration. it supersedes conflicting
-session-target behavior in [native interaction](native-agent-observation.md),
-[agent control](agent-control.md), and [client controls](agent-control-ux.md) at
-implementation cutover. retain native integration as a separate capability.
+`{state, source}` source, then the observation cutover: capture, recognition,
+classification and cost on darwin and linux, its send-admission and wait changes
+on darwin only ([linux](issues/terminal-observation-linux-coverage.md) and the
+physical phone are `NOT_RUN`). this owns the hard cutover of ordinary terminal
+orchestration. it supersedes conflicting session-target behavior in
+[native interaction](native-agent-observation.md), [agent control](agent-control.md),
+and [client controls](agent-control-ux.md) at implementation cutover. retain
+native integration as a separate capability.
 
 ## 1. outcome, scope and decisions
 

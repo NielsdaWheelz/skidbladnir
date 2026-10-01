@@ -7,7 +7,8 @@ the user opened; a pending question could not coexist with continuing work.
 state: the [terminal observation](../terminal-observation.md) cutover replaces it
 in source with independent activity, interaction and notice facts, per-kind
 request labels, a needs-input filter and the arming/clearing/ready machine.
-recorded evidence ([qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification),
+recorded evidence
+([qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification),
 [attention](../reply-notifications.md#disjoint-delivery-and-verification)) meets
 these resolution criteria: the screen matrix distinguishes permissions,
 structured questions, elicitation, setup and user-opened menus; concurrent work
@@ -23,9 +24,10 @@ three criteria are not met:
 
 - false idle and stale requests: codex's unaccepted residuals
   ([codex residual ambiguity](codex-residual-ambiguity.md)) include r6, a false
-  idle whose millisecond window can follow an armed working sample and so mint
-  ready, and r5, a request that stays readable after its provider is killed, and
-  in the needs-input filter, until the relaunched provider draws.
+  idle on panes at most header + 4 columns wide whose millisecond window can
+  follow an armed working sample and so mint ready, and r5, a request that stays
+  readable after its provider is killed, and in the needs-input filter, until
+  the relaunched provider draws.
 - cancellation: no attention run, on either client, declines a request or
   interrupts a turn. those screens were classified, never followed through the
   notification store.
@@ -33,8 +35,8 @@ three criteria are not met:
 
 impact: the phone's request labels, needs-input chip and ready attention are
 unproven on a device, and so is the ready machine's handling of a cancelled
-request or turn on both clients. r6 can raise ready as compaction, a review or
-an mcp pending turn starts.
+request or turn on both clients. on a narrow enough pane, r6 can raise ready as
+compaction, a review or an mcp pending turn starts.
 
 resolved when: [physical-phone acceptance](terminal-observation-phone-acceptance.md)
 passes its attention and filter rows; an attention run on the desktop and the

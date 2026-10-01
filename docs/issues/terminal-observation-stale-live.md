@@ -18,7 +18,8 @@ evidence: the full-product row of the
 
 resolved when: with current-turn approval, a live desktop against a real gateway
 on an isolated tmux socket shows a failed host's rows as muted
-`last observed: <label>` and never ready (a pending-ready row included), a host
-being re-read as faint `checking` with `checking; last observed: <label>` facts,
+`last observed: <label>` and never ready (a pending-ready row included), also
+while that host is re-read, any other host being re-read as faint `checking` with
+`checking; last observed: <label>` facts,
 both outside the needs-input filter, and the pending ready back after recovery,
 recorded in the qualification; then delete this record.

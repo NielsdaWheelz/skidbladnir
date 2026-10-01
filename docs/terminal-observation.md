@@ -1,7 +1,7 @@
 # non-native terminal observation
 
-status: implemented in source (baseline `564d32f`); not deployed. qualified on
-darwin and linux within the limits the
+status: implemented in source; not deployed. qualified on darwin and linux
+within the limits the
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
 records; physical-phone acceptance is [pending](issues/terminal-observation-phone-acceptance.md),
 and the [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
@@ -132,10 +132,12 @@ PaneObservation = {
   evidence (`evidence_clipped`); a dropped row no required read reaches costs
   nothing.
 - preserve complete utf-8 rows and style state; `capture-pane -e` without `-J`.
-  rows retain sgr; establish style at each retained region's start. truncation
-  means lost requested evidence, not an omitted middle transcript. a clipped upper region cannot invalidate
-  an intact lower composer; a clipped required boundary invalidates that inference.
-  do not flatten transcript and controls into one text tail or add an emulator.
+  each row is self-contained: it keeps its sgr and parses from the default style
+  ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)).
+  truncation means lost requested evidence, not an omitted middle transcript. a
+  clipped upper region cannot invalidate an intact lower composer; a clipped
+  required boundary invalidates that inference. do not flatten transcript and
+  controls into one text tail or add an emulator.
 - one row parser serves both grammars. it reads sgr as tmux's writer emits it,
   OSC 8 hyperlinks and SO/SI shifts as zero width, and tmux 3.7c's tab cells as
   spaces to the next 8-column stop (3.4 writes the blank cells instead). tmux
@@ -312,7 +314,8 @@ ready, idle/unknown. when request/menu/notice takes precedence over working, add
 with source terminal; unavailable/non-agent labels make no inference claim.
 rows of a host whose read failed or that is being re-read are never ready and
 stay out of the filter. a failed host's rows keep their stale cached facts as
-muted `last observed: <label>`. a re-read host's rows take each client's form:
+muted `last observed: <label>`, and keep that form while the host is re-read.
+the rows of any other re-read host take each client's form:
 the desktop table cell reads faint `checking` and makes no status claim, while
 the selected row's facts read `checking; last observed: <label>`
 ([desktop browser §5](desktop-browser.md#5-presentation)); android shows
@@ -481,12 +484,14 @@ explicit costs:
   guarded send types into the sub-agent; cue-less turn starts read idle for
   their duration and can raise ready, with no two-sample rule (grammar §6 c4
   names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
-  and plan-mode goal continuations); codex emits no notices; a default-mode
-  question left untouched resolves itself with empty answers 120 s after it is
-  shown, so an unvisited question leaves the needs-input filter and attention
-  while the turn continues on those answers; working sampled in that
-  continuation arms ready as usual (a plan-mode question never resolves itself,
-  and a key or paste in the view stops the timer;
+  and plan-mode goal continuations); codex emits no notices; with the
+  under-development `features.default_mode_request_user_input` switched on (off
+  by default; the managed launch never sets it), a default-mode question left
+  untouched resolves itself with empty answers 120 s after it is shown, so an
+  unvisited question leaves the needs-input filter and attention while the turn
+  continues on those answers, and working sampled in that continuation arms ready
+  as usual (stock questions, from plan mode and the mcp prompts, block until
+  answered, and a key or paste in the view stops the timer;
   [grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
   managed launches replace the launch's statusline layout; a codex started through
   npm's node launcher is a generic terminal.

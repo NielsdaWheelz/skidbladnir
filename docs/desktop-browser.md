@@ -110,12 +110,12 @@ the rule. refresh retains the selected lifetime while it stays in the view;
 otherwise it uses the previous index clamped to the surviving rows, or none.
 never auto-attach. external membership changes never change the view.
 rows of a host whose read failed retain their last-observed facts, their status
-cell reading `last observed: <label>`; rows of a host being re-read read
-`checking` (§5). remote actions stay disabled on both. once a scoped host fails
-a read, its notice names the failure and shows in every view, even with no
-retained rows; an unobserved host is not announced as unavailable. inventory
-failures never replace an action's outcome notice, so an unknown outcome stays
-visible. reuse existing honest empty copy.
+cell reading `last observed: <label>`, also while that host is re-read; rows of
+any other host being re-read read `checking` (§5). remote actions stay disabled
+on both. once a scoped host fails a read, its notice names the failure and shows
+in every view, even with no retained rows; an unobserved host is not announced
+as unavailable. inventory failures never replace an action's outcome notice, so
+an unknown outcome stays visible. reuse existing honest empty copy.
 
 ## 4. actions and return
 
@@ -220,10 +220,11 @@ copy, coloured by its tone. a pending working-to-idle transition projects
 exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness.
 recorded native identity never supplies status. shell/remote rows use
 `terminal`/existing unknown context. a row of a host whose read failed is stale:
-its cell reads muted `last observed: <label>` and is never ready. a row of a host
-being re-read (a pending scoped read, or the re-read after a metadata change) is
-never ready, and its cell makes no status claim: it reads faint `checking`. a
-failed host keeps its notice.
+its cell reads muted `last observed: <label>` and is never ready, and it stays
+stale while that host is re-read. a row of any other host being re-read (a
+pending scoped read, or the re-read after a metadata change) is never ready, and
+its cell makes no status claim: it reads faint `checking`. a failed host keeps
+its notice.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only
@@ -232,10 +233,10 @@ word, otherwise `i of n`); the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
 status label (`last observed: <label>` on those rows) with `work continues` and
 `inferred from terminal` when they apply, `: <command>` for a non-agent program,
-then `· N attached`; its directory on a separate line; the keys. for an available local session, the directory line ends
-with `shift+t new shell here`, with the key bold and the label plain. reserve two
-spaces before the action and truncate a long directory from the left so its final
-components remain visible.
+then `· N attached`; its directory on a separate line; the keys. for an available
+local session, the directory line ends with `shift+t new shell here`, with the
+key bold and the label plain. reserve two spaces before the action and truncate a
+long directory from the left so its final components remain visible.
 the action is absent for ssh/mosh sources, unavailable sessions, modal pages and
 pending operations. it creates and enters an independent shell on the named
 target's machine, in its current directory and group; the original session keeps

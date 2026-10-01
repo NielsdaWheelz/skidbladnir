@@ -8,7 +8,8 @@ treated persistent composer chrome as idle evidence.
 state: the [terminal observation](../terminal-observation.md) cutover replaces it
 in source with bounded current-screen regions and the
 [codex](../terminal-observation-codex.md) and [claude](../terminal-observation-claude.md)
-grammars. recorded evidence ([qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification))
+grammars. recorded evidence
+([qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification))
 meets these resolution criteria: the capture observes the intended complete
 regions; indistinguishable codex composer states never read idle, except the
 cue-less turn starts [spec §9](../terminal-observation.md#9-final-state-costs-and-completion)

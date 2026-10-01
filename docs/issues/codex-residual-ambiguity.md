@@ -5,7 +5,8 @@ problem: the codex grammar's residual items r1–r7
 are neither accepted costs nor repaired. the implementation reads as each item
 states.
 
-impact: two can claim falsely on ordinary screens.
+impact: two can claim falsely: r6 in a pane at most header + 4 columns wide
+during a millisecond window, and r5 after a provider kill under a silent shell.
 
 - r6: during the millisecond stale-`Ready` window of `/compact`, review entry or
   the mcp pending turn, a pane at most header + 4 columns wide (≤ 22 for
@@ -19,7 +20,7 @@ impact: two can claim falsely on ordinary screens.
   `skid wait --state needs-input` could return early. ready cannot fire across
   the foreground change.
 
-two more claim falsely only under narrower conditions: r3 reads a wrong picker
+r3 and r4 claim falsely under their own conditions: r3 reads a wrong picker
 kind when a picker whose header has no bold row is drawn under a transcript row
 that starts with a listed title; r4 reads a run-state cue, idle included,
 from an unmanaged status line whose first item is a user value equal to a

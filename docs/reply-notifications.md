@@ -262,16 +262,20 @@ pending ready → request → idle and starting → idle read idle; a visit keep
 unanswered request; unknown, an outage and a foreground change cannot bridge
 working to idle; an outage preserves pending ready; a delayed idle response
 arriving after a visit cannot restore the consumed ready, against a control on
-another session and provider that read ready. codex's unanswered question
-resolved itself with empty answers after 120 s and returned to idle without
-ready; the scripted endpoint ended each continuation at once, so this run
-sampled no working after the question, and with a real model a continuation
+another session and provider that read ready. with codex's off-by-default
+`features.default_mode_request_user_input` enabled, the unanswered default-mode
+question resolved itself with empty answers after 120 s and returned to idle
+without ready; the scripted endpoint ended each continuation at once, so this
+run sampled no working after the question, and with a real model a continuation
 sampled working arms ready as usual
 ([observation §9](terminal-observation.md#9-final-state-costs-and-completion)).
 pending ready → notice → idle is `NOT_RUN`: no grammar emits a current notice.
-stale rows stay out of ready: the live run passed through the old faint cell, and
-the projected stale cell was proven by a temporary desktop-model probe at
-`5c59996`. both clients' stores and projections passed temporary model-level
+the live never-ready check on stale rows ran only on the old faint `unavailable`
+cell, which cannot show ready, so it proved nothing. the projected stale cell
+(`5c59996`) and the checking cell (`131c1df`) are proven by temporary
+desktop-model probes; their live run is `NOT_RUN`
+([stale and checking cells](issues/terminal-observation-stale-live.md)).
+both clients' stores and projections passed temporary model-level
 probes (go: 15 sequences and visits; android: robolectric); physical-phone and
 linux attention runs are `NOT_RUN`
 ([phone](issues/terminal-observation-phone-acceptance.md),

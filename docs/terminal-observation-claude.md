@@ -938,9 +938,11 @@ residual ambiguity without a ruling:
 
 ## 6. requalification
 
-run this after a claude upgrade, before claiming the new version. it reuses no
-retained harness; every probe is temporary and deleted before commit
-([testing](rules/testing.md)), and every record is content-free.
+run this after a claude upgrade, before claiming the new version, with the
+current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
+requires for isolated tmux and live runs. it reuses no retained harness; every
+probe is temporary and deleted before commit ([testing](rules/testing.md)), and
+every record is content-free.
 
 1. diff the new bundle's strings and components against the anchors of 2.3–2.6:
    the footer vocabulary, the dialog copy, the panel status shapes, the pinned
@@ -962,11 +964,14 @@ retained harness; every probe is temporary and deleted before commit
    socket directory under `/tmp` regardless), settings
    `disableDeepLinkRegistration: "disable"` (otherwise each temporary home
    registers a url handler with LaunchServices), `HISTFILE` pointed away from the
-   user, and an isolated tmux server (`tmux -L <own socket> -f /dev/null`). pass
-   the pane's own `TMUX`/`TMUX_PANE`/`TERM_PROGRAM`, the realistic skid condition,
-   so tmux notices and OSC 8 links render. pressing ← in the agents view moves the
-   conversation into a detached daemon whose state survives the tmux server: kill
-   it and remove its state afterwards.
+   user, and an isolated tmux server (`tmux -L <own socket> -f /dev/null`), with
+   `TMUX`/`TMUX_PANE` unset in the harness's environment. inside the pane, let
+   the provider inherit the pane's own `TMUX`/`TMUX_PANE`/`TERM_PROGRAM`, the
+   realistic skid condition, so tmux notices and OSC 8 links render. pressing ←
+   in the agents view moves the conversation into a detached daemon whose state
+   (`/tmp/cc-daemon-<uid>/<hash>`) survives the tmux server: kill it and remove
+   that directory afterwards. remove the socket directory
+   (`/tmp/cc-socks-<uid>`) only if the probe created it.
 4. qualify every renderer in use (fullscreen, classic, screen reader) on each
    platform and tmux version, at the default width and at the narrow widths 2.4
    and rule 24 measure. classify through the real capture and `detect`;
