@@ -1680,13 +1680,15 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 	if ok2 && strings.HasPrefix(hint2, "Syntax theme: ") {
 		// The theme choices sit at column 1 above the syntax preview: unnumbered
 		// (2.1.286), or options numbered from 1 whose labels wrap at column 6
-		// (2.1.284). The run takes rows of either form and those continuations;
-		// claude draws one form per version, so a mixed run is not the picker.
-		numbered := func(line claudeLine) bool {
+		// (2.1.284). The run takes rows of either form and any row at column 6 or
+		// right of it, where only a numbered label continues (claudeParseOptions'
+		// c+5); claude draws one form per version, so a run mixing them is not
+		// the picker.
+		numberedRow := func(line claudeLine) bool {
 			_, _, _, start := claudeOptionStart(line.plain, 1)
 			return start
 		}
-		theme := func(line claudeLine) bool { return numbered(line) || claudeThemeOption.MatchString(line.plain) }
+		theme := func(line claudeLine) bool { return numberedRow(line) || claudeThemeOption.MatchString(line.plain) }
 		if bottom, found := screen.find(top2-1, theme); found {
 			top, selected := bottom, 0
 			for {
@@ -1701,7 +1703,7 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 			}
 			choices := screen.lines[top : bottom+1]
 			_, fromOne := claudeParseOptions(choices, 1)
-			oneForm := fromOne || !slices.ContainsFunc(choices, func(line claudeLine) bool { return numbered(line) || line.col >= 6 })
+			oneForm := fromOne || !slices.ContainsFunc(choices, func(line claudeLine) bool { return numberedRow(line) || line.col >= 6 })
 			_, started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
 			if started && oneForm && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
 				return "claude.setup.theme", sessions.InteractionSetup, top, true
