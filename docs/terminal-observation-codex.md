@@ -92,7 +92,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | layout without a status line | AC | activity from the status row only | `codex.interaction.none` | darwin | — |
 | empty composer during work | AC | composer empty; activity from row or run-state | — | darwin, linux | — |
 | composer surface with no request element | RP | interaction none | `codex.interaction.none` | darwin, linux | 2.1 |
-| shortcut overlay (`?`) | RP | the composer surface's values; `evidence_clipped` when it pushes the transcript terminator off-screen | `codex.interaction.none` | darwin (100 columns; 60 and 40 read unproven) | `bottom_pane/footer.rs:226-233` |
+| shortcut overlay (`?`) | RP | the composer surface's values; `evidence_clipped` when it pushes the transcript terminator off-screen | `codex.interaction.none` | darwin (100 columns idle; 60 and 40 columns `evidence_clipped`) | `bottom_pane/footer.rs:226-233` |
 | `Ready` with a draft, history search or any unclean band | AC | activity unknown | — | darwin, linux (draft) | §3 step 4.1 |
 | side view (placeholder `Ask a follow-up question`) | AC | `Ready` → unknown; composer blocked; working stands | `codex.scope.side` | darwin | `chatwidget/side.rs:17-28`, `chatwidget.rs:2042` |
 | side view with a draft (placeholder gone, `Side` label hidden in some modes) | AC | activity unknown (draft) | — | darwin | `bottom_pane/chat_composer.rs:4833-4846` |
@@ -155,7 +155,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | image-only prompt (`  [Image #N]` rows, no `›` row) | AC | a prompt stop of the transcript scan | — | source-only: only remote images (another client's history) render labels outside the message | `history_cell/messages.rs:204-237` |
 | inline layout (`alt=0`) | RP | same values | same ids | darwin, linux | — |
 | known terminal background (OSC 10/11 answered) | RP | same values | same ids | darwin | `style.rs:60-75,143-153,209-214`, `style/contrast.rs:35-78` |
-| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.run_state.ready@compound` | darwin, linux | `transcript_view.rs:518-545` |
+| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.run_state.ready` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
 | tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | `codex.run_state.ready` | darwin, linux | spec §3 |
 | stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown | none | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 r5 |
 | remote image rows `[Image #N]` above the prompt | RP | composer draft | — | source-only: only rehydrated history from another client attaches remote images | `chat_composer.rs:4927-4932`, `composer_layout.rs:118-129` |
@@ -214,12 +214,14 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    9. an option scan from `E` finds a selected row → picker (2.6)
    10. composer surface (2.1)
 
-   no match: layout_unknown, composer unknown. one partial match is final: rule
-   9 found a selected row but its title is unproven (2.6). a row that was not
-   parsed fails any rule whose lookup meets it, so that rule falls through.
-   rule 10 comes last and so preempts nothing: it reads `evidence_clipped` when
-   locating `F`, `B` or `C` meets a dropped row, and does not match when it meets
-   an unparseable one (2.1).
+   no match: layout_unknown, composer unknown. two partial matches are final:
+   rule 6, whose matched footer makes row 0's read decisive (2.7: a dropped row 0
+   reads interaction unknown, `evidence_clipped`; an unparseable or non-`/ ` row 0
+   reads interaction unknown), and rule 9, which found a selected row whose title
+   is unproven (2.6). any other rule whose lookup meets a row that was not parsed
+   fails, so it falls through. rule 10 comes last and so preempts nothing: it
+   reads `evidence_clipped` when locating `F`, `B` or `C` meets a dropped row, and
+   does not match when it meets an unparseable one (2.1).
 5. every surface except the composer surface and the async editor hides the
    status row, composer and status line: activity unknown, nothing carried
    forward.
@@ -845,8 +847,10 @@ no rule matched → unknown.
 a user draft that literally reads `Ask Codex to do anything` is not dim, so it is
 a draft. under the dimmed composer it is dim and would pass as the placeholder;
 the composer is blocked there anyway. queued messages during work leave the
-composer empty. codex emits no composer rule id; the composer reaches only guarded
-send ([spec §5](terminal-observation.md#5-controls-and-diagnostic-api)).
+composer empty. codex emits no rule id for the composer's value (empty, draft,
+blocked); `codex.composer.external_editor` names the hint-row override. the
+composer reaches only guarded send
+([spec §5](terminal-observation.md#5-controls-and-diagnostic-api)).
 
 ## 5. configuration knobs
 
@@ -875,7 +879,7 @@ send ([spec §5](terminal-observation.md#5-controls-and-diagnostic-api)).
 ## 6. accepted costs and residual ambiguity
 
 accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
-each unknown or none, never a false claim:
+each unknown or none, never a false claim unless the item says otherwise:
 
 - **c1** idle needs `Ready`, the main placeholder on a clean band, no external editor
   and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
@@ -883,22 +887,24 @@ each unknown or none, never a false claim:
   pre-typed draft produces no ready notice; `skid wait --state idle` does not
   match until the draft is sent or cleared or the editor closes. a scrolled or
   replayed transcript without a visible terminator reads unknown.
-- **c2** displayed-thread scope. the classifier describes the thread the TUI displays.
-  a v1 sub-agent view has the enabled composer and the main placeholder, so it
-  reads like the main thread, and guarded send would type into the sub-agent.
-  background sub-agents behind a main `Ready` read idle. the only discriminator is
-  text: with more than one thread the passive status line appends an agent label,
-  `Main [role]` or a nickname (`app/agent_navigation.rs:327-352`,
-  `footer.rs:838-847`), truncated first at narrow widths; keying on it would be a
-  width-dependent text rule.
+- **c2** displayed-thread scope. the classifier describes the thread the TUI displays,
+  and every claim is about that thread. a v1 sub-agent view has the enabled
+  composer and the main placeholder, so it reads like the main thread: its idle
+  and empty composer are the sub-agent's, and guarded send types into the
+  sub-agent. background sub-agents behind a main `Ready` read idle. the only
+  discriminator is text: with more than one thread the passive status line
+  appends an agent label, `Main [role]` or a nickname
+  (`app/agent_navigation.rs:327-352`, `footer.rs:838-847`), truncated first at
+  narrow widths; keying on it would be a width-dependent text rule.
 - **c3** `Pursuing goal` withholds idle (unknown, `evidence_conflict`), even when no
   continuation will run: after a fork the continuation is deferred until the next
   turn (`state/src/runtime/goals.rs:68-120`), and a thread without goal tools
   never continues.
-- **c4** cue-less turn starts read idle for their duration, with no two-sample rule:
-  `!cmd` and queued slash commands (≤ ~45 ms), the daemon-recovery continuation if
-  a reconnecting TUI resumes before the restored turn starts (not induced), and a
-  goal pursued while plan mode's indicator replaces the goal indicator (not run).
+- **c4** cue-less turn starts read idle for their duration, a false idle, with no
+  two-sample rule: `!cmd` and queued slash commands (≤ ~45 ms), the
+  daemon-recovery continuation if a reconnecting TUI resumes before the restored
+  turn starts (not induced), and a goal pursued while plan mode's indicator
+  replaces the goal indicator (not run).
   a 5 s poll lands in a ≤ 45 ms window with probability under 1 %; `ready` can fire
   when a queued shell command follows a turn, and `skid wait --state idle` right
   after `!cmd` can return early. right after a guarded send the visible draft reads
@@ -916,8 +922,8 @@ each unknown or none, never a false claim:
   is a generic terminal; managed launches and `codex` typed in a skid shell run
   the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
 
-residual ambiguity, from the frozen grammar's analysis. each was recommended for
-acceptance; none has a recorded ruling beyond the grammar's freeze:
+residual ambiguity, not accepted: the implementation reads as each item states,
+and r1, r5 and r6 can claim falsely ([issue](issues/codex-residual-ambiguity.md)):
 
 - **r1** `Ready` with surviving background terminals reads idle. spec §2 calls a
   process count alone insufficient for working.

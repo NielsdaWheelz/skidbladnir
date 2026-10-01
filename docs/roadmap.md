@@ -13,22 +13,26 @@ by the [codex](terminal-observation-codex.md) and [claude](terminal-observation-
 grammars, guarded composer reuse, diagnostics, managed codex run-state chrome and
 desktop/phone needs-input filtering, with manual claude executable recognition.
 screen ambiguity remains unknown; titles/progress are excluded. source is
-implemented on `terminal-observation`; nothing is released or deployed.
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-passes capture, recognition, classification, composition, controls and cost on
-darwin and linux, and the darwin gateway→cli/desktop product and attention,
-within its recorded limits. open: [physical phone](issues/terminal-observation-phone-acceptance.md),
+implemented (baseline `564d32f`); nothing is released or deployed.
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
+within its recorded limits, passes capture, recognition, classification and cost
+on darwin and linux. composition, controls (guarded send and wait), the
+gateway→cli/desktop product and attention pass on darwin only; on linux
+composition covers the managed create path and inspect, and the rest is
+`NOT_RUN`. open: [physical phone](issues/terminal-observation-phone-acceptance.md),
 [live provider smoke](issues/terminal-observation-provider-smoke.md),
 required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),
 [claude on darwin](issues/claude-observation-darwin-coverage.md) and
 [linux](issues/terminal-observation-linux-coverage.md),
 [claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md),
 [codex server-driven families](issues/codex-server-driven-families.md), the
+[codex residual ambiguity](issues/codex-residual-ambiguity.md), the
 [narrow claude theme picker](issues/claude-theme-picker-narrow.md), the
 [stale status width](issues/stale-status-width.md) and the
 [host-config cutover](issues/host-config-cutover.md).
-[status detection](issues/terminal-status-detection.md) and
-[needs input](issues/agent-needs-input.md) close with them;
+[status detection](issues/terminal-status-detection.md) closes with the coverage,
+residual and smoke records, and [needs input](issues/agent-needs-input.md) with
+the phone run and an attention run through cancellation;
 [baselinePending](issues/notification-baseline-pending.md) records the attention
 store's dead field. [list latency](issues/session-list-latency.md) and
 [hook tmux waits](issues/agenthook-tmux-wait-delay.md) are pre-existing costs found

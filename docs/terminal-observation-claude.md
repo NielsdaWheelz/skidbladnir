@@ -717,17 +717,17 @@ hint and option copy uses remappable chords only where written `<chord>` or `\S+
 everything else is the fixed copy of the qualified versions (2.1.286, and 2.1.284
 where §1 names it).
 
-the order resolves every shared `L′` signature. rows 19–22 share hint and column
+the order resolves every shared `L′` signature. rules 19–22 share hint and column
 (claude's shared dialog: rule at col 0, title, body, options and hint at col 2) and
-differ by anchors. row 18 differs by column. row 23 has its own hint at col 1 and
-checkbox options. row 10 differs from row 9 by column (options and hint at col 2,
-title at col 1); row 17 shares row 10's column-1 title under a `RULE` but has no
-hint. the theme menu (row 6) and theme setup (row 24) differ by hint and by
-`Let's get started.`. rows 11 and 12 differ by `n to add notes` and by the chat
-row's number. row 1 precedes row 2 because the `dialog waiting` prefix marks a
+differ by anchors. rule 18 differs by column. rule 23 has its own hint at col 1 and
+checkbox options. rule 10 differs from rule 9 by column (options and hint at col 2,
+title at col 1); rule 17 shares rule 10's column-1 title under a `RULE` but has no
+hint. the theme menu (rule 6) and theme setup (rule 24) differ by hint and by
+`Let's get started.`. rules 11 and 12 differ by `n to add notes` and by the chat
+row's number. rule 1 precedes rule 2 because the `dialog waiting` prefix marks a
 request held behind the viewer (S).
 
-theme setup (row 24) on 2.1.284 numbers the choices like any option (`  N. label`,
+theme setup (rule 24) on 2.1.284 numbers the choices like any option (`  N. label`,
 the selected one `❯ N. label`) and draws the check after the current label; 2.1.286
 draws them unnumbered with `✔ ` before it. everything around them is the same:
 `Let's get started.`, title and subtitle at col 1, the choices at col 1, a blank
@@ -770,7 +770,7 @@ the only `❯` to `❯ N. Chat about this`.
   row unchanged.
 - settings error at 40: body wraps at col 2; options unchanged.
 - model-menu hint at 60: 2 rows. model menu at 40x30: the hint lies below the pane
-  (row 60 of §1).
+  (§1 row 60).
 - theme `Syntax theme:` at 40: continuation at col 1.
 
 ### 2.7 precedence, reasons, diagnostics
@@ -805,8 +805,9 @@ cost: an interrupted or failed turn reads `idle`/`ready` (§5 c2).
 
 ## 3. composer semantics
 
-the composer is evaluated only on an accounted composer surface (2.3) or the
-screen-reader surface (2.5). first match:
+the composer comes from an accounted composer surface (2.3), the screen-reader
+surface (2.5), a 2.6 family or a screen-reader request; the last two always read
+`blocked`. first match:
 
 | value | condition |
 | --- | --- |
@@ -850,7 +851,7 @@ display configuration is retained; skid overrides nothing.
 | `subagentStatusLine` | replaces panel row bodies: such rows show no readable status and make no work claim |
 | `feedbackDrafts`, `feedbackSurveyRate`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` | the digit band (composer unknown) |
 | plugin render hooks (`AbovePrompt`, `PromptHint`) | unsupported: an undetectable digit band / an `unlisted` footer segment (§5 c11) |
-| `tengu_copper_thistle`, `tengu_coordinator_panel` (server-gated) | unified footer (row 88); the panel instead of agent pills (row 13) |
+| `tengu_copper_thistle`, `tengu_coordinator_panel` (server-gated) | unified footer (§1 row 88); the panel instead of agent pills (§1 row 13) |
 | `TERM_PROGRAM` (set by tmux) | enables OSC 8 links |
 | `TMUX` plus tmux on `PATH` | enables the tmux notices |
 | `CLAUDE_CODE_TMPDIR` | where background-task output lands |
@@ -890,8 +891,9 @@ each unknown or none, never a false claim unless the item says otherwise:
     session while claude pins a notice.
 - **c5** working is lost when an unknown col-2 notification sits in the composer
   margin while a statusline suppresses the hint: the notification becomes `S`.
-- **c6** vim NORMAL mode is indistinguishable from an ordinary empty composer (U);
-  `empty` there relies on the existing paste staging.
+- **c6** vim NORMAL mode is indistinguishable from an ordinary empty composer (U).
+  it reads `empty`, so guarded send is admitted and relies on the existing paste
+  staging.
 - **c7** process pills do not count as work: a long background shell allows idle,
   and an auto-resumed turn flips back to working.
 - **c8** a finished agent or workflow row (until evicted, ≤ ~30 s) and a `WAIT` row
@@ -912,7 +914,8 @@ each unknown or none, never a false claim unless the item says otherwise:
   unknown until repaint.
 - **c13** the no-response retry variant draws a second row under `RT`; without the
   hint it reads unknown.
-- **c14** a screen-reader draft of only spaces reads `empty`.
+- **c14** a screen-reader draft of only spaces reads `empty`, so guarded send is
+  admitted and appends to it.
 - **c15** human-request dialogs without a rule (auto-mode offer, rate-limit options,
   consumer terms, trial expired) read unknown/unknown. live qualification of each
   is an [open blocker](issues/claude-unruled-request-dialogs.md).
@@ -929,15 +932,8 @@ each unknown or none, never a false claim unless the item says otherwise:
 residual ambiguity without a ruling:
 
 - **r1** 2.1.284's theme picker reads `unknown/unknown/none unknown`
-  `layout_unknown`, never a false claim, in two measured narrow cases. below 40
-  columns the welcome art is drawn above it, and once the focus leaves option 1
-  claude leaves a dot row at col 0 directly above `Let's get started.` (at 26 also
-  a `.` at col 0 of its row); the row joins the anchor's block (`blk(1)` admits col
-  0), whose top is then not at col 1. at 33 columns `Dark mode (ANSI colors only)`
-  is one column too wide, and the next option overwrites its tail, so the label
-  anchor is missing. 2.1.286 is unobserved at these widths. candidate remedies: an
-  art-row-tolerant `Let's get started.` anchor, and a `Dark mode (ANSI` prefix
-  anchor ([issue](issues/claude-theme-picker-narrow.md)).
+  `layout_unknown`, never a false claim, in measured cases below 40 columns
+  ([issue](issues/claude-theme-picker-narrow.md)).
 
 ## 6. requalification
 

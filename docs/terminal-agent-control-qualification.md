@@ -105,9 +105,9 @@ recognition. the earlier actual provider evidence remains source-attributed.
 cutover; the records above stay attributed to their own sources. source: branch
 `terminal-observation`, every slice merged at `4e1b737` over baseline `564d32f`,
 then integration fixes `82c0589` (request predicate, resolve deadline, unparseable
-codex rows), `5c59996` (stale table cell), `2599491` (tmux wait bound) and
-`e7b7695` (claude 2.1.284 theme picker); head `6859010`. no release or deployment
-is implied.
+codex rows), `5c59996` (stale table cell), `2599491` (tmux wait bound),
+`e7b7695` (claude 2.1.284 theme picker), merged at `6859010`, and `131c1df`
+(checking cell). no release or deployment is implied.
 
 environments:
 
@@ -135,16 +135,16 @@ deleted. the per-family record is each grammar's capability table
 | recognition | PASS: bare, relative, absolute and symlinked launches of a native image and of claude 2.1.286; copies, wrappers and unrelated programs unrecognized; suspend/resume, exit, exec replacement and respawn; a relink reaches the next launch and leaves the old image unrecognized; npm-launched codex is a generic terminal (accepted cost) | PASS on both hosts against `/proc`: the same spellings and negatives, relink, replace-in-place, prune and a dangling link; claude 2.1.284 through `executablePath`; admission refuses dangling, non-executable and old-schema (`argument0`) configuration |
 | provider behavior (live, scripted endpoints) | PASS for every family the grammars mark darwin | PASS for every family the grammars mark linux. claude 2.1.284's numbered theme picker read layout_unknown at `4e1b737` (FAIL, safe direction) and reads setup with the fix (`6618e75`, behaviour-identical to `e7b7695`) at 26–100 columns, live on both hosts, outside the [narrow residue](issues/claude-theme-picker-narrow.md) |
 | negatives | PASS: composer during codex work never idle; provider → shell → provider for codex (exit, and SIGKILL with tmux keeping the working title) and claude (working, question); historical errors under current work. quoted chrome: authored frames only | PASS: composer during codex work; daemon disconnect; provider → shell. the rest `NOT_RUN` |
-| composition (inventory, inspect, send) | PASS: 340/340 frames through list, enrich, inspect and send, every refusal writing no bytes; 14/14 real byte caps; live idle, working, draft, menu, question, permission, changed target and clipped for both providers. baseline pairs: codex read idle during a held turn and claude read unknown throughout | PASS: the managed create path (daemon-backed codex `--remote`, claude with production arguments and its identity hook) and inspect with same-sample valid diagnostics. guarded send `NOT_RUN` |
-| full product (gateway → cli/desktop) | PASS: every label and tone, concurrent work + question, unknown, unavailable, filter membership and order, creation clearing the filter, visits, empty copy, 80×24, `info`, `info --explain`, wait states. the stale table cell FAILED at `4e1b737` (faint `unavailable`); `5c59996` renders the projection, proven red → green through the real desktop model, live desktop re-run `NOT_RUN` | `NOT_RUN` |
-| attention | PASS, recorded in [terminal attention](reply-notifications.md#disjoint-delivery-and-verification) | `NOT_RUN` |
+| composition (inventory, inspect, send) | PASS: 340/340 frames through list, inspect and send, and 326/326 again with enrich, every refusal writing no bytes; 14/14 real byte caps; live idle, working, draft, menu, question, permission, changed target and clipped for both providers. baseline pairs: codex read idle during a held turn and claude read unknown throughout | PASS: the managed create path (daemon-backed codex `--remote`, claude with production arguments and its identity hook) and inspect with same-sample valid diagnostics. guarded send `NOT_RUN` |
+| full product (gateway → cli/desktop) | PASS: every label and tone, concurrent work + question, unknown, unavailable, filter membership and order, creation clearing the filter, visits, empty copy, 80×24, `info`, `info --explain`, wait states. the stale table cell FAILED at `4e1b737` (faint `unavailable`); `5c59996` renders the projection, and `131c1df` keeps faint `checking` for a host being re-read while a failed host keeps the stale cell, each proven red → green through the real desktop model (`131c1df`: 38/38 checks, the 8 checking-cell checks red at `6859010`); live desktop re-run `NOT_RUN` | `NOT_RUN` |
+| attention | PASS except pending ready → notice → idle (`NOT_RUN`: no grammar emits a current notice), recorded in [terminal attention](reply-notifications.md#disjoint-delivery-and-verification) | `NOT_RUN` |
 | controls | PASS: guarded send into an empty composer (idle, and queued while working) for both providers; draft, dialog, menu, clipped, unavailable and changed-target refusals without bytes (claude's dialog refusal recorded, its byte check `NOT_RUN`); text, keys, stop and close unchanged | `NOT_RUN` |
-| diagnostics and logs | PASS: explanation agrees with status 16/16 in two rounds; rule ids are literals; envelopes, delivered receipts and gateway logs hold no content; `Terminal.ObservationFailed` logs `capture_failed` and `observation_timeout` | inspect diagnostics valid; logs `NOT_RUN` |
+| diagnostics and logs | PASS: explanation agrees with status in all 32 explained samples; rule ids are literals; envelopes, delivered receipts and gateway logs hold no content; `Terminal.ObservationFailed` logs `capture_failed` and `observation_timeout` | inspect diagnostics valid; logs `NOT_RUN` |
 | cost (two-second enrichment budget) | PASS at 16 represented sessions including 120×256 and 100×150 panes: enrich median 27.4 ms, max 41.2 ms, against baseline 471 / 666 ms; one session 8.4 ms; no timeout; gateway inventory median 928 ms against 1307 ms. the production log's peak is 15 sessions | PASS: 16 sessions enrich median 25.8 ms (devbox) and 25.4 ms (arch) against baseline 378 / 289 ms; tall panes max 102 ms; no timeout |
 | deadlines | at `4e1b737` a resolve-stage deadline read `TerminalTargetChanged` (14/15); `82c0589` reads `TerminalUnavailable` (15/15). live `observation_timeout` returns 200 with unavailable status and same-sample diagnostics. a stopped tmux server held responses until it resumed (pre-existing); at `2599491` each tmux command returns within 0.1 s of its deadline | `NOT_RUN`; tmux 3.4's identify path matches the source the fix relies on |
-| physical phone | `NOT_RUN`: no device run has happened; the root appends its results here | — |
+| physical phone | `NOT_RUN` ([pending](issues/terminal-observation-phone-acceptance.md)) | — |
 
-client slices also passed their temporary red → green probes before merge: go
+client changes passed temporary red → green probes: go
 ingress, projection, needs-input, wait, `info --explain`, 15 attention sequences
 and the desktop filter and order through the real model, with 21 mutations
 killed; android ingress, projection, attention, the needs-input chip, schema-3
@@ -155,13 +155,8 @@ cost found, not a regression: inventory's list spends about 54 ms per session on
 serial tmux commands on darwin (36–57 ms on linux), unchanged from baseline and
 outside the enrichment budget ([issue](issues/session-list-latency.md)).
 
-remaining blockers, each `NOT_RUN` and recorded individually: the
-[physical phone](issues/terminal-observation-phone-acceptance.md), a
-[live provider smoke](issues/terminal-observation-provider-smoke.md), required
-families for [codex on darwin](issues/codex-observation-darwin-coverage.md),
-[claude on darwin](issues/claude-observation-darwin-coverage.md) and
-[linux](issues/terminal-observation-linux-coverage.md),
-[claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md)
-and [codex server-driven families](issues/codex-server-driven-families.md).
+each `NOT_RUN` above is an evidence gap recorded as an issue; the
+[roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
+indexes them with every other open item.
 `scripts/check static host`, `go vet`, `go build` and `gofmt` passed at every
 integration commit; these supply no behavioral proof.

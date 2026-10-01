@@ -261,8 +261,8 @@ providers, including claude with production arguments; work → question → idl
 pending ready → request → idle and starting → idle read idle; a visit keeps an
 unanswered request; unknown, an outage and a foreground change cannot bridge
 working to idle; an outage preserves pending ready; a delayed idle response
-arriving after a visit cannot restore the consumed ready, against a paired control
-that read ready; codex's unanswered question, which resolves itself after 120 s,
+arriving after a visit cannot restore the consumed ready, against a control on
+another session and provider that read ready; codex's unanswered question, which resolves itself after 120 s,
 returns to idle, never ready. pending ready → notice → idle is `NOT_RUN`: no
 grammar emits a current notice. stale rows stay out of ready: the live run passed
 through the old faint cell, and the projected stale cell was proven by a temporary

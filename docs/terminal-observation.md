@@ -1,12 +1,13 @@
 # non-native terminal observation
 
-status: implemented in source on `terminal-observation` (baseline `564d32f`);
-not deployed. qualified on darwin and linux within the limits the
+status: implemented in source (baseline `564d32f`); not deployed. qualified on
+darwin and linux within the limits the
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
 records; physical-phone acceptance is [pending](issues/terminal-observation-phone-acceptance.md),
-and the remaining required families are recorded as issues there. the
-[codex](terminal-observation-codex.md) and [claude](terminal-observation-claude.md)
-grammars own the frozen capability tables, rules, rule ids and provider costs.
+and the [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
+indexes every open item. the [codex](terminal-observation-codex.md) and
+[claude](terminal-observation-claude.md) grammars own the frozen capability
+tables, rules, rule ids and provider costs.
 the user approved managed display improvements, request badges, a needs-input
 filter and current-screen evidence with unknown when relevant controls are
 obscured.
@@ -224,8 +225,8 @@ recognition never reads argv: npm's node launcher leads the foreground group of 
 codex started through it, so that codex is a generic terminal, while managed
 launches and `codex` typed in a skid shell run the native executable. no argv
 fallback, version-basename matching, installation scan or new process api.
-qualify bare/relative/absolute/symlink launches and provider upgrade/reload on
-darwin/linux. native resume identity is separate.
+qualification covers bare, relative, absolute and symlink launches and a provider
+upgrade's relink on darwin and linux (§8). native resume identity is separate.
 
 ## 5. controls and diagnostic api
 
@@ -275,8 +276,9 @@ diagnostics have at most eight rule entries, ids of at most 48 ascii
 `[a-z0-9_.-]` characters, no raw fragments, titles, paths, prompts, account data
 or provider ids. rules follow the grammar's decision order, capped at eight; a
 successful sample may match none. a rule's region holds its decisive rows,
-`compound` when they span both regions. `agentcontrol.Diagnostics.Valid` owns
-these bounds; clients call it once at ingress. omit unavailable capture
+`compound` when they span both regions; [terminal control
+§4](terminal-agent-control.md#4-api-and-client-commands) names the bounds' code
+owner and its ingress check. omit unavailable capture
 dimensions and unperformed stages; elapsed values are integer milliseconds in
 `0..2147483647`, not task duration. render missing measurements as
 `not collected`, no matched rules as `none`.
@@ -306,12 +308,11 @@ ready, idle/unknown. when request/menu/notice takes precedence over working, add
 `work continues` in existing detail space. accessibility adds
 `; [work continues;] inferred from terminal` only for a recognized local agent
 with source terminal; unavailable/non-agent labels make no inference claim.
-stale cached facts use muted `last observed: <label>`, are never ready and never
-enter the filter. on desktop the rows of a host whose read failed keep that stale
-cell, the selected row's facts begin `unavailable; ` and the host keeps its
-notice; the rows of a host being re-read (a pending scoped read, or the re-read
-after a metadata change) make no status claim: their cell reads faint `checking`
-and the selected row's facts begin `checking; `.
+stale cached facts, the last observation of a host whose read failed, use muted
+`last observed: <label>`, are never ready and never enter the filter. a host that
+is being re-read has not failed: its rows make no status claim, are never ready
+and stay out of the filter. [desktop browser §5](desktop-browser.md#5-presentation)
+owns the desktop's cell and facts copy for both.
 no repeated announcement, pulse or sound for unchanged polls. retain secondary
 `notifications unavailable` independently of live status.
 
@@ -413,12 +414,16 @@ qualification; do not relabel historical passes or `NOT_RUN` results.
 
 ## 8. red / green / refactor acceptance
 
-no behavioral tests or runtime operations in this specification change. later,
-current-turn explicit approval is required for isolated tmux/integration/live;
-physical android/adb requires its own explicit approval under `AGENTS.md`.
-use only the exact sessions on the isolated socket created by the probes.
+this matrix is the acceptance contract for qualification and for every
+requalification after a provider or tmux upgrade
+([codex §7](terminal-observation-codex.md#7-requalification),
+[claude §6](terminal-observation-claude.md#6-requalification)); the
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+records each run. isolated tmux, integration and live runs need current-turn
+explicit approval; physical android/adb needs its own under `AGENTS.md`. use only
+the exact sessions on the isolated socket the probes created.
 
-for every slice: designer specifies expected observations/copy; reviewer attacks
+for every change: designer specifies expected observations/copy; reviewer attacks
 the oracle and negative cases; writer demonstrates the intended red on the
 recorded baseline, implements green, then refactors. reviewer challenges the
 result at the real affected boundary. rerun affected checks after refactoring;
@@ -452,9 +457,9 @@ record exact baseline/candidate revisions, provider/tmux versions, platform,
 dimensions, scenario ids, expected/observed categories and timing. no terminal
 bytes, prompts or account data in logs/evidence, including temporary live captures.
 synthetic test screens use authored dummy content; do not save real session screens.
-before parsers are written,
-freeze a provider/version/configuration capability table with required positive
-families, permitted unknown/none cases and upstream-unavailable variants. notices
+each grammar freezes, before its parser changes, a provider/version/configuration
+capability table with required positive families, permitted unknown/none cases
+and upstream-unavailable variants. notices
 without a distinguishable current structure and obscured state permit unknown/none;
 permissions/questions that the supported provider actually renders require positive
 recognition. unavailable upstream features are not implemented claims or passes;
@@ -468,8 +473,8 @@ unknown and may not be waived by an overall accuracy score.
 one observer, two provider grammars, one public fact model and existing client
 owners. hard-cut all producers/consumers together; no old/new mixed generation.
 coordinate external cli consumers and generated deployment configuration before
-shipping. rollback restores the previous complete release; publishing/installing
-is a later operation, not part of writing this plan.
+shipping. rollback restores the previous complete release; publishing and
+installing are separate operations.
 
 explicit costs:
 
@@ -478,18 +483,26 @@ explicit costs:
 - codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs-and-residual-ambiguity)):
   idle needs `Ready`, the main placeholder on a clean band, no external editor and
   a visible transcript terminator; goal pursuit withholds idle; status describes
-  only the displayed thread; cue-less turn starts (`!cmd`, queued slash commands)
-  read idle for their few tens of milliseconds, with no two-sample rule; codex
-  emits no notices; managed launches replace the launch's statusline layout; a
-  codex started through npm's node launcher is a generic terminal.
+  only the displayed thread, so a v1 sub-agent view reads as the main thread and
+  guarded send types into the sub-agent; cue-less turn starts (`!cmd`, queued
+  slash commands) read idle for their few tens of milliseconds and can raise
+  ready, with no two-sample rule; codex emits no notices; an unanswered question
+  resolves itself with empty answers after 120 s and returns to idle, never ready,
+  so an unvisited question leaves the needs-input filter and attention
+  ([grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
+  managed launches replace the launch's statusline layout; a codex started through
+  npm's node launcher is a generic terminal.
 - claude ([grammar §5](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity)):
   requests and menus hide activity, so working with a request is unrepresentable;
   interrupted or failed turns read idle and can raise ready; idle is lost for
   unproven pill slots, footer links, non-ordinary footers, non-work panel rows,
   usage-limit copy, colour level 0 and screen-reader sessions without a completion
   neighbour; remotely configured usage-limit copy without a default anchor reads
-  idle; plugin render hooks are unsupported; `← N agents` keeps interaction none;
-  request dialogs without a qualified rule read unknown.
+  idle; plugin render hooks are unsupported, and an `AbovePrompt` band is
+  undetectable, so a single-character guarded send can reach it; vim NORMAL mode
+  and a screen-reader draft of only spaces read as an empty composer, so guarded
+  send is admitted there; `← N agents` keeps interaction none; request dialogs
+  without a qualified rule read unknown.
 - tall panes: one capture holds at most 256 rows, so rows `192..h−65` of a taller
   pane are clipped evidence, and idle there needs the transcript tail within the
   bottom 64 rows.
@@ -501,13 +514,16 @@ explicit costs:
   context; deleting tests removes automatic future behavioral regression
   protection.
 
-codex's cue-less windows and claude's remote usage-limit copy are the accepted
-exceptions where idle can be false; no other cost justifies false idle, weaker
-input admission or silent scope expansion.
+the accepted false idles are codex's cue-less turn starts and claude's remote
+usage-limit copy. the accepted send-admission exposures are codex's
+displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode and
+screen-reader whitespace drafts. no other cost justifies false idle, weaker input
+admission or silent scope expansion. codex's unaccepted residuals, one of them a
+false idle, are [open](issues/codex-residual-ambiguity.md).
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,
 engineering checks pass and docs match the final code. close only resolved
 issues. remaining blockers are recorded individually; the
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-lists them. no engineering pass can close missing live acceptance.
+[roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
+indexes them. no engineering pass can close missing live acceptance.

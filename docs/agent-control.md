@@ -5,9 +5,10 @@
 [terminal attention](reply-notifications.md) owns notifications and terminal visits. [qualification](native-agent-qualification.md) records actual evidence;
 [roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
 installed-fleet acceptance remains open. the terminal-observation status below
-is implemented and qualified on darwin and linux within its
-[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification);
-physical-phone acceptance is pending.
+is implemented; its
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
+passes on darwin within recorded limits, and on linux short of controls and the
+product; physical-phone acceptance is pending.
 
 ## targets and ownership
 

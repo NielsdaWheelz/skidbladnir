@@ -10,22 +10,25 @@ configuration can produce them:
 - the hook row whose status message holds a cut paren group;
 - `Ready` beside a hinted status row during `/compact`, review entry or the mcp
   pending turn (millisecond windows);
-- an approval with the cancel key unbound (`tui.keymap.list.cancel`);
-- the shortcut overlay at 60 and 40 columns, which read unproven;
-- a goal pursued in plan mode, where the collaboration-mode indicator replaces
-  the goal indicator.
+- an approval with the cancel key unbound (`tui.keymap.list.cancel`).
 
-impact: each reads by source and authored frames only. a rendering difference
-would misclassify the family, usually as unknown; the stale-`Ready` windows and
-the plan-mode goal are the cases where the grammar's conflict or withheld idle is
-unproven live.
+the families that did run on darwin ran embedded or against a temporary-home
+0.159.2 daemon. only the question auto-resolve and idle ran against the installed
+pairing, the 0.159.2 TUI with the installed 0.159.3 daemon, which grammar §7
+step 3 makes part of qualification.
 
-evidence: the grammar's capability table and the
+impact: the listed families read by source and authored frames only. a rendering
+difference would misclassify one, usually as unknown; the stale-`Ready` windows
+are where the grammar's conflict is unproven live. a pairing difference would
+affect every family alike.
+
+evidence: the grammar's capability table and versions, and the
 [qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification).
 server-driven families are recorded [separately](codex-server-driven-families.md);
 linux coverage [separately](terminal-observation-linux-coverage.md).
 
 resolved when: each listed family runs live on darwin through the real capture and
 classifier with its expected values (or a narrow width or window is shown
-unreachable and the grammar records it), and the capability table marks it; then
+unreachable and the grammar records it), working, a permission and a picker also
+pass against the installed pairing, and the capability table marks them; then
 delete this record.

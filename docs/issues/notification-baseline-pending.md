@@ -19,7 +19,7 @@ evidence: `internal/fleetclient/notifications.go` (observe's baseline case
 changes only the flag relative to its clearing/ready cases; `consume` advances
 the revision; `Ready`; `validNotificationSnapshot`) and android
 `NotificationStore.kt` (`observe`, `presentsReady`, `consume`,
-`NotificationRecord.init`) at `d78cbda`, unchanged through `6859010`.
+`NotificationRecord.init`) at `d78cbda`, unchanged through `131c1df`.
 
 resolved when: a coordinated store schema change removes the field from both
 clients' records, strict decoders and

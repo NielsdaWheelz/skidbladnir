@@ -13,13 +13,23 @@ these resolution criteria: the screen matrix distinguishes permissions,
 structured questions, elicitation, setup and user-opened menus; concurrent work
 with a question is representable (live codex); stale or failed observations
 cannot fabricate resolution; desktop attention stays consistent through visits,
-answers, cancellation, provider replacement and reconnection; false-idle cases
-cannot mint ready on the desktop.
+answers, provider replacement and reconnection; unknown, an outage and a
+foreground change cannot bridge working to ready. false idle mints ready only
+where [spec §9](../terminal-observation.md#9-final-state-costs-and-completion)
+accepts it: codex's cue-less turn starts and claude's remote usage-limit copy.
 
-one criterion is not met: phone attention under the same conditions.
+two criteria are not met:
+
+- cancellation: no attention run, on either client, declines a request or
+  interrupts a turn. those screens were classified, never followed through the
+  notification store.
+- phone attention under the same conditions.
 
 impact: the phone's request labels, needs-input chip and ready attention are
-unproven on a device.
+unproven on a device, and so is the ready machine's handling of a cancelled
+request or turn on both clients.
 
 resolved when: [physical-phone acceptance](terminal-observation-phone-acceptance.md)
-passes its attention and filter rows; then delete this record.
+passes its attention and filter rows, and an attention run on the desktop and the
+phone records a declined request reading idle, never ready, and an interrupted
+turn reading as spec §9 states; then delete this record.

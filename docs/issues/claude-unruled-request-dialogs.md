@@ -17,5 +17,5 @@ and now have rules.
 
 resolved when: each dialog is induced live (or its structure is captured
 content-free from a real account) and gets a rule with a paired negative, or the
-user rules a dialog permanently unknown and the spec records that cost; then
-delete this record.
+user explicitly waives live qualification for that named dialog, which then keeps
+spec §9's unknown; then delete this record.

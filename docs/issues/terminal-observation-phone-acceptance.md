@@ -14,12 +14,12 @@ unseen. engineering checks cannot close it.
 evidence: android probes ran under robolectric only (ingress, projection,
 attention sequences, chip, capsule schema 3, narrow and 2× font layout); the
 controller was constructed but never started. no adb, emulator or phone run is
-recorded for this cutover. the root runs it under its own device approval and
-appends the results to the
-[qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification).
+recorded for this cutover.
 
 resolved when: with current-turn approval, a physical phone paired to the real
 gateway passes spec §8's full-product and attention rows (including a visit that
 keeps an unanswered request, a delayed response that cannot restore consumed
 ready, and restoration of the needs-input filter), with content-free results
-recorded in the qualification; then delete this record.
+recorded in the
+[qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification);
+then delete this record.

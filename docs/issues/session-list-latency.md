@@ -7,10 +7,11 @@ after another: three scan reads done twice (`scanSessions`, then the uncondition
 median on the darwin host.
 
 impact: an inventory request at 16 sessions takes about 0.9 s on darwin and
-0.58–0.91 s on linux before enrichment, which itself stays near 30 ms. the request
-passes two seconds at roughly 20–35 sessions. list holds the manager's mutation
-lock throughout, so concurrent clients wait behind it. it is not a regression:
-the baseline spends the same.
+0.58–0.91 s on linux before enrichment, which itself stays near 30 ms. by
+extrapolation, not measurement (about 54 ms per session, one client, no lock
+wait), list alone reaches two seconds near 37 sessions. list holds the manager's
+mutation lock throughout, so concurrent clients wait behind it and reach that
+sooner. it is not a regression: the baseline spends the same.
 
 evidence: darwin, 16 sessions, one client: list median 871 ms against baseline 918
 ms, 230 tmux subprocesses per list on both trees; linux list median 0.58 s

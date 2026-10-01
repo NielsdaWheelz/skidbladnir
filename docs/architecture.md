@@ -1065,8 +1065,9 @@ no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
 contracts. source implements it, and its
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-passes on darwin and linux within recorded limits; physical-phone acceptance and
-the remaining `NOT_RUN` families stay open ([roadmap](roadmap.md)). nothing is
+passes on darwin, and on linux for capture, recognition, classification and cost,
+within recorded limits; physical-phone acceptance, linux controls and the
+remaining `NOT_RUN` families stay open ([roadmap](roadmap.md)). nothing is
 deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are
