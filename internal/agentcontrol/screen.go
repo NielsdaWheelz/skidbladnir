@@ -23,8 +23,17 @@ type row struct {
 	presence presence
 	region   tmuxclient.RegionKind // captured rows only
 	// cells holds one cell per display column, from column 0 to the last cell
-	// tmux wrote. tmux can drop a row's trailing spaces, styled or not, so a
-	// trailing space may be absent.
+	// tmux wrote. ObservePane captures without -N, so tmux trims the spaces
+	// after a row's last escape whatever their style: a trailing space or
+	// background band may be absent. Columns are measured by grapheme cluster,
+	// while tmux builds cells from code points by its own width rules. The two
+	// agree on both providers' chrome, CJK, emoji, ZWJ sequences and tag flags.
+	// After a cluster they measure differently, such as an Indic conjunct, Thai
+	// sara am, a keycap, a soft hyphen, halfwidth kana with a sound mark, a lone
+	// regional indicator or U+270C/U+270D, the rest of the row sits a column off
+	// either way. So a grammar anchors columns only on chrome left of any
+	// provider- or user-authored text, and never requires an exact cell count
+	// on a row that can hold such text.
 	cells []cell
 }
 
@@ -32,7 +41,7 @@ type presence uint8
 
 const (
 	rowAbsent      presence = iota // dropped by its region's byte or row limit
-	rowUnparseable                 // holds an escape other than SGR, OSC 8 or SO/SI
+	rowUnparseable                 // holds something tmux's capture writer never writes
 	rowParsed
 )
 
@@ -70,14 +79,9 @@ const (
 // absent.
 func parseScreen(observation tmuxclient.PaneObservation) screen {
 	parsed := screen{width: observation.Width, alternate: observation.Alternate, rows: make([]row, observation.Height)}
-	var decoder ansi.Parser
-	// tmux writes at most 12 parameters in one SGR. Given 32 slots, ansi's
-	// decoder drops a 32nd parameter and panics on a 33rd: a CSI that long is
-	// outside tmux's writer, so it is a defect, not an unparseable row.
-	decoder.SetParamsSize(32)
 	for _, region := range observation.Regions {
 		for index, text := range region.Rows {
-			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, text, &decoder)
+			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, text)
 		}
 	}
 	return parsed
@@ -85,24 +89,31 @@ func parseScreen(observation tmuxclient.PaneObservation) screen {
 
 // parseRow decodes one row as tmux capture-pane -e writes it: graphemes, SGR,
 // OSC 8 hyperlinks and the SO/SI charset shifts, which take no column. Any
-// other escape or control makes the row unparseable.
-func parseRow(region tmuxclient.RegionKind, text string, decoder *ansi.Parser) row {
+// other escape, a C0 control or DEL, or an SGR or hyperlink tmux would not
+// write makes the row unparseable.
+func parseRow(region tmuxclient.RegionKind, text string) row {
+	var decoder ansi.Parser
+	// justify-defect: tmux writes at most 12 parameters in one SGR. Given 32
+	// slots, ansi's decoder drops a 32nd parameter and panics on a 33rd; a CSI
+	// or DCS that long means the capture writer changed.
+	decoder.SetParamsSize(32)
 	parsed := row{presence: rowParsed, region: region}
 	unparseable := row{presence: rowUnparseable, region: region}
 	var current style
 	for text != "" {
 		if rest, ok := strings.CutPrefix(text, "\x1b]8;"); ok {
-			// tmux writes a hyperlink ST-terminated, with its URI's valid UTF-8
-			// raw and every control escaped, so the first ST ends it. ansi's
+			// tmux writes a hyperlink ST-terminated, its URI's UTF-8 raw and no C0
+			// control or DEL inside (it drops or octal-escapes them), so the first
+			// ST ends it and a control before it means the writer changed. ansi's
 			// decoder would also end it at a 0x9c continuation byte.
-			_, after, found := strings.Cut(rest, "\x1b\\")
-			if !found {
+			link, after, found := strings.Cut(rest, "\x1b\\")
+			if !found || strings.ContainsFunc(link, func(r rune) bool { return r < ' ' || r == ansi.DEL }) {
 				return unparseable
 			}
 			text = after
 			continue
 		}
-		sequence, width, size, state := ansi.DecodeSequence(text, ansi.NormalState, decoder)
+		sequence, width, size, state := ansi.DecodeSequence(text, ansi.NormalState, &decoder)
 		text = text[size:]
 		switch {
 		case state != ansi.NormalState:
@@ -132,20 +143,22 @@ func parseRow(region tmuxclient.RegionKind, text string, decoder *ansi.Parser) r
 	return parsed
 }
 
-// applySGR folds one SGR into current. It accepts exactly what tmux's
-// grid_string_cells_code writes: 0 then the attributes still set (tmux resets
-// only with 0), the attributes 1, 2, 3, 4, 5, 7, 8 and 9, the underline styles
-// as 4:N and overline as 5:3, and colours as semicolon parameters (30-37,
-// 90-97, 40-47, 100-107, 39, 49, and 38, 48 or 58 with 5;n or 2;r;g;b).
-// Anything else is refused, never guessed.
+// applySGR folds one SGR into current. It reads only the vocabulary tmux's
+// grid_string_cells_code writes: the reset 0 (tmux resets only with 0); the
+// attributes 1, 2, 3, 4, 5, 7, 8 and 9; the underline styles 4:2 to 4:5 and
+// overline as 5:3, its only colon parameters; and the colours 30-37, 39, 40-47,
+// 49, 90-97 and 100-107, and 38, 48 or 58 followed by 5;n or 2;r;g;b. An empty
+// SGR, a missing parameter or any other code, colon or colour refuses the row:
+// tmux's writer changed.
 func applySGR(current *style, params ansi.Params) bool {
 	if len(params) == 0 {
 		return false
 	}
 	for index := 0; index < len(params); index++ {
-		code := params[index].Param(0)
+		code := params[index].Param(-1)
 		if params[index].HasMore() {
-			if code != 4 && code != 5 {
+			sub, more, _ := params.Param(index+1, -1)
+			if more || !(code == 4 && sub >= 2 && sub <= 5 || code == 5 && sub == 3) {
 				return false
 			}
 			index++
@@ -176,18 +189,20 @@ func applySGR(current *style, params ansi.Params) bool {
 			current.bg = color{}
 		case code == 38 || code == 48 || code == 58:
 			var value color
-			switch kind, _, _ := params.Param(index+1, -1); kind {
-			case 5:
-				palette, _, _ := params.Param(index+2, -1)
-				if palette < 0 || palette > 255 {
+			switch kind, more, _ := params.Param(index+1, -1); {
+			case more:
+				return false
+			case kind == 5:
+				palette, more, _ := params.Param(index+2, -1)
+				if more || palette < 0 || palette > 255 {
 					return false
 				}
 				value, index = color{kind: colorPalette, value: uint32(palette)}, index+2
-			case 2:
+			case kind == 2:
 				rgb := uint32(0)
 				for offset := 2; offset <= 4; offset++ {
-					channel, _, _ := params.Param(index+offset, -1)
-					if channel < 0 || channel > 255 {
+					channel, more, _ := params.Param(index+offset, -1)
+					if more || channel < 0 || channel > 255 {
 						return false
 					}
 					rgb = rgb<<8 | uint32(channel)
@@ -201,6 +216,8 @@ func applySGR(current *style, params ansi.Params) bool {
 				current.fg = value
 			case 48:
 				current.bg = value
+			case 58:
+				// underline colour: no grammar reads it.
 			}
 		default:
 			return false

@@ -107,9 +107,5 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}
-	rules := read.rules
-	if len(rules) > maxDiagnosticRules {
-		rules = rules[:maxDiagnosticRules]
-	}
-	return detection{status: status, composer: read.composer, rules: rules}
+	return detection{status: status, composer: read.composer, rules: read.rules[:min(len(read.rules), maxDiagnosticRules)]}
 }
