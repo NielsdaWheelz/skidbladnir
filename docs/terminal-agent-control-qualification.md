@@ -219,3 +219,25 @@ its tmux server untouched. not run on the phone: concurrent work with a request,
 the generic `needs input` subtype, a delayed response against consumed ready,
 and spoken talkback output
 ([remaining rows](issues/terminal-observation-phone-acceptance.md)).
+
+### 2026-10-01 screen-inferred codex idle and turn notices
+
+source: the root integrator's run on 2026-10-01, appended. `v0.12.0` (source
+`7d5634f`) dropped the managed codex status-line override and added turn
+notices; `v0.12.1` (source `46a921c`) added claude's failure block. each was
+applied through dev-server to devbox, arch and the macbook with the tmux server's
+pid, start time and session count unchanged, `scripts/fleet verify` passed, and
+the phone took each apk in place (`0.12.1` installed).
+
+live, darwin, `v0.12.0`, codex 0.159.2 and claude 2.1.287: pre-cutover codex
+sessions launched with the override read idle from the screen; a managed codex
+read setup (folder trust), idle with no run-state word, working during a shell
+loop, and idle with `interruption shown` after `skid stop`; a codex launched with
+an unknown model read idle with `error shown`; a managed claude interrupted by
+escape after a tool call read idle with `interruption shown`. escape or ctrl-c
+before claude's first output restores the prompt as a draft with no notice (§6
+c2 of the claude grammar). a claude launched with an unknown model read plain idle
+on `v0.12.0` and `error shown` once the macbook gateway ran `v0.12.1`, with
+`skid wait --state idle` matching it. a fleet sweep after `v0.12.1` showed no
+other `error shown`; one devbox codex holding a typed draft read unknown (codex
+grammar §6 c1).
