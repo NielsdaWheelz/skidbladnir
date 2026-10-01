@@ -88,7 +88,7 @@ type Session struct {
 	LaunchProfile    agentruntime.ProfileKey
 	Agent            *agentruntime.AgentRuntime
 	Conversation     *agentruntime.Conversation
-	TerminalStatus   TerminalStatus
+	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol.Enrich observes the session
 	Connection       *Connection
 	Objective        string
 	Group            group.Label

@@ -113,10 +113,6 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 		if err != nil {
 			break
 		}
-		if !status.Valid() {
-			writeError(writer, errorInternal)
-			return
-		}
 		if status.Source == sessions.SourceUnavailable {
 			gateway.logObservationFailure(id, status.Reason, time.Since(startedAt))
 		}
