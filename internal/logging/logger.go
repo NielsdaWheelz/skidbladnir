@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 var tmuxIDPattern = regexp.MustCompile(`^\$[0-9]+$`)
@@ -166,28 +167,30 @@ func (reason PressureReason) valid() bool {
 type eventKind string
 
 const (
-	eventGatewayStarted         eventKind = "Gateway.Started"
-	eventRequestCompleted       eventKind = "Request.Completed"
-	eventSessionsListed         eventKind = "Sessions.Listed"
-	eventSessionCreated         eventKind = "Session.Created"
-	eventSessionKilled          eventKind = "Session.Killed"
-	eventPressureSampled        eventKind = "Pressure.Sampled"
-	eventAuthenticationRejected eventKind = "Authentication.Rejected"
-	eventTerminalCleanupFailed  eventKind = "Terminal.CleanupFailed"
+	eventGatewayStarted            eventKind = "Gateway.Started"
+	eventRequestCompleted          eventKind = "Request.Completed"
+	eventSessionsListed            eventKind = "Sessions.Listed"
+	eventSessionCreated            eventKind = "Session.Created"
+	eventSessionKilled             eventKind = "Session.Killed"
+	eventPressureSampled           eventKind = "Pressure.Sampled"
+	eventAuthenticationRejected    eventKind = "Authentication.Rejected"
+	eventTerminalCleanupFailed     eventKind = "Terminal.CleanupFailed"
+	eventTerminalObservationFailed eventKind = "Terminal.ObservationFailed"
 )
 
 type Event struct {
-	kind          eventKind
-	method        Method
-	route         Route
-	status        int
-	duration      time.Duration
-	errorCode     ErrorCode
-	count         uint64
-	tmuxID        string
-	launchProfile agentruntime.ProfileKey
-	level         PressureLevel
-	reasons       []PressureReason
+	kind              eventKind
+	method            Method
+	route             Route
+	status            int
+	duration          time.Duration
+	errorCode         ErrorCode
+	count             uint64
+	tmuxID            string
+	launchProfile     agentruntime.ProfileKey
+	observationReason sessions.StatusReason
+	level             PressureLevel
+	reasons           []PressureReason
 }
 
 func NewGatewayStarted() Event { return Event{kind: eventGatewayStarted} }
@@ -226,6 +229,14 @@ func NewSessionKilled(tmuxID string, duration time.Duration) (Event, error) {
 	return event, nil
 }
 
+func NewTerminalObservationFailed(tmuxID string, reason sessions.StatusReason, duration time.Duration) (Event, error) {
+	event := Event{kind: eventTerminalObservationFailed, tmuxID: tmuxID, observationReason: reason, duration: duration}
+	if !event.valid() {
+		return Event{}, errors.New("invalid terminal-observation-failed log event")
+	}
+	return event, nil
+}
+
 func NewPressureSampled(level PressureLevel, reasons []PressureReason, duration time.Duration) (Event, error) {
 	event := Event{kind: eventPressureSampled, level: level, reasons: append([]PressureReason(nil), reasons...), duration: duration}
 	if !event.valid() {
@@ -258,6 +269,13 @@ func (event Event) valid() bool {
 		return validTmuxID(event.tmuxID) && (event.launchProfile == "" || profileErr == nil) && event.duration >= 0
 	case eventSessionKilled:
 		return validTmuxID(event.tmuxID) && event.duration >= 0
+	case eventTerminalObservationFailed:
+		switch event.observationReason {
+		case sessions.ReasonObservationTimeout, sessions.ReasonCaptureFailed, sessions.ReasonProcessFailed:
+			return validTmuxID(event.tmuxID) && event.duration >= 0
+		default:
+			return false
+		}
 	case eventPressureSampled:
 		if !event.level.valid() || event.duration < 0 {
 			return false
@@ -318,6 +336,10 @@ func (logger Logger) Write(event Event) error {
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventSessionKilled:
 		fields["skidbladnir.session.tmux_id"] = event.tmuxID
+		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
+	case eventTerminalObservationFailed:
+		fields["skidbladnir.session.tmux_id"] = event.tmuxID
+		fields["skidbladnir.observation.reason"] = event.observationReason
 		fields["skidbladnir.duration.ms"] = event.duration.Milliseconds()
 	case eventPressureSampled:
 		fields["skidbladnir.pressure.level"] = event.level
