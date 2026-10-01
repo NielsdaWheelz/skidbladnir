@@ -213,13 +213,15 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 				record.Revision++
 				// Only a local agent's terminal sample qualifies. Everything else,
 				// including idle with an unknown interaction, only disarms: no
-				// observation gap can bridge working to idle.
+				// observation gap can bridge working to idle. A notice is how the
+				// latest turn ended, so work that stops on an interruption or error
+				// still becomes ready.
 				clearing, arming, ready := false, false, false
 				if foreground != nil && terminal {
-					quiet := status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
+					quiet := status.Interaction == sessions.InteractionNone
 					arming = quiet && status.Activity == sessions.ActivityWorking
 					ready = quiet && status.Activity == sessions.ActivityIdle
-					clearing = NeedsInput(status) || status.Interaction == sessions.InteractionMenu || status.Notice != sessions.NoticeNone || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
+					clearing = NeedsInput(status) || status.Interaction == sessions.InteractionMenu || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
 				}
 				switch {
 				case record.BaselinePending && (clearing || ready || terminal && foreground == nil):

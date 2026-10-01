@@ -36,8 +36,20 @@ type reading struct {
 	interaction      sessions.Interaction
 	interactionCause unknownCause // given only when interaction is unknown
 	composer         composer
+	notice           turnNotice
 	rules            []DiagnosticRule
 }
+
+// turnNotice is how the latest turn ended when it ended abnormally: the
+// provider's interruption or error marker as the transcript's last item. Its
+// zero value is no notice.
+type turnNotice uint8
+
+const (
+	noticeNone turnNotice = iota
+	noticeInterrupted
+	noticeError
+)
 
 // unknownReading is a reading that classified neither dimension, for cause.
 func unknownReading(cause unknownCause) reading {
@@ -106,11 +118,18 @@ func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservati
 	case unknown == 2:
 		reason = sessions.ReasonLayoutUnknown
 	}
-	// No grammar qualifies a current notice structure: codex draws none
-	// (docs/terminal-observation-codex.md 2.9), and claude's interruption and
-	// error rows are transcript (docs/terminal-observation-claude.md 2.8).
-	// Spec section 2 then claims none.
-	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: sessions.NoticeNone, Source: sessions.SourceTerminal, Reason: reason}
+	var notice sessions.Notice
+	switch read.notice {
+	case noticeNone:
+		notice = sessions.NoticeNone
+	case noticeInterrupted:
+		notice = sessions.NoticeInterrupted
+	case noticeError:
+		notice = sessions.NoticeError
+	default:
+		panic("unknown terminal notice") // justify-defect: the notices are closed.
+	}
+	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: notice, Source: sessions.SourceTerminal, Reason: reason}
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}

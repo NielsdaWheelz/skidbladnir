@@ -762,16 +762,66 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 		composerRule = screen.composerRule(read.composer, chevron, bottom-1)
 	}
 
+	// Notice (2.8): the latest turn's interruption or error marker.
+	var notice DiagnosticRule
+	switch marker, row := claudeNotice(screen, top); marker {
+	case noticeNone:
+	case noticeInterrupted:
+		read.notice, notice = marker, screen.rule("claude.notice.interrupted", row, row)
+	case noticeError:
+		read.notice, notice = marker, screen.rule("claude.notice.error", row, row)
+	default:
+		panic("unknown claude notice") // justify-defect: claudeNotice returns only the closed notices.
+	}
+
 	if read.activityCause == causeClipped {
 		read.rules = append(read.rules, screen.clippedRule())
 	}
 	read.rules = append(read.rules, layout)
-	for _, rule := range [...]DiagnosticRule{family, activity, composerRule} {
+	for _, rule := range [...]DiagnosticRule{family, activity, composerRule, notice} {
 		if rule.ID != "" {
 			read.rules = append(read.rules, rule)
 		}
 	}
 	return read, true
+}
+
+// claudeNotice reads how the latest turn ended (2.8): the interruption row as
+// the transcript's last row above the composer, or an API error row as the
+// last row above the turn's completion row. A later prompt or turn moves an
+// older marker away from the composer, so only the latest one counts.
+func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
+	row := top - 1
+	for skipped := 0; skipped < 6; skipped++ {
+		line, ok := screen.line(row)
+		if !ok || !claudeNotification(line) {
+			break
+		}
+		row--
+	}
+	for screen.blankAt(row) {
+		row--
+	}
+	line, ok := screen.line(row)
+	if !ok {
+		return noticeNone, -1
+	}
+	if line.col == 2 && strings.HasPrefix(line.plain, "  ⎿  Interrupted") {
+		return noticeInterrupted, row
+	}
+	if line.col == 0 && strings.HasPrefix(line.plain, "✻ ") && claudeCompletion(line.plain[len("✻ "):]) {
+		row--
+		for screen.blankAt(row) {
+			row--
+		}
+		if line, ok = screen.line(row); !ok {
+			return noticeNone, -1
+		}
+	}
+	if line.col == 0 && strings.HasPrefix(line.plain, "⏺ API Error") {
+		return noticeError, row
+	}
+	return noticeNone, -1
 }
 
 // claudeInput reads the ordinary composer's input row and its continuation

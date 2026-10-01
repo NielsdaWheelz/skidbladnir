@@ -1,0 +1,1536 @@
+; codex authored frames (dummy content, no real screens), codex-cli 0.159.2 shapes. `paint.py codex.txt <id>` paints one;
+; `capture.py` regenerates observations.jsonl from both corpora; frames_test.go replays it. grammar:
+; docs/terminal-observation-codex.md. frames ending -default-footer or n12/n60 have no run-state word (idle from the screen).
+; header: #frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer>
+;         reason=<reason> rules=<id>[@top|@compound],...|none (the classifier's decision order; regions default to bottom).
+; obs=... drops the rows above <row> from the bottom region and marks it clipped, as a byte cap would.
+; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
+; tags: {b}1 {d}2 {i}3 {u}4 {r}7 {br}1;7 {bd}1;2 {/}0 {/fg}39 {red}38;5;1 {grn}38;5;2 {yel}38;5;3 {mag}38;5;5
+;       {cyan}38;5;6 {acc}38;2;99;168;248 {run}38;2;200;169;238 {mdl}38;2;246;226;183 {dir}38;2;171;223;167
+;       {gly}1;38;2;128;128;128 {ora}38;2;255;178;66 {key}38;2;64;64;64 {sec}38;2;115;115;115 {run2}38;2;131;64;218
+;       {mdl2}38;2;156;105;35 {hl}1;38;2;0;0;46;48;2;164;205;251 {pbg}48;2;240;240;240 {lgly}1;38;2;32;32;32
+;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
+;       {osc:URL}/{/osc}=OSC 8 open/close.
+
+#frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id>[@top|@compound],...|none
+; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
+; rules are listed in byte order (the classifier emits them in decision order, so compare sorted lists); rule regions
+; default to bottom. obs=... describes the PaneObservation the classifier receives (rows above <row> dropped by the byte
+; cap, Clipped set); painting alone does not reproduce it.
+; tags: {b}1 {d}2 {i}3 {u}4 {r}7 {br}1;7 {bd}1;2 {/}0 {/fg}39 {red}38;5;1 {grn}38;5;2 {yel}38;5;3 {mag}38;5;5
+;       {cyan}38;5;6 {acc}38;2;99;168;248 {run}38;2;200;169;238 {mdl}38;2;246;226;183 {dir}38;2;171;223;167
+;       {gly}1;38;2;128;128;128 {ora}38;2;255;178;66 {key}38;2;64;64;64 {sec}38;2;115;115;115 {run2}38;2;131;64;218
+;       {mdl2}38;2;156;105;35 {hl}1;38;2;0;0;46;48;2;164;205;251 {pbg}48;2;240;240;240 {lgly}1;38;2;32;32;32
+;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
+;       {osc:URL}/{/osc}=OSC 8 open/close.
+
+#frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Checking the dummy files.
+06|{gly}•{/} {d}Working{/} {d}(12s • {/}{b}esc{/}{d} to interrupt) · 1 background terminal …{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f02-status-plain-remapped 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy task alpha
+06|Working {d}(3s • {/}{b}f12{/}{d} to interrupt){/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f03-status-truncated-narrow 24x10 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task
+04|{gly}•{/} {d}Working{/} {d}(7s • {/}{b}esc{/}{d} to …{/}
+06|{b}›{/} {d}Ask Codex to do anyth{/}
+08|  {mdl}dummy-model low{/fg} · {dir}/du…{/fg}
+09|  {b}?{/} for shortcuts
+
+#frame codex-f04-waiting-background 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy background task
+02|{d}• {/}Starting the dummy job.
+05|{gly}•{/} {d}Waiting for background terminal{/} {d}(48s • {/}{b}esc{/}{d} to interrupt) …{/}
+06|{d}  └ sleep 40; echo dummy{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Waiting{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f05-retry 80x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}say dummy hi
+05|{gly}•{/} {d}Reconnecting... waiting for network{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
+06|{d}  └ Connection failed: dummy transport error{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f06-ready-empty 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 29s • 12:46 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f07-ready-draft 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+08|{b}›{/} dummy draft words
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+
+#frame codex-f08-starting 60x12 alt=1 expect=starting/none/none/empty reason=recognized rules=codex.interaction.none,codex.run_state.starting
+01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+02|     {d}/dummy/project{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Starting{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f09-working-no-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.run_state.working
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy streaming answer text
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f10-permission-exec 80x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+00|{d}• {/}I will run the dummy command.
+01|{gly}•{/} {b}Running{/} touch dummy.txt
+03|  {b}Would you like to run the following command?{/}
+05|  Environment: {b}local{/}
+07|  Reason: {i}Dummy reason text.{/}
+09|  $ touch dummy.txt
+11|{br}› 1. Yes, proceed (y)
+12|  2. Yes, and don't ask again for commands that start with `touch dummy.txt` ({b}p{/})
+13|  3. No, and tell Codex what to do differently ({b}esc{/})
+15|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+
+#frame codex-f11-permission-open-thread 80x14 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you like to run the following command?{/}
+04|  Thread: Dummy [worker]
+06|  $ echo dummy
+09|{br}› 1. Yes, proceed (y)
+10|  2. No, and tell Codex what to do differently ({b}esc{/})
+13|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel or {/}{b}o{/}{d} to open thread{/}
+
+#frame codex-f12-permission-other-thread 60x12 alt=1 expect=idle/permission/none/empty reason=recognized rules=codex.permission.other_thread,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+03|{d}  Worked for 5s • 1:10 PM{/}
+05|  {b}{red}!{/} Approval needed in Dummy [worker]
+06|{d}    {/}{bd}{cyan}/subagents{/}{d} to switch threads{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f13-question-legacy-options 100x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/2 (2 unanswered){/}
+04|  {acc}Which dummy option do you choose?{/fg}
+06|  {br}› 1. Alpha              {/}{r}Choose alpha.{/}
+07|    2. Beta               {d}Choose beta.{/}
+08|    3. None of the above  {d}Optionally, add details in notes (tab){/}
+10|  {b}tab{/} to add notes{d} | {/}{b}enter{/} to submit answer{d} | {/}{b}←/→{/} to navigate questions{d} | {/}{b}esc{/} to interrupt
+
+#frame codex-f14-question-legacy-freeform 60x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+03|  {d}Question 1/1 (1 unanswered){/}
+04|  {acc}Share a dummy nickname.{/fg}
+06|  {b}›{/} {d}Type your answer (optional){/}
+10|  {b}enter{/} to submit answer{d} | {/}{b}esc{/} to interrupt
+
+#frame codex-f15-question-legacy-notes 80x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+01|  {d}Question 2/2 (1 unanswered) · {/}{red}auto-resolves in 58s{/fg}
+02|  {acc}Which dummy number?{/fg}
+04|  {br}› 1. One                {/}{r}Choose one.{/}
+05|    2. Two                {d}Choose two.{/}
+06|    3. None of the above  {d}Optionally, add details in notes (tab){/}
+08|  {b}›{/} {d}Add notes{/}
+10|  {b}tab{/}{d} or {/}{b}esc{/}{d} to clear notes | {/}{b}enter{/} to submit all
+
+#frame codex-f16-question-unanswered-confirm 80x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy_confirm
+04|  {b}Submit with unanswered questions?{/}
+05|  {d}1 unanswered question{/}
+07|  {br}› 1. Proceed  {/}{r}Submit with 1 unanswered question{/}
+08|    2. Go back  {d}Return to the first unanswered question{/}
+10|  Press {b}enter{/} to confirm or {b}esc{/} to go back
+
+#frame codex-f17-question-async-collapsed 60x16 alt=1 expect=working/question/none/empty reason=recognized rules=codex.question.async_collapsed,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy question task
+02|{d}• {/}Which dummy color do you prefer?
+03|  • Red
+04|  • Blue
+06|{gly}•{/} {d}Working{/} {d}(14s • {/}{b}esc{/}{d} to interrupt){/}
+08|{d}• {/}Queued follow-up inputs
+09|{d}  ? {/}{b}{acc}2 questions{/}
+10|    {b}shift+←{/}{d} to answer{/}
+12|{b}›{/} {d}Ask Codex to do anything{/}
+14|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+15|  {b}?{/} for shortcuts
+
+#frame codex-f18-question-async-editor 80x16 alt=1 expect=working/question/none/blocked reason=recognized rules=codex.question.async_editor,codex.activity.status_row
+00|{bd}› {/}dummy question task
+03|{gly}•{/} {d}Working{/} {d}(18s • {/}{b}esc{/}{d} to interrupt){/}
+05|{d}• {/}Queued follow-up inputs
+07|  {d}1 of 2{/}
+08|  {b}{acc}Which dummy color do you prefer?{/}
+10|  {br}› 1. Red{/}
+11|    2. Blue
+12|    3. Other
+14|  {b}enter{/} submit   {b}ctrl+]{/} skip   {b}shift+→{/} main prompt   {b}shift+←{/} next question
+
+#frame codex-f19-question-async-freetext 100x18 alt=1 expect=working/question/none/blocked reason=recognized rules=codex.question.async_editor,codex.activity.status_row
+00|{bd}› {/}dummy question task
+03|{gly}•{/} {d}Working{/} {d}(25s • {/}{b}esc{/}{d} to interrupt){/}
+05|{d}• {/}Messages to be submitted after next tool call{d} (press {/}{b}esc{/}{d} to interrupt and send immediately){/}
+06|{d}  ↳ > Which dummy color do you prefer?{/}
+08|    {d}Red{/}
+10|{d}• {/}Queued follow-up inputs
+12|  {b}{acc}What dummy file name should be used?{/}
+14|  {d}Type your answer{/}
+16|  {b}enter{/} submit   {b}ctrl+]{/} skip   {b}shift+→{/} main prompt
+
+#frame codex-f20-confirmation-plan 80x14 alt=1 expect=unknown/confirmation/none/blocked reason=partial rules=codex.confirmation.plan
+00|{d}• {/}{b}Proposed Plan{/}
+02|  {b}## Dummy plan{/}
+04|  Do the dummy step.
+06|  {b}Implement this plan?{/}
+09|{br}› 1. Yes, implement this plan          {/}{r}Switch to Default and start coding{/}
+10|  2. Yes, clear context and implement  {d}Fresh thread with this plan{/}
+11|  3. No, stay in Plan mode             {d}Continue planning with the model{/}
+13|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f21-setup-trust 80x24 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust
+01|{b}  Folder access{/}
+02|  {d}/dummy/project{/}
+04|  Trust this folder? Codex can read, edit, and run files here, subject to your
+05|  permission settings. Folder settings can run code automatically, even without
+06|  a model request. Continue only if you trust these files. Your trust decision
+07|  will be saved.
+09|{br}› 1. Trust and continue
+10|  2. Quit
+12|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} quit{/}
+
+#frame codex-f22-setup-update 80x24 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.update
+01|  {b}Update available{/}{d} · 0.159.2 → 0.160.0{/}
+02|  {d}Release notes: {u}{osc:https://github.com/openai/codex/releases/latest}https://github.com/openai/codex/releases/latest{/}{/osc}
+04|{br}› 1. Update now (runs `npm install -g @openai/codex`)
+05|  2. Skip
+06|  3. Skip until next version
+08|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} skip{/}
+
+#frame codex-f23-setup-login 80x24 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.login
+00|  Welcome to {b}Codex{/}, OpenAI's command-line coding agent
+02|  Sign in with ChatGPT to use Codex as part of your paid plan
+03|  or connect an API key for usage-based billing
+05|{d}{cyan}> 1. {/}{cyan}Sign in with ChatGPT{/fg}
+06|{d}     Usage included with Plus, Pro, Business, and Enterprise plans{/}
+08|  2. Sign in with Device Code
+09|{d}     Sign in from another device with a one-time code{/}
+11|  3. Provide your own API key
+12|{d}     Pay for what you use{/}
+14|{d}  Press {/}{b}enter{/}{d} to continue{/}
+
+#frame codex-f24-menu-model 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+00|{bd}› {/}dummy task
+04|  {b}Select Model and Effort{/}
+07|  1. dummy-model-a (default)  {d}Dummy description a.{/}
+08|{br}› 2. dummy-model-b (current)  {/}{r}Dummy description b.{/}
+09|  3. dummy-model-c            {d}Dummy description c.{/}
+11|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f25-menu-pager 60x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.pager
+00|{d}/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / /{/}
+01|{b}› {/}dummy first prompt
+03|{d}• {/}Dummy answer.
+08|{b}Ctrl+Space{/}{d} select{/}
+09|{d} {/}{b}↑/↓{/}{d} to scroll · {/}{b}pgup/pgdn{/}{d} to page · {/}{b}home/end{/}{d} to jump{/}
+10|{d} {/}{b}q{/}{d} close · {/}{b}f3{/}{d} find · {/}{b}esc{/}{d} browse prompts{/}
+
+#frame codex-f26-menu-warnings 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.warnings
+01|{bd}› {/}dummy task
+04|  {b}Warnings · 1 of 1 · Startup{/}
+06|  Dummy warning text for the synthetic frame.
+11|  {b}k{/} keep & next · {b}esc{/} dismiss & close · {b}ctrl+o{/} copy · {b}←/→{/} warning · {b}↓{/} scroll
+
+#frame codex-f29-composer-parent-owned 60x12 alt=1 expect=working/none/none/unknown reason=recognized rules=codex.interaction.none,codex.run_state.working
+00|{bd}› {/}dummy task
+08|{b}›{/} {d}Viewing sub-agent — direct input is disabled{/}
+10|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f30-inline-working 60x16 alt=0 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+01|     {d}/dummy/project{/}
+03|{bd}› {/}dummy task alpha
+06|{gly}•{/} {d}Working{/} {d}(6s • {/}{b}esc{/}{d} to interrupt){/}
+09|{b}›{/} {d}Ask Codex to do anything{/}
+11|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+
+#frame codex-f31-inline-ready 60x16 alt=0 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+01|     {d}/dummy/project{/}
+03|{bd}› {/}dummy task alpha
+05|{d}• {/}Dummy answer.
+07|{d}  Worked for 16s • 1:02 PM{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+
+#frame codex-f32-permission-edits 80x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+00|{d}• {/}I will add the dummy file.
+03|  {b}Would you like to make the following edits?{/}
+05|  Description: {i}Apply proposed file edits{/}
+06|  Destination:
+07|  {b}/dummy/project/dummy-new.txt{/}
+11|{br}› 1. Yes, proceed (y)
+12|  2. Yes, and don't ask again for these files ({b}a{/})
+13|  3. No, and tell Codex what to do differently ({b}esc{/})
+15|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+
+#frame codex-f33-permission-details-pager 80x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.details_pager
+00|{d}/ P A T C H / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /{/}
+01|dummy-new.txt ({grn}+1{/fg} {red}-0{/fg})
+03|  {d}1 {/}{grn}+dummy{/fg}
+04|~
+05|~
+06|~
+07|~
+08|~
+09|~
+10|~
+11|~
+12|{d}───────────────────────────────────────────────────────────────────────── 100% ─{/}
+13| {b}↑/↓{/}{d} to scroll · {/}{b}pgup/pgdn{/}{d} to page · {/}{b}home/end{/}{d} to jump{/}
+14|{d} {/}{b}q{/}{d} close{/}
+
+#frame codex-f34-question-legacy-answered 100x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+03|  {d}Question 2/2{/}
+04|  Which dummy size?
+06|  {br}› 1. Small              {/}{r}Choose small.{/}
+07|    2. Large              {d}Choose large.{/}
+08|    3. None of the above  {d}Optionally, add details in notes (tab){/}
+10|  {b}tab{/} to add notes{d} | {/}{b}enter{/} to submit all{d} | {/}{b}←/→{/} to navigate questions{d} | {/}{b}esc{/} to interrupt
+
+#frame codex-f35-permission-mcp-approval 100x14 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.mcp_approval
+02|{gly}•{/} {b}Calling{/} {acc}dummy.dummy_echo{/fg}
+07|  {d}Field 1/1{/}
+08|  Allow the dummy MCP server to run tool "dummy_echo"?
+09|  {br}› 1. Allow   {/}{r}Run the tool and continue{/}
+10|    2. Cancel  {d}Cancel this tool call{/}
+12|  {b}enter{/} to submit{d} | {/}{b}esc{/} to cancel
+
+#frame codex-f36-input-mcp-form 100x14 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+02|{gly}•{/} {b}Calling{/} {acc}dummy.dummy_form{/fg}
+05|  {d}Field 1/1 (1 required unanswered){/}
+06|  {acc}Dummy server request.{/fg}
+08|  {acc}Dummy nickname{/fg}
+10|  {b}›{/} {d}Type your answer{/}
+12|  {b}enter{/} to submit{d} | {/}{b}esc{/} to cancel
+
+#frame codex-f37-menu-picker-known-bg 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+01|{pbg}{fill}
+02|{pbg}  {b}Select Model and Effort{/}{pbg}{fill}
+03|{pbg}{fill}
+04|{pbg}{fill}
+05|{pbg}  1. dummy-model-a (default)  {d}Dummy description a.{/}{pbg}{fill}
+06|{hl}› 2. dummy-model-b (current)  Dummy description b.{fill}
+07|{pbg}  3. dummy-model-c            {d}Dummy description c.{/}{pbg}{fill}
+08|{pbg}{fill}
+11|  {b}{key}enter{/}{d} select · {/}{b}{key}esc{/}{d} back{/}
+
+#frame codex-f38-ready-known-bg 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{pbg}{fill}
+01|{bd}› {/}{pbg}dummy task alpha{fill}
+02|{pbg}{fill}
+04|{d}• {/}Dummy answer.
+05|{d}  Worked for 2s • 1:12 PM{/}
+07|{pbg}{fill}
+08|{b}{pbg}›{/}{pbg} {d}Ask Codex to do anything{/}{pbg}{fill}
+09|{pbg}{fill}
+10|  {run2}Ready{sec} · {mdl2}dummy-model low{/fg}
+11|  {b}{key}?{/}{sec} for shortcuts{/fg}
+
+#frame codex-f39-working-no-status-line 80x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task alpha
+05|{gly}•{/} {d}Working{/} {d}(2s • {/}{b}esc{/}{d} to interrupt) · 1 background terminal running …{/}
+09|{b}›{/} {d}Ask Codex to do anything{/}
+11|  {b}?{/} for shortcuts                                            100% context left
+
+#frame codex-f40-menu-browse 100x14 alt=1 expect=idle/menu/none/blocked reason=recognized rules=codex.menu.transcript_footer,codex.activity.idle,codex.run_state.ready
+01|{bd}› {/}{r}dummy task alpha{/}
+03|{d}• {/}Dummy answer.
+05|{d}  Worked for 3s • 1:05 PM{/}
+10|{bd}›{/}{d} Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  {acc}Browsing transcript{/fg}{d} · {/}{b}↑↓/jk{/}{d} scroll · {/}{b}←→/hl{/}{d} prompts · {/}{b}ctrl+t{/}{d} details · {/}{b}↵{/}{d} rewind · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f41-menu-resume 100x24 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.resume
+00| {b}Resume a previous session{/}
+02| Filter: {b}{u} Cwd {/} All    Status: {b} Active {/} Archived    Sort: {b} Updated {/} Created
+04| Type to search
+06|  {br}› {/}{r}2m ago      {/}{br}Dummy session title{/}
+20|{d}─────────────────────────────────────────────────────────────────────────────────────{/} 1 / 1 · 100% {d}─{/}
+21| {b}enter{/} resume   {b}ctrl+a{/} archive   {b}esc{/} new   {b}ctrl+c{/} quit   {b}tab{/} focus   {b}←/→{/} option
+22| {b}ctrl+o{/} comfy   {b}ctrl+t{/} preview   {b}ctrl+e{/} exp   {b}↑/↓{/} browse
+
+#frame codex-f42-confirmation-inline-banner 70x19 alt=1 expect=idle/confirmation/none/empty reason=recognized rules=codex.confirmation.inline_banner,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+03|{d}  Worked for 4s • 1:07 PM{/}
+05|  {b}Usage limit reached{/}
+06|  Your included usage is depleted.
+07|  Choose an action to continue.
+09|{br}› 1. Open usage settings{/}
+10|  2. View usage
+12|  {d}Press a number to choose · esc to dismiss · type to continue{/}
+14|{b}›{/} {d}Ask Codex to do anything{/}
+16|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+17|  {b}?{/} for shortcuts
+
+#frame codex-f45-confirmation-banner-modal 80x10 alt=1 expect=unknown/confirmation/none/blocked reason=partial rules=codex.confirmation.provider_picker
+02|  {b}Usage limit reached{/}
+03|  Dummy request text. Request increase?
+05|  1. Yes (y)
+06|{br}› 2. No (n){/}
+09|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f46-confirmation-details-pager 80x14 alt=1 expect=unknown/confirmation/none/blocked reason=partial rules=codex.confirmation.details_pager
+00|{d}/ What we detected/ / / / / / / / / / / / / / / / / / / / / / / / / / / / / / /{/}
+01|{b}Continuation request (quoted){/}
+02|"dummy continuation"
+04|Dummy finding text.
+05|~
+06|~
+07|~
+08|~
+09|~
+10|{d}───────────────────────────────────────────────────────────────────────── 100% ─{/}
+11| {b}↑/↓{/}{d} to scroll · {/}{b}pgup/pgdn{/}{d} to page · {/}{b}home/end{/}{d} to jump{/}
+12|{d} {/}{b}q{/}{d} close{/}
+
+#frame codex-f47-setup-migration 80x24 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.migration
+01|  {b}Codex just got an upgrade. Introducing dummy-model-b.{/}
+03|  Upgrade to dummy-model-b for the latest and greatest
+04|  agentic coding model.
+06|  You can continue using dummy-model-a if you prefer.
+08|{br}› 1. Try new model{/}
+09|  2. Use existing model
+11|  {b}enter/esc{/}{d} confirm · {/}{b}ctrl+c{/}{d} quit{/}
+
+#frame codex-f48-setup-hooks-review 80x12 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.hooks_review
+02|  {b}Hooks need review{/}
+03|  {yel}2 hooks need review{/fg}
+04|  {d}Hooks can run outside the sandbox after you trust them.{/}
+06|{br}› 1. Review hooks{/}
+07|  2. Trust all and continue
+08|  3. Continue without trusting (hooks won't run)
+11|  {b}enter{/}{d} confirm · {/}{b}esc{/}{d} skip{/}
+
+#frame codex-f49-setup-trust-tall-top 80x100 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust@top
+01|{b}  Folder access{/}
+02|  {d}/dummy/project{/}
+04|  Trust this folder? Codex can read, edit, and run files here, subject to your
+05|  permission settings. Folder settings can run code automatically, even without
+06|  a model request. Continue only if you trust these files. Your trust decision
+07|  will be saved.
+09|{br}› 1. Trust and continue
+10|  2. Quit
+12|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} quit{/}
+
+#frame codex-f50-menu-pager-tall-compound 60x80 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.pager@compound
+00|{d}/ T R A N S C R I P T / / / / / / / / / / / / / / / / / / /{/}
+01|{b}› {/}dummy first prompt
+03|{d}• {/}Dummy answer.
+76|{b}Ctrl+Space{/}{d} select{/}
+77|{d} {/}{b}↑/↓{/}{d} to scroll · {/}{b}pgup/pgdn{/}{d} to page · {/}{b}home/end{/}{d} to jump{/}
+78|{d} {/}{b}q{/}{d} close · {/}{b}f3{/}{d} find · {/}{b}esc{/}{d} browse prompts{/}
+
+#frame codex-f51-permission-user-verification 80x11 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Dummy verification title{/}
+04|  Dummy verification text.
+06|{br}› 1. Verify and approve{/}
+07|  2. Cancel this request
+10|  {d}Press {/}{bd}enter{/}{d} to confirm or {/}{bd}esc{/}{d} to cancel{/}
+
+#frame codex-f52-composer-image-rows 60x13 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+07|  {cyan}[Image #1]{/fg}
+09|{b}›{/} {d}Ask Codex to do anything{/}
+11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+12|  {b}?{/} for shortcuts
+
+#frame codex-f53-side-working 100x13 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.scope.side,codex.interaction.none,codex.activity.status_row,codex.run_state.working
+03|{bd}› {/}dummy side question
+06|{gly}•{/} {d}Working{/} {d}(3s • {/}{b}esc{/}{d} to interrupt){/}
+09|{b}›{/} {d}Ask a follow-up question{/}
+11|  {run}Working{/fg} · {mdl}dummy-model low{/fg}
+12|  {b}?{/} for shortcuts                       {b}{mag}Side{/} {mag}from main thread{/fg} · {b}ctrl+/{/} to switch · {b}ctrl+c{/} to close
+
+#frame codex-f54-confirmation-rate-limits 80x12 alt=1 expect=unknown/confirmation/none/blocked reason=partial rules=codex.confirmation.provider_picker
+02|  {b}Approaching rate limits{/}
+03|  {d}Switch to dummy-model-mini for lower credit usage?{/}
+05|{br}› 1. Switch to dummy-model-mini{/}
+06|  2. Keep current model
+07|  3. Keep current model (never show again)
+11|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f55-hintless-working 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task
+05|{gly}•{/} {d}Working{/} {d}(4s) · 1 background terminal running · /ps to view{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f56-working-known-bg 70x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{pbg}{fill}
+01|{bd}› {/}{pbg}dummy task alpha{fill}
+02|{pbg}{fill}
+05|{lgly}•{/} {lhdr}Working{/fg} {d}(4s • {/}{b}{key}esc{/}{d} to interrupt){/}
+07|{pbg}{fill}
+08|{b}{pbg}›{/}{pbg} {d}Ask Codex to do anything{/}{pbg}{fill}
+09|{pbg}{fill}
+10|  {run2}Working{sec} · {mdl2}dummy-model low{/fg}
+11|  {b}{key}?{/}{sec} for shortcuts{/fg}
+
+#frame codex-f57-draft-known-bg 70x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+01|{bd}› {/}{pbg}dummy task alpha{fill}
+04|{d}• {/}Dummy answer.
+07|{pbg}{fill}
+08|{b}{pbg}›{/}{pbg} dummy draft words{fill}
+09|{pbg}{fill}
+10|  {run2}Ready{sec} · {mdl2}dummy-model low{/fg}
+
+#frame codex-f58-menu-searchable-picker 70x20 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+02|  {b}Select Dummy Theme{/}
+03|  {d}Move up/down to live preview dummy themes.{/}
+05|  {d}Type to search dummy themes{/}
+06|{lacc}↑{/fg}
+07|  dummy-theme-a
+08|  dummy-theme-b
+09|  dummy-theme-c
+10|{br}› dummy-theme-d (current)       {/}
+11|  dummy-theme-e
+12|{lacc}↓{/fg}
+14|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-f59-input-mcp-form-two-fields 100x14 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+02|{gly}•{/} {b}Calling{/} {acc}dummy.dummy_form2{/fg}
+03|{d}    └ Dummy running.{/}
+06|  {d}Field 1/2 (2 required unanswered){/}
+07|  {acc}Dummy two-field request.{/fg}
+09|  {acc}Dummy nickname{/fg}
+11|  {b}›{/} {d}Type your answer{/}
+13|  {b}enter{/} to submit answer{d} | {/}{b}ctrl+p / ctrl+n{/} change field{d} | {/}{b}esc{/} to cancel
+
+#frame codex-f60-setup-trust-tall-compound 80x70 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.trust@compound
+01|{b}  Folder access{/}
+02|  {d}/dummy/project{/}
+04|  Trust this folder? Codex can read, edit, and run files here, subject to your
+05|  permission settings. Folder settings can run code automatically, even without
+06|  a model request. Continue only if you trust these files. Your trust decision
+07|  will be saved.
+09|{br}› 1. Trust and continue
+10|  2. Quit
+12|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} quit{/}
+
+#frame codex-f61-setup-daemon-recovery 100x30 alt=1 expect=unknown/setup/none/blocked reason=partial rules=codex.setup.daemon_recovery
+01|  {b}Background server has incompatible feature settings{/}
+02|  This session requires dummy_feature to be disabled
+03|  Restart will use these shared feature settings:
+04|  {d}  dummy_feature_a = false{/}
+05|  {d}  dummy_feature_b = true{/}
+06|  These settings persist and can disable functionality for other clients. Restart may
+07|  interrupt active or queued work.
+12|  1. Run without daemon this time
+13|  2. Restart with these settings
+14|{br}› 3. Cancel{/}
+
+#frame codex-f62-menu-transcript-search 80x14 alt=1 expect=idle/menu/none/blocked reason=recognized rules=codex.menu.transcript_footer,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 3s • 1:05 PM{/}
+09|{bd}›{/}{d} Ask Codex to do anything{/}
+11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+12|  {d}Find: {/}dummy
+13|  {b}enter{/}{d} next · {/}{b}shift+enter{/}{d} previous · {/}{b}esc{/}{d} close{/}
+
+#frame codex-f63-permission-grant 90x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you like to grant these permissions?{/}
+04|  Reason: {i}Dummy permission reason{/}
+06|  Permission rule: {acc}write{/fg}
+07|  {acc}/dummy/project{/fg}
+10|{br}› 1. Yes, grant these permissions (y)
+11|  2. Yes, grant for this session ({b}a{/})
+12|  3. No, and tell Codex what to do differently ({b}esc{/})
+15|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+
+#frame codex-f64-permission-write-stdin 90x14 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you like to send input to terminal 12345?{/}
+04|  Reason: {i}Dummy tty justification.{/}
+06|  $ dummy
+09|{br}› 1. Yes, proceed (y)
+10|  2. No, and tell Codex what to do differently ({b}esc{/})
+13|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+
+#frame codex-f65-thinking 80x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy reasoning task
+05|{gly}•{/} {d}Checking dummy files{/} {d}(6s • {/}{b}esc{/}{d} to interrupt){/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Thinking{/fg} · {mdl}dummy-model high{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f66-browse-known-bg 100x14 alt=1 expect=idle/menu/none/blocked reason=recognized rules=codex.menu.transcript_footer,codex.activity.idle,codex.run_state.ready
+01|{bd}› {/}{r}{pbg}dummy task alpha{/}{pbg}{fill}
+03|{d}• {/}Dummy answer.
+05|{d}  Worked for 3s • 1:05 PM{/}
+09|{pbg}{fill}
+10|{bd}{pbg}›{/}{pbg}{d} Ask Codex to do anything{/}{pbg}{fill}
+11|{pbg}{fill}
+12|  {run2}Ready{sec} · {mdl2}dummy-model low{/fg}
+13|  {lacc}Browsing transcript{/fg}{d} · {/}{b}{key}↑↓/jk{/}{d} scroll · {/}{b}{key}esc{/}{d} back{/}
+
+#frame codex-f67-history-search-draft 80x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+08|{b}›{/} {br}dumm{/}y task alpha
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {d}reverse-i-search: {/}{cyan}dumm{/fg}  {b}enter{/}{d} accept · {/}{b}esc{/}{d} cancel{/}
+
+#frame codex-f68-side-other-thread 100x12 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.scope.side,codex.permission.other_thread,codex.run_state.ready
+04|  {b}{red}!{/} Approval needed in Dummy [worker]
+05|{d}    {/}{bd}{cyan}/subagents{/}{d} to switch threads{/}
+08|{b}›{/} {d}Ask a follow-up question{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|             {b}{mag}Side{/} {mag}from main thread{/fg} · {b}ctrl+/{/} to switch · {b}ctrl+c{/} to close
+
+#frame codex-n01-default-footer-ambiguous 60x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer text.
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n02-quoted-chrome 80x16 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy quoting task
+02|{d}• {/}• Working (5s • esc to interrupt)
+03|  Question 1/2 (2 unanswered)
+04|  › 1. Yes, proceed (y)
+05|  Press enter to confirm or esc to cancel
+06|  ■ Conversation interrupted - use /feedback if something went wrong
+07|  Ready · dummy-model low
+09|{d}  Worked for 2s • 1:04 PM{/}
+12|{b}›{/} {d}Ask Codex to do anything{/}
+14|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+15|  {b}?{/} for shortcuts
+
+#frame codex-n03-historical-questions 60x16 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy question task
+02|{d}• {/}Which dummy color do you prefer?
+03|  • Red
+04|  • Blue
+06|{bd}› {/}> Which dummy color do you prefer?
+07|  Red
+08|{d}• {/}Dummy reply.
+09|{d}  Worked for 6s • 1:09 PM{/}
+12|{b}›{/} {d}Ask Codex to do anything{/}
+14|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+15|  {b}?{/} for shortcuts
+
+#frame codex-n04-historical-notice-under-work 80x14 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy task beta
+02|■ Conversation interrupted - use /feedback if something went wrong
+04|{red}■ Dummy earlier error.{/fg}
+06|{bd}› {/}dummy task gamma
+08|{gly}•{/} {d}Working{/} {d}(4s • {/}{b}esc{/}{d} to interrupt){/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n05-numbered-list-prose 60x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy options task
+02|{d}• {/}Pick one of these dummy options:
+03|  1. Yes, proceed (y)
+04|  2. No, and tell Codex what to do differently (esc)
+05|  Press enter to confirm or esc to cancel
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n06-spinner-glyphs-prose 60x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy glyph task
+02|{d}• {/}• ◦ • Working on the dummy thing (5s)
+04|{d}⣀⣤⣤⣤⣀⣀{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n07-working-word-in-statusline 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy{/fg} · Working notes
+11|  {b}?{/} for shortcuts
+
+#frame codex-n08-ready-with-status-row 60x13 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+06|{gly}•{/} {d}Compacting context{/} {d}(2s • {/}{b}esc{/}{d} to interrupt){/}
+07|{d}  └ Dummy compaction detail.{/}
+09|{b}›{/} {d}Ask Codex to do anything{/}
+11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+12|  {b}?{/} for shortcuts
+
+#frame codex-n09-slash-popup-draft 80x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+06|{br}› /model  {/}{r}choose what model and reasoning effort to use{/}
+08|{b}›{/} /model
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+
+#frame codex-n10-update-history-banner 60x14 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|╭─────────────────────────────────────────────────╮
+01|│ ✨ Update available! 0.159.2 -> 0.160.0        │
+02|│ Run npm install -g @openai/codex to update.     │
+03|╰─────────────────────────────────────────────────╯
+05|{bd}› {/}dummy task
+06|{d}• {/}Dummy answer.
+07|{d}  Worked for 1s • 1:15 PM{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n11-unknown-title-picker 80x12 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+03|  {b}Select Dummy Theme{/}
+06|{br}› 1. dummy-theme-a{/}
+07|  2. dummy-theme-b
+11|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-n12-inline-residue 60x16 alt=0 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{gly}•{/} {d}Working{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
+02|{b}›{/} {d}Ask Codex to do anything{/}
+04|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+06|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+07|     {d}/dummy/project{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+
+#frame codex-n13-header-swallows-paren 40x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy task
+06|{gly}•{/} {d}Planning the dummy migration across a…{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n14-sparkle-padding 60x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+07|{d}                            ⠈     ⢀{/}
+08|{b}›{/}⠁{d}Ask Codex to do anything{/}         ⠈
+09|       ⢀            ⠠     ⠄
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n15-interruption-cell 80x14 alt=1 expect=idle/none/interrupted/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready,codex.notice.interrupted
+00|{bd}› {/}dummy task beta
+03|■ Conversation interrupted - use /feedback if something went wrong
+05|{d}  1 background terminal running · /ps to view · /stop to close{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n16-error-cell 60x12 alt=1 expect=idle/none/error/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready,codex.notice.error
+00|{bd}› {/}say dummy hi
+03|{red}■ Dummy provider error: the requested model is not{/fg}
+04|{red}supported for this dummy account.{/fg}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n17-disconnected-ready 80x15 alt=1 expect=unknown/none/error/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.activity.disconnected,codex.run_state.ready,codex.notice.error
+00|{bd}› {/}dummy task
+02|{d}• {/}Done
+04|{d}  Worked for 13s • 2:11 PM{/}
+06|{red}■ Connection lost. Attempting to reconnect…{/fg}
+08|{gly}•{/} {d}Reconnecting to app-server…{/} {d}(19s) · 1 background terminal running · /ps to vi…{/}
+11|{b}›{/} {d}Ask Codex to do anything{/}
+13|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+14|  {b}ctrl+c{/} quit
+
+#frame codex-n19-prompt-pending 60x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{d}• {/}Earlier dummy answer.
+02|{d}  Worked for 3s • 1:00 PM{/}
+04|{bd}› {/}dummy follow-up prompt
+05|  with a second dummy line
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n20-side-ready 100x9 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.scope.side,codex.interaction.none,codex.run_state.ready
+00|{d}• {/}Dummy side answer.
+05|{b}›{/} {d}Ask a follow-up question{/}
+07|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+08|  {b}?{/} for shortcuts                       {b}{mag}Side{/} {mag}from main thread{/fg} · {b}ctrl+/{/} to switch · {b}ctrl+c{/} to close
+
+#frame codex-n21-parent-owned-ready 60x9 alt=1 expect=unknown/none/none/unknown reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{d}• {/}Dummy sub-agent answer.
+01|{d}  Worked for 2s • 1:16 PM{/}
+05|{b}›{/} {d}Viewing sub-agent — direct input is disabled{/}
+07|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+08|  {b}?{/} for shortcuts
+
+#frame codex-n22-ignition-sparks-in-band 60x12 alt=1 expect=unknown/none/none/unknown reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+07|     {b}{ora}✦{/}      {b}{ora}·{/}  {b}{ora}✧{/}
+08|{b}{ora}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model max{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n23-clipped-status-row-sl-decides 80x14 alt=1 obs=bottom.first=6,clipped expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.run_state.working
+05|{gly}•{/} {d}Waiting for background terminal{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
+06|{d}  └ dummy detail line one{/}
+07|{d}    dummy detail line two{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Waiting{/fg} · {mdl}dummy-model low{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n24-clipped-default-footer 80x14 alt=1 obs=bottom.first=6,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none
+05|{gly}•{/} {d}Waiting for background terminal{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
+06|{d}  └ dummy detail line one{/}
+07|{d}    dummy detail line two{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n25-footerless-unlisted-title 80x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+03|  {b}Dummy progress title{/}
+04|  {d}Dummy progress subtitle.{/}
+06|{br}› 1. Dummy pending action{/}
+07|  2. Dummy other action
+
+#frame codex-n26-safety-buffering-empty-footer 80x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+02|  {b}Giving this request a little extra thought{/}
+03|  {d}If you'd rather not wait, retry with a faster model.{/}
+05|{br}› 1. Retry with a faster model{/}
+06|  2. Dismiss and keep waiting
+07|  3. Learn more
+09|  {d}No action is required. Codex will keep waiting.{/}
+
+#frame codex-n27-inline-banner-info-only 60x13 alt=1 expect=idle/unknown/none/empty reason=partial rules=codex.activity.idle,codex.run_state.ready
+00|{d}• {/}Dummy answer.
+01|{d}  Worked for 2s • 1:17 PM{/}
+04|  {b}Dummy workspace notice{/}
+05|  Dummy notice description.
+07|  {d}esc to dismiss · type to continue{/}
+09|{b}›{/} {d}Ask Codex to do anything{/}
+11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+12|  {b}?{/} for shortcuts
+
+#frame codex-n28-draft-looks-like-option 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+08|{b}›{/} 1. dummy list item draft
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n29-reserve-footer-unknown 80x10 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+02|  {b}Dummy reserve title{/}
+03|  Dummy reserve description.
+05|{br}› 1. Dummy purchase action{/}
+06|  2. Continue with Luna Reserve
+09|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to continue working{/}
+
+#frame codex-n30-precaution-footerless-unknown 80x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+03|  {b}Chat stopped as a precaution{/}
+04|  {d}We couldn't confirm the agent was acting safely. Dummy text.{/}
+06|{br}› 1. Dummy first action{/}
+07|  2. Dummy second action
+
+#frame codex-n31-safety-buffering-known-bg 80x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+01|{pbg}{fill}
+02|{pbg}  {b}Giving this request a little extra thought{/}{pbg}{fill}
+03|{pbg}  {d}If you'd rather not wait, retry with a faster model.{/}{pbg}{fill}
+04|{pbg}{fill}
+05|{hl}› 1. Retry with a faster model{fill}
+06|{pbg}  2. Dismiss and keep waiting{fill}
+07|{pbg}  3. Learn more{fill}
+08|{pbg}{fill}
+09|  {d}No action is required. Codex will keep waiting.{/}
+
+#frame codex-n32-picker-under-bold-listed-title 80x14 alt=1 expect=unknown/menu/none/blocked reason=partial rules=codex.menu.picker
+00|{d}• {/}Dummy reply intro.
+01|  {b}Update available{/} in the dummy docs.
+04|  {b}Select Dummy Theme{/}
+07|{br}› 1. dummy-theme-a{/}
+08|  2. dummy-theme-b
+13|  {b}enter{/}{d} select · {/}{b}esc{/}{d} back{/}
+
+#frame codex-n33-clipped-window-ready 80x14 alt=1 obs=bottom.first=4,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none,codex.run_state.ready
+04|{d}• {/}Dummy answer tail.
+05|  second dummy answer line
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-n34-prompt-pending-queued-preview 70x16 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{d}• {/}Dummy streamed answer.
+02|{d}  Worked for 3s • 1:00 PM{/}
+04|{bd}› {/}dummy queued one
+07|{d}• {/}Queued follow-up inputs
+08|{d}  ↳ {/}{d}{i}dummy queued two{/}
+09|    {b}shift+←{/}{d} edit last queued message{/}
+12|{b}›{/} {d}Ask Codex to do anything{/}
+14|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+15|  {b}?{/} for shortcuts
+
+#frame codex-n35-side-draft-no-cue 40x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{d}• {/}Dummy side answer.
+08|{b}›{/} dummy side draft
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {d}esc again to edit previous message{/}
+
+#frame codex-n36-disconnected-narrow 28x20 alt=1 expect=unknown/none/error/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.disconnected,codex.run_state.working,codex.notice.error
+06|{bd}› {/}dummy task
+09|{red}■ Connection lost.{/fg}
+10|{red}Attempting to reconnect…{/fg}
+13|{gly}•{/} {d}Reconnecting to app-serv…{/}
+16|{b}›{/} {d}Ask Codex to do anything{/}
+18|  {run}Working{/fg} · {mdl}dummy-mod…{/fg}
+19|  {b}ctrl+c{/} quit
+
+#frame codex-n37-prompt-pending-hook-row 60x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{d}  Worked for 2s • 1:00 PM{/}
+02|{bd}› {/}dummy follow-up prompt
+05|{d}• Running dummy hook{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n38-prompt-taller-than-viewport 60x12 alt=1 expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none,codex.run_state.ready
+00|  dummy long prompt line three
+01|  dummy long prompt line four
+02|  dummy long prompt line five
+03|  dummy long prompt line six
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n39-picker-title-unproven 80x14 alt=1 obs=bottom.first=5,clipped expect=unknown/unknown/none/blocked reason=evidence_clipped rules=none
+03|  {b}Update available{/}{d} · 0.159.2 → 0.160.0{/}
+06|  Dummy description line.
+08|{br}› 1. Dummy first action{/}
+09|  2. Dummy second action
+12|  {b}enter{/}{d} continue · {/}{b}esc{/}{d} skip{/}
+
+#frame codex-n40-approval-cancel-unbound 80x14 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+02|  {b}Would you like to run the following command?{/}
+04|  $ touch dummy.txt
+07|{br}› 1. Yes, proceed (y)
+08|  2. No, and tell Codex what to do differently
+13|  {d}Press {/}{b}enter{/}{d} to confirm{/}
+
+#frame codex-n41-sparkle-on-prompt-row 60x12 alt=1 expect=unknown/none/none/unknown reason=partial rules=codex.interaction.none,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+08|{b}›{/}⠁{d}Ask Codex to do anything{/}      ⠈   ⢀
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f69-gap-notice-idle 100x11 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 5:03 PM{/}
+05|                                                                      {b}{warn}⚠ 5h limit: 8% left · /status{/}
+07|{b}›{/} {d}Ask Codex to do anything{/}
+09|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+10|  {b}?{/} for shortcuts
+
+#frame codex-f70-ready-goal-achieved 100x10 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{d}• {/}Dummy goal step.
+02|{d}  Worked for 1s • 4:47 PM{/}
+06|{b}›{/} {d}Ask Codex to do anything{/}
+08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}                                                        {mag}Goal achieved (6s){/fg}
+09|  {b}?{/} for shortcuts
+
+#frame codex-f71-tall-fresh-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle@compound,codex.run_state.ready
+01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+02|     {d}/dummy/project{/}
+03|{d}  permissions: {/}{b}{mag}YOLO mode{/}
+05|  {acc}Dummy greeting text.{/fg}
+36|                                   {d}⣀⣤⣤⣤⣀⣀{/}
+37|                                {d}⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀{/}
+38|                              {d}⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄{/}
+39|                                      {d}⠈⠙⠛⠿⠿⠿⠿⠛⠉{/}
+76|{b}›{/} {d}Ask Codex to do anything{/}
+78|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+79|  {b}?{/} for shortcuts
+
+#frame codex-f72-tall-one-turn-contiguous 80x80 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle@compound,codex.run_state.ready
+01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+02|     {d}/dummy/project{/}
+03|{d}  permissions: {/}{b}{mag}YOLO mode{/}
+05|  {acc}Dummy greeting text.{/fg}
+08|{bd}› {/}dummy first question
+11|{d}• {/}Dummy answer.
+13|{d}  Worked for 1s • 4:52 PM{/}
+76|{b}›{/} {d}Ask Codex to do anything{/}
+78|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+79|  {b}?{/} for shortcuts
+
+#frame codex-f73-shortcut-overlay 80x20 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+01|{d}• {/}Dummy answer.
+03|{d}  Worked for 1s • 4:53 PM{/}
+05|  {b}Keyboard shortcuts{/}
+07|  {b}Compose{/}                       {b}Session{/}
+08|  {acc}/{/fg}        Commands             {acc}tab{/fg}        Send message
+09|  {acc}ctrl+g{/fg}   External editor      {acc}ctrl+c{/fg}     Quit
+10|  {acc}esc esc{/fg}  Edit last message
+12|                                {b}Transcript (open first){/}
+13|                                {acc}ctrl+t{/fg}                 Open transcript
+14|  {acc}/keymap{/fg} customize
+16|{b}›{/} {d}Ask Codex to do anything{/}
+18|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+19|  {b}?{/} / {b}esc{/} close
+
+#frame codex-f74-external-editor-ready 100x10 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.composer.external_editor,codex.interaction.none,codex.run_state.ready
+00|{d}• {/}Dummy answer.
+02|{d}  Worked for 1s • 4:55 PM{/}
+06|{b}›{/} {d}Ask Codex to do anything{/}
+08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+09|  {b}Save and close external editor to continue.{/}
+
+#frame codex-f75-external-editor-working 100x12 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.composer.external_editor,codex.interaction.none,codex.activity.status_row,codex.run_state.working
+00|{bd}› {/}dummy task alpha
+04|{gly}•{/} {d}Working{/} {d}(8s • {/}{b}esc{/}{d} to interrupt){/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Working{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}Save and close external editor to continue.{/}
+
+#frame codex-f76-sticky-header-idle 80x14 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy long prompt
+01|  Dummy paragraph 1.
+02|  Dummy paragraph 2.
+03|  Dummy paragraph 3.
+04|  Dummy paragraph 4.
+05|  Dummy paragraph 5.
+06|  Dummy paragraph 6.
+07|{d}  Worked for 9s • 2:20 PM{/}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  {b}?{/} for shortcuts
+
+#frame codex-f77-completion-tip-idle 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+03|{d}  └ {/}{b}Tip:{/} Dummy tip text with {b}/dummy{/} in it.
+05|{d}  Worked for 1s • 4:47 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n42-submit-window-gap-notice 100x11 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{d}• {/}Earlier dummy answer.
+02|{d}  Worked for 1s • 5:03 PM{/}
+04|{bd}› {/}dummy submitted prompt
+05|                                                                      {b}{warn}⚠ 5h limit: 8% left · /status{/}
+07|{b}›{/} {d}Ask Codex to do anything{/}
+09|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+10|  {b}?{/} for shortcuts
+
+#frame codex-n43-submit-window-narrow-edit-hint 34x20 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+05|{d}  Worked for 1s • 5:01 PM{/}
+07|{bd}› {/}dummy queued zero
+10|{d}• {/}Queued follow-up inputs
+11|{d}  ↳ {i}dummy queued one{/}
+12|{d}  ↳ {i}dummy queued two{/}
+13|    {b}shift+←{/}{d} edit last queued messa{/}
+16|{b}›{/} {d}Ask Codex to do anything{/}
+18|  {run}Ready{/fg} · {mdl}dummy-model…{/fg}
+19|  {b}?{/} for shortcuts
+
+#frame codex-n44-ready-goal-continuing 100x10 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.goal_active,codex.run_state.ready
+00|{d}• {/}Dummy goal step.
+02|{d}  Worked for 1s • 4:46 PM{/}
+06|{b}›{/} {d}Ask Codex to do anything{/}
+08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}                                                       {mag}Pursuing goal (19s){/fg}
+09|  {b}?{/} for shortcuts
+
+#frame codex-n45-tall-fresh-gap 80x300 alt=1 expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none,codex.run_state.ready
+01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+02|     {d}/dummy/project{/}
+03|{d}  permissions: {/}{b}{mag}YOLO mode{/}
+05|  {acc}Dummy greeting text.{/fg}
+141|                                   {d}⣀⣤⣤⣤⣀⣀{/}
+142|                                {d}⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀{/}
+143|                              {d}⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄{/}
+157|                                      {d}⠈⠙⠛⠿⠿⠿⠿⠛⠉{/}
+296|{b}›{/} {d}Ask Codex to do anything{/}
+298|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+299|  {b}?{/} for shortcuts
+
+#frame codex-n46-tall-one-turn-gap 80x300 alt=1 expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none,codex.run_state.ready
+01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+02|     {d}/dummy/project{/}
+03|{d}  permissions: {/}{b}{mag}YOLO mode{/}
+05|  {acc}Dummy greeting text.{/fg}
+08|{bd}› {/}dummy first question
+11|{d}• {/}Dummy answer.
+13|{d}  Worked for 1s • 4:52 PM{/}
+296|{b}›{/} {d}Ask Codex to do anything{/}
+298|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+299|  {b}?{/} for shortcuts
+
+#frame codex-n47-top-region-unterminated 80x300 alt=1 expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none
+01|{b}  Folder access{/}
+02|  {d}/dummy/project{/}
+04|  Dummy description line 4.
+05|  Dummy description line 5.
+06|  Dummy description line 6.
+07|  Dummy description line 7.
+08|  Dummy description line 8.
+09|  Dummy description line 9.
+10|  Dummy description line 10.
+11|  Dummy description line 11.
+12|  Dummy description line 12.
+13|  Dummy description line 13.
+14|  Dummy description line 14.
+15|  Dummy description line 15.
+16|  Dummy description line 16.
+17|  Dummy description line 17.
+18|  Dummy description line 18.
+19|  Dummy description line 19.
+20|  Dummy description line 20.
+21|  Dummy description line 21.
+22|  Dummy description line 22.
+23|  Dummy description line 23.
+
+#frame codex-n48-stale-approval-after-kill 100x30 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+04|{bd}› {/}dummy exec task
+07|{gly}•{/} {b}Running{/} touch dummy.txt
+13|  {b}Would you like to run the following command?{/}
+15|  Environment: {b}local{/}
+17|  Reason: {i}Dummy reason text.{/}
+19|  $ touch dummy.txt
+22|{br}› 1. Yes, proceed (y)
+23|  2. Yes, and don't ask again for commands that start with `touch dummy.txt` ({b}p{/})
+24|  3. No, and tell Codex what to do differently ({b}esc{/})
+26|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+27|zsh: killed     codex -a on-request -s read-only
+28|                                                {br}%{/}
+29|dummy$ codex -a on-request -s read-only
+
+#frame codex-n49-stale-inline-idle-after-kill 100x20 alt=0 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
+00|dummy$ codex --no-alt-screen
+02|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
+03|     {d}/dummy/project{/}
+05|  {acc}Dummy greeting text.{/fg}
+08|{bd}› {/}dummy task alpha
+10|{d}• {/}Dummy answer.
+12|{d}  Worked for 1s • 4:58 PM{/}
+15|{b}›{/} zsh: killed     codex --no-alt-screen
+16|                                          {br}%{/}
+17|dummy$ codex --no-alt-screen
+
+#frame codex-n50-scrolled-follow-control 100x14 alt=1 expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none,codex.run_state.ready
+00|  Dummy paragraph 20.
+01|  Dummy paragraph 21.
+02|  Dummy paragraph 22.
+03|  Dummy paragraph 23.
+04|  Dummy paragraph 24.
+05|  Dummy paragraph 25.
+06|  Dummy paragraph 26.
+07|  Dummy paragraph 27.
+08|                                      {acc}↓ Back to bottom · esc{/fg}
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  enter/esc latest · ? shortcuts
+
+#frame codex-n51-sticky-header-no-terminator 80x14 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{bd}› {/}dummy long prompt
+01|  Dummy paragraph 1.
+02|  Dummy paragraph 2.
+03|  Dummy paragraph 3.
+04|  Dummy paragraph 4.
+05|  Dummy paragraph 5.
+06|  Dummy paragraph 6.
+07|  Dummy paragraph 7.
+10|{b}›{/} {d}Ask Codex to do anything{/}
+12|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  {b}?{/} for shortcuts
+#frame codex-n52-submit-window-image-only 60x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{d}• {/}Earlier dummy answer.
+02|{d}  Worked for 3s • 1:00 PM{/}
+05|  {acc}[Image #1]{/fg}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f78-cut-status-row-default-footer 33x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task alpha
+05|{gly}•{/} {d}Planning the dummy migration{/} {d}(…{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/pr…{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f79-permission-press-wrap-label 40x14 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you like to run the following{/}
+03|  {b}command?{/}
+05|  $ touch dummy.txt
+07|{br}› 1. Yes, proceed (y)
+08|  2. No, and tell Codex what to do
+09|     differently ({b}esc{/})
+12|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to{/}
+13|  {d}cancel{/}
+
+#frame codex-f80-permission-press-wrap-before-key 30x14 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you like to run the{/}
+03|  {b}following command?{/}
+05|  $ touch dummy.txt
+07|{br}› 1. Yes, proceed (y)
+08|  2. No, and tell Codex what
+09|     to do differently ({b}esc{/})
+12|  {d}Press {/}{b}enter{/}{d} to confirm or{/}
+13|  {b}esc{/}{d} to cancel{/}
+
+#frame codex-f81-permission-press-wrap-after-key 14x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you{/}
+03|  {b}like to run{/}
+04|  {b}the command?{/}
+06|{br}› 1. Yes,
+07|     proceed
+08|     (y)
+09|  2. No ({b}esc{/})
+12|  {d}Press {/}{b}enter{/}
+13|  {d}to confirm{/}
+14|  {d}or {/}{b}esc{/}{d} to{/}
+15|  {d}cancel{/}
+
+#frame codex-f82-question-unanswered-confirm-wrapped 40x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy_confirm
+02|  {b}Submit with unanswered questions?{/}
+03|  {d}1 unanswered question{/}
+05|  {br}› 1. Proceed  {/}{r}Submit with 1{/}
+06|                {r}unanswered question{/}
+07|    2. Go back  {d}Return to the first{/}
+08|                {d}unanswered question{/}
+09|  Press {b}enter{/} to confirm or {b}esc{/} to go
+10|  back
+
+#frame codex-f83-question-legacy-footer-four-rows 40x14 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+01|  {d}Question 1/2 (2 unanswered){/}
+02|  {acc}Which dummy option do you choose?{/fg}
+04|  {br}› 1. Alpha  {/}{r}Choose alpha.{/}
+05|    2. Beta   {d}Choose beta.{/}
+06|    3. None   {d}Add details in notes.{/}
+09|  {b}tab{/} to add notes
+10|  {b}enter{/} to submit answer
+11|  {b}←/→{/} to navigate questions
+12|  {b}esc{/} to interrupt
+
+#frame codex-f84-question-async-footer-three-rows 40x17 alt=1 expect=working/question/none/blocked reason=recognized rules=codex.question.async_editor,codex.activity.status_row
+00|{bd}› {/}dummy question task
+02|{gly}•{/} {d}Working{/} {d}(18s • {/}{b}esc{/}{d} to interrupt){/}
+04|{d}• {/}Queued follow-up inputs
+06|  {d}1 of 2{/}
+07|  {b}{acc}Which dummy color do you prefer?{/}
+09|  {br}› 1. Red{/}
+10|    2. Blue
+11|    3. Other
+13|  {b}enter{/} submit   {b}ctrl+]{/} skip
+14|  {b}shift+→{/} main prompt
+15|  {b}shift+←{/} next question
+
+#frame codex-f85-question-legacy-option-count 100x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/1 (1 unanswered){/}
+04|  {acc}Which dummy option do you choose?{/fg}
+06|    3. Gamma              {d}Choose gamma.{/}
+07|  {br}› 4. Delta              {/}{r}Choose delta.{/}
+08|    5. Epsilon            {d}Choose epsilon.{/}
+10|  {d}option 4/5 | {/}{b}tab{/} to add notes{d} | {/}{b}enter{/} to submit answer{d} | {/}{b}esc{/} to interrupt
+
+#frame codex-f86-question-legacy-option-count-wrapped 60x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/1 (1 unanswered){/}
+04|  {acc}Which dummy option do you choose?{/fg}
+06|  {br}› 4. Delta    {/}{r}Choose delta.{/}
+07|    5. Epsilon  {d}Choose epsilon.{/}
+09|  {d}option 4/5 | {/}{b}tab{/} to add notes{d} | {/}{b}enter{/} to submit answer
+10|  {b}esc{/} to interrupt
+
+#frame codex-f87-question-async-option-count-leads-row 40x14 alt=1 expect=working/question/none/blocked reason=recognized rules=codex.question.async_editor,codex.activity.status_row
+00|{bd}› {/}dummy question task
+02|{gly}•{/} {d}Working{/} {d}(18s • {/}{b}esc{/}{d} to interrupt){/}
+04|  {d}1 of 2{/}
+05|  {b}{acc}Which dummy color do you prefer?{/}
+07|  {br}› 1. Red{/}
+08|    2. Blue
+10|  {b}enter{/} submit   {b}ctrl+]{/} skip
+11|  {d}option 1/4{/}   {b}shift+→{/} main prompt
+12|  {b}shift+←{/} next question
+
+#frame codex-f88-question-async-option-count-leads-last-row 40x12 alt=1 expect=working/question/none/blocked reason=recognized rules=codex.question.async_editor,codex.activity.status_row
+00|{bd}› {/}dummy question task
+02|{gly}•{/} {d}Working{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
+04|  {b}{acc}Second dummy question?{/}
+06|  {br}› 2. A suggested dummy answer{/}
+07|    3. Another dummy answer
+09|  {b}enter{/} submit   {b}ctrl+]{/} skip
+10|  {d}option 2/3{/}   {b}shift+→{/} main prompt
+
+#frame codex-f89-question-legacy-notes-submit-cut 60x12 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/1 (1 unanswered){/}
+04|  {acc}Which dummy option do you choose?{/fg}
+05|  {br}› 4. Delta    {/}{r}Choose delta.{/}
+07|  {b}›{/} {d}Add notes{/}
+10|  {d}option 4/5 | {/}{b}tab{/}{d} or {/}{b}esc{/}{d} to clear notes{/}
+
+#frame codex-f90-permission-press-wrap-chord-key 14x16 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.overlay
+02|  {b}Would you{/}
+03|  {b}like to run{/}
+04|  {b}the command?{/}
+06|{br}› 1. Yes,
+07|     proceed
+08|  2. No ({b}esc{/})
+12|  {d}Press {/}{b}ctrl+x{/}
+13|  {b}y{/}{d} to confirm{/}
+14|  {d}or {/}{b}esc{/}{d} to{/}
+15|  {d}cancel{/}
+
+#frame codex-n53-ready-cut-status-row-space 26x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+03|{d}  Worked for 5s • 1:10 PM{/}
+05|{gly}•{/} {d}Compacting context{/} {d}(5s …{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model…{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n54-ready-cut-status-row-digit 24x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+03|{d}  Worked for 5s • 1:10{/}
+04|{d}  PM{/}
+05|{gly}•{/} {d}Compacting context{/} {d}(5…{/}
+08|{b}›{/} {d}Ask Codex to do anyth{/}
+10|  {run}Ready{/fg} · {mdl}dummy-mo…{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n55-ready-cut-status-row-minutes 30x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+03|{d}  Worked for 5s • 1:10 PM{/}
+05|{gly}•{/} {d}Compacting context{/} {d}(1m 05s …{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n56-approval-option-scan-clipped 80x16 alt=1 obs=bottom.first=13,clipped expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none
+00|{d}• {/}I will run the dummy command.
+01|{gly}•{/} {b}Running{/} touch dummy.txt
+03|  {b}Would you like to run the following command?{/}
+05|  Environment: {b}local{/}
+07|  Reason: {i}Dummy reason text.{/}
+09|  $ touch dummy.txt
+11|{br}› 1. Yes, proceed (y)
+12|  2. Yes, and don't ask again for commands that start with `touch dummy.txt` ({b}p{/})
+13|  3. No, and tell Codex what to do differently ({b}esc{/})
+15|  {d}Press {/}{b}enter{/}{d} to confirm or {/}{b}esc{/}{d} to cancel{/}
+
+#frame codex-n57-composer-input-clipped 60x12 alt=1 obs=bottom.first=9,clipped expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 29s • 12:46 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-f91-question-legacy-notes-cut-count 28x16 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/1{/}
+04|  {acc}Which dummy option?{/fg}
+06|  {br}› 1. Alpha  {/}{r}Choose alpha.{/}
+07|    2. Beta   {d}Choose beta.{/}
+09|  {b}›{/} {d}Add notes{/}
+12|  {d}option 1/6{/}
+13|  {b}tab{/}{d} or {/}{b}esc{/}{d} to clear…{/}
+
+#frame codex-f92-question-legacy-notes-cut-narrow 24x14 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question task
+03|  {d}Question 1/1 (1 unans…{/}
+04|  {acc}Which dummy option?{/fg}
+06|  {br}› 1. Alpha{/}
+07|    2. Beta
+09|  {b}›{/} {d}Add notes{/}
+11|  {b}tab{/}{d} or {/}{b}esc{/}{d} to…{/}
+12|  {b}enter{/} to submit…
+
+#frame codex-f93-question-legacy-add-notes-cut 18x14 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+00|{bd}› {/}dummy question
+03|  {d}Question 1/1 (…{/}
+04|  {acc}Which option?{/fg}
+06|  {br}› 1. Alpha{/}
+07|    2. Beta
+10|  {b}tab{/} to add…
+11|  {b}enter{/} to…
+12|  {b}esc{/} to…
+
+#frame codex-f94-permission-mcp-approval-option-count 100x9 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.mcp_approval
+01|  {d}Field 1/1{/}
+02|  Allow the dummy MCP server to run tool "dummy_echo"?
+04|  text: dummy
+06|  {br}› 1. Allow  {/}{r}Run the tool and continue{/}
+07|  {d}option 1/2 | {/}{b}enter{/} to submit{d} | {/}{b}esc{/} to cancel
+
+#frame codex-f95-permission-mcp-approval-count-clips-cancel 40x9 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.mcp_approval
+01|  {d}Field 1/1{/}
+02|  Allow the dummy MCP server to run…
+04|  text: dummy
+06|  {br}› 1. Allow  {/}{r}Run the tool and{/}
+07|  {d}option 1/2 | {/}{b}enter{/} to submit{d} | {/}{b}esc{/} t
+
+#frame codex-f96-input-mcp-form-count-clips-cancel 72x9 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+01|  {d}Field 1/2 (2 required unanswered){/}
+02|  Dummy two-field request.
+04|  Dummy color
+05|  {br}› 1. Red{/}
+06|    2. Blue
+07|  {d}option 1/3 | {/}{b}enter{/} to submit answer{d} | {/}{b}←/→{/} to navigate fields{d} | {/}{b}esc{/} t
+
+#frame codex-f97-input-mcp-form-cancel-row-not-drawn 60x5 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+02|  {br}› 1. Red{/}
+03|  {d}option 1/3 | {/}{b}enter{/} to submit answer{d} | {/}{b}←/→{/} to navigate fi
+
+#frame codex-n58-view-image-cut-default-footer 29x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy image task
+02|{d}• {/}{b}Viewed image {/}{d}dummy photo (…{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy…{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n59-view-image-cut-ready 30x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
+00|{bd}› {/}dummy image task
+02|{d}• {/}{b}Viewed image {/}{d}dummy photo (1…{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n60-hook-row-cut-default-footer 25x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy hook task
+01|{d}• {/}Dummy answer.
+03|{d}  Worked for 3s{/}
+05|{d}• Syncing dummy notes (1…{/}
+08|{b}›{/} {d}Ask Codex to do anyt{/}
+10|  {mdl}dummy-model low{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-n61-hook-row-cut-ready 24x10 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
+00|{d}• {/}Dummy answer.
+01|{d}  Worked for 3s{/}
+03|{d}• Syncing dummy notes (…{/}
+06|{b}›{/} {d}Ask Codex to do anyth{/}
+08|  {run}Ready{/fg} · {mdl}dummy-model…{/fg}
+09|  {b}?{/} for shortcuts
+
+#frame codex-n62-mcp-approval-options-clipped 100x14 alt=1 obs=bottom.first=10,clipped expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+02|{gly}•{/} {b}Calling{/} {acc}dummy.dummy_echo{/fg}
+07|  {d}Field 1/1{/}
+08|  Allow the dummy MCP server to run tool "dummy_echo"?
+09|  {br}› 1. Allow   {/}{r}Run the tool and continue{/}
+10|    2. Cancel  {d}Cancel this tool call{/}
+12|  {b}enter{/} to submit{d} | {/}{b}esc{/} to cancel
+
+#frame codex-f98-permission-mcp-approval-count-clips-submit 30x9 alt=1 expect=unknown/permission/none/blocked reason=partial rules=codex.permission.mcp_approval
+01|  {d}Field 1/1{/}
+02|  Allow the dummy MCP server
+03|  to run tool "dummy_echo"?
+05|  {br}› 1. Allow  {/}{r}Run the tool{/}
+06|  {d}option 1/2 | {/}{b}enter{/} to subm
+07|  {b}esc{/} to cancel
+
+#frame codex-f99-input-mcp-form-count-clips-submit 36x9 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+01|  {d}Field 1/2 (2 required unanswered{/}
+02|  {acc}Dummy two-field request.{/fg}
+04|  {br}› 1. Red                        {/}
+05|  {d}option 1/3 | {/}{b}enter{/} to submit ans
+06|  {b}←/→{/} to navigate fields
+07|  {b}esc{/} to cancel
+
+#frame codex-f100-question-legacy-count-only-footer 30x6 alt=1 expect=unknown/question/none/blocked reason=partial rules=codex.question.legacy
+01|  {d}Question 1/1 (1 unanswered{/}
+02|  {acc}Which dummy option?{/fg}
+03|  {br}› 1. Alpha  {/}{r}Choose alpha.{/}
+04|  {d}option 1/6{/}
+
+#frame codex-f101-input-mcp-form-allow-labels-count-clips-submit 30x9 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+01|  {d}Field 1/2 (2 required unan{/}
+02|  {acc}Dummy two-field request.{/fg}
+04|  {br}› 1. Allow                {/}
+05|  {d}option 1/2 | {/}{b}enter{/} to subm
+06|  {b}←/→{/} to navigate fields
+07|  {b}esc{/} to cancel
+
+#frame codex-n63-mcp-approval-labels-not-drawn 20x9 alt=1 expect=unknown/input/none/blocked reason=partial rules=codex.input.mcp_form
+01|  {d}Field 1/1{/}
+02|  Allow the dummy
+03|  MCP server
+04|  to run tool
+05|  {br}› 1.       {/}{r}Run{/}
+06|  {d}option 1/2 | {/}{b}ent{/}
+07|  {b}esc{/} to cancel
+
+#frame codex-n64-press-footer-cancel-row-alone 30x14 alt=1 obs=bottom.first=13,clipped expect=unknown/unknown/none/unknown reason=evidence_clipped rules=none
+02|  {b}Would you like to run the{/}
+03|  {b}following command?{/}
+05|  $ touch dummy.txt
+07|{br}› 1. Yes, proceed (y)
+08|  2. No, and tell Codex what
+09|     to do differently ({b}esc{/})
+12|  {d}Press {/}{b}enter{/}{d} to confirm or{/}
+13|  {b}esc{/}{d} to cancel{/}
+#frame codex-v01-idle-default-footer 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 29s • 12:46 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-v02-streaming-default-footer 60x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{bd}› {/}dummy task alpha
+02|{d}• {/}Dummy answer streaming in, still going and
+03|  still going.
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-v03-error-default-footer 60x12 alt=1 expect=idle/none/error/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.notice.error
+00|{bd}› {/}say dummy hi
+03|{red}■ Dummy provider error: the requested model is not{/fg}
+04|{red}supported for this dummy account.{/fg}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-v04-interrupted-default-footer 80x12 alt=1 expect=idle/none/interrupted/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.notice.interrupted
+00|{bd}› {/}dummy task beta
+03|■ Conversation interrupted - use /feedback if something went wrong
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-v05-goal-default-footer 100x10 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.goal_active
+00|{d}• {/}Dummy goal step.
+02|{d}  Worked for 1s • 4:47 PM{/}
+06|{b}›{/} {d}Ask Codex to do anything{/}
+08|  {mdl}dummy-model low{/fg}                                                               {mag}Pursuing goal (19s){/fg}
+09|  {b}?{/} for shortcuts
+
+#frame codex-v06-working-default-footer 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row
+00|{bd}› {/}dummy task alpha
+06|{gly}•{/} {d}Working{/} {d}(12s • {/}{b}esc{/}{d} to interrupt){/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts
+
+#frame codex-v07-old-error-then-new-prompt-default 80x12 alt=1 expect=unknown/none/none/empty reason=partial rules=codex.interaction.none,codex.activity.prompt_pending
+00|{red}■ Dummy earlier error.{/fg}
+02|{bd}› {/}dummy task gamma
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+11|  {b}?{/} for shortcuts

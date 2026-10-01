@@ -85,19 +85,19 @@ informative. cue-less timing windows are not families; §6 holds them.
 | run-state `Working` / `Waiting` | RP | working | `codex.run_state.working` | darwin (both), linux (`Working`) | `chatwidget/status_surfaces.rs:991-1012` |
 | run-state `Thinking` | RP | working | `codex.run_state.working` | darwin | `chatwidget/streaming.rs:54,341,396` |
 | run-state `Starting` | RP | starting | `codex.run_state.starting` | darwin, linux | `chatwidget/mcp_startup.rs` |
-| run-state `Ready` + clean band with the main placeholder + settled transcript scan | RP | idle | `codex.run_state.ready` | darwin, linux | §3 |
+| no status row + clean band with the main placeholder + settled transcript scan (any or no run-state word but `Working`/`Starting`) | RP | idle | `codex.activity.idle` | darwin, linux | §3 |
 | `Ready` + hinted status row (the stale-refresh paths of §3) | AC | unknown, `evidence_conflict` | rules of both | source-only | §3 |
-| submit window: `Ready`, no row, the transcript scan stops at a prompt | AC | unknown, `evidence_conflict` | `codex.activity.prompt_pending` | darwin | `chatwidget/input_submission.rs:473-492` |
-| goal continuation: `Ready` + `Pursuing goal` indicator between goal turns | AC | unknown, `evidence_conflict` | `codex.activity.goal_active` | darwin | `ext/goal/src/runtime.rs:425-497`, `extension.rs:180-191`, `core/src/tasks/mod.rs:811-883`, `bottom_pane/footer.rs:579-626`, `chatwidget/turn_runtime.rs:205-218` |
+| no row, the transcript scan stops at a prompt: the submit window, or a final answer streaming (codex hides the status row then) | AC | unknown; `evidence_conflict` beside `Ready` | `codex.activity.prompt_pending` | darwin | `chatwidget/input_submission.rs:473-492` |
+| goal continuation: `Pursuing goal` indicator on `SL` between goal turns | AC | unknown, `evidence_conflict` | `codex.activity.goal_active` | darwin | `ext/goal/src/runtime.rs:425-497`, `extension.rs:180-191`, `core/src/tasks/mod.rs:811-883`, `bottom_pane/footer.rs:579-626`, `chatwidget/turn_runtime.rs:205-218` |
 | goal indicator truncating the run-state word (narrow panes) | PU | no run-state cue | none | darwin | `chat_composer/status_surface.rs:22-55` |
 | disconnect: hint row is the `K quit` override | AC | unknown, overrides status row and run-state | `codex.activity.disconnected` | darwin, linux | `chatwidget/reconnect.rs:31-35` |
 | external editor: hint row is `Save and close external editor to continue.` | AC | composer blocked; `Ready` → unknown; working stands | `codex.composer.external_editor` | darwin | `app.rs:293`, `app/input.rs:300`, `tui.rs:333-336` |
-| default footer (no run-state) | AC | activity unknown unless a status row shows | `codex.interaction.none` | darwin, linux | `config/src/types.rs` default items |
+| default footer (no run-state word) | RP | idle from the screen as above; working from a status row | `codex.activity.idle` / `codex.activity.status_row` | darwin, linux (frames) | `config/src/types.rs` default items |
 | layout without a status line | AC | activity from the status row only | `codex.interaction.none` | darwin | — |
 | empty composer during work | AC | composer empty; activity from row or run-state | — | darwin, linux | — |
 | composer surface with no request element | RP | interaction none | `codex.interaction.none` | darwin, linux | 2.1 |
 | shortcut overlay (`?`) | RP | the composer surface's values; `evidence_clipped` when it pushes the transcript terminator off-screen | `codex.interaction.none` | darwin (100 columns idle; 60 and 40 columns `evidence_clipped`) | `bottom_pane/footer.rs:226-233` |
-| `Ready` with a draft, history search or any unclean band | AC | activity unknown | — | darwin, linux (draft) | §3 step 4.1 |
+| a draft, history search or any unclean band | AC | activity unknown (no idle) | — | darwin, linux (draft) | §3 step 4.1 |
 | side view (placeholder `Ask a follow-up question`) | AC | `Ready` → unknown; composer blocked; working stands | `codex.scope.side` | darwin | `chatwidget/side.rs:17-28`, `chatwidget.rs:2042` |
 | side view with a draft (placeholder gone, `Side` label hidden in some modes) | AC | activity unknown (draft) | — | darwin | `bottom_pane/chat_composer.rs:4833-4846` |
 | parent-owned sub-agent view (placeholder `Viewing sub-agent — direct input is disabled`, input still enabled, bold glyph) | AC | composer unknown; `Ready` → unknown; working stands | — | source-only: needs a thread with `can_accept_direct_input=false`, which multi_agent_v2 spawns would give and the 0.159.2 router rejected | `bottom_pane/chat_composer.rs:1652-1659`, `:4933-4952`, `app_server_session.rs:388-393` |
@@ -152,15 +152,15 @@ informative. cue-less timing windows are not families; §6 holds them.
 | interactive transcript footers (browse, find, selection, disclosure): composer dimmed | RP | menu, composer blocked; `Ready` still gives idle | `codex.menu.transcript_footer` | darwin (browse, find); selection and disclosure need a mouse drag or an activity focus that did not engage, and share the rule because the footer text is never read | `chat_composer.rs:5041-5043`, `transcript_view/footer.rs:30-66`, `transcript_view/disclosure.rs:357-403`, `app_backtrack/prompt_navigation.rs:30-70` |
 | warnings view (f2) | RP | menu | `codex.menu.warnings` | darwin | `bottom_pane/warnings_view*.rs` |
 | fullscreen detail toggle (ctrl+t) | AC | not an overlay | — | darwin | — |
-| interruption and error cells (`■ …`) | PU | notice none; a transcript terminator (2.2) | none | darwin | `chatwidget/input_restore.rs:312-336`, `history_cell/notices.rs:327-332` |
+| interruption and error cells (`■ …`) as the transcript scan's stop | RP | notice interrupted (default-colour `■ Conversation interrupted`) or error (red `■`); a transcript terminator (2.2) | `codex.notice.interrupted` / `codex.notice.error` | darwin (frames) | `chatwidget/input_restore.rs:312-336`, `history_cell/notices.rs:327-332` |
 | composer gap row (fullscreen): usage notice (bold at ≥ 90 % used), copy feedback, follow control `↓ …` | AC | never activity or request evidence | — | darwin | `bottom_pane/composer_gap.rs`, `app/owned_transcript.rs:237-254`, `transcript_view/composer_gap.rs:70-114`, `transcript_view/follow_control.rs:21-81`, `chatwidget/usage_notice.rs:31-87` |
 | sticky prompt header (transcript row 0, rendered like a historical prompt) | AC | a prompt stop of the transcript scan | — | darwin | `transcript_view/prompt_header.rs:18-60`, `transcript_view.rs:189-200` |
 | completion and working tips (`  └ Tip: …`) | AC | ordinary transcript rows; never a stop | — | darwin | `app/turn_tips.rs:146-230`, `transcript_view/turn_tip.rs`, `transcript_view/layout.rs:238-242` |
 | image-only prompt (`  [Image #N]` rows, no `›` row) | AC | a prompt stop of the transcript scan | — | source-only: only remote images (another client's history) render labels outside the message | `history_cell/messages.rs:204-237` |
 | inline layout (`alt=0`) | RP | same values | same ids | darwin, linux | — |
 | known terminal background (OSC 10/11 answered) | RP | same values | same ids | darwin | `style.rs:60-75,143-153,209-214`, `style/contrast.rs:35-78` |
-| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.run_state.ready` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
-| tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | `codex.run_state.ready` | darwin, linux | spec §3 |
+| tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.activity.idle` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
+| tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | none | darwin, linux | spec §3 |
 | stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown; under a shell that prints nothing, the old request (§6 c13) | none, or the old request's | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 c13 |
 | remote image rows `[Image #N]` above the prompt | RP | composer draft | — | source-only: only rehydrated history from another client attaches remote images | `chat_composer.rs:4927-4932`, `composer_layout.rs:118-129` |
 | Astra sparkle (band except the placeholder span, ≤ 15 s) | PU | layout_unknown, or composer and activity unknown | none | source-only (not observed with the model selected) | `chat_composer/sparkle.rs:344-417` |
@@ -168,7 +168,6 @@ informative. cue-less timing windows are not families; §6 holds them.
 | Max/Ultra status-line transition (≈ 2.5 s) | PU | run-state unreadable | none | source-only | `effort_status_line.rs` |
 | standalone hook row, previews, standalone background row | AC | no value of their own | — | darwin | `bottom_pane/mod.rs:2177-2263` |
 | forking, external writer, agents overview, realtime voice | PU | layout_unknown | none | source-only | `chatwidget/rendering.rs` |
-| explicit ready cue under the default footer | UA | idle impossible | none | — | default items have no run-state |
 | windows sandbox prompts | UA (fleet is darwin/linux) | — | — | — | `chatwidget/windows_sandbox_prompts.rs` |
 | title / progress / bell | UA (excluded by spec) | — | — | — | not read |
 
@@ -198,7 +197,7 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    *unreadable*: unknown, never clipped.
    - a rule whose decisive row lies in the top region carries region `compound`:
      the title rules and `codex.menu.pager` / the details pagers (row 0),
-     `codex.run_state.ready` (the settled stop), `codex.activity.prompt_pending`
+     `codex.activity.idle` (the settled stop), `codex.activity.prompt_pending`
      (the prompt stop).
    - a byte-capped top region keeps rows from row 0 downward and drops its lower
      rows, so it keeps row 0 but never continues the bottom region.
@@ -399,7 +398,7 @@ text, so truncation at narrow widths cannot hide a stop. bottom-pane rows sit
 below the transcript and none renders a stop shape, so the first stop is the
 transcript's last prompt or terminator.
 
-costs of requiring a visible stop: `Ready` reads unknown when the transcript end
+costs of requiring a visible stop: idle reads unknown when the transcript end
 has no terminator: replayed turns without saved timestamps (`completion.rs:7-37`
 builds no separator then), a failed turn with no error message
 (`protocol.rs:504-508`), a side-view interrupt (its notice is suppressed,
@@ -732,15 +731,22 @@ result for resume, warnings and menu pagers: unknown/menu/none/blocked.
 
 ### 2.9 notices
 
-codex has no banner-style current-notice structure. interruption
-(`■ Conversation interrupted - use /feedback if something went wrong`) and error
-(red `■ …` from about 240 `add_error_message` sites, most of them UI validation)
-are transcript cells that persist until the next turn. the grammar emits
-**notice none** (spec §2: "if no current notice structure can be qualified, emit
-none"). history cells never set a value; a `■` cell terminates the transcript
-scan and so permits idle. §6 c5 holds the rejected alternative.
+codex has no banner-style notice structure; a turn that ends abnormally ends the
+transcript with a notice cell, which persists until the next turn. when the
+transcript scan's stop (2.2) is such a cell, it is the latest turn's notice:
 
-## 3. run-state status line
+- `■` in the default colour reading `■ Conversation interrupted …` → notice
+  interrupted (`codex.notice.interrupted`);
+- a red `■ …` (about 240 `add_error_message` sites, most of them UI validation, and
+  provider errors) → notice error (`codex.notice.error`);
+- other notice cells (the goal budget) → notice none.
+
+a cell above a later prompt or terminator is history and sets nothing. the cell
+still terminates the scan, so the turn reads idle with its notice; a reconnect's
+red `■ Connection lost …` above its status row reads error beside the
+disconnect conflict.
+
+## 3. activity: status row, run-state word and idle
 
 source `chatwidget/status_surfaces.rs:991-1012`:
 
@@ -817,7 +823,7 @@ activity decision on the composer surface:
      `Save and close external editor to continue.`, optionally followed by the
      right-aligned context (a constant, `app.rs:293`; set by `app/input.rs:300`;
      the screen is kept, `tui.rs:333-336`). → composer blocked
-     (`codex.composer.external_editor`); `Ready` gives no idle (step 4.2); working
+     (`codex.composer.external_editor`); no idle (step 4.2); working
      evidence still stands. keys typed into the pane while the editor is open
      were seen discarded when it returned.
    - the remaining override, `Waiting for startup · esc cancel`
@@ -827,8 +833,8 @@ activity decision on the composer surface:
    working.
 3. no status row: `SL` `Working` / `Thinking` / `Waiting` → working; `Starting` →
    starting.
-4. no status row, `SL` `Ready` → idle only when all of these hold, checked in this
-   order:
+4. no status row and no `Working`/`Thinking`/`Waiting`/`Starting` word (a `Ready`
+   word or none) → idle only when all of these hold, checked in this order:
    1. the band test: the glyph is enabled or dimmed, the band is clean, and its
       dim run is the main placeholder or a dim proper prefix of it (≥ 5 cells,
       ending within 3 cells of the right edge). otherwise → unknown; the side
@@ -836,12 +842,16 @@ activity decision on the composer surface:
       dimmed composer reads blocked and still permits idle, because `SL` stays
       visible under the interactive footers.
    2. the hint row is not the external-editor override. otherwise → unknown.
-   3. `SL` carries no goal indicator. otherwise → unknown, `evidence_conflict`,
-      `codex.activity.goal_active`.
-   4. the transcript scan settled. *open* → unknown, `evidence_conflict`,
-      `codex.activity.prompt_pending`. *unproven* → unknown, `evidence_clipped`.
-      *unreadable* → unknown, no clipping.
-5. no run-state word → unknown; `evidence_clipped` when the scan is unproven.
+   3. `SL` carries no goal indicator (it renders on the default footer too).
+      otherwise → unknown, `evidence_conflict`, `codex.activity.goal_active`.
+   4. the transcript scan settled → idle (`codex.activity.idle`). *open* →
+      unknown, `codex.activity.prompt_pending`, `evidence_conflict` beside a
+      `Ready` word. *unproven* → unknown, `evidence_clipped`. *unreadable* →
+      unknown, no clipping.
+
+no status-line cue is required: skid adds none to managed launches. a settled
+scan is the decisive evidence, because codex hides the status row while it
+streams a final answer and the scan then stops at that turn's prompt.
 
 the async editor (2.5) takes only the status row from this section.
 
@@ -852,7 +862,8 @@ not mean:
 
 - background terminals are gone (§6 c9);
 - other threads are idle (§6 c2);
-- a default footer is idle (no run-state → never idle).
+- mcp startup has finished, or no restarted daemon is resuming a turn, when no
+  `Starting`/`Working` word is shown (§6 c4).
 
 during final-answer streaming the status row is hidden while `SL` still says
 `Working`.
@@ -898,9 +909,9 @@ composer reaches only guarded send
 | `tui.keymap.list.accept` / `.cancel` | `Press` footer keys; unbound cancel → approval layout_unknown; unbound accept → `Press K to cancel` still permission |
 | `tui.keymap.approval.*` | option shortcut suffixes, `open_thread`, `open_fullscreen` (ctrl+a → details pager) |
 | `tui.keymap.global.find_transcript` (F3), `.focus_activity` (F4) | open the interactive find / disclosure footers (dimmed composer) |
-| `tui.status_line` | managed `["run-state","model-with-reasoning","current-dir","thread-name"]`; unset → default items, no run-state; `[]` → no `SL` |
+| `tui.status_line` | the user's; skid sets none. default items show no run-state word; a `run-state` item adds the §3 cues; `[]` → no `SL` (and no goal indicator) |
 | `tui.status_line_use_colors=false` | `SL` uncoloured (the goal indicator keeps magenta) |
-| `tui.terminal_title` containing `run-state` | status-kind changes refresh `SL`; managed titles are untouched, so the word may lag |
+| `tui.terminal_title` containing `run-state` | status-kind changes refresh `SL`; otherwise the word may lag |
 | `tui.fullscreen_transcript=false`, `tui.alternate_screen=never`, `--no-alt-screen` | inline layout (`alt=0`, no gap row); pagers still switch to alt |
 | `tui.vim_mode_default` | `Vim: …` on the hint row; composer rules unchanged |
 | `tui.show_tooltips` | completion and working tips (ordinary transcript rows) |
@@ -919,8 +930,8 @@ each reading as it states. c4 and c11–c14 claim falsely, c15–c17 can read a
 request of another subtype, and c2 admits guarded send into a sub-agent, each
 under the conditions it names; spec §9 lists those. the costs:
 
-- **c1** idle needs `Ready`, the main placeholder on a clean band, no external editor
-  and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
+- **c1** idle needs no status row, the main placeholder on a clean band, no external
+  editor and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
   image or history-search match sits in the composer; a turn that ends with a
   pre-typed draft produces no ready notice; `skid wait --state idle` does not
   match until the draft is sent or cleared or the editor closes. a scrolled or
@@ -929,7 +940,7 @@ under the conditions it names; spec §9 lists those. the costs:
   and every claim is about that thread. a v1 sub-agent view has the enabled
   composer and the main placeholder, so it reads like the main thread: its idle
   and empty composer are the sub-agent's, and guarded send types into the
-  sub-agent. background sub-agents behind a main `Ready` read idle. the only
+  sub-agent. background sub-agents behind an idle main thread read idle. the only
   discriminator is text: with more than one thread the passive status line
   appends an agent label, `Main [role]` or a nickname
   (`app/agent_navigation.rs:327-352`, `footer.rs:838-847`), truncated first at
@@ -945,23 +956,25 @@ under the conditions it names; spec §9 lists those. the costs:
   plan mode's indicator replaces the goal indicator (not run; with the indicator
   the goal continuation's window measured ≤ ~10 ms, §3 refresh item 3). the
   acceptance covers the two unmeasured windows as it does the measured ones.
+  without a run-state word on `SL` (skid adds none), mcp startup that shows no
+  status row and a daemon-recovery continuation also read idle until a status
+  row appears.
   a 5 s poll lands in a ≤ 45 ms window with probability under 1 %; `ready` can fire
   when a queued shell command follows a turn, and `skid wait --state idle` right
   after `!cmd` can return early. right after a guarded send the visible draft reads
   unknown until Enter is processed, so it cannot return early there.
-- **c5** codex emits no notices (2.9). the rejected alternative read a `■` cell at the
-  transcript tail as `interrupted` or `error`; trivial UI validation errors would
-  trigger it, it would persist until the next turn, CLEARING would suppress ready,
-  and guarded send would refuse a retry after an error.
-- **c6** the managed launch replaces the launch's status-line layout; a local launch
-  with the same `-c` runs embedded (§5).
-- **c7** tall panes: above 256 rows, rows `192..h−65` are not captured, so `Ready` reads
+- **c5** notices come from the `■` cell that ends the transcript (2.9), so trivial UI
+  validation errors also read `error shown` until the next turn. a notice no longer
+  clears ready or refuses guarded send (spec §5, §6), so an interrupted or failed
+  turn still raises ready and a retry can be sent.
+- **c6** retired: skid no longer overrides the managed launch's status line.
+- **c7** tall panes: above 256 rows, rows `192..h−65` are not captured, so idle reads
   unknown, `evidence_clipped`, until the transcript tail passes row `h−64`, and a
   pre-session screen near the top reads unknown/unknown, `evidence_clipped`.
 - **c8** npm's node launcher leads the foreground group, so a codex started through it
   is a generic terminal; managed launches and `codex` typed in a skid shell run
   the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
-- **c9** `Ready` with surviving background terminals reads idle. that is no false
+- **c9** idle with surviving background terminals stays idle. that is no false
   claim: spec §2 makes idle the provider's ready-state evidence and a surviving
   process or task count insufficient for working, and §3 says idle does not mean
   background terminals are gone. it is a scope limit, like c2's background
@@ -973,9 +986,9 @@ under the conditions it names; spec §9 lists those. the costs:
   bold indented row (2.6). every production `SelectionViewParams` construction
   sets a title or header; a picker whose header has no bold row, drawn under a
   transcript row that starts with a listed title, would read that title's value.
-- **c12** an unmanaged status line whose first item is a user value equal to a
-  run-state word reads as that word's cue, a false claim, idle included. the
-  managed profile cannot produce it.
+- **c12** a user status line whose first item is a user value equal to a run-state
+  word reads as that word's cue, a false claim (`Working` reads working; `Ready`
+  beside a status row reads a conflict).
 - **c13** stale chrome, a false request. after the provider is killed, the pane
   keeps its last screen (and the alternate screen) until the relaunched provider
   draws. live samples read layout_unknown before the first draw (0.32–0.42 s),
@@ -986,8 +999,8 @@ under the conditions it names; spec §9 lists those. the costs:
   enter the needs-input filter and `skid wait --state needs-input` could return
   early. the ready machine cannot fire across a foreground change.
 - **c14** a status row whose header pushes `(` past the right edge is no status
-  row (seen live). the stale-`Ready` paths of §3 refresh item 1 show such a row
-  with `Ready` still on `SL`, so in that millisecond window (from source) a pane
+  row (seen live). the stale paths of §3 refresh item 1 show such a row while no
+  `Working` word is up, so in that millisecond window (from source) a pane
   at most header + 4 columns wide (≤ 22 for `• Compacting context`) reads idle
   instead of `evidence_conflict`: a false idle. it raises ready only when no
   sample falls between it and a sampled working: `/compact` or a review starting
@@ -1030,8 +1043,10 @@ under the conditions it names; spec §9 lists those. the costs:
 
 run this after a codex upgrade, before claiming the new version, with the
 current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
-requires for isolated tmux and live runs. it reuses no retained harness; every
-probe is temporary and deleted before commit ([testing](rules/testing.md)), and
+requires for isolated tmux and live runs. the authored frames are retained as
+fixtures ([testing](rules/testing.md)): `internal/agentcontrol/testdata/frames/`
+holds `codex.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
+replays their captures. other probes are temporary and deleted before commit, and
 every record is content-free.
 
 1. read the upstream diff of the files §1's basis column names, and of anything
@@ -1062,10 +1077,10 @@ every record is content-free.
    user's `~/.codex`. classify through the real capture and `detect`;
    expectations come from the scripted step and the keys sent, never from skid's
    output.
-5. for families no endpoint can produce, author frames from source and paint them
-   through real tmux: that proves parser mechanics only, so the family stays
-   `NOT_RUN` for provider support. pair each new rule with a negative and confirm
-   a mutation of the rule flips it.
+5. for families no endpoint can produce, author frames from source in `codex.txt`,
+   rerun `capture.py` (real tmux on its own socket) and the replay: that proves
+   parser mechanics only, so the family stays `NOT_RUN` for provider support. pair
+   each new rule with a negative and confirm a mutation of the rule flips it.
 6. clean up: stop probe daemons and remove the socket and lock named by the
    sha256 of each probe's control-socket path from the shared daemon socket
    directory (`/tmp/codex-daemon-<uid>/`), touching no other entry. if a codex

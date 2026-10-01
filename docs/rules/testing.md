@@ -10,6 +10,14 @@ must demonstrate the intended failure first. review the implementation and the
 test's sensitivity, then delete the temporary test before committing. this is
 change-specific evidence, with no retained automatic regression protection.
 do not rebuild the retired harness or add production seams for these tests.
+
+one exception, at the user's request (2026-10-01): the terminal detector's
+authored provider frames are retained as fixtures in
+`internal/agentcontrol/testdata/frames/` (dummy content, captured through real
+tmux by its `capture.py`), with one pure replay, `internal/agentcontrol/frames_test.go`,
+that `go test ./internal/agentcontrol` runs on demand. no gate runs it; rerun it
+whenever the classifier or a provider grammar changes, and extend the corpus
+instead of writing a throwaway frame harness.
 unreachable-code and documentation deletions use caller/build/link checks when
 a behavioral test would exercise no changed behavior.
 
