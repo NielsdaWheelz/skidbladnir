@@ -39,13 +39,6 @@ type Observation struct {
 
 func (observation Observation) ExecutableBase() string { return filepath.Base(observation.Executable) }
 
-func (observation Observation) Argument(index int) string {
-	if index < 0 || index >= len(observation.Argv) {
-		return ""
-	}
-	return observation.Argv[index]
-}
-
 func Observe(pid PID) (Observation, error) {
 	if pid <= 0 {
 		return Observation{}, errors.New("invalid process id")

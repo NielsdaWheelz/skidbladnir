@@ -1,12 +1,22 @@
 # terminal status and control
 
-status: source implemented; [qualification](terminal-agent-control-qualification.md)
-records the full terminal checks and current-main composition limits.
-this owns the hard cutover
-of ordinary terminal observation and orchestration. it supersedes conflicting
-session-target behavior in [native interaction](native-agent-observation.md),
-[agent control](agent-control.md), and [client controls](agent-control-ux.md) at
-implementation cutover. retain native integration as a separate capability.
+[non-native terminal observation](terminal-observation.md) owns the status facts,
+the observed screen regions and their limits, provider classification,
+guarded-send admission and the terminal wait states. this document keeps
+terminal targets, the tmux capture mechanics, effects, routes, wait's polling
+loop and the observation sample's composition.
+
+status: orchestration implemented; the observation cutover is implemented in
+source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
+records the full terminal checks and composition limits on the earlier
+`{state, source}` source, then the observation cutover: capture, recognition,
+classification and cost on darwin and linux, its send-admission and wait changes
+on darwin only ([linux](issues/terminal-observation-linux-coverage.md) and the
+physical phone are `NOT_RUN`). this owns the hard cutover of ordinary terminal
+orchestration. it supersedes conflicting session-target behavior in
+[native interaction](native-agent-observation.md), [agent control](agent-control.md),
+and [client controls](agent-control-ux.md) at implementation cutover. retain
+native integration as a separate capability.
 
 ## 1. outcome, scope and decisions
 
@@ -16,7 +26,7 @@ ordinary status, inspect/read/send/wait/stop/close use terminal evidence and inp
 no native-first mode, runtime feature flag, automatic transport selection, or
 fallback after a failed native request.
 this applies equally to codex and claude, including registered claude sessions;
-only provider-specific detector rules and interruption keys differ.
+only provider-specific screen grammars and interruption keys differ.
 
 | operation | contract |
 | --- | --- |
@@ -45,74 +55,106 @@ from the existing codex creation path. no new tracked-launch command.
 ## 2. observation and schemas
 
 reuse foreground process classification and the existing five-second inventory
-cadence. replace automatic native status enrichment with one bounded terminal
-observation per represented session, outside the session mutation lock; retain
-the two-second enrichment budget. no background lifecycle reconstruction.
+cadence. inventory observes every represented session once, concurrently and
+outside the session mutation lock, under one shared two-second deadline; creation
+and shell responses observe their new session the same way. no background
+lifecycle reconstruction, poller, retry or deadline extension. a creation
+response usually samples the instant before the provider draws, so it reads
+`provider_unrecognized` or `layout_unknown`; the next inventory carries the
+provider's state.
 
 ```text
 terminal target = {identityToken, paneId} // machine + tmuxId supplied by routing
-terminal status = {state: working|blocked|idle|unknown,
-                   source: terminal|unavailable}
-session += {terminalStatus: terminal status}
+session += {terminalStatus: TerminalStatus}
 session.conversation? = Conversation // recorded native identity only, no runtime
 ```
 
+[observation §2](terminal-observation.md#2-capability-and-wire-contract) owns
+`TerminalStatus`: its five fields, their values and the legal combinations.
+`sessions.TerminalStatus.Valid` enforces them; go and kotlin clients check them
+once at ingress. every member is required and non-null; the former
+`{state, source}` shape is rejected.
 retain existing `activePaneId`, foreground `agent?`, connection and account facts;
 do not introduce a second pane/provider identity or per-action capability map.
 native `ConversationRuntime`, status and methods remain on explicit native
 operations. ordinary inventory makes no helper status/history calls. metadata
 does not establish what a terminal displays, change status, or enable controls.
-define terminal status at the sessions domain owner; keep native status validation
-separate. sessions never imports its higher-level observer.
-preserve metadata-only claude identity projection from its validated registration
-and codex's recorded identity; neither requires helper calls. inventory/create
-never fabricate native methods or turns. explicit native resolution obtains its
-runtime through native inspect; captured native references keep their exact turn.
+keep native status validation separate. sessions never imports its higher-level
+observer. preserve metadata-only claude identity projection from its validated
+registration and codex's recorded identity; neither requires helper calls.
+inventory/create never fabricate native methods or turns. explicit native
+resolution obtains its runtime through native inspect; captured native
+references keep their exact turn.
 
-use one pure provider detector in `internal/agentcontrol/detect.go`, returning
-internal `{state, composer:empty|draft|unknown}` so send reuses the same parsing.
-composer evidence is ephemeral and never enters inventory. port useful
-rules from `c164ded:internal/agentcontrol/detect.go`; do not restore its orchestration
-or native-fallback composition. inspect at most 8 kib of the current visible
-screen and its last eight joined lines, never old scrollback. adapt the existing
-bounded tmux capture primitive to select visible screen versus retained tail;
-keep utf-8 truncation, byte limits and capture cleanup at that owner.
-visible observation may retain bounded sgr styling to distinguish a dim provider
-placeholder from typed input; terminal reads remain plain text. unknown
-styling/layout refuses guarded send. no placeholder whitelist or terminal emulator.
+one sample serves inventory, inspect and guarded send:
 
-precedence: recognized dialog/blocker -> positive working indicator -> recognized
-prompt/footer idle pattern -> unknown. identify codex/claude from fresh process
-facts before applying their rules; quoted output, titles, quietness, elapsed time,
-process existence and old screen content alone are not state evidence. no match,
-unsupported provider, clipped/unrecognized screen or unstable foreground produces
-unknown. successful ambiguity is `source:terminal`; failed capture/observation
-is `source:unavailable,state:unknown`. no `done`, `failed` or `stopped` inference.
+1. a failed foreground sample is unavailable `process_failed`. an ssh/mosh
+   connection is `remote_context`; a foreground that is not a recognized local
+   provider is `provider_unrecognized`. none of these captures the screen.
+2. `Manager.ObservePane` takes the session that List, ResolveTerminal or
+   creation returned in the same request and never re-resolves it. it captures
+   through `tmux.Client.ObservePane`, then re-observes the pane foreground and
+   requires `process.SameObservation` with the session's own sample. an absent
+   or different foreground is `foreground_changed`; a kernel failure is
+   `process_failed`; a tmux failure or screen change is `capture_failed`. an
+   expired deadline is `observation_timeout`, chosen before the failed stage. a
+   cancelled request takes the same label: its response is discarded, so only its
+   failure log line, which names a timeout, shows it.
+3. a pure classifier in `agentcontrol` reads the captured regions for the
+   recognized provider. it returns the status plus private composer evidence
+   (`empty|draft|blocked|unknown`), which never enters inventory. a classifier
+   defect panics; it is never reported as unavailable.
 
-accepted user decision: idle is an inference. a recognized prompt/footer without
-working/blocker evidence may produce it. it does not establish turn completion,
-input admission, an empty queue or task success. qualify current provider screens;
-document known false-positive cases rather than claiming authoritative state.
-no synthetic certainty score, status timestamp, transition ledger or debounce.
-when a composer is present, working chrome must be adjacent through whitespace
-or its paired provider border; intervening output makes it ambiguous. preserve
-codex's fullscreen status/shortcut rows, exact footer inset and spacing boundary;
-title-generation spinners and passive warnings are metadata, never turn activity.
+tmux observes in two commands. the first reads width, height and alternate-screen
+state under the exact target guard. the second is one guarded `if-shell` that runs
+one `capture-pane -p -e` per row in one tmux command queue, only while the target
+and that screen read are unchanged; any change refuses the whole sample. one `-e`
+capture carries style from row to row on tmux 3.7c, so each row is its own capture
+and parses from the default style. rows are physical (no `-J`), complete utf-8,
+keep their escape sequences and are never joined; scrollback is never read.
+[observation §3](terminal-observation.md#3-composition-and-observation-boundary)
+owns the regions and their row and byte limits. the public plain-text read keeps
+its own capture.
 
-sample exact session/pane and foreground before capture; recheck them afterward.
-discard evidence on observed change. `/exit` stops applying the former agent's
-rules; the next recognized agent uses its own rules. same-process `/resume` needs
-no detection or association update: subsequent samples inspect the displayed
-screen. ordinary shells/other programs render `terminal`, without an agent-idle
-claim. remote context remains display-only: local transport terminals use generic
-terminal control and unknown agent state; no gateway-to-gateway routing is added.
+explicit inspect and send resolve their target fresh; `ResolveTerminal` is target
+admission, and its errors stay errors. a deadline that expires during resolution
+is `TerminalUnavailable`, never a changed target. a target change during their
+capture is `TerminalTargetChanged`; inventory reports it as `capture_failed`.
+inspect samples under a two-second deadline. every tmux command stops waiting for
+its output 100 ms after its context ends, so a stalled tmux server holds an
+inspect, send or wait response at most that long past its budget (a paste's
+bounded buffer cleanup adds up to 1 s); inventory's list has no deadline. every
+unavailable result, from inventory, creation/shell responses or inspect, logs one
+content-free `Terminal.ObservationFailed` event with its reason and the
+milliseconds since the observing call began.
+
+a local provider is recognized only from fresh kernel facts that match a
+configured foreground signature; the
+[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
+matching, including npm's node launcher. a process matching more than one
+provider is unrecognized.
+
+[observation §4](terminal-observation.md#4-provider-adapters-and-managed-displays)
+owns the provider grammars, managed codex run-state chrome and rule ids. quoted
+output, titles, quietness, elapsed time, process existence and old screen content
+are not state evidence. idle is inferred from qualified provider ready-state
+evidence; it establishes neither turn completion, input admission, an empty queue
+nor task success. no certainty score, status timestamp, transition ledger or
+debounce, and no `done`, `failed` or `stopped` inference.
+
+`/exit` stops applying the former agent's rules; the next recognized agent uses
+its own rules. same-process `/resume` needs no detection or association update:
+subsequent samples inspect the displayed screen. ordinary shells/other programs
+render `terminal`, without an agent-idle claim. remote context remains
+display-only: local transport terminals use generic terminal control and unknown
+agent state; no gateway-to-gateway routing is added.
 
 ## 3. terminal effects and ownership
 
 ```text
 client -> existing fleet routing -> target gateway
                                  -> sessions -> tmux / kernel
-                                 -> agentcontrol terminal detector/policy
+                                 -> agentcontrol terminal classifier/policy
 explicit native target           -> agentcontrol native adapter -> existing helper
 ```
 
@@ -130,7 +172,7 @@ in the same synchronous tmux command queue as the capture/input effect. reuse th
 existing lifetime predicates and strict pane encoding. a changed pane rejects;
 never resolve a replacement pane by name. a rename alone does not change authority.
 
-kernel foreground samples choose detector/key behavior, not terminal authority.
+kernel foreground samples choose classifier/key behavior, not terminal authority.
 revalidate known foreground facts immediately before provider-specific input;
 an observed change refuses that input. there is no atomic transaction between
 kernel job control, screen inspection and terminal consumption: bytes written
@@ -144,13 +186,13 @@ at a shell prompt ctrl-c may clear a draft; another program may ignore it. an
 unavailable recognition sample uses the same generic ctrl-c contract, not a
 second transport. no provider-native call occurs.
 
-send requires a freshly detected local agent in working or idle state. blocked,
-unknown, unavailable and non-agent terminals refuse before writing; use text/keys
-for deliberate interaction. also refuse a visibly nonempty composer or an
-unrecognized composer layout; never append-and-submit a detectable user draft.
-this heuristic cannot eliminate concurrent edits. text deliberately retains
-ordinary append/paste-and-submit semantics. send/text reuse the same unique-buffer
-paste plus one submit primitive. stage that buffer before final foreground
+send writes only when
+[observation §5](terminal-observation.md#5-controls-and-diagnostic-api) admits
+the sample; a refusal carries §5's reason. use text/keys for deliberate
+interaction. never append-and-submit a detectable user draft. this heuristic
+cannot eliminate concurrent edits. text deliberately retains ordinary
+append/paste-and-submit semantics. send/text reuse the same unique-buffer paste
+plus one submit primitive. stage that buffer before final foreground
 revalidation; both paste and enter belong inside the successful tmux predicate
 branch. refusal executes neither; cleanup deletes only this operation's buffer.
 bounded buffer cleanup may continue for one second after request cancellation;
@@ -176,16 +218,16 @@ from its request owner. lost responses leave outcomes unknown, not retriable.
 
 replace `/v1/sessions/{id}/agent/*` with closed terminal routes; delete the old
 route reader and native/terminal method switches. retain auth, pinned machine,
-64-kib envelopes, 10-second operations and 15-second client budgets. inspect uses
-the two-second status budget. within close's ten-second budget, interruption gets
-at most two seconds; cleanup uses at most six, reserving the final two for exact
-deletion. use separate child contexts, never the expired interruption context;
-calculate each cap against the absolute operation deadline, including validation
-and lock waits. parent cancellation still wins. no retry finishes a partial operation.
+64-kib envelopes, 10-second operations and 15-second client budgets. within
+close's ten-second budget, interruption gets at most two seconds; cleanup uses
+at most six, reserving the final two for exact deletion. use separate child
+contexts, never the expired interruption context; calculate each cap against the
+absolute operation deadline, including validation and lock waits. parent
+cancellation still wins. no retry finishes a partial operation.
 
 | route | request fields beyond terminal target | result |
 | --- | --- | --- |
-| `POST /v1/sessions/{id}/terminal/inspect` | none | `{terminalStatus}` |
+| `POST /v1/sessions/{id}/terminal/inspect` | `explain?` | `{terminalStatus, diagnostics?}` |
 | `POST /v1/sessions/{id}/terminal/read` | `maxBytes?` | `{text,source:"terminal",scope:visible|terminal_history,truncated}` |
 | `POST /v1/sessions/{id}/terminal/send` | `text` | write receipt |
 | `POST /v1/sessions/{id}/terminal/text` | `text` | write receipt |
@@ -198,7 +240,22 @@ and lock waits. parent cancellation still wins. no retry finishes a partial oper
 write receipt = {method:"terminal", outcome:written|unknown}
 close result = {interrupt:written|not_sent|unknown,
                 terminal:closed|not_closed|unknown}
+diagnostics = {rules: [{id, region: top|bottom|compound}],
+               capture?: {width, height, alternate, topClipped, bottomClipped},
+               elapsedMs: {resolve?, capture?, classify?}}
 ```
+
+`explain` is a boolean accepted only by inspect; absent means false and null
+rejects. diagnostics are present exactly when `explain` is true and describe the
+same sample as the status. `rules` is always an array, possibly empty, of at
+most eight content-free `{id, region}` entries whose ids are 1–48
+`[a-z0-9_.-]` characters; `capture` is present only when a screen was captured;
+`elapsedMs` holds only the stages that ran, as integer milliseconds in
+`0..2147483647`. `agentcontrol.Diagnostics.Valid` owns these bounds and
+fleetclient ingress calls it.
+an observation failure after target admission is `200` with an unavailable
+status and, when explained, its diagnostics; target, auth and identity failures
+keep their errors.
 
 close `not_closed` means positively refused before deletion; `unknown` means
 deletion may have occurred. omit neither effect and never turn unknown into
@@ -237,16 +294,21 @@ terminal selectors must not implicitly become conversation selectors. this plan
 supersedes its command routing table: terminal handles select info/enter/read/send/
 text/keys/wait/stop/close/shell/group; conversation handles and direct native ids
 select native read/send/wait/stop only. conversation handles explicitly select
-native identity, never whichever terminal happens to contain it. inspection stays
-an internal client operation plus the declared api; add no public inspect command.
+native identity, never whichever terminal happens to contain it. terminal inspection
+stays an internal client operation plus the declared api, surfaced only by
+`skid info HANDLE --explain` ([output](agent-control-ux.md#selection-identity-and-results));
+add no public terminal inspect command.
 root integrates overlapping files serially, with one grammar in the final release;
 no selector redesign or compatibility alias is implemented in this slice.
 
 wait reuses the current client loop: capture once, sample immediately, then one
 request per five seconds, default idle/60 seconds, maximum one hour; every request
-is bounded by the monotonic remaining deadline. terminal states are idle/blocked
-only. native-only waits retain native state choices. terminal-source unknown
-continues without matching; unavailable-source samples return an unavailable error.
+is bounded by the monotonic remaining deadline. the cli supplies the defaults;
+the client validates the state against the captured target kind before polling.
+[observation §5](terminal-observation.md#5-controls-and-diagnostic-api) defines
+the terminal states and their matching; a sample that does not match continues.
+native-only waits retain idle/blocked/done/failed/stopped.
+unavailable-source samples return an unavailable error.
 active-pane selection change, pane destruction or session replacement ends target_changed;
 foreground exit/restart/resume within the same pane remains the same terminal
 target. cancellation stops the waiter only. matched means observed inferred state,
@@ -291,11 +353,11 @@ assign a designer to each client slice and a content reviewer to shared cli/api
 errors. good content names the actual terminal/machine, distinguishes observation
 from delivery, exposes an available action, and stays legible at narrow widths.
 one presentation function per client serves cards, details, terminal menus and
-accessibility; never duplicate detector logic in clients.
+accessibility; never duplicate classifier logic in clients.
 
 | feature | required content / behavior |
 | --- | --- |
-| inferred agent state | `working`, `waiting`, `idle`, `status unknown`; details: `inferred from terminal` |
+| inferred agent state | [observation §6](terminal-observation.md#6-content-attention-and-filtering) labels; details: `work continues`, `inferred from terminal` |
 | observation failure | `status unavailable`; retain terminal actions |
 | ordinary shell/program | `terminal`; retain current command/profile context when known |
 | stop / combined close / immediate close | `send interrupt` / `interrupt and close terminal` / `close terminal only` |
@@ -306,7 +368,7 @@ accessibility; never duplicate detector logic in clients.
 | lost terminal-only close response | `could not confirm terminal deletion. refresh before taking another action.` |
 | partial close | `terminal closed; interruption unconfirmed.` |
 | target change | `the terminal changed. refresh before trying again.` |
-| inferred wait match | `observed idle (inferred).` or `observed waiting (inferred).` |
+| inferred wait match | `observed idle (inferred).`, `observed working (inferred).` or `observed needs-input (inferred).` |
 
 stop is a deliberate single action; close variants retain the existing confirmation
 with exact captured name and terminal-host machine, not an ssh destination.
@@ -321,23 +383,22 @@ remove routine `conversation not tracked`, tracking chips and native-method gate
 secondary details may say `recorded native conversation; may differ from terminal`;
 never claim current identity or recommend manual tracking as repair.
 
-presentation precedence: failed observation -> `status unavailable`; successful
-non-agent sample -> `terminal`; recognized agent -> inferred state label. stale
-retained facts use existing freshness treatment and `last observed: <label>`.
-accessibility includes `inferred from terminal` and announces meaningful changes
-only. the agents filter follows current local/remote process context, never a
-recorded conversation. an exited agent remains in all-terminals/group views;
-if its row leaves the filter, use existing nearest-row selection, never retarget
-an open confirmation. preserve relative attention order blocked/idle/unknown/working.
-retain typography, dimensions, palette, motion and group sorting; the notification
-owner governs its colors. labels survive no-color display; no success claim.
+[observation §6](terminal-observation.md#6-content-attention-and-filtering) owns
+presentation precedence, copy, tone, stale and accessibility treatment;
+[desktop browser §3](desktop-browser.md#3-selection-and-navigation) owns the
+agents order. the agents filter follows current local/remote process context, never a
+recorded conversation. an exited agent remains in all-terminals/group views; if
+its row leaves the filter, use existing nearest-row selection, never retarget an
+open confirmation. retain typography, dimensions, palette, motion and group
+sorting; the notification owner governs its colors. labels survive no-color
+display; no success claim.
 
 ## 7. disjoint implementation and review
 
 | slice | exclusive paths | deliverable |
 | --- | --- | --- |
 | terminal owner | `internal/sessions/`, `internal/tmux/`, `internal/process/` only if required | generic targets, guarded capture/input, exact independent closure |
-| observation/control owner | `internal/agentcontrol/`, `internal/agentruntime/` | pure detector, terminal policy/results; retain native implementation |
+| observation/control owner | `internal/agentcontrol/`, `internal/agentruntime/` | pure classifier, terminal policy/results; retain native implementation |
 | gateway owner | `internal/gateway/`, `internal/logging/` | strict replacement routes/dtos, separate close outcomes, content-free errors |
 | desktop + designer | `internal/fleetclient/`, `internal/agentcli/`, `internal/sessionui/` | target dispatch, references/wait, controls and shared content |
 | android + designer | `android/app/src/main/java/dev/niels/skidbladnir/` | schemas, fresh-target controls and shared content |

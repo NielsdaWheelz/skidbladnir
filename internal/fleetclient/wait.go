@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
 
 func (client *Client) wait(parent context.Context, request Request) Result {
@@ -15,15 +16,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 	if !request.Valid() {
 		return Failed("invalid_input", "not_sent")
 	}
-	timeout := request.WaitTimeout
-	if timeout == 0 {
-		timeout = time.Minute
-	}
-	state := request.State
-	if state == "" {
-		state = "idle"
-	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
+	ctx, cancel := context.WithTimeout(parent, request.WaitTimeout)
 	defer cancel()
 	resolveContext, cancelResolve := context.WithTimeout(ctx, Timeout)
 	captured, _, failure := client.resolve(resolveContext, request)
@@ -71,11 +64,21 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 		matched := false
 		if captured.Conversation == nil {
 			status := sampled.Value.(TerminalInspectResult).TerminalStatus
-			if status.Source == "unavailable" {
+			if status.Source == sessions.SourceUnavailable {
 				return Failed("TerminalUnavailable", "not_sent")
 			}
 			result.TerminalStatus = &status
-			matched = status.State == state
+			// Each state tests its own dimensions; an unknown tested dimension never matches.
+			switch request.State {
+			case "idle":
+				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
+			case "working":
+				matched = status.Activity == sessions.ActivityWorking
+			case "needs-input":
+				matched = NeedsInput(status)
+			default:
+				panic("terminal wait state was not validated") // justify-defect: Request.Valid admits only terminal states for terminal targets.
+			}
 		} else {
 			runtime := sampled.Value.(agentruntime.ConversationRuntime)
 			if !runtime.Binding.Equal(captured.Conversation.Binding) {
@@ -86,7 +89,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 				return Failed("AgentUnavailable", "not_sent")
 			}
 			result.Observation = &agentruntime.Observation{Binding: runtime.Binding, Status: runtime.Status, Turn: runtime.Turn}
-			matched = runtime.Status.State == state
+			matched = runtime.Status.State == request.State
 		}
 		if matched {
 			result.Outcome = "matched"

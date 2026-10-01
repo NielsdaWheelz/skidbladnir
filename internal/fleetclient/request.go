@@ -39,6 +39,7 @@ type Request struct {
 	Input          string
 	Delivery       string
 	TerminalOnly   bool
+	Explain        bool
 	State          string
 	WaitTimeout    time.Duration
 	MaxBytes       int
@@ -101,7 +102,7 @@ func (request Request) Valid() bool {
 	} else if request.ExpectedNaming != nil || request.Naming != nil {
 		return false
 	}
-	if request.Operation != "read" && request.Scope != "" || request.Operation != "send" && (request.Input != "" || request.Delivery != "") || request.Operation != "wait" && (request.State != "" || request.WaitTimeout != 0) || request.Operation != "close" && request.TerminalOnly {
+	if request.Operation != "read" && request.Scope != "" || request.Operation != "send" && (request.Input != "" || request.Delivery != "") || request.Operation != "wait" && (request.State != "" || request.WaitTimeout != 0) || request.Operation != "close" && request.TerminalOnly || request.Operation != "info" && request.Explain {
 		return false
 	}
 	if request.Operation != "start" && request.Operation != "group" && !request.Group.IsUnassigned() || request.Operation != "list" && request.GroupFilter.Kind() != group.FilterAll {
@@ -168,13 +169,16 @@ func (request Request) Valid() bool {
 	case "text":
 		return validInputText(request.Text)
 	case "wait":
-		if request.WaitTimeout < 0 || request.WaitTimeout > time.Hour {
+		// A request names its state and timeout; the cli owns skid's documented defaults.
+		if request.WaitTimeout <= 0 || request.WaitTimeout > time.Hour {
 			return false
 		}
 		switch request.State {
-		case "", "idle", "blocked":
+		case "idle":
 			return true
-		case "done", "failed", "stopped":
+		case "working", "needs-input":
+			return !native
+		case "blocked", "done", "failed", "stopped":
 			return native
 		default:
 			return false

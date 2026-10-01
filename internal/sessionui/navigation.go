@@ -6,10 +6,8 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
-
-// attention keeps inferred waiting and idle ahead of unknown and working.
-var attention = []string{"blocked", "idle", "unknown", "working"}
 
 func sameSession(a, b fleetclient.Session) bool {
 	left, _ := fleetclient.DecodeReference(a.Ref)
@@ -27,7 +25,7 @@ func (m *model) rebuild() {
 	if m.agentsView {
 		for _, peer := range m.scopedPeers() {
 			for _, session := range peer.Sessions {
-				row := listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
 				if m.current(&row).Agent != nil {
 					m.rows = append(m.rows, row)
 				}
@@ -40,14 +38,18 @@ func (m *model) rebuild() {
 				}
 				return 1
 			}
-			return cmp.Compare(slices.Index(attention, statusState(a.session)), slices.Index(attention, statusState(b.session)))
+			return cmp.Compare(attentionRank(a.session.TerminalStatus), attentionRank(b.session.TerminalStatus))
 		})
 	} else {
 		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
 			for _, row := range group.Rows {
-				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.Session, row.Available && m.scopeReady})
+				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available && m.scopeReady})
 			}
 		}
+	}
+	// The filter narrows the chosen view without reordering it; stale rows never qualify.
+	if m.needsInputOnly {
+		m.rows = slices.DeleteFunc(m.rows, func(row listedRow) bool { return !row.available || !fleetclient.NeedsInput(row.session.TerminalStatus) })
 	}
 	m.cursor = -1
 	for index, row := range m.rows {
@@ -128,6 +130,23 @@ func (m *model) move(delta int) {
 	}
 }
 
-func statusState(session fleetclient.Session) string {
-	return session.TerminalStatus.State
+// attentionRank puts what may be waiting on the operator first: requests and
+// menus, then idle, then unknown (including unavailable), then starting or
+// working. Idle ranks by the facts that label a row idle or ready; idle with an
+// unknown interaction is labelled status unknown and ranks with it. The sort is
+// stable within a rank.
+func attentionRank(status sessions.TerminalStatus) int {
+	switch {
+	case fleetclient.NeedsInput(status) || status.Interaction == sessions.InteractionMenu:
+		return 0
+	case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone:
+		return 1
+	}
+	switch status.Activity {
+	case sessions.ActivityIdle, sessions.ActivityUnknown:
+		return 2
+	case sessions.ActivityStarting, sessions.ActivityWorking:
+		return 3
+	}
+	panic("invalid owned terminal activity") // justify-defect: ingress admits only Valid statuses.
 }

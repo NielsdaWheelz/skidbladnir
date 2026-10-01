@@ -77,38 +77,30 @@ type RenameInput struct {
 }
 
 type Session struct {
-	foreground      *processinfo.Observation
-	TmuxID          string
-	ActivePaneID    string
-	TmuxName        string
-	NameMode        NameMode
-	IdentityToken   string
-	LaunchProfile   agentruntime.ProfileKey
-	Agent           *agentruntime.AgentRuntime
-	Conversation    *agentruntime.Conversation
-	TerminalStatus  TerminalStatus
-	Connection      *Connection
-	Objective       string
-	Group           group.Label
-	Character       catalog.Character
-	CWD             string
-	ActiveCommand   string
-	AttachedClients int
+	panePID          processinfo.PID
+	foreground       *processinfo.Observation
+	foregroundFailed bool
+	TmuxID           string
+	ActivePaneID     string
+	TmuxName         string
+	NameMode         NameMode
+	IdentityToken    string
+	LaunchProfile    agentruntime.ProfileKey
+	Agent            *agentruntime.AgentRuntime
+	Conversation     *agentruntime.Conversation
+	TerminalStatus   TerminalStatus // zero (invalid) until agentcontrol.Enrich observes the session
+	Connection       *Connection
+	Objective        string
+	Group            group.Label
+	Character        catalog.Character
+	CWD              string
+	ActiveCommand    string
+	AttachedClients  int
 }
 
-type TerminalStatus struct {
-	State  string `json:"state"`
-	Source string `json:"source"`
-}
-
-func (status TerminalStatus) Valid() bool {
-	switch status.State {
-	case "working", "blocked", "idle", "unknown":
-	default:
-		return false
-	}
-	return status.Source == "terminal" || status.Source == "unavailable" && status.State == "unknown"
-}
+// ForegroundFailed reports that this sample could not identify the pane's
+// foreground process. Agent and Connection are then unknown, not absent.
+func (session Session) ForegroundFailed() bool { return session.foregroundFailed }
 
 type Connection struct {
 	Transport string

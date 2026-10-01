@@ -70,9 +70,6 @@ internal fun SessionCard(
     val context = visibleSession.context
     val notification = machine.notifications[NotificationKey(visibleSession.target)] ?: NotificationPresentation()
     val status = sessionStatusContent(session, machine.canMutate, notification)
-    val observedState = session.terminalStatus.state.takeIf {
-        session.terminalStatus.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
-    }
     val tone = sessionStatusColor(status.tone)
     val profile = when (context) {
         is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
@@ -106,7 +103,7 @@ internal fun SessionCard(
             SessionIdentityHeader(
                 tmuxName = session.tmuxName,
                 dwarfName = session.character.displayName,
-                working = observedState == TerminalState.Working,
+                working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
                 activityTone = tone,
                 animateActivity = machine.canMutate && motionEnabled,
             )

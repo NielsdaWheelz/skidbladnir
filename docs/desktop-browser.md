@@ -2,9 +2,10 @@
 
 implemented. one table with agents and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
-[terminal control](terminal-agent-control.md) owns inferred status and ordinary
-read/send/wait/stop/close. [terminal attention](reply-notifications.md) owns notices
-and visits. native history/control remains explicitly addressed.
+[terminal observation](terminal-observation.md) owns inferred status, its copy
+and the needs-input predicate; [terminal control](terminal-agent-control.md) owns
+ordinary read/send/wait/stop/close. [terminal attention](reply-notifications.md)
+owns notices and visits. native history/control remains explicitly addressed.
 [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
 skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
@@ -49,9 +50,10 @@ is a sampled property of a session. names and row positions are never control
 identities.
 
 the model owns scoped peer observations, the machine filter, the view (agents, or
-a group filter), the selected session lifetime (or none), the table's scroll
-position, and existing modal/pending-operation state. rows derive from those
-observations. no independent highlighted-session, preview-session or open-tab state.
+a group filter), the needs-input filter, the selected session lifetime (or none),
+the table's scroll position, and existing modal/pending-operation state. rows
+derive from those observations. no independent highlighted-session,
+preview-session or open-tab state.
 
 keep five-second refresh, one inventory in flight, scoped-result admission,
 post-write read fences, stale-row retention, and existing operation timeouts.
@@ -65,7 +67,7 @@ or none. the machine filter applies to every view.
 
 | view | rows and order |
 | --- | --- |
-| agents | one row per agent in its current execution context across all groups, including resolved remote agents (ordered as unknown) and retained unavailable rows: blocked, idle, unknown, working; unavailable hosts last; ties keep configured peer then numeric tmux-id order |
+| agents | one row per agent in its current execution context across all groups, including resolved remote agents (ordered as unknown) and retained unavailable rows: request or menu interaction; idle with interaction none; unknown (unknown activity, idle with unknown interaction, unavailable); starting or working. notices rank by activity. unavailable hosts last; ties keep configured peer then numeric tmux-id order |
 | all | every session, including terminals, in existing `Groups` order, each group under a heading |
 | a named group, unassigned | that group's sessions in `Groups` order |
 
@@ -82,33 +84,44 @@ it, otherwise selects its first row. up/down (also j/k) move the cursor, clampin
 agent the next is one key away. movement never attaches or fetches output.
 changing machine uses the same keep-if-matching/otherwise-first rule.
 
-the agents view puts what may be waiting on the operator first. a recognized
-prompt/footer is inferred idle; unknown can be an unrecognized dialog. no state
-establishes task completion. the order updates on every refresh. the cursor follows
-its session's lifetime, never a row position, so a reorder moves rows but never
-retargets a key. an exited agent remains in terminal/group views; unknown is not offline. the contract publishes no transition age, so nothing is
+the agents view puts what may be waiting on the operator first. idle is inferred
+from qualified ready-state evidence; unknown can be an unrecognized dialog. no
+state establishes task completion. the order updates on every refresh. the
+cursor follows its session's lifetime, never a row position, so a reorder moves
+rows but never retargets a key. an exited agent remains in terminal/group views;
+unknown is not offline. the contract publishes no transition age, so nothing is
 ordered by time.
 
 named labels read as bare labels in group headings and details. the agents
 view's group column shows bare labels and stays blank for unassigned sessions; a
 label cannot be empty.
 
+`f` toggles an independent
+[needs-input filter](terminal-observation.md#6-content-attention-and-filtering)
+after machine and view selection; that section owns its predicate, empty copy and
+notice placement. rows of an unavailable or checking host never qualify. the
+filter preserves the view's order. toggling keeps the exact selected row if it
+survives, otherwise selects the first visible row, or none, and scrolls the table
+to its top. the filter survives terminal visits and refreshes in memory;
+confirmed creation clears it.
+
 session actions require a selected row and target exactly the session named by
 the rule. refresh retains the selected lifetime while it stays in the view;
 otherwise it uses the previous index clamped to the surviving rows, or none.
 never auto-attach. external membership changes never change the view.
-unavailable rows retain last-observed facts, labelled unavailable; remote
-actions stay disabled. once a scoped host fails a read, its notice names the
-failure and shows in every view, even with no retained rows; an unobserved host
-is not announced as unavailable. inventory failures never replace an action's
-outcome notice, so an unknown outcome stays visible. reuse existing honest empty
-copy.
+rows of a host whose read failed retain their last-observed facts, their status
+cell reading `last observed: <label>`, also while that host is re-read; rows of
+any other host being re-read read `checking` (§5). remote actions stay disabled
+on both. once a scoped host fails a read, its notice names the failure and shows
+in every view, even with no retained rows; an unobserved host is not announced
+as unavailable. inventory failures never replace an action's outcome notice, so
+an unknown outcome stays visible. reuse existing honest empty copy.
 
 ## 4. actions and return
 
 | context | keys/behavior |
 | --- | --- |
-| ordinary navigation | `a` agents; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
+| ordinary navigation | `a` agents; left/right view; `f` needs-input filter; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
 | metadata editor | enter saves; escape cancels or dismisses to the same info page; group retains observed suggestions and explicit clearing; name offers `ctrl-a` for `use automatic title` in manual mode |
@@ -162,10 +175,10 @@ late results cannot alter another draft. selection only edits the draft;
 creation remains the separate final-field action and revalidates the chosen path.
 `n`, `N` and `T` share one completion path:
 it reveals and selects the returned session in its group view, leaving the agents
-view, then attaches it. the pending request and page adopt the completion: `n`
-and `T` from the table, `N` from its form. detach or attachment failure leaves
-the new terminal selected; retry attachment, never creation.
-failure/unknown creation changes no filters/selection. reuse
+view and clearing the needs-input filter, then attaches it. the pending request
+and page adopt the completion: `n` and `T` from the table, `N` from its form.
+detach or attachment failure leaves the new terminal selected; retry attachment,
+never creation. failure/unknown creation changes no filters/selection. reuse
 [shell completion](shells.md#4-client-ownership-and-completion) and
 [membership/creation rules](groups.md#7-collection-behavior-and-creation).
 
@@ -199,34 +212,51 @@ status, agent (the configured profile label, else `<provider> · profile
 unknown`), group (agents view only), machine (the terminal's owner, only when all
 machines are in scope), and the current directory in the remaining width,
 truncated from the left and omitted below 8 cells; remote work reads `host:path`
-and an unresolved connection `remote context unknown`. columns shrink
-widest-first to fit. in the all view a faint heading (the bare label or
-`unassigned`) precedes each group. local-agent status is inferred `working`,
-`waiting`, `idle`, `status unknown` or `status unavailable`. a qualified pending
-working-to-idle transition projects exclusive green `ready`; working is blue and
-idle grey. stale/unknown/visiting/closing baselines hide readiness. recorded native
-identity never supplies status. shell/remote rows use `terminal`/existing unknown
-context; unavailable/checking hosts retain their existing faint treatment.
+and an unresolved connection `remote context unknown`. columns other than
+status shrink widest-first to fit. in the all view a faint heading (the bare
+label or `unassigned`) precedes each group. the status cell is the shared projection's
+label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
+copy, coloured by its tone. a pending working-to-idle transition projects
+exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness.
+recorded native identity never supplies status. shell/remote rows use
+`terminal`/existing unknown context. a row of a host whose read failed is stale:
+its cell reads muted `last observed: <label>` and is never ready, and it stays
+stale while that host is re-read. a row of any other host being re-read (a
+pending scoped read, or the re-read after a metadata change) is never ready, and
+its cell makes no status claim: it reads faint `checking`. a failed host keeps
+its notice. the stale cell is up to 33 cells (`last observed: status
+unavailable`) against 18 for the widest fresh label, so while a host's read has
+failed the other columns give way (in an 80×24 render with a failed host, names
+fell from 24 to 12 cells). the outage form is accepted with that cost, an
+exception to [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
+fit rule; the 8-cell `checking` widens nothing.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
-it and, only when the table scrolls, the cursor position at its end; the selected
-session's terminal status/attention and recorded native identity and attached
-clients; its directory on a separate line; the keys. for an available local
-session, the directory line ends with `shift+t new shell here`, with the key
-bold and the label plain. reserve two spaces before the action and truncate a
-long directory from the left so its final components remain visible. the action
-is absent for ssh/mosh sources, unavailable sessions, modal pages and pending
-operations. it creates and enters an independent shell on the named target's
-machine, in its current directory and group; the original session keeps running.
-while an action is in flight the rule names that action's captured target instead.
-observed text is sanitized for display: controls, format characters such as bidi
-overrides, and line separators become spaces.
+it and, at its end, `needs input` in plain text while the filter is on and, only
+when the table scrolls, the faint cursor position (`· i of n` after the filter
+word, otherwise `i of n`); the selected session's facts on one line:
+`unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
+status label (`last observed: <label>` on those rows) with `work continues` and
+`inferred from terminal` when they apply, `: <command>` for a non-agent program,
+then `· N attached`; its directory on a separate line; the keys. for an available
+local session, the directory line ends with `shift+t new shell here`, with the
+key bold and the label plain. reserve two spaces before the action and truncate a
+long directory from the left so its final components remain visible.
+the action is absent for ssh/mosh sources, unavailable sessions, modal pages and
+pending operations. it creates and enters an independent shell on the named
+target's machine, in its current directory and group; the original session keeps
+running. while an action is in flight the rule names that action's captured
+target instead. observed text is sanitized for display: controls, format
+characters such as bidi overrides, and line separators become spaces.
 
 hints list actions, not navigation: the selected session's remaining verbs, then
-`a agents  ←→ view  m machine  n terminal on <host>  N options  q quit`. each set
-of hints stays on one line when it fits and otherwise wraps by whole hints; the
-key is bold, the label plain. the directory owns the shell-here hint; do not
-repeat it in this list. navigation and session keys are in `--help`.
+`a agents  f needs input  m machine  n terminal on <host>  N options  q quit`. each
+set of hints stays on one line when it fits and otherwise wraps by whole hints; the
+key is bold, the label plain. the global keys fit one 80-column line for host
+labels up to 9 cells; a longer label wraps them and costs one table row. the
+strip's `‹ ›` chevrons, shown exactly when stepping is possible, and `--help` teach
+←→. the directory owns the shell-here hint; do not repeat it in this list.
+navigation and session keys are in `--help`.
 
 pages keep row 1 and the rule. the page title is bold, and labels right-align on
 one axis. the rule names the captured target (pending action or details
@@ -234,8 +264,13 @@ snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal
 only`, `enter interrupt terminal` or `enter interrupt and close terminal`.
 info pins the captured session lifetime; refresh may update its observed name
-and facts without retargeting. page scrolling uses the visible body height; forms
-keep the focused field visible.
+and facts without retargeting. its `state` fact is the status label with `work
+continues` and `inferred from terminal` when they apply, followed by a `status
+reason` fact that ends with `; open the terminal to inspect` when the label is
+`status unknown` or `status unavailable`, stale included. when the session leaves
+inventory or its host fails, the page keeps its last observed facts and their
+`observed` time, with `state: last observed: …` and `availability: unavailable`.
+page scrolling uses the visible body height; forms keep the focused field visible.
 
 cursor, current view, unavailability and failure never rely on color: the cursor
 is a glyph plus bold, the current view is bold, and every status and unavailable
@@ -250,13 +285,14 @@ do not change fullscreen terminal geometry/admission.
 
 `internal/sessionui` owns state, projection, layout and existing actions as one
 cohesive bubble tea model; `internal/agentcli` owns the browser's help text.
-styles are `x/ansi` values: bright slots for navigation/error, explicit
-frost/moss/muted RGB for working/ready/idle. bubble tea downsamples per detected
-profile; NO_COLOR strips styles without losing labels. layout works on plain sanitized text
-and styles only finished fragments, each closing its own style. styled text never
-passes back through sanitization, which would turn escapes into spaces. no public
-component api, presentation framework or new dependency: lipgloss 2.0.6 would pull
-an ultraviolet revision that bubble tea 2.0.9 was not released with.
+styles are `x/ansi` values: bright slots for navigation and ember, explicit
+frost/moss/muted RGB; the projected tone, never the printed word, selects one.
+bubble tea downsamples per detected profile; NO_COLOR strips styles without
+losing labels. layout works on plain sanitized text and styles only finished
+fragments, each closing its own style. styled text never passes back through
+sanitization, which would turn escapes into spaces. no public component api,
+presentation framework or new dependency: lipgloss 2.0.6 would pull an
+ultraviolet revision that bubble tea 2.0.9 was not released with.
 
 ## 7. acceptance and delivery
 

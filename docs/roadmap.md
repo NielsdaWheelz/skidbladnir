@@ -5,6 +5,37 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## non-native status and needs input — source implemented
+
+[terminal observation](terminal-observation.md) specifies the coordinated status
+cutover: bounded screen regions, provider-specific activity/request recognition
+by the [codex](terminal-observation-codex.md) and [claude](terminal-observation-claude.md)
+grammars, guarded composer reuse, diagnostics, managed codex run-state chrome and
+desktop/phone needs-input filtering, with manual claude executable recognition.
+screen ambiguity remains unknown; titles/progress are excluded. source is
+implemented; nothing is released or deployed.
+[qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
+within its recorded limits, passes capture, recognition, classification and cost
+on darwin and linux. composition, controls (guarded send and wait), the
+gateway→cli/desktop product and attention pass on darwin only; on linux
+composition covers the managed create path and inspect, and the rest is
+`NOT_RUN`. open: [physical phone](issues/terminal-observation-phone-acceptance.md),
+[live provider smoke](issues/terminal-observation-provider-smoke.md),
+required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),
+[claude on darwin](issues/claude-observation-darwin-coverage.md) and
+[linux](issues/terminal-observation-linux-coverage.md),
+[claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md),
+[codex server-driven families](issues/codex-server-driven-families.md), the desktop's
+[live stale and checking cells](issues/terminal-observation-stale-live.md) and
+the [host-config cutover](issues/host-config-cutover.md).
+[status detection](issues/terminal-status-detection.md) closes with the coverage
+and smoke records, and [needs input](issues/agent-needs-input.md) with the phone
+run and an attention run through cancellation;
+[baselinePending](issues/notification-baseline-pending.md) records the attention
+store's dead field. [list latency](issues/session-list-latency.md) and
+[hook tmux waits](issues/agenthook-tmux-wait-delay.md) are pre-existing costs found
+during qualification.
+
 ## automatic session names — source cutover
 
 [automatic names and public handles](automatic-session-names.md) specifies one
@@ -34,7 +65,9 @@ desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
 Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
 corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
 native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
-source, not deployment or cloud/native completion. the additional [merged phone
+source on the earlier `{state, source}` observation and working/blocked/idle
+attention machine (see the observation cutover above), not deployment or
+cloud/native completion. the additional [merged phone
 composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
 tests are removed by policy;
 engineering verification passes. accepted inference/sampling/closing-boundary/
@@ -106,7 +139,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | capability | contract owner |
 | --- | --- |
 | host inventory, exact session lifetimes, launch, rename, kill and direct attachment | [architecture](architecture.md), [client and attachment](agent-control-ux.md), [rename](session-renaming.md) |
-| inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
+| inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal observation](terminal-observation.md), [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
@@ -167,6 +200,9 @@ sessions retain their original launch policy.
   retains one unexplained missing baseline session lifetime.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
+- [terminal observation](terminal-observation.md): the blockers listed in its
+  section above remain open; the physical-phone rows wait for an approved device
+  run.
 
 other unperformed visual/device checks and explicitly waived shipment checks
 remain with their feature owners. a waiver is not a pass. unavailable or

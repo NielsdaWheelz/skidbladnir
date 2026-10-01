@@ -27,14 +27,14 @@ const usage = `usage: skid [--config PATH] COMMAND [options]
 
 skid                                      open the session browser
 skid list [--machine HOST] [--group LABEL | --unassigned]
-skid info HANDLE                          metadata and exact reference
+skid info HANDLE [--explain]              metadata, status and exact reference
 skid inspect --ref REF                    captured conversation and current observation
 skid enter HANDLE                         enter terminal; ctrl-] d detaches
 skid read HANDLE [--max-bytes N]           bounded terminal text; c- is native
 skid send HANDLE TEXT|--stdin              guarded terminal paste; c- is native
 skid text HANDLE TEXT|--stdin              explicit terminal paste and submit
 skid keys HANDLE KEY...                   explicit logical terminal keys
-skid wait HANDLE [--state idle|blocked|done|failed|stopped] [--timeout DURATION]
+skid wait HANDLE [--state STATE] [--timeout DURATION]
 skid stop HANDLE                          interrupt terminal; c- is native stop
 skid close HANDLE [--terminal-only]        interrupt and close; separate outcomes
 skid start [NAME] --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--group LABEL]
@@ -52,7 +52,10 @@ native targets: --conversation ID --profile PROFILE --machine HOST
 terminal read captures rendered text; --history is native-only
 native send defaults to peer; --input and --queue are native-only
 --queue and native claude input are unavailable
+terminal wait states: idle (no request, menu or notice), working, needs-input
+native wait states: idle, blocked, done, failed, stopped
 wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
+info --explain samples the terminal once more and prints that sample's status evidence
 start makes no input-readiness promise; use explicit text/keys for terminal input
 closure may leave shared or remote work running
 terminal delivery proves neither completion nor cancellation
@@ -61,6 +64,7 @@ unknown delivery is never replayed; a nonzero exit alone permits no retry
 browser (80x24 minimum)
   up/down (j/k) selects; left/right (h/l) steps through the views on the top row
   a selects agents; m chooses machine; n opens terminal; N opens options
+  f shows only sessions that need input; f again shows every session
   enter attaches; space opens info
   info: r edits name; g edits group; escape returns to the table
   editors: enter saves; escape cancels to info; ctrl-a restores automatic naming
@@ -117,7 +121,7 @@ func parse(args []string) (command, error) {
 			}
 			seen[name] = true
 			switch name {
-			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--history", "--queue", "--terminal-only":
+			case "--json", "--stdin", "--terminal", "--help", "--unassigned", "--clear", "--history", "--queue", "--terminal-only", "--explain":
 				if hasValue {
 					return result, errors.New("boolean option takes no value")
 				}
@@ -134,6 +138,8 @@ func parse(args []string) (command, error) {
 					result.request.Delivery = "queue"
 				case "--terminal-only":
 					result.request.TerminalOnly = true
+				case "--explain":
+					result.request.Explain = true
 				}
 			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
 				if !hasValue {
@@ -250,8 +256,16 @@ func parse(args []string) (command, error) {
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
-	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
+	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
+	}
+	if operation == "wait" {
+		if !seen["--state"] {
+			result.request.State = "idle"
+		}
+		if !seen["--timeout"] {
+			result.request.WaitTimeout = time.Minute
+		}
 	}
 	if operation == "start" {
 		result.request.Kind = fleetclient.LaunchAgent
@@ -488,7 +502,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			for _, entry := range group.Rows {
 				row := entry.Session
 				current := row.Current(owners[entry.Machine])
-				machine, provider, state := entry.Label, "terminal", fleetclient.SessionStatusDetail(row)
+				machine, provider := entry.Label, "terminal"
 				if current.Kind == "remoteUnknown" {
 					provider = "remote context unknown"
 				} else {
@@ -502,10 +516,10 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 						} else {
 							provider += "/profile unknown"
 						}
-						state = fleetclient.SessionStatusDetail(row)
 					}
 				}
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, state, current.CWD)
+				// The cli keeps no notification store, so no row is ready.
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, current.CWD)
 			}
 		}
 		if len(groups) == 0 {
@@ -557,12 +571,59 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			if row.Conversation != nil {
 				fmt.Fprintf(stdout, "recorded native conversation: %s; may differ from terminal\n", row.Conversation.ConversationID)
 			}
-			fmt.Fprintln(stdout, "state: "+fleetclient.SessionStatusDetail(row))
+			// info resolves a complete inventory, so its status is fresh; the cli
+			// keeps no notification store, so it is never ready.
+			view := fleetclient.ProjectStatus(row, true, false)
+			fmt.Fprintln(stdout, "state: "+view.Detail)
+			if value.Diagnostics == nil {
+				fmt.Fprintln(stdout, "status reason: "+view.Reason)
+			}
 			if row.LaunchProfile != "" {
 				fmt.Fprintf(stdout, "started with: %s\n", row.LaunchProfile)
 			}
 			if _, err := fmt.Fprintf(stdout, "observed: %s\nreference: %s\n", value.ObservedAt, row.Ref); err != nil {
 				return 1
+			}
+			if diagnostics := value.Diagnostics; diagnostics != nil {
+				status := row.TerminalStatus
+				rules := []string{}
+				for _, rule := range diagnostics.Rules {
+					rules = append(rules, rule.ID+" ("+string(rule.Region)+")")
+				}
+				if len(rules) == 0 {
+					rules = append(rules, "none")
+				}
+				capture := "not collected"
+				if observed := diagnostics.Capture; observed != nil {
+					screen, clipped := "main screen", []string{}
+					if observed.Alternate {
+						screen = "alternate screen"
+					}
+					if observed.TopClipped {
+						clipped = append(clipped, "top")
+					}
+					if observed.BottomClipped {
+						clipped = append(clipped, "bottom")
+					}
+					if len(clipped) == 0 {
+						clipped = append(clipped, "none")
+					}
+					capture = fmt.Sprintf("%d × %d, %s, clipped: %s", observed.Width, observed.Height, screen, strings.Join(clipped, ", "))
+				}
+				timing := []string{}
+				for _, stage := range []struct {
+					name    string
+					elapsed *int64
+				}{{"resolve", diagnostics.ElapsedMs.Resolve}, {"capture", diagnostics.ElapsedMs.Capture}, {"classify", diagnostics.ElapsedMs.Classify}} {
+					if stage.elapsed == nil {
+						timing = append(timing, stage.name+" not collected")
+					} else {
+						timing = append(timing, fmt.Sprintf("%s %d ms", stage.name, *stage.elapsed))
+					}
+				}
+				if _, err := fmt.Fprintf(stdout, "status evidence\n  activity: %s\n  interaction: %s\n  notice: %s\n  reason: %s\n  rules: %s\n  capture: %s\n  timing: %s\n", status.Activity, status.Interaction, status.Notice, view.Reason, strings.Join(rules, ", "), capture, strings.Join(timing, ", ")); err != nil {
+					return 1
+				}
 			}
 		}
 	case "read":
@@ -591,7 +652,8 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		switch value.Outcome {
 		case "matched":
 			if value.TerminalStatus != nil {
-				fmt.Fprintln(stdout, "observed "+fleetclient.TerminalStatusText(*value.TerminalStatus)+" (inferred).")
+				// A terminal match proves exactly the requested state's dimensions.
+				fmt.Fprintln(stdout, "observed "+command.request.State+" (inferred).")
 			} else {
 				fmt.Fprintln(stdout, "observed: "+fleetclient.StatusText(value.Observation.Status))
 			}

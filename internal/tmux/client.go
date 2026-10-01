@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -363,6 +364,12 @@ func (client Client) commandWithStderr(ctx context.Context, stdout, stderr *byte
 	commandArgs = append(commandArgs, operation)
 	commandArgs = append(commandArgs, args...)
 	command := exec.CommandContext(ctx, client.path, commandArgs...)
+	// A tmux client passes its stdin and stdout to the server while
+	// identifying, and a stalled server keeps a killed client's descriptors
+	// queued, so Wait would block until the server resumed. Outside control
+	// mode (unused here) the server closes stdout and a non-tty stdin at
+	// identify, before the command runs, so a normal exit reaches EOF at once.
+	command.WaitDelay = 100 * time.Millisecond
 	command.Env = tmuxEnvironment()
 	if stdout != nil {
 		command.Stdout = stdout

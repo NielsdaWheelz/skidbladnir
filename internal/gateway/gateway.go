@@ -426,7 +426,9 @@ func (gateway *Gateway) listSessions(writer http.ResponseWriter, request *http.R
 		writeError(writer, errorInternal)
 		return
 	}
-	gateway.agents.Enrich(request.Context(), &inventory)
+	for _, failure := range gateway.agents.Enrich(request.Context(), inventory.Sessions) {
+		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
+	}
 	response, err := mapSessionsResponse(gateway.machineDTO(), inventory, gateway.sessions.Profiles())
 	if err != nil {
 		writeError(writer, errorInternal)
@@ -497,7 +499,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 	}
 	createInput, err = gateway.sessions.PreflightCreate(request.Context(), createInput)
 	if err != nil {
-		gateway.completeCreation(writer, sessions.ObservedSession{}, err, startedAt)
+		gateway.completeCreation(request.Context(), writer, sessions.ObservedSession{}, err, startedAt)
 		return
 	}
 	if createInput.Kind == sessions.LaunchAgent {
@@ -510,7 +512,7 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		}
 	}
 	created, err := gateway.sessions.Create(request.Context(), createInput)
-	gateway.completeCreation(writer, created, err, startedAt)
+	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
 }
 
 func (gateway *Gateway) createShell(writer http.ResponseWriter, request *http.Request) {
@@ -530,10 +532,10 @@ func (gateway *Gateway) createShell(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	created, err := gateway.sessions.CreateShell(request.Context(), sessions.ShellInput{TmuxID: id, IdentityToken: input.IdentityToken.value})
-	gateway.completeCreation(writer, created, err, startedAt)
+	gateway.completeCreation(request.Context(), writer, created, err, startedAt)
 }
 
-func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created sessions.ObservedSession, err error, startedAt time.Time) {
+func (gateway *Gateway) completeCreation(ctx context.Context, writer http.ResponseWriter, created sessions.ObservedSession, err error, startedAt time.Time) {
 	if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
@@ -544,16 +546,22 @@ func (gateway *Gateway) completeCreation(writer http.ResponseWriter, created ses
 		writeSessionError(writer, err)
 		return
 	}
+	// Session.Created times creation alone; the status observation below is response latency.
+	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
+	if eventErr != nil {
+		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
+	}
+	observed := []sessions.Session{created.Session}
+	for _, failure := range gateway.agents.Enrich(ctx, observed) {
+		gateway.logObservationFailure(failure.TmuxID, failure.Reason, failure.Elapsed)
+	}
+	created.Session = observed[0]
 	response, err := mapCreateSessionResponse(created, gateway.sessions.Profiles())
 	if err != nil {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
 		writeError(writer, failure)
 		return
-	}
-	event, eventErr := logging.NewSessionCreated(created.Session.TmuxID, created.Session.LaunchProfile, time.Since(startedAt))
-	if eventErr != nil {
-		panic("invalid session-created log event") // justify-defect: creation minted the session identity and optional profile.
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusCreated, response)
@@ -844,6 +852,14 @@ func requestRoute(path string) logging.Route {
 	default:
 		return logging.RouteUnmatched
 	}
+}
+
+func (gateway *Gateway) logObservationFailure(tmuxID string, reason sessions.StatusReason, elapsed time.Duration) {
+	event, err := logging.NewTerminalObservationFailed(tmuxID, reason, elapsed)
+	if err != nil {
+		panic("invalid terminal-observation-failed log event") // justify-defect: only a valid unavailable status of a canonical session reaches this event.
+	}
+	gateway.log(event)
 }
 
 func (gateway *Gateway) log(event logging.Event) {

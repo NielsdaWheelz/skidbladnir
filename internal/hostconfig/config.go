@@ -63,25 +63,11 @@ func Load(path string, runtime platform.Kind) (config Config, resultErr error) {
 	if len(encoded) > maximumConfigBytes {
 		return Config{}, errors.New("host config is too large")
 	}
-	config, err = parse(encoded, runtime)
-	if err != nil {
-		return Config{}, fmt.Errorf("parse host config: %w", err)
-	}
-	return config, nil
-}
-
-func parse(encoded []byte, runtime platform.Kind) (Config, error) {
-	if len(encoded) == 0 || len(encoded) > maximumConfigBytes {
-		return Config{}, errors.New("host config has invalid size")
-	}
-	if runtime != platform.KindLinux && runtime != platform.KindDarwin {
-		return Config{}, errors.New("runtime platform is unsupported")
-	}
 	var wire *configDTO
 	if err := strictjson.Decode(encoded, &wire); err != nil || wire == nil {
 		return Config{}, errors.New("host config is not canonical JSON")
 	}
-	return wire.validate(runtime)
+	return wire.admit(runtime)
 }
 
 func ValidateTmuxVersion(version string) error {
@@ -130,11 +116,10 @@ type environmentVariableDTO struct {
 
 type foregroundSignatureDTO struct {
 	ExecutableBase stringField `json:"executableBase"`
-	Argument0      stringField `json:"argument0"`
-	Argument1      stringField `json:"argument1"`
+	ExecutablePath stringField `json:"executablePath"`
 }
 
-func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
+func (wire configDTO) admit(runtime platform.Kind) (Config, error) {
 	if !wire.Platform.present || wire.Tmux == nil || wire.Profiles == nil || !wire.ZoxidePath.present || !wire.NativeControlPath.present || !validAbsolutePath(wire.NativeControlPath.value) {
 		return Config{}, errors.New("host config omits a required member")
 	}
@@ -155,7 +140,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	if !wire.Tmux.Path.present || !wire.Tmux.TestedVersion.present || !validAbsolutePath(wire.Tmux.Path.value) || ValidateTmuxVersion(wire.Tmux.TestedVersion.value) != nil {
 		return Config{}, errors.New("host config tmux entry is invalid")
 	}
-	profiles, err := mapProfiles(*wire.Profiles)
+	profiles, err := admitProfiles(*wire.Profiles)
 	if err != nil {
 		return Config{}, err
 	}
@@ -167,7 +152,7 @@ func (wire configDTO) validate(runtime platform.Kind) (Config, error) {
 	}, nil
 }
 
-func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
+func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 	if len(wire) != 0 && len(wire) != len(expectedProfiles) {
 		return nil, fmt.Errorf("host config must declare exactly %d profiles", len(expectedProfiles))
 	}
@@ -193,10 +178,20 @@ func mapProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		}
 		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
+			if signature.ExecutablePath.present {
+				if !validAbsolutePath(signature.ExecutablePath.value) {
+					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
+				}
+				// Stat follows symlinks: the spelling must resolve to an
+				// executable regular file now, and is stored unresolved.
+				info, err := os.Stat(signature.ExecutablePath.value)
+				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+					return nil, fmt.Errorf("host config profile %s foreground executable path is not an executable file", candidate.Key.value)
+				}
+			}
 			signatures[signatureIndex] = agentruntime.ForegroundSignature{
 				ExecutableBase: signature.ExecutableBase.value,
-				Argument0:      signature.Argument0.value,
-				Argument1:      signature.Argument1.value,
+				ExecutablePath: signature.ExecutablePath.value,
 			}
 		}
 		arguments := make([]string, len(*candidate.Arguments))

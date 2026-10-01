@@ -1959,12 +1959,9 @@ internal class SkidbladnirController(
         for ((handle, machine) in machineStates.toMap()) {
             val notifications = machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
                 val key = NotificationKey(SessionTarget(handle, session))
-                val saved = notificationSnapshot?.record(key)
                 key to NotificationPresentation(
-                    ready = machine.canMutate && polling[handle]?.notificationReadSequence != null && session.connection == null && session.agent != null &&
-                        session.terminalStatus.source == TerminalStatusSource.Terminal && session.terminalStatus.state == TerminalState.Idle &&
-                        saved?.foreground == session.agent?.let(::NotificationForeground) && saved?.pending == true &&
-                        !saved.baselinePending && notificationVisit != key,
+                    ready = machine.canMutate && polling[handle]?.notificationReadSequence != null && notificationVisit != key &&
+                        notificationSnapshot?.presentsReady(key, session) == true,
                     unavailable = session.agent != null && notificationsUnavailable,
                 )
             }

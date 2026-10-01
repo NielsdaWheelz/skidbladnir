@@ -28,6 +28,7 @@ type terminalRequest struct {
 	Text          stringField `json:"text"`
 	Keys          *[]string   `json:"keys"`
 	MaxBytes      *int        `json:"maxBytes"`
+	Explain       *bool       `json:"explain"`
 }
 
 func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
@@ -54,14 +55,16 @@ func (input terminalRequest) valid(operation string) bool {
 		return false
 	}
 	switch operation {
-	case "inspect", "stop", "close":
+	case "inspect":
 		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil
+	case "stop", "close":
+		return !input.Text.present && input.Keys == nil && input.MaxBytes == nil && input.Explain == nil
 	case "read":
-		return !input.Text.present && input.Keys == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
+		return !input.Text.present && input.Keys == nil && input.Explain == nil && (input.MaxBytes == nil || *input.MaxBytes > 0 && *input.MaxBytes <= 32768)
 	case "send", "text":
-		return input.Keys == nil && input.MaxBytes == nil && input.Text.value != "" && len(input.Text.value) <= 32768 && utf8.ValidString(input.Text.value) && !strings.ContainsRune(input.Text.value, 0)
+		return input.Keys == nil && input.MaxBytes == nil && input.Explain == nil && input.Text.value != "" && len(input.Text.value) <= 32768 && utf8.ValidString(input.Text.value) && !strings.ContainsRune(input.Text.value, 0)
 	case "keys":
-		return !input.Text.present && input.MaxBytes == nil && input.Keys != nil && len(*input.Keys) >= 1 && len(*input.Keys) <= 16
+		return !input.Text.present && input.MaxBytes == nil && input.Explain == nil && input.Keys != nil && len(*input.Keys) >= 1 && len(*input.Keys) <= 16
 	default:
 		return false
 	}
@@ -102,11 +105,29 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 	var err error
 	switch operation {
 	case "inspect":
+		// TerminalInspect resolves the target itself, so a failure's duration includes resolution.
+		startedAt := time.Now()
 		var status sessions.TerminalStatus
-		status, err = gateway.agents.TerminalInspect(ctx, target)
-		result = struct {
-			TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
-		}{status}
+		var diagnostics agentcontrol.Diagnostics
+		status, diagnostics, err = gateway.agents.TerminalInspect(ctx, target)
+		if err != nil {
+			break
+		}
+		if status.Source == sessions.SourceUnavailable {
+			gateway.logObservationFailure(id, status.Reason, time.Since(startedAt))
+		}
+		inspected := struct {
+			TerminalStatus sessions.TerminalStatus   `json:"terminalStatus"`
+			Diagnostics    *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
+		}{TerminalStatus: status}
+		if input.Explain != nil && *input.Explain {
+			// A nil slice is zero rules, but encoding/json writes it as null.
+			if diagnostics.Rules == nil {
+				diagnostics.Rules = []agentcontrol.DiagnosticRule{}
+			}
+			inspected.Diagnostics = &diagnostics
+		}
+		result = inspected
 	case "read":
 		maxBytes := 0
 		if input.MaxBytes != nil {

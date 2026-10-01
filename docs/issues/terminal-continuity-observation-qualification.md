@@ -10,7 +10,9 @@ provider/home label; background agents could be mistaken for foreground work.
 these are unclaimed acceptance cases, not observed defects.
 
 evidence: [pr 8](https://github.com/NielsdaWheelz/skidbladnir/pull/8)
-proved stock node codex and personal-home projection on devbox.
+proved stock node codex and personal-home projection on devbox. recognition now
+admits only native executables, so a node launcher is a generic terminal and that
+node result no longer covers recognition.
 [pr 10](https://github.com/NielsdaWheelz/skidbladnir/pull/10) records the named
 phone and mac journeys. no final-release live result records all personal,
 work, and work2 homes; absent, empty, unlisted or inaccessible homes; the read

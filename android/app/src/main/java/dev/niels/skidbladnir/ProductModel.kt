@@ -253,6 +253,7 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     NameMode.Manual -> SessionNaming.Manual(tmuxName)
 }
 
+/** An [agent] is always the local foreground: ingress rejects one beside a [connection]. */
 internal data class TmuxSession(
     val tmuxId: String,
     val activePaneId: String,
@@ -911,16 +912,6 @@ internal fun visibleInventoryTargets(
     is DashboardScope.Machine -> if (scope.handle in liveMachineHandles) setOf(scope.handle) else emptySet()
 }
 
-internal fun visibleSessions(machines: List<MachineState>, scope: DashboardScope): List<VisibleSession> = machines
-    .filter { scope == DashboardScope.All || (scope as? DashboardScope.Machine)?.handle == it.machine.handle }
-    .flatMap { state -> state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().map {
-        VisibleSession(state.machine, SessionTarget(state.machine.handle, it), state.executionContext(it))
-    } }
-    .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
-        .thenBy { it.machine.label.text }
-        .thenBy { it.machine.handle.encoded }
-        .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
-
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
@@ -978,38 +969,72 @@ internal fun apiErrorMessage(code: ApiErrorCode): String = when (code) {
 internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
-internal enum class SessionStatusTone { Working, Ready, Waiting, Muted }
+internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
 internal data class SessionStatusContent(
-    val label: String, val accessibilityLabel: String, val detail: String? = null,
-    val tone: SessionStatusTone = SessionStatusTone.Muted, val secondary: String? = null,
+    val label: String, val accessibilityLabel: String, val detail: String?, val tone: SessionStatusTone, val secondary: String?,
 )
 
-internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation = NotificationPresentation()): SessionStatusContent {
-    val inferred = session.terminalStatus.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
-    val state = when {
-        session.terminalStatus.source == TerminalStatusSource.Unavailable -> "status unavailable"
-        !inferred -> "terminal"
-        else -> when (session.terminalStatus.state) {
-            TerminalState.Working -> "working"
-            TerminalState.Blocked -> "waiting"
-            TerminalState.Idle -> if (fresh && notification.ready) "ready" else "idle"
-            TerminalState.Unknown -> "status unknown"
+/**
+ * Single status projection for the card and the terminal header (terminal-observation.md §6): the
+ * first matching row wins. A response request, menu or current notice outranks visible work, which
+ * then survives as `work continues`. Only a local agent's terminal sample makes an inference claim.
+ */
+internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation): SessionStatusContent {
+    val status = session.terminalStatus
+    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null
+    val requestMenuOrNotice = when (status.interaction) {
+        TerminalInteraction.Permission -> "needs permission" to SessionStatusTone.Attention
+        TerminalInteraction.Question -> "needs answer" to SessionStatusTone.Attention
+        TerminalInteraction.Setup -> "needs setup" to SessionStatusTone.Attention
+        TerminalInteraction.Confirmation -> "needs review" to SessionStatusTone.Attention
+        TerminalInteraction.Input -> "needs input" to SessionStatusTone.Attention
+        TerminalInteraction.Menu -> "menu open" to SessionStatusTone.Muted
+        TerminalInteraction.None, TerminalInteraction.Unknown -> when (status.notice) {
+            TerminalNotice.Interrupted -> "interruption shown" to SessionStatusTone.Muted
+            TerminalNotice.Error -> "error shown" to SessionStatusTone.Attention
+            TerminalNotice.None -> null
         }
     }
-    val label = if (fresh) state else "last observed: $state"
-    val tone = if (!fresh || !inferred) SessionStatusTone.Muted else when (session.terminalStatus.state) {
-        TerminalState.Working -> SessionStatusTone.Working
-        TerminalState.Blocked -> SessionStatusTone.Waiting
-        TerminalState.Idle -> if (notification.ready) SessionStatusTone.Ready else SessionStatusTone.Muted
-        TerminalState.Unknown -> SessionStatusTone.Muted
+    val (state, tone) = when {
+        status.source == TerminalStatusSource.Unavailable -> "status unavailable" to SessionStatusTone.Muted
+        !inferred -> "terminal" to SessionStatusTone.Muted
+        requestMenuOrNotice != null -> requestMenuOrNotice
+        else -> when (status.activity) {
+            TerminalActivity.Starting -> "starting" to SessionStatusTone.Working
+            TerminalActivity.Working -> "working" to SessionStatusTone.Working
+            // No request, menu or notice remains, so interaction is none or unknown here.
+            TerminalActivity.Idle -> when {
+                status.interaction == TerminalInteraction.Unknown -> "status unknown" to SessionStatusTone.Muted
+                fresh && notification.ready -> "ready" to SessionStatusTone.Ready
+                else -> "idle" to SessionStatusTone.Muted
+            }
+            TerminalActivity.Unknown -> "status unknown" to SessionStatusTone.Muted
+        }
     }
+    val workContinues = inferred && requestMenuOrNotice != null && status.activity == TerminalActivity.Working
+    val label = if (fresh) state else "last observed: $state"
     val secondary = if (notification.unavailable) "notifications unavailable" else null
     return SessionStatusContent(
         label,
-        label + (if (inferred) "; inferred from terminal" else "") + (secondary?.let { "; $it" } ?: ""),
-        if (inferred) "inferred from terminal" else session.activeCommand.takeIf { session.connection == null },
-        tone, secondary,
+        label + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
+            (secondary?.let { "; $it" } ?: ""),
+        when {
+            workContinues -> "work continues · inferred from terminal"
+            inferred -> "inferred from terminal"
+            else -> session.activeCommand.takeIf { session.connection == null }
+        },
+        if (fresh) tone else SessionStatusTone.Muted, secondary,
     )
+}
+
+/**
+ * The needs-input filter (terminal-observation.md §6): a fresh sample showing a response request,
+ * whatever its activity, notice or reason. An unavailable sample never carries an interaction.
+ */
+internal fun sessionNeedsInput(session: TmuxSession, fresh: Boolean): Boolean = fresh && when (session.terminalStatus.interaction) {
+    TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,
+    TerminalInteraction.Setup, TerminalInteraction.Input -> true
+    TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
 }
 
 private fun JsonObject.requireSessionOptionalFields() {
@@ -1020,7 +1045,6 @@ private fun JsonObject.requireSessionOptionalFields() {
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
     }
     (this["conversation"] as? JsonObject)?.requireNativeValues()
-    (this["terminalStatus"] as? JsonObject)?.requireAbsentOrNonNull(setOf("state", "source"))
     (this["connection"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id"))
 }
 private fun <Value> List<Value>.allUnique(): Boolean = distinct().size == size

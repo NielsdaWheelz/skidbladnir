@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"encoding/base64"
 	"errors"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -123,36 +124,20 @@ func HookOrigin(
 	if !valid {
 		return Foreground{}, false
 	}
-	type match struct {
-		foreground  Foreground
-		observation processinfo.Observation
-	}
-	matches := make([]match, 0, 2)
+	// Only a sole recognized ancestor that leads the pane's foreground process
+	// group registers; nested or ambiguous agents are not attributed.
+	var origin Foreground
+	matches := 0
 	for _, observation := range terminalAncestry {
 		if foreground, found := ClassifyForeground(profiles, observation); found {
-			matches = append(matches, match{foreground: foreground, observation: observation})
+			origin = foreground
+			matches++
 		}
 	}
-
-	var origin match
-	switch len(matches) {
-	case 1:
-		origin = matches[0]
-	case 2:
-		native, wrapper := matches[0], matches[1]
-		if native.foreground.Provider != ProviderCodex || wrapper.foreground.Provider != ProviderCodex ||
-			native.observation.ExecutableBase() != "codex" || wrapper.observation.ExecutableBase() != "node" ||
-			native.observation.ParentPID != wrapper.observation.PID {
-			return Foreground{}, false
-		}
-		origin = wrapper
-	default:
+	if matches != 1 || origin.PID != terminalAncestry[0].ForegroundProcessGroup {
 		return Foreground{}, false
 	}
-	if origin.foreground.PID != terminalAncestry[0].ForegroundProcessGroup {
-		return Foreground{}, false
-	}
-	return origin.foreground, true
+	return origin, true
 }
 
 func EncodeRegistration(foreground Foreground, profile ProfileKey, providerSessionID string) (string, error) {
@@ -312,10 +297,21 @@ func paneTerminalAncestry(ancestry []processinfo.Observation, paneTerminal proce
 	return nil, false
 }
 
+// matchesSignature resolves ExecutablePath at every comparison: a relink
+// (a provider auto-update) then reaches the next launch without a configuration
+// reload, at the cost of no longer matching a still-running older image.
 func matchesSignature(observation processinfo.Observation, signature ForegroundSignature) bool {
-	return (signature.ExecutableBase == "" || observation.ExecutableBase() == signature.ExecutableBase) &&
-		(signature.Argument0 == "" || observation.Argument(0) == signature.Argument0) &&
-		(signature.Argument1 == "" || observation.Argument(1) == signature.Argument1)
+	if signature.ExecutableBase != "" && observation.ExecutableBase() != signature.ExecutableBase {
+		return false
+	}
+	if signature.ExecutablePath == "" {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(signature.ExecutablePath)
+	// justify-ignore-error: a configured path that no longer resolves (provider
+	// uninstalled or unreadable) matches nothing; the pane reads as an ordinary
+	// terminal.
+	return err == nil && observation.Executable == resolved
 }
 
 func claudeName(argv []string) string {

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,10 @@ var (
 	ErrWriteUnknown  = errors.New("terminal input delivery is unknown")
 )
 
-const inputWrittenMarker = "SKIDBLADNIR_INPUT_WRITTEN"
+const (
+	inputWrittenMarker     = "SKIDBLADNIR_INPUT_WRITTEN"
+	inputUnavailableMarker = "SKIDBLADNIR_INPUT_UNAVAILABLE"
+)
 
 type PaneTarget struct {
 	SessionID string
@@ -40,25 +44,23 @@ func (target PaneTarget) condition() string {
 	return andFormatConditions(append(sessionLifetimeConditions(target.SessionID, target.Server), "#{==:#{pane_id},"+target.PaneID+"}"))
 }
 
-// CapturePane retains SGR for visible observation; retained-tail/public reads
-// stay plain, including alternate screens. Both use the same exact target guard.
-func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int, visible bool) (Capture, error) {
+// refusal is the else branch of a guard that extends target.condition(). It
+// prints marker when the target still holds, so only the extension failed, and
+// identityMismatchMarker when the target itself changed.
+func (target PaneTarget) refusal(marker string) string {
+	return "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l " + marker + "' 'display-message -p -l " + identityMismatchMarker + "'"
+}
+
+// CapturePane is the public plain-text read: the retained tail, or the visible
+// screen of an alternate-screen program, under the exact target guard.
+func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxBytes int) (Capture, error) {
 	if !target.valid() || maxBytes < 1 || maxBytes > 32768 {
 		return Capture{}, ErrInputInvalid
 	}
-	capture := "capture-pane -p -J -t " + target.PaneID
-	if visible {
-		capture += " -e"
-	} else {
-		capture += " -S -" + strconv.Itoa(maxBytes)
-	}
-	branch := "display-message -p '#{alternate_on}' ; "
-	if visible {
-		branch += capture
-	} else {
-		branch += "if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
-	}
-	output := captureOutput{tail: captureTail{limit: maxBytes}}
+	capture := "capture-pane -p -J -t " + target.PaneID + " -S -" + strconv.Itoa(maxBytes)
+	branch := "display-message -p '#{alternate_on}' ; if-shell -F -t '" + target.PaneID + "' '#{alternate_on}' 'capture-pane -p -J -t " + target.PaneID + "' '" + capture + "'"
+	tail := captureTail{limit: maxBytes}
+	output := captureOutput{body: &tail}
 	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, target.condition(), branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
@@ -70,11 +72,11 @@ func (client Client) CapturePane(ctx context.Context, target PaneTarget, maxByte
 	if output.header != "0" && output.header != "1" {
 		return Capture{}, ErrUnavailable
 	}
-	text := strings.TrimSuffix(string(output.tail.bytes), "\n")
+	text := strings.TrimSuffix(string(tail.bytes), "\n")
 	for len(text) > 0 && !utf8.RuneStart(text[0]) {
 		text = text[1:]
 	}
-	return Capture{Text: text, Alternate: output.header == "1", Truncated: output.tail.truncated}, nil
+	return Capture{Text: text, Alternate: output.header == "1", Truncated: tail.truncated}, nil
 }
 
 // Paste stages a unique buffer before the caller's final foreground check.
@@ -145,11 +147,10 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 	if ctx.Err() != nil {
 		return ErrUnavailable
 	}
-	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	// A dead pane is positively unavailable; a different active pane/lifetime is stale.
-	refusal := "if-shell -F -t '" + target.SessionID + "' '" + target.condition() + "' 'display-message -p -l SKIDBLADNIR_INPUT_UNAVAILABLE' 'display-message -p -l " + identityMismatchMarker + "'"
+	condition := andFormatConditions([]string{target.condition(), "#{==:#{pane_dead},0}"})
 	var output strings.Builder
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", refusal)
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch+" ; display-message -p -l '"+inputWrittenMarker+"'", target.refusal(inputUnavailableMarker))
 	command.Stdout = &output
 	if err := command.Start(); err != nil {
 		return ErrUnavailable
@@ -162,7 +163,7 @@ func (client Client) write(ctx context.Context, target PaneTarget, branch string
 		return nil
 	case identityMismatchMarker:
 		return ErrTargetChanged
-	case "SKIDBLADNIR_INPUT_UNAVAILABLE":
+	case inputUnavailableMarker:
 		return ErrUnavailable
 	default:
 		return ErrWriteUnknown
@@ -181,11 +182,11 @@ func validPane(value string) bool {
 	return true
 }
 
-// captureOutput keeps the small protocol header separate from the bounded text.
+// captureOutput keeps the small protocol header separate from the bounded body.
 type captureOutput struct {
 	header     string
 	headerDone bool
-	tail       captureTail
+	body       io.Writer
 }
 
 func (output *captureOutput) Write(contents []byte) (int, error) {
@@ -202,7 +203,7 @@ func (output *captureOutput) Write(contents []byte) (int, error) {
 		output.headerDone = true
 		contents = []byte(rest)
 	}
-	_, err := output.tail.Write(contents)
+	_, err := output.body.Write(contents)
 	return count, err
 }
 

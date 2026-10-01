@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -67,28 +66,6 @@ type ResultsResult struct {
 	Conversation agentruntime.Conversation `json:"conversation"`
 	ResultIDs    []string                  `json:"resultIds"`
 	NextCursor   string                    `json:"nextCursor,omitempty"`
-}
-
-func (service *Service) Enrich(parent context.Context, inventory *sessions.Inventory) {
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
-	defer cancel()
-	var work sync.WaitGroup
-	for index := range inventory.Sessions {
-		session := &inventory.Sessions[index]
-		work.Add(1)
-		go func() {
-			defer work.Done()
-			observed, result, err := service.sample(ctx, sessions.TargetOf(*session))
-			if err != nil {
-				// justify-ignore-error: inventory projects capture failure as unavailable; explicit operations retain the error.
-				session.TerminalStatus = sessions.TerminalStatus{State: "unknown", Source: "unavailable"}
-				return
-			}
-			*session = observed
-			session.TerminalStatus = sessions.TerminalStatus{State: result.state, Source: "terminal"}
-		}()
-	}
-	work.Wait()
 }
 
 func (service *Service) conversationTarget(conversation agentruntime.Conversation) (agentruntime.Profile, nativeTarget, error) {

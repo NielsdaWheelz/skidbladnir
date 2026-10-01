@@ -13,8 +13,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -46,7 +48,7 @@ type ExecutionContext struct {
 	Agent   *ExecutionAgent `json:"agent,omitempty"`
 }
 type Session struct {
-	TerminalStatus     TerminalStatus             `json:"terminalStatus"`
+	TerminalStatus     sessions.TerminalStatus    `json:"terminalStatus"`
 	ActivePaneID       string                     `json:"activePaneId"`
 	Name               string                     `json:"name"`
 	NameMode           string                     `json:"nameMode"`
@@ -133,6 +135,8 @@ type ObservedSession struct {
 	Machine    string  `json:"machine"`
 	ObservedAt string  `json:"observedAt"`
 	Session    Session `json:"session"`
+	// Diagnostics explain Session.TerminalStatus; only info --explain has them.
+	Diagnostics *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
 }
 
 // InspectedReference separates captured action identity from current observation.
@@ -186,12 +190,12 @@ type hostAgent struct {
 	StartIdentity   string           `json:"startIdentity"`
 }
 type hostSession struct {
-	TerminalStatus *TerminalStatus `json:"terminalStatus"`
-	ActivePaneID   string          `json:"activePaneId"`
-	TmuxID         string          `json:"tmuxId"`
-	TmuxName       string          `json:"tmuxName"`
-	NameMode       string          `json:"nameMode"`
-	IdentityToken  string          `json:"identityToken"`
+	TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
+	ActivePaneID   string                  `json:"activePaneId"`
+	TmuxID         string                  `json:"tmuxId"`
+	TmuxName       string                  `json:"tmuxName"`
+	NameMode       string                  `json:"nameMode"`
+	IdentityToken  string                  `json:"identityToken"`
 	Character      struct {
 		Key         string `json:"key"`
 		DisplayName string `json:"displayName"`
@@ -222,7 +226,7 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
-	row := Session{TerminalStatus: *s.TerminalStatus, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
+	row := Session{TerminalStatus: s.TerminalStatus, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
 	if s.Agent != nil {
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
@@ -364,12 +368,42 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 			return nil, false
 		}
 		return *value, true
-	case "terminal_inspect":
-		var value *TerminalInspectResult
-		if strictjson.Decode(encoded, &value) != nil || value == nil || !validTerminalStatus(value.TerminalStatus) {
+	case "terminal_inspect", "terminal_explain":
+		// Pointers expose omitted members; nonNullJSON has already rejected null.
+		var value *struct {
+			TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
+			Diagnostics    *struct {
+				Rules   []agentcontrol.DiagnosticRule `json:"rules"`
+				Capture *struct {
+					Width         int   `json:"width"`
+					Height        int   `json:"height"`
+					Alternate     *bool `json:"alternate"`
+					TopClipped    *bool `json:"topClipped"`
+					BottomClipped *bool `json:"bottomClipped"`
+				} `json:"capture"`
+				ElapsedMs *agentcontrol.StageElapsed `json:"elapsedMs"`
+			} `json:"diagnostics"`
+		}
+		if strictjson.Decode(encoded, &value) != nil || value == nil || !value.TerminalStatus.Valid() || (value.Diagnostics != nil) != (operation == "terminal_explain") {
 			return nil, false
 		}
-		return *value, true
+		result := TerminalInspectResult{TerminalStatus: value.TerminalStatus}
+		if diagnostics := value.Diagnostics; diagnostics != nil {
+			if diagnostics.Rules == nil || diagnostics.ElapsedMs == nil {
+				return nil, false
+			}
+			result.Diagnostics = &agentcontrol.Diagnostics{Rules: diagnostics.Rules, ElapsedMs: *diagnostics.ElapsedMs}
+			if capture := diagnostics.Capture; capture != nil {
+				if capture.Alternate == nil || capture.TopClipped == nil || capture.BottomClipped == nil {
+					return nil, false
+				}
+				result.Diagnostics.Capture = &agentcontrol.CaptureDiagnostics{Width: capture.Width, Height: capture.Height, Alternate: *capture.Alternate, TopClipped: *capture.TopClipped, BottomClipped: *capture.BottomClipped}
+			}
+			if !result.Diagnostics.Valid() {
+				return nil, false
+			}
+		}
+		return result, true
 	case "inspect":
 		var value *agentruntime.ConversationRuntime
 		if strictjson.Decode(encoded, &value) != nil || value == nil || !validConversationRuntime(*value) {
@@ -399,7 +433,7 @@ func validSession(s hostSession) bool {
 	if s.NameMode != "automatic" && s.NameMode != "manual" {
 		return false
 	}
-	if !tmuxAddress(s.ActivePaneID, '%') || !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 || s.TerminalStatus == nil || !validTerminalStatus(*s.TerminalStatus) {
+	if !tmuxAddress(s.ActivePaneID, '%') || !tmuxAddress(s.TmuxID, '$') || s.TmuxName == "" || s.IdentityToken == "" || s.AttachedClients == nil || *s.AttachedClients < 0 || !s.TerminalStatus.Valid() {
 		return false
 	}
 	if s.Connection != nil && (s.Agent != nil || s.CWD != "" || !validConnection(*s.Connection)) {
@@ -503,7 +537,7 @@ type WaitResult struct {
 	Outcome        string                    `json:"outcome"`
 	Target         string                    `json:"target"`
 	Observation    *agentruntime.Observation `json:"observation,omitempty"`
-	TerminalStatus *TerminalStatus           `json:"terminalStatus,omitempty"`
+	TerminalStatus *sessions.TerminalStatus  `json:"terminalStatus,omitempty"`
 }
 
 func StatusText(status agentruntime.Status) string {
@@ -534,39 +568,9 @@ func validConversationRuntime(value agentruntime.ConversationRuntime) bool {
 	return value.Binding.Valid() && value.Status.Valid() && value.Methods.Valid() && (value.Turn == nil || value.Turn.Valid())
 }
 
-type TerminalStatus struct {
-	State  string `json:"state"`
-	Source string `json:"source"`
-}
-
+// TerminalInspectResult is one decoded inspect sample; Diagnostics are present
+// exactly when explain was requested.
 type TerminalInspectResult struct {
-	TerminalStatus TerminalStatus `json:"terminalStatus"`
-}
-
-func validTerminalStatus(value TerminalStatus) bool {
-	return (value.Source == "terminal" && slices.Contains([]string{"working", "blocked", "idle", "unknown"}, value.State)) || value.Source == "unavailable" && value.State == "unknown"
-}
-
-func SessionStatus(session Session) string {
-	if session.TerminalStatus.Source == "unavailable" {
-		return "status unavailable"
-	}
-	if session.Agent == nil {
-		return "terminal"
-	}
-	return TerminalStatusText(session.TerminalStatus)
-}
-
-func TerminalStatusText(status TerminalStatus) string {
-	if status.Source == "unavailable" {
-		return "status unavailable"
-	}
-	switch status.State {
-	case "blocked":
-		return "waiting"
-	case "unknown":
-		return "status unknown"
-	default:
-		return status.State
-	}
+	TerminalStatus sessions.TerminalStatus
+	Diagnostics    *agentcontrol.Diagnostics
 }

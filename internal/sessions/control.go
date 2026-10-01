@@ -15,6 +15,8 @@ var (
 	ErrTerminalTargetChanged      = errors.New("terminal target changed")
 	ErrTerminalUnavailable        = errors.New("terminal unavailable")
 	ErrTerminalObservationChanged = errors.New("terminal foreground changed during observation")
+	ErrTerminalProcessFailed      = errors.New("terminal foreground process could not be identified")
+	ErrTerminalCaptureFailed      = errors.New("terminal screen could not be captured")
 	ErrTerminalWriteUnknown       = errors.New("terminal input delivery is unknown")
 	ErrSessionDeleteUnknown       = errors.New("session deletion is unknown")
 )
@@ -58,7 +60,6 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	inspected, present, err := manager.inspectAnchor(ctx, Session{
 		TmuxID: target.TmuxID, TmuxName: observed.tmuxName, NameMode: effectiveNameMode(observed.tmuxName, observed.autoMarker),
 		IdentityToken: target.IdentityToken, Character: observed.character,
-		TerminalStatus: TerminalStatus{State: "unknown", Source: "unavailable"},
 	})
 	if err != nil {
 		return Session{}, terminalError(err)
@@ -66,42 +67,81 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if !present || inspected.paneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session, foregroundErr := manager.enrichSession(ctx, inspected)
-	if foregroundErr == nil {
-		session.TerminalStatus = TerminalStatus{State: "unknown", Source: "terminal"}
-	}
-	if err := manager.requireServerIdentity(ctx, identity); err != nil {
-		return Session{}, ErrTerminalTargetChanged
-	}
+	session := manager.enrichSession(ctx, inspected)
+	err = manager.requireServerIdentity(ctx, identity)
+	// An expired ctx fails the identity read and degrades enrichment without
+	// saying anything about the target, so it outranks the read's failure.
 	if ctx.Err() != nil {
 		return Session{}, ErrTerminalUnavailable
+	}
+	if err != nil {
+		return Session{}, ErrTerminalTargetChanged
 	}
 	return session, nil
 }
 
-func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarget, maxBytes int, visible bool) (Session, tmuxclient.Capture, error) {
+// CaptureTerminal is the public plain-text read between two full resolutions
+// of target. A foreground that could not be sampled, or that differs between
+// the resolutions, makes the read ErrTerminalUnavailable.
+func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarget, maxBytes int) (tmuxclient.Capture, error) {
 	before, err := manager.ResolveTerminal(ctx, target)
-	if err == nil && before.TerminalStatus.Source == "unavailable" {
+	if err == nil && before.ForegroundFailed() {
 		err = ErrTerminalUnavailable
 	}
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, err
+		return tmuxclient.Capture{}, err
 	}
-	capture, err := manager.tmux.CapturePane(ctx, target.paneTarget(), maxBytes, visible)
+	capture, err := manager.tmux.CapturePane(ctx, target.paneTarget(), maxBytes)
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, terminalError(err)
+		return tmuxclient.Capture{}, terminalError(err)
 	}
 	after, err := manager.ResolveTerminal(ctx, target)
-	if err == nil && after.TerminalStatus.Source == "unavailable" {
+	if err == nil && (after.ForegroundFailed() || !sameForeground(before, after)) {
 		err = ErrTerminalUnavailable
 	}
 	if err != nil {
-		return Session{}, tmuxclient.Capture{}, err
+		return tmuxclient.Capture{}, err
 	}
-	if !sameForeground(before, after) {
-		return after, tmuxclient.Capture{}, ErrTerminalObservationChanged
+	return capture, nil
+}
+
+// ObservePane captures the bounded screen regions of session's exact target and
+// then revalidates the pane foreground against session's own sample. session
+// comes from List or ResolveTerminal in the same request and is never
+// re-resolved. Precondition: the session's foreground sample either failed or
+// found a foreground (Agent != nil guarantees one); a session sampled without a
+// foreground is a caller defect.
+// Errors: ErrTerminalProcessFailed (the session's foreground sample failed, or
+// re-observing it failed), ErrTerminalCaptureFailed (tmux failure or
+// dimension/screen change), ErrTerminalObservationChanged (foreground absent or
+// different in the same target), ErrTerminalTargetChanged (session lifetime or
+// selected pane changed).
+// Callers check ctx first: an expired context is a timeout at any stage.
+func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
+	if session.ForegroundFailed() {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
 	}
-	return after, capture, nil
+	if session.foreground == nil {
+		panic("observed terminal session has no foreground") // justify-defect: callers observe only a recognized agent, whose sample holds its foreground.
+	}
+	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
+	switch {
+	case err == nil:
+	case errors.Is(err, tmuxclient.ErrTargetChanged):
+		return tmuxclient.PaneObservation{}, ErrTerminalTargetChanged
+	case errors.Is(err, tmuxclient.ErrScreenChanged), errors.Is(err, tmuxclient.ErrUnavailable):
+		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
+	default:
+		panic("observed terminal target is invalid") // justify-defect: List, ResolveTerminal and creation return only canonical targets.
+	}
+	foreground, err := paneForeground(session.panePID)
+	if err != nil {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+	}
+	if foreground == nil || !processinfo.SameObservation(*session.foreground, *foreground) {
+		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
+	}
+	return observation, nil
 }
 
 // expected guards provider-specific input. nil deliberately permits generic

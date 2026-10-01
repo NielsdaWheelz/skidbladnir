@@ -62,20 +62,12 @@ func (m *model) details(row *listedRow) [][2]string {
 		facts = append(facts, [2]string{"recorded native conversation", value.Conversation.ConversationID + "; may differ from terminal"})
 	}
 
-	facts = append(facts, [2]string{"state", m.rowStatus(*row)})
-	if value.Agent != nil && value.TerminalStatus.Source == "terminal" {
-		facts = append(facts, [2]string{"source", "inferred from terminal"})
-	}
+	view := m.statusView(*row)
+	facts = append(facts, [2]string{"state", view.Detail}, [2]string{"status reason", view.Reason})
 	if value.LaunchProfile != "" {
 		facts = append(facts, [2]string{"started with", value.LaunchProfile})
 	}
-	for _, peer := range m.peers {
-		if peer.Machine == row.machine {
-			facts = append(facts, [2]string{"observed", peer.ObservedAt})
-			break
-		}
-	}
-	facts = append(facts, [2]string{"reference", value.Ref})
+	facts = append(facts, [2]string{"observed", row.observedAt}, [2]string{"reference", value.Ref})
 	if !row.available {
 		facts = append(facts, [2]string{"availability", "unavailable"})
 	}
@@ -88,22 +80,20 @@ func (m *model) rowForReference(encoded string) *listedRow {
 		for _, session := range peer.Sessions {
 			ref, _ := fleetclient.DecodeReference(session.Ref)
 			if ref.SessionEqual(target) {
-				return &listedRow{peer.Label, peer.Machine, session, peer.OK && m.scopeReady}
+				return &listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
 			}
 		}
 	}
 	return nil
 }
 
+// refreshInfo follows info's lifetime through each inventory. A lifetime that
+// leaves scoped inventory keeps its last observed facts and their time,
+// labelled unavailable.
 func (m *model) refreshInfo() {
-	if row := m.rowForReference(m.pageRef); row != nil {
-		m.facts = m.details(row)
-		m.pageName = row.session.Name
+	if row := m.rowForReference(m.pageRow.session.Ref); row != nil {
+		m.pageRow = *row
 		return
 	}
-	for index := range m.facts {
-		if m.facts[index][0] == "state" {
-			m.facts[index][1] = "unavailable"
-		}
-	}
+	m.pageRow.available = false
 }
