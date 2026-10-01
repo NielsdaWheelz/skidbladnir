@@ -277,21 +277,21 @@ func (screen *claudeScreen) above(c, row int) (text string, top, end int, ok boo
 	return screen.joined(top, end), top, end, true
 }
 
-// textBlock finds the topmost of the blocks whose top row is at exactly c, at
-// and above end, whose text matches.
+// textBlock finds the nearest block at and above end whose top row is at
+// exactly c and whose text matches: the dialog's own text, below any
+// transcript that quotes it.
 func (screen *claudeScreen) textBlock(c, end int, match func(string) bool) (int, bool) {
-	found, matched := 0, false
 	for r := end; ; r-- {
 		line, ok := screen.line(r)
 		if !ok {
-			return found, matched
+			return 0, false
 		}
 		if line.blank() || line.col < c-1 || line.col > c+1 {
 			continue
 		}
 		if text, top, ok := screen.block(c, r); ok {
 			if match(text) {
-				found, matched = top, true
+				return top, true
 			}
 			r = top
 		}
@@ -1244,7 +1244,6 @@ func claudeSegment(segment string, last bool) (class claudeSegmentClass, exact b
 type claudeModeRow struct {
 	manual   bool
 	cycle    bool // the mode item draws its cycle hint, whole or cut
-	wrapped  bool // the mode item shows only the first line of its wrapped text
 	segments []string
 	cut      bool // a trailing ` ·`: a later item was cut away
 	blanks   int  // blank cells after the last item, to the row end or the notification suffix
@@ -1253,11 +1252,13 @@ type claudeModeRow struct {
 
 // claudeModeItem cuts the mode item from the start of text: an optional vim
 // prefix, the mode glyph (not in the screen reader), the mode and an optional
-// cycle hint. The screen reader never cuts the hint; elsewhere the item is one
-// text wrapping in a box one row high, so a narrow row shows only its first
-// line: the hint cut after a word, or wrapped away whole. That line keeps its
-// trailing space and the box is as wide as the text's widest line, so blank
-// cells, at least two counting the separator's own, precede the next `·`.
+// cycle hint. The screen reader never cuts the hint and manual mode never
+// draws it; elsewhere the item is one text wrapping in a box one row high, so
+// a narrow row shows only its first line: the hint cut, read like a cut
+// segment (earlier tokens whole, the last a character prefix), or wrapped away
+// whole. That line keeps its trailing space and the box is as wide as the
+// text's widest line, so blank cells, at least two counting the separator's
+// own, precede the next `·`.
 func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest string, ok bool) {
 	for _, vim := range [...]string{"-- INSERT -- ", "-- VISUAL -- ", "-- VISUAL LINE -- "} {
 		if after, found := strings.CutPrefix(text, vim); found {
@@ -1294,7 +1295,7 @@ func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest st
 		if !hinted && !(strings.HasPrefix(after, "  ") && strings.HasPrefix(strings.TrimLeft(after, " "), "·")) {
 			return mode, after, true
 		}
-		if screenReader {
+		if screenReader || mode.manual {
 			return claudeModeRow{}, "", false
 		}
 		first, rest := after, ""
@@ -1307,7 +1308,7 @@ func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest st
 		if separator := strings.TrimLeft(rest, " "); strings.HasPrefix(separator, "·") {
 			rest = " " + separator
 		}
-		mode.cycle, mode.wrapped = true, true
+		mode.cycle = true
 		return mode, rest, true
 	}
 	return claudeModeRow{}, "", false
@@ -1354,7 +1355,7 @@ func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
 	// P0: claude draws the cycle hint in a non-default mode only without a
 	// pill, so any of the hint proves the slot.
 	proven = !mode.manual && mode.cycle
-	lastExact := !mode.wrapped // the mode item itself, when no segment follows
+	lastExact := true // the mode item itself, when no segment follows
 	for index, segment := range mode.segments {
 		last := index == len(mode.segments)-1
 		class, exact := claudeSegment(segment, last)
@@ -1376,10 +1377,10 @@ func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
 	}
 	// P2: a complete label with room after it left no box unshown. The mode
 	// item's separator is a box of its own whose `·` shows once 4 cells
-	// follow the item to the row end, and in a non-default mode an item that
-	// shows no more than `on` there may be its hint wrapped away (P0).
+	// follow a hint-less item to the row end; a hinted item's box may hold
+	// those cells itself, but then its hint proves the slot (P0).
 	room := 6
-	if len(mode.segments) == 0 && !mode.manual && !mode.notified {
+	if len(mode.segments) == 0 && !mode.notified {
 		room = 4
 	}
 	return classes, proven || !mode.cut && lastExact && mode.blanks >= room
@@ -1613,7 +1614,9 @@ var claudeElicitationTitle = regexp.MustCompile(`^MCP server “.*?” (.*)$`)
 
 // claudeElicitation reads an mcp server's elicitation form. Its title starts a
 // block at column 2: classic wraps it, while fullscreen keeps it on one row,
-// cutting the server name and then the title's ending to a prefix and `…`.
+// cutting the server name and then the title's ending to a prefix and `…`. A
+// task's elicitation appends ` (task <id>)` to the ending, which fullscreen
+// draws only when it fits uncut, so a space and more text may follow it.
 func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
 	if text, _, ok := screen.block(2, hint); ok && strings.HasPrefix(text, "Esc to cancel · ") {
 		title := func(text string) bool {

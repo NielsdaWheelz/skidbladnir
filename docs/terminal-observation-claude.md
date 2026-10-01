@@ -83,7 +83,7 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 41 | plan approval with plan, wrapped at 80/60/40 | R | confirmation | `claude.confirmation.plan` | darwin (fullscreen, 30–80 columns); classic fails live: unknown/unknown at every width, its dialog drawn at col 1 where rule 15 reads col 3 |
 | 42 | exit plan mode without plan | R | confirmation | `claude.confirmation.exit_plan` | darwin |
 | 43 | enter plan mode dialog (only under an `ask` rule naming `EnterPlanMode`) | R | confirmation | `claude.confirmation.enter_plan` | darwin (80/40) |
-| 44 | mcp elicitation form | R | input | `claude.input.elicitation` | darwin (classic and fullscreen, 30–80 columns: classic wraps the title, fullscreen cuts it) |
+| 44 | mcp elicitation form | R | input | `claude.input.elicitation` | darwin (classic and fullscreen, 30–80 columns, with and without a task suffix: classic wraps the title, fullscreen cuts it) |
 | 45 | mcp elicitation url mode | U | input | `claude.input.elicitation` | source-only: gated, no dialog in an api-key session |
 | 46 | transcript viewer over a waiting dialog (`dialog waiting · Showing detailed transcript · …`) | R | input | `claude.input.dialog_waiting` | source-only |
 | 47 | setup: trust, api key, theme onboarding, security notes | R | setup | `claude.setup.<variant>` | darwin (2.1.286, unnumbered theme), linux (2.1.284, numbered theme; §5 c18) |
@@ -131,7 +131,7 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 89 | fullscreen stale cells after a resize | P | exact match fails: unknown until repaint | — | darwin |
 | 90 | other sessions needing input: footer `← N agent(s)` | P | interaction none (§5 c16) | — | source-only |
 | 91 | pinned notices (`⚠ ` items of the pinned column: transcript saving off, transcript writes failing) | P | fullscreen/classic: opaque footer rows, tolerated; screen reader: idle lost (§5 c4) | — | darwin |
-| 92 | narrow mode item: the cycle hint cut after a word or wrapped away whole, or the row ending at `on` (2.4) | R | as the whole row: the hint proves the slot (P0); `on` with 4 blank cells to the row end does in a non-default mode (P2) | `claude.activity.idle` / `.spinner` | darwin (production bypass arguments and plan mode; fullscreen and classic; idle, draft, spinner and tool at every width 30–60) |
+| 92 | narrow mode item: the cycle hint cut or wrapped away whole, or the row ending at `on` (2.4) | R | as the whole row: the hint proves the slot (P0); `on` with 4 blank cells to the row end does (P2) | `claude.activity.idle` / `.spinner` | darwin (fullscreen and classic; production bypass arguments: idle, draft, spinner and tool at every width 30–60; auto mode and accept edits idle 20–60; plan mode idle 20–40; manual mode 16–40, empty and draft) |
 
 ## 2. screen grammar
 
@@ -219,7 +219,9 @@ word-bounded, so matching never depends on those spaces.
 `r` cannot extend it) and whose block's topmost row is at exactly column `c`. a
 2.6 hint or anchor block `blk(c)` holds under the same condition (2.6: every
 column is exact), which keeps col-2 transcript text out of lower columns. `above`
-takes the plain `blk`.
+takes the plain `blk`. a rule's decisive row among `texts(c)` is the top of the
+matching block nearest above its hint: the dialog's own text, below any
+transcript that quotes it.
 
 **numbered options `opt(c, end)`.** skip blank rows above `end`, then take the
 contiguous rows that are either an option start `^ {c}(❯| ) N\. label` or a
@@ -500,13 +502,16 @@ then zero or more ` · <segment>`, where a segment contains no ` · `.
 - a run of ≥ 3 spaces followed by text starts a right-aligned notification suffix
   (classic), not parsed.
 - a trailing ` ·` means a later item was cut.
-- outside the screen reader a narrow row may show only the mode item's first
-  wrapped line (layout below): `on`, then either ` (` and a prefix of
-  `<chord> to cycle)` taken token by token (`(shift+tab to`, `(shift+tab`) or
-  nothing. after a cut hint come two or more spaces and the separator, a
+- outside the screen reader and manual mode, a narrow row may show only the
+  mode item's first wrapped line (layout below): `on`, then either ` (` and a
+  character prefix of `<chord> to cycle)` taken token by token, as a cut segment
+  is (earlier tokens whole, the last possibly partial), or nothing. claude wraps
+  at word boundaries, so live rows show whole tokens (`(shift+tab to`,
+  `(shift+tab`). after a cut hint come two or more spaces and the separator, a
   notification suffix, or the row end. after `on` alone, two or more spaces and
   then `·` mean the hint wrapped away whole; `on` before ` · ` or a notification
-  suffix has no hint, and `on` at the row end is left to P2.
+  suffix has no hint, and `on` at the row end is left to P2. manual mode never
+  draws the hint, so these forms do not parse there.
 
 **layout** (S, and measured). the footer container has `paddingX 2`; the row is
 `height:1, overflow:hidden`, items in order
@@ -558,11 +563,17 @@ instead, with the same cuts):
 | ≤ 27 | `⏵⏵ bypass permissions`: `on` wrapped away |
 
 a draft hides `Hs`, so the row ends after the item: whole at 49 and wider, then
-the same first lines, and `… on` + `W − 26` blank cells at 38 and narrower. plan
-mode shows the same forms 10 columns narrower, its box wider than its first line
-at 26–28 columns. with a pill there is no hint: the row reads
-`… on · 1 shell · …` cut further, `… on ·` at 30–31 and `… on` + 2–3 blank cells
-at 28–29.
+the same first lines, and `… on` + `W − 26` blank cells at 38 and narrower. auto
+mode, accept edits and plan mode show the same forms at widths narrower by about
+the length their names save, their box wider than its first line where the
+hint's own wrapped line is the widest (`⏸ plan mode on` + 6 then the separator at
+26–28; `⏵⏵ auto mode on` + 6 then the separator at 26–28, + 7–8 to the row end
+at 24–25). with a pill there is no hint: the row reads `… on · 1 shell · …` cut
+further, `… on ·` at 30–31, `… on` + 2–3 blank cells at 28–29 and
+`⏵⏵ bypass permissions` at 25–27, alike in fullscreen and classic. manual mode
+never draws the hint; with `Hs` it reads `… on` + 2–3 blank cells at 20–21 and
+`… on ·` at 22–23, and a draft reads `… on` + `W − 18` blank cells. so a hint-less
+item shows its separator's `·` whenever 4 cells follow it.
 
 **`Hs` members** (instances: `<chord>` is one token; `N` is digits or `99+`):
 
@@ -623,7 +634,7 @@ links and an extra `PromptHint` render hook are `unlisted` (§5 c4).
 
 - **P0**: the mode is not `manual mode` and the mode item draws its cycle hint:
   a complete ` (<chord> to cycle)`, or the item's first wrapped line with the
-  hint cut after a word or wrapped away whole (grammar above). claude draws the
+  hint cut or wrapped away whole (grammar above). claude draws the
   cycle hint only when the count of {non-default mode or coordinator, task pill}
   is below 2, so in a non-default mode any part of the hint proves that no task
   pill exists; the gated footer chooses its cycle hint only after the `manage`
@@ -641,20 +652,28 @@ links and an extra `PromptHint` render hook are `unlisted` (§5 c4).
   leaves at most 3 blanks behind it, and a complete label followed by any item
   shows its own ` ·` unless at most one cell of its box remains; bare and
   indicator-shaped last items are excluded because a wrapped first line leaves
-  unbounded blanks (`PR` of `PR #123456`, `◆ a`), and so is a mode item shown
-  only by its first line. when the last item is the mode item, the mode is not
-  `manual mode` and the row ends without a notification suffix, 4 blank cells
-  suffice: the item's separator is a 3-cell box of its own whose `·` shows once 4
-  cells follow a complete item, and an item that shows no more than `on` there
-  may be its hint wrapped away, which P0 covers.
+  unbounded blanks (`PR` of `PR #123456`, `◆ a`). when the last item is the mode
+  item and the row ends without a notification suffix, 4 blank cells suffice: the
+  item's separator is a box of its own whose `·` shows once 4 cells follow a
+  hint-less item (measured above, manual and bypass alike). a hinted item's box
+  may hold those cells itself, but then its hint, whole, cut or wrapped away,
+  proves the slot (P0; manual mode draws no hint).
 
 measured: 60, 50 and 45 columns prove the slot (P1: `…`, `← for…`); 42
 (`1 shell` + 3), 40 (`· 1 shel`), 35–38 (`· 1`), 33–34 (trailing ` ·`), 31–32
 (indicator) and narrower do not. in a non-default mode without a pill every row
-of the table above from 30 columns proves it (P0; P2 at 30). idle is still lost
-where `Hs` is cut to a bare `←` (`←…`, `← …`: 34–35, 48 and 54–55 columns in
-bypass), which prefixes both the agents labels and `<chord>`-led members, so the
-segment is `unlisted`, and at 29 columns and narrower.
+of the table above from 30 columns proves it (P0; P2 at 30), and a manual-mode
+draft proves it from 22 columns (P2: `on` + 4). three narrow losses remain, each
+by its own mechanism (§5 c4, c5):
+
+- where `Hs` is cut to a bare `←` (`←…`, `← …`: 34–35, 48 and 54–55 columns in
+  bypass) the slot is proven, but the segment prefixes both the agents labels and
+  `<chord>`-led members, so it is `unlisted` and blocks idle;
+- at 28–29 columns `on` with 2–3 blank cells leaves the slot unproven: idle is
+  lost, working still reads;
+- at 27 columns and narrower `on` itself wraps away (`⏵⏵ bypass permissions`),
+  so the mode row does not parse and the footer is void: idle and working are
+  both lost.
 
 ### 2.5 screen reader
 
@@ -753,7 +772,7 @@ occupies `L′`. composer is `blocked` for every family.
 | 11 | `claude.question.preview` | `blk(0)` starts `Enter to select · `, contains ` · n to add notes · `, ends `Esc to cancel` | one blank row, then `^(❯ \|  )Chat about this$`; directly above it a `RULE`; above that (skipping blanks) the side-by-side block, whose first row holds the preview box corner `┌` at column `p`: scanning up from the `RULE`, the first row whose leftmost `┌` has cells left of it that start option 1 (`^(❯\| ) 1\. `), since a lower `┌` belongs to a box the preview content draws; the cells left of `p` of its rows form `opt(0, ·)` from the block's first row, with ≤ 1 `❯`; at least one `❯` among the options and the chat row | question |
 | 12 | `claude.question.form` | `blk(0)` starts `Enter to select · `, contains ` to navigate`, ends `to cancel`, does not contain `n to add notes` | one blank row, then `^(❯\| ) N\. Chat about this$`; directly above it a `RULE`; then `opt(0, ·)` with ≤ 1 `❯`; at least one `❯` among the options and the chat row | question |
 | 13 | `claude.question.review` | none; `opt(0, L′)` has labels exactly `Submit answers`, `Cancel` | `texts(0)` contains `Ready to submit your answers?` and `Review your answers` | question |
-| 14 | `claude.input.elicitation` | `blk(2)` starts `Esc to cancel · ` | a block in `texts(2)` reading `MCP server “<name>” ` then `requests your input` or `wants to open a URL` (alone or before more text), or, cut by fullscreen, a character prefix of either and `…` | input |
+| 14 | `claude.input.elicitation` | `blk(2)` starts `Esc to cancel · ` | a block in `texts(2)` reading `MCP server “<name>” ` then `requests your input` or `wants to open a URL`, alone or followed by a space and more text (a task's elicitation appends ` (task <id>)`, S), or, cut by fullscreen, a character prefix of either and `…` | input |
 | 15 | `claude.confirmation.plan` | optional `blk(3)` matching `^\S+ to edit in `, then `opt(3, ·)` | option 1 starts `Yes`; an option starts `Tell Claude what to change`; `above(3, options)` starts `Claude has written up a plan and is ready to execute.` | confirmation |
 | 16 | `claude.confirmation.exit_plan` | none; `opt(4, L′)` (the hint lies below the pane) | option 1 starts `Yes, and switch to `, last option `No`; `above(4, options)` == `Claude wants to exit plan mode` | confirmation |
 | 17 | `claude.confirmation.enter_plan` | none; `uopt(2, L′)` ends `No, start implementing now` (the confirm label names the mode: `Yes, enter plan mode` or `Yes, and switch to plan mode (…) for this session`) | the first non-blank row above the options with col < 2 is at col 1, reads exactly `Enter plan mode?`, and has a `RULE` directly above it | confirmation |
@@ -831,7 +850,10 @@ the only `❯` to `❯ N. Chat about this`.
   at 30) and never cuts the name. fullscreen keeps one row and cuts the name
   first (`“zzm…”` at 43, `“…”` at 40), then the ending (`requests your inp…` at 39
   down to `requests…` at 30). a blank row separates the title from the message in
-  both.
+  both. a task's elicitation (`_meta` naming a related task) appends
+  ` (task <id8>)`: classic always, wrapping it at 56 columns and narrower;
+  fullscreen only while it fits uncut beside a name with room (live: at 70 and 80
+  columns, dropped at 60 and narrower, then cut as above).
 
 ### 2.7 precedence, reasons, diagnostics
 
@@ -931,17 +953,22 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c3** a loading chevron with no corroborator is unknown. teammate views never
   reach idle.
 - **c4** idle is lost when:
-  - the slot is unproven: manual-mode rows whose `Hs` is gone and whose last item
-    is not a complete non-indicator label with 6 blanks after it; rows with a pill
-    at the narrow widths 2.4 measures; in a non-default mode, `Hs` cut to a bare
-    `←` (34–35, 48 and 54–55 columns in bypass with an empty composer) and rows of
-    29 columns or fewer in bypass (`on` with 2–3 blank cells, or `on` wrapped
-    away);
+  - the slot is unproven: rows showing no cycle hint whose `Hs` is gone and whose
+    last item is neither a complete non-indicator label with 6 blanks after it
+    nor the mode item with 4 to the row end (manual-mode rows and rows with a
+    pill at the narrow widths 2.4 measures); in bypass, rows of 28–29 columns,
+    where `on` has only 2–3 blank cells after it (the other non-default modes
+    lose the same row at narrower widths);
+  - the last segment is `Hs` cut to a bare `←` (`←…`, `← …`: 34–35, 48 and 54–55
+    columns in bypass with an empty composer, shifted narrower in the other
+    non-default modes): the slot is proven, but `←` prefixes both the agents
+    labels and `<chord>`-led members, so the segment is `unlisted`;
   - the pane is taller than 256 rows and the slot walk reaches rows `192..h−65` (a
     fullscreen pane that tall with a short transcript), or a byte cap cut the walk;
   - a footer link, a render hook or a screen-reader indicator is configured;
   - the footer is non-ordinary or void (bash, history recall, help, autocomplete,
-    an unrecognized col-2 notification under the mode row);
+    an unrecognized col-2 notification under the mode row, a mode row that does
+    not parse: bypass at 27 columns and narrower, where `on` wraps away);
   - a non-work panel row is present: idle teammates, `waiting` or
     `awaiting approval` agents, the idle summary, a paused workflow, a
     `subagentStatusLine` body;
@@ -952,8 +979,12 @@ each unknown or none, never a false claim unless the item says otherwise:
     above an unwrapped mode row: every fresh screen-reader session until its first
     turn, every screen-reader session with a statusline, every screen-reader
     session while claude pins a notice.
-- **c5** working is lost when an unknown col-2 notification sits in the composer
-  margin while a statusline suppresses the hint: the notification becomes `S`.
+- **c5** working is lost when:
+  - an unknown col-2 notification sits in the composer margin while a statusline
+    suppresses the hint: the notification becomes `S`;
+  - the mode row does not parse (bypass at 27 columns and narrower, `on` wrapped
+    away): the footer is void and the pane reads unknown/unknown,
+    `layout_unknown`, never a false claim.
 - **c6** vim NORMAL mode is indistinguishable from an ordinary empty composer (U).
   it reads `empty`, so guarded send is admitted and relies on the existing paste
   staging.
@@ -998,6 +1029,8 @@ each unknown or none, never a false claim unless the item says otherwise:
   unknown/unknown (§1 row 60). fullscreen `/model` at 30 rows reads `menu` from 58
   columns and unknown at 56 and narrower; at 40 columns it reads from 50 rows
   (unknown at 45), so a phone-sized pane of about 40×29 never shows it as a menu.
+
+no residual ambiguity remains: CQ20, the last, is c18.
 
 ## 6. requalification
 
