@@ -370,16 +370,12 @@ func (m *model) rowDetailLines(row listedRow, width int) []string {
 		facts += ": " + row.session.ActiveCommand
 	}
 	// a row without remote actions names why: its host failed a read, or it
-	// is being checked by a pending scoped read or a re-read after metadata.
-	if !row.available {
-		host := "checking"
-		for _, peer := range m.peers {
-			if peer.Machine == row.machine && peer.Error != nil {
-				host = "unavailable"
-				break
-			}
-		}
-		facts = host + "; " + facts
+	// is being checked.
+	switch {
+	case m.hostChecking(row):
+		facts = "checking; " + facts
+	case !row.available:
+		facts = "unavailable; " + facts
 	}
 	where := current.CWD
 	if where == "" {
@@ -753,10 +749,28 @@ func (m *model) statusView(row listedRow) fleetclient.StatusView {
 	return fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
 }
 
-// tableStatus is a row's status cell: the projected label in its tone, so a
-// stale row reads its last observation. the selected row's facts name its
-// host unavailable or checking; an errored host also keeps its notice.
+// hostChecking reports a row without remote actions whose host has not failed a
+// read: a pending scoped read or a re-read after metadata is checking it.
+func (m *model) hostChecking(row listedRow) bool {
+	if row.available {
+		return false
+	}
+	for _, peer := range m.peers {
+		if peer.Machine == row.machine && peer.Error != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// tableStatus is a row's status cell. a checking row makes no status claim and
+// reads faint `checking`; any other row reads the projected label in its tone,
+// so a row whose host failed a read reads its last observation. an errored
+// host also keeps its notice.
 func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
+	if m.hostChecking(row) {
+		return "checking", faint
+	}
 	view := m.statusView(row)
 	switch view.Tone {
 	case fleetclient.ToneMuted:
