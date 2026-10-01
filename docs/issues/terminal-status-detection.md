@@ -20,8 +20,8 @@ grammars' cost sections).
 
 two criteria are not met: positive live recognition of every supported family,
 and qualification of the installed provider and tmux versions at the live
-boundary. codex's unaccepted residuals, one of them a false idle, also await a
-ruling.
+boundary. codex's unaccepted residuals, which include a false idle, also await
+a ruling.
 
 impact: required families that never ran live may still misread on a real
 screen, almost always as unknown; each remaining blocker names its families.

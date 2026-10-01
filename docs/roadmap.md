@@ -28,11 +28,13 @@ required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwi
 [codex server-driven families](issues/codex-server-driven-families.md), the
 [codex residual ambiguity](issues/codex-residual-ambiguity.md), the
 [narrow claude theme picker](issues/claude-theme-picker-narrow.md), the
-[stale status width](issues/stale-status-width.md) and the
-[host-config cutover](issues/host-config-cutover.md).
+[stale status width](issues/stale-status-width.md), the desktop's
+[live stale and checking cells](issues/terminal-observation-stale-live.md) and
+the [host-config cutover](issues/host-config-cutover.md).
 [status detection](issues/terminal-status-detection.md) closes with the coverage,
 residual and smoke records, and [needs input](issues/agent-needs-input.md) with
-the phone run and an attention run through cancellation;
+the phone run, an attention run through cancellation and the codex residual
+ruling;
 [baselinePending](issues/notification-baseline-pending.md) records the attention
 store's dead field. [list latency](issues/session-list-latency.md) and
 [hook tmux waits](issues/agenthook-tmux-wait-delay.md) are pre-existing costs found

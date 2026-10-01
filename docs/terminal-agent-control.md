@@ -1,9 +1,10 @@
 # terminal status and control
 
 [non-native terminal observation](terminal-observation.md) owns the status facts,
-the observed screen regions and their limits, provider classification and
-guarded-send admission. this document keeps terminal targets, the tmux capture
-mechanics, effects, routes, wait and the observation sample's composition.
+the observed screen regions and their limits, provider classification,
+guarded-send admission and the terminal wait states. this document keeps
+terminal targets, the tmux capture mechanics, effects, routes, wait's polling
+loop and the observation sample's composition.
 
 status: orchestration implemented; the observation cutover is implemented in
 source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
@@ -186,17 +187,15 @@ second transport. no provider-native call occurs.
 
 send writes only when
 [observation §5](terminal-observation.md#5-controls-and-diagnostic-api) admits
-the sample. a refusal names one reason: a permission, question, confirmation, setup or input
-interaction is `dialog`; otherwise a composer draft is `draft`; otherwise
-`unknown`. use text/keys for deliberate interaction. never append-and-submit a
-detectable user draft. this heuristic cannot eliminate concurrent edits. text
-deliberately retains ordinary append/paste-and-submit semantics. send/text reuse
-the same unique-buffer paste plus one submit primitive. stage that buffer before
-final foreground revalidation; both paste and enter belong inside the successful
-tmux predicate branch. refusal executes neither; cleanup deletes only this
-operation's buffer. bounded buffer cleanup may continue for one second after
-request cancellation; it removes staged input only and never dispatches another
-effect.
+the sample; a refusal carries §5's reason. use text/keys for deliberate
+interaction. never append-and-submit a detectable user draft. this heuristic
+cannot eliminate concurrent edits. text deliberately retains ordinary
+append/paste-and-submit semantics. send/text reuse the same unique-buffer paste
+plus one submit primitive. stage that buffer before final foreground
+revalidation; both paste and enter belong inside the successful tmux predicate
+branch. refusal executes neither; cleanup deletes only this operation's buffer.
+bounded buffer cleanup may continue for one second after request cancellation;
+it removes staged input only and never dispatches another effect.
 an observed provider-foreground change refuses guarded send, without generic-key
 substitution; deliberate text/keys require terminal authority only.
 no peer attribution, native admission, queue or completion
@@ -305,11 +304,9 @@ wait reuses the current client loop: capture once, sample immediately, then one
 request per five seconds, default idle/60 seconds, maximum one hour; every request
 is bounded by the monotonic remaining deadline. the cli supplies the defaults;
 the client validates the state against the captured target kind before polling.
-terminal states are `idle` (activity idle, interaction none, notice none),
-`working` (activity working, whatever the interaction) and `needs-input` (a
-permission, question, confirmation, setup or input interaction, whatever the
-activity). native-only waits retain idle/blocked/done/failed/stopped. a sample
-whose tested dimension is unknown continues without matching;
+[observation §5](terminal-observation.md#5-controls-and-diagnostic-api) defines
+the terminal states and their matching; a sample that does not match continues.
+native-only waits retain idle/blocked/done/failed/stopped.
 unavailable-source samples return an unavailable error.
 active-pane selection change, pane destruction or session replacement ends target_changed;
 foreground exit/restart/resume within the same pane remains the same terminal

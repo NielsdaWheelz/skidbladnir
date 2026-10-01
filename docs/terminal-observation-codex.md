@@ -225,6 +225,15 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
 5. every surface except the composer surface and the async editor hides the
    status row, composer and status line: activity unknown, nothing carried
    forward.
+6. diagnostics, in this order: a matched overlay, viewer, setup or picker emits
+   its one rule (the async editor adds `codex.activity.status_row`), and a final
+   partial match of rule 6 or 9 emits none. the composer surface emits
+   `codex.scope.side`, `codex.composer.external_editor`, the interaction rule,
+   `codex.activity.status_row`, the activity cause (`codex.activity.disconnected`,
+   `codex.activity.goal_active` or `codex.activity.prompt_pending`), then the
+   run-state rule, each when it applies: at most six, under
+   [spec §5](terminal-observation.md#5-controls-and-diagnostic-api)'s cap of
+   eight. no rule names a clipped read; the reason carries it.
 
 shared anatomy:
 
@@ -529,11 +538,21 @@ count alone fills a one-row footer (the count, when added, comes before it).
   - options `  › N. label  description` (glyph at col 2);
   - the notes row `  › Add notes`.
 - result: unknown/question/none/blocked.
-- an unanswered request_user_input resolves itself with empty answers 120 s after
-  it is served, and the pane returns to idle, never ready: observed on darwin with
-  the 0.159.2 TUI embedded and against daemons 0.159.2 and 0.159.3. whether the TUI
-  or the app-server owns the timeout is not isolated. it bounds how long an
-  unvisited question stays visible.
+- auto-resolve. the TUI owns the timer. a default-mode request_user_input is
+  non-blocking (`core/src/tools/handlers/request_user_input.rs:83` sets
+  `is_blocking` only in plan mode), and the view resolves a non-blocking request
+  after a 60 s hidden grace and a 60 s visible `auto-resolves in …` countdown,
+  counted from when the request is shown
+  (`request_user_input/mod.rs:72-73,263-310`). a key or paste in the view stops
+  the timer (`:1183`, `:1457`); a plan-mode question never resolves itself.
+  resolution submits empty answers (`submit_empty_auto_resolution`, `:892-909`)
+  and the model continues the turn on them, so an unvisited question disappears
+  and the pane reads the continuation: question → idle raises no ready (spec §6),
+  and working sampled in the continuation arms ready as usual. observed on darwin
+  with the 0.159.2 TUI embedded and against daemons 0.159.2 and 0.159.3: each
+  tool output arrived 120.0 s after its question, and the scripted endpoint ended
+  each continuation at once, so no working sample fell between the question and
+  idle.
 
 mcp form (rule 3): otherwise a member `K to submit`, `K to submit all` or
 `K to submit answer` (`mcp_server_elicitation.rs:971-996`), or a first row led by
@@ -903,8 +922,9 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c4** cue-less turn starts read idle for their duration, a false idle, with no
   two-sample rule: `!cmd` and queued slash commands (≤ ~45 ms), the
   daemon-recovery continuation if a reconnecting TUI resumes before the restored
-  turn starts (not induced), and a goal pursued while plan mode's indicator
-  replaces the goal indicator (not run).
+  turn starts (not induced; its window is unmeasured), and a goal pursued while
+  plan mode's indicator replaces the goal indicator (not run; with the indicator
+  the goal continuation's window measured ≤ ~10 ms, §3 refresh item 3).
   a 5 s poll lands in a ≤ 45 ms window with probability under 1 %; `ready` can fire
   when a queued shell command follows a turn, and `skid wait --state idle` right
   after `!cmd` can return early. right after a guarded send the visible draft reads
@@ -922,11 +942,17 @@ each unknown or none, never a false claim unless the item says otherwise:
   is a generic terminal; managed launches and `codex` typed in a skid shell run
   the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
 
-residual ambiguity, not accepted: the implementation reads as each item states,
-and r1, r5 and r6 can claim falsely ([issue](issues/codex-residual-ambiguity.md)):
+residual ambiguity, not accepted: the implementation reads as each item states
+([issue](issues/codex-residual-ambiguity.md)). r6 can read a false idle and r5 a
+stale request; r3 and r4 can claim falsely under the narrower conditions they
+name; r1 is a true idle, narrower than a reader may assume; r2 and r7 read
+unknown or a request of another subtype:
 
-- **r1** `Ready` with surviving background terminals reads idle. spec §2 calls a
-  process count alone insufficient for working.
+- **r1** `Ready` with surviving background terminals reads idle. that is no false
+  claim: spec §2 makes idle the provider's ready-state evidence and a surviving
+  process or task count insufficient for working, and §3 says idle does not mean
+  background terminals are gone. it is a scope limit, like c2's background
+  sub-agents, awaiting acceptance.
 - **r2** the disconnect override `K quit` can be imitated only by a user-configured key
   chord whose pending continuation is labelled `quit` (`app/input.rs:171-181`).
   the result is unknown.
@@ -993,16 +1019,21 @@ retained harness; every probe is temporary and deleted before commit
 4. run every pane on an isolated tmux server (`tmux -L <own socket> -f /dev/null`,
    `TMUX`/`TMUX_PANE` unset, `HOME` and `HISTFILE` pointed away from the user),
    on each platform and tmux version in use, at the default width and at the
-   narrow widths §6 names. classify through the real capture and `detect`;
+   narrow widths §6 names. set `HOME` and `CODEX_HOME` inside the probe directory
+   on every codex invocation, `--version` and `--help` included: codex writes
+   `codex-arg0*` helper directories under `$CODEX_HOME`, which defaults to the
+   user's `~/.codex`. classify through the real capture and `detect`;
    expectations come from the scripted step and the keys sent, never from skid's
    output.
 5. for families no endpoint can produce, author frames from source and paint them
    through real tmux: that proves parser mechanics only, so the family stays
    `NOT_RUN` for provider support. pair each new rule with a negative and confirm
    a mutation of the rule flips it.
-6. clean up: stop probe daemons, remove the daemon lock named by the sha256 of the
-   probe's control-socket path from the shared daemon socket directory, and the
-   codex arg0 helper directory if a probe ran without the temporary home.
+6. clean up: stop probe daemons and remove the socket and lock named by the
+   sha256 of each probe's control-socket path from the shared daemon socket
+   directory, touching no other entry. if a codex call slipped past the probe
+   home, remove only the `codex-arg0*` directories that call created (its birth
+   time and link targets attribute them).
 7. update §1's qualified column and versions, record the run in the
    [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
    and file each new `NOT_RUN` required family as an issue.

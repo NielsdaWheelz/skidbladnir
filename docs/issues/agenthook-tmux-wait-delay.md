@@ -12,8 +12,8 @@ delaying the hook (and claude's startup, if claude waits on it) past its deadlin
 does not. this predates the observation cutover.
 
 evidence: the same mechanism held inspect and send responses until a stopped tmux
-server resumed (12.27 s under a 12 s freeze with a 2 s deadline) until
-`internal/tmux` set `WaitDelay`; the hook's execs were not changed or probed.
+server resumed (12.27 s under a 12 s freeze, 2 s deadline); `internal/tmux` now
+sets `WaitDelay`. the hook's execs were not changed or probed.
 
 resolved when: the hook's tmux commands return within a small bound of their
 context ending (a `WaitDelay`, or no output pipe where none is read), shown by a

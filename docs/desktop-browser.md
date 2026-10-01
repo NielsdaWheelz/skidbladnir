@@ -221,18 +221,18 @@ exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness
 recorded native identity never supplies status. shell/remote rows use
 `terminal`/existing unknown context. a row of a host whose read failed is stale:
 its cell reads muted `last observed: <label>` and is never ready. a row of a host
-being re-read (a pending scoped read, or the re-read after a metadata change) makes
-no status claim, reads faint `checking` and is never ready. a failed host keeps
-its notice.
+being re-read (a pending scoped read, or the re-read after a metadata change) is
+never ready, and its cell makes no status claim: it reads faint `checking`. a
+failed host keeps its notice.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only
 when the table scrolls, the faint cursor position (`· i of n` after the filter
 word, otherwise `i of n`); the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
-status label with `work continues` and `inferred from terminal` when they apply,
-`: <command>` for a non-agent program, then `· N attached`; its directory on a
-separate line; the keys. for an available local session, the directory line ends
+status label (`last observed: <label>` on those rows) with `work continues` and
+`inferred from terminal` when they apply, `: <command>` for a non-agent program,
+then `· N attached`; its directory on a separate line; the keys. for an available local session, the directory line ends
 with `shift+t new shell here`, with the key bold and the label plain. reserve two
 spaces before the action and truncate a long directory from the left so its final
 components remain visible.

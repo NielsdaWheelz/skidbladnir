@@ -12,10 +12,12 @@ the user approved managed display improvements, request badges, a needs-input
 filter and current-screen evidence with unknown when relevant controls are
 obscured.
 
-this owns observation, status schemas and send admission; [terminal
-control](terminal-agent-control.md) keeps terminal authority, explicit native
-operations and attachment ownership, and [terminal attention](reply-notifications.md)
-keeps the ready machine's store and visits. host and clients cut over together.
+this owns the status facts, the observed screen regions and their limits,
+provider classification, guarded-send admission and the terminal wait states;
+[terminal control](terminal-agent-control.md) keeps terminal targets, the tmux
+capture mechanics, effects, routes, wait's polling loop and the observation
+sample's composition, and [terminal attention](reply-notifications.md) keeps the
+ready machine's store and visits. host and clients cut over together.
 
 ## 1. requirements and limits
 
@@ -308,11 +310,13 @@ ready, idle/unknown. when request/menu/notice takes precedence over working, add
 `work continues` in existing detail space. accessibility adds
 `; [work continues;] inferred from terminal` only for a recognized local agent
 with source terminal; unavailable/non-agent labels make no inference claim.
-stale cached facts, the last observation of a host whose read failed, use muted
-`last observed: <label>`, are never ready and never enter the filter. a host that
-is being re-read has not failed: its rows make no status claim, are never ready
-and stay out of the filter. [desktop browser §5](desktop-browser.md#5-presentation)
-owns the desktop's cell and facts copy for both.
+rows of a host whose read failed or that is being re-read are never ready and
+stay out of the filter. a failed host's rows keep their stale cached facts as
+muted `last observed: <label>`. a re-read host's rows take each client's form:
+the desktop table cell reads faint `checking` and makes no status claim, while
+the selected row's facts read `checking; last observed: <label>`
+([desktop browser §5](desktop-browser.md#5-presentation)); android shows
+`last observed: <label>` under the machine's `REFRESHING · actions disabled`.
 no repeated announcement, pulse or sound for unchanged polls. retain secondary
 `notifications unavailable` independently of live status.
 
@@ -378,28 +382,17 @@ separately, then reason, matched rules, capture and timing. exact reason copy:
 unknown/unavailable detail may append `open the terminal to inspect`. no raw
 error interpolation; partial never becomes `partially working`.
 
-## 7. exclusive work and review boundaries
+## 7. ownership and review boundaries
 
-freeze the domain/capture interfaces before parallel implementation. root owns
-contracts and assignment changes. each writer creates its temporary acceptance
-probes only inside its assigned paths; a separate verifier writes nothing.
-no agent may edit another slice to make its own work pass.
-
-| slice / writer | exclusive production paths | designer's content deliverable |
-| --- | --- | --- |
-| a: observation boundary | `internal/tmux/`, `internal/sessions/`, `internal/process/`, `internal/agentruntime/{runtime,profile}.go` | explicit capture/recognition failure vocabulary; complete-region examples |
-| b: classifier/policy | `internal/agentcontrol/` | provider screen-family grammar, rule ids, state/composer explanations |
-| c: protocol/configuration | `internal/gateway/`, `internal/hostconfig/`, `internal/logging/`, `deployment/providers/host-config.json` | bounded diagnostics and reviewed managed footer composition |
-| d: go clients | `internal/fleetclient/`, `internal/agentcli/`, `internal/sessionui/` | exact badge/detail/help/filter/empty-state copy from §6 |
-| e: phone | `android/app/src/main/java/dev/niels/skidbladnir/` | same copy in card/header/filter, narrow layout and accessibility |
-| root: integration | `docs/`, root-owned composition files if needed; temporary cross-system probes in one assigned scratch directory | coherent contract and source-attributed qualification |
-
-each slice has a writer, content designer and adversarial reviewer; roles may
-reuse people across sequential slices, but the reviewer does not approve their
-own implementation. use the available three worker slots in dependency order:
-a+b+c, then d+e+independent verification. producer/consumer interface changes
-return to root before either side changes its assumptions. no cross-repository
-deployment producer changes without inspecting and naming that assignment.
+the [codebase map](codebase-map.md) locates each owner's code. a change names its
+writer, content designer (§6 copy) and adversarial reviewer before work starts;
+the reviewer never approves their own implementation. freeze the domain and
+capture interfaces (§2, §3) while dependent work runs; a producer/consumer
+interface change returns to the contract owner before either side changes its
+assumptions. each writer creates temporary acceptance probes only inside its own
+paths, a separate verifier writes nothing, and no writer edits another owner's
+paths to make its own work pass. no cross-repository deployment producer changes
+without inspecting and naming that assignment.
 
 reuse target guards, kernel observations, sgr parsing, fleet routing, strict
 decoders, shared status projection, existing poller and notification owner.
@@ -407,8 +400,9 @@ delete obsolete eight-line/global-truncation logic, terminal blocked mappings,
 old label/sort/wait branches and duplicated capture paths. no compatibility flags,
 legacy classifier, shadow production detector or redundant abstraction.
 
-root reconciles architecture §4/§8, roadmap, terminal-control observation/send,
-reply-notifications qualification, agent-control/ux, desktop-browser,
+a change to this contract reconciles the docs that restate it: architecture
+§4/§8, roadmap, terminal-control observation/send, reply-notifications
+qualification, agent-control/ux, desktop-browser, the
 dashboard-return-continuity/groups capsule contract and codebase-map. append new
 qualification; do not relabel historical passes or `NOT_RUN` results.
 
@@ -484,12 +478,16 @@ explicit costs:
   idle needs `Ready`, the main placeholder on a clean band, no external editor and
   a visible transcript terminator; goal pursuit withholds idle; status describes
   only the displayed thread, so a v1 sub-agent view reads as the main thread and
-  guarded send types into the sub-agent; cue-less turn starts (`!cmd`, queued
-  slash commands) read idle for their few tens of milliseconds and can raise
-  ready, with no two-sample rule; codex emits no notices; an unanswered question
-  resolves itself with empty answers after 120 s and returns to idle, never ready,
-  so an unvisited question leaves the needs-input filter and attention
-  ([grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
+  guarded send types into the sub-agent; cue-less turn starts read idle for
+  their duration and can raise ready, with no two-sample rule (grammar §6 c4
+  names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
+  and plan-mode goal continuations); codex emits no notices; a default-mode
+  question left untouched resolves itself with empty answers 120 s after it is
+  shown, so an unvisited question leaves the needs-input filter and attention
+  while the turn continues on those answers; working sampled in that
+  continuation arms ready as usual (a plan-mode question never resolves itself,
+  and a key or paste in the view stops the timer;
+  [grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
   managed launches replace the launch's statusline layout; a codex started through
   npm's node launcher is a generic terminal.
 - claude ([grammar §5](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity)):
@@ -518,8 +516,8 @@ the accepted false idles are codex's cue-less turn starts and claude's remote
 usage-limit copy. the accepted send-admission exposures are codex's
 displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode and
 screen-reader whitespace drafts. no other cost justifies false idle, weaker input
-admission or silent scope expansion. codex's unaccepted residuals, one of them a
-false idle, are [open](issues/codex-residual-ambiguity.md).
+admission or silent scope expansion. codex's unaccepted residuals, among them a
+false idle and a stale request, are [open](issues/codex-residual-ambiguity.md).
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,

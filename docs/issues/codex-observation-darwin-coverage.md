@@ -10,7 +10,9 @@ configuration can produce them:
 - the hook row whose status message holds a cut paren group;
 - `Ready` beside a hinted status row during `/compact`, review entry or the mcp
   pending turn (millisecond windows);
-- an approval with the cancel key unbound (`tui.keymap.list.cancel`).
+- an approval with the cancel key unbound (`tui.keymap.list.cancel`);
+- spec §8's quoted old chrome, a negative with no capability-table row (authored
+  frames only).
 
 the families that did run on darwin ran embedded or against a temporary-home
 0.159.2 daemon. only the question auto-resolve and idle ran against the installed
@@ -30,5 +32,5 @@ linux coverage [separately](terminal-observation-linux-coverage.md).
 resolved when: each listed family runs live on darwin through the real capture and
 classifier with its expected values (or a narrow width or window is shown
 unreachable and the grammar records it), working, a permission and a picker also
-pass against the installed pairing, and the capability table marks them; then
-delete this record.
+pass against the installed pairing, and the capability table marks them (the
+qualification records the quoted-chrome negative); then delete this record.

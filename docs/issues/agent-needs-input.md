@@ -14,12 +14,18 @@ structured questions, elicitation, setup and user-opened menus; concurrent work
 with a question is representable (live codex); stale or failed observations
 cannot fabricate resolution; desktop attention stays consistent through visits,
 answers, provider replacement and reconnection; unknown, an outage and a
-foreground change cannot bridge working to ready. false idle mints ready only
-where [spec §9](../terminal-observation.md#9-final-state-costs-and-completion)
-accepts it: codex's cue-less turn starts and claude's remote usage-limit copy.
+foreground change cannot bridge working to ready. the false idles
+[spec §9](../terminal-observation.md#9-final-state-costs-and-completion) accepts,
+codex's cue-less turn starts and claude's remote usage-limit copy, can mint
+ready.
 
-two criteria are not met:
+three criteria are not met:
 
+- false idle and stale requests: codex's unaccepted residuals
+  ([codex residual ambiguity](codex-residual-ambiguity.md)) include r6, a false
+  idle whose millisecond window can follow an armed working sample and so mint
+  ready, and r5, a request that stays readable after its provider is killed, and
+  in the needs-input filter, until the relaunched provider draws.
 - cancellation: no attention run, on either client, declines a request or
   interrupts a turn. those screens were classified, never followed through the
   notification store.
@@ -27,9 +33,12 @@ two criteria are not met:
 
 impact: the phone's request labels, needs-input chip and ready attention are
 unproven on a device, and so is the ready machine's handling of a cancelled
-request or turn on both clients.
+request or turn on both clients. r6 can raise ready as compaction, a review or
+an mcp pending turn starts.
 
 resolved when: [physical-phone acceptance](terminal-observation-phone-acceptance.md)
-passes its attention and filter rows, and an attention run on the desktop and the
-phone records a declined request reading idle, never ready, and an interrupted
-turn reading as spec §9 states; then delete this record.
+passes its attention and filter rows; an attention run on the desktop and the
+phone records a declined request reading idle and raising no ready unless working
+is sampled after it, and an interrupted turn reading as spec §9 states; and the
+[codex residual ambiguity](codex-residual-ambiguity.md) is resolved. then delete
+this record.

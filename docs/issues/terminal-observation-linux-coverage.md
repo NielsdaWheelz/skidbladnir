@@ -1,9 +1,10 @@
-# terminal observation families not run on linux
+# terminal observation has linux qualification gaps
 
-problem: linux qualification covers fewer families than darwin, and with other
-versions. the installed linux pairing is codex TUI 0.159.2 against daemon 0.159.3
-and claude 2.1.284, on devbox (tmux 3.4) and arch (tmux 3.7c). every required row
-of the [codex](../terminal-observation-codex.md#1-frozen-capability-table) and
+problem: linux qualification covers fewer families and acceptance rows than
+darwin, and with other versions. the installed linux pairing is codex TUI
+0.159.2 against daemon 0.159.3 and claude 2.1.284, on devbox (tmux 3.4) and arch
+(tmux 3.7c). every required row of the
+[codex](../terminal-observation-codex.md#1-frozen-capability-table) and
 [claude](../terminal-observation-claude.md#1-frozen-capability-table) capability
 tables that does not name linux is `NOT_RUN` there; darwin evidence does not cover
 it, because claude 2.1.284 already draws a required family differently from
@@ -25,9 +26,16 @@ installed versions. the largest gaps:
   mcp and settings-error setup; the `/theme` and other menus; the screen-reader
   renderer entirely; classic beyond idle, draft, work, a single question, Bash
   permission and tall panes; permission modes other than default and bypass.
-- product: gateway → cli/desktop, attention, filter, guarded send and
-  `Terminal.ObservationFailed` logging on linux; real byte-capped clip frames;
-  tmux 3.4's width-divergence classes and OSC 8 URI length limits.
+- recognition: the installed claude 2.1.284 launched bare, relative, through a
+  second symlink and through an exec wrapper. those spellings, the relink and the
+  negatives ran on a native fake image; the installed claude ran only through its
+  configured path.
+- product: gateway → cli/desktop, attention, filter, guarded send, text, keys,
+  stop and close, and `Terminal.ObservationFailed` logging; resolve- and
+  capture-stage deadlines and a stalled tmux server; the spec §8 negatives beyond
+  composer during codex work, daemon disconnect and provider → shell; real
+  byte-capped clip frames; tmux 3.4's width-divergence classes and OSC 8 URI
+  length limits.
 
 evidence: the
 [qualification](../terminal-agent-control-qualification.md#terminal-observation-qualification)
@@ -38,5 +46,6 @@ families the capability tables mark linux.
 resolved when: each required family runs live on linux with the installed
 versions, or the darwin and linux versions are aligned and a version-difference
 check shows the family renders identically, recorded in the capability tables;
-the product, attention and send rows run through a real linux gateway; then delete
-this record.
+the installed claude's spellings classify as the fake's did; the product,
+attention, controls, deadline and negative rows run through a real linux gateway;
+then delete this record.

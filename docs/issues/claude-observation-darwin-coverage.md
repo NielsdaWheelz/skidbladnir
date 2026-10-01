@@ -20,7 +20,10 @@ problem: these required rows of the
 - row 88: the server-gated unified footer;
 - spec §8 negatives: the title-generation spinner and the static claude title
   across provider → shell → same provider (the classifier never reads titles, so
-  these hold by construction, unproven live).
+  these hold by construction, unproven live);
+- spec §8 controls: the byte check of claude's dialog refusal. the refusal itself
+  passed live (`TerminalInputBlocked`, not sent); no endpoint or pane byte count
+  was taken, so codex alone carries the dialog no-bytes proof.
 
 impact: each reads by bundle inspection and authored frames only. a rendering
 difference would misclassify the family, usually as unknown; rows 7, 8, 18 and 74
@@ -35,4 +38,5 @@ the request dialogs without a rule are recorded
 resolved when: each listed family runs live on darwin through the real capture and
 classifier with its expected values, or is shown unreachable in the qualified
 configuration and moved to class `U` with a stated reason, and the capability
-table marks it; then delete this record.
+table marks it (the qualification records the spec §8 items); then delete this
+record.

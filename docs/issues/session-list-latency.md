@@ -1,4 +1,4 @@
-# inventory list spends ~50 ms per session on serial tmux commands
+# inventory list spends about 54 ms per session on serial tmux commands
 
 problem: `sessions.Manager.List` runs about 14 tmux commands per session, one
 after another: three scan reads done twice (`scanSessions`, then the unconditional

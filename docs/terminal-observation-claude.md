@@ -1,8 +1,9 @@
 # claude screen grammar
 
-status: implemented in `internal/agentcontrol/claude.go`, whose comments cite the
-sections below. qualified live for claude 2.1.286 on darwin and claude 2.1.284 on
-linux as §1 records; rule 24 (theme setup) is qualified on both versions. the
+status: implemented in `internal/agentcontrol/claude.go`, whose comments cite
+the sections below. qualified live for claude 2.1.286 on darwin and claude
+2.1.284 on linux as §1 records; §2.6 rule 24 (theme setup) is qualified on both
+versions, except §5 r1's narrow widths. the
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
 holds the evidence and its limits, and [the spec](terminal-observation.md) owns
 the status contract this grammar feeds.
@@ -931,7 +932,7 @@ each unknown or none, never a false claim unless the item says otherwise:
 
 residual ambiguity without a ruling:
 
-- **r1** 2.1.284's theme picker reads `unknown/unknown/none unknown`
+- **r1** 2.1.284's theme picker reads unknown/unknown/none, composer unknown,
   `layout_unknown`, never a false claim, in measured cases below 40 columns
   ([issue](issues/claude-theme-picker-narrow.md)).
 
