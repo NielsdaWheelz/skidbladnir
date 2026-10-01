@@ -1243,63 +1243,90 @@ func claudeSegment(segment string, last bool) (class claudeSegmentClass, exact b
 // claudeModeRow is a parsed mode row.
 type claudeModeRow struct {
 	manual   bool
-	cycle    bool // the mode item ends with a complete ` (<chord> to cycle)`
+	cycle    bool // the mode item draws its cycle hint, whole or cut
+	wrapped  bool // the mode item shows only the first line of its wrapped text
 	segments []string
 	cut      bool // a trailing ` ·`: a later item was cut away
 	blanks   int  // blank cells after the last item, to the row end or the notification suffix
+	notified bool // a notification suffix ends the row
 }
 
 // claudeModeItem cuts the mode item from the start of text: an optional vim
 // prefix, the mode glyph (not in the screen reader), the mode and an optional
-// complete cycle hint.
-func claudeModeItem(text string, glyph bool) (rest string, manual, cycle, ok bool) {
+// cycle hint. The screen reader never cuts the hint; elsewhere the item is one
+// text wrapping in a box one row high, so a narrow row shows only its first
+// line: the hint cut after a word, or wrapped away whole. That line keeps its
+// trailing space and the box is as wide as the text's widest line, so blank
+// cells, at least two counting the separator's own, precede the next `·`.
+func claudeModeItem(text string, screenReader bool) (mode claudeModeRow, rest string, ok bool) {
 	for _, vim := range [...]string{"-- INSERT -- ", "-- VISUAL -- ", "-- VISUAL LINE -- "} {
 		if after, found := strings.CutPrefix(text, vim); found {
 			text = after
 			break
 		}
 	}
-	if glyph {
+	if !screenReader {
 		after, pause := strings.CutPrefix(text, "⏸ ")
 		if !pause {
 			if after, ok = strings.CutPrefix(text, "⏵⏵ "); !ok {
-				return "", false, false, false
+				return mode, "", false
 			}
 		}
 		text = after
 	}
-	for _, mode := range [...]string{"manual mode", "plan mode", "accept edits", "auto mode", "bypass permissions", "don't ask"} {
-		rest, found := strings.CutPrefix(text, mode+" on")
+	for _, name := range [...]string{"manual mode", "plan mode", "accept edits", "auto mode", "bypass permissions", "don't ask"} {
+		after, found := strings.CutPrefix(text, name+" on")
 		if !found {
 			continue
 		}
-		if hint, found := strings.CutPrefix(rest, " ("); found {
-			chord, after, spaced := strings.Cut(hint, " ")
-			rest, cycle = strings.CutPrefix(after, "to cycle)")
-			if !spaced || chord == "" || !cycle {
-				return "", false, false, false
+		mode.manual = name == "manual mode"
+		hint, hinted := strings.CutPrefix(after, " (")
+		if hinted {
+			chord, tail, spaced := strings.Cut(hint, " ")
+			if rest, complete := strings.CutPrefix(tail, "to cycle)"); spaced && chord != "" && complete {
+				mode.cycle = true
+				return mode, rest, true
 			}
 		}
-		return rest, mode == "manual mode", cycle, true
+		// With no hint showing, it wrapped away whole when blank cells and
+		// then the separator follow `on`. `on` before the separator or a
+		// notification suffix has no hint; `on` at the row end is left to P2.
+		if !hinted && !(strings.HasPrefix(after, "  ") && strings.HasPrefix(strings.TrimLeft(after, " "), "·")) {
+			return mode, after, true
+		}
+		if screenReader {
+			return claudeModeRow{}, "", false
+		}
+		first, rest := after, ""
+		if blanks := strings.Index(after, "  "); blanks >= 0 {
+			first, rest = after[:blanks], after[blanks:]
+		}
+		if hinted && !claudeInstance("<chord> to cycle)", strings.TrimPrefix(first, " ("), true) {
+			return claudeModeRow{}, "", false
+		}
+		if separator := strings.TrimLeft(rest, " "); strings.HasPrefix(separator, "·") {
+			rest = " " + separator
+		}
+		mode.cycle, mode.wrapped = true, true
+		return mode, rest, true
 	}
-	return "", false, false, false
+	return claudeModeRow{}, "", false
 }
 
 // claudeModeFull parses the fullscreen and classic mode row: two cells of
 // padding, the mode item, ` · `-separated segments, an optional trailing
 // ` ·`, and a right-aligned notification suffix after three or more spaces.
 func claudeModeFull(line claudeLine, width int) (claudeModeRow, bool) {
-	var mode claudeModeRow
 	text, padded := strings.CutPrefix(line.plain, "  ")
 	if !padded {
-		return mode, false
+		return claudeModeRow{}, false
 	}
-	items, manual, cycle, ok := claudeModeItem(text, true)
+	mode, items, ok := claudeModeItem(text, false)
 	if !ok {
 		return mode, false
 	}
-	mode.manual, mode.cycle = manual, cycle
 	items, suffix, notified := strings.Cut(items, "   ")
+	mode.notified = notified
 	if notified {
 		mode.blanks = 3 + len(suffix) - len(strings.TrimLeft(suffix, " "))
 	} else {
@@ -1324,9 +1351,10 @@ func claudeModeFull(line claudeLine, width int) (claudeModeRow, bool) {
 // the row proves the pill slot (2.4, P0-P2): a visible task pill is
 // never hidden behind what the row shows.
 func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
-	// P0: claude draws the cycle hint in a non-default mode only without a pill.
+	// P0: claude draws the cycle hint in a non-default mode only without a
+	// pill, so any of the hint proves the slot.
 	proven = !mode.manual && mode.cycle
-	lastExact := true // the mode item itself, when no segment follows
+	lastExact := !mode.wrapped // the mode item itself, when no segment follows
 	for index, segment := range mode.segments {
 		last := index == len(mode.segments)-1
 		class, exact := claudeSegment(segment, last)
@@ -1346,8 +1374,15 @@ func claudeModeEvidence(mode claudeModeRow) (classes uint16, proven bool) {
 			}
 		}
 	}
-	// P2: a complete label with room after it left no box unshown.
-	return classes, proven || !mode.cut && lastExact && mode.blanks >= 6
+	// P2: a complete label with room after it left no box unshown. The mode
+	// item's separator is a box of its own whose `·` shows once 4 cells
+	// follow the item to the row end, and in a non-default mode an item that
+	// shows no more than `on` there may be its hint wrapped away (P0).
+	room := 6
+	if len(mode.segments) == 0 && !mode.manual && !mode.notified {
+		room = 4
+	}
+	return classes, proven || !mode.cut && lastExact && mode.blanks >= room
 }
 
 // claudeSeparatorSR is a separator of the screen reader's flattened boxes.
@@ -1357,7 +1392,7 @@ var claudeSeparatorSR = regexp.MustCompile(`\s+·\s+`)
 // boxes join with one space, so their separators read `  ·  `; it never cuts
 // an item.
 func claudeModeSR(plain string) ([]string, bool) {
-	rest, _, _, ok := claudeModeItem(claudeSeparatorSR.ReplaceAllString(plain, " · "), false)
+	_, rest, ok := claudeModeItem(claudeSeparatorSR.ReplaceAllString(plain, " · "), true)
 	if !ok {
 		return nil, false
 	}
@@ -1572,13 +1607,26 @@ func claudePreview(screen *claudeScreen, rule int, chatPointer bool) (int, bool)
 	}
 }
 
-// claudeElicitationTitle is an mcp server's elicitation title.
-var claudeElicitationTitle = regexp.MustCompile(`^  MCP server “.*” (?:requests your input|wants to open a URL)$`)
+// claudeElicitationTitle is an mcp server's elicitation title: the server
+// name, then the rest of its block.
+var claudeElicitationTitle = regexp.MustCompile(`^MCP server “.*?” (.*)$`)
 
-// claudeElicitation reads an mcp server's elicitation form.
+// claudeElicitation reads an mcp server's elicitation form. Its title starts a
+// block at column 2: classic wraps it, while fullscreen keeps it on one row,
+// cutting the server name and then the title's ending to a prefix and `…`.
 func claudeElicitation(screen *claudeScreen, hint int) (string, sessions.Interaction, int, bool) {
 	if text, _, ok := screen.block(2, hint); ok && strings.HasPrefix(text, "Esc to cancel · ") {
-		if row, found := screen.find(hint-1, func(line claudeLine) bool { return claudeElicitationTitle.MatchString(line.plain) }); found {
+		title := func(text string) bool {
+			match := claudeElicitationTitle.FindStringSubmatch(text)
+			if match == nil {
+				return false
+			}
+			rest, cut := strings.CutSuffix(match[1], "…")
+			return slices.ContainsFunc([]string{"requests your input", "wants to open a URL"}, func(ending string) bool {
+				return strings.HasPrefix(match[1]+" ", ending+" ") || cut && strings.HasPrefix(ending, rest)
+			})
+		}
+		if row, found := screen.textBlock(2, hint, title); found {
 			return "claude.input.elicitation", sessions.InteractionInput, row, true
 		}
 	}
