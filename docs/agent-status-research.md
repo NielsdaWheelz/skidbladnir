@@ -367,7 +367,7 @@ prove a final answer was seen and is not needed for the chosen open policy.
 
 the pinned `llm-calling` helper is
 `ec97adeb9ddd0f91b141f89cc42cff7cc7efdb8f`, recorded in
-[the deployment pin](../deployment/native-control/pin.json). it already contains an external
+[the deployment pin](../deployment/native-control/helper.json). it already contains an external
 unix-websocket `CodexControl` and native inspect/read/send/interrupt/stop dispatch.
 closing that client disconnects; it does not own or stop the daemon. native
 reads use metadata and paged history, not `thread/resume`. its observe-only

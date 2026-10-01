@@ -28,8 +28,8 @@ installation prerequisite.
 
 current published generation: [v0.11.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.11.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
-[`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
-owns its qualified helper. [current qualification](native-agent-qualification.md)
+[`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
+names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
 records isolated source checks, artifact verification, installed native lifecycles
 and owner-confirmed phone attachment. broader phone-native interaction retains
 its separate acceptance scope.
@@ -440,21 +440,22 @@ not qualify the new native interaction contract.
 
 ## native helper
 
-consume [`deployment/native-control/pin.json`](../deployment/native-control/pin.json)
+consume [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 and [the installation contract](restoration-native-control.md):
 
-- install the exact llm-calling source and lock digest in the pin directly;
-  the previous helper patch is retired. qualification applies to that generation,
-  never to a newer source merely sharing its interface.
-- private uv `0.11.28`, python `3.12.13`, frozen `claude-agent-sdk==0.2.130`;
-  `uv sync --python 3.12.13 --frozen --extra claude-sdk --no-dev`.
+- install llm-calling's current default-branch revision directly, one generation
+  per revision; the previous helper patch is retired. nothing about the helper is
+  pinned.
+- private uv, upgraded on every apply; `uv sync --upgrade --extra claude-sdk
+  --no-dev`, so python and `claude-agent-sdk` follow the latest versions the
+  project admits.
 - install the helper environment beneath `~/.local/share/skidbladnir/` and expose
   its entry point as `~/.local/bin/skidbladnir-provider-runtime-control`.
   stage/verify before switching; retain only skid-owned rollback revisions.
 - install [`native-control/claude`](../deployment/native-control/claude) as the
-  frozen environment's `bin/claude` (0755). render
+  environment's `bin/claude` (0755). render
   [`the helper launcher`](../deployment/native-control/skidbladnir-provider-runtime-control)
-  with `@ENVIRONMENT_SHELL@` equal to the shell-quoted absolute frozen venv path;
+  with `@ENVIRONMENT_SHELL@` equal to the shell-quoted absolute venv path;
   install it as the generation's `providers/native-control` (0755), reached
   through the stable public symlink above. this generation contract supersedes
   the earlier standalone launcher installation. verify the shim,
