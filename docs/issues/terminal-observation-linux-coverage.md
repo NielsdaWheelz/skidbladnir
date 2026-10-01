@@ -26,8 +26,6 @@ installed versions. the largest gaps:
   mcp and settings-error setup; the `/theme` and other menus; the screen-reader
   renderer entirely; classic beyond idle, draft, work, a single question, Bash
   permission and tall panes; permission modes other than default and bypass.
-- recognition: the installed claude's launch spellings
-  ([claude launch spelling](claude-launch-spelling.md)).
 - product: gateway → cli/desktop, attention, filter, guarded send, text, keys,
   stop and close, and `Terminal.ObservationFailed` logging; resolve- and
   capture-stage deadlines and a stalled tmux server; the spec §8 negatives beyond
@@ -44,6 +42,5 @@ families the capability tables mark linux.
 resolved when: each required family runs live on linux with the installed
 versions, or the darwin and linux versions are aligned and a version-difference
 check shows the family renders identically, recorded in the capability tables;
-[claude launch spelling](claude-launch-spelling.md) is resolved; the product,
-attention, controls, deadline and negative rows run through a real linux gateway;
-then delete this record.
+the product, attention, controls, deadline and negative rows run through a real
+linux gateway; then delete this record.

@@ -212,9 +212,9 @@ status, agent (the configured profile label, else `<provider> · profile
 unknown`), group (agents view only), machine (the terminal's owner, only when all
 machines are in scope), and the current directory in the remaining width,
 truncated from the left and omitted below 8 cells; remote work reads `host:path`
-and an unresolved connection `remote context unknown`. columns shrink
-widest-first to fit. in the all view a faint heading (the bare label or
-`unassigned`) precedes each group. the status cell is the shared projection's
+and an unresolved connection `remote context unknown`. columns other than
+status shrink widest-first to fit. in the all view a faint heading (the bare
+label or `unassigned`) precedes each group. the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
 copy, coloured by its tone. a pending working-to-idle transition projects
 exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness.
@@ -224,7 +224,12 @@ its cell reads muted `last observed: <label>` and is never ready, and it stays
 stale while that host is re-read. a row of any other host being re-read (a
 pending scoped read, or the re-read after a metadata change) is never ready, and
 its cell makes no status claim: it reads faint `checking`. a failed host keeps
-its notice.
+its notice. the stale cell is up to 33 cells (`last observed: status
+unavailable`) against 18 for the widest fresh label, so while a host's read has
+failed the other columns give way (in an 80×24 render with a failed host, names
+fell from 24 to 12 cells). the outage form is accepted with that cost, an
+exception to [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
+fit rule; the 8-cell `checking` widens nothing.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only

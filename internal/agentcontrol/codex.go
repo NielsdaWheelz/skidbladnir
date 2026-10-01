@@ -385,8 +385,9 @@ func codexPicker(screen screen, end int) (reading, bool) {
 	for index := selected - 1; index >= 0; index-- {
 		row := screen.rows[index]
 		if row.presence != rowParsed {
-			// The row could have decided setup or confirmation: the one partial
-			// match that is final. Only a dropped row is clipped.
+			// The row could have decided setup or confirmation, so this partial
+			// match is final, as rule 6's is (2.0 step 4). Only a dropped row is
+			// clipped.
 			read := unknownReading(causeUnrecognized)
 			if row.presence == rowAbsent {
 				read.interactionCause = causeClipped

@@ -50,7 +50,8 @@ classes:
 - AC, ambiguity control: the family must produce exactly the stated values, or
   no evidence, and never a claim stronger than they are. most state unknown or
   none; two mcp rows state the form's input in place of the approval's
-  permission.
+  permission (§6 c15, c17), and the stale-chrome row admits the old request §6
+  c13 accepts.
 - PU, permitted unknown-or-none: when the row carries a rule id, the family is
   recognized if seen.
 - UA, upstream-unavailable in 0.159.2: not implemented, not a pass.
@@ -78,7 +79,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | status row cut by `…` (anywhere in the paren group) | RP | working | same | darwin | `line_truncation.rs:76-99` |
 | col-0 row starting with a dim `• ` cut inside a paren group (`• Viewed image …(1…`, hook row) | AC | no activity evidence | none | darwin (view-image row; the hook row source-only) | `history_cell/patches.rs:166-178`, `bottom_pane/hook_status.rs:19-26` |
 | hintless status row (unbound interrupt key) | RP | working | same | darwin, linux | `status_indicator_widget.rs:252-259` |
-| status row whose header swallows the paren group | PU | no activity evidence | none | darwin | §6 r6 |
+| status row whose header swallows the paren group | PU | no activity evidence | none | darwin | §6 c14 |
 | background-terminal waiting | RP | working | same (+`codex.run_state.working`) | darwin | `chatwidget/command_lifecycle.rs` |
 | retry row (`Reconnecting... waiting for network`) | RP | working | same | darwin, linux | `chatwidget/streaming.rs:393-400` |
 | run-state `Working` / `Waiting` | RP | working | `codex.run_state.working` | darwin (both), linux (`Working`) | `chatwidget/status_surfaces.rs:991-1012` |
@@ -114,10 +115,10 @@ informative. cue-less timing windows are not families; §6 holds them.
 | approval with the cancel key unbound (`Press K to confirm` only) | AC | layout_unknown | none | source-only | `popup_consts.rs:42-60` |
 | approval details pager (`/ E X E C`, `/ P A T C H`, …) | RP | unknown/permission/none/blocked | `codex.permission.details_pager` | darwin | `app/event_dispatch.rs:2912-2985` |
 | mcp tool approval / message-only elicitation | RP | unknown/permission/none/blocked | `codex.permission.mcp_approval` | darwin, including hidden options with the `option N/M` count clipping `esc to cancel` or the submit hint (22–31 columns) | `bottom_pane/mcp_server_elicitation.rs:226-310` |
-| mcp approval whose option rows draw no label (≤ 21 columns) | AC | the form, not the approval | `codex.input.mcp_form` | darwin | §6 r7 |
+| mcp approval whose option rows draw no label (≤ 21 columns) | AC | the form, not the approval | `codex.input.mcp_form` | darwin | §6 c15 |
 | mcp form, single field | RP | unknown/input/none/blocked | `codex.input.mcp_form` | darwin | — |
 | mcp form, multi-field (`to submit answer` / `to submit all`) | RP | unknown/input/none/blocked | `codex.input.mcp_form` | darwin, including `esc to cancel` or the submit hint cut by the count (20–38 columns) | `mcp_server_elicitation.rs:971-996` |
-| mcp option block holding a row that was not parsed | AC | the form, not the approval | `codex.input.mcp_form` | capture: darwin, linux | 2.4 |
+| mcp option block holding a row that was not parsed | AC | the form, not the approval | `codex.input.mcp_form` | capture: darwin, linux | §6 c17 |
 | url elicitation / app link view | PU | unknown | none | source-only | `bottom_pane/app_link_view.rs` |
 | legacy request_user_input with options, single or multi | RP | unknown/question/none/blocked | `codex.question.legacy` | darwin (single, multi, wrapped footer, notes hint cut at 16–28 columns), linux (single) | `bottom_pane/request_user_input/mod.rs:572-626` |
 | legacy question with hidden options (`option N/M` leading the footer; submit hint pushed out of the drawn rows; the count alone in a one-row footer) | RP | same | same | darwin | `request_user_input/render.rs:344-358`, `mod.rs:632-656`, `layout.rs:150-173` |
@@ -160,7 +161,7 @@ informative. cue-less timing windows are not families; §6 holds them.
 | known terminal background (OSC 10/11 answered) | RP | same values | same ids | darwin | `style.rs:60-75,143-153,209-214`, `style/contrast.rs:35-78` |
 | tall fullscreen, 65 ≤ h ≤ 256, short (top-anchored) transcript | RP | idle through continuation | `codex.run_state.ready` (region compound) | darwin, linux | `transcript_view.rs:518-545` |
 | tall fullscreen, h > 256, transcript tail above row `h−64` (rows `192..h−65` dropped) | AC | unknown, `evidence_clipped` (idle lost) | `codex.run_state.ready` | darwin, linux | spec §3 |
-| stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown | none | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 r5 |
+| stale chrome after the provider is killed (provider → shell → same provider, before the first draw) | AC | layout_unknown; under a shell that prints nothing, the old request (§6 c13) | none, or the old request's | darwin (`zsh -f`, `bash --norc`; 0.32–0.42 s until the first draw) | §6 c13 |
 | remote image rows `[Image #N]` above the prompt | RP | composer draft | — | source-only: only rehydrated history from another client attaches remote images | `chat_composer.rs:4927-4932`, `composer_layout.rs:118-129` |
 | Astra sparkle (band except the placeholder span, ≤ 15 s) | PU | layout_unknown, or composer and activity unknown | none | source-only (not observed with the model selected) | `chat_composer/sparkle.rs:344-417` |
 | Max/Ultra ignition sparks (0.9–1.6 s, padding rows only) | PU | composer unknown, activity unknown | none | source-only (not observed) | `bottom_pane/effort_ignition_styles.rs:68-86` |
@@ -236,7 +237,8 @@ lacked run-state; §3's refresh rule allows that lag, and both words read workin
    `codex.activity.goal_active` or `codex.activity.prompt_pending`), then the
    run-state rule, each when it applies: at most six, under
    [spec §5](terminal-observation.md#5-controls-and-diagnostic-api)'s cap of
-   eight. no rule names a clipped read; the reason carries it.
+   eight. no rule names a clipped read; the reason carries it (claude names one,
+   `claude.region.clipped`; the difference is accepted).
 
 shared anatomy:
 
@@ -554,7 +556,7 @@ count alone fills a one-row footer (the count, when added, comes before it).
     mcp tool-approval prompt used when `features.tool_call_mcp_elicitation`
     (stable, on by default) is off (`core/src/mcp_tool_call.rs:1716`). the two
     mcp prompts render in this view, so by source they read question (not
-    run).
+    run; §6 c16).
   - with the switch on, a default-mode question is non-blocking. the view
     resolves it after a 60 s hidden grace and a 60 s visible
     `auto-resolves in …` countdown, counted from when the request is shown
@@ -583,8 +585,8 @@ wrapped `esc to cancel` row is no mcp form: the count never leads it.
   tool approvals and message-only elicitations, always one synthesized field). a
   two-field form whose enum offers `Allow` and `Deny` is told apart by its
   navigation member. an option block that holds a row that was not parsed (dropped
-  or unparseable) fails the test, since that row could hold another option, and
-  so do option rows that draw no label (≤ 21 columns).
+  or unparseable) fails the test, since that row could hold another option
+  (§6 c17), and so do option rows that draw no label (≤ 21 columns, §6 c15).
 - `codex.input.mcp_form` → input, for any other form: text, boolean, enum,
   multi-field.
 - result: unknown/<permission|input>/none/blocked.
@@ -809,7 +811,7 @@ activity decision on the composer surface:
      colour, never dim), then nothing or the right-aligned context
      (`reconnect.rs:35`, cleared on reconnect; `render_context_right`). →
      unknown (`codex.activity.disconnected`); `evidence_conflict` when a status
-     row or run-state word is present. only a key-chord continuation (§6 r2) could
+     row or run-state word is present. only a key-chord continuation (§6 c10) could
      render `K quit`.
    - external editor: the hint row is one `K` run reading
      `Save and close external editor to continue.`, optionally followed by the
@@ -848,7 +850,7 @@ the displayed thread and no goal is being pursued. the main placeholder shows, t
 ordinary composer has focus, and the transcript ends in a terminator. idle does
 not mean:
 
-- background terminals are gone (§6 r1);
+- background terminals are gone (§6 c9);
 - other threads are idle (§6 c2);
 - a default footer is idle (no run-state → never idle).
 
@@ -910,10 +912,12 @@ composer reaches only guarded send
 | `-c features.<shared server feature>` differing from a running daemon | daemon recovery picker |
 | `check_for_update_on_startup` + `$CODEX_HOME/version.json` | update prompt when an install action exists |
 
-## 6. accepted costs and residual ambiguity
+## 6. accepted costs
 
 accepted costs ([spec §9](terminal-observation.md#9-final-state-costs-and-completion)),
-each unknown or none, never a false claim unless the item says otherwise:
+each reading as it states. c4 and c11–c14 claim falsely, c15–c17 can read a
+request of another subtype, and c2 admits guarded send into a sub-agent, each
+under the conditions it names; spec §9 lists those. the costs:
 
 - **c1** idle needs `Ready`, the main placeholder on a clean band, no external editor
   and a visible transcript terminator (§3 step 4, 2.2). no idle while a draft,
@@ -939,7 +943,8 @@ each unknown or none, never a false claim unless the item says otherwise:
   daemon-recovery continuation if a reconnecting TUI resumes before the restored
   turn starts (not induced; its window is unmeasured), and a goal pursued while
   plan mode's indicator replaces the goal indicator (not run; with the indicator
-  the goal continuation's window measured ≤ ~10 ms, §3 refresh item 3).
+  the goal continuation's window measured ≤ ~10 ms, §3 refresh item 3). the
+  acceptance covers the two unmeasured windows as it does the measured ones.
   a 5 s poll lands in a ≤ 45 ms window with probability under 1 %; `ready` can fire
   when a queued shell command follows a turn, and `skid wait --state idle` right
   after `!cmd` can return early. right after a guarded send the visible draft reads
@@ -956,45 +961,46 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c8** npm's node launcher leads the foreground group, so a codex started through it
   is a generic terminal; managed launches and `codex` typed in a skid shell run
   the native executable ([deployment schema](dev-server-handoff.md#host-config-and-validator)).
-
-residual ambiguity, not accepted: the implementation reads as each item states
-([issue](issues/codex-residual-ambiguity.md)). r6 can read a false idle in a pane
-at most header + 4 columns wide during a millisecond window; r5 can read a stale
-request after a provider kill under a silent shell; r3 and r4 can claim falsely
-under the conditions they name; r1 is a true idle, narrower than a reader may
-assume; r2 and r7 read unknown or a request of another subtype:
-
-- **r1** `Ready` with surviving background terminals reads idle. that is no false
+- **c9** `Ready` with surviving background terminals reads idle. that is no false
   claim: spec §2 makes idle the provider's ready-state evidence and a surviving
   process or task count insufficient for working, and §3 says idle does not mean
   background terminals are gone. it is a scope limit, like c2's background
-  sub-agents, awaiting acceptance.
-- **r2** the disconnect override `K quit` can be imitated only by a user-configured key
-  chord whose pending continuation is labelled `quit` (`app/input.rs:171-181`).
-  the result is unknown.
-- **r3** the title lookup takes the nearest bold indented row. every production
-  `SelectionViewParams` construction sets a title or header; a picker whose
-  header has no bold row, drawn under a transcript row that starts with a listed
-  title, would read that title.
-- **r4** an unmanaged status line whose first item is a user value equal to a run-state
-  word reads as the cue. the managed profile cannot produce it.
-- **r5** stale chrome. after the provider is killed, the pane keeps its last screen
-  (and the alternate screen) until the relaunched provider draws. live samples
-  read layout_unknown before the first draw (0.32–0.42 s), because the shell's
-  job message, prompt and typed command land at the old cursor and break the
-  bottom structure. a shell that prints nothing, with the old cursor above an
-  intact request overlay, would leave the stale footer at `E` and read the old
-  request for that window. the ready machine cannot fire across a foreground
-  change; `skid wait --state needs-input` could return early.
-- **r6** a status row whose header pushes `(` past the right edge is no status row. the
-  stale-`Ready` paths of §3 refresh item 1 show such a row with `Ready` still on
-  `SL`, so in that millisecond window a pane at most header + 4 columns wide (≤ 22
-  for `• Compacting context`) reads idle instead of `evidence_conflict`. the
-  narrower repair, withholding idle when a col-0 row between the settled stop and
-  the band ends in `…` and does not start with a dim `• `, would cost idle after
-  every long `!cmd` cell on narrow panes until the next turn's separator.
-- **r7** narrow and short question footers, measured with options hidden. every
-  case reads layout_unknown or a request of another subtype, never none or idle:
+  sub-agents.
+- **c10** the disconnect override `K quit` can be imitated only by a
+  user-configured key chord whose pending continuation is labelled `quit`
+  (`app/input.rs:171-181`). the result is unknown.
+- **c11** a wrong picker kind, a false claim. the title lookup takes the nearest
+  bold indented row (2.6). every production `SelectionViewParams` construction
+  sets a title or header; a picker whose header has no bold row, drawn under a
+  transcript row that starts with a listed title, would read that title's value.
+- **c12** an unmanaged status line whose first item is a user value equal to a
+  run-state word reads as that word's cue, a false claim, idle included. the
+  managed profile cannot produce it.
+- **c13** stale chrome, a false request. after the provider is killed, the pane
+  keeps its last screen (and the alternate screen) until the relaunched provider
+  draws. live samples read layout_unknown before the first draw (0.32–0.42 s),
+  because the shell's job message, prompt and typed command land at the old
+  cursor and break the bottom structure. a shell that prints nothing (not
+  induced), with the old cursor above an intact request overlay, would leave the
+  stale footer at `E` and read the old request for that window, so the row can
+  enter the needs-input filter and `skid wait --state needs-input` could return
+  early. the ready machine cannot fire across a foreground change.
+- **c14** a status row whose header pushes `(` past the right edge is no status
+  row (seen live). the stale-`Ready` paths of §3 refresh item 1 show such a row
+  with `Ready` still on `SL`, so in that millisecond window (from source) a pane
+  at most header + 4 columns wide (≤ 22 for `• Compacting context`) reads idle
+  instead of `evidence_conflict`: a false idle. it raises ready only when no
+  sample falls between it and a sampled working: `/compact` or a review starting
+  within one poll of a turn whose working was sampled, or the mcp pending turn
+  when no sample caught the startup round before it (that round reads starting,
+  which disarms; by source, `chatwidget/mcp_startup.rs:225-234`,
+  `chatwidget/turn_runtime.rs:34-46`). the narrower repair, withholding idle when
+  a col-0 row between the settled stop and the band ends in `…` and does not
+  start with a dim `• `, would cost idle after every long `!cmd` cell on narrow
+  panes until the next turn's separator.
+- **c15** narrow and short question footers, measured live with options hidden.
+  every case reads layout_unknown or a request of another subtype, never none or
+  idle:
   - legacy view at 15 columns or fewer: the notes hint is cut to `tab to…` or
     `tab or…`, which names no word only that view renders: layout_unknown.
     accepting a bare ` to…` or ` or…` would let any cut hint row read a question.
@@ -1009,6 +1015,16 @@ assume; r2 and r7 read unknown or a request of another subtype:
     enum offering only `Allow` and `Deny` reads permission instead of input.
   - an mcp form narrow enough to draw the count alone on a one-row footer would
     read a legacy question (not observed: 14 and 15 columns drew a second row).
+- **c16** the mcp dependency-install prompt and, with
+  `features.tool_call_mcp_elicitation` off, the mcp tool-approval prompt render
+  in the legacy question view (2.4), so by source they read question
+  (`needs answer`), or as c15 states in narrow or short panes; the approval is a
+  permission read as another subtype (not run).
+- **c17** an mcp approval whose option block holds a row that was not parsed
+  (dropped by a region's byte or row limit, or unparseable) reads input (2.4): a
+  permission read as another subtype, with no clipped cause. the row could hold
+  an option that is no approval action, so the test cannot prove approval-action
+  mode (authored frames through real tmux only).
 
 ## 7. requalification
 
