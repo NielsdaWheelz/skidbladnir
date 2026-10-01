@@ -21,6 +21,11 @@ problem: these required rows of the
 - spec §8 negatives: the title-generation spinner and the static claude title
   across provider → shell → same provider (the classifier never reads titles, so
   these hold by construction, unproven live);
+- rows 41 and 58 in the classic renderer: plan approval (rule 15 reads column 3;
+  classic draws the dialog at column 1) and `/model` (rule 4 reads its hint at
+  column 3 under an edge; classic draws it at column 2 under a full rule) read
+  unknown/unknown at every width. both pass live in fullscreen, which 2.1.286
+  draws by default; classic is opt-in.
 - spec §8 controls: the byte check of claude's dialog refusal. the refusal itself
   passed live (`TerminalInputBlocked`, not sent); no endpoint or pane byte count
   was taken, so codex alone carries the dialog no-bytes proof.
