@@ -2,8 +2,9 @@
 
 status: implemented in source. the 2026-09-30 behavioral qualification on
 `codex/reply-notifications` covers the earlier working/blocked/idle machine; the
-arming/clearing/ready machine below is unqualified. deployment is outside this
-change.
+2026-10-01 qualification at the end of this document covers the
+arming/clearing/ready machine below on the darwin desktop. its phone and linux
+runs are `NOT_RUN`. deployment is outside this change.
 replaces the former native-work/head prerequisite and human unread/viewer rules.
 [terminal observation](terminal-observation.md) owns status facts;
 [terminal control](terminal-agent-control.md) owns exact targeting.
@@ -250,3 +251,23 @@ native-handle assumption produced RED assertions, then passed using terminal
 handles. the additional merged phone probe compiled but was skipped by explicit
 user direction after adb found no device: [NOT_RUN](issues/reply-notifications-phone-composition.md),
 not a pass or an invalidation of earlier source-attributed live evidence.
+
+2026-10-01 arming/clearing/ready qualification, on the
+[terminal observation](terminal-observation.md) source (`4e1b737`, affected rows
+re-run on `82c0589`): darwin 25.4.0, tmux 3.7c, codex 0.159.2 and claude 2.1.286
+against scripted local endpoints, the real gateway and the desktop's real
+notification store on its five-second poll. work → idle reads ready for both
+providers, including claude with production arguments; work → question → idle,
+pending ready → request → idle and starting → idle read idle; a visit keeps an
+unanswered request; unknown, an outage and a foreground change cannot bridge
+working to idle; an outage preserves pending ready; a delayed idle response
+arriving after a visit cannot restore the consumed ready, against a paired control
+that read ready; codex's unanswered question, which resolves itself after 120 s,
+returns to idle, never ready. pending ready → notice → idle is `NOT_RUN`: no
+grammar emits a current notice. stale rows stay out of ready: the live run passed
+through the old faint cell, and the projected stale cell was proven by a temporary
+desktop-model probe at `5c59996`. both clients' stores and projections passed
+temporary model-level probes (go: 15 sequences and visits; android: robolectric);
+physical-phone and linux attention runs are `NOT_RUN`
+([phone](issues/terminal-observation-phone-acceptance.md),
+[linux](issues/terminal-observation-linux-coverage.md)).

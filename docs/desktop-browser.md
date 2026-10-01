@@ -109,10 +109,11 @@ session actions require a selected row and target exactly the session named by
 the rule. refresh retains the selected lifetime while it stays in the view;
 otherwise it uses the previous index clamped to the surviving rows, or none.
 never auto-attach. external membership changes never change the view.
-unavailable rows retain last-observed facts, labelled unavailable; remote
-actions stay disabled. once a scoped host fails a read, its notice names the
-failure and shows in every view, even with no retained rows; an unobserved host
-is not announced as unavailable. inventory failures never replace an action's
+rows of a host whose read failed retain their last-observed facts, their status
+cell reading `last observed: <label>`; rows of a host being re-read read
+`checking` (§5). remote actions stay disabled on both. once a scoped host fails
+a read, its notice names the failure and shows in every view, even with no
+retained rows; an unobserved host is not announced as unavailable. inventory failures never replace an action's
 outcome notice, so an unknown outcome stays visible. reuse existing honest empty
 copy.
 
@@ -218,8 +219,11 @@ label in [observation §6](terminal-observation.md#6-content-attention-and-filte
 copy, coloured by its tone. a pending working-to-idle transition projects
 exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness.
 recorded native identity never supplies status. shell/remote rows use
-`terminal`/existing unknown context; unavailable/checking hosts read
-`unavailable`/`checking` with their existing faint treatment.
+`terminal`/existing unknown context. a row of a host whose read failed is stale:
+its cell reads muted `last observed: <label>` and is never ready. a row of a host
+being re-read (a pending scoped read, or the re-read after a metadata change) makes
+no status claim and reads faint `checking`. the selected row's facts name the host
+`unavailable; ` or `checking; `, and a failed host keeps its notice.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
 it and, at its end, `needs input` in plain text while the filter is on and, only

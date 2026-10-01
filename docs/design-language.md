@@ -591,7 +591,7 @@ and bright-red ember. NO_COLOR strips styling and preserves every label.
 | reverse | 7 | the `skid` wordmark; the form caret |
 | bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
 | plain | — | everything that must be read: names, status words, key labels, notices, the selected directory beside the new-shell action, the rule's `needs input` filter mark |
-| faint | 2 | what may recede: group headings, agent, machine, table directories, the rule, the selected session's status facts, unavailable and checking rows, form chevrons |
+| faint | 2 | what may recede: group headings, agent, machine, table directories, the rule, the selected session's status facts, the names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |
@@ -602,7 +602,8 @@ and bright-red ember. NO_COLOR strips styling and preserves every label.
 | Muted | RGB `#AAA69D` | every other status |
 
 status colour follows the projected tone (§5 above), never the printed word. a
-stale row reads faint `unavailable` or `checking` instead
+stale row's status cell reads muted `last observed: <label>` and is never ready; a
+row whose host is being re-read reads faint `checking`; both names recede faint
 ([desktop browser §5](desktop-browser.md#5-presentation)). ember never appears in
 hints, so requests and shown errors stay the table's only red statuses and are
 found at a glance. colour never carries meaning alone: every status is a word;

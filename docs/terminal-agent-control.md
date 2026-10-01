@@ -5,11 +5,12 @@ the observed screen regions and their limits, provider classification and
 guarded-send admission. this document keeps terminal targets, the tmux capture
 mechanics, effects, routes, wait and the observation sample's composition.
 
-status: orchestration implemented; the observation cutover is partly in source
-([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
+status: orchestration implemented; the observation cutover is implemented in
+source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
 records the full terminal checks and composition limits on the earlier
-`{state, source}` source; the observation cutover, including its send-admission
-and wait changes, is unqualified.
+`{state, source}` source, then the observation cutover, including its
+send-admission and wait changes, on darwin and linux; its physical-phone run is
+`NOT_RUN`.
 this owns the hard cutover
 of ordinary terminal orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
@@ -52,15 +53,14 @@ from the existing codex creation path. no new tracked-launch command.
 
 ## 2. observation and schemas
 
-in progress ([roadmap](roadmap.md)): `agentcontrol` does not yet compose the
-sample below for inventory, creation, inspect or
-[guarded send](#3-terminal-effects-and-ownership), nor classify its screen.
-
 reuse foreground process classification and the existing five-second inventory
 cadence. inventory observes every represented session once, concurrently and
 outside the session mutation lock, under one shared two-second deadline; creation
 and shell responses observe their new session the same way. no background
-lifecycle reconstruction, poller, retry or deadline extension.
+lifecycle reconstruction, poller, retry or deadline extension. a creation
+response usually samples the instant before the provider draws, so it reads
+`provider_unrecognized` or `layout_unknown`; the next inventory carries the
+provider's state.
 
 ```text
 terminal target = {identityToken, paneId} // machine + tmuxId supplied by routing
@@ -114,12 +114,16 @@ owns the regions and their row and byte limits. the public plain-text read keeps
 its own capture.
 
 explicit inspect and send resolve their target fresh; `ResolveTerminal` is target
-admission, and its errors stay errors. a target change during their capture is
-`TerminalTargetChanged`; inventory reports it as `capture_failed`. inspect
-samples under a two-second deadline. every unavailable result, from inventory,
-creation/shell responses or inspect, logs one content-free
-`Terminal.ObservationFailed` event with its reason and the milliseconds since the
-observing call began.
+admission, and its errors stay errors. a deadline that expires during resolution
+is `TerminalUnavailable`, never a changed target. a target change during their
+capture is `TerminalTargetChanged`; inventory reports it as `capture_failed`.
+inspect samples under a two-second deadline. every tmux command stops waiting for
+its output 100 ms after its context ends, so a stalled tmux server holds an
+inspect, send or wait response at most that long past its budget (a paste's
+bounded buffer cleanup adds up to 1 s); inventory's list has no deadline. every
+unavailable result, from inventory, creation/shell responses or inspect, logs one
+content-free `Terminal.ObservationFailed` event with its reason and the
+milliseconds since the observing call began.
 
 a local provider is recognized only from fresh kernel facts that match a
 configured foreground signature; the
@@ -247,7 +251,7 @@ most eight content-free `{id, region}` entries whose ids are 1–48
 `[a-z0-9_.-]` characters; `capture` is present only when a screen was captured;
 `elapsedMs` holds only the stages that ran, as integer milliseconds in
 `0..2147483647`. `agentcontrol.Diagnostics.Valid` owns these bounds and
-fleetclient ingress calls it (in progress: ingress still checks its own copy).
+fleetclient ingress calls it.
 an observation failure after target admission is `200` with an unavailable
 status and, when explained, its diagnostics; target, auth and identity failures
 keep their errors.

@@ -178,10 +178,10 @@ exact schema (all named members required unless marked optional):
   resolves it again at each comparison and compares the kernel's executable
   image; a failed resolution matches nothing. accepted cost: after a claude
   update relinks `@CLAUDE@`, a session still running the previous image is
-  unrecognized and reads as a generic terminal (in progress: source still
-  resolves the path once at load). matching never reads argv: a node launcher
-  leading the foreground, including npm's codex launcher, is a generic terminal;
-  managed launches and `codex` typed in a skid shell run the native executable.
+  unrecognized and reads as a generic terminal. matching never reads argv: a
+  node launcher leading the foreground, including npm's codex launcher, is a
+  generic terminal; managed launches and `codex` typed in a skid shell run the
+  native executable.
   `argument0` and `argument1` are rejected as unknown members. use the
   template's native signatures: codex `{"executableBase": "codex"}`, claude
   `{"executablePath": "@CLAUDE@"}`.
