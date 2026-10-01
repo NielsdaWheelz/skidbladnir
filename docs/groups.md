@@ -391,10 +391,9 @@ the draft never changes collection filters.
 after confirmed creation, use the returned session's observed membership. retain
 the current group filter if it admits that session; otherwise select the returned
 named group or unassigned. phone and desktop also clear the
-[needs-input filter](terminal-observation.md#6-content-attention-and-filtering):
-membership follows the next inventory sample, so a kept filter could hide the
-session just created. when any filter changes, cancel saved restoration and reset
-viewport to top.
+[needs-input filter](terminal-observation.md#6-content-attention-and-filtering),
+so it cannot hide the session just created. when any filter changes, cancel
+saved restoration and reset viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
 admission and returns to the resulting filter. existing post-create machine
@@ -602,9 +601,8 @@ the task capsule is schema **3**, under the same registry key
 | `offsetPx` | nonnegative integer, existing scroll-offset meaning |
 | `needsInputOnly` | boolean; false for a new task |
 
-the registry key, `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"` and the
-`space:` item-key prefix are the encoding; one strict reader and writer use them
-without migration.
+`space` in `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"` and the
+`space:` item-key prefix names a group.
 
 no anchor requires index/offset zero. extra keys, wrong primitive types,
 malformed current-version variants, and inconsistent fields are trusted-state
@@ -654,7 +652,7 @@ cross-owner adversarial reviews make no test or production edits.
 | android `GatewayClient.kt` | bodyless authenticated put and route errors |
 | android `WorkingDirectoryPicker.kt`, `TerminalConnection.kt` | only exhaustive error-enum consumers made necessary by `GroupInvalid`; no route or behavior expansion |
 | android `SkidbladnirController.kt`, `SessionRename.kt` | group operation and shared metadata-fence bookkeeping; distinct rename semantics |
-| android `DashboardEntryState.kt`, `DashboardScreen.kt` | two filters, item projection, task capsule, selector and restoration |
+| android `DashboardEntryState.kt`, `DashboardScreen.kt` | two filters, item projection, schema-2 capsule, selector and restoration |
 | android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action and shared group field using existing chrome |
 | android `MainActivity.kt` | thread events only as required; retain single saved-state owner |
 | temporary boundary checks under [testing policy](rules/testing.md) | label/transport/group/filter/fence/restore behavior |

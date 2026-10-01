@@ -3,9 +3,9 @@
 [terminal control](terminal-agent-control.md) owns ordinary session operations.
 [native conversations](native-agent-observation.md) owns explicit native capabilities.
 [terminal attention](reply-notifications.md) owns notifications and terminal visits. [qualification](native-agent-qualification.md) records actual evidence;
-[roadmap](roadmap.md) indexes delivery. stock native source passes isolated
-acceptance; installed-fleet acceptance remains open. the terminal-observation
-status below is not qualified.
+[roadmap](roadmap.md) indexes delivery. stock source passes isolated acceptance;
+installed-fleet acceptance remains open. the terminal-observation status below
+is not qualified.
 
 ## targets and ownership
 

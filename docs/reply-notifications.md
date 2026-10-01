@@ -27,17 +27,17 @@ completion, admission nor an empty queue. codex and claude use one policy.
 | first successfully presented output on entry | immediately clear exact terminal pending |
 | active terminal visit | suppress pending and predecessors |
 | successful visit ends | clear; persist outstanding closing baseline |
-| first post-visit clearing or ready sample | clear closing flag; ready stays quiet; an arming sample arms |
+| first qualified post-visit sample | clear closing flag; ready stays quiet; an arming sample arms |
 | entry fails before any output presentation | clear nothing |
 
-only a fresh successful terminal-source sample of a local foreground agent
-qualifies. arming is working + interaction none + notice none. clearing is any
+only a fresh successful terminal-source sample of a local foreground agent is
+classified. arming is working + interaction none + notice none. clearing is any
 permission/question/confirmation/setup/input or menu interaction, any notice, or
 activity starting or working; every arming sample also clears. ready is idle +
-interaction none + notice none. everything else only disarms: unknown breaks
-continuity even after successful capture, and a request clears even when activity
-is unknown. never bridge `working -> unknown -> idle`. cached status cannot mutate
-notices.
+interaction none + notice none. a qualified sample is clearing or ready.
+everything else only disarms: unknown breaks continuity even after successful
+capture, and a request clears even when activity is unknown. never bridge
+`working -> unknown -> idle`. cached status cannot mutate notices.
 positive shell/non-agent observation may settle a closing boundary; absent
 identity on unavailable observation does not prove agent exit.
 
@@ -49,11 +49,11 @@ the same terminal. remote transports/shells have no agent-ready notice.
 explicit costs: inference can be wrong; cancellation/navigation may appear ready
 without new text; work between polls and offline completions may be missed; missed
 renewed work may leave old pending until entry or a clearing sample.
-the first post-visit clearing or ready observation is the selected closing
-boundary and can consume readiness just after detach; outages extend it.
-concurrent clients may conservatively lose transitions. focus is per
-client/device. old unread notices are dropped at cutover; old files stay inert.
-temporary tests are removed, leaving no retained behavioral regression coverage.
+the first qualified post-visit observation is the selected closing boundary and
+can consume readiness just after detach; outages extend it. concurrent clients
+may conservatively lose transitions. focus is per client/device. old unread
+notices are dropped at cutover; old files stay inert. temporary tests are removed,
+leaving no retained behavioral regression coverage.
 
 non-goals: proven native reply/turn semantics, inbox/counts, human read receipts,
 cross-device focus, new polls/hooks/supervisors/event ledgers, provider forks,
@@ -117,7 +117,7 @@ Presented and EndVisit advance the revision, so a predecessor armed before them
 can never make a ready pending: a ready first post-visit sample stays quiet, and
 only an arming sample after the visit can lead to a notifying ready. the first
 clearing or ready sample, or a positive exit, clears baselinePending;
-unknown/unavailable/stale leave it set. no decision reads the flag
+unknown/unavailable/stale leave it set. no outcome depends on the flag
 ([issue](issues/notification-baseline-pending.md)).
 
 Presented clears and advances revision even if already clear. EndVisit also sets
@@ -180,10 +180,10 @@ details, terminal header and accessibility.
 
 ready also requires stored foreground equals the fresh inventory foreground;
 new inventory cannot briefly render the former agent's pending before the store
-update commits. visiting clears even on unknown samples; unknown never clears
-baselinePending. details/accessibility disclose `inferred from terminal`,
-including ready. primary labels are exclusive. storage failure is one muted
-secondary `notifications unavailable`. labels survive NO_COLOR; no counts/pulse,
+update commits. visiting clears even on unknown samples.
+details/accessibility disclose `inferred from terminal`, including ready.
+primary labels are exclusive. storage failure is one muted secondary
+`notifications unavailable`. labels survive NO_COLOR; no counts/pulse,
 unchanged-poll announcements or sorting changes. preserve status before cwd in
 narrow layouts.
 

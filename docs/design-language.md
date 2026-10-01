@@ -156,8 +156,8 @@ All ratios are WCAG 2.1 against Ink, computed and verified locally.
 terminal status tones are
 [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
 blue, green, ember and muted, drawn in Frost, Moss, Ember and Muted.
-[terminal attention](reply-notifications.md) owns the exclusive projection and
-green suppression during stale/uncertain samples and visits. Pressure history
+[terminal attention](reply-notifications.md) owns `ready` and its green
+suppression during stale/uncertain samples and visits. Pressure history
 and detail rows keep Normal Moss · Warm Gold · Hot Ember · Unknown/missing Muted ·
 Informational Frost. The collapsed pressure rail is deliberately quieter: labels
 and `i/N` marks are Muted, informational/normal values are Bone, and only
@@ -601,8 +601,8 @@ and bright-red ember. NO_COLOR strips styling and preserves every label.
 | Moss | RGB `#76B082` | ready |
 | Muted | RGB `#AAA69D` | every other status |
 
-status colour follows the projected tone (§5), never the printed word. a stale
-row reads faint `unavailable` or `checking` instead
+status colour follows the projected tone (§5 above), never the printed word. a
+stale row reads faint `unavailable` or `checking` instead
 ([desktop browser §5](desktop-browser.md#5-presentation)). ember never appears in
 hints, so requests and shown errors stay the table's only red statuses and are
 found at a glance. colour never carries meaning alone: every status is a word;

@@ -143,7 +143,7 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX@` | absolute installed tmux executable; historically `/usr/bin/tmux` on linux, `/opt/homebrew/bin/tmux` on macbook |
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
-| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. cost of the signature's per-comparison resolution: after a claude update relinks it, a session still running the previous image is unrecognized and reads as a generic terminal |
+| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude` |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 the shared provider installer installs ordinary upstream `@openai/codex` through
@@ -175,11 +175,13 @@ exact schema (all named members required unless marked optional):
   bare file name. `executablePath` must be absolute and clean and must resolve
   through symlinks to an executable regular file at admission; a missing or
   unresolvable path, a directory or a non-executable file is rejected. matching
-  resolves it again at each comparison (in progress: source still resolves it
-  once at load) and compares the kernel's executable image; a failed resolution
-  matches nothing. matching never reads argv: a node launcher leading the
-  foreground, including npm's codex launcher, is a generic terminal; managed
-  launches and `codex` typed in a skid shell run the native executable.
+  resolves it again at each comparison and compares the kernel's executable
+  image; a failed resolution matches nothing. accepted cost: after a claude
+  update relinks `@CLAUDE@`, a session still running the previous image is
+  unrecognized and reads as a generic terminal (in progress: source still
+  resolves the path once at load). matching never reads argv: a node launcher
+  leading the foreground, including npm's codex launcher, is a generic terminal;
+  managed launches and `codex` typed in a skid shell run the native executable.
   `argument0` and `argument1` are rejected as unknown members. use the
   template's native signatures: codex `{"executableBase": "codex"}`, claude
   `{"executablePath": "@CLAUDE@"}`.

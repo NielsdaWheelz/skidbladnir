@@ -1,7 +1,7 @@
 # notification baselinePending decides nothing
 
 problem: both clients still persist, write and validate the notification
-record's `baselinePending` flag, but no ready decision reads it. the closing
+record's `baselinePending` flag, but no outcome depends on it. the closing
 baseline is quiet because Presented and EndVisit advance the record's revision,
 which expires every predecessor armed before them; arming, clearing and ready
 samples (and positive exit) then clear the flag. the record invariant

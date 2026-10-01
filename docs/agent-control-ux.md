@@ -120,7 +120,9 @@ observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
 `info` and `start` return `{label, machine, observedAt, session: row}`; with
 `info --explain`, `session.terminalStatus` is the inspect sample's status,
 `diagnostics` sits beside `session` and `observedAt` is the client time the
-inspect response arrived (in progress: source still keeps the inventory time).
+inspect response arrived (in progress: the host does not yet compose the inspect
+sample ([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
+and source still keeps the inventory time).
 other results retain the current agent-control schema; terminal-only `close`
 returns `{terminal: closed}` only after confirmed deletion.
 `group` acknowledges `{group: string}`, with empty string for clear, only after
