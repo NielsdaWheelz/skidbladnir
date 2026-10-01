@@ -96,16 +96,14 @@ named labels read as bare labels in group headings and details. the agents
 view's group column shows bare labels and stays blank for unassigned sessions; a
 label cannot be empty.
 
-`f` toggles an independent needs-input filter after machine and view selection.
-it keeps rows whose fresh status shows a permission, question, confirmation,
-setup or input interaction, whatever the activity, notice or reason; menus,
-notices, ready and stale rows never qualify. it preserves the view's order and
-draws no empty group heading. toggling keeps the exact selected row if it
+`f` toggles an independent
+[needs-input filter](terminal-observation.md#6-content-attention-and-filtering)
+after machine and view selection; that section owns its predicate, empty copy and
+notice placement. rows of an unavailable or checking host never qualify. the
+filter preserves the view's order. toggling keeps the exact selected row if it
 survives, otherwise selects the first visible row, or none, and scrolls the table
-to its top. the filter survives terminal visits and
-refreshes in memory; confirmed creation clears it. an empty filtered view reads
-`no sessions currently need input in this view`; scoped host notices stay outside
-the filter.
+to its top. the filter survives terminal visits and refreshes in memory;
+confirmed creation clears it.
 
 session actions require a selected row and target exactly the session named by
 the rule. refresh retains the selected lifetime while it stays in the view;
@@ -227,8 +225,8 @@ below the table, top to bottom: scoped notices; the rule, with the target set in
 it and, at its end, `needs input` in plain text while the filter is on and, only
 when the table scrolls, the faint cursor position (`· i of n` after the filter
 word, otherwise `i of n`); the selected session's facts on one line:
-`unavailable; ` or `checking; ` for a row without remote actions, the status
-label with `work continues` and `inferred from terminal` when they apply,
+`unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
+status label with `work continues` and `inferred from terminal` when they apply,
 `: <command>` for a non-agent program, then `· N attached`; its directory on a
 separate line; the keys. for an available local session, the directory line ends
 with `shift+t new shell here`, with the key bold and the label plain. reserve two

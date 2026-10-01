@@ -392,9 +392,9 @@ after confirmed creation, use the returned session's observed membership. retain
 the current group filter if it admits that session; otherwise select the returned
 named group or unassigned. phone and desktop also clear the
 [needs-input filter](terminal-observation.md#6-content-attention-and-filtering):
-a new session rarely shows a request, so a kept filter would hide the session just
-created. when any filter changes, cancel saved restoration and reset viewport to
-top.
+membership follows the next inventory sample, so a kept filter could hide the
+session just created. when any filter changes, cancel saved restoration and reset
+viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
 admission and returns to the resulting filter. existing post-create machine
@@ -603,8 +603,8 @@ the task capsule is schema **3**, under the same registry key
 | `needsInputOnly` | boolean; false for a new task |
 
 the registry key, `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"` and the
-`space:` item-key prefix keep their original spellings. one strict reader and
-writer use them without migration.
+`space:` item-key prefix are the encoding; one strict reader and writer use them
+without migration.
 
 no anchor requires index/offset zero. extra keys, wrong primitive types,
 malformed current-version variants, and inconsistent fields are trusted-state

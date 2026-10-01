@@ -143,14 +143,12 @@ values, then serialize json; do not shell-interpolate json. substitutions:
 | `@TMUX@` | absolute installed tmux executable; historically `/usr/bin/tmux` on linux, `/opt/homebrew/bin/tmux` on macbook |
 | `@TMUX_VERSION@` | observed canonical `tmux ...` version, advisory |
 | `@CODEX@` | absolute native codex executable from the shared managed installation; no account wrapper or router |
-| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. cost: after a claude update relinks it, a session still running the previous image is unrecognized and reads as a generic terminal |
+| `@CLAUDE@` | absolute native claude executable or its managed symlink; historically `HOME/.local/bin/claude`. cost of the signature's per-comparison resolution: after a claude update relinks it, a session still running the previous image is unrecognized and reads as a generic terminal |
 | `@ZOXIDE@` | absolute native zoxide executable; service data directory matches the user's shell |
 
 the shared provider installer installs ordinary upstream `@openai/codex` through
 npm. profiles resolve its native executable for honest foreground detection;
-no codex fork, source build or custom package is installed. managed launches and
-`codex` typed in a skid shell run that native executable; npm's node launcher
-leading a foreground is a generic terminal, with no argv fallback. existing account
+no codex fork, source build or custom package is installed. existing account
 homes remain shared. CLI and running daemon upgrade independently through upstream
 management; the helper validates consumed methods/fields rather than version parity.
 claude uses the managed native symlink at the qualified version; user update
@@ -177,10 +175,14 @@ exact schema (all named members required unless marked optional):
   bare file name. `executablePath` must be absolute and clean and must resolve
   through symlinks to an executable regular file at admission; a missing or
   unresolvable path, a directory or a non-executable file is rejected. matching
-  resolves it again at each comparison and compares the kernel's executable
-  image; a failed resolution matches nothing. `argument0` and `argument1` are
-  rejected as unknown members. use the template's native signatures: codex
-  `{"executableBase": "codex"}`, claude `{"executablePath": "@CLAUDE@"}`.
+  resolves it again at each comparison (in progress: source still resolves it
+  once at load) and compares the kernel's executable image; a failed resolution
+  matches nothing. matching never reads argv: a node launcher leading the
+  foreground, including npm's codex launcher, is a generic terminal; managed
+  launches and `codex` typed in a skid shell run the native executable.
+  `argument0` and `argument1` are rejected as unknown members. use the
+  template's native signatures: codex `{"executableBase": "codex"}`, claude
+  `{"executablePath": "@CLAUDE@"}`.
   overlapping signatures across providers are invalid.
 - arguments: string array. claude forbids configured `-n`, `--name`, or
   `--name=...`; skid never supplies a provider conversation name.

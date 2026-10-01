@@ -3,7 +3,7 @@
 Status: reviewed design reference, updated 2026-08-31. This document owns visual
 identity: color, shape, ornament, typography, iconography, motion, and the
 terminal theme. [terminal observation §6](terminal-observation.md#6-content-attention-and-filtering)
-owns status copy and tone; no terminal-activity field remains.
+owns status copy and tone.
 [`architecture.md`](architecture.md) owns product behavior and
 acceptance and wins on any conflict; [`roadmap.md`](roadmap.md) owns delivery
 order. §17 links the implemented component contracts. changes follow the

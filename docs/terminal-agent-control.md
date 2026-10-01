@@ -1,18 +1,14 @@
 # terminal status and control
 
 [non-native terminal observation](terminal-observation.md) owns the status facts,
-provider classification and guarded-send admission. this document keeps terminal
-targets, the tmux capture mechanics, effects, routes, wait and their composition;
-its capture limits supersede those in
-[observation §3](terminal-observation.md#3-composition-and-observation-boundary).
+the observed screen regions and their limits, provider classification and
+guarded-send admission. this document keeps terminal targets, the tmux capture
+mechanics, effects, routes, wait and their composition.
 
-status: orchestration implemented. of the observation cutover, source has the
-observation boundary, wire, configuration and both clients; the provider
-classifier, its composition for inventory, inspect and send, and the amended
-top region, per-comparison executable-path resolution, diagnostics validation and
-`info --explain` observed time are in progress. nothing of it is
-live-qualified; [qualification](terminal-agent-control-qualification.md) covers
-the earlier `{state, source}` observation.
+status: orchestration implemented; the observation cutover is partly in source
+([roadmap](roadmap.md)); none of it is live-qualified.
+[qualification](terminal-agent-control-qualification.md) covers the earlier
+`{state, source}` observation.
 this owns the hard cutover
 of ordinary terminal orchestration. it supersedes conflicting
 session-target behavior in [native interaction](native-agent-observation.md),
@@ -107,12 +103,10 @@ one `capture-pane -p -e` per row in one tmux command queue, only while the targe
 and that screen read are unchanged; any change refuses the whole sample. one `-e`
 capture carries style from row to row on tmux 3.7c, so each row is its own capture
 and parses from the default style. rows are physical (no `-J`), complete utf-8,
-keep their escape sequences and are never joined; scrollback is never read. the
-bottom region is the last 64 rows under a 64 kib cap, kept from the bottom up. a
-taller pane adds a top region of every row above it under a 16 kib cap, kept from
-row 0 down. rows are selected before bytes; a region that loses rows to its cap is
-clipped. the limits are named constants, not configuration. the public plain-text
-read keeps its own capture.
+keep their escape sequences and are never joined; scrollback is never read.
+[observation §3](terminal-observation.md#3-composition-and-observation-boundary)
+owns the regions and their row and byte limits. the public plain-text read keeps
+its own capture.
 
 explicit inspect and send resolve their target fresh; `ResolveTerminal` is target
 admission, and its errors stay errors. a target change during their capture is
@@ -123,19 +117,18 @@ creation/shell responses or inspect, logs one content-free
 observing call began.
 
 a local provider is recognized only from fresh kernel facts that match a
-configured foreground signature: a native executable basename or absolute
-executable path ([deployment schema](dev-server-handoff.md#host-config-and-validator)
-owns matching). npm's node launcher leading the foreground is a generic terminal;
-managed launches and `codex` typed in a skid shell run the native binary. a
-process matching more than one provider is unrecognized.
+configured foreground signature; the
+[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
+matching, including npm's node launcher. a process matching more than one
+provider is unrecognized.
 
 [observation §4](terminal-observation.md#4-provider-adapters-and-managed-displays)
 owns the provider grammars, managed codex run-state chrome and rule ids. quoted
 output, titles, quietness, elapsed time, process existence and old screen content
-are not state evidence. idle infers qualified provider ready-state evidence; it
-establishes neither turn completion, input admission, an empty queue nor task
-success. no certainty score, status timestamp, transition ledger or debounce, and
-no `done`, `failed` or `stopped` inference.
+are not state evidence. idle is inferred from qualified provider ready-state
+evidence; it establishes neither turn completion, input admission, an empty queue
+nor task success. no certainty score, status timestamp, transition ledger or
+debounce, and no `done`, `failed` or `stopped` inference.
 
 `/exit` stops applying the former agent's rules; the next recognized agent uses
 its own rules. same-process `/resume` needs no detection or association update:
@@ -245,13 +238,15 @@ diagnostics = {rules: [{id, region: top|bottom|compound}],
 
 `explain` is a boolean accepted only by inspect; absent means false and null
 rejects. diagnostics are present exactly when `explain` is true and describe the
-same sample as the status. `rules` is always an array of at most eight
-content-free ids of 1–48 `[a-z0-9_.-]` characters, possibly empty; `capture` is
-present only when a screen was captured; `elapsedMs` holds only the stages that
-ran, as integer milliseconds in `0..2147483647`. `agentcontrol.Diagnostics.Valid`
-owns these bounds; fleetclient ingress calls it. an observation failure after
-target admission is `200` with an unavailable status and, when explained, its
-diagnostics; target, auth and identity failures keep their errors.
+same sample as the status. `rules` is always an array, possibly empty, of at
+most eight content-free `{id, region}` entries whose ids are 1–48
+`[a-z0-9_.-]` characters; `capture` is present only when a screen was captured;
+`elapsedMs` holds only the stages that ran, as integer milliseconds in
+`0..2147483647`. `agentcontrol.Diagnostics.Valid` owns these bounds and
+fleetclient ingress calls it (in progress: ingress still checks its own copy).
+an observation failure after target admission is `200` with an unavailable
+status and, when explained, its diagnostics; target, auth and identity failures
+keep their errors.
 
 close `not_closed` means positively refused before deletion; `unknown` means
 deletion may have occurred. omit neither effect and never turn unknown into

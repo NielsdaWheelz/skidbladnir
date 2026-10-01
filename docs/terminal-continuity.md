@@ -136,12 +136,11 @@ absolute home. empty/relative/unlisted is unknown. an absent home may use observ
 absolute `HOME/.codex` only after a complete successful read. never use the
 gateway's home, launch metadata, ancestors, provider files or terminal text.
 qualify linux and darwin separately. retain claude registration unchanged.
-only native executables matching a configured signature (`executableBase` /
-`executablePath`) are recognized; managed launches and bare provider commands in
-a skid shell run them. a node launcher, including npm's codex launcher, and other
-wrappers are generic terminals. retain the profile catalogue: it also supplies
-foreground signatures. this narrowly supersedes the current ban on codex home
-projection and other-process environment observation; it adds no codex hook.
+only native executables matching a configured signature are recognized; the
+[deployment schema](dev-server-handoff.md#host-config-and-validator) owns
+matching, including npm's node launcher. retain the profile catalogue: it also
+supplies foreground signatures. this narrowly supersedes the current ban on codex
+home projection and other-process environment observation; it adds no codex hook.
 
 ### directory search
 

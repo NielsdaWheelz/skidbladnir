@@ -56,9 +56,9 @@ activity, interaction and notice facts
 ([terminal observation](terminal-observation.md)): a working agent can also need
 an answer, and ambiguity is unknown rather than guessed. native recorded identity
 is secondary metadata. `ready` is exclusive green attention after a working-to-idle
-transition with no request, menu or notice;
-[observation §6](terminal-observation.md#6-content-attention-and-filtering) owns
-every other label and tone. it asserts no unseen text or task result.
+transition with no request, menu or notice; it asserts no unseen text or task
+result. [observation §6](terminal-observation.md#6-content-attention-and-filtering)
+owns every other label and tone.
 first actual terminal output presentation clears attention; the whole visit and
 first qualified post-visit observation are quiet. unknown/stale/outage breaks
 continuity. no reply viewer, result-id scan/store or human acknowledgement remains.

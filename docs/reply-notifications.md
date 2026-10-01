@@ -113,8 +113,9 @@ was armed for this exact foreground at the previous revision; otherwise pending 
 unchanged. baseline preserves matching saved pending but cannot create it; an
 arming sample still arms. visiting clears pending and never arms. clearing clears.
 other samples preserve pending and disarm. replacement clears and starts quietly.
-Presented and EndVisit advance the revision, so no predecessor armed before them
-can make a later ready pending: the first post-visit ready is quiet. the first
+Presented and EndVisit advance the revision, so a predecessor armed before them
+can never make a ready pending: a ready first post-visit sample stays quiet, and
+only an arming sample after the visit can lead to a notifying ready. the first
 clearing or ready sample, or a positive exit, clears baselinePending;
 unknown/unavailable/stale leave it set. no decision reads the flag
 ([issue](issues/notification-baseline-pending.md)).

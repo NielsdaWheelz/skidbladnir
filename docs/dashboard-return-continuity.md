@@ -2,9 +2,7 @@
 
 2026-09-15 target amendment: [groups](groups.md) extends this retained-entry
 contract with independent group selection, heading-aware viewport keys, and the
-exact task capsule;
-[terminal observation](terminal-observation.md#6-content-attention-and-filtering)
-adds the needs-input filter to it as schema 3. source is implemented;
+exact task capsule. source is implemented;
 [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
 remains open. the delivery evidence
 immediately below is historical.

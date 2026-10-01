@@ -118,10 +118,11 @@ failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
 reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
 `info` and `start` return `{label, machine, observedAt, session: row}`; with
-`info --explain`, `observedAt` is the client time the inspect response arrived,
-`session.terminalStatus` is the inspect sample's status and `diagnostics` sits
-beside `session`. other results retain the current agent-control schema;
-terminal-only `close` returns `{terminal: closed}` only after confirmed deletion.
+`info --explain`, `session.terminalStatus` is the inspect sample's status,
+`diagnostics` sits beside `session` and `observedAt` is the client time the
+inspect response arrived (in progress: source still keeps the inventory time).
+other results retain the current agent-control schema; terminal-only `close`
+returns `{terminal: closed}` only after confirmed deletion.
 `group` acknowledges `{group: string}`, with empty string for clear, only after
 the host's bodyless `204`; it returns no new ref.
 group filtering keeps every source peer/error in machine scope and never changes
@@ -142,15 +143,16 @@ it returns a newly observed terminal reference. it never refreshes a mutation ta
 human `info` prints `state:` (the shared projection's label and details) and
 `status reason:` from the inventory sample, without a second sample. `--explain`
 accepts terminal targets only: it resolves once and inspects that terminal with
-[explain](terminal-agent-control.md#4-api-and-client-commands). its state line,
-`observed:` and an indented `status evidence` block come from that one inspect
-sample; other facts come from inventory. the block's `reason:` replaces the
+[explain](terminal-agent-control.md#4-api-and-client-commands). its state line
+and an indented `status evidence` block come from that one inspect sample;
+`observed:` is the client time its response arrived (in progress, as above);
+other facts come from inventory. the block's `reason:` replaces the
 `status reason:` line. the block lists activity, interaction and notice
 separately, then reason copy, rules (`id (region)`, or `none`), capture
-(`W × H, main screen|alternate screen, clipped: top, bottom|none`, or `not
-collected`) and per-stage timing (`resolve N ms`, or `resolve not collected`).
-`observed:` is the client time the inspect response arrived. reason copy for
-`status unknown` and `status unavailable` ends with `; open the terminal to inspect`.
+(`W × H`, `main screen` or `alternate screen`, then `clipped: ` with `top`,
+`bottom`, `top, bottom` or `none`; or `not collected`) and per-stage timing
+(`resolve N ms`, or `resolve not collected`). reason copy for `status unknown`
+and `status unavailable` ends with `; open the terminal to inspect`.
 start does not claim readiness. a captured pane rejects selection changes; an old
 session lifetime cannot bind to a recreated session.
 
