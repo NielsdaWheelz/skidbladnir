@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
 
@@ -195,7 +196,8 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 				}
 				record := previous
 				record.Key = key
-				qualified := session.TerminalStatus.Source == "terminal" && session.TerminalStatus.State != "unknown"
+				status := session.TerminalStatus
+				terminal := status.Source == sessions.SourceTerminal
 				var foreground *Foreground
 				if session.Agent != nil && session.Connection == nil {
 					foreground = &Foreground{session.Agent.Provider, session.Agent.PID, session.Agent.StartIdentity}
@@ -203,38 +205,41 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 				same := foreground != nil && previous.Foreground != nil && *foreground == *previous.Foreground
 				// An unavailable capture lacks positive exit evidence. Fresh captured shell
 				// or changed process facts can clear the former foreground's attention.
-				positive := session.TerminalStatus.Source == "terminal" || foreground != nil
+				positive := terminal || foreground != nil
 				if positive && !same {
 					record.Pending = false
 					record.Foreground = foreground
 				}
 				record.Revision++
-				working := false
+				// Only a local agent's terminal sample qualifies. Everything else,
+				// including idle with an unknown interaction, only disarms: no
+				// observation gap can bridge working to idle.
+				clearing, arming, ready := false, false, false
+				if foreground != nil && terminal {
+					quiet := status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
+					arming = quiet && status.Activity == sessions.ActivityWorking
+					ready = quiet && status.Activity == sessions.ActivityIdle
+					clearing = NeedsInput(status) || status.Interaction == sessions.InteractionMenu || status.Notice != sessions.NoticeNone || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
+				}
 				switch {
-				case record.BaselinePending && (qualified || session.TerminalStatus.Source == "terminal" && foreground == nil):
+				case record.BaselinePending && (clearing || ready || terminal && foreground == nil):
 					record.Pending = false
 					record.BaselinePending = false
-					working = foreground != nil && session.TerminalStatus.State == "working"
-				case !qualified || foreground == nil:
-				case session.TerminalStatus.State == "working":
+				case clearing:
 					record.Pending = false
-					working = true
-				case session.TerminalStatus.State == "blocked":
-					record.Pending = false
-				case session.TerminalStatus.State == "idle":
+				case ready:
+					// Only its armed predecessor makes idle ready; later idle samples keep it.
 					predecessor, found := predecessors[key]
 					if same && found && predecessor.Foreground == *foreground && predecessor.Revision == previous.Revision {
 						record.Pending = true
 					}
-				default:
-					panic("invalid owned terminal status")
 				}
 				if index < 0 {
 					snapshot.Terminals = append(snapshot.Terminals, record)
 				} else {
 					snapshot.Terminals[index] = record
 				}
-				if working {
+				if arming {
 					next[key] = WorkingPredecessor{*foreground, record.Revision}
 				}
 				changed = true
@@ -272,20 +277,17 @@ func (store *NotificationStore) consume(key TerminalKey, ended bool) (Notificati
 	})
 }
 
-// AttentionText is the single notification/status projection. Fresh inventory
-// and an exact matching idle foreground are necessary to display saved attention.
-func AttentionText(session Session, machine string, fresh bool, snapshot NotificationSnapshot) string {
-	text := SessionStatus(session)
-	if !fresh || session.Agent == nil || session.Connection != nil || session.TerminalStatus.Source != "terminal" || session.TerminalStatus.State != "idle" {
-		return text
+// Ready reports this session's committed pending attention. The stored
+// foreground must equal the observed one, so a replacement agent cannot show
+// its predecessor's attention before the store update commits.
+func (snapshot NotificationSnapshot) Ready(session Session) bool {
+	if session.Agent == nil || session.Connection != nil {
+		return false
 	}
 	ref, _ := DecodeReference(session.Ref)
 	record, found := snapshot.Record(NotificationKey(ref))
 	foreground := Foreground{session.Agent.Provider, session.Agent.PID, session.Agent.StartIdentity}
-	if found && record.Pending && !record.BaselinePending && record.Key.Machine == machine && record.Foreground != nil && *record.Foreground == foreground {
-		return "ready"
-	}
-	return text
+	return found && record.Pending && !record.BaselinePending && record.Foreground != nil && *record.Foreground == foreground
 }
 
 // A stable sidecar is locked across read–merge–atomic-replace. Locking the

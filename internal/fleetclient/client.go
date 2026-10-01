@@ -143,6 +143,17 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		}
 		if request.Operation == "info" {
 			client.resolveObserved(ctx, &observed)
+			if request.Explain {
+				// The explained status replaces the inventory's, so the printed
+				// status and its evidence come from one sample.
+				encoded, _ := json.Marshal(map[string]any{"identityToken": ref.IdentityToken, "paneId": ref.PaneID, "explain": true})
+				inspected := client.call(ctx, selected, "terminal_explain", "/v1/sessions/"+ref.TmuxID+"/terminal/inspect", encoded)
+				if !inspected.OK {
+					return inspected
+				}
+				value := inspected.Value.(TerminalInspectResult)
+				observed.Session.TerminalStatus, observed.Diagnostics = value.TerminalStatus, value.Diagnostics
+			}
 			result = success(observed)
 			break
 		}
@@ -486,7 +497,7 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
-	writes := operation != "list" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
+	writes := operation != "list" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}

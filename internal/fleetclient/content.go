@@ -1,13 +1,5 @@
 package fleetclient
 
-func SessionStatusDetail(session Session) string {
-	text := SessionStatus(session)
-	if session.Agent != nil && session.TerminalStatus.Source == "terminal" {
-		text += " · inferred from terminal"
-	}
-	return text
-}
-
 // ErrorMessage is shared by command output and the desktop browser.
 func ErrorMessage(failure Failure, request Request, native bool) string {
 	if failure.Dispatch == "unknown" {

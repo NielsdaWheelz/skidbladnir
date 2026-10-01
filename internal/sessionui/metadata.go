@@ -23,7 +23,7 @@ func (m *model) openMetadata(operation string) {
 		m.inform("checking previous metadata change; refresh before editing")
 		return
 	}
-	row := m.rowForReference(m.pageRef)
+	row := m.rowForReference(m.pageRow.session.Ref)
 	if row == nil || !row.available {
 		m.inform("session unavailable; refresh before editing")
 		return
@@ -131,7 +131,7 @@ func (m *model) reconcileMetadata() {
 	}
 	row := m.rowForReference(editor.request.Ref)
 	ref, _ := fleetclient.DecodeReference(editor.request.Ref)
-	pageRef, _ := fleetclient.DecodeReference(m.pageRef)
+	pageRef, _ := fleetclient.DecodeReference(m.pageRow.session.Ref)
 	visible := (m.page == "details" || m.page == "name-edit" || m.page == "group-edit") && ref.SessionEqual(pageRef)
 	if row == nil {
 		for _, peer := range m.scopedPeers() {

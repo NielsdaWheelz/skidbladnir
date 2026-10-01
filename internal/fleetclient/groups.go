@@ -8,10 +8,12 @@ import (
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
 
+// Row is one session with its peer's facts: where it is listed, when that
+// inventory observed it, and whether the peer is currently available.
 type Row struct {
-	Label, Machine string
-	Session        Session
-	Available      bool
+	Label, Machine, ObservedAt string
+	Session                    Session
+	Available                  bool
 }
 
 type Group struct {
@@ -36,7 +38,7 @@ func Groups(peers []Peer, filter group.Filter) []Group {
 				indices[session.Group] = index
 				groups = append(groups, Group{Label: session.Group})
 			}
-			groups[index].Rows = append(groups[index].Rows, Row{peer.Label, peer.Machine, session, peer.OK})
+			groups[index].Rows = append(groups[index].Rows, Row{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK})
 		}
 	}
 	slices.SortFunc(groups, func(a, b Group) int { return group.Compare(a.Label, b.Label) })
