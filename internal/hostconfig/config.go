@@ -178,27 +178,20 @@ func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 		}
 		signatures := make([]agentruntime.ForegroundSignature, len(*candidate.ForegroundSignatures))
 		for signatureIndex, signature := range *candidate.ForegroundSignatures {
-			executablePath := ""
 			if signature.ExecutablePath.present {
 				if !validAbsolutePath(signature.ExecutablePath.value) {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
 				}
-				// The kernel reports the executable image, whatever spelling
-				// launched it, so admission resolves the configured spelling. A
-				// Config is a snapshot: a later relink needs a fresh Load.
-				resolved, err := filepath.EvalSymlinks(signature.ExecutablePath.value)
-				if err != nil {
-					return nil, fmt.Errorf("host config profile %s foreground executable path is unresolvable", candidate.Key.value)
-				}
-				info, err := os.Stat(resolved)
+				// Stat follows symlinks: the spelling must resolve to an
+				// executable regular file now, and is stored unresolved.
+				info, err := os.Stat(signature.ExecutablePath.value)
 				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is not an executable file", candidate.Key.value)
 				}
-				executablePath = resolved
 			}
 			signatures[signatureIndex] = agentruntime.ForegroundSignature{
 				ExecutableBase: signature.ExecutableBase.value,
-				ExecutablePath: executablePath,
+				ExecutablePath: signature.ExecutablePath.value,
 			}
 		}
 		arguments := make([]string, len(*candidate.Arguments))

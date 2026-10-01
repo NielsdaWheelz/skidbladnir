@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -390,25 +389,18 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		}
 		result := TerminalInspectResult{TerminalStatus: value.TerminalStatus}
 		if diagnostics := value.Diagnostics; diagnostics != nil {
-			if diagnostics.Rules == nil || len(diagnostics.Rules) > 8 || diagnostics.ElapsedMs == nil {
+			if diagnostics.Rules == nil || diagnostics.ElapsedMs == nil {
 				return nil, false
-			}
-			for _, rule := range diagnostics.Rules {
-				if rule.ID == "" || len(rule.ID) > 48 || strings.Trim(rule.ID, "abcdefghijklmnopqrstuvwxyz0123456789_.-") != "" || !slices.Contains([]agentcontrol.DiagnosticRegion{agentcontrol.DiagnosticTop, agentcontrol.DiagnosticBottom, agentcontrol.DiagnosticCompound}, rule.Region) {
-					return nil, false
-				}
-			}
-			for _, elapsed := range []*int64{diagnostics.ElapsedMs.Resolve, diagnostics.ElapsedMs.Capture, diagnostics.ElapsedMs.Classify} {
-				if elapsed != nil && (*elapsed < 0 || *elapsed > math.MaxInt32) {
-					return nil, false
-				}
 			}
 			result.Diagnostics = &agentcontrol.Diagnostics{Rules: diagnostics.Rules, ElapsedMs: *diagnostics.ElapsedMs}
 			if capture := diagnostics.Capture; capture != nil {
-				if capture.Width < 1 || capture.Height < 1 || capture.Alternate == nil || capture.TopClipped == nil || capture.BottomClipped == nil {
+				if capture.Alternate == nil || capture.TopClipped == nil || capture.BottomClipped == nil {
 					return nil, false
 				}
 				result.Diagnostics.Capture = &agentcontrol.CaptureDiagnostics{Width: capture.Width, Height: capture.Height, Alternate: *capture.Alternate, TopClipped: *capture.TopClipped, BottomClipped: *capture.BottomClipped}
+			}
+			if !result.Diagnostics.Valid() {
+				return nil, false
 			}
 		}
 		return result, true

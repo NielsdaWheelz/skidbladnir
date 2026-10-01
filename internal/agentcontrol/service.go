@@ -68,13 +68,6 @@ type ResultsResult struct {
 	NextCursor   string                    `json:"nextCursor,omitempty"`
 }
 
-// Enrich sets each session's TerminalStatus from one focused observation of
-// the identity List captured, sharing one two-second budget. It returns the
-// content-free failed observations for logging.
-func (service *Service) Enrich(parent context.Context, observed []sessions.Session) []ObservationFailure {
-	panic("contract skeleton: slice b implements Enrich")
-}
-
 func (service *Service) conversationTarget(conversation agentruntime.Conversation) (agentruntime.Profile, nativeTarget, error) {
 	profile, found := service.sessions.Profile(conversation.ProfileKey)
 	if !found || profile.Provider != conversation.Provider {

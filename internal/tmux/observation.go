@@ -10,22 +10,26 @@ import (
 	"unicode/utf8"
 )
 
-// ErrObservationChanged means the pane's dimensions or screen changed between
-// reading them and capturing its rows; the sample is invalid.
-var ErrObservationChanged = errors.New("terminal pane changed during observation")
+// ErrScreenChanged means the pane's dimensions or alternate screen changed
+// between reading them and capturing its rows; the sample is invalid.
+var ErrScreenChanged = errors.New("terminal screen changed during observation")
 
 // The bottom region holds the current composer, footer and request controls;
-// the top region holds modals that providers anchor to the top of tall panes.
-// Rows are selected before bytes: a byte limit drops the rows farthest from
-// the region's anchored edge.
+// the top region is the rows above it, read from row 0, so the two are
+// contiguous and a tall pane's top-anchored modal or short transcript is
+// captured whole. Rows are selected before bytes: a byte limit drops the rows
+// farthest from the region's anchored edge. Each row is its own capture-pane
+// command and tmux refuses a client command over its 16 KiB message, so the
+// top region requests at most topRegionRows rows; a taller pane loses its
+// lower top rows as clipped, as under the byte limit.
 const (
 	bottomRegionRows  = 64
 	bottomRegionBytes = 64 << 10
-	topRegionRows     = 24
+	topRegionRows     = 192
 	topRegionBytes    = 16 << 10
 
-	observedMarker           = "SKIDBLADNIR_OBSERVED"
-	observationChangedMarker = "SKIDBLADNIR_OBSERVATION_CHANGED"
+	observedMarker      = "SKIDBLADNIR_OBSERVED"
+	screenChangedMarker = "SKIDBLADNIR_SCREEN_CHANGED"
 	// paneScreenFormat is read once and then required unchanged by the capture.
 	paneScreenFormat = "#{pane_width} #{pane_height} #{alternate_on}"
 )
@@ -49,13 +53,14 @@ type PaneRegion struct {
 	Kind     RegionKind
 	FirstRow int
 	Rows     []string
-	Clipped  bool // requested rows were dropped at the region's byte limit
+	Clipped  bool // rows of the region were dropped at its byte or row limit
 }
 
 // PaneObservation is one bounded sample of the visible screen: the bottom rows
-// and, for a pane taller than the bottom region, the non-overlapping top rows.
-// Regions are in screen order (top first). It is not an atomic snapshot of the
-// program drawing it, and it never includes scrollback.
+// and, for a pane taller than the bottom region, the rows above them. Regions
+// are in screen order (top first) and contiguous unless a limit clipped one.
+// It is not an atomic snapshot of the program drawing it, and it never
+// includes scrollback.
 type PaneObservation struct {
 	Width     int
 	Height    int
@@ -65,7 +70,7 @@ type PaneObservation struct {
 
 // ObservePane samples the exact target's visible rows under its lifetime and
 // selected-pane guard. Errors: ErrInputInvalid, ErrTargetChanged,
-// ErrObservationChanged (dimensions or alternate screen changed), ErrUnavailable.
+// ErrScreenChanged (dimensions or alternate screen changed), ErrUnavailable.
 func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneObservation, error) {
 	if !target.valid() {
 		return PaneObservation{}, ErrInputInvalid
@@ -93,7 +98,8 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	}
 	alternate := fields[2] == "1"
 
-	top := min(topRegionRows, max(0, height-bottomRegionRows))
+	above := max(0, height-bottomRegionRows)
+	top := min(topRegionRows, above)
 	bottom := min(bottomRegionRows, height)
 	// Each row is its own capture: one capture carries style state from row to
 	// row, so only a fresh capture starts a row from the default style. The
@@ -116,15 +122,15 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	condition := andFormatConditions([]string{target.condition(), "#{==:" + paneScreenFormat + "," + formatLiteral(screen) + "}"})
 	rows := observedRows{topCount: top, expected: len(requested), top: observedRegion{remaining: topRegionBytes}, bottom: observedRegion{remaining: bottomRegionBytes}}
 	output := captureOutput{body: &rows}
-	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch.String(), target.refusal(observationChangedMarker))
+	command := client.command(ctx, nil, "-N", "if-shell", "-F", "-t", target.SessionID, condition, branch.String(), target.refusal(screenChangedMarker))
 	command.Stdout = &output
 	if err := command.Run(); err != nil {
 		return PaneObservation{}, ErrUnavailable
 	}
 	switch output.header {
 	case observedMarker:
-	case observationChangedMarker:
-		return PaneObservation{}, ErrObservationChanged
+	case screenChangedMarker:
+		return PaneObservation{}, ErrScreenChanged
 	case identityMismatchMarker:
 		return PaneObservation{}, ErrTargetChanged
 	default:
@@ -135,7 +141,7 @@ func (client Client) ObservePane(ctx context.Context, target PaneTarget) (PaneOb
 	}
 	observation := PaneObservation{Width: width, Height: height, Alternate: alternate}
 	if top > 0 {
-		observation.Regions = append(observation.Regions, PaneRegion{Kind: RegionTop, Rows: rows.top.rows, Clipped: rows.top.clipped})
+		observation.Regions = append(observation.Regions, PaneRegion{Kind: RegionTop, Rows: rows.top.rows, Clipped: rows.top.clipped || top < above})
 	}
 	slices.Reverse(rows.bottom.rows)
 	observation.Regions = append(observation.Regions, PaneRegion{
