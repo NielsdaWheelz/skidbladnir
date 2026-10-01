@@ -109,7 +109,7 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 | `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo -c tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]` | native executable basename `codex` |
 | `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | same | same |
 | `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | same | same |
-| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | configured claude `executablePath`, resolved through symlinks at each comparison |
+| `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | configured claude `executablePath` |
 
 2026-09-17 accepted launch policy: new agent sessions use the explicit provider
 permission bypasses above on all three hosts. deployment owns these arguments;
@@ -277,10 +277,7 @@ creation, and content-free restoration contracts:
   a fixed status facet is redundant decoration; the adjacent named status
   bay remains the semantic and accessible source. the exclusive status/attention
   label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
-  copy and tone: blue `starting`/`working`, ember `needs …` requests and
-  `error shown`, green `ready`, and muted idle, menu, interruption, unknown,
-  unavailable and `terminal` labels; `work continues` joins a request, menu or
-  notice shown beside visible work.
+  copy and tone; only `ready` is green.
   readiness is inferred, never proof of unseen text or completion. first actual
   terminal presentation clears it; the visit and first qualified closing sample
   remain quiet. unknown/stale/unavailable retains pending but hides green and
@@ -302,11 +299,9 @@ creation, and content-free restoration contracts:
   write. A concurrent valid writer is accepted after reread; a changed or
   vanished session is never overwritten, and non-convergence fails the
   inventory instead of fabricating a card.
-- **terminal status is inferred, never authority.** it is independent activity
-  (`starting | working | idle | unknown`), interaction (`none | permission |
-  question | confirmation | setup | input | menu | unknown`) and notice (`none |
-  interrupted | error`) facts with source `terminal | unavailable` and a closed
-  reason ([observation §2](terminal-observation.md#2-capability-and-wire-contract)).
+- **terminal status is inferred, never authority.** it is independent activity,
+  interaction and notice facts with a source and a closed reason
+  ([observation §2](terminal-observation.md#2-capability-and-wire-contract)).
   only a freshly recognized local provider is classified, from bounded
   current-screen regions; successful ambiguity is unknown with source terminal;
   a failed stage is unavailable. terminal status neither proves task completion
@@ -426,16 +421,16 @@ missing and unsupported remain distinct in the protocol.
 
 ### agent observation and identity hooks
 
-[agent control](agent-control.md) owns status and bounded reads/controls.
+[terminal observation](terminal-observation.md) owns status;
+[terminal control](terminal-agent-control.md) owns bounded reads/controls.
 `agentcontrol` enriches the collected tmux inventory outside the session lock,
-using one focused observation per session: sessions captures the exact target's
-bounded screen regions through tmux (the bottom 64 rows, plus every row above
-them in taller panes, each region under its own byte cap; never scrollback) and
-revalidates the foreground it already sampled, then a pure provider classifier
-interprets them ([terminal observation](terminal-observation.md)). ordinary
-inventory never calls native history/status. enrichment shares one two-second
-deadline and reuses the foreground five-second inventory schedule. pressure has
-its own coalesced polling lane.
+using one focused observation per session: sessions captures bounded screen
+regions of the exact target and revalidates the foreground it sampled
+([terminal control §2](terminal-agent-control.md#2-observation-and-schemas)),
+then a pure provider classifier interprets them. ordinary inventory never calls
+native history/status. enrichment shares one two-second deadline and reuses the
+foreground five-second inventory schedule. pressure has its own coalesced polling
+lane.
 
 [identity registration](agent-identity-projection.md) is content-free and bound
 to the exact foreground process lifetime. the explicitly loaded claude plugin
@@ -1068,9 +1063,11 @@ explanations, managed codex statusline cues and a needs-input filter; it include
 the manual claude recognition prerequisite. obscured state may be unknown.
 no title/progress watcher, native status dependency, request store or new poller
 is authorized. the plan owns acceptance and narrow changes to §4 and feature
-contracts. its observation boundary, protocol, configuration, go clients and
-phone are implemented in source; the provider classifier is in progress. nothing
-is live-qualified or deployed.
+contracts. its observation boundary, wire, configuration and both clients are
+implemented in source; the provider classifier, its composition for inventory,
+inspect and send, and the amended top region, per-comparison executable-path
+resolution, diagnostics validation and `info --explain` observed time are in
+progress. nothing is qualified or deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are
 accepted and implemented. their detailed specifications own their limits.

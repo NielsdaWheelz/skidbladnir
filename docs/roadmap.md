@@ -12,11 +12,11 @@ cutover: bounded screen regions, provider-specific activity/request recognition,
 guarded composer reuse, diagnostics, managed codex run-state chrome and
 desktop/phone needs-input filtering. manual claude executable recognition is a
 prerequisite. screen ambiguity remains unknown; titles/progress are excluded.
-source implements the status domain, focused observation and executable-path
-recognition, the inspect/diagnostics wire, the codex run-state template, the go
-client projection, filter, wait and `info --explain`, and the phone projection,
-filter and task schema 3. the provider classifier and its composition are in
-progress. no qualification, deployment or live acceptance is claimed.
+source implements the observation boundary, wire, configuration and both
+clients; the provider classifier, its composition for inventory, inspect and
+send, and the amended top region, per-comparison executable-path resolution,
+diagnostics validation and `info --explain` observed time are in progress. no
+qualification, deployment or live acceptance is claimed.
 [detection](issues/terminal-status-detection.md),
 [input](issues/agent-needs-input.md) and
 [claude spelling](issues/claude-launch-spelling.md) remain open until qualified;
