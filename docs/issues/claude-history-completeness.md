@@ -10,7 +10,7 @@ impact: incomplete baseline or recovery can appear complete. this is an
 independent provider-boundary issue, not an established cause of the reported
 persistent desktop reply marker.
 
-evidence: `deployment/native-control/pin.json` names llm-calling `992e791` and
+evidence: `deployment/native-control/helper.json` names llm-calling `992e791` and
 sdk `0.2.130`. that helper's `src/provider_runtime/agent_runtime/claude_control.py`
 accepts history in `_messages` and enumerates qualifying groups in `results`.
 the sdk's `_internal/sessions.py` skips json decode failures in
