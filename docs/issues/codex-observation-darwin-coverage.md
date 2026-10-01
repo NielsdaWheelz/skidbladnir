@@ -17,7 +17,9 @@ configuration can produce them:
 the families that did run on darwin ran embedded or against a temporary-home
 0.159.2 daemon. only the question auto-resolve and idle ran against the installed
 pairing, the 0.159.2 TUI with the installed 0.159.3 daemon, which grammar §7
-step 3 makes part of qualification.
+step 3 makes part of qualification. a representative set, working, a permission
+and a picker, is accepted as qualifying that pairing; the other families need
+not rerun against it.
 
 impact: the listed families read by source and authored frames only. a rendering
 difference would misclassify one, usually as unknown; the stale-`Ready` windows

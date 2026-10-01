@@ -97,7 +97,9 @@ one sample serves inventory, inspect and guarded send:
    requires `process.SameObservation` with the session's own sample. an absent
    or different foreground is `foreground_changed`; a kernel failure is
    `process_failed`; a tmux failure or screen change is `capture_failed`. an
-   expired deadline is `observation_timeout`, chosen before the failed stage.
+   expired deadline is `observation_timeout`, chosen before the failed stage. a
+   cancelled request takes the same label: its response is discarded, so only its
+   failure log line, which names a timeout, shows it.
 3. a pure classifier in `agentcontrol` reads the captured regions for the
    recognized provider. it returns the status plus private composer evidence
    (`empty|draft|blocked|unknown`), which never enters inventory. a classifier

@@ -140,10 +140,10 @@ PaneObservation = {
   controls into one text tail or add an emulator.
 - one row parser serves both grammars. it reads sgr as tmux's writer emits it,
   OSC 8 hyperlinks and SO/SI shifts as zero width, and tmux 3.7c's tab cells as
-  spaces to the next 8-column stop (3.4 writes the blank cells instead). tmux
-  trims the space run after a row's last escape, so no grammar requires a
-  trailing space. any other escape makes only that row unparseable: present but
-  unrecognized in both grammars, never clipped evidence.
+  spaces to the next 8-column stop (3.4 writes the blank cells instead). the
+  capture omits `-N`, so tmux trims the space run after a row's last escape and
+  no grammar requires a trailing space. any other escape makes only that row
+  unparseable: present but unrecognized in both grammars, never clipped evidence.
 - dimension/alternate-screen changes during capture invalidate the sample.
   reuse before/after exact target and `process.SameObservation` validation.
   this is a bounded sample, not an atomic snapshot of provider execution.
@@ -230,7 +230,9 @@ codex started through it, so that codex is a generic terminal, while managed
 launches and `codex` typed in a skid shell run the native executable. no argv
 fallback, version-basename matching, installation scan or new process api.
 qualification covers bare, relative, absolute and symlink launches and a provider
-upgrade's relink on darwin and linux (§8). native resume identity is separate.
+upgrade's relink on darwin and linux (§8,
+[recorded](terminal-agent-control-qualification.md#terminal-observation-qualification)).
+native resume identity is separate.
 
 ## 5. controls and diagnostic api
 
@@ -241,6 +243,7 @@ writing. the composer is `empty` when the ordinary composer shows only its
 placeholder, `draft` when it holds input (claude bash mode included), `blocked`
 when it visibly refuses ordinary input (a request or menu replaces it, it is
 disabled, a side view or an external editor holds it), and `unknown` otherwise.
+`blocked` refuses as `unknown` does; it stays as diagnostic vocabulary.
 a refusal names its reason: a request interaction is `dialog`; otherwise a draft
 composer is `draft`; otherwise `unknown`. a failed sample (observation_timeout,
 capture_failed, process_failed) refuses with the existing `TerminalUnavailable`.
@@ -314,8 +317,10 @@ ready, idle/unknown. when request/menu/notice takes precedence over working, add
 with source terminal; unavailable/non-agent labels make no inference claim.
 rows of a host whose read failed or that is being re-read are never ready and
 stay out of the filter. a failed host's rows keep their stale cached facts as
-muted `last observed: <label>`, and keep that form while the host is re-read.
-the rows of any other re-read host take each client's form:
+muted `last observed: <label>`, and keep that form while the host is re-read;
+on the desktop that outage form exceeds the status bay, an accepted exception
+([desktop browser §5](desktop-browser.md#5-presentation)). the rows of any other
+re-read host take each client's own form, and the clients need not agree:
 the desktop table cell reads faint `checking` and makes no status claim, while
 the selected row's facts read `checking; last observed: <label>`
 ([desktop browser §5](desktop-browser.md#5-presentation)); android shows
@@ -477,14 +482,16 @@ explicit costs:
 
 - conservative unknown loses some idle waits and ready notices; five-second
   sampling misses brief transitions.
-- codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs-and-residual-ambiguity)):
+- codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs)):
   idle needs `Ready`, the main placeholder on a clean band, no external editor and
   a visible transcript terminator; goal pursuit withholds idle; status describes
   only the displayed thread, so a v1 sub-agent view reads as the main thread and
   guarded send types into the sub-agent; cue-less turn starts read idle for
   their duration and can raise ready, with no two-sample rule (grammar §6 c4
   names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
-  and plan-mode goal continuations); codex emits no notices; with the
+  and plan-mode goal continuations); `Ready` with surviving background terminals
+  reads idle; narrow or short question footers read layout_unknown or a request
+  of another subtype; codex emits no notices; with the
   under-development `features.default_mode_request_user_input` switched on (off
   by default; the managed launch never sets it), a default-mode question left
   untouched resolves itself with empty answers 120 s after it is shown, so an
@@ -517,12 +524,17 @@ explicit costs:
   context; deleting tests removes automatic future behavioral regression
   protection.
 
-the accepted false idles are codex's cue-less turn starts and claude's remote
-usage-limit copy. the accepted send-admission exposures are codex's
-displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode and
-screen-reader whitespace drafts. no other cost justifies false idle, weaker input
-admission or silent scope expansion. codex's unaccepted residuals, among them a
-false idle and a stale request, are [open](issues/codex-residual-ambiguity.md).
+the accepted false idles are claude's remote usage-limit copy and three of
+codex's: its cue-less turn starts; its millisecond stale-`Ready` window in a pane
+at most header + 4 columns wide (grammar §6 c14), which can raise ready; and an
+unmanaged status line whose first item is a user value equal to a run-state word
+(c12, read as that word's cue). codex's other accepted false claims are a stale
+request for up to about 0.4 s while a relaunched codex first draws (c13), which
+can enter the needs-input filter, and a wrong picker kind under a transcript row
+that starts with a listed title (c11). the accepted send-admission exposures are
+codex's displayed-thread scope and claude's `AbovePrompt` band, vim NORMAL mode
+and screen-reader whitespace drafts. no other cost justifies a false claim,
+weaker input admission or silent scope expansion.
 
 complete when the matrix passes at its stated boundaries, independent reviews
 find no contract violation, obsolete paths/temporary probes are removed,
