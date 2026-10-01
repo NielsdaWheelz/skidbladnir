@@ -1616,7 +1616,7 @@ func claudePlan(screen *claudeScreen, hint int) (string, sessions.Interaction, i
 	return "", "", 0, false
 }
 
-// The multi-server approval's hint and title, and a theme choice.
+// The multi-server approval's hint and title, and an unnumbered theme choice.
 var (
 	claudeServerHint   = regexp.MustCompile(`^\S+ to select · \S+ to reject all$`)
 	claudeServersTitle = regexp.MustCompile(`^\d+ new MCP servers found in this project`)
@@ -1677,8 +1677,14 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 		}
 	}
 	if ok2 && strings.HasPrefix(hint2, "Syntax theme: ") {
-		// The theme choices sit at column 1 above the syntax preview.
-		theme := func(line claudeLine) bool { return claudeThemeOption.MatchString(line.plain) }
+		// The theme choices sit at column 1 above the syntax preview, all in
+		// one form: unnumbered with the check before the current label
+		// (2.1.286), or numbered from 1 with the check after it (2.1.284).
+		numbered := func(line claudeLine) bool {
+			_, _, _, start := claudeOptionStart(line.plain, 1)
+			return start
+		}
+		theme := func(line claudeLine) bool { return numbered(line) || claudeThemeOption.MatchString(line.plain) }
 		if bottom, found := screen.find(top2-1, theme); found {
 			top, selected := bottom, 0
 			for {
@@ -1691,8 +1697,11 @@ func claudeSetup(screen *claudeScreen, hint int) (string, sessions.Interaction, 
 				}
 				top--
 			}
+			choices := screen.lines[top : bottom+1]
+			_, counted := claudeParseOptions(choices, 1)
+			oneForm := counted || !slices.ContainsFunc(choices, numbered)
 			_, started := screen.textBlock(1, hint, func(text string) bool { return strings.Contains(text, "Let's get started.") })
-			if started && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
+			if started && oneForm && selected == 1 && claudeWords(screen.joined(top, bottom), "Dark mode (ANSI colors only)") {
 				return "claude.setup.theme", sessions.InteractionSetup, top, true
 			}
 		}
