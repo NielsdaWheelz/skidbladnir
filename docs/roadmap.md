@@ -13,14 +13,15 @@ by the [codex](terminal-observation-codex.md) and [claude](terminal-observation-
 grammars, guarded composer reuse, diagnostics, managed codex run-state chrome and
 desktop/phone needs-input filtering, with manual claude executable recognition.
 screen ambiguity remains unknown; titles/progress are excluded. source is
-implemented; nothing is released or deployed.
+released as `v0.11.0` and applied to devbox, arch, the macbook and the phone.
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
 within its recorded limits, passes capture, recognition, classification and cost
 on darwin and linux. composition, controls (guarded send and wait), the
 gateway→cli/desktop product and attention pass on darwin only; on linux
 composition covers the managed create path and inspect, and the rest is
-`NOT_RUN`. open: [physical phone](issues/terminal-observation-phone-acceptance.md),
-[live provider smoke](issues/terminal-observation-provider-smoke.md),
+`NOT_RUN`. the phone and a darwin live-provider smoke passed at cutover. open:
+[remaining phone rows](issues/terminal-observation-phone-acceptance.md),
+[linux live provider smoke](issues/terminal-observation-provider-smoke.md),
 required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),
 [claude on darwin](issues/claude-observation-darwin-coverage.md) and
 [linux](issues/terminal-observation-linux-coverage.md),

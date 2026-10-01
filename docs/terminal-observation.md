@@ -1,9 +1,9 @@
 # non-native terminal observation
 
-status: implemented in source; not deployed. qualified on darwin and linux
-within the limits the
+status: implemented, released as `v0.11.0` and deployed. qualified on darwin,
+linux and a physical phone within the limits the
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
-records; physical-phone acceptance is [pending](issues/terminal-observation-phone-acceptance.md),
+records ([remaining phone rows](issues/terminal-observation-phone-acceptance.md)),
 and the [roadmap](roadmap.md#non-native-status-and-needs-input--source-implemented)
 indexes every open item. the [codex](terminal-observation-codex.md) and
 [claude](terminal-observation-claude.md) grammars own the frozen capability
