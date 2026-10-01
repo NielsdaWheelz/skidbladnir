@@ -123,36 +123,20 @@ func HookOrigin(
 	if !valid {
 		return Foreground{}, false
 	}
-	type match struct {
-		foreground  Foreground
-		observation processinfo.Observation
-	}
-	matches := make([]match, 0, 2)
+	// Only a sole recognized ancestor that leads the pane's foreground process
+	// group registers; nested or ambiguous agents are not attributed.
+	var origin Foreground
+	matches := 0
 	for _, observation := range terminalAncestry {
 		if foreground, found := ClassifyForeground(profiles, observation); found {
-			matches = append(matches, match{foreground: foreground, observation: observation})
+			origin = foreground
+			matches++
 		}
 	}
-
-	var origin match
-	switch len(matches) {
-	case 1:
-		origin = matches[0]
-	case 2:
-		native, wrapper := matches[0], matches[1]
-		if native.foreground.Provider != ProviderCodex || wrapper.foreground.Provider != ProviderCodex ||
-			native.observation.ExecutableBase() != "codex" || wrapper.observation.ExecutableBase() != "node" ||
-			native.observation.ParentPID != wrapper.observation.PID {
-			return Foreground{}, false
-		}
-		origin = wrapper
-	default:
+	if matches != 1 || origin.PID != terminalAncestry[0].ForegroundProcessGroup {
 		return Foreground{}, false
 	}
-	if origin.foreground.PID != terminalAncestry[0].ForegroundProcessGroup {
-		return Foreground{}, false
-	}
-	return origin.foreground, true
+	return origin, true
 }
 
 func EncodeRegistration(foreground Foreground, profile ProfileKey, providerSessionID string) (string, error) {

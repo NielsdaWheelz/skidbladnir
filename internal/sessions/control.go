@@ -67,7 +67,7 @@ func (manager *Manager) ResolveTerminal(ctx context.Context, target TerminalTarg
 	if !present || inspected.paneID != target.PaneID {
 		return Session{}, ErrTerminalTargetChanged
 	}
-	session, _ := manager.enrichSession(ctx, inspected) // justify-ignore-error: the session records a failed foreground sample; the target is still admitted.
+	session := manager.enrichSession(ctx, inspected)
 	if err := manager.requireServerIdentity(ctx, identity); err != nil {
 		return Session{}, ErrTerminalTargetChanged
 	}
@@ -103,15 +103,42 @@ func (manager *Manager) CaptureTerminal(ctx context.Context, target TerminalTarg
 }
 
 // ObservePane captures the bounded screen regions of session's exact target and
-// then revalidates its foreground against session's own sample. session comes
-// from List or ResolveTerminal in the same request and is never re-resolved.
-// Errors: ErrTerminalProcessFailed (no foreground sample, or revalidation
-// failed), ErrTerminalCaptureFailed (tmux failure or dimension/screen change),
-// ErrTerminalObservationChanged (a different foreground in the same target),
-// ErrTerminalTargetChanged (session lifetime or selected pane changed).
+// then revalidates the pane foreground against session's own sample. session
+// comes from List or ResolveTerminal in the same request and is never
+// re-resolved. Precondition: the session's foreground sample either failed or
+// found a foreground (Agent != nil guarantees one); a session sampled without a
+// foreground is a caller defect.
+// Errors: ErrTerminalProcessFailed (the session's foreground sample failed, or
+// re-observing it failed), ErrTerminalCaptureFailed (tmux failure or
+// dimension/screen change), ErrTerminalObservationChanged (foreground absent or
+// different in the same target), ErrTerminalTargetChanged (session lifetime or
+// selected pane changed).
 // Callers check ctx first: an expired context is a timeout at any stage.
 func (manager *Manager) ObservePane(ctx context.Context, session Session) (tmuxclient.PaneObservation, error) {
-	panic("contract skeleton: slice a implements ObservePane")
+	if session.ForegroundFailed() {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+	}
+	if session.foreground == nil {
+		panic("observed terminal session has no foreground") // justify-defect: callers observe only a recognized agent, whose sample holds its foreground.
+	}
+	observation, err := manager.tmux.ObservePane(ctx, TargetOf(session).paneTarget())
+	switch {
+	case err == nil:
+	case errors.Is(err, tmuxclient.ErrTargetChanged):
+		return tmuxclient.PaneObservation{}, ErrTerminalTargetChanged
+	case errors.Is(err, tmuxclient.ErrObservationChanged), errors.Is(err, tmuxclient.ErrUnavailable):
+		return tmuxclient.PaneObservation{}, ErrTerminalCaptureFailed
+	default:
+		panic("observed terminal target is invalid") // justify-defect: List, ResolveTerminal and creation return only canonical targets.
+	}
+	foreground, err := paneForeground(session.panePID)
+	if err != nil {
+		return tmuxclient.PaneObservation{}, ErrTerminalProcessFailed
+	}
+	if foreground == nil || !processinfo.SameObservation(*session.foreground, *foreground) {
+		return tmuxclient.PaneObservation{}, ErrTerminalObservationChanged
+	}
+	return observation, nil
 }
 
 // expected guards provider-specific input. nil deliberately permits generic

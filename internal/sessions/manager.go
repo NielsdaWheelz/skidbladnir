@@ -138,8 +138,7 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	locked = false
 	sessions := make([]Session, 0, len(observations))
 	for _, observation := range observations {
-		session, _ := manager.enrichSession(ctx, observation) // justify-ignore-error: optional foreground failure omits presence; terminal enrichment independently reports its source.
-		sessions = append(sessions, session)
+		sessions = append(sessions, manager.enrichSession(ctx, observation))
 	}
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return Inventory{}, err
@@ -324,7 +323,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		return ObservedSession{}, err
 	}
 	observedAt := time.Now().UTC()
-	projected, _ := manager.enrichSession(ctx, session) // justify-ignore-error: creation does not promise available foreground observation or terminal status.
+	projected := manager.enrichSession(ctx, session)
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return ObservedSession{}, err
 	}
@@ -412,9 +411,12 @@ func (manager *Manager) inspectAnchor(ctx context.Context, session Session) (ins
 	return inspected, true, nil
 }
 
-func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) (Session, error) {
+// enrichSession projects optional metadata and one foreground sample. A failed
+// sample is recorded by ForegroundFailed; the session remains a terminal.
+func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSession) Session {
 	session := inspected.session
 	session.ActivePaneID = inspected.paneID
+	session.panePID = inspected.panePID
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
 	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption); err == nil {
 		session.Group = decodeGroupMetadata(encoded)
@@ -454,7 +456,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 			environment, err := processinfo.ObserveForegroundEnvironment(inspected.panePID, foreground)
 			if errors.Is(err, processinfo.ErrForegroundMismatch) {
 				session.Agent, session.foreground, session.foregroundFailed = nil, nil, true
-				return session, err
+				return session
 			}
 			_, id, _ := observedTransport(foreground, environment)
 			session.Connection = &Connection{Transport: transport, ID: id}
@@ -462,7 +464,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 			session.CWD = ""
 		}
 	}
-	return session, foregroundErr
+	return session
 }
 
 func (manager *Manager) TerminalContext(connectionID string) (TerminalContext, error) {
