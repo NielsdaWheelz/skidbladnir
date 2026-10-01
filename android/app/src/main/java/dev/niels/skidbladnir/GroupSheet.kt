@@ -152,10 +152,10 @@ internal fun GroupSelector(
     selected: DashboardGroupSelection,
     labels: List<GroupLabel>,
     onSelect: (DashboardGroupSelection) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    GroupTextAction(selected.displayLabel(), true, { expanded = true },
-        modifier = Modifier.fillMaxWidth())
+    GroupTextAction(selected.displayLabel(), true, { expanded = true }, modifier = modifier)
     if (!expanded) return
     ModalBottomSheet(onDismissRequest = { expanded = false }, shape = NidavellirShapes.Sheet, containerColor = DeepSurface) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())

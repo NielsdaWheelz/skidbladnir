@@ -123,7 +123,7 @@ internal object NidavellirMotion {
 internal fun sessionStatusColor(tone: SessionStatusTone): Color = when (tone) {
     SessionStatusTone.Working -> Frost
     SessionStatusTone.Ready -> Moss
-    SessionStatusTone.Waiting -> Ember
+    SessionStatusTone.Attention -> Ember
     SessionStatusTone.Muted -> Muted
 }
 

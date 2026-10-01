@@ -154,18 +154,30 @@ internal fun DashboardMain(
             is DashboardScope.Machine -> machine.machine.handle == scope.handle
         }
     }
-    val sessions = visibleSessions(state.machines, scope).filter { entry.group.matches(it.target.session.group) }
+    val items = dashboardItems(machines, entry.group, entry.needsInputOnly)
     val canForge = machines.any(MachineState::canForge)
     val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
-                summary = dashboardSummary(sessions.size, machines.size),
+                summary = dashboardSummary(items.count { it is DashboardItem.Session }, machines.size),
                 onReconnect = controller::requestFleetReconnect,
             )
 
             MachineFilters(state.machines, scope, entry::selectScope)
-            GroupSelector(entry.group, observedGroups(state.machines), entry::selectGroup)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(end = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GroupSelector(entry.group, observedGroups(state.machines), entry::selectGroup, Modifier.weight(1f))
+                FilterChip(
+                    selected = entry.needsInputOnly,
+                    onClick = entry::toggleNeedsInputOnly,
+                    label = { Text("needs input", fontFamily = NidavellirType.Data) },
+                    shape = NidavellirShapes.Chip,
+                )
+            }
             machines.forEach { machine ->
                 key(machine.machine.handle) {
                     MachineStrip(
@@ -196,6 +208,8 @@ internal fun DashboardMain(
             DashboardDwarfCollection(
                 state = state,
                 entry = entry,
+                machines = machines,
+                items = items,
                 onVerify = onVerify,
                 onRestore = controller::restoreDashboardOnce,
                 onOpen = onOpenTerminal,
@@ -231,6 +245,8 @@ internal fun DashboardMain(
 internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
+    machines: List<MachineState>,
+    items: List<DashboardItem>,
     onVerify: () -> Unit,
     onRestore: (List<DashboardItemKey>) -> Unit,
     onOpen: (SessionTarget) -> Unit,
@@ -240,13 +256,6 @@ internal fun DashboardDwarfCollection(
     onGroup: (SessionTarget) -> Unit,
 ) {
     val scope = entry.scope
-    val machines = state.machines.filter { machine ->
-        when (scope) {
-            DashboardScope.All -> true
-            is DashboardScope.Machine -> machine.machine.handle == scope.handle
-        }
-    }
-    val items = dashboardItems(state.machines, scope, entry.group)
     val keys = items.map(DashboardItem::key)
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)
@@ -268,6 +277,7 @@ internal fun DashboardDwarfCollection(
                 scope,
                 machines,
                 items,
+                entry.needsInputOnly,
                 entry.gridState,
                 motionEnabled,
                 onOpen,
@@ -283,6 +293,7 @@ internal fun DashboardDwarfCollection(
             scope,
             machines,
             items,
+            entry.needsInputOnly,
             entry.gridState,
             motionEnabled,
             onOpen,
@@ -375,6 +386,7 @@ private fun DashboardDwarfGrid(
     scope: DashboardScope,
     machines: List<MachineState>,
     items: List<DashboardItem>,
+    needsInputOnly: Boolean,
     gridState: LazyGridState,
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
@@ -406,14 +418,20 @@ private fun DashboardDwarfGrid(
                     span = { GridItemSpan(maxLineSpan) },
                 ) {
                     Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
-                        dashboardInventoryWaitCopy(machines)?.let {
-                            EmptyState("no matching sessions in available inventory", it.message, tone = it.tone)
-                        } ?: EmptyState(
-                            "no sessions in this view",
-                            "Create a dwarf here, or launch tmux on the visible " +
-                                if (machines.size == 1) "machine." else "machines.",
-                            ornament = true,
-                        )
+                        val wait = dashboardInventoryWaitCopy(machines)
+                        when {
+                            needsInputOnly -> EmptyState("no sessions currently need input in this view", wait)
+                            wait != null -> EmptyState("no matching sessions in available inventory", wait)
+                            else -> EmptyState(
+                                "no sessions in this view",
+                                MachineNotice(
+                                    "Create a dwarf here, or launch tmux on the visible " +
+                                        if (machines.size == 1) "machine." else "machines.",
+                                    NoticeTone.Degraded,
+                                ),
+                                ornament = true,
+                            )
+                        }
                     }
                 }
             } else {
@@ -631,8 +649,7 @@ internal fun CloseConfirmation(
 @Composable
 internal fun EmptyState(
     title: String,
-    body: String,
-    tone: NoticeTone = NoticeTone.Degraded,
+    body: MachineNotice?,
     ornament: Boolean = false,
 ) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -648,7 +665,7 @@ internal fun EmptyState(
                 )
             }
             Text(title, style = MaterialTheme.typography.titleLarge)
-            Text(body, color = noticeToneColor(tone), modifier = Modifier.padding(top = 8.dp))
+            body?.let { Text(it.message, color = noticeToneColor(it.tone), modifier = Modifier.padding(top = 8.dp)) }
         }
     }
 }
