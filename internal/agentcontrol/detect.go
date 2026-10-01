@@ -15,39 +15,30 @@ type detection struct {
 	rules    []DiagnosticRule
 }
 
-// composer says whether guarded send may paste into the ordinary composer.
-type composer string
+// composer says whether guarded send may paste into the ordinary composer. Its
+// zero value is unknown, so a grammar that never establishes it refuses send.
+type composer uint8
 
 const (
-	composerEmpty   composer = "empty"   // the ordinary composer shows only its placeholder
-	composerDraft   composer = "draft"   // the ordinary composer holds input
-	composerBlocked composer = "blocked" // the ordinary composer visibly refuses ordinary input
-	composerUnknown composer = "unknown"
+	composerUnknown composer = iota
+	composerEmpty            // the ordinary composer shows only its placeholder
+	composerDraft            // the ordinary composer holds input
+	composerBlocked          // the ordinary composer visibly refuses ordinary input
 )
 
-// detect classifies one observation of a recognized provider's screen. It is
-// pure: it parses the observation once and dispatches to that provider's
-// grammar. A classifier defect panics; it never reads as unavailable.
-func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservation) detection {
-	parsed := parseScreen(observation)
-	var detected detection
-	switch provider {
-	case agentruntime.ProviderCodex:
-		detected = detectCodex(parsed)
-	case agentruntime.ProviderClaude:
-		detected = detectClaude(parsed)
-	default:
-		panic("terminal detection for an unknown provider") // justify-defect: recognition yields only the closed providers.
-	}
-	switch detected.composer {
-	case composerEmpty, composerDraft, composerBlocked, composerUnknown:
-	default:
-		panic("terminal detection without a composer state") // justify-defect: grammars return the closed composer states.
-	}
-	if len(detected.rules) > maxDiagnosticRules {
-		detected.rules = detected.rules[:maxDiagnosticRules]
-	}
-	return detected
+// reading is what one grammar read on a screen: each dimension's value, or the
+// cause it stayed unknown; the independent notice; the composer; and the rules
+// that decided them, in grammar order. A grammar returns a reading, never a
+// status, so only detect chooses the reason and every detection is a valid
+// successful terminal status.
+type reading struct {
+	activity         sessions.Activity
+	activityCause    unknownCause // given only when activity is unknown
+	interaction      sessions.Interaction
+	interactionCause unknownCause // given only when interaction is unknown
+	notice           sessions.Notice
+	composer         composer
+	rules            []DiagnosticRule
 }
 
 // unknownCause says why a dimension stayed unknown.
@@ -59,27 +50,30 @@ const (
 	causeConflict                         // its decisive evidence disagreed
 )
 
-// outcome is one successful sample's dimensions before a reason is chosen.
-// A cause says why its dimension is unknown and stays causeUnrecognized when
-// the dimension is classified. The notice is independent.
-type outcome struct {
-	activity         sessions.Activity
-	activityCause    unknownCause
-	interaction      sessions.Interaction
-	interactionCause unknownCause
-	notice           sessions.Notice
-}
+// detect classifies one observation of a recognized provider's screen. It is
+// pure: it parses the observation once, lets that provider's grammar read it,
+// and chooses the reason with spec section 2 precedence: among the unknown
+// dimensions a conflict, then clipping; otherwise the classified count. A
+// classifier defect panics; it never reads as unavailable.
+func detect(provider agentruntime.Provider, observation tmuxclient.PaneObservation) detection {
+	parsed := parseScreen(observation)
+	var read reading
+	switch provider {
+	case agentruntime.ProviderCodex:
+		read = detectCodex(parsed)
+	case agentruntime.ProviderClaude:
+		read = detectClaude(parsed)
+	default:
+		panic("terminal detection for an unknown provider") // justify-defect: recognition yields only the closed providers.
+	}
 
-// status chooses the reason with spec section 2 precedence: among the unknown
-// dimensions a conflict, then clipping; otherwise the classified count.
-func (outcome outcome) status() sessions.TerminalStatus {
 	conflict, clipped, unknown := false, false, 0
 	for _, dimension := range [...]struct {
 		unknown bool
 		cause   unknownCause
 	}{
-		{outcome.activity == sessions.ActivityUnknown, outcome.activityCause},
-		{outcome.interaction == sessions.InteractionUnknown, outcome.interactionCause},
+		{read.activity == sessions.ActivityUnknown, read.activityCause},
+		{read.interaction == sessions.InteractionUnknown, read.interactionCause},
 	} {
 		if !dimension.unknown {
 			if dimension.cause != causeUnrecognized {
@@ -109,9 +103,13 @@ func (outcome outcome) status() sessions.TerminalStatus {
 	case unknown == 2:
 		reason = sessions.ReasonLayoutUnknown
 	}
-	status := sessions.TerminalStatus{Activity: outcome.activity, Interaction: outcome.interaction, Notice: outcome.notice, Source: sessions.SourceTerminal, Reason: reason}
+	status := sessions.TerminalStatus{Activity: read.activity, Interaction: read.interaction, Notice: read.notice, Source: sessions.SourceTerminal, Reason: reason}
 	if !status.Valid() {
 		panic("terminal detection produced an invalid status") // justify-defect: grammars set closed dimension values.
 	}
-	return status
+	rules := read.rules
+	if len(rules) > maxDiagnosticRules {
+		rules = rules[:maxDiagnosticRules]
+	}
+	return detection{status: status, composer: read.composer, rules: rules}
 }

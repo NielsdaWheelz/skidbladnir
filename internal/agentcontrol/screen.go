@@ -9,13 +9,13 @@ import (
 )
 
 // screen is one PaneObservation parsed once into physical rows: rows[r] is
-// pane row r. The regions are contiguous unless a byte or row limit clipped
-// one, so a row the observation does not hold was dropped, and a grammar that
-// needs it has clipped evidence.
+// pane row r, so len(rows) is the pane height. The regions are contiguous
+// unless a byte or row limit clipped one, so a row the observation does not
+// hold was dropped, and a grammar that needs it has clipped evidence.
 type screen struct {
-	width, height int
-	alternate     bool
-	rows          []row
+	width     int
+	alternate bool
+	rows      []row
 }
 
 // row is one physical row, parsed on its own from the default style.
@@ -37,17 +37,18 @@ const (
 )
 
 // cell is one display column. A wide grapheme fills its first column; the
-// next column is a continuation cell with empty text and the same style.
+// next column is a continuation cell with empty text and the same style. A
+// cell shifted into the line-drawing set by SO keeps tmux's raw letter: no
+// grammar anchors on it, both providers draw with Unicode box glyphs.
 type cell struct {
 	text  string // one grapheme cluster with its zero-width marks
 	style style
 }
 
-// style keeps the SGR attributes the grammars read. Blink, conceal,
-// strikethrough, overline and underline colour are accepted and dropped.
+// style keeps the SGR attributes the grammars read.
 type style struct {
-	bold, dim, italic, underline, reverse bool
-	fg, bg                                color
+	bold, dim, reverse bool
+	fg, bg             color
 }
 
 // color is an explicit SGR colour. The basic and bright SGR colours are
@@ -68,9 +69,12 @@ const (
 // parseScreen parses every captured row once; the rows no region holds stay
 // absent.
 func parseScreen(observation tmuxclient.PaneObservation) screen {
-	parsed := screen{width: observation.Width, height: observation.Height, alternate: observation.Alternate, rows: make([]row, observation.Height)}
+	parsed := screen{width: observation.Width, alternate: observation.Alternate, rows: make([]row, observation.Height)}
 	var decoder ansi.Parser
-	decoder.SetParamsSize(32) // more than any SGR tmux writes
+	// tmux writes at most 12 parameters in one SGR. Given 32 slots, ansi's
+	// decoder drops a 32nd parameter and panics on a 33rd: a CSI that long is
+	// outside tmux's writer, so it is a defect, not an unparseable row.
+	decoder.SetParamsSize(32)
 	for _, region := range observation.Regions {
 		for index, text := range region.Rows {
 			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, text, &decoder)
@@ -87,21 +91,15 @@ func parseRow(region tmuxclient.RegionKind, text string, decoder *ansi.Parser) r
 	unparseable := row{presence: rowUnparseable, region: region}
 	var current style
 	for text != "" {
-		if strings.HasPrefix(text, "\x1b]") {
-			// tmux keeps valid UTF-8 raw inside a hyperlink's URI and escapes
-			// every control in it, so only ST or BEL ends it. ansi's decoder
-			// would also end it at a 0x9c continuation byte.
-			end := strings.IndexAny(text[2:], "\x07\x1b") + 2
-			if !strings.HasPrefix(text, "\x1b]8;") || end < 2 {
+		if rest, ok := strings.CutPrefix(text, "\x1b]8;"); ok {
+			// tmux writes a hyperlink ST-terminated, with its URI's valid UTF-8
+			// raw and every control escaped, so the first ST ends it. ansi's
+			// decoder would also end it at a 0x9c continuation byte.
+			_, after, found := strings.Cut(rest, "\x1b\\")
+			if !found {
 				return unparseable
 			}
-			if text[end] == '\x1b' {
-				if !strings.HasPrefix(text[end:], "\x1b\\") {
-					return unparseable
-				}
-				end++
-			}
-			text = text[end+1:]
+			text = after
 			continue
 		}
 		sequence, width, size, state := ansi.DecodeSequence(text, ansi.NormalState, decoder)
@@ -109,8 +107,8 @@ func parseRow(region tmuxclient.RegionKind, text string, decoder *ansi.Parser) r
 		switch {
 		case state != ansi.NormalState:
 			return unparseable
-		case sequence[0] == ansi.ESC:
-			if len(sequence) < 3 || sequence[1] != '[' || decoder.Command() != 'm' || !applySGR(&current, decoder.Params()) {
+		case strings.HasPrefix(sequence, "\x1b["):
+			if decoder.Command() != 'm' || !applySGR(&current, decoder.Params()) {
 				return unparseable
 			}
 		case sequence == "\x0e" || sequence == "\x0f":
@@ -134,33 +132,23 @@ func parseRow(region tmuxclient.RegionKind, text string, decoder *ansi.Parser) r
 	return parsed
 }
 
-// applySGR folds one SGR into current. It accepts the codes tmux writes
-// (grid_string_cells_code: attributes, 4:N underline styles, overline written
-// as 5:3, palette and rgb colours as semicolon parameters) and their resets;
-// anything else is refused, never guessed.
+// applySGR folds one SGR into current. It accepts exactly what tmux's
+// grid_string_cells_code writes: 0 then the attributes still set (tmux resets
+// only with 0), the attributes 1, 2, 3, 4, 5, 7, 8 and 9, the underline styles
+// as 4:N and overline as 5:3, and colours as semicolon parameters (30-37,
+// 90-97, 40-47, 100-107, 39, 49, and 38, 48 or 58 with 5;n or 2;r;g;b).
+// Anything else is refused, never guessed.
 func applySGR(current *style, params ansi.Params) bool {
 	if len(params) == 0 {
-		*current = style{}
-		return true
+		return false
 	}
 	for index := 0; index < len(params); index++ {
 		code := params[index].Param(0)
 		if params[index].HasMore() {
-			last := index
-			for params[last].HasMore() {
-				last++
-				if last == len(params) {
-					return false
-				}
-			}
-			switch code {
-			case 4:
-				current.underline = params[index+1].Param(0) != 0
-			case 5, 58: // overline as tmux writes it; underline colour
-			default:
+			if code != 4 && code != 5 {
 				return false
 			}
-			index = last
+			index++
 			continue
 		}
 		switch {
@@ -170,21 +158,10 @@ func applySGR(current *style, params ansi.Params) bool {
 			current.bold = true
 		case code == 2:
 			current.dim = true
-		case code == 3:
-			current.italic = true
-		case code == 4:
-			current.underline = true
 		case code == 7:
 			current.reverse = true
-		case code == 22:
-			current.bold, current.dim = false, false
-		case code == 23:
-			current.italic = false
-		case code == 24:
-			current.underline = false
-		case code == 27:
-			current.reverse = false
-		case code == 5, code == 8, code == 9, code == 25, code == 28, code == 29, code == 53, code == 55, code == 59:
+		case code == 3, code == 4, code == 5, code == 8, code == 9:
+			// italic, underline, blink, conceal and strikethrough: no grammar reads them.
 		case code >= 30 && code <= 37:
 			current.fg = color{kind: colorPalette, value: uint32(code - 30)}
 		case code >= 90 && code <= 97:
@@ -241,7 +218,7 @@ func (row row) blank() bool {
 	}
 	for _, cell := range row.cells {
 		switch cell.text {
-		case " ", " ", "":
+		case " ", "\u00a0":
 		default:
 			return false
 		}
@@ -276,16 +253,17 @@ func (row row) cell(column int) cell {
 // rule names a matched rule by the region of its decisive rows first..last:
 // compound when they span both regions.
 func (screen screen) rule(id string, first, last int) DiagnosticRule {
-	upper, lower := screen.rows[first].region, screen.rows[last].region
-	if upper == "" || lower == "" {
+	upper, lower := screen.rows[first], screen.rows[last]
+	if upper.presence == rowAbsent || lower.presence == rowAbsent {
 		panic("rule decided by an absent row") // justify-defect: grammars decide only on captured rows.
 	}
-	region := DiagnosticCompound
+	var region DiagnosticRegion
 	switch {
-	case upper != lower:
-	case upper == tmuxclient.RegionTop:
+	case upper.region != lower.region:
+		region = DiagnosticCompound
+	case upper.region == tmuxclient.RegionTop:
 		region = DiagnosticTop
-	case upper == tmuxclient.RegionBottom:
+	case upper.region == tmuxclient.RegionBottom:
 		region = DiagnosticBottom
 	default:
 		panic("unknown screen region") // justify-defect: tmux has exactly two region kinds.
