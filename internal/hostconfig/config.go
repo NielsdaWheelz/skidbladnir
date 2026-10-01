@@ -182,10 +182,8 @@ func admitProfiles(wire []profileDTO) ([]agentruntime.Profile, error) {
 				if !validAbsolutePath(signature.ExecutablePath.value) {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is invalid", candidate.Key.value)
 				}
-				// Admission requires the spelling to resolve to an executable
-				// file now (Stat follows its symlinks) but stores the spelling:
-				// matching resolves it again at each comparison, so a relink
-				// needs no fresh Load.
+				// Stat follows symlinks: the spelling must resolve to an
+				// executable regular file now, and is stored unresolved.
 				info, err := os.Stat(signature.ExecutablePath.value)
 				if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 					return nil, fmt.Errorf("host config profile %s foreground executable path is not an executable file", candidate.Key.value)

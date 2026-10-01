@@ -55,9 +55,8 @@ func ParseProfileKey(value string) (ProfileKey, error) {
 }
 
 // ForegroundSignature fields are conjunctive; a profile's signatures are
-// alternatives. ExecutablePath is the configured absolute, clean spelling;
-// matching resolves its symlinks each time and compares the native executable
-// the kernel reports.
+// alternatives. ExecutablePath is the configured absolute, clean spelling,
+// matched against the kernel's executable after resolving its symlinks.
 type ForegroundSignature struct {
 	ExecutableBase string
 	ExecutablePath string

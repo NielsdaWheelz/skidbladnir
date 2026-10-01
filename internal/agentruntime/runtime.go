@@ -308,6 +308,9 @@ func matchesSignature(observation processinfo.Observation, signature ForegroundS
 		return true
 	}
 	resolved, err := filepath.EvalSymlinks(signature.ExecutablePath)
+	// justify-ignore-error: a configured path that no longer resolves (provider
+	// uninstalled or unreadable) matches nothing; the pane reads as an ordinary
+	// terminal.
 	return err == nil && observation.Executable == resolved
 }
 

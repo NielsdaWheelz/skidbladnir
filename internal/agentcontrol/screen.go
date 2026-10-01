@@ -1,6 +1,7 @@
 package agentcontrol
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -23,17 +24,12 @@ type row struct {
 	presence presence
 	region   tmuxclient.RegionKind // captured rows only
 	// cells holds one cell per display column, from column 0 to the last cell
-	// tmux wrote. ObservePane captures without -N, so tmux trims the spaces
-	// after a row's last escape whatever their style: a trailing space or
-	// background band may be absent. Columns are measured by grapheme cluster,
-	// while tmux builds cells from code points by its own width rules. The two
-	// agree on both providers' chrome, CJK, emoji, ZWJ sequences and tag flags.
-	// After a cluster they measure differently, such as an Indic conjunct, Thai
-	// sara am, a keycap, a soft hyphen, halfwidth kana with a sound mark, a lone
-	// regional indicator or U+270C/U+270D, the rest of the row sits a column off
-	// either way. So a grammar anchors columns only on chrome left of any
-	// provider- or user-authored text, and never requires an exact cell count
-	// on a row that can hold such text.
+	// tmux wrote: trailing spaces, even styled ones, may be absent, and cell()
+	// reads past the end as a default space. Columns are measured by grapheme
+	// cluster while tmux places cells per code point, so after some authored
+	// clusters the rest of the row sits a column off tmux's. A grammar anchors
+	// columns only on chrome left of authored text and never requires an exact
+	// cell count on a row that can hold authored text.
 	cells []cell
 }
 
@@ -81,61 +77,68 @@ func parseScreen(observation tmuxclient.PaneObservation) screen {
 	parsed := screen{width: observation.Width, alternate: observation.Alternate, rows: make([]row, observation.Height)}
 	for _, region := range observation.Regions {
 		for index, text := range region.Rows {
-			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, text)
+			parsed.rows[region.FirstRow+index] = parseRow(region.Kind, observation.Width, text)
 		}
 	}
 	return parsed
 }
 
-// parseRow decodes one row as tmux capture-pane -e writes it: graphemes, SGR,
-// OSC 8 hyperlinks and the SO/SI charset shifts, which take no column. Any
-// other escape, a C0 control or DEL, or an SGR or hyperlink tmux would not
-// write makes the row unparseable.
-func parseRow(region tmuxclient.RegionKind, text string) row {
-	var decoder ansi.Parser
-	// justify-defect: tmux writes at most 12 parameters in one SGR. Given 32
-	// slots, ansi's decoder drops a 32nd parameter and panics on a 33rd; a CSI
-	// or DCS that long means the capture writer changed.
-	decoder.SetParamsSize(32)
+// parseRow reads one row as tmux's capture-pane -e writes it: graphemes, tab
+// cells (whose last stop is the pane width's last column), SGR, OSC 8
+// hyperlinks and the SO/SI charset shifts. Anything else, such as another
+// escape or control byte, or an SGR or hyperlink outside tmux's writer, makes
+// the row unparseable.
+func parseRow(region tmuxclient.RegionKind, width int, text string) row {
 	parsed := row{presence: rowParsed, region: region}
 	unparseable := row{presence: rowUnparseable, region: region}
 	var current style
 	for text != "" {
-		if rest, ok := strings.CutPrefix(text, "\x1b]8;"); ok {
+		switch {
+		case strings.HasPrefix(text, "\x1b]8;"):
 			// tmux writes a hyperlink ST-terminated, its URI's UTF-8 raw and no C0
 			// control or DEL inside (it drops or octal-escapes them), so the first
-			// ST ends it and a control before it means the writer changed. ansi's
-			// decoder would also end it at a 0x9c continuation byte.
-			link, after, found := strings.Cut(rest, "\x1b\\")
+			// ST ends it and a control before it means the writer changed.
+			link, after, found := strings.Cut(text[len("\x1b]8;"):], "\x1b\\")
 			if !found || strings.ContainsFunc(link, func(r rune) bool { return r < ' ' || r == ansi.DEL }) {
 				return unparseable
 			}
 			text = after
-			continue
-		}
-		sequence, width, size, state := ansi.DecodeSequence(text, ansi.NormalState, &decoder)
-		text = text[size:]
-		switch {
-		case state != ansi.NormalState:
-			return unparseable
-		case strings.HasPrefix(sequence, "\x1b["):
-			if decoder.Command() != 'm' || !applySGR(&current, decoder.Params()) {
+		case strings.HasPrefix(text, "\x1b["):
+			// Only an SGR ends at its first m: any other CSI leaves its final byte
+			// inside a parameter, which applySGR refuses.
+			params, after, found := strings.Cut(text[len("\x1b["):], "m")
+			if !found || !applySGR(&current, strings.Split(params, ";")) {
 				return unparseable
 			}
-		case sequence == "\x0e" || sequence == "\x0f":
-		case sequence[0] < ' ' || sequence[0] == ansi.DEL:
-			return unparseable
-		case width == 0:
-			// A zero-width grapheme joins the cell before it, as in tmux.
-			if last := len(parsed.cells) - 1; last >= 0 {
-				for parsed.cells[last].text == "" {
-					last--
-				}
-				parsed.cells[last].text += sequence
+			text = after
+		case text[0] == '\t':
+			// tmux 3.7c (not 3.4) stores a tab over blank cells as one tab cell,
+			// written as TAB, that spans to the next default tab stop or the last
+			// column. Stops stay every 8 columns: neither provider sets them.
+			for range min(len(parsed.cells)/8*8+8, width-1) - len(parsed.cells) {
+				parsed.cells = append(parsed.cells, cell{text: " ", style: current})
 			}
+			text = text[1:]
+		case text[0] == '\x0e' || text[0] == '\x0f':
+			text = text[1:]
+		case text[0] < ' ' || text[0] == ansi.DEL:
+			return unparseable
 		default:
-			parsed.cells = append(parsed.cells, cell{text: sequence, style: current})
-			for range width - 1 {
+			// Rows are valid UTF-8, so the text starts a printable grapheme.
+			grapheme, columns, size, _ := ansi.DecodeSequence(text, ansi.NormalState, nil)
+			text = text[size:]
+			if columns == 0 {
+				// A zero-width grapheme joins the cell before it, as in tmux.
+				if last := len(parsed.cells) - 1; last >= 0 {
+					for parsed.cells[last].text == "" {
+						last--
+					}
+					parsed.cells[last].text += grapheme
+				}
+				continue
+			}
+			parsed.cells = append(parsed.cells, cell{text: grapheme, style: current})
+			for range columns - 1 {
 				parsed.cells = append(parsed.cells, cell{style: current})
 			}
 		}
@@ -143,84 +146,72 @@ func parseRow(region tmuxclient.RegionKind, text string) row {
 	return parsed
 }
 
-// applySGR folds one SGR into current. It reads only the vocabulary tmux's
-// grid_string_cells_code writes: the reset 0 (tmux resets only with 0); the
-// attributes 1, 2, 3, 4, 5, 7, 8 and 9; the underline styles 4:2 to 4:5 and
-// overline as 5:3, its only colon parameters; and the colours 30-37, 39, 40-47,
-// 49, 90-97 and 100-107, and 38, 48 or 58 followed by 5;n or 2;r;g;b. An empty
-// SGR, a missing parameter or any other code, colon or colour refuses the row:
-// tmux's writer changed.
-func applySGR(current *style, params ansi.Params) bool {
-	if len(params) == 0 {
-		return false
-	}
+// applySGR folds one SGR's parameters into current. It reads what tmux's
+// grid_string_cells_code writes: the literal attribute cases below and decimal
+// colour numbers. Anything else, including an empty or missing parameter,
+// refuses the row: tmux's writer changed.
+func applySGR(current *style, params []string) bool {
 	for index := 0; index < len(params); index++ {
-		code := params[index].Param(-1)
-		if params[index].HasMore() {
-			sub, more, _ := params.Param(index+1, -1)
-			if more || !(code == 4 && sub >= 2 && sub <= 5 || code == 5 && sub == 3) {
-				return false
-			}
-			index++
-			continue
-		}
-		switch {
-		case code == 0:
+		switch params[index] {
+		case "0":
 			*current = style{}
-		case code == 1:
+		case "1":
 			current.bold = true
-		case code == 2:
+		case "2":
 			current.dim = true
-		case code == 7:
+		case "7":
 			current.reverse = true
-		case code == 3, code == 4, code == 5, code == 8, code == 9:
-			// italic, underline, blink, conceal and strikethrough: no grammar reads them.
-		case code >= 30 && code <= 37:
-			current.fg = color{kind: colorPalette, value: uint32(code - 30)}
-		case code >= 90 && code <= 97:
-			current.fg = color{kind: colorPalette, value: uint32(code - 90 + 8)}
-		case code >= 40 && code <= 47:
-			current.bg = color{kind: colorPalette, value: uint32(code - 40)}
-		case code >= 100 && code <= 107:
-			current.bg = color{kind: colorPalette, value: uint32(code - 100 + 8)}
-		case code == 39:
+		case "3", "4", "5", "8", "9", "4:2", "4:3", "4:4", "4:5", "5:3":
+			// italic, underline, blink, conceal, strikethrough, the underline
+			// styles and overline: no grammar reads them.
+		case "39":
 			current.fg = color{}
-		case code == 49:
+		case "49":
 			current.bg = color{}
-		case code == 38 || code == 48 || code == 58:
+		case "38", "48", "58":
+			// tmux follows a colour code with 5;n or 2;r;g;b, each 0-255.
 			var value color
-			switch kind, more, _ := params.Param(index+1, -1); {
-			case more:
-				return false
-			case kind == 5:
-				palette, more, _ := params.Param(index+2, -1)
-				if more || palette < 0 || palette > 255 {
-					return false
-				}
-				value, index = color{kind: colorPalette, value: uint32(palette)}, index+2
-			case kind == 2:
-				rgb := uint32(0)
-				for offset := 2; offset <= 4; offset++ {
-					channel, more, _ := params.Param(index+offset, -1)
-					if more || channel < 0 || channel > 255 {
-						return false
-					}
-					rgb = rgb<<8 | uint32(channel)
-				}
-				value, index = color{kind: colorRGB, value: rgb}, index+4
+			var channels []string
+			switch rest := params[index+1:]; {
+			case len(rest) >= 2 && rest[0] == "5":
+				value.kind, channels = colorPalette, rest[1:2]
+			case len(rest) >= 4 && rest[0] == "2":
+				value.kind, channels = colorRGB, rest[1:4]
 			default:
 				return false
 			}
-			switch code {
-			case 38:
+			for _, channel := range channels {
+				number, err := strconv.ParseUint(channel, 10, 8)
+				if err != nil {
+					return false
+				}
+				value.value = value.value<<8 | uint32(number)
+			}
+			switch params[index] {
+			case "38":
 				current.fg = value
-			case 48:
+			case "48":
 				current.bg = value
-			case 58:
+			case "58":
 				// underline colour: no grammar reads it.
 			}
+			index += 1 + len(channels)
 		default:
-			return false
+			code, err := strconv.ParseUint(params[index], 10, 8)
+			switch {
+			case err != nil:
+				return false
+			case code >= 30 && code <= 37:
+				current.fg = color{kind: colorPalette, value: uint32(code - 30)}
+			case code >= 90 && code <= 97:
+				current.fg = color{kind: colorPalette, value: uint32(code - 90 + 8)}
+			case code >= 40 && code <= 47:
+				current.bg = color{kind: colorPalette, value: uint32(code - 40)}
+			case code >= 100 && code <= 107:
+				current.bg = color{kind: colorPalette, value: uint32(code - 100 + 8)}
+			default:
+				return false
+			}
 		}
 	}
 	return true
