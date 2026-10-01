@@ -787,9 +787,12 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 }
 
 // claudeNotice reads how the latest turn ended (2.8): the interruption row as
-// the transcript's last row above the composer, or an API error row as the
-// last row above the turn's completion row. A later prompt or turn moves an
-// older marker away from the composer, so only the latest one counts.
+// the transcript's last row above the composer, or a failure block as the last
+// block above the turn's completion row. Claude draws an API error, a model or
+// usage failure and other turn-ending warnings as a `⏺` block whose glyph and
+// text share one explicit colour; replies, tool calls and agent notices never
+// colour both alike. A later prompt or turn moves an older marker away from the
+// composer, so only the latest one counts.
 func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
 	row := top - 1
 	for skipped := 0; skipped < 6; skipped++ {
@@ -814,14 +817,24 @@ func claudeNotice(screen *claudeScreen, top int) (turnNotice, int) {
 		for screen.blankAt(row) {
 			row--
 		}
-		if line, ok = screen.line(row); !ok {
-			return noticeNone, -1
+	}
+	// The block's head is the column-0 row above its wrapped continuation rows.
+	for continued := 0; continued < 12; continued++ {
+		if line, ok = screen.line(row); !ok || line.col != 2 || strings.HasPrefix(line.plain, "  ⎿") {
+			break
 		}
+		row--
 	}
-	if line.col == 0 && strings.HasPrefix(line.plain, "⏺ API Error") {
-		return noticeError, row
+	if !ok || line.col != 0 || !strings.HasPrefix(line.plain, "⏺ ") {
+		return noticeNone, -1
 	}
-	return noticeNone, -1
+	glyph := line.cells[0].style.fg
+	if glyph.kind == colorDefault || slices.ContainsFunc(line.cells[2:], func(cell cell) bool {
+		return cell.text != " " && cell.text != "" && cell.style.fg != glyph
+	}) {
+		return noticeNone, -1
+	}
+	return noticeError, row
 }
 
 // claudeInput reads the ordinary composer's input row and its continuation

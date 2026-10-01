@@ -6,7 +6,7 @@ header: === <id> w=<W> h=<H> alt=<0|1> <renderer> [bclip=<row>] [tclip=<row>] ex
         <composer> reason=<reason> rules=<id>[@top|@compound],...|none (decision order; regions default to bottom).
 bclip drops the bottom region's rows above <row>; tclip drops the top region's rows from <row>; both mark it clipped.
 rows: NN|<text> (NNN| from row 100). tags: «f» fg 153,153,153  «f2» fg 215,119,87  «d» dim  «i» reverse  «b» bold
-«it» italic  «g» bg 55,55,55  «/» reset  «/f» default fg  «/g» default bg  «o»/«/o» OSC 8 open/close.
+«it» italic  «w» fg 256-colour 220  «g» bg 55,55,55  «/» reset  «/f» default fg  «/g» default bg  «o»/«/o» OSC 8 open/close.
 X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 
 === F01_full_idle_default w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
@@ -1738,7 +1738,7 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 04|«f»─{44}«/f»
 05|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ←«/f»
 
-=== N48_full_limit_transcript_notice_idle_source w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+=== N48_full_limit_transcript_notice_idle_source w=80 h=12 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
 02|⏺ Dummy reply.
 04|«f»⏺«/f» «f»Usage limit reached · continuing automatically at 3pm · esc to cancel«/f»
 08|«f»─{80}«/f»
@@ -1905,3 +1905,33 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 20|  «f»3«/f»  }
 21| «f»╌{79}«/f»
 22|  «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»
+
+=== N60_model_issue_warning w=80 h=12 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+00|«g»«f»❯ «/f»hi«/»
+02|«w»⏺«/f» «w»There's an issue with the selected model (dummy-model). It may not exist«/f»
+03|  «w»or you may not have access to it. Run /model to pick a different model.«/f»
+05|«f»✻«/f» «f»Cooked for 0s · done 1:56 PM«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N61_api_error_wrapped w=60 h=12 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+00|«g»«f»❯ «/f»dummy prompt«/»
+01|«f2»⏺«/f» «f2»API Error: 529 {"type":"error","error":{"type":"over«/f»
+02|  «f2»loaded_error","message":"Dummy overload."}}«/f»
+04|«f»✻«/f» «f»Churned for 3s · done 2:01 PM«/f»
+07|«f»─{60}«/f»
+08|❯⍽«i» «/»
+09|«f»─{60}«/f»
+10|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N62_tool_call_last_block_negative w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt«/»
+02|«f2»⏺«/f» «b»Bash«/»(ls dummy)
+03|  ⎿  dummy.txt
+05|«f»✻«/f» «f»Worked for 2s · done 2:02 PM«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»

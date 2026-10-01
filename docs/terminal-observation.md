@@ -510,7 +510,8 @@ explicit costs:
   started through npm's node launcher is a generic terminal.
 - claude ([grammar §5](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity)):
   requests and menus hide activity, so working with a request is unrepresentable;
-  an interruption or api error ending the transcript is a notice; idle is lost for
+  an interruption row or a failure block (api error, model or usage limit) ending
+  the transcript is a notice; idle is lost for
   unproven pill slots, footer links, non-ordinary footers, non-work panel rows,
   usage-limit copy, colour level 0 and screen-reader sessions without a completion
   neighbour; remotely configured usage-limit copy without a default anchor reads
