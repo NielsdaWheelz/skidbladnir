@@ -26,9 +26,8 @@ required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwi
 [claude on darwin](issues/claude-observation-darwin-coverage.md) and
 [linux](issues/terminal-observation-linux-coverage.md),
 [claude request dialogs without a rule](issues/claude-unruled-request-dialogs.md),
-[codex server-driven families](issues/codex-server-driven-families.md), the desktop's
-[live stale and checking cells](issues/terminal-observation-stale-live.md) and
-the [host-config cutover](issues/host-config-cutover.md).
+[codex server-driven families](issues/codex-server-driven-families.md) and the desktop's
+[live stale and checking cells](issues/terminal-observation-stale-live.md).
 [status detection](issues/terminal-status-detection.md) closes with the coverage
 and smoke records, and [needs input](issues/agent-needs-input.md) with the phone
 run and an attention run through cancellation;
