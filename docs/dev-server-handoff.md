@@ -216,7 +216,7 @@ the user's existing provider setup owns those files and its normal login flow.
 
 | forge key | provider home relative to `HOME` | native argv after executable |
 | --- | --- | --- |
-| `personal` | `.codex` | configured arguments `--yolo -c tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]`, then `--remote unix://<account-socket> --cd <cwd>` |
+| `personal` | `.codex` | configured arguments `--yolo`, then `--remote unix://<account-socket> --cd <cwd>` |
 | `work` | `.codex-work` | same |
 | `work2` | `.codex-work2` | same |
 | `claude-work` | `.claude-work` | `--dangerously-skip-permissions --plugin-dir HOME/.local/share/skidbladnir/claude-agent-identity` |

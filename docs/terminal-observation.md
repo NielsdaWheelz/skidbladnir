@@ -71,13 +71,14 @@ Detection = {status: TerminalStatus, composer: empty | draft | blocked | unknown
 | `unknown` interaction | insufficient evidence to classify the current interaction surface |
 | `confirmation` | provider-requested review/decision, such as plan implementation; not a generic selected item |
 | `menu` | user navigation, such as model/settings/resume selection; not needs-input attention |
-| `notice` | qualified current provider banner/modal/status notice; never transcript prose or a task outcome |
+| `notice` | how the latest turn ended abnormally: the provider's own interruption or error marker as the transcript's last item (or a qualified current banner); `none` otherwise |
 
 `working + question` is valid. classify each dimension independently; conflicting
 evidence makes only the affected dimension unknown. `notice=none` means no
-recognized current notice. historical error/interruption text cannot set it.
-if no current notice structure can be qualified, emit none and make no notice
-claim. notices never erase independent work/request evidence.
+recognized current notice. only the marker that ends the transcript counts:
+historical error/interruption text above a later prompt or turn cannot set it.
+a notice persists until the next turn replaces it. notices never erase
+independent work/request evidence.
 
 `unavailable` requires unknown activity/interaction and notice none, with a
 failure reason. successful unknown uses `source=terminal`. changed foreground
@@ -181,30 +182,25 @@ optional animation and remapped keys without treating arbitrary text as controls
 
 | provider | required families and decisive distinctions |
 | --- | --- |
-| codex | activity with/without glyph, remapped interrupt, suffix and wrapped details; background-terminal waiting remains working; configured run-state row; default footer is not idle evidence |
+| codex | activity with/without glyph, remapped interrupt, suffix and wrapped details; background-terminal waiting remains working; a run-state word when the user's status line shows one; idle from a settled transcript, never from the footer alone |
 | codex | permission overlay including open-thread footer; legacy single/multi/free-text questions; collapsed/expanded async questions; plan implementation decision; trust/update setup; ordinary pickers and transcript views |
 | claude | generation/tools/retry; background agent/task/workflow/mcp activity; default/custom multiline statusline and missing interruption hint; ordinary and screen-reader layouts |
 | claude | permissions; questions with navigation between confirm/cancel hints; free-text/multiple questions; plan approval; mcp elicitation; trust/login/setup; model/settings/viewer and side-question overlays |
 | both | current interruption/error structures when distinguishable; empty/draft/blocked/unknown composer; active work with historical request/error text as negatives |
 
 positive activity cannot be overridden by a persistent composer/footer. codex
-idle requires its qualified explicit ready cue; unmanaged ambiguous composers
-remain unknown. claude idle requires a qualified complete current ready layout,
+idle requires a settled transcript (its last stop is a turn-end separator, a
+`■` notice cell or the session header), no status row, the main placeholder on a
+clean band, no external editor and no goal indicator; codex hides its status
+row while it streams a final answer, so a prompt as the last stop is never idle. claude idle requires a qualified complete current ready layout,
 including all relevant activity/request regions; missing spinner alone is not
 enough. behind menus/viewers, retain only independently visible positive facts;
 do not carry the previous activity forward.
 
-managed codex profiles add this supported launch-scoped override:
-
-```text
--c 'tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]'
-```
-
-use canonical `run-state`, not its `status` alias. qualify forwarding through the
-existing remote-new launcher and actual rendering. `Waiting` for a background
-terminal maps to working. preserve title settings: adding run-state to titles
-would churn automatic session names. persistent user settings are untouched;
-existing/manual sessions use the same classifier with the cues they expose.
+skid adds no status-line or title override to codex launches; managed and manual
+sessions read the same screen. when a user's own status line shows a run-state
+word, `Working`, `Thinking` and `Waiting` mean working, `Starting` starting, and
+`Ready` beside a status row is a conflict. persistent user settings are untouched.
 claude retains its display configuration: its supported progress setting adds no
 signal under this screen-only contract. do not replace its custom statusline or
 force accessibility mode.
@@ -238,7 +234,8 @@ native resume identity is separate.
 ## 5. controls and diagnostic api
 
 guarded send requires a fresh local provider, activity working/idle,
-interaction none, notice none and ordinary composer empty. question editors,
+interaction none and ordinary composer empty; a notice does not refuse, since
+it is a transcript marker, not a surface over the composer. question editors,
 menus, drafts, clipped/unknown composers and unknown interactions refuse before
 writing. the composer is `empty` when the ordinary composer shows only its
 placeholder, `draft` when it holds input (claude bash mode included), `blocked`
@@ -253,7 +250,8 @@ better status coverage cannot independently relax composer recognition.
 deliberate text/keys, stop/close and their errors retain their existing contracts.
 
 terminal `wait --state` accepts `working`, `idle`, `needs-input`; default idle.
-idle matches idle + interaction none + notice none. working matches working
+idle matches idle + interaction none, whatever notice the turn ended with, so a
+wait ends on an interrupted or failed turn too. working matches working
 even with a question. needs-input matches permission/question/confirmation/setup/
 input. remove terminal `blocked`; explicit native wait keeps its native states.
 validate against the captured target kind before polling. an unknown tested
@@ -335,10 +333,12 @@ projection for desktop/cli. labels, tone and predicates must derive from the
 same facts; never compare rendered strings to choose behavior. preserve status
 before cwd at narrow sizes. no badge stack, new palette or approve/answer action.
 
-ready arms only on fresh working + interaction none + notice none, and appears
-only when the next qualified observation is idle with those same restrictions.
-fresh requests, menus, starting, notices and working clear existing pending ready
-and disarm its predecessor; qualifying working then arms a new predecessor.
+ready arms only on fresh working + interaction none, and appears only when the
+next qualified observation is idle + interaction none. a turn that stops on an
+interruption or error still becomes ready; its card shows the notice label,
+which takes precedence. fresh requests, menus, starting and working clear
+existing pending ready and disarm its predecessor; qualifying working then arms
+a new predecessor.
 unknown/stale/unavailable only disarm and hide, preserving existing pending ready.
 positive requests clear it even when activity is unknown. no observation gap
 can bridge working to idle.
@@ -441,7 +441,7 @@ existing engineering checks. do not recreate a retired gate or production seam.
 | negatives | composer during active codex work; quoted old chrome; menu versus request; title-generation spinner, static claude title and inherited busy/action-required/progress across provider→shell→same provider (except §9's accepted false claims); historical errors under current work |
 | recognition | managed, bare, absolute, relative and symlink launches on darwin/linux; unrelated executables, exit/replacement and foreground suspend/resume |
 | full product | real gateway→cli/desktop and gateway→physical phone: work, each request label, concurrent work, stale/unavailable, filter membership/order, visits, return restoration, accessibility/large text |
-| attention | work→idle ready; work→question→idle not ready; pending ready→request/notice→idle stays idle; visit does not dismiss unanswered request; unknown/outage cannot bridge readiness; delayed response cannot restore consumed ready |
+| attention | work→idle ready; work→interruption/error→idle ready with the notice shown; work→question→idle not ready; pending ready→request→idle stays idle; visit does not dismiss unanswered request; unknown/outage cannot bridge readiness; delayed response cannot restore consumed ready |
 | controls | empty ordinary composer send succeeds; draft/dialog/menu/unknown/clipped/changed target refuses without bytes; explicit text/keys and stop/close unchanged |
 | diagnostics/cost | reason and same-sample explanation agree; logs/envelopes contain no content; 1 and 16 represented sessions on each host platform fit the existing two-second enrichment budget with no induced timeouts; compare per-stage timing before/after |
 
@@ -486,17 +486,17 @@ explicit costs:
 - conservative unknown loses some idle waits and ready notices; five-second
   sampling misses brief transitions.
 - codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs)):
-  idle needs `Ready`, the main placeholder on a clean band, no external editor and
-  a visible transcript terminator; goal pursuit withholds idle; status describes
+  idle needs the main placeholder on a clean band, no status row, no external
+  editor and a visible transcript terminator; goal pursuit withholds idle; status describes
   only the displayed thread, so a v1 sub-agent view reads as the main thread and
   guarded send types into the sub-agent; cue-less turn starts read idle for
   their duration and can raise ready, with no two-sample rule (grammar §6 c4
   names them: `!cmd`, queued slash commands, and the unmeasured daemon-recovery
-  and plan-mode goal continuations); `Ready` with surviving background terminals
-  reads idle; narrow or short question footers read layout_unknown or a request
+  and plan-mode goal continuations); idle with surviving background terminals
+  stays idle; narrow or short question footers read layout_unknown or a request
   of another subtype, an mcp approval whose option block holds an unparsed row
   reads input, and the mcp prompts drawn in the legacy question view read
-  question; codex emits no notices; with the
+  question; only the interruption and error `■` cells are notices; with the
   under-development `features.default_mode_request_user_input` switched on (off
   by default; the managed launch never sets it), a default-mode question left
   untouched resolves itself with empty answers 120 s after it is shown, so an
@@ -505,11 +505,12 @@ explicit costs:
   as usual (stock questions, from plan mode and the mcp prompts, block until
   answered, and a key or paste in the view stops the timer;
   [grammar §2.4](terminal-observation-codex.md#24-legacy-request_user_input-and-mcp-forms));
-  managed launches replace the launch's statusline layout; a codex started through
-  npm's node launcher is a generic terminal.
+  idle comes from the screen without a status-line cue, so it can read idle
+  briefly while mcp servers start or a restarted daemon resumes a turn; a codex
+  started through npm's node launcher is a generic terminal.
 - claude ([grammar §5](terminal-observation-claude.md#5-accepted-costs-and-residual-ambiguity)):
   requests and menus hide activity, so working with a request is unrepresentable;
-  interrupted or failed turns read idle and can raise ready; idle is lost for
+  an interruption or api error ending the transcript is a notice; idle is lost for
   unproven pill slots, footer links, non-ordinary footers, non-work panel rows,
   usage-limit copy, colour level 0 and screen-reader sessions without a completion
   neighbour; remotely configured usage-limit copy without a default anchor reads

@@ -24,9 +24,7 @@
         }
       ],
       "arguments": [
-        "--yolo",
-        "-c",
-        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
+        "--yolo"
       ]
     },
     {
@@ -46,9 +44,7 @@
         }
       ],
       "arguments": [
-        "--yolo",
-        "-c",
-        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
+        "--yolo"
       ]
     },
     {
@@ -68,9 +64,7 @@
         }
       ],
       "arguments": [
-        "--yolo",
-        "-c",
-        "tui.status_line=[\"run-state\",\"model-with-reasoning\",\"current-dir\",\"thread-name\"]"
+        "--yolo"
       ]
     },
     {

@@ -104,8 +104,8 @@ name, and each such `NOT_RUN` is a blocker under spec §8
 | 62 | panel focus footer `↑/↓ to select …` | P | void surface: unknown | — | darwin, linux |
 | 63 | left-labelled top rule (`── History N/M ──…`) | P | interaction and composer unknown | — | source-only |
 | 64 | other panes (/mcp, /agents, /permissions, /effort, task detail) | P | unknown unless a menu rule matches | — | source-only |
-| 65 | interruption row `⎿  Interrupted · What should Claude do instead?` | P | notice none (transcript row) | — | darwin |
-| 66 | error row `⏺ API Error: …` | P | notice none (transcript row) | — | darwin |
+| 65 | interruption row `⎿  Interrupted · What should Claude do instead?` as the transcript's last row above the composer | R | notice interrupted | `claude.notice.interrupted` | darwin |
+| 66 | error row `⏺ API Error: …` as the last row above the turn's completion row (or the composer) | R | notice error | `claude.notice.error` | darwin |
 | 67 | footer notifications: effort (right-aligned), tmux notices | P | `notification` rows (2.0) | — | darwin (tmux notices drawn because the pane's own `TMUX` is set) |
 | 68 | composer empty / draft / blocked / unknown | R | §3 | `claude.composer.*` | darwin, linux |
 | 69 | quoted chrome in the transcript | R neg | ignored | — | source-only (authored) |
@@ -877,13 +877,19 @@ the only `❯` to `❯ N. Chat about this`.
 
 ### 2.8 notices
 
-none are qualified; both kinds are class `P` and emit `notice: none`.
+the latest turn's ending is the notice. walking up from the composer's top rule
+past at most six notification rows and blank rows (as the slot walk does):
 
-- `⎿  Interrupted · What should Claude do instead?` and `⏺ API Error: …` are
-  transcript rows, identical when historical and reachable by quoting.
-- footer notifications are not task notices.
+- the first row is `  ⎿  Interrupted…` at column 2 → notice interrupted
+  (`claude.notice.interrupted`);
+- the first row, or the first row above a completion row (`✻ <verb> for …`), is
+  `⏺ API Error…` at column 0 → notice error (`claude.notice.error`);
+- otherwise none. the same rows above a later prompt or turn are history and set
+  nothing; footer notifications are not task notices.
 
-cost: an interrupted or failed turn reads `idle`/`ready` (§5 c2).
+the notice is read on the ordinary composer surface only; the screen-reader
+surface reads none. the interrupted or failed turn itself still reads idle, so it
+raises ready under its notice label (spec §6).
 
 ## 3. composer semantics
 
@@ -948,8 +954,9 @@ each unknown or none, never a false claim unless the item says otherwise:
 - **c1** activity under every request/menu pane is unknown: the dialog hides panel,
   pill and spinner. for claude, `working + permission|question` is
   unrepresentable.
-- **c2** interruption and error are never notices (2.8): interrupted or failed
-  turns read idle and can raise `ready`.
+- **c2** interruption and error notices (2.8) come from fixed rows, so a reply that ends
+  with a quoted `⎿  Interrupted` row or starts `⏺ API Error` reads that notice; the
+  screen-reader surface reads none.
 - **c3** a loading chevron with no corroborator is unknown. teammate views never
   reach idle.
 - **c4** idle is lost when:
@@ -1036,8 +1043,11 @@ no residual ambiguity remains: CQ20, the last, is c18.
 
 run this after a claude upgrade, before claiming the new version, with the
 current-turn approval [spec §8](terminal-observation.md#8-red--green--refactor-acceptance)
-requires for isolated tmux and live runs. it reuses no retained harness; every
-probe is temporary and deleted before commit ([testing](rules/testing.md)), and
+requires for isolated tmux and live runs. the authored frames are retained as
+fixtures ([testing](rules/testing.md)): `internal/agentcontrol/testdata/frames/`
+holds `claude.txt`, its painter and `capture.py`, and `go test ./internal/agentcontrol`
+replays their captures; add a frame for every new or changed layout and rerun
+`capture.py`. other probes are temporary and deleted before commit, and
 every record is content-free.
 
 1. diff the new bundle's strings and components against the anchors of 2.3–2.6:

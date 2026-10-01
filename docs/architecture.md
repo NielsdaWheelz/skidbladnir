@@ -109,7 +109,7 @@ Nonempty profile mapping is one ordered, closed, host-local gateway-config table
 
 | Profile / label | Provider | Hosts | Command | Environment | Arguments | Foreground signatures |
 | --- | --- | --- | --- | --- | --- | --- |
-| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo -c tui.status_line=["run-state","model-with-reasoning","current-dir","thread-name"]` | native executable basename `codex` |
+| `personal` / `Codex · Personal` | `Codex` | all | absolute native codex | `CODEX_HOME=<home>/.codex` | `--yolo` | native executable basename `codex` |
 | `work` / `Codex · Work` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work` | same | same |
 | `work2` / `Codex · Work 2` | `Codex` | all | same native codex | `CODEX_HOME=<home>/.codex-work2` | same | same |
 | `claude-work` / `Claude · Work` | `Claude` | all | absolute native claude | `CLAUDE_CONFIG_DIR=<home>/.claude-work` | `--dangerously-skip-permissions --plugin-dir <home>/.local/share/skidbladnir/claude-agent-identity` | configured claude `executablePath` |

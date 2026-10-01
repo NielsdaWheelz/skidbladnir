@@ -626,13 +626,14 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		read.rules = append(read.rules, screen.rule("codex.interaction.none", inputRow, end))
 	}
 
-	// Activity (3): the hint-row override, the status row, then the run-state
-	// word; Ready is idle only under every qualification of step 4.
+	// Activity (3): the hint-row override, the status row, then a run-state
+	// word when SL carries one. Idle comes from the screen itself (step 4):
+	// codex hides the status row while it streams a final answer, so only a
+	// settled transcript under a qualified band proves no turn is running.
 	if scan.status >= 0 {
 		read.rules = append(read.rules, screen.rule("codex.activity.status_row", scan.status, scan.status))
 	}
 	read.activity = sessions.ActivityUnknown
-	readyFirst := statusLine
 	switch {
 	case disconnected:
 		read.rules = append(read.rules, screen.rule("codex.activity.disconnected", hint, hint))
@@ -645,38 +646,51 @@ func codexComposer(screen screen, end int) (reading, bool) {
 		read.activity = sessions.ActivityWorking
 	case state == codexStarting:
 		read.activity = sessions.ActivityStarting
-	case state == codexReady:
-		switch {
-		case !enabled && !dimmed || !main || editor:
-			// Ready without idle's composer qualifications stays unknown (3 step 4).
-		case codexGoalActive(screen.rows[statusLine]):
+	case !enabled && !dimmed || !main || editor:
+		// No idle without the composer qualifications (3 step 4.1, 4.2).
+	case statusLine >= 0 && codexGoalActive(screen.rows[statusLine]):
+		read.activityCause = causeConflict
+		read.rules = append(read.rules, screen.rule("codex.activity.goal_active", statusLine, statusLine))
+	case scan.ending == codexOpen:
+		// A prompt ends the transcript with no status row: the submit window,
+		// a final answer streaming, or a turn that ended without a terminator.
+		read.rules = append(read.rules, screen.rule("codex.activity.prompt_pending", scan.stop, inputRow))
+		if state == codexReady {
 			read.activityCause = causeConflict
-			read.rules = append(read.rules, screen.rule("codex.activity.goal_active", statusLine, statusLine))
-		case scan.ending == codexOpen:
-			read.activityCause = causeConflict
-			read.rules = append(read.rules, screen.rule("codex.activity.prompt_pending", scan.stop, statusLine))
-		case scan.ending == codexUnproven:
-			read.activityCause = causeClipped
-		case scan.ending == codexUnreadable:
-			// An unparseable row hides the transcript's end: unknown, not clipped.
-		case scan.ending == codexSettled:
-			read.activity, readyFirst = sessions.ActivityIdle, scan.stop
-		default:
-			panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open, unproven or unreadable.
 		}
 	case scan.ending == codexUnproven:
 		read.activityCause = causeClipped
+	case scan.ending == codexUnreadable:
+		// An unparseable row hides the transcript's end: unknown, not clipped.
+	case scan.ending == codexSettled:
+		read.activity = sessions.ActivityIdle
+		read.rules = append(read.rules, screen.rule("codex.activity.idle", scan.stop, inputRow))
+	default:
+		panic("unknown codex transcript ending") // justify-defect: the scan ends settled, open, unproven or unreadable.
 	}
 	switch state {
 	case codexNoRunState:
 	case codexStarting:
 		read.rules = append(read.rules, screen.rule("codex.run_state.starting", statusLine, statusLine))
 	case codexReady:
-		read.rules = append(read.rules, screen.rule("codex.run_state.ready", readyFirst, statusLine))
+		read.rules = append(read.rules, screen.rule("codex.run_state.ready", statusLine, statusLine))
 	case codexWorking:
 		read.rules = append(read.rules, screen.rule("codex.run_state.working", statusLine, statusLine))
 	default:
 		panic("unknown codex run state") // justify-defect: codexReadRunState returns only the closed states.
+	}
+	// Notice (2.9): a notice cell that ends the transcript is the latest
+	// turn's interruption or error; older cells sit above a later stop.
+	if scan.ending == codexSettled {
+		switch read.notice = codexNotice(screen.rows[scan.stop]); read.notice {
+		case noticeNone:
+		case noticeInterrupted:
+			read.rules = append(read.rules, screen.rule("codex.notice.interrupted", scan.stop, scan.stop))
+		case noticeError:
+			read.rules = append(read.rules, screen.rule("codex.notice.error", scan.stop, scan.stop))
+		default:
+			panic("unknown codex notice") // justify-defect: codexNotice returns only the closed notices.
+		}
 	}
 	return read, true
 }
@@ -819,6 +833,22 @@ func codexTerminator(row row) bool {
 	name := codexSpells(cells, 3, "OpenAI Codex")
 	return codexDim(row.cells) && (strings.HasPrefix(text, "Worked for ") || codexClock.MatchString(text)) ||
 		strings.HasPrefix(text, ">_ ") && name >= 0 && !slices.ContainsFunc(cells[3:name], func(cell cell) bool { return !cell.style.bold })
+}
+
+// codexNotice is the notice a terminator stop shows (2.9): codex draws an
+// error cell's `■` red and the interruption cell's in the default colour.
+// Other notice cells, such as the goal budget, are no notice.
+func codexNotice(row row) turnNotice {
+	glyph := row.cell(0)
+	switch {
+	case glyph.text != "■":
+		return noticeNone
+	case glyph.style.fg == codexRed:
+		return noticeError
+	case strings.HasPrefix(cellText(row.cells), "■ Conversation interrupted"):
+		return noticeInterrupted
+	}
+	return noticeNone
 }
 
 // codexImageRow is a row of `[Image #N]` labels at column 2, coloured and not

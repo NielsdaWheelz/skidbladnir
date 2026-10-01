@@ -135,7 +135,7 @@ matching, including npm's node launcher. a process matching more than one
 provider is unrecognized.
 
 [observation §4](terminal-observation.md#4-provider-adapters-and-managed-displays)
-owns the provider grammars, managed codex run-state chrome and rule ids. quoted
+owns the provider grammars and rule ids. quoted
 output, titles, quietness, elapsed time, process existence and old screen content
 are not state evidence. idle is inferred from qualified provider ready-state
 evidence; it establishes neither turn completion, input admission, an empty queue

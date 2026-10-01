@@ -71,7 +71,7 @@ func (client *Client) wait(parent context.Context, request Request) Result {
 			// Each state tests its own dimensions; an unknown tested dimension never matches.
 			switch request.State {
 			case "idle":
-				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && status.Notice == sessions.NoticeNone
+				matched = status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone
 			case "working":
 				matched = status.Activity == sessions.ActivityWorking
 			case "needs-input":

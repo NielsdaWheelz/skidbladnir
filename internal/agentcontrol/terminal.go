@@ -200,7 +200,7 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	case composerState == composerDraft:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "draft"}
 	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
-		status.Interaction != sessions.InteractionNone || status.Notice != sessions.NoticeNone || composerState != composerEmpty:
+		status.Interaction != sessions.InteractionNone || composerState != composerEmpty:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
 	}
 	// Only a classified screen has an empty composer, so session.Agent is the

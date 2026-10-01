@@ -1,0 +1,1907 @@
+claude authored frames (dummy content, no real screens), claude 2.1.286 shapes; F21d and F21e are 2.1.284's numbered
+theme picker. `paint.py claude.txt <id>` paints one; `capture.py` regenerates observations.jsonl; frames_test.go
+replays it. grammar: docs/terminal-observation-claude.md. frames marked _source follow the source; their placement
+was not observed live.
+header: === <id> w=<W> h=<H> alt=<0|1> <renderer> [bclip=<row>] [tclip=<row>] expect=<activity>/<interaction>/<notice>
+        <composer> reason=<reason> rules=<id>[@top|@compound],...|none (decision order; regions default to bottom).
+bclip drops the bottom region's rows above <row>; tclip drops the top region's rows from <row>; both mark it clipped.
+rows: NN|<text> (NNN| from row 100). tags: «f» fg 153,153,153  «f2» fg 215,119,87  «d» dim  «i» reverse  «b» bold
+«it» italic  «g» bg 55,55,55  «/» reset  «/f» default fg  «/g» default bg  «o»/«/o» OSC 8 open/close.
+X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
+
+=== F01_full_idle_default w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt one«/»
+02|⏺ Dummy reply text.
+04|«f»✻«/f» «f»Worked for 3s · done 1:07 PM«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F02_full_working_default w=80 h=13 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt two«/»
+02|⏺ Dummy partial reply
+06|«f2»✶«/f» «f2»Tinkering… «f»(12s · ↓ 48 tokens)«/f»
+07|«f»  ⎿  Tip: dummy tip text«/f»
+09|«f»─{80}«/f»
+10|«f»❯⍽«/f»«i» «/»
+11|«f»─{80}«/f»
+12|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== F03_full_working_draft w=80 h=12 alt=1 full expect=working/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.draft
+06|«f2»✳«/f» «f2»Zesting… «f»(3s · ↓ 9 tokens)«/f»
+08|«f»─{80}«/f»
+09|«f»❯⍽«/f»dummy queued draft«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on«/f»
+
+=== F04_classic_statusline_idle w=80 h=14 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt three«/»
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Churned for 1m 26s · done 12:57 PM«/f»
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f2»dummy-status line one«/f»⟩«f»◐ medium · /effort«/f»
+10|  «f»dummy-status line two · 42%«/f»
+11|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F05_classic_statusline_working_rm w=80 h=14 alt=0 classic expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt four«/»
+02|«f2»●«/f» «f2»Metamorphosing… «f»(0s · ↓ 2 tokens)«/f»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»dummy-status line two · 42%«/f»
+09|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F06_full_retry w=80 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.retry,claude.composer.empty
+04|«f2»✻«/f» «f2»API error«f» · Retrying in 4s · attempt 2/10«/f»
+06|«f»─{80}«/f»
+07|«f»❯⍽«/f»«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== F07_full_bg_agent w=100 h=15 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+02|«f2»⏺«/f» «b»Agent«/»(Dummy subagent)
+03|«f»  ⎿  «/f»Backgrounded agent«f» (↓ to manage · ctrl+o to expand)«/f»
+05|⏺ Dummy reply.
+07|«f»✻«/f» «f»Waiting for «b»1«/»«f» background agent to finish«/f»
+08|«f»─{100}«/f»
+09|❯⍽«i» «/»
+10|«f»─{100}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+13|«b»  ⏺ main«/»
+14|«f»  ◯ general-purpose«/f»  «f»Dummy subagent«/f»⟩«f»15s · ↓ 27 tokens«/f»
+
+=== F08_full_shell_pill_idle w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+03|«f»✻«/f» «f»Cogitated for 0s · done 12:53 PM · 1 shell still running«/f»
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · «f2»1 shell«f» · ← for agents · ↓ to manage«/f»
+
+=== F09_full_narrow22_working w=22 h=8 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+00|  psi omega. Alpha
+02|«f2»·«/f» «f2»Zesting… «f»(27s)«/f»
+04|«f»─{22}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{22}«/f»
+07|  «f»⏸ manual mode on ·«/f»
+
+=== F10_full_placeholder_idle w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+04|«f»─{80}«/f»
+05|❯⍽«d»Try "dummy example prompt"«/»
+06|«f»─{80}«/f»
+07|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== F11_full_queued_working w=80 h=13 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+04|«g»«f»❯ «/f»dummy queued message«/»
+05|  «f»ctrl+x ctrl+s to send now«/f»
+07|«f2»✽«/f» «f2»Concocting… «f»(10s · ↓ 44 tokens)«/f»
+09|«f»─{80}«/f»
+10|«f»❯⍽«/f»«i»P«/»«d»ress up to edit queued messages«/»
+11|«f»─{80}«/f»
+12|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== F12_full_permission_bash w=80 h=30 alt=1 full expect=unknown/permission/none blocked reason=partial rules=claude.permission.dialog,claude.composer.blocked
+06|«g»«f»❯ «/f»dummy prompt five«/»
+08|«f2»⏺«/f» Creating a dummy file
+09|«f»  ⎿  $ touch dummy-made.txt«/f»
+11|«f2»─{80}«/f»
+12| «b»«f2»Bash command«/»
+13| «f»Tip: auto mode handles these prompts for you — choose "switch to auto mode" «/f»
+14| «f»below«/f»
+15| Create a dummy file
+16|«f»╌{80}«/f»
+17| touch dummy-made.txt
+18|«f»╌{80}«/f»
+19| Do you want to proceed?
+20| «f2»❯«/f» «f»1. «f2»Yes«/f»
+21|   «f»2. «/f»Yes, and always allow access to
+22|      «b»/dummy/a-very-long-dummy-workspace-path/that-wraps-over-two-rows/and-kee«/»
+23|      «b»ps-going/w2«/» from this project
+24|   «f»3. «/f»Yes, and switch to auto mode«f» · auto mode handles these prompts for you«/f»
+25|   «f»4. «/f»No
+27| «f»Esc to cancel · Tab to amend«/f»
+
+=== F12b_full_permission_w26 w=26 h=18 alt=1 full expect=unknown/permission/none blocked reason=partial rules=claude.permission.dialog,claude.composer.blocked
+01|«f2»─{26}«/f»
+02| «b»«f2»Bash command«/»
+03| Create a dummy file
+04|«f»╌{26}«/f»
+05| touch dummy-made.txt
+06|«f»╌{26}«/f»
+07| Do you want to proceed?
+08| «f2»❯«/f» «f»1. «f2»Yes«/f»
+09|   «f»2. «/f»Yes, and always
+10|      allow access to /dum
+11|      my/w2 from this
+12|      project
+13|   «f»3. «/f»No
+15| «f»Esc to cancel · Tab to «/f»
+16| «f»amend«/f»
+
+=== F13_classic_permission_mcp w=80 h=16 alt=0 classic expect=unknown/permission/none blocked reason=partial rules=claude.permission.dialog,claude.composer.blocked
+00|⏺ Working on it.
+02|«f» «/f» Calling dummy… «f»(ctrl+o to expand)«/f»
+04|«f2»─{80}«/f»
+05| «b»«f2»Tool use«/»
+07|   «b»dummy — Ask User Tool:«/»«f» (MCP)«/f»
+09| Do you want to proceed?
+10| «f2»❯«/f» «f»1. «f2»Yes«/f»
+11|   «f»2.«/f» Yes, and don't ask again for dummy — Ask User commands in …
+12|   «f»3.«/f» No
+14| «f»Esc to cancel · Tab to amend«/f»
+
+=== F13b_full_permission_edit w=80 h=17 alt=1 full expect=unknown/permission/none blocked reason=partial rules=claude.permission.dialog,claude.composer.blocked
+00|⏺ Update(dummy.txt)
+02|«f2»─{80}«/f»
+03| «b»«f2»Edit file«/»
+04| dummy.txt
+05|«f»╌{80}«/f»
+06| «f»1 «/f»-alpha
+07| «f»1 «/f»+beta
+08|«f»╌{80}«/f»
+09| Do you want to make this edit to dummy.txt?
+10| «f2»❯«/f» «f»1. «f2»Yes«/f»
+11|   «f»2. «/f»Yes, and switch to accept edits (auto-approve file edits and common file 
+12|      commands) for this session (shift+tab)
+13|   «f»3. «/f»No
+15| «f»Esc to cancel · Tab to amend«/f»
+
+=== F14_full_question_single w=80 h=18 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.form,claude.composer.blocked
+00|⏺ Let me ask.
+01|«f»─{80}«/f»
+02|«f»«g» ☐ Color «/»
+04|«b»Which dummy color should we use?«/»
+06|«f2»❯«/f» «f»1.«/f» «f2»Red«/f»
+07|     «f»The red one«/f»
+08|  «f»2.«/f» Blue
+09|     «f»The blue one«/f»
+10|  «f»3. Type something.«/f»
+11|«f»─{80}«/f»
+12|  4. Chat about this
+14|«f»Enter to select · ↑/↓ to navigate · Esc to cancel«/f»
+
+=== F14b_full_question_w40 w=40 h=18 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.form,claude.composer.blocked
+01|«f»─{40}«/f»
+02|«f»«g» ☐ Color «/»
+04|«b»Which dummy color should we use?«/»
+06|«f2»❯«/f» «f»1.«/f» «f2»Red«/f»
+07|     «f»The red one«/f»
+08|  «f»2.«/f» Blue
+09|     «f»The blue one«/f»
+10|  «f»3. Type something.«/f»
+11|«f»─{40}«/f»
+12|  4. Chat about this
+14|«f»Enter to select · ↑/↓ to navigate · Esc«/f»
+15|«f»to cancel«/f»
+
+=== F14c_full_question_countdown w=80 h=18 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.form,claude.composer.blocked
+01|«f»─{80}«/f»
+02|«f»«g» ☐ Color «/»
+04|«b»Which dummy color should we use?«/»
+06|«f2»❯«/f» «f»1.«/f» «f2»Red«/f»
+07|  «f»2.«/f» Blue
+08|  «f»3. Type something.«/f»
+09|«f»─{80}«/f»
+10|  4. Chat about this
+12|«f»Enter to select · ↑/↓ to navigate · Esc to cancel«/f»
+13|⟩«f»auto-continue in 42s · any key to stay«/f»
+
+=== F15_full_question_multi_freetext w=80 h=17 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.form,claude.composer.blocked
+00|«f»─{80}«/f»
+01|← «f»«g» ☐ Color «/» ☐ Sizes  ☐ Shape  ✔ Submit  →
+03|«b»Which dummy color should we use?«/»
+05|  «f»1.«/f» Red
+06|     «f»The red one«/f»
+07|  «f»2.«/f» Blue
+08|     «f»The blue one«/f»
+09|«f2»❯«/f» «f»3. «/f»dummy answer«i» «/»
+10|«f»─{80}«/f»
+11|  4. Chat about this
+13|«f»Enter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Vim · Esc to «/f»
+14|«f»cancel«/f»
+
+=== F16_full_question_review w=80 h=15 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.review,claude.composer.blocked
+00|«f»─{80}«/f»
+01|←  «f»☒«/f» Color  «f»☒«/f» Sizes  «f»☒«/f» Shape «f»«g» ✔ Submit «/» →
+03|«b»Review your answers«/»
+05| ● Which dummy color should we use?
+06|   → Red
+07| ● Which dummy sizes apply?
+08|   → Small
+10|«f»Ready to submit your answers?«/f»
+12|«f2»❯«/f» «f»1. «f2»Submit answers«/f»
+13|  «f»2. «/f»Cancel
+
+=== F17_full_plan_ready_bottom w=80 h=14 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.plan,claude.composer.blocked
+00|   2. Step two.
+01|  «f»╌{78}«/f»
+03|  «f2»─{78}«/f»
+04|   «f»Claude has written up a plan and is ready to execute. Would you like to «/f»
+05|   «f»proceed?«/f»
+07|   «f2»❯«/f» «f»1. «f2»Yes, and use auto mode«/f»
+08|     «f»2. «/f»Yes, manually approve edits
+09|     «f»3. Tell Claude what to change«/f»
+10|        «f»shift+tab to approve with this feedback«/f»
+12|   «f»ctrl+g to edit in Vim · ~/.claude/plans/dummy-plan.md«/f»
+
+=== F17b_full_plan_w40 w=40 h=16 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.plan,claude.composer.blocked
+00|  «f»╌{38}«/f»
+02|  «f2»─{36}«/f»
+03|   «f»Claude has written up a plan and «/f»
+04|   «f»is ready to execute. Would you «/f»
+05|   «f»like to proceed?«/f»
+07|   «f2»❯«/f» «f»1. «f2»Yes, and use auto mode«/f»
+08|     «f»2. «/f»Yes, manually approve edits
+09|     «f»3. Tell Claude what to change«/f»
+10|        «f»shift+tab to approve with «/f»
+11|        «f»this feedback«/f»
+13|   «f»ctrl+g to edit in Vim · ~/.claude/pla«/f»
+14|   «f»ns/dummy-plan.md«/f»
+
+=== F18_full_exit_plan_w60 w=60 h=11 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.exit_plan,claude.composer.blocked
+01|«f2»▔{60}«/f»
+03|  «f2»─{56}«/f»
+04|   «b»«f2»Exit plan mode?«/»
+06|    Claude wants to exit plan mode
+08|    «f2»❯«/f» «f»1. «f2»Yes, and switch to «b»default (ask each time)«/»«f2» for «/f»
+09|         «f2»this session«/f»
+10|      «f»2. «/f»No
+
+=== F19_classic_elicitation w=80 h=16 alt=0 classic expect=unknown/input/none blocked reason=partial rules=claude.input.elicitation,claude.composer.blocked
+00|«f» «/f» Calling dummy… «f»(ctrl+o to expand)«/f»
+02|«f2»─{80}«/f»
+03|  «b»«f2»MCP server “dummy” requests your input«/»
+05|  «f»Please provide dummy details«/f»
+07|  «f2»❯«/f» «f2»*«/f» «b»«f2»Dummy name«/»«f2»: «/f»«i»T«/»«d»ype something…«/»
+08|        «f»Any dummy name«/f»
+10|  «f2» «/f»   Dummy size: «it»«f»not set«/»
+12|  «f2» «f» Accept«/f»  «f2» «f» Decline«/f»
+14|  «it»«f»Esc to cancel · ↑/↓ to navigate · Backspace to unset«/»
+
+=== F20_pre_setup_trust w=80 h=20 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust,claude.composer.blocked
+01|«f2»─{80}«/f»
+02| «b»«f2»Accessing workspace:«/»
+04| «b»/dummy/workspace«/»
+06| Quick safety check: Is this a project you created or one you trust? (Like your
+07| own code, a well-known open source project, or work from your team). If not,
+08| take a moment to review what's in this folder first.
+10| Claude Code'll be able to read, edit, and execute files here.
+12| «f»«o»Security guide«/o»«/f»
+14| «f2»❯«/f» «f2»No, exit«/f»
+15|   Yes, I trust this folder
+17| «f»Enter to confirm · Esc to cancel«/f»
+
+=== F20b_pre_setup_trust_w26 w=26 h=18 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust,claude.composer.blocked
+01|«f2»─{26}«/f»
+02| «b»«f2»Accessing workspace:«/»
+04| «b»/dummy/workspace«/»
+06| Quick safety check: Is
+07| this a project you
+08| created or one you
+09| trust?
+11| «f»«o»Security guide«/o»«/f»
+13| «f2»❯«/f» «f2»No, exit«/f»
+14|   Yes, I trust this
+15|   folder
+16| «f»Enter to confirm · Esc«/f»
+17| «f»to cancel«/f»
+
+=== F21_pre_setup_apikey w=80 h=11 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.apikey,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»Detected a custom API key in your environment«/»
+03|  «b»ANTHROPIC_API_KEY«/»: sk-ant-...dummy
+05|  Do you want to use this API key?
+07|    Yes
+08|  «f2»❯«/f» «f2»No («b»recommended«/»«f2»)«/f»
+10|  «f»Enter to confirm · Esc to cancel«/f»
+
+=== F21b_pre_setup_apikey_w40 w=40 h=13 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.apikey,claude.composer.blocked
+00|«f2»─{40}«/f»
+01|  «b»«f2»Detected a custom API key in your«/»
+02|  «b»«f2»environment«/»
+04|  «b»ANTHROPIC_API_KEY«/»:
+05|  sk-ant-...dummy
+07|  Do you want to use this API key?
+09|    Yes
+10|  «f2»❯«/f» «f2»No («b»recommended«/»«f2»)«/f»
+12|  «f»Enter to confirm · Esc to cancel«/f»
+
+=== F21c_pre_setup_theme w=80 h=26 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.theme,claude.composer.blocked
+00|.......«f2»█«/f» «f2»█«/f»   «f2»█«/f» «f2»█«/f».........................................
+02| Let's get started.
+04| «b»Choose the text style that looks best with your terminal«/»
+05| «f»To change this later, run /theme«/f»
+07|     Auto (match terminal)
+08| «f2»❯ ✔ Dark mode«/f»
+09|     Light mode
+10|     Dark mode (colorblind-friendly)
+11|     Light mode (colorblind-friendly)
+12|     Dark mode (ANSI colors only)
+13|     Light mode (ANSI colors only)
+15| «f»╌{79}«/f»
+16|  «f»1«/f»  function greet() {
+17|  «f»2«/f» -  console.log("Hello, World!");
+18|  «f»2«/f» +  console.log("Hello, Claude!");
+19|  «f»3«/f»  }
+20| «f»╌{79}«/f»
+21|  «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»
+
+=== F21d_pre_setup_theme_numbered w=80 h=26 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.theme,claude.composer.blocked
+00|Welcome to Claude Code v0.0.0
+02| Let's get started.
+04| «b»Choose the text style that looks best with your terminal«/»
+05| «f»To change this later, run /theme«/f»
+07|   1. Auto (match terminal)
+08| «f2»❯ 2. Dark mode ✔«/f»
+09|   3. Light mode
+10|   4. Dark mode (colorblind-friendly)
+11|   5. Light mode (colorblind-friendly)
+12|   6. Dark mode (ANSI colors only)
+13|   7. Light mode (ANSI colors only)
+15| «f»╌{78}«/f»
+16|  «f»1«/f»  function greet() {
+17|  «f»2«/f» -  console.log("Hello, World!");
+18|  «f»2«/f» +  console.log("Hello, Claude!");
+19|  «f»3«/f»  }
+20| «f»╌{78}«/f»
+21|  «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»
+
+=== F21e_pre_setup_theme_numbered_w26 w=26 h=34 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.theme,claude.composer.blocked
+00|Welcome to Claude Code
+02| Let's get started.
+04| «b»Choose the text style«/»
+05| «b»that looks best with«/»
+06| «b»your terminal«/»
+07| «f»To change this later,«/f»
+08| «f»run /theme«/f»
+10|   1. Auto (match
+11| «f2»❯ 2. Dark mode ✔«/f»
+12|   3. Light mode
+13|   4. Dark mode (colorblin
+14|      d-friendly)
+15|   5. Light mode (colorbli
+16|      nd-friendly)
+17|   6. Dark mode (ANSI
+18|      colors only)
+19|   7. Light mode (ANSI
+20|      colors only)
+22| «f»╌{24}«/f»
+23|  «f»1«/f»  function greet()
+24|      {
+25|  «f»2«/f» -  console.log("H
+26|    -ello, World!");
+27|  «f»2«/f» +  console.log("H
+28|    +ello, Claude!");
+29|  «f»3«/f»  }
+30| «f»╌{24}«/f»
+31|  «f»Syntax theme: Monokai«/f»
+32| «f»Extended (ctrl+t to«/f»
+33| «f»disable)«/f»
+
+=== F22_pre_setup_login w=80 h=10 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.login,claude.composer.blocked
+01| «b»Claude Code can be used with your Claude subscription or billed based on API «/»
+02| «b»usage.«/»
+04| Select login method:
+06| «f2»❯«/f» «f»1. «f2»Claude account with subscription · «f»Pro, Max, Team, or Enterprise«/f»
+07|   «f»2. «/f»Anthropic Console account · «f»API usage billing«/f»
+08|   «f»3. «/f»3rd-party platform · «f»Amazon Bedrock, Microsoft Foundry, Google Vertex AI«/f»
+
+=== F23_full_menu_model w=80 h=15 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.model,claude.composer.blocked
+00|«f»✻«/f» «f»Churned for 0s · done 12:59 PM«/f»
+01|«f2»▔{59}«/f» «f»◐ medium · /effort«/f» «f2»▔«/f»
+02|   «b»«f2»Select model«/»
+03|   «f»Switch between Claude models. Your pick becomes the default for new «/f»
+04|   «f»sessions. For other/previous model names, specify with --model.«/f»
+06|   «f2»❯«/f» «f»1. «f2»Default (recommended)«/f» «f2»✔«/f»  «f»Use the default model (currently Dummy) ·«/f»
+07|                                 «f»$4/$20 per Mtok«/f»
+08|     «f»2. «/f»Opus                     «f»Dummy · Best for everyday, complex tasks«/f»
+10|   «f2»◐«f» Medium effort (default) ←/→ to adjust«/f»
+12|   «f»Enter to set as default · s to use this session only · Esc to cancel«/f»
+
+=== F23b_full_menu_model_w40_obscured w=40 h=16 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=
+00|«f2»▔{40}«/f»
+01|   «b»«f2»Select model«/»
+02|   «f»Switch between Claude models. Your«/f»
+03|   «f»pick becomes the default for new «/f»
+05|   «f2»❯«/f» «f»1. «f2»Default (reco…«/f» «f2»✔«/f»  «f»Use the «/f»
+06|                          «f»default «/f»
+07|                          «f»model «/f»
+08|     «f»2. «/f»Opus              «f»Dummy · «/f»
+09|                          «f»Best for «/f»
+10|                          «f»everyday, «/f»
+11|     «f»3. «/f»Sonnet            «f»Dummy · «/f»
+12|                          «f»Efficient«/f»
+13|                          «f»for «/f»
+14|                          «f»routine «/f»
+15|                          «f»tasks«/f» «f»↓«/f»
+
+=== F24_full_menu_transcript w=80 h=12 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.transcript,claude.composer.blocked
+02|«g»«f»❯ «/f»dummy prompt«/»
+04|                                                «f»05:04 PM«/f» «f»dummy-model«/f»
+05|⏺ Dummy reply.
+07|«f»✻«/f» «f»Cooked for 0s · done 5:04 PM«/f»
+10|«d»─{80}«/»
+11|  «f»Showing detailed transcript · ctrl+o to toggle · ? for shortcuts«/f»      «f»verbose«/f»
+
+=== F25_full_menu_help w=80 h=12 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.layout.composer,claude.menu.help,claude.composer.blocked
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»! for shell mode«/f»     «f»double tap esc to clear input«/f»  «f»ctrl + shift + _ to undo«/f»
+10|  «f»/ for commands«/f»       «f»shift + tab to auto-accept«/f»     «f»ctrl + z to suspend«/f»
+11|  «f»@ for file paths«/f»     «f»edits«/f»                          «f»ctrl + v to paste images«/f»
+
+=== F26_full_menu_btw w=80 h=10 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.btw,claude.composer.blocked
+00|«f»  ⎿  «/f»Disabled dummy setting
+02|«f2»▔{80}«/f»
+04|    «b»«f2»/btw «/»«f»dummy side question«/f»
+06|      «f2»✢«/f» «f2»Answering…«/f»
+08|    «f»Esc to close«/f»
+
+=== F26b_full_menu_btw_answered w=80 h=10 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.btw,claude.composer.blocked
+02|«f2»▔{80}«/f»
+04|    «b»«f2»/btw «/»«f»dummy side question«/f»
+06|      Dummy reply.
+08|    «f»↑/↓ to scroll · c to copy · f to fork · Esc to close«/f»
+
+=== F27_full_menu_agents_view w=80 h=14 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.agents_view,claude.composer.blocked
+01|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+03|«f2» ▝▝   ▝▝ «/f»  «f»1 awaiting input · 0 working · 0 completed«/f»
+05|«f»Your conversation moved to the background — enter opens it · esc returns to it«/f»
+07|«b»«f»Needs input«/»
+08| «f»Sessions that have a question or need your decision land here«/f»
+10|«d»─{80}«/»
+11|«f»❯«/f» «i»d«/»«f»escribe a task for a new session«/f»
+12|«d»─{80}«/»
+13|  «f2»⏸ plan mode«f» · enter to return · space to reply · ? for shortcuts«/f»
+
+=== F28_sr_idle w=80 h=8 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+00|[Screen Reader Mode: on via env]
+02|you: dummy prompt
+03|claude: Dummy reply.
+04|Sautéed for 1m 28s · done 1:03 PM
+05|manual mode on
+06|effort: medium · /effort
+07|$⍽
+
+=== F28b_sr_auto_idle w=80 h=9 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+02|you: dummy prompt
+03|claude: Dummy reply.
+04|Brewed for 33s · done 2:09 PM
+05|auto mode on (shift+tab to cycle)
+06|tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and
+07|reattach for focus tracking
+08|$
+
+=== F29_sr_working w=80 h=6 alt=0 sr expect=working/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.hint_sr,claude.composer.empty
+01|you: dummy prompt
+02|claude: Dummy partial reply
+03|Pollinating…
+04|manual mode on  ·  esc to interrupt
+05|$⍽
+
+=== F29b_sr_draft_during_work w=80 h=7 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+01|you: dummy prompt
+02|claude: Dummy reply Dummy reply Dummy reply Dummy reply Dummy reply Dummy reply
+03|Dummy reply Dummy reply
+04|Razzle-dazzling…
+05|auto mode on (shift+tab to cycle)
+06|$⍽ x
+
+=== F29c_sr_retry_draft w=80 h=6 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+02|you: dummy prompt
+03|500 dummy failure  · Retrying in 10s · attempt 5/10
+04|auto mode on (shift+tab to cycle)
+05|$⍽ y
+
+=== F29d_sr_fresh_header w=80 h=8 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+00|[Screen Reader Mode: on via env]
+01|Claude Code v0.0.0
+02|Dummy · API Usage Billing
+03|/dummy/workspace
+04|auto mode on (shift+tab to cycle)
+05|effort: medium · /effort
+06|$
+
+=== F30_sr_permission w=80 h=12 alt=0 sr expect=unknown/permission/none blocked reason=partial rules=claude.permission.sr,claude.composer.blocked
+00|tool: Bash (touch dummy-made.txt)
+01|Waiting…
+02|Permission Required: Bash command
+03|> Create a dummy file
+04|> touch dummy-made.txt
+05|Do you want to proceed?
+06|1. Yes
+07|2. Yes, and always allow access to dummy-dir from this project
+08|3. No
+09|Select with numbers [1-3]. Then Enter to submit or Escape to cancel:
+10|Esc to cancel · Tab to amend
+
+=== F31_sr_question w=80 h=10 alt=0 sr expect=unknown/question/none blocked reason=partial rules=claude.question.sr,claude.composer.blocked
+00|claude: Let me ask.
+01|←   ☐ Color   ☐ Sizes   ✔ Submit   →
+02|> Which dummy color should we use?
+03|1. Red — The red one
+04|2. Blue — The blue one
+05|3. Other
+06|4. Chat about this
+07|Select with numbers [1-4]. Then Enter to submit or Escape to cancel:
+
+=== F32_full_bash_mode w=80 h=8 alt=1 full expect=unknown/none/none draft reason=partial rules=claude.layout.composer,claude.composer.draft
+04|«f2»─{80}«/f»
+05|«f2»!⍽«/f»«i» «/»
+06|«f2»─{80}«/f»
+07|  «f2»! for shell mode«/f»
+
+=== F33_sr_startup w=80 h=8 alt=0 sr expect=starting/unknown/none unknown reason=partial rules=claude.activity.starting_sr
+00|[Screen Reader Mode: on via env]
+
+=== F34_full_subagent_view w=100 h=13 alt=1 full expect=working/menu/none blocked reason=recognized rules=claude.layout.composer,claude.menu.subagent,claude.activity.background,claude.composer.blocked
+02|«f2»✶«/f» «f2»Contemplating… «f»(23s)«/f»
+03|«f»  ⎿  Tip: dummy tip text«/f»
+05|«f»─{83}«g» Dummy subagent «/g»─«/f»
+06|❯⍽«d»Message @general-purpose…«/»
+07|«f»─{100}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+10|«f»  ◯ main«/f»
+11|«b»  ⏺ general-purpose«/»  «b»Dummy subagent«/»⟩«b»26s«/»
+
+=== F35_full_nocolor_working_draft w=80 h=10 alt=1 full expect=unknown/none/none draft reason=partial rules=claude.layout.composer,claude.composer.draft
+01|⏺ Dummy text.
+03|✳ Prestidigitating… (6s · ↓ 39 tokens)
+04|  tmux detected · scroll with PgUp/PgDn · or add 'set -g mouse on' to ~/.tmux…
+05|─{80}
+06|❯⍽x«i» «/»
+07|─{80}
+08|  ⏸ manual mode on
+
+=== F36_full_nocolor_working_hint w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.hint,claude.composer.empty
+03|✳ Prestidigitating… (6s · ↓ 39 tokens)
+05|─{80}
+06|❯⍽«i» «/»
+07|─{80}
+08|  ⏸ manual mode on · esc to interrupt · ← for agents
+
+=== F37_full_tmux_notice_working w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+03|«f2»✢«/f» «f2»Inferring… «f»(4s · ↓ 30 tokens)«/f»
+04|  «f»tmux detected · scroll with PgUp/PgDn · or add 'set -g mouse on' to ~/.tmux…«/f»
+05|«f»─{80}«/f»
+06|«f»❯⍽«/f»«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on«/f»
+
+=== F38_full_w26_hidden_pill w=26 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»✻«/f» «f»Baked for 0s«/f»
+04|«f»─{26}«/f»
+05|❯⍽«i» «/»
+06|«f»─{26}«/f»
+07|  «f»⏸ manual mode on · «f2»1«/f»
+
+=== F38b_full_w21_hidden_pill w=21 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»✻«/f» «f»Baked for 0s«/f»
+04|«f»─{21}«/f»
+05|❯⍽«i» «/»
+06|«f»─{21}«/f»
+07|  «f»⏸ manual mode on«/f»
+
+=== F38c_full_w34_truncated_hint_idle w=34 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»✻«/f» «f»Baked for 0s«/f»
+04|«f»─{34}«/f»
+05|❯⍽«i» «/»
+06|«f»─{34}«/f»
+07|  «f»⏸ manual mode on · «f2»1 shell«f» · …«/f»
+
+=== F39_classic_w120_notice_suffix_idle w=120 h=6 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«f»─{120}«/f»
+01|❯⍽«i» «/»
+02|«f»─{120}«/f»
+03|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»⟩«f»◐ medium · /effort«/f»
+
+=== F39b_classic_w60_notice_below_idle w=60 h=8 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«f»✻«/f» «f»Churned for 0s · done 2:15 PM«/f»
+02|«f»─{60}«/f»
+03|❯⍽«i» «/»
+04|«f»─{60}«/f»
+05|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+06|⟩«f»◐ medium · /effort«/f»
+
+=== F40_full_scrollback_working w=80 h=8 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.hint,claude.composer.empty
+02|⏺ Dummy reply.           «f»«g»Jump to bottom: fn+↓ to scroll «/»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== F40b_full_scrollback_idle w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.           «f»«g»Jump to bottom: fn+↓ to scroll «/»
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F41_full_survey_idle w=80 h=11 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+02|«f»✻«/f» «f»Baked for 0s · done 1:07 PM«/f»
+04|«f2»●«/f» «b»How is Claude doing this session? (optional)«/»
+05|  «f2»1«/f»: Bad     «f2»2«/f»: Fine    «f2»3«/f»: Good    «f2»0«/f»: Dismiss
+07|«f»─{80}«/f»
+08|❯⍽«i» «/»
+09|«f»─{80}«/f»
+10|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F42_classic_tall_top_region w=80 h=100 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer@top,claude.activity.idle@top,claude.composer.empty@top
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+03|«f»─{80}«/f»
+04|❯⍽«i» «/»
+05|«f»─{80}«/f»
+06|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N01_quoted_chrome_idle w=80 h=24 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|⏺ Here is quoted old chrome:
+02|  ✶ Pondering… (3s · ↓ 10 tokens)
+04|  Do you want to proceed?
+05|  ❯ 1. Yes
+06|    2. No
+08|  Esc to cancel · Tab to amend
+10|  ⏸ manual mode on · esc to interrupt
+12|  Enter to select · ↑/↓ to navigate · Esc to cancel
+14|  ✻ Waiting for 1 background agent to finish
+16|«f»✻«/f» «f»Baked for 0s · done 1:07 PM«/f»
+20|«f»─{80}«/f»
+21|❯⍽«i» «/»
+22|«f»─{80}«/f»
+23|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N02_interrupted_idle w=80 h=10 alt=1 full expect=idle/none/interrupted empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.interrupted
+03|⏺ Dummy partial reply
+04|«f»  ⎿  Interrupted · What should Claude do instead?«/f»
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N03_api_error_idle w=80 h=10 alt=1 full expect=idle/none/error empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty,claude.notice.error
+01|«f2»⏺«/f» «f2»API Error: 400 dummy failure«/f»
+03|«f»✻«/f» «f»Churned for 0s · done 12:59 PM«/f»
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N04_historical_waiting_idle w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|«f»✻«/f» «f»Waiting for «b»1«/»«f» background agent to finish«/f»
+03|«f2»⏺«/f» Agent "Dummy subagent" finished«f» · 2m 0s«/f»
+05|⏺ Dummy follow-up.
+07|«f»✻«/f» «f»Baked for 2m 0s · done 12:55 PM«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== N05_conflict_spinner_shape_ready_chevron w=80 h=10 alt=1 full expect=unknown/none/none empty reason=evidence_conflict rules=claude.layout.composer,claude.activity.conflict,claude.composer.empty
+04|● Let me check the dummy file…
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N06_loading_chevron_no_spinner_statusline w=80 h=12 alt=0 classic expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== N07_completion_row_in_slot_idle w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|  Line 79 of dummy output.
+02|«f»✻«/f» «f»Worked for 0s · done 1:07 PM«/f»
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N08_idle_draft w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽«f2»/color«/f» dummy«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · 1 shell«/f»
+
+=== N09_user_history_row_not_composer w=80 h=8 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=
+02|«g»«f»❯ «/f»dummy prompt with no live composer below«/»
+04|⏺ Dummy text.
+06|  ─{56}
+07|  dummy indented rule quoted by the model
+
+=== N10_transcript_viewer_quoted_requests w=80 h=16 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.transcript,claude.composer.blocked
+00|⏺ Quoted setup and permission text:
+01|  Accessing workspace:
+02|  ❯ No, exit
+03|    Yes, I trust this folder
+04|  Enter to confirm · Esc to cancel
+05|  Do you want to proceed?
+06|  ❯ 1. Yes
+07|    2. No
+08|  Esc to cancel · Tab to amend
+09|  «b»Make auto mode your default permission mode?«/»
+10|  Select login method:
+11|  Claude account with subscription
+14|«d»─{80}«/»
+15|  «f»Showing detailed transcript · ctrl+o to toggle · ↑↓ scroll · ? for shortcuts«/f»
+
+=== N11_labelled_rule_history w=80 h=8 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer
+04|«f»──«/f» «f»History 2/5«/f» «f»─{65}«/f»
+05|❯⍽dummy recalled prompt«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N12_hint_with_ready_chevron w=80 h=8 alt=1 full expect=unknown/none/none empty reason=evidence_conflict rules=claude.layout.composer,claude.activity.conflict,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== N13_unknown_footer_item w=80 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · dummy-link · ? for shortcuts«/f»
+
+=== N14_classic_tall_top_clipped w=80 h=100 alt=0 classic tclip=24 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+02|⏺ Dummy transcript row.
+20|⏺ Dummy transcript row.
+22|⏺ Dummy transcript row near the capture boundary.
+
+=== N15_whitespace_draft w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽   «i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N16_nocolor_no_spinner_statusline w=80 h=9 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|⏺ Dummy text.
+04|─{80}
+05|❯⍽«i» «/»
+06|─{80}
+07|  dummy-status line one
+08|  ⏸ manual mode on · ← for agents
+
+=== N17_sr_draft_claude_neighbour w=80 h=6 alt=0 sr expect=unknown/none/none draft reason=partial rules=claude.layout.sr,claude.composer.draft
+02|you: dummy prompt
+03|claude: Dummy partial reply.
+04|manual mode on
+05|$⍽ x
+
+=== N18_background_beats_conflict w=100 h=12 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+03|● Let me check the dummy file…
+05|«f»─{100}«/f»
+06|❯⍽«i» «/»
+07|«f»─{100}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+10|«b»  ⏺ main«/»
+11|«f»  ◯ general-purpose«/f»  «f»Dummy subagent«/f»⟩«f»15s · ↓ 27 tokens«/f»
+
+=== N19_quoted_spinner_last_transcript_row w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|⏺ The old screen showed:
+03|  ✶ Pondering… (3s · ↓ 10 tokens)
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F09b_full_spinner_wrapped_source w=30 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+02|«f2»✶«/f» «f2»Reticulating dummy splines…«/f»
+03|«f»(12s · ↓ 48 tokens)«/f»
+05|«f»─{30}«/f»
+06|«f»❯⍽«/f»«i» «/»
+07|«f»─{30}«/f»
+08|  «f»⏸ manual mode on · esc to i…«/f»
+
+=== N20_cursor_on_typed_char w=80 h=8 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+04|«f»─{80}«/f»
+05|❯⍽«i»x«/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F14d_full_question_chat_focused w=80 h=18 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.form,claude.composer.blocked
+00|⏺ Let me ask.
+01|«f»─{80}«/f»
+02|«f»«g» ☐ Color «/»
+04|«b»Which dummy color should we use?«/»
+06|  «f»1.«/f» Red
+07|     «f»The red one«/f»
+08|  «f»2.«/f» Blue
+09|     «f»The blue one«/f»
+10|  «f»3. Type something.«/f»
+11|«f»─{80}«/f»
+12|«f2»❯«/f» «f2»4. Chat about this«/f»
+14|«f»Enter to select · ↑/↓ to navigate · Esc to cancel«/f»
+
+=== F33b_sr_startup_after_shell w=80 h=10 alt=0 sr expect=starting/unknown/none unknown reason=partial rules=claude.activity.starting_sr
+00|dummy line one
+01|dummy line two
+02|$ claude --dummy-flag
+03|[Screen Reader Mode: on via env]
+
+=== F43_full_question_preview w=100 h=26 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.preview,claude.composer.blocked
+00|«g»«f»❯ «/f»dummy prompt«/»
+02|«f»─{100}«/f»
+03|«f»«g» ☐ Layout «/»
+05|«b»Which dummy layout should we use?«/»
+07|«f2»❯«f» 1.«b»«f2» Compact«/»                      «f»┌──────────────────────────────────────────┐«/f»
+08|  «f»2.«/f» Wide                         «f»│ «f2»+------+«f»                                 │«/f»
+09|  «f»3.«/f» Stacked                      «f»│ «f2»| a  b |«f»                                 │«/f»
+10|                                  «f»│ «f2»+------+«f»                                 │«/f»
+11|                                  «f»└──────────────────────────────────────────┘«/f»
+13|                                  «f2»Notes:«/f» «it»«f»press n to add notes«/»
+15|«f»─{100}«/f»
+16|  Chat about this
+18|«f»Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel«/f»
+
+=== F43b_full_question_preview_w40_chat_focused w=40 h=24 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.preview,claude.composer.blocked
+02|«f»─{40}«/f»
+03|«f»«g» ☐ Layout «/»
+05|«b»Which dummy layout should we use?«/»
+07|  «f»1.«/f» Compact           «f»┌────┐«/f»
+08|  «f»2.«/f» Wide              «f»│ +- │«/f»
+09|«f2»❯«f» 3.«b»«f2» Stacked«/»           «f»│ -- │«/f»
+10|                       «f»│ +  │«/f»
+11|                       «f»└────┘«/f»
+13|                       «f2»Notes«/f» «it»«f»press n to«/»
+14|                       «f2»:«/f»     «it»«f»add notes«/»
+16|«f»─{40}«/f»
+17|«f2»❯«/f» «f2»Chat about this«/f»
+19|«f»Enter to select · ↑/↓ to navigate · n to«/f»
+20|«f»add notes · Esc to cancel«/f»
+
+=== N21_question_preview_quoting_copy w=100 h=24 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.preview,claude.composer.blocked
+02|«f»─{100}«/f»
+03|«f»«g» ☐ Dialog «/»
+05|«b»Which dummy dialog mockup should we use?«/»
+07|«f2»❯«f» 1.«b»«f2» Plain«/»                        «f»┌──────────────────────────────────────────┐«/f»
+08|  «f»2.«/f» Boxed                        «f»│ Do you want to proceed?                  │«/f»
+09|                                  «f»│ ❯ 1. Yes                                 │«/f»
+10|                                  «f»│   2. No                                  │«/f»
+11|                                  «f»│ Esc to cancel · Tab to amend             │«/f»
+12|                                  «f»└──────────────────────────────────────────┘«/f»
+14|                                  «f2»Notes:«/f» «it»«f»press n to add notes«/»
+16|«f»─{100}«/f»
+17|  Chat about this
+19|«f»Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel«/f»
+
+=== F44_full_named_banner_idle w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»✻«/f» «f»Worked for 0s · done 3:21 PM«/f»
+04|«f»─{67} dummy-name ─«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F44b_full_named_banner_color_idle w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»✻«/f» «f»Worked for 0s · done 3:21 PM«/f»
+04|«f2»─{67}«g» dummy-name «/g»─«/f»
+05|❯⍽«i» «/»
+06|«f2»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F44c_full_named_banner_working w=80 h=8 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+02|«f2»✶«/f» «f2»Tinkering… «f»(12s · ↓ 48 tokens)«/f»
+04|«f»─{67} dummy-name ─«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== F45_full_statusline_tip_wrapped_source w=80 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+01|«f2»✶«/f» «f2»Tinkering… «f»(41s · ↓ 48 tokens)«/f»
+02|«f»  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's«/f»
+03|«f»     current work«/f»
+05|«f»─{80}«/f»
+06|«f»❯⍽«/f»«i» «/»
+07|«f»─{80}«/f»
+08|  «f2»dummy-status line one«/f»
+09|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F45b_full_statusline_next_task_source w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+01|«f2»✶«/f» «f2»Doing dummy task 1… «f»(8s · ↓ 20 tokens)«/f»
+02|«f»  ⎿  Next: Dummy task 2«/f»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F45c_full_statusline_task_list_source w=80 h=12 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+01|«f2»✶«/f» «f2»Doing dummy task 1… «f»(8s · ↓ 20 tokens)«/f»
+02|«f»  ⎿  «/f»«f2»◼ «/f»«b»Dummy task 1«/»
+03|     ◻ Dummy task 2
+04|     ◻ Dummy task 3
+05|«f»      … +2 pending«/f»
+07|«f»─{80}«/f»
+08|«f»❯⍽«/f»«i» «/»
+09|«f»─{80}«/f»
+10|  «f2»dummy-status line one«/f»
+11|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F45d_full_statusline_retry_overload_source w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.retry,claude.composer.empty
+01|«f2»✻«/f» «f2»Overloaded«f» · Retrying in 8s · attempt 3/10«/f»
+02|«f»  ⎿  If it persists, check your inference gateway (dummy.invalid).«/f»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F45e_full_statusline_custom_tip_label_source w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty
+01|«f2»✶«/f» «f2»Tinkering… «f»(41s · ↓ 48 tokens)«/f»
+02|«f»  ⎿  Hint: dummy custom tip text«/f»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== F46_full_wait_workflow_source w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Waiting for «b»1«/»«f» dynamic workflow to finish«/f»
+05|«f»─{80}«/f»
+06|❯⍽«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F46b_full_wait_mixed_source w=80 h=9 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Waiting for «b»1«/»«f» background agent and «b»2«/»«f» dynamic workflows to finish«/f»
+05|«f»─{80}«/f»
+06|❯⍽«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F47_full_auto_w56_cycle_idle w=56 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{56}«/f»
+03|❯⍽«i» «/»
+04|«f»─{56}«/f»
+05|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ← for agents«/f»
+
+=== F48_full_indicator_shell_w60 w=60 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{60}«/f»
+03|❯⍽«i» «/»
+04|«f»─{60}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«f» · «f2»1 shell«f» · ← for agents · …«/f»
+
+=== F48b_full_indicator_auto_w50 w=50 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{50}«/f»
+03|❯⍽«i» «/»
+04|«f»─{50}«/f»
+05|  «f2»⏵⏵ auto mode on«f» · «f2»◆ Revie…«f» · ← for agents«/f»
+
+=== F49_full_feedback_card_source w=80 h=12 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+00|«f»✻«/f» «f»Worked for 0s · done 3:21 PM«/f»
+02|«f2»✻«/f» Bug report drafted: «b»Dummy title«/»
+03|«f»│«/f» «f»dummy preview line«/f»
+04|«f»1 to review · 2 to send · 0 to dismiss«/f»
+07|«f»─{80}«/f»
+08|❯⍽«i» «/»
+09|«f»─{80}«/f»
+10|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · 1 feedback draft«/f»
+
+=== F49b_full_feedback_turnoff_source w=80 h=10 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+00|«f»✻«/f» «f»Worked for 0s · done 3:21 PM«/f»
+02|Turn off Claude-drafted feedback? «f»0 to turn off · Esc to keep«/f»
+05|«f»─{80}«/f»
+06|❯⍽«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F50_sr_shell_pill_idle w=80 h=8 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+01|you: run a dummy background sleep
+02|tool: Bash (sleep 613)
+03|Running in the background (↓ to manage)
+04|claude: Dummy reply.
+05|Churned for 0s · done 3:22 PM · 1 shell still running
+06|manual mode on  ·  1 shell  ·  ↓ to manage
+07|$
+
+=== N22_linux_tool_block_idle w=80 h=9 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+01|● Bash(dummy)
+02|«f»  ⎿  «/f»dummy output one
+03|     dummy output two
+05|«f»─{80}«/f»
+06|❯⍽«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N23a_full_w31_indicator_hides_pill w=31 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{31}«/f»
+03|❯⍽«i» «/»
+04|«f»─{31}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«/f»
+
+=== N23b_full_w32_indicator_hides_pill w=32 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{32}«/f»
+03|❯⍽«i» «/»
+04|«f»─{32}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«/f»
+
+=== N23c_full_w33_indicator_hides_pill w=33 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{33}«/f»
+03|❯⍽«i» «/»
+04|«f»─{33}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«f» ·«/f»
+
+=== N23d_full_w34_indicator_hides_pill w=34 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{34}«/f»
+03|❯⍽«i» «/»
+04|«f»─{34}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«f» ·«/f»
+
+=== N24_full_unrecognized_tail_row w=80 h=10 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+09|  «f»◇ dummy-workflow · 2 of 5 steps«/f»
+
+=== N25_full_limit_wait_pinned_source w=80 h=15 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Worked for 3s · done 2:59 PM«/f»
+09|«f»─{80}«/f»
+10|❯⍽«i» «/»
+11|«f»─{80}«/f»
+12|  «f2»⚠ Usage limit reached«f» · limit resets 3pm · dummy.invalid/usage«/f»
+13|    «f»Continuing automatically at 3pm · esc to cancel«/f»
+14|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N25b_classic_limit_wait_pinned_statusline_source w=80 h=10 alt=0 classic expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait
+00|«f»✻«/f» «f»Worked for 3s · done 2:59 PM«/f»
+02|«f»─{80}«/f»
+03|❯⍽«i» «/»
+04|«f»─{80}«/f»
+05|  «f2»⚠ Usage limit reached«f» · limit resets 3pm · dummy.invalid/usage«/f»
+06|    «f»Continuing automatically at 3pm · esc to cancel«/f»
+07|  «f2»dummy-status line one«/f»
+08|  «f»dummy-status line two · 42%«/f»
+09|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== N26_sr_wrapped_mode_row w=34 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.sr
+01|claude: Dummy reply.
+02|Churned for 0s · done 3:22 PM · 1
+03|shell still running
+04|manual mode on  ·  1 shell  ·  ↓
+05|to manage
+06|$
+
+=== N27_sr_pill_quoted_chrome w=80 h=8 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+01|you: show the old screen
+02|claude: The old screen showed:
+03|Worked for 3s · done 1:00 PM
+04|manual mode on
+05|manual mode on  ·  1 MCP task
+06|$
+
+=== F52_pre_setup_bypass w=80 h=18 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.bypass,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»WARNING: Claude Code running in Bypass Permissions mode«/»
+03|  In Bypass Permissions mode, Claude Code will not ask for your approval
+04|  before running potentially dangerous commands.
+05|  This mode should only be used in a sandboxed container/VM that has
+06|  restricted internet access and can easily be restored if damaged.
+08|  By proceeding, you accept all responsibility for actions taken while running
+09|  in Bypass Permissions mode.
+11|  «o»https://example.invalid/security«/o»
+13|  «f2»❯«/f» «f2»No, exit«/f»
+14|    Yes, I accept
+16|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F52b_pre_setup_bypass_w40 w=40 h=26 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.bypass,claude.composer.blocked
+00|«f2»─{40}«/f»
+01|  «b»«f2»WARNING: Claude Code running in«/»
+02|  «b»«f2»Bypass Permissions mode«/»
+04|  In Bypass Permissions mode, Claude
+05|  Code will not ask for your approval
+06|  before running potentially dangerous
+07|  commands.
+08|  This mode should only be used in a
+09|  sandboxed container/VM that has
+10|  restricted internet access and can
+11|  easily be restored if damaged.
+13|  By proceeding, you accept all
+14|  responsibility for actions taken
+15|  while running in Bypass Permissions
+16|  mode.
+18|  «o»https://example.invalid/security«/o»
+20|  «f2»❯«/f» «f2»No, exit«/f»
+21|    Yes, I accept
+23|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F53_pre_setup_mcp_server w=80 h=12 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_server,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»New MCP server found in this project: dummy«/»
+03|  MCP servers may execute code or access system resources. All tool calls
+04|  require approval. Learn more in the «o»MCP documentation«/o».
+06|    Use this MCP server
+07|    Use this and all future MCP servers in this project
+08|  «f2»❯«/f» «f2»Continue without using this MCP server«/f»
+10|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F53b_pre_setup_mcp_server_w40 w=40 h=17 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_server,claude.composer.blocked
+00|«f2»─{40}«/f»
+01|  «b»«f2»New MCP server found in this«/»
+02|  «b»«f2»project: dummy«/»
+04|  MCP servers may execute code or
+05|  access system resources. All tool
+06|  calls require approval. Learn more
+07|  in the «o»MCP documentation«/o».
+09|    Use this MCP server
+10|    Use this and all future MCP servers
+11|    in this project
+12|  «f2»❯«/f» «f2»Continue without using this MCP«/f»
+13|    «f2»server«/f»
+15|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F51_sr_setup_apikey_yn w=80 h=9 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+00|[Screen Reader Mode: on via env]
+01|Welcome to Claude Code v0.0.0
+02|Detected a custom API key in your environment
+03|ANTHROPIC_API_KEY: sk-ant-...dummy
+04|Do you want to use this API key?
+05|y. Yes
+06|n. No (recommended)
+07|Enter y/n:
+08|Enter to confirm · Esc to cancel
+
+=== F54_pre_tall100_trust_top w=80 h=100 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust@top,claude.composer.blocked@top
+01|«f2»─{80}«/f»
+02| «b»«f2»Accessing workspace:«/»
+04| «b»/dummy/workspace«/»
+06| Quick safety check: Is this a project you created or one you trust? (Like your
+07| own code, a well-known open source project, or work from your team). If not,
+08| take a moment to review what's in this folder first.
+10| Claude Code'll be able to read, edit, and execute files here.
+12| «f»Security guide«/f»
+14| «f2»❯«/f» «f2»No, exit«/f»
+15|   Yes, I trust this folder
+17| «f»Enter to confirm · Esc to cancel«/f»
+
+=== F55_pre_tall70_trust_straddle w=80 h=70 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust@compound,claude.composer.blocked@compound
+01|«f2»─{80}«/f»
+02| «b»«f2»Accessing workspace:«/»
+04| «b»/dummy/workspace«/»
+06| Quick safety check: Is this a project you created or one you trust? (Like your
+07| own code, a well-known open source project, or work from your team). If not,
+08| take a moment to review what's in this folder first.
+10| Claude Code'll be able to read, edit, and execute files here.
+12| «f»Security guide«/f»
+14| «f2»❯«/f» «f2»No, exit«/f»
+15|   Yes, I trust this folder
+17| «f»Enter to confirm · Esc to cancel«/f»
+
+=== F55b_classic_tall70_composer_straddle w=80 h=70 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer@compound,claude.activity.idle@compound,claude.composer.empty
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+01|«f2»▝▜█████▛▘«/f»  «f»Dummy · API Usage Billing«/f»
+02|«f2» ▝▝   ▝▝ «/f»  «f»/dummy/workspace«/f»
+05|«f»─{80}«/f»
+06|❯⍽«i» «/»
+07|«f»─{80}«/f»
+08|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»⟩«f»◐ medium · /effort«/f»
+
+=== F56_full_menu_settings w=80 h=10 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.settings,claude.composer.blocked
+00|«f2»▔{80}«/f»
+01|   «b»«f2»Settings«/»  Status   «g» Config «/g»  Usage
+03|   «f»Search settings…«/f»
+05|   «f2»❯«/f» Auto-compact                              «f2»true«/f»
+06|     Show tips                                  true
+08|   «f»Type to filter · Enter/Space to change · Esc to close«/f»
+
+=== F57_full_permission_workflow w=100 h=23 alt=1 full expect=unknown/permission/none blocked reason=partial rules=claude.permission.workflow,claude.composer.blocked
+00|«g»«f»❯ «/f»dummy workflow prompt«/»
+02|«f»⏺«/f» «b»Workflow«/»(Dummy workflow)
+04|«f2»─{100}«/f»
+05| «b»«f2»Run a dynamic workflow?«/»
+07|  «b»Dummy workflow«/»
+09|  This dynamic workflow will spin up multiple subagents across the following phases:
+10|    1. Wait
+11|  «f»     · "dummy wait task"«/f»
+13|  «f2»Dynamic workflows can use a lot of tokens quickly by running many subagents in parallel — which «/f»
+14|  «f2»counts against your usage limit. Stop a running workflow at any time with /workflows, or disable«/f»
+15|  «f2»dynamic workflows in /config.«/f»
+17|  «f2»❯«/f» «f»1. «f2»Yes, run it«/f»
+18|    «f»2. «/f»View raw script
+19|    «f»3. «/f»No
+21|  «f»Esc to cancel · Tab to amend«/f»
+22|  «f»ctrl+g to edit script in $EDITOR«/f»
+
+=== F57b_full_permission_workflow_w40 w=40 h=27 alt=1 full expect=unknown/permission/none blocked reason=partial rules=claude.permission.workflow,claude.composer.blocked
+00|«f»⏺«/f» «b»Workflow«/»(Dummy workflow)
+02|«f2»─{40}«/f»
+03| «b»«f2»Run a dynamic workflow?«/»
+05|  «b»Dummy workflow«/»
+07|  This dynamic workflow will spin up
+08|  multiple subagents across the
+09|  following phases:
+10|    1. Wait
+11|  «f»     · "dummy wait task"«/f»
+13|  «f2»Dynamic workflows can use a lot of«/f»
+14|  «f2»tokens quickly by running many«/f»
+15|  «f2»subagents in parallel — which counts«/f»
+16|  «f2»against your usage limit. Stop a«/f»
+17|  «f2»running workflow at any time with«/f»
+18|  «f2»/workflows, or disable dynamic«/f»
+19|  «f2»workflows in /config.«/f»
+21|  «f2»❯«/f» «f»1. «f2»Yes, run it«/f»
+22|    «f»2. «/f»View raw script
+23|    «f»3. «/f»No
+25|  «f»Esc to cancel · Tab to amend«/f»
+26|  «f»ctrl+g to edit script in $EDITOR«/f»
+
+=== F58_full_workflow_panel w=100 h=17 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+00|«g»«f»❯ «/f»dummy workflow prompt«/»
+02|«f2»⏺«/f» «b»Workflow«/»(Dummy workflow)
+03|«f»  ⎿ ⍽Running in background · «f2»/workflows«f» to monitor and save«/f»
+05|⏺ Dummy reply.
+07|«f»✻«/f» «f»Waiting for «b»1«/»«f» dynamic workflow to finish«/f»
+10|⟩«f»◐ medium · /effort«/f»
+11|«f»─{100}«/f»
+12|❯⍽«i» «/»
+13|«f»─{100}«/f»
+14|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+16|«f»  ◯ dummy-wf«/f»  «f»▱{20}«/f»  «f»0/1 · 8s«/f»
+
+=== F59_pre_settings_error w=80 h=13 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.settings_error,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»Settings Error«/»
+03|  «f»/dummy/config/settings.json«/f»
+04|  «f»└ Invalid or malformed JSON«/f»
+06|  «f»Files with errors are skipped entirely, not just the invalid settings.«/f»
+08|  «f2»❯«/f» «f»1. «f2»Fix with Claude«/f»
+09|    «f»2. «/f»Exit and fix manually
+10|    «f»3. «/f»Continue without these settings
+12|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F59b_pre_settings_error_w40 w=40 h=15 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.settings_error,claude.composer.blocked
+00|«f2»─{40}«/f»
+01|  «b»«f2»Settings Error«/»
+03|  «f»/dummy/config/settings.json«/f»
+04|  «f»└ Invalid or malformed JSON«/f»
+06|  «f»Files with errors are skipped«/f»
+07|  «f»entirely, not just the invalid«/f»
+08|  «f»settings.«/f»
+10|  «f2»❯«/f» «f»1. «f2»Fix with Claude«/f»
+11|    «f»2. «/f»Exit and fix manually
+12|    «f»3. «/f»Continue without these settings
+14|  «it»«f»Enter to confirm · Esc to cancel«/»
+
+=== F60_full_agents_view_no_mode w=80 h=24 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.agents_view,claude.composer.blocked
+01|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+02|«f2»▝▜█████▛▘«/f»  «f»Dummy · /dummy/workspace«/f»
+03|«f2» ▝▝   ▝▝ «/f»  «f»1 awaiting input · 0 working · 0 completed«/f»
+05|«f»Your conversation moved to the background — enter opens it · esc returns to it ·«/f»
+06|«f»ctrl+c twice quits«/f»
+08|«b»«f»Needs input«/»
+09| «f»Sessions that have a question or need your decision land here«/f»
+10|«f2»«g»✻ «b»dummy prompt«/»«g»  «f»Dummy reply.«/»⟩«f»1s«/f»
+12|Working
+13| «f»Sessions Claude is actively working on — they keep running even if you close «/f»
+14| «f»the terminal«/f»
+20|«d»─{80}«/»
+21|«f»❯«/f» «i»d«/»«f»escribe a task for a new session«/f»
+22|«d»─{80}«/»
+23|  «f»enter to return · space to reply · ctrl+x to delete · ? for shortcuts«/f»
+
+=== F61_full_transcript_dialog_waiting_source w=100 h=16 alt=1 full expect=unknown/input/none blocked reason=partial rules=claude.input.dialog_waiting,claude.composer.blocked
+02|«g»«f»❯ «/f»dummy prompt«/»
+04|«f2»⏺«/f» «b»Bash«/»(touch dummy-made.txt)
+14|«d»─{100}«/»
+15|  «f2»dialog waiting«/f»«f» · Showing detailed transcript · ctrl+o to toggle · ? for shortcuts«/f»
+
+=== F62_sr_setup_theme w=80 h=14 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+00|[Screen Reader Mode: on via env]
+01|Welcome to Claude Code v0.0.0
+02|Let's get started.
+03|Choose the text style that looks best with your terminal
+04|To change this later, run /theme
+05|1. Auto (match terminal)
+06|2. current: Dark mode
+07|3. Light mode
+08|4. Dark mode (colorblind-friendly)
+09|5. Light mode (colorblind-friendly)
+10|6. Dark mode (ANSI colors only)
+11|7. Light mode (ANSI colors only)
+12|Select with numbers [1-7]. Then Enter to submit:
+13| Syntax theme: Monokai Extended (ctrl+t to disable)
+
+=== F63_sr_setup_security w=80 h=10 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+00|[Screen Reader Mode: on via env]
+01|Welcome to Claude Code v0.0.0
+02|Security notes:
+03|1. Claude can make mistakes.
+04|You're responsible for Claude's actions and should always
+05|review them, especially when running code.
+07|2. Due to prompt injection risks, only use it with code you trust
+08|Learn more: https://example.invalid/security
+09|Press Enter to continue…
+
+=== F64_sr_setup_trust w=80 h=12 alt=0 sr expect=unknown/setup/none blocked reason=partial rules=claude.setup.sr,claude.composer.blocked
+00|[Screen Reader Mode: on via env]
+01|Permission Required: Accessing workspace:
+02|/dummy/workspace
+03|Quick safety check: Is this a project you created or one you trust? (Like your
+04|own code, a well-known open source project, or work from your team). If not,
+05|take a moment to review what's in this folder first.
+06|Claude Code'll be able to read, edit, and execute files here.
+07|Security guide
+08|y. Yes, I trust this folder
+09|n. No, exit
+10|Enter y/n:
+11|Enter to confirm · Esc to cancel
+
+=== F65_full_menu_theme w=80 h=15 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.theme,claude.composer.blocked
+00|«f2»▔{80}«/f»
+01|   «b»«f2»Theme«/»
+03|   «b»Choose the text style that looks best with your terminal«/»
+05|     Auto (match terminal)
+06|   «f2»❯ ✔ Dark mode«/f»
+07|     Light mode
+09|  «f»╌{77}«/f»
+10|   «f»1«/f»  function greet() {
+11|  «f»╌{77}«/f»
+12|    «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»
+14|   «f»Enter to select · Esc to cancel«/f»
+
+=== F66_full_menu_resume w=80 h=11 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.menu.resume,claude.composer.blocked
+00|«f2»▔{80}«/f»
+01|  «b»«f2»Resume session«/»
+03|  «f»Search…«/f»
+05|  «f2»❯ dummy session one«/f»
+06|    «f»2 minutes ago · 3 messages«/f»
+07|    dummy session two
+08|    «f»1 hour ago · 9 messages«/f»
+10|     «f»Ctrl+A to show all projects · Ctrl+B to toggle branch · Esc to cancel«/f»
+
+=== F67_pre_setup_security w=80 h=12 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.security,claude.composer.blocked
+00|«f2»─{80}«/f»
+01| «b»Security notes:«/»
+03| «b»1. Claude can make mistakes«/»
+04|    «f»You're responsible for Claude's actions and should always review them,«/f»
+05|    «f»especially when running code.«/f»
+07| «b»2. Due to prompt injection risks, only use it with code you trust«/»
+08|    «f»For more details see:«/f»
+09|    «o»«f»https://example.invalid/security«/f»«/o»
+11| «f»Press «b»Enter«/»«f» to continue…«/f»
+
+=== F68_full_clipped_intact_composer w=80 h=24 alt=1 full bclip=10 expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f2»✶«/f» «f2»Old dummy spinner… «f»(9s)«/f»
+12|«f»✻«/f» «f»Worked for 3s · done 1:07 PM«/f»
+14|«f»─{80}«/f»
+15|❯⍽«i» «/»
+16|«f»─{80}«/f»
+17|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F69_full_panel_running_and_idle_source w=100 h=12 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+09|«b»  ⏺ main«/»
+10|«f»  ◯ general-purpose«/f»  «f»Dummy subagent«/f»⟩«f»15s · ↓ 27 tokens«/f»
+11|«f»  ◯ dummy-mate«/f»  «f»Dummy teammate«/f»⟩«f»idle · «f2»1 queued«/f»
+
+=== F70_full_panel_nested_source w=100 h=12 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.background,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+09|«b»  ⏺ main«/»
+10|«f»  ◯ general-purpose«/f»  «f»Dummy parent«/f»⟩«f»40s · ↓ 1.2k tokens«/f»
+11|«f»  └ ◯ Explore«/f»  «f»Dummy child«/f»⟩«f»12s · ↓ 300 tokens«/f»
+
+=== F71_full_agents_need_input_footer_source w=80 h=8 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← «f2»2«f» agents«/f»
+
+=== N28_full_w28_indicator_wrapped_bare w=28 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{28}«/f»
+03|❯⍽«i» «/»
+04|«f»─{28}«/f»
+05|  «f»⏸ manual mode on · «f2»◆«/f»
+
+=== N29_full_w29_pr_wrapped w=29 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{29}«/f»
+03|❯⍽«i» «/»
+04|«f»─{29}«/f»
+05|  «f»⏸ manual mode on · PR«/f»
+
+=== N30_full_w30_indicator_wrapped w=30 h=6 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+02|«f»─{30}«/f»
+03|❯⍽«i» «/»
+04|«f»─{30}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ a«/f»
+
+=== N31_classic_stale_frame_relaunch w=80 h=30 alt=0 classic expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+05|«g»«f»❯ «/f»dummy slow prompt«/»
+07|⏺
+09|«f2»✢«/f» «f2»Perambulating… «f»(8s · ↓ 14 tokens)«/f»
+11|«f»─{80}«/f»
+12|«f»❯⍽«/f»«i» «/»
+13|«f»─{80}«/f»
+14|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+16|«d»Resume this session with:«/»
+17|«d»claude --resume 00000000-0000-0000-0000-000000000000«/»
+18|$ sh ../run.sh
+
+=== N32_classic_stale_frame_over_trust w=80 h=40 alt=0 classic expect=unknown/setup/none blocked reason=partial rules=claude.setup.trust,claude.composer.blocked
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+05|«g»«f»❯ «/f»dummy slow prompt«/»
+07|⏺
+09|«f2»✢«/f» «f2»Perambulating… «f»(8s · ↓ 14 tokens)«/f»
+11|«f»─{80}«/f»
+12|«f»❯⍽«/f»«i» «/»
+13|«f»─{80}«/f»
+14|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+16|«d»Resume this session with:«/»
+17|«d»claude --resume 00000000-0000-0000-0000-000000000000«/»
+18|$ sh ../run.sh
+19|«f2»─{80}«/f»
+20| «b»«f2»Accessing workspace:«/»
+22| «b»/dummy/workspace«/»
+24| Quick safety check: Is this a project you created or one you trust? (Like your
+25| own code, a well-known open source project, or work from your team). If not,
+26| take a moment to review what's in this folder first.
+28| Claude Code'll be able to read, edit, and execute files here.
+30| «f»Security guide«/f»
+32| «f2»❯«/f» «f2»No, exit«/f»
+33|   Yes, I trust this folder
+35| «f»Enter to confirm · Esc to cancel«/f»
+
+=== N32b_full_sigkill_prompt_over_rule w=80 h=24 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=
+06|«g»«f»❯ «/f»dummy slow prompt«/»
+08|⏺
+18|«f2»✶«/f» «f2»Ideating… «f»(9s · ↓ 14 tokens)«/f»
+20|«f»─{80}«/f»
+21|«f»❯⍽«/f»Killed: 9
+22|$ sh ../run.sh«f»─{66}«/f»
+23|  «f»⏸ manual mode on · esc to interrupt · ← for agents«/f»
+
+=== N33_full_clipped_walk w=80 h=24 alt=1 full bclip=10 expect=unknown/none/none empty reason=evidence_clipped rules=claude.region.clipped,claude.layout.composer,claude.composer.empty
+05|«f2»✶«/f» «f2»Hidden dummy spinner… «f»(9s)«/f»
+12|«f»─{80}«/f»
+13|❯⍽«i» «/»
+14|«f»─{80}«/f»
+15|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N34_full_panel_idle_teammate_source w=100 h=12 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+09|«b»  ⏺ main«/»
+10|«f»  ◯ dummy-mate«/f»  «f»Dummy teammate«/f»⟩«f»idle«/f»
+11|«f»  ◯ dummy-local«/f»  «f»Dummy local agent«/f»⟩«f»waiting«/f»
+
+=== N35_full_panel_idle_summary_source w=100 h=11 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+09|«b»  ⏺ main«/»
+10|«f»  ◯ 4 idle agents«/f»
+
+=== N36_full_panel_paused_workflow_source w=100 h=10 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+09|«f»  ⏸ dummy-wf«/f»  «f»rate limited · resumes 3pm«/f»
+
+=== N37_full_websetup_band_source w=80 h=13 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+01|⏺ Pushed the dummy branch.
+03|«f»✻«/f» «f»Worked for 2s · done 3:21 PM«/f»
+05|«f2»⏺«/f» «b»Pushed to GitHub. Connect GitHub to claude.ai so you can work on this repo«/»
+06|  «b»even when this machine is offline?«/»
+07|  «f2»1«/f»: Yes, run /web-setup   «f2»2«/f»: Not now   «f2»3«/f»: Don't ask again
+09|«f»─{80}«/f»
+10|❯⍽«i» «/»
+11|«f»─{80}«/f»
+12|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N38_full_thanks_band_source w=80 h=12 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+03|«f»✻«/f» «f»Worked for 2s · done 3:21 PM«/f»
+05|«f2»Thanks for the feedback!«/f»
+06|«f»(Optional) Press [«f2»1«f»] to tell us what went well · /feedback«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N39_full_panel_decorated_row_source w=100 h=11 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+04|«f»─{100}«/f»
+05|❯⍽«i» «/»
+06|«f»─{100}«/f»
+07|  «f»⏸ manual mode on · ? for shortcuts · ← for agents · ↓ to manage«/f»
+09|«b»  ⏺ main«/»
+10|«f»  ◯ «/f»«f»dummy custom status line«/f»
+
+=== N40_full_unknown_margin_notice_statusline w=80 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty
+01|«f2»✶«/f» «f2»Tinkering… «f»(41s · ↓ 48 tokens)«/f»
+02|  «f2»Dummy update notice · restart to apply«/f»
+03|«f»─{80}«/f»
+04|«f»❯⍽«/f»«i» «/»
+05|«f»─{80}«/f»
+06|  «f2»dummy-status line one«/f»
+07|  «f»⏸ manual mode on · ← for agents«/f»
+
+=== N41_full_limit_next_line_only_pinned_source w=80 h=15 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Worked for 3s · done 2:59 PM«/f»
+09|«f»─{80}«/f»
+10|❯⍽«i» «/»
+11|«f»─{80}«/f»
+12|  «f2»⚠ Dummy wrap-up lead«f» · resets 3pm«/f»
+13|    «f»Continuing automatically at 3pm · esc to cancel«/f»
+14|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F72_full_w40_complete_tail_p1_source w=40 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{40}«/f»
+03|❯⍽«i» «/»
+04|«f»─{40}«/f»
+05|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N42_full_brief_survey_no_margin_source w=80 h=10 alt=1 full expect=idle/none/none unknown reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.band
+02|«f»✻«/f» «f»Baked for 0s · done 1:07 PM«/f»
+04|«f2»●«/f» «b»How is Claude doing this session? (optional)«/»
+05|  «f2»1«/f»: Bad     «f2»2«/f»: Fine    «f2»3«/f»: Good    «f2»0«/f»: Dismiss
+06|«f»─{80}«/f»
+07|❯⍽«i» «/»
+08|«f»─{80}«/f»
+09|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N43_classic_tall100_composer_under_top_clip w=80 h=100 alt=0 classic tclip=24 expect=unknown/none/none empty reason=evidence_clipped rules=claude.region.clipped,claude.layout.composer,claude.composer.empty
+00|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+03|«g»«f»❯ «/f»dummy prompt«/»
+05|⏺ Dummy transcript row.
+30|«f2»✶«/f» «f2»Hidden dummy spinner… «f»(9s)«/f»
+36|«f»─{80}«/f»
+37|❯⍽«i» «/»
+38|«f»─{80}«/f»
+39|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== N44_classic_tall300_composer_under_row_bound w=80 h=300 alt=0 classic expect=unknown/none/none empty reason=evidence_clipped rules=claude.region.clipped,claude.layout.composer,claude.composer.empty
+000|«f2» ▐▛███▛█«/f»   «b»Claude Code«/» «f»v0.0.0«/f»
+003|«g»«f»❯ «/f»dummy prompt«/»
+005|⏺ Dummy transcript row.
+230|«f2»✶«/f» «f2»Hidden dummy spinner… «f»(9s)«/f»
+236|«f»─{80}«/f»
+237|❯⍽«i» «/»
+238|«f»─{80}«/f»
+239|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F73_full_enter_plan w=80 h=19 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.enter_plan,claude.composer.blocked
+00|«g»«f»❯ «/f»dummy prompt«/»
+02|«f2»─{80}«/f»
+03| «b»«f2»Enter plan mode?«/»
+05|  Claude wants to enter plan mode to explore and design an implementation
+06|  approach.
+08|  «f»In plan mode, Claude will:«/f»
+09|  «f» · Explore the codebase thoroughly«/f»
+10|  «f» · Identify existing patterns«/f»
+11|  «f» · Design an implementation strategy«/f»
+12|  «f» · Present a plan for your approval«/f»
+14|  «f»No code changes will be made until you approve the plan.«/f»
+16|  «f2»❯«/f» «f2»Yes, and switch to «b»plan mode (research and propose changes without making«/»
+17|    «b»«f2»them)«/»«f2» for this session«/f»
+18|    No, start implementing now
+
+=== F73b_full_enter_plan_w40 w=40 h=21 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.enter_plan,claude.composer.blocked
+00|«f2»─{40}«/f»
+01| «b»«f2»Enter plan mode?«/»
+03|  Claude wants to enter plan mode to
+04|  explore and design an implementation
+05|  approach.
+07|  «f»In plan mode, Claude will:«/f»
+08|  «f» · Explore the codebase thoroughly«/f»
+09|  «f» · Identify existing patterns«/f»
+10|  «f» · Design an implementation strategy«/f»
+11|  «f» · Present a plan for your approval«/f»
+13|  «f»No code changes will be made until«/f»
+14|  «f»you approve the plan.«/f»
+16|  «f2»❯«/f» «f2»Yes, and switch to «b»plan mode«/»
+17|    «b»«f2»(research and propose changes«/»
+18|    «b»«f2»without making them)«/»«f2» for this«/f»
+19|    «f2»session«/f»
+20|    No, start implementing now
+
+=== F73c_full_enter_plan_no_focus_source w=80 h=14 alt=1 full expect=unknown/confirmation/none blocked reason=partial rules=claude.confirmation.enter_plan,claude.composer.blocked
+00|«f2»─{80}«/f»
+01| «b»«f2»Enter plan mode?«/»
+03|  Claude wants to enter plan mode to explore and design an implementation
+04|  approach.
+06|  «f»In plan mode, Claude will:«/f»
+07|  «f» · Explore the codebase thoroughly«/f»
+09|  «f»No code changes will be made until you approve the plan.«/f»
+11|    Yes, enter plan mode
+12|  «f2»❯«/f» «f2»No, start implementing now«/f»
+
+=== F74_pre_setup_mcp_servers w=80 h=11 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_servers,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»2 new MCP servers found in this project«/»
+02|  «f»Select any you wish to enable.«/f»
+04|  MCP servers may execute code or access system resources. All tool calls
+05|  require approval. Learn more in the «o»MCP documentation«/o».
+07|  «f2»❯«/f» «f»[✔]«/f» «f2»dummy-a«/f»
+08|    «f»[✔]«/f» dummy-b
+09|       «b»Enable selected«/»
+10| «it»«f»Space to select · Esc to reject all«/»
+
+=== F74b_pre_setup_mcp_servers_w26 w=26 h=19 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_servers,claude.composer.blocked
+00|«f2»─{26}«/f»
+01|  «b»«f2»2 new MCP servers«/»
+02|  «b»«f2»found in this project«/»
+03|  «f»Select any you wish to«/f»
+04|  «f»enable.«/f»
+06|  MCP servers may
+07|  execute code or access
+08|  system resources. All
+09|  tool calls require
+10|  approval. Learn more
+11|  in the «o»MCP«/o»
+12|  «o»documentation«/o».
+14|  «f2»❯«/f» «f»[✔]«/f» «f2»dummy-a«/f»
+15|    «f»[ ]«/f» dummy-b
+16|       «b»Enable selected«/»
+17| «it»«f»Space to select · Esc to«/»
+18| «it»«f»reject all«/»
+
+=== F74c_pre_setup_mcp_servers_submit_focus w=80 h=12 alt=0 pre expect=unknown/setup/none blocked reason=partial rules=claude.setup.mcp_servers,claude.composer.blocked
+00|«f2»─{80}«/f»
+01|  «b»«f2»3 new MCP servers found in this project«/»
+02|  «f»Select any you wish to enable.«/f»
+04|  MCP servers may execute code or access system resources. All tool calls
+05|  require approval. Learn more in the «o»MCP documentation«/o».
+07|    «f»[✔]«/f» dummy-a
+08|    «f»[ ]«/f» dummy-b
+09|    «f»[✔]«/f» dummy-c
+10|  «f2»❯«/f»    «b»Enable selected«/»
+11| «it»«f»Space to select · Esc to reject all«/»
+
+=== N45_full_quoted_enter_plan_tail w=80 h=8 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=
+02|⏺ The dummy dialog read:
+04|  Enter plan mode?
+06|  ❯ Yes, enter plan mode
+07|    No, start implementing now
+
+=== N46_pre_multiselect_other_title w=80 h=11 alt=0 pre expect=unknown/unknown/none unknown reason=layout_unknown rules=
+00|«f2»─{80}«/f»
+01|  «b»«f2»Select dummy items to enable«/»
+02|  «f»Select any you wish to enable.«/f»
+04|  Dummy items may do dummy things.
+07|  «f2»❯«/f» «f»[✔]«/f» «f2»dummy-a«/f»
+08|    «f»[✔]«/f» dummy-b
+09|       «b»Enable selected«/»
+10| «it»«f»Space to select · Esc to reject all«/»
+
+=== N47_full_quoted_workflow_tail w=80 h=8 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=
+00|⏺ The dummy dialog read:
+02|  ❯ 1. Yes, run it
+03|    2. View raw script
+04|    3. No
+06|  Esc to cancel · Tab to amend
+
+=== F43c_full_question_preview_inner_boxes w=100 h=26 alt=1 full expect=unknown/question/none blocked reason=partial rules=claude.question.preview,claude.composer.blocked
+00|«g»«f»❯ «/f»dummy prompt«/»
+02|«f»─{100}«/f»
+03|«f»«g» ☐ Layout «/»
+05|«b»Which dummy layout should we use?«/»
+07|  «f»1.«/f» Compact                      «f»┌──────────────────────────────────────────┐«/f»
+08|«f2»❯«f» 2.«b»«f2» Wide«/»                         «f»│ ┌──────┐                                 │«/f»
+09|  «f»3.«/f» Stacked                      «f»│ │ ab   │                                 │«/f»
+10|                                  «f»│ └──────┘                                 │«/f»
+11|                                  «f»│ ┌──┐                                     │«/f»
+12|                                  «f»├─── ✂ ─── 2 lines hidden ─────────────────┤«/f»
+13|                                  «f»└──────────────────────────────────────────┘«/f»
+15|                                  «f2»Notes:«/f» «it»«f»press n to add notes«/»
+17|«f»─{100}«/f»
+18|  Chat about this
+20|«f»Enter to select · ↑/↓ to navigate · n to add notes · Esc to cancel«/f»
+
+=== F75_full_auto_bare_agents_cut_source w=44 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{44}«/f»
+03|❯⍽«i» «/»
+04|«f»─{44}«/f»
+05|  «f2»⏵⏵ auto mode on«f» (shift+tab to cycle) · ←«/f»
+
+=== N48_full_limit_transcript_notice_idle_source w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»⏺«/f» «f»Usage limit reached · continuing automatically at 3pm · esc to cancel«/f»
+08|«f»─{80}«/f»
+09|❯⍽«i» «/»
+10|«f»─{80}«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+=== F76_full_w40_cut_agents_hint_source w=40 h=6 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|«f»─{40}«/f»
+03|❯⍽«i» «/»
+04|«f»─{40}«/f»
+05|  «f»⏸ manual mode on · «f2»◆ Revie…«f» · ← for…«/f»
+
+=== F77_full_pinned_notice_idle w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«g»«f»❯ «/f»dummy prompt one«/»
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Worked for 0s · done 11:52 PM«/f»
+07|«f»─{80}«/f»
+08|❯⍽«i» «/»
+09|«f»─{80}«/f»
+10|  «f2»⚠ Transcript saving is off — CLAUDE_CODE_SKIP_PROMPT_HISTORY is set · --res…«/f»
+11|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== F77b_classic_pinned_notice_statusline_idle w=80 h=12 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+00|«f»✻«/f» «f»Baked for 0s · done 11:53 PM«/f»
+02|«f»─{80}«/f»
+03|❯⍽«i» «/»
+04|«f»─{80}«/f»
+05|  «f2»⚠ Transcript saving is off — CLAUDE_CODE_SKIP_PROMPT_HISTORY is set · --res…«/f»
+06|  «f2»dummy-status line one«/f»
+07|  «f»dummy-status line two«/f»
+08|  «f»⏸ manual mode on«/f»
+09|  «f»tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and re…«/f»
+
+=== N51_sr_w40_notice_tail_under_cut w=40 h=8 alt=0 sr bclip=5 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped,claude.layout.sr
+01|claude: Dummy reply.
+02|Brewed for 33s · done 2:09 PM
+03|manual mode on
+04|tmux focus-events off · add 'set -g
+05|focus-events on' to ~/.tmux.conf and
+06|reattach for focus tracking
+07|$
+
+=== N52_full_w38_limit_next_wrapped_pinned_source w=38 h=13 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait
+02|⏺ Dummy reply.
+04|«f»✻«/f» «f»Worked for 3s · done 2:59 PM«/f»
+06|«f»─{38}«/f»
+07|❯⍽«i» «/»
+08|«f»─{38}«/f»
+09|  «f2»⚠ Dummy wrap-up lead«f» · resets 3pm«/f»
+10|    «f»Continuing shortly · esc to«/f»
+11|    «f»cancel«/f»
+12|  «f»⏸ manual mode on · ? for shortcuts«/f»
+
+=== N53_classic_w24_limit_status_wrapped_pinned_source w=24 h=9 alt=0 classic expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait
+00|«f»✻«/f» «f»Worked for 3s«/f»
+02|«f»─{24}«/f»
+03|❯⍽«i» «/»
+04|«f»─{24}«/f»
+05|  «f2»⚠ Usage limit«/f»
+06|  «f2»reached«f» · limit«/f»
+07|  «f»resets 3pm«/f»
+08|  «f»⏸ manual mode on«/f»
+
+=== N54_sr_limit_wait_pinned_working_source w=80 h=7 alt=0 sr expect=working/unknown/none unknown reason=partial rules=claude.layout.sr,claude.limit.wait,claude.activity.hint_sr
+01|claude: Dummy reply.
+02|Pollinating…
+03|⚠ Usage limit reached · limit resets 3pm
+04|Continuing automatically at 3pm · esc to cancel
+05|manual mode on  ·  esc to interrupt
+06|$⍽
+
+=== N54b_sr_limit_next_line_only_pinned_source w=80 h=8 alt=0 sr expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.sr,claude.limit.wait
+01|claude: Dummy reply.
+02|Worked for 3s · done 2:59 PM
+03|⚠ Dummy wrap-up lead · resets 3pm
+04|Continuing automatically at 3pm · esc to cancel
+05|manual mode on
+06|effort: medium · /effort
+07|$
+
+=== N55_sr_w40_limit_wait_lead_under_cut_source w=40 h=9 alt=0 sr bclip=4 expect=working/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped,claude.layout.sr,claude.activity.hint_sr
+01|claude: Dummy reply.
+02|Pollinating…
+03|⚠ Usage limit reached · limit resets 3pm
+04|(dummy zone)
+05|Continuing shortly · esc to cancel
+06|manual mode on  ·  esc to interrupt
+07|$⍽
+
+=== N56_sr_pinned_notice_idle_lost w=80 h=9 alt=0 sr expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+01|you: dummy prompt
+02|claude: Dummy reply.
+03|Sautéed for 0s · done 11:53 PM
+04|⚠ Transcript saving is off — CLAUDE_CODE_SKIP_PROMPT_HISTORY is set · --resume
+05|will not find this session; if unintended, unset it and restart
+06|manual mode on
+07|effort: medium · /effort
+08|$
+
+=== N57_sr_quoted_lead_beyond_bound w=80 h=25 alt=0 sr expect=idle/none/none empty reason=recognized rules=claude.layout.sr,claude.activity.idle_sr,claude.composer.empty
+01|you: dummy prompt
+02|claude: The old footer read:
+03|⚠ Dummy pinned notice from an earlier screen
+04|Usage limit reached · continuing automatically at 3pm · esc to cancel
+05|Dummy transcript row 1.
+06|Dummy transcript row 2.
+07|Dummy transcript row 3.
+08|Dummy transcript row 4.
+09|Dummy transcript row 5.
+10|Dummy transcript row 6.
+11|Dummy transcript row 7.
+12|Dummy transcript row 8.
+13|Dummy transcript row 9.
+14|Dummy transcript row 10.
+15|Dummy transcript row 11.
+16|Dummy transcript row 12.
+17|Dummy transcript row 13.
+18|Dummy transcript row 14.
+19|Dummy transcript row 15.
+20|Dummy transcript row 16.
+21|claude: Dummy reply.
+22|Worked for 3s · done 2:59 PM
+23|manual mode on
+24|$
+
+=== N58_pre_theme_mixed_forms w=80 h=26 alt=0 pre expect=unknown/unknown/none unknown reason=layout_unknown rules=
+00|Welcome to Claude Code v0.0.0
+02| Let's get started.
+04| «b»Choose the text style that looks best with your terminal«/»
+05| «f»To change this later, run /theme«/f»
+07|   1. Auto (match terminal)
+08| «f2»❯ 2. Dark mode ✔«/f»
+09|     Light mode
+10|   4. Dark mode (colorblind-friendly)
+11|   5. Light mode (colorblind-friendly)
+12|   6. Dark mode (ANSI colors only)
+13|   7. Light mode (ANSI colors only)
+15| «f»╌{78}«/f»
+16|  «f»1«/f»  function greet() {
+17|  «f»2«/f» -  console.log("Hello, World!");
+18|  «f»2«/f» +  console.log("Hello, Claude!");
+19|  «f»3«/f»  }
+20| «f»╌{78}«/f»
+21|  «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»
+
+=== N59_pre_theme_unnumbered_col6_row w=80 h=26 alt=0 pre expect=unknown/unknown/none unknown reason=layout_unknown rules=
+00|.......«f2»█«/f» «f2»█«/f»   «f2»█«/f» «f2»█«/f».........................................
+02| Let's get started.
+04| «b»Choose the text style that looks best with your terminal«/»
+05| «f»To change this later, run /theme«/f»
+07|     Auto (match terminal)
+08| «f2»❯ ✔ Dark mode«/f»
+09|     Light mode
+10|     Dark mode
+11|      (colorblind-friendly)
+12|     Light mode (colorblind-friendly)
+13|     Dark mode (ANSI colors only)
+14|     Light mode (ANSI colors only)
+16| «f»╌{79}«/f»
+17|  «f»1«/f»  function greet() {
+18|  «f»2«/f» -  console.log("Hello, World!");
+19|  «f»2«/f» +  console.log("Hello, Claude!");
+20|  «f»3«/f»  }
+21| «f»╌{79}«/f»
+22|  «f»Syntax theme: Monokai Extended (ctrl+t to disable)«/f»

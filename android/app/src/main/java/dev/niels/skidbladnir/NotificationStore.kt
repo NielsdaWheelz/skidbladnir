@@ -135,9 +135,9 @@ internal data class NotificationPresentation(val ready: Boolean = false, val una
 
 /**
  * One fresh local sample's effect on ready attention (terminal-observation.md §6). Arming is working
- * with no request, menu or notice; ready is the same shape at idle. Any request or menu (whatever the
- * activity), any notice, starting or other work clears. Everything else, unavailable samples included
- * since they classify nothing, only disarms and keeps pending ready.
+ * with no request or menu; ready is the same shape at idle, whatever notice the turn ended with. Any
+ * request or menu (whatever the activity), starting or other work clears. Everything else, unavailable
+ * samples included since they classify nothing, only disarms and keeps pending ready.
  */
 private enum class ReadyObservation { Arming, Clearing, Ready, Neutral }
 
@@ -147,10 +147,6 @@ private fun readyObservation(status: TerminalStatus): ReadyObservation {
         TerminalInteraction.Unknown -> false
         TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,
         TerminalInteraction.Setup, TerminalInteraction.Input, TerminalInteraction.Menu -> return ReadyObservation.Clearing
-    }
-    when (status.notice) {
-        TerminalNotice.None -> Unit
-        TerminalNotice.Interrupted, TerminalNotice.Error -> return ReadyObservation.Clearing
     }
     return when (status.activity) {
         TerminalActivity.Starting -> ReadyObservation.Clearing

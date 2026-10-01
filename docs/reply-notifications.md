@@ -32,10 +32,12 @@ completion, admission nor an empty queue. codex and claude use one policy.
 | entry fails before any output presentation | clear nothing |
 
 only a fresh successful terminal-source sample of a local foreground agent is
-classified. arming is working + interaction none + notice none. clearing is any
-permission/question/confirmation/setup/input or menu interaction, any notice, or
-activity starting or working; every arming sample also clears. ready is idle +
-interaction none + notice none. a qualified sample is clearing or ready.
+classified. arming is working + interaction none. clearing is any
+permission/question/confirmation/setup/input or menu interaction, or activity
+starting or working; every arming sample also clears. ready is idle +
+interaction none, whatever notice the turn ended with: work that stops on an
+interruption or error becomes ready, and its card shows the notice label. a
+qualified sample is clearing or ready.
 everything else only disarms: unknown breaks continuity even after successful
 capture, and a request clears even when activity is unknown. never bridge
 `working -> unknown -> idle`. cached status cannot mutate notices.
@@ -173,7 +175,7 @@ details, terminal header and accessibility.
 
 | fresh local condition | literal / tone |
 | --- | --- |
-| idle + interaction none + notice none + pending outside visit/closing baseline | `ready` / moss green #76B082 |
+| idle + interaction none + notice none + pending outside visit/closing baseline | `ready` / moss green #76B082 (with a notice, the notice label shows instead and ready stays pending) |
 | idle + interaction none + notice none without pending | `idle` / muted grey #AAA69D |
 | any other status | [observation §6](terminal-observation.md#6-content-attention-and-filtering) label and tone; working is frost blue #78A9C6 |
 | stale | existing last-observed treatment; no green |
@@ -212,8 +214,8 @@ both clients -> adversarial review/refactor -> affected green checks -> remove
 temporary tests -> scripts/check verify -> commit. engineering checks are not
 behavioral acceptance. no production test seams or retired harnesses.
 
-prove both providers/clients: working->idle ready; working, requests, menus and
-notices clear;
+prove both providers/clients: working->idle ready, including a turn that ends on
+an interruption or error; working, requests and menus clear;
 unknown/stale/outage breaks continuity; successful entry clears only after
 presentation; failed entry preserves; whole visit/first closing sample quiet;
 working closing baseline's later idle notifies; replacement cannot inherit;

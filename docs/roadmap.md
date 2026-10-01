@@ -10,7 +10,7 @@ this index records present scope and open work, not a release diary.
 [terminal observation](terminal-observation.md) specifies the coordinated status
 cutover: bounded screen regions, provider-specific activity/request recognition
 by the [codex](terminal-observation-codex.md) and [claude](terminal-observation-claude.md)
-grammars, guarded composer reuse, diagnostics, managed codex run-state chrome and
+grammars, interruption and error notices, guarded composer reuse, diagnostics and
 desktop/phone needs-input filtering, with manual claude executable recognition.
 screen ambiguity remains unknown; titles/progress are excluded. source is
 released as `v0.11.0` and applied to devbox, arch, the macbook and the phone.
