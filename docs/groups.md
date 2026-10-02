@@ -1,5 +1,10 @@
 # groups
 
+2026-10-02: [session views](session-views.md) owns the accepted replacement for
+collection selection, phone machine scope and the task capsule. source implements
+that cutover; its qualification belongs to session views. label identity,
+membership and cli filtering below remain unchanged.
+
 2026-10-02: [searchable group entry](group-entry.md) owns the accepted replacement
 for create/edit suggestions and desktop submission keys. source implements the
 contract; [qualification](group-entry.md#qualification) records its separate
@@ -30,7 +35,7 @@ labels into groups; there is no group resource to create, rename, or delete.
 
 pr 1 delivers inventory projection, initial assignment during creation,
 set/change/clear on existing sessions, grouped cli/tui/phone collections,
-intersecting machine/group filters, and collection return continuity. ordinary
+exclusive collection views and collection return continuity. ordinary
 shell-only sessions already in inventory participate in session operations.
 creating a new ordinary shell belongs to pr 2. [pr 3](desktop-browser.md) owns
 desktop browser navigation; pr 4 investigates embedding. no later-pr scaffolding.
@@ -41,7 +46,7 @@ tmux session option                         authoritative membership
   -> gateway                                strict authenticated host api
        -> fleetclient -> cli / tui          fleet observations and presentation
        -> android model / controller        phone observations and operations
-            -> dashboard entry              filters and semantic viewport
+            -> dashboard entry              selected view and semantic viewport
             -> dashboard / forge            grouping and explicit editing
 ```
 
@@ -78,11 +83,12 @@ supplies a cwd, checkout, profile, machine, prompt, or agent context.
    uncertain. inventory can reveal current membership; it cannot prove which
    uncertain writer caused it. no automatic resend, rollback, or retarget.
 8. groups, suggestions, and emptiness derive from observed inventory. unavailable
-   hosts and stale rows stay explicit. a zero-row intersection never proves
-   fleet-wide absence. neither a filter nor a suggestion is action authority.
-9. editing retains filters. selection and pending actions follow session
-   lifetimes, never row positions. terminal entry and detach/back retain both
-   filters and semantic viewport. creation has the narrow exception in section 7.
+   hosts and stale rows stay explicit. an empty view never proves fleet-wide
+   absence. neither a view nor a suggestion is action authority.
+9. editing retains the selected view and desktop machine scope. selection and
+   pending actions follow session lifetimes, never row positions. terminal entry
+   and detach/back retain navigation and semantic viewport. creation has the
+   narrow exception in section 7.
 
 ## 3. labels, equality, and ordering
 
@@ -140,7 +146,7 @@ within each group, retain the client's present order: cli/tui configured peer
 order then numeric tmux-id order; android case-folded/exact machine
 label, machine handle, then numeric tmux id. no urgency sorting,
 manual ordering, collapsing, nested groups, or completeness-implying counters.
-desktop group views retain this order; the desktop agents view has the
+desktop group views retain this order; the desktop needs-input view has the
 [explicit status order](desktop-browser.md#3-selection-and-navigation).
 
 ### owned values
@@ -334,52 +340,52 @@ headings are presentation only. `info` includes membership with its other facts.
 
 ## 7. collection behavior and creation
 
-machine and group are independent selectors. each has an all state; group also
-has unassigned and named. the phone picker and desktop strip display named
-groups as bare labels, including labels that match selector words
-([desktop browser §5](desktop-browser.md#5-presentation)).
-selected empty labels remain in the selected control; other empty labels need
-not remain suggestions. no collapsed group state exists.
+phone selects one needs-input/all/group view across the accepted fleet; desktop
+retains a separate machine scope. [session views](session-views.md) owns that
+exclusive navigation and its quoted named-group tabs. selected empty groups
+remain selected; other empty labels need not remain suggestions. no collapsed
+group state exists.
 
 named group headings also use bare labels; the unassigned heading is
 `unassigned`. the unresolved selected control says `previously selected group`
 without a label. these rules apply in text and accessibility.
 
 suggestions are sorted distinct labels from currently retained observations,
-independent of the group filter. they may include stale evidence; they promise
+independent of the selected view. they may include stale evidence; they promise
 neither existence nor completeness and confer no action readiness. label the
 list `observed groups`. no extra discovery request or durable suggestion cache.
-a machine scope can expose fewer observed suggestions than all machines; free
-text always permits another valid label.
+desktop machine scope can expose fewer observed suggestions than all machines;
+phone suggestions use the accepted fleet. free text always permits another valid label.
 
 retain unfiltered source inventories for refresh and stale-row retention.
-`list --machine` reads that host; phone manual verification snapshots machine
-scope; tui refresh reads its selected machine scope. a group filter never chooses
-hosts. phone's independent automatic pollers, pressure scope, and pull/read
-completion ordering remain unchanged.
+`list --machine` reads that host; phone manual verification snapshots every live
+fleet poller; tui refresh reads its selected machine scope. a group view never
+chooses hosts. phone's independent automatic pollers and pull/read completion
+ordering remain unchanged; [session views](session-views.md#phone-presentation-and-machine-scope-removal)
+owns the machines disclosure and pressure placement.
 
 zero-row copy: `no sessions in this view` after complete fresh scoped reads;
 `no matching sessions in available inventory` with existing unavailable/stale
 notices when scoped hosts cannot establish current inventory. initial reads
-retain checking. never say a group was deleted. out-of-scope outages do not
-prevent declaring the selected machine's intersection empty.
+retain checking. never say a group was deleted. phone machine notices remain visible outside every view; desktop out-of-scope
+outages do not affect its narrowed machine collection.
 
 ### selection and edits
 
 - retain the selected lifetime when it remains visible after regrouping.
 - otherwise select its former visible session index clamped to the new last
   session index; empty means no selection. headings are not selectable and do
-  not count as sessions. different filters use this rule; active-filter selection
+  not count as sessions. different views use this rule; active-view selection
   is a no-op.
 - edits, confirmations, and reads retain their original captured target. changing
   row selection never changes an open action. replacement lifetime disables or
   closes its editor with an unavailable notice; rename/agent change alone does not.
-- assignment never changes filters. moving the last row away leaves its named
-  filter selected and its honest empty state. the phone gains no card-selection
+- assignment never changes views. moving the last row away leaves its named
+  view selected and its honest empty state. the phone gains no card-selection
   cursor; its viewport and existing exact dialog targets carry continuity.
 
-pr 3 changes only desktop explicit filter selection: keep the selected lifetime
-if it still matches, otherwise select the first tab. refresh/removal retains the
+pr 3 changes only desktop explicit view selection: keep the selected lifetime
+if it still matches, otherwise select the first row. refresh/removal retains the
 clamped-neighbour rule. [desktop-browser.md](desktop-browser.md) owns those transitions.
 
 unchanged-save disabling compares the canonical draft with the latest accepted
@@ -391,24 +397,24 @@ opened. a poll may update the displayed current membership, but never the draft.
 interactive creation from a resolved named group visibly prefills its label;
 all/unassigned defaults to unassigned. changing machine preserves the group draft
 alongside name/objective; existing cwd/profile rules remain. editing or cancelling
-the draft never changes collection filters.
+the draft never changes the collection view.
 
 after confirmed creation, use the returned session's observed membership. retain
-the current group filter if it admits that session; otherwise select the returned
-named group or unassigned. phone and desktop also clear the
-[needs-input filter](terminal-observation.md#6-content-attention-and-filtering),
-so it cannot hide the session just created. when any filter changes, cancel
-saved restoration and reset viewport to top.
+the current all/group view if it admits that session; otherwise select its
+returned named group or unassigned. needs input leaves the queue on confirmed
+creation. when selection changes, cancel saved restoration and reset the
+viewport to top.
 this transition belongs only to deliberate successful creation. tui selects and
 reveals the returned exact session. phone keeps its existing post-create terminal
-admission and returns to the resulting filter. existing post-create machine
-behavior is unchanged; group never silently chooses another host.
+admission and returns to the resulting view. desktop also reveals the created
+machine when its scope requires it; phone creation never sets a hidden machine
+scope. group never silently chooses another creation host.
 
-unknown/failed creation does not switch filters or assign separately. preserve
+unknown/failed creation does not switch views or assign separately. preserve
 its group draft in the existing in-memory create recovery, never android saved
 state. no recovery path automatically resubmits.
 
-if a restored named filter has no recovered label, opening create displays
+if a restored named view has no recovered label, opening create displays
 `choose a group for this new session`. submission requires a deliberate named or
 unassigned choice. use a small `unresolved | unassigned | named draft` field state
 for this distinction: initial blank is unresolved; explicit unassigned, choosing
@@ -423,7 +429,8 @@ must not overwrite a form the operator has already opened or edited.
 the [desktop browser](desktop-browser.md) owns the desktop layout/keymap; it
 replaced the grouped table/group picker. retain one bubble tea model, five-second
 refresh, at most one inventory request in flight, and the boundary rules below.
-source and historical groups evidence still describe the preceding table.
+historical groups evidence describes the preceding table; source follows the
+desktop-browser and session-views contracts.
 
 the machine picker lists configured peers, including unavailable ones, plus all
 machines. expose only labels/handles from fleetclient configuration to this
@@ -459,26 +466,23 @@ validation rejection can leave the draft editable. invalid drafts display escape
 characters in the tui while retaining their original editable bytes; valid
 unicode labels retain their ordinary presentation.
 
-append one visible group field to the current create form. share its label input
-and suggestions with the editor. an explicit machine filter prefills the create
-machine visibly and editably, preserving the current machine/profile form rules.
-if successful creation is outside that machine filter, select the returned
-machine so the newly selected row is visible; this is the tui's new-filter
-counterpart of its existing select-created-session behavior. all-machines remains
-all. phone's existing post-create machine behavior is unchanged. cancelled or
-uncertain creation changes neither selector.
+the create form has one visible group field, with input and suggestions shared
+with its editor. desktop machine scope may visibly prefill its create machine;
+phone standalone creation requires an explicit machine and source creation keeps
+its source host. confirmed creation reveals the returned membership under
+[session views](session-views.md#selected-views-and-continuity); cancellation and
+uncertain creation preserve the view and never replay the request.
 
-pr 3 removes heading-aware collection geometry. one current selected lifetime and
-current region viewports live in the same model; detach resumes it and refresh
+the desktop all-view table retains group headings and one selected lifetime;
+table and page scroll live in the same model. detach resumes it and refresh
 reconciles inventory. no per-group history, disk state or terminal-composition state.
 
 ## 9. phone presentation and operation ownership
 
-keep title, machine strip, pressure/notices, and card facts. add one compact group
-selector immediately below the machine selector, outside the pull owner. its
-sheet lists all groups, unassigned, and observed named groups. current unresolved
-or empty selection stays visible. add one full-span heading per nonempty group
-in the current lazy grid, including unassigned.
+phone collection controls and machines/pressure disclosure belong to
+[session views](session-views.md#phone-presentation-and-machine-scope-removal).
+all/group projections retain nonempty full-span headings, including unassigned.
+the queue is flat so group headings cannot disrupt ready-first ordering.
 
 each card offers `change group` as the first row of its overflow menu and its
 first TalkBack custom action ([session card](session-card.md#actions)), not as a
@@ -543,19 +547,14 @@ semantics. recreation discards editor/network state and re-lists without sending
 
 ## 10. android navigation and content-free restoration
 
-extend `DashboardEntryState`; no second owner. retain
-`DashboardScope.All | Machine(handle)` as the machine dimension and add separate
-group selection `all | unassigned | named`. named selection has a comparison
-fingerprint and optional resolved label. missing label explicitly means unresolved
-restoration. known selected labels stay only in process memory, even after their
-last membership disappears; this is navigation intent, not a group registry.
-
-name the live value `DashboardGroupSelection`. the saved representation carries
-only its all/unassigned/named key and optional named fingerprint, never its
-resolved label. keep that distinction in the snapshot type, not merely an
-instruction to omit a field during serialization. named constructors require
-that any resolved label hashes to their fingerprint; resolving the display name
-preserves the comparison key and is not a filter-change event.
+`DashboardEntryState` owns one `DashboardViewSelection`: needs input, all,
+unassigned or named. a named live selection has a comparison fingerprint and
+optional resolved label; saved `DashboardViewKey` contains no raw label. known
+selected labels remain in process memory even after their last member disappears.
+resolving a label preserves its key and never cancels restoration.
+[session views](session-views.md#saved-navigation) owns the exact schema-4
+cutover; [dashboard continuity](dashboard-return-continuity.md) owns viewport
+keys and the one-shot lifecycle.
 
 fingerprint: lowercase hex sha-256 over utf-8 `skidbladnir.space-label.v1`, then
 a four-byte unsigned big-endian byte length and the canonical label's utf-8
@@ -566,80 +565,20 @@ inventory after the rename.
 reuse platform sha-256 and the existing card fingerprint framing pattern.
 this avoids raw content persistence, not dictionary guessing of likely labels.
 
-resolve a selected name by fingerprint from observed inventory, independently
-of machine filter. resolution does not change selection or cancel restoration.
-no match retains the filter as `previously selected group`; never switch to all
-or unassigned. later polls may resolve it. initial unresolved host reads may
-show checking; a modeled unavailable outcome must allow restoration to settle.
-missing pairing retains the reset-to-all/top rule and resets the machine, group
-and needs-input filters.
-
-### rendered keys and task schema
-
-headings are full-span lazy items. remove the old assumption that session index
-and lazy-item index are equal. one ordered heading/session projection serves
-rendering, capture, and restoration:
-
-- session: existing unchanged `DashboardCardKey` fingerprint string;
-- named heading: `space:<space-label-fingerprint>`;
-- unassigned heading: `space:unassigned`.
-
-use a small typed `DashboardItemKey` union; headings never become targets. raw
-labels never enter compose keys. capture the actual first visible keyed item and
-scroll offset, so a top heading restores without signed card offsets or saved
-neighbours.
-
-the task capsule is schema **3**, under the same registry key
-`dev.niels.skidbladnir.dashboard-entry`. exact primitive-only bundle:
-
-| key | required / value |
-| --- | --- |
-| `version` | integer `3` |
-| `scopeKind` | `all` or `machine` |
-| `scopeMachine` | iff machine; existing valid handle |
-| `spaceKind` | `all`, `unassigned`, or `named` |
-| `spaceLabelSha256` | iff named; 64 lowercase hex |
-| `anchorKind` | `none`, `session`, `space`, or `unassigned` |
-| `anchorSha256` | iff anchor is session or named group; 64 lowercase hex |
-| `fallbackIndex` | nonnegative integer, now a rendered-item index |
-| `offsetPx` | nonnegative integer, existing scroll-offset meaning |
-| `needsInputOnly` | boolean; false for a new task |
-
-`space` in `spaceKind`, `spaceLabelSha256`, `anchorKind: "space"` and the
-`space:` item-key prefix names a group.
-
-no anchor requires index/offset zero. extra keys, wrong primitive types,
-malformed current-version variants, and inconsistent fields are trusted-state
-defects. no capsule or an unsupported version, including schema 1 and 2, starts
-fresh all/all/top with the needs-input filter off. no older reader,
-`anchorLifetimeSha256`, migration or dual reader exists. upgrade may lose
-navigation position once; pairing and notification storage are untouched.
-
-keep the existing restoration sequence: accept fleet, restore filters before
-verification, wait for machine-scope inventory outcomes, resolve saved item key
-or clamp its former rendered index, then request one immediate non-animated scroll
-before enabling cards. empty projection consumes restoration into the existing
-empty surface. a vanished session may clamp viewport to a heading, never an action.
-
-retain one live grid object across terminal round trips. no per-filter viewport
-history, saved inventory/order/label map, terminal/editor state, or attachment.
-a different filter, including a needs-input toggle, cancels pending
-restoration; the same machine or group filter is a no-op.
-geometry clamps normally. reveal the selected machine chip; the compact group
-control always shows selection and needs no horizontal-offset persistence.
-
-terminal access loss still selects its affected machine and resets viewport to
-top; retain the group and needs-input filters. machine notices are outside group
-filtering, so the reason stays visible. detach/back and supported task recreation
-preserve the machine, group and needs-input filters; recreation lands on
-dashboard, never resumes attachment or mutation.
+resolve selected names from retained fleet inventory independently of queue
+membership. no match retains `previously selected group`, including save-again
+while pending. unsupported capsules reset to all/top; empty fleet resets the
+entry. temporary outage never resets selection. creation from unresolved named
+selection requires an explicit group choice.
 
 ## 11. reuse, removals, and files
 
-these paths are the implementation assignment, not permission to alter unrelated
-features in them. root owns canonical docs and any gate composition changes.
-this implementation uses the requested host, desktop, and android builders;
-cross-owner adversarial reviews make no test or production edits.
+these paths identify the groups implementation owners, not a new assignment or
+permission to alter unrelated features. root owns canonical docs and any gate
+composition changes. [session views](session-views.md#implementation-plan) owns
+the collection cutover. the original groups work used host, desktop and android
+builders, with read-only cross-owner adversarial reviews; its temporary tests
+followed [testing policy](rules/testing.md).
 
 | paths | responsibility / reuse |
 | --- | --- |
@@ -650,13 +589,13 @@ cross-owner adversarial reviews make no test or production edits.
 | `internal/logging/logger.go`, matching tests | normalized route, put method, error code; no labels |
 | `internal/fleetclient/{request,response,client,config}.go`, new `groups.go`, matching tests | request/projection/dispatch, bodyless result, shared grouping, safe machine-picker data |
 | `internal/agentcli/run.go`, matching tests | grammar, grouped text, info and help; same json envelope |
-| `internal/sessionui/session.go`, matching tests | full source rows, filters/editor, five-field creation, heading-aware cursor/viewport |
+| `internal/sessionui/session.go`, matching tests | full source rows, selected view/editor, five-field creation, heading-aware cursor/viewport |
 | android `ProductModel.kt`, new `Groups.kt` | session/draft/wire types, parser, grouping; reuse `hasDisplayUnsafeCodePoint` and `compareCaseInsensitiveUtf8` |
 | `android/app/build.gradle.kts`; android `src/test/java/android/icu/text/Normalizers.kt` | test-only icu4j 76.1 and narrow sdk namespace forwarding for jvm tests; production uses platform icu, with no apk dependency or alternate algorithm |
 | android `GatewayClient.kt` | bodyless authenticated put and route errors |
 | android `WorkingDirectoryPicker.kt`, `TerminalConnection.kt` | only exhaustive error-enum consumers made necessary by `GroupInvalid`; no route or behavior expansion |
 | android `SkidbladnirController.kt`, `SessionRename.kt` | group operation and shared metadata-fence bookkeeping; distinct rename semantics |
-| android `DashboardEntryState.kt`, `DashboardScreen.kt` | two filters, item projection, schema-2 capsule, selector and restoration |
+| android `DashboardEntryState.kt`, `DashboardScreen.kt` | one selected view, item projection, schema-4 capsule, view strip and restoration under session views |
 | android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action (since 2026-10-02 the overflow's first row) and shared group field using existing chrome |
 | android `MainActivity.kt` | thread events only as required; retain single saved-state owner |
 | temporary boundary checks under [testing policy](rules/testing.md) | label/transport/group/filter/fence/restore behavior |
@@ -675,8 +614,8 @@ required cleanup:
 - remove source retention based on filtered rows and cursor/index calculations
   that confuse headings with sessions;
 - replace the four-field tui count/help, not a second create form;
-- delete schema-1 capsule paths and card-only lazy-index assumptions; update every
-  consumer to the same rendered-item projection;
+- retain only the [current capsule](session-views.md#saved-navigation); remove
+  card-only lazy-index assumptions and use the same rendered-item projection;
 - rewire both metadata operations to shared fence bookkeeping and delete its
   superseded rename-only helpers;
 - no copied name-staleness contract, duplicate fleet selector, or reconstructed
@@ -701,23 +640,23 @@ not label values, terminal bytes, prompts, credentials, or provider output.
 | a2 · host membership | create assigned/unassigned; set/change/clear/no-op; list/create/info projection; invalid input mutates nothing; invalid/local-absent/global-only metadata projects unassigned without repair |
 | a3 · lifetime | old ref survives rename and pane/foreground replacement; stale session/server ref rejects; process identities, pane/window, cwd, name, character and attachment survive assignment; members of a tmux session group have independent labels |
 | a4 · ordering/uncertainty | concurrent absolute assignments yield whole last-applied values; possible dispatch never permits replay; one client write; pre-mutation reads cannot clear phone fence; a later differing label is authoritative without a fabricated failed-write claim |
-| a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; intersecting filters; selector-looking labels distinguishable; peer json and partial status honest |
-| a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; filter changes reveal retained rows; refresh discovers new membership on any host in machine scope; old tui scope result cannot admit new scope |
-| a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed creation changes filters: an out-of-filter group, and the needs-input filter |
+| a5 · fleet | equal labels group across hosts; case-distinct labels stay distinct; unassigned last; within-group order preserved; exclusive views; separate desktop machine scope; selector-looking labels distinguishable; peer json and partial status honest |
+| a6 · unavailable | stale actions disabled; unavailable peers visible with zero matches; all/group views reveal retained rows; refresh discovers new membership across the phone fleet or desktop machine scope; old tui scope result cannot admit new scope |
+| a7 · edit/create | all clients set/change/clear; suggestions fill without sending; invalid drafts survive; cancel has no effect; target stays pinned; visible prefill and unresolved explicit choice; only confirmed creation changes a non-admitting view to the returned group |
 | a8 · navigation | selection follows lifetime or specified clamped session index; heading/card viewport survives detach/back, insertion/reorder and recreation; missing anchor clamps rendered index; absent label stays selected; unavailable restore settles; capsule contains only exact current-schema primitives |
 | a9 · regression/scope | unassigned terminals preserve controls/defaults/host rules; no shell launcher, tmux grouping, provider meaning, launch context, persistent group resource, or compatibility path |
 
 proof shape:
 
 1. use small temporary host, fleet, and phone boundary checks for strict wire,
-   filtering, schema-3 restoration including `needsInputOnly`, the older-capsule
-   reset, and the updated copy. feed the reset a schema-2 capsule captured from
-   the pre-rename code, rather than generating both sides with the new code.
+   grouping and current-schema restoration. [session views](session-views.md#acceptance)
+   owns schema-4 cutover and old-capsule reset qualification; use an actual
+   predecessor capsule rather than generating both sides with the new code.
    remove the checks after green and review.
 2. use exact test-owned sessions on an isolated tmux socket for assignment,
    inheritance, lifetime, and metadata continuity. linux and darwin live results
    retain separate attribution. do not launch a paid provider for this rename.
-3. a real phone journey covers the editor, every filter, saved heading position,
+3. a real phone journey covers the editor, every view, saved heading position,
    detach/back, and the host request. a fixture or build cannot establish device
    acceptance. phone/adb requires explicit current-turn approval.
 4. run `scripts/check verify` for engineering checks. it contains no behavioral
@@ -756,12 +695,12 @@ release and runtime workflows.
 | last applied write, no replay | edits can overwrite and acknowledgements can be lost; no versions, receipts, conflict subsystem, or repair daemon |
 | observed suggestions | incomplete/stale names are typing assistance, not a catalogue or readiness claim |
 | filtering source inventory locally | no source payload reduction or group-derived host scope; preserve discovery and honest partial results |
-| confirmed creation can change filters | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the created machine when needed |
+| confirmed creation can change views | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the created machine when needed |
 | phone editing on dashboard | detach to refile; no terminal-chrome cost or added terminal navigation |
 | phone suggestions and overflow | one extra tap opens suggestions; change group sits one tap behind the card's overflow, so cards stay compact with 48dp menu rows |
 | saved label fingerprint | disappeared name becomes generic after recreation; creation requires explicit choice; hashes do not conceal guessable labels |
 | rendered-item anchors | a vanished anchor may clamp to a heading; no saved historical neighbour list |
-| task schema 3 | upgrade may reset navigation once; pairing preserved; no old decoder |
+| task schema 4 | session-views cutover resets older navigation once; pairing preserved; no old decoder |
 | coordinated release | mixed versions unsupported; optional fields can break strict old decoders; rollback restores the coordinated release |
 | bounded proof plan | no new infrastructure or broad provider qualification; unavailable boundaries remain explicit acceptance gaps |
 

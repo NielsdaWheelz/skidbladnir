@@ -23,7 +23,7 @@ reuse the directory interaction: editable text, matching choices and explicit
 acceptance. group matching runs synchronously over retained inventory. directory
 search keeps its host requests, zoxide ranking and path semantics. this change
 adds no endpoint, discovery, registry, persistence, dependency or poller.
-dashboard group filters, cli arguments, session naming and immediate desktop
+dashboard collection views, cli arguments, session naming and immediate desktop
 `n`/`T` creation retain their existing behavior.
 
 ## choices and matching
@@ -33,7 +33,7 @@ and observed labels; highlighting never rewrites it. create and edit use one
 group candidate owner per client.
 
 - desktop uses `fleetclient.ObservedGroups(m.scopedPeers())`: the dashboard's
-  machine scope, independent of the form's target machine and group filter.
+  machine scope, independent of the form's target machine and selected view.
   android uses `observedGroups(machines)` across all retained machine snapshots.
   neither client performs an extra read when the field opens or changes.
 - empty text exposes all observed labels in the existing group order. an

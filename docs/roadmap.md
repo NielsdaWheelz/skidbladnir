@@ -5,6 +5,21 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## session views and needs input
+
+2026-10-02: source implements [session views](session-views.md) in the isolated
+branch: exclusive needs-input/all/group navigation, fleet-wide phone browsing,
+horizontal tabs, schema-4 restoration and one machines/pressure disclosure.
+ready sorts before requests and current notices; quiet idle stays out; all/group
+ordering remains stable. inventory and attention admit together, including failure,
+and rejected creation cannot revive unmatched ready.
+[qualification](session-views.md#qualification) passes its darwin gateway/tmux/tty
+and physical-phone controller, output, navigation and layout boundaries using
+authored frames and controlled tls/wss peers. release and installed-fleet
+deployment are separate. final engineering checks and test retirement are recorded
+with that evidence.
+[agent exit attention](issues/agent-exit-attention.md) is a separate scope gap.
+
 ## searchable group entry — source implemented
 
 2026-10-02: [the accepted spec and plan](group-entry.md) covers local search/select
@@ -154,7 +169,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
-| desktop browser (agents and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
+| desktop browser (needs-input, all and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, session card, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [session card](session-card.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |
 | terminal chrome, sizing, keys, touch, selection and input composition | [chrome](terminal-chrome.md), [sizing](terminal-readable-sizing.md), [key deck](terminal-key-deck.md), [touch](terminal-touch-scroll.md), [selection](terminal-selection-copy.md) |

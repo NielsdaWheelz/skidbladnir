@@ -62,7 +62,7 @@ internal fun SessionCard(
     visibleSession: VisibleSession,
     machine: MachineState,
     machines: List<MachineState>,
-    showMachineLabel: Boolean,
+    needsInputView: Boolean,
     motionEnabled: Boolean,
     terminalControlPending: Boolean,
     onOpen: () -> Unit,
@@ -76,7 +76,7 @@ internal fun SessionCard(
     val context = visibleSession.context
     val terminalMachine = visibleSession.machine.label.text
     val notification = machine.notifications[NotificationKey(visibleSession.target)] ?: NotificationPresentation()
-    val status = sessionStatusContent(session, machine.canMutate, notification)
+    val status = sessionStatusContent(session, machine.canMutate, notification, showQueueReason = needsInputView)
     val tone = sessionStatusColor(status.tone)
     val availability = sessionAvailabilityContent(machine)
     val actions = listOf(SessionAction("change group", machine.canMutate, destructive = false, onGroup)) +
@@ -92,10 +92,8 @@ internal fun SessionCard(
         is ExecutionContext.Remote -> context.cwd
         ExecutionContext.RemoteUnknown -> null
     }
-    // A machine filter already names the machine once, so a local card drops it
-    // from sight; speech and every routed action keep it.
     val host = when (context) {
-        is ExecutionContext.Local -> terminalMachine.takeIf { showMachineLabel }
+        is ExecutionContext.Local -> terminalMachine
         is ExecutionContext.Remote -> "running on ${context.machine.label.text} · terminal on $terminalMachine"
         ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on $terminalMachine"
     }
@@ -116,6 +114,7 @@ internal fun SessionCard(
         profile?.let { append(" Profile $it.") }
         directory?.let { append(" Directory $it.") }
         if (directory == null && context is ExecutionContext.Remote) append(" Directory unavailable.")
+        if (needsInputView) append(" Group: ${session.group?.text ?: "unassigned"}.")
         availability?.let { append(" ${it.label}.") }
         session.objective?.let { append(" Objective: $it") }
     }
@@ -155,44 +154,56 @@ internal fun SessionCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // The facet is the status line's first glyph, so it holds the
-                    // first line at every font scale and wraps with the words. The
-                    // label never yields; the detail takes what width remains, so a
-                    // status change cannot reflow the list (session-card.md
-                    // invariant 10).
-                    Row {
+                    val primaryStatus = buildAnnotatedString {
+                        appendInlineContent(FACET)
+                        append(" ")
+                        withStyle(SpanStyle(color = tone, fontWeight = FontWeight.Bold)) { append(status.label) }
+                    }
+                    val statusInlineContent = mapOf(
+                        FACET to InlineTextContent(Placeholder(facetSize, facetSize, PlaceholderVerticalAlign.TextCenter)) {
+                            ActivityFacet(
+                                working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
+                                tone = tone,
+                                animate = machine.canMutate && motionEnabled,
+                            )
+                        },
+                    )
+                    if (needsInputView && status.detailExplainsQueue) {
+                        // The notice explains this queue row. Give the bounded detail its own
+                        // line so it can wrap without hiding the reason or stranding a separator.
                         Text(
                             text = buildAnnotatedString {
-                                appendInlineContent(FACET)
-                                append(" ")
-                                withStyle(SpanStyle(color = tone, fontWeight = FontWeight.Bold)) { append(status.label) }
+                                append(primaryStatus)
+                                status.detail?.let { withStyle(SpanStyle(color = Muted)) { append("\n$it") } }
                             },
-                        inlineContent = mapOf(
-                            FACET to InlineTextContent(Placeholder(facetSize, facetSize, PlaceholderVerticalAlign.TextCenter)) {
-                                ActivityFacet(
-                                    working = session.agent != null &&
-                                        session.terminalStatus.activity == TerminalActivity.Working,
-                                    tone = tone,
-                                    animate = machine.canMutate && motionEnabled,
-                                )
-                            },
-                        ),
+                            inlineContent = statusInlineContent,
                             style = MaterialTheme.typography.labelMedium,
                             fontFamily = NidavellirType.Data,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.alignByBaseline(),
                         )
-                        status.detail?.let {
+                    } else {
+                        // Ordinary cards keep a fixed-height detail beside the primary label;
+                        // only the label itself can require a second line (session-card.md).
+                        Row {
                             Text(
-                                text = " · $it",
-                                color = Muted,
+                                text = primaryStatus,
+                                inlineContent = statusInlineContent,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontFamily = NidavellirType.Data,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                                modifier = Modifier.alignByBaseline(),
                             )
+                            status.detail?.let {
+                                Text(
+                                    text = " · $it",
+                                    color = Muted,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = NidavellirType.Data,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                                )
+                            }
                         }
                     }
                     availability?.let { CardFact(it.label, noticeToneColor(it.tone)) }
@@ -224,14 +235,13 @@ internal fun SessionCard(
                     )
                     // Where: the host never yields to the path; the path yields from
                     // its head, so the segment that names the work stays legible.
-                    if (host != null || shownDirectory != null) {
-                        Row(Modifier.fillMaxWidth()) {
-                            host?.let { CardFact(if (shownDirectory != null) "$it · " else it, Muted) }
-                            shownDirectory?.let {
-                                CardFact(it, Muted, Modifier.weight(1f, fill = false), TextOverflow.StartEllipsis)
-                            }
+                    Row(Modifier.fillMaxWidth()) {
+                        CardFact(if (shownDirectory != null) "$host · " else host, Muted)
+                        shownDirectory?.let {
+                            CardFact(it, Muted, Modifier.weight(1f, fill = false), TextOverflow.StartEllipsis)
                         }
                     }
+                    if (needsInputView) CardFact(session.group?.let { "group: ${it.text}" } ?: "unassigned", Muted)
                 }
             }
             SessionActionsButton(

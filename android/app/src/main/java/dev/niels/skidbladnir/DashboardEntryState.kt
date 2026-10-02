@@ -7,11 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.savedstate.SavedStateRegistry
 
-internal sealed interface DashboardScope {
-    data object All : DashboardScope
-    data class Machine(val handle: MachineHandle) : DashboardScope
-}
-
 internal sealed interface DashboardItemKey {
     val encoded: String
     data class Group(val fingerprint: String) : DashboardItemKey {
@@ -65,100 +60,58 @@ internal data class DashboardViewport(
 
 internal data class DashboardEntrySnapshot(
     val schemaVersion: Int,
-    val scope: DashboardScope,
     val viewport: DashboardViewport,
-    val group: DashboardGroupKey,
-    val needsInputOnly: Boolean,
+    val view: DashboardViewKey,
 ) {
     init {
         // justify-service-invariant-check: the task capsule's exact wire version is a
         // runtime integer boundary and cannot be encoded by this shared snapshot type.
-        require(schemaVersion == 3)
+        require(schemaVersion == 4)
     }
 }
 
 internal class DashboardEntryState {
-    private var currentScope by mutableStateOf<DashboardScope>(DashboardScope.All)
-    private var currentGroup by mutableStateOf<DashboardGroupSelection>(DashboardGroupSelection.All)
-    private var currentNeedsInputOnly by mutableStateOf(false)
+    private var currentView by mutableStateOf<DashboardViewSelection>(DashboardViewSelection.All)
     private var pendingSnapshot by mutableStateOf<DashboardEntrySnapshot?>(null)
     private var ownedGridState by mutableStateOf(LazyGridState())
-    private var acceptedHandles: Set<MachineHandle>? = null
     private var installed = false
 
-    val scope: DashboardScope get() = currentScope
-    val group: DashboardGroupSelection get() = currentGroup
-    val needsInputOnly: Boolean get() = currentNeedsInputOnly
+    val view: DashboardViewSelection get() = currentView
     val gridState: LazyGridState get() = ownedGridState
     val restorationPending: Boolean get() = pendingSnapshot != null
 
     fun acceptFleet(handles: Set<MachineHandle>) {
-        acceptedHandles = handles.toSet()
-        val scopeAccepted = when (val scope = currentScope) {
-            DashboardScope.All -> true
-            is DashboardScope.Machine -> scope.handle in handles
-        }
-        if (handles.isEmpty() || !scopeAccepted) resetAll()
+        if (handles.isEmpty()) resetAll()
     }
 
-    fun selectScope(scope: DashboardScope) {
-        if (scope == currentScope) return
-        // justify-service-invariant-check: accepted fleet membership is dynamic task
-        // state and therefore cannot be encoded in DashboardScope.Machine's type.
-        when (scope) {
-            DashboardScope.All -> Unit
-            is DashboardScope.Machine -> require(scope.handle in checkNotNull(acceptedHandles))
-        }
-        currentScope = scope
-        pendingSnapshot = null
-    }
-
-    fun selectGroup(group: DashboardGroupSelection) {
-        if (group.key == currentGroup.key) return
-        currentGroup = group
-        pendingSnapshot = null
-    }
-
-    fun toggleNeedsInputOnly() {
-        currentNeedsInputOnly = !currentNeedsInputOnly
+    fun selectView(view: DashboardViewSelection) {
+        if (view.key == currentView.key) return
+        currentView = view
         pendingSnapshot = null
     }
 
     fun resolveGroup(labels: List<GroupLabel>) {
-        val selected = currentGroup as? DashboardGroupSelection.Named ?: return
+        val selected = currentView as? DashboardViewSelection.Named ?: return
         if (selected.label != null) return
         val label = labels.firstOrNull { groupFingerprint(it) == selected.fingerprint } ?: return
-        currentGroup = selected.copy(label = label)
+        currentView = selected.copy(label = label)
     }
 
-    /**
-     * Confirmed creation reveals the created session. Dashboard membership follows the next inventory
-     * sample, not the creation sample, so the needs-input filter clears (desktop parity).
-     */
+    /** Creation reveals its confirmed group; its pre-render sample cannot qualify for needs input. */
     fun followCreatedMembership(label: GroupLabel?) {
-        val groupMatches = currentGroup.matches(label)
-        if (groupMatches && !currentNeedsInputOnly) return
-        if (!groupMatches) {
-            currentGroup = label?.let { DashboardGroupSelection.Named(groupFingerprint(it), it) } ?: DashboardGroupSelection.Unassigned
-        }
-        currentNeedsInputOnly = false
+        if (currentView != DashboardViewSelection.NeedsInput && currentView.matchesGroup(label)) return
+        currentView = label?.let { DashboardViewSelection.Named(groupFingerprint(it), it) } ?: DashboardViewSelection.Unassigned
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
 
-    fun selectTerminalAccessLoss(handle: MachineHandle) {
-        // justify-service-invariant-check: access loss arrives from a dynamic controller
-        // fleet; its current accepted membership cannot be represented by MachineHandle.
-        require(handle in checkNotNull(acceptedHandles))
-        currentScope = DashboardScope.Machine(handle)
+    fun resetViewportAfterAccessLoss() {
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
 
     fun resetAll() {
-        currentScope = DashboardScope.All
-        currentGroup = DashboardGroupSelection.All
-        currentNeedsInputOnly = false
+        currentView = DashboardViewSelection.All
         pendingSnapshot = null
         ownedGridState = LazyGridState()
     }
@@ -183,9 +136,7 @@ internal class DashboardEntryState {
         val anchor = key?.let(DashboardItemKey::parse)
         return DashboardEntrySnapshot(
             schemaVersion = SCHEMA_VERSION,
-            scope = currentScope,
-            group = currentGroup.key,
-            needsInputOnly = currentNeedsInputOnly,
+            view = currentView.key,
             viewport = if (anchor == null) {
                 TOP_VIEWPORT
             } else {
@@ -204,9 +155,7 @@ internal class DashboardEntryState {
             if (restored == null) {
                 resetAll()
             } else {
-                currentScope = restored.scope
-                currentGroup = restored.group.selection()
-                currentNeedsInputOnly = restored.needsInputOnly
+                currentView = restored.view.selection()
                 pendingSnapshot = restored
             }
         }
@@ -214,26 +163,20 @@ internal class DashboardEntryState {
     }
 
     private companion object {
-        // Schema 3 persists the membership, anchor and needs-input spellings; keep one reader and writer.
-        const val SCHEMA_VERSION = 3
+        // Schema 4 persists one view and semantic anchor; keep one reader and writer.
+        const val SCHEMA_VERSION = 4
         const val REGISTRY_KEY = "dev.niels.skidbladnir.dashboard-entry"
         val TOP_VIEWPORT = DashboardViewport(anchor = null, fallbackIndex = 0, offsetPx = 0)
 
         fun encodeSnapshot(snapshot: DashboardEntrySnapshot): Bundle = Bundle().apply {
             putInt("version", SCHEMA_VERSION)
-            when (val scope = snapshot.scope) {
-                DashboardScope.All -> putString("scopeKind", "all")
-                is DashboardScope.Machine -> {
-                    putString("scopeKind", "machine")
-                    putString("scopeMachine", scope.handle.encoded)
-                }
-            }
-            when (val group = snapshot.group) {
-                DashboardGroupKey.All -> putString("spaceKind", "all")
-                DashboardGroupKey.Unassigned -> putString("spaceKind", "unassigned")
-                is DashboardGroupKey.Named -> {
-                    putString("spaceKind", "named")
-                    putString("spaceLabelSha256", group.fingerprint)
+            when (val view = snapshot.view) {
+                DashboardViewKey.NeedsInput -> putString("viewKind", "needsInput")
+                DashboardViewKey.All -> putString("viewKind", "all")
+                DashboardViewKey.Unassigned -> putString("viewKind", "unassigned")
+                is DashboardViewKey.Named -> {
+                    putString("viewKind", "named")
+                    putString("viewLabelSha256", view.fingerprint)
                 }
             }
             when (val anchor = snapshot.viewport.anchor) {
@@ -250,32 +193,24 @@ internal class DashboardEntryState {
             }
             putInt("fallbackIndex", snapshot.viewport.fallbackIndex)
             putInt("offsetPx", snapshot.viewport.offsetPx)
-            putBoolean("needsInputOnly", snapshot.needsInputOnly)
         }
 
         // justify-defect: malformed current-version task state is a trusted-state contract defect.
         fun decodeSnapshot(encoded: Bundle): DashboardEntrySnapshot? {
             val version = encoded.requiredInt("version")
             if (version != SCHEMA_VERSION) return null
-            val requiredKeys = mutableSetOf("version", "scopeKind", "spaceKind", "anchorKind", "fallbackIndex", "offsetPx", "needsInputOnly")
-            val scope = when (encoded.requiredString("scopeKind")) {
-                "all" -> DashboardScope.All
-                "machine" -> {
-                    requiredKeys += "scopeMachine"
-                    DashboardScope.Machine(checkNotNull(MachineHandle.parse(encoded.requiredString("scopeMachine"))))
-                }
-                else -> error("invalid dashboard machine scope")
-            }
-            val group = when (encoded.requiredString("spaceKind")) {
-                "all" -> DashboardGroupKey.All
-                "unassigned" -> DashboardGroupKey.Unassigned
+            val requiredKeys = mutableSetOf("version", "viewKind", "anchorKind", "fallbackIndex", "offsetPx")
+            val view = when (encoded.requiredString("viewKind")) {
+                "needsInput" -> DashboardViewKey.NeedsInput
+                "all" -> DashboardViewKey.All
+                "unassigned" -> DashboardViewKey.Unassigned
                 "named" -> {
-                    requiredKeys += "spaceLabelSha256"
-                    val fingerprint = encoded.requiredString("spaceLabelSha256")
+                    requiredKeys += "viewLabelSha256"
+                    val fingerprint = encoded.requiredString("viewLabelSha256")
                     check(DashboardCardKey.isFingerprint(fingerprint))
-                    DashboardGroupKey.Named(fingerprint)
+                    DashboardViewKey.Named(fingerprint)
                 }
-                else -> error("invalid dashboard group scope")
+                else -> error("invalid dashboard view")
             }
             val anchor = when (encoded.requiredString("anchorKind")) {
                 "none" -> null
@@ -294,7 +229,7 @@ internal class DashboardEntryState {
             val offset = encoded.requiredInt("offsetPx")
             check(index >= 0 && offset >= 0 && (anchor != null || index == 0 && offset == 0))
             return DashboardEntrySnapshot(
-                version, scope, DashboardViewport(anchor, index, offset), group, encoded.requiredBoolean("needsInputOnly"),
+                version, DashboardViewport(anchor, index, offset), view,
             )
         }
 
@@ -304,13 +239,6 @@ internal class DashboardEntryState {
             val upperDefault = getInt(key, Int.MAX_VALUE)
             check(lowerDefault == upperDefault)
             return lowerDefault
-        }
-
-        fun Bundle.requiredBoolean(key: String): Boolean {
-            check(containsKey(key))
-            val falseDefault = getBoolean(key, false)
-            check(falseDefault == getBoolean(key, true))
-            return falseDefault
         }
 
         fun Bundle.requiredString(key: String): String {

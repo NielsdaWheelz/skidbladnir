@@ -1,10 +1,16 @@
 # v0 dashboard pull-to-refresh delta
 
-2026-09-15 groups amendment: [groups](groups.md) adds a presentation filter only.
-manual verification still snapshots machine scope and reads every live machine
-in it, including hosts with no previously observed membership in the selected
-group. group filtering changes neither refresh targets nor request/completion
-ordering or pressure polling. its selector stays outside the pull owner. the
+2026-10-02 accepted design: [session views](session-views.md) removes phone
+machine filtering, so manual verification targets every live fleet inventory
+poller. source implements this cutover; qualification belongs to session views.
+request/completion fencing, collection geometry and inventory-only refresh
+remain governed here. earlier evidence retains its recorded source boundary.
+
+the [groups](groups.md) presentation contract does not narrow refresh targets.
+manual verification snapshots every live fleet inventory poller, including hosts
+with no previously observed membership in the selected group. view selection
+changes neither request/completion ordering nor pressure polling. its strip
+stays outside the pull owner. the
 evidence below predates groups. its source is implemented; [groups/shells hands-on acceptance](issues/groups-shells-hands-on.md)
 remains open.
 
@@ -29,8 +35,7 @@ introduced.
 
 The dashboard hard-cuts its visible `Refresh` button to standard pull-to-refresh
 over the dwarf collection. Automatic reconciliation remains primary. Pull is
-the sole manual shortcut and verifies the inventory visible under the current
-machine filter.
+the sole manual shortcut and verifies inventory across every live fleet poller.
 
 ## Scope
 
@@ -44,13 +49,13 @@ are consumed unchanged.
 - No overflow item, icon, contextual Retry, custom accessibility action, or
   other tap equivalent. This is an explicit one-user v0 exception, not a
   general accessibility precedent.
-- `All` verifies every machine with live polling; a machine filter verifies
-  only that machine. Scope is captured when the pull is released.
+- every view verifies the same live fleet inventory pollers. targets are
+  captured when the pull is released.
 - Completion means the required post-request `GET /v1/sessions` reads landed.
   Pressure remains independently automatic and is not part of pull completion.
-- Header, filters, notices, Forge recovery, card order, terminal behavior, and
-  pressure-rail placement as owned by `machine-pressure-rail.md` stay outside
-  pull behavior. Only the dwarf collection viewport pulls.
+- header, views, notices, forge recovery, card order, terminal behavior and
+  pressure placement stay outside pull behavior. [session views](session-views.md)
+  owns those collection changes; only the dwarf collection viewport pulls.
 - No open product or architecture question remains for implementation.
 
 ## Goals and rules
@@ -58,7 +63,7 @@ are consumed unchanged.
 - Reclaim header space while preserving user agency and literal freshness.
 - Use Material 3 `PullToRefreshBox`; do not hand-roll pointer, threshold,
   overscroll, nested-scroll, or fling behavior.
-- Reuse the existing per-machine inventory lane, filter routing, stale
+- reuse the existing per-machine inventory lane, fleet routing, stale
   reduction, mutation fences, and `Dashboard.refreshing` derived state.
 - Keep the last snapshot, viewport, focus, dialog/draft state, and stable card
   keys during verification. Never blank, reload, or jump the collection.
@@ -70,8 +75,7 @@ are consumed unchanged.
   Authentication keeps `Reconnect fleet`; identity change requires fleet
   reset outside the app. Neither claims pull can repair it.
 - Forge outcome-unknown recovery names only an available path: pull when its
-  ready target is visible, select that named target then pull when another
-  machine is filtered, reconnect the fleet for authentication, and reset the
+  ready target is available, reconnect the fleet for authentication, and reset the
   fleet outside the app for an identity-changed or missing target. Review-ready
   remains safe past-tense copy.
 
@@ -80,7 +84,7 @@ are consumed unchanged.
 1. A downward drag released below the platform threshold does nothing.
 2. A downward drag released after the collection has reached its top and
    accumulated the platform threshold overscroll requests one verification of
-   the current filter scope. Drag-start position is not a second gesture rule.
+   the captured live fleet targets. Drag-start position is not a second gesture rule.
 3. The Compose pull owner dispatches no second gesture intent while the derived
    indicator is active. Programmatic callers still require their own
    post-intent read and coalesce through the same lane.
@@ -92,39 +96,39 @@ are consumed unchanged.
    snapshot as `STALE`, or remains `Unreachable` when none exists; existing
    action fencing is unchanged.
 7. Empty, short, reading, stale, and populated collections all accept the same
-   pull gesture. Horizontal machine-filter scrolling cannot trigger it because
-   filters remain outside the pull owner.
+   pull gesture. horizontal view-strip scrolling cannot trigger it because
+   the strip remains outside the pull owner.
 8. Programmatic and pulled verification use one progress surface. It is
    visible and exposes indeterminate progress semantics, but no click action.
 9. Success is quiet: no toast, snackbar, timestamp, haptic, or card-reorder
    animation is added.
-10. If the visible scope has no live polling target, no indicator starts and
+10. if the accepted fleet has no live polling target, no indicator starts and
     the existing machine-access or fleet-reset notice remains the outcome.
 
 ## Structure and composition
 
 ```text
 fixed DashboardTopBar (Dwarves + machine summary)
-fixed filters / machine strips / notices / recovery
-`- live visible target? PullToRefreshBox : inert collection container
+fixed view strip / machines disclosure / notices / recovery
+`- live fleet target? PullToRefreshBox : inert collection container
    `- one always-present LazyVerticalGrid
       |- full-span empty/reading state, or
       `- stable-keyed dwarf cards
 
 pull -> verifyVisibleInventory()
-     -> current-filter live machine handles
+     -> all live fleet inventory handles
      -> existing per-machine coalescing inventory lane
      -> authenticated GET /v1/sessions
      -> existing Fresh | Stale | Unreachable reduction and admission
      -> awaited read tickets empty -> indicator hides
 ```
 
-The grid replaces the current split between static `EmptyState` boxes and a
-populated lazy grid. Fixed chrome does not move. A visible
-`MachineAccess.Ready` target is the foreground UI invariant for a live poller;
-only that scope mounts the platform pull owner. The same one lazy child remains
-for no-live scopes, so a no-op release cannot strand Material state at its
-threshold and no second scroll body exists.
+the same lazy grid renders empty and populated collections. fixed chrome does
+not move. a `MachineAccess.Ready` fleet target is the foreground ui invariant for
+a live poller; any such target mounts the platform pull owner, regardless of
+the selected view's rows. the same lazy child remains with no live targets, so
+a no-op release cannot strand material state at its threshold and no second
+scroll body exists.
 
 The 2026-08-28 correction hard-cuts only indicator placement and collection
 spacing per [`dashboard-refresh-boundary.md`](dashboard-refresh-boundary.md).
@@ -140,16 +144,16 @@ changes. No dependency is added; Material 3 is already in the Compose BOM.
 
 ### Android intent
 
-Hard-cut `SkidbladnirController.refresh()` to the single semantic intent:
+the single manual inventory intent is:
 
 ```kotlin
 fun verifyVisibleInventory()
 ```
 
-It snapshots the current filter, targets only live polling runtimes, and
+it snapshots every live fleet polling runtime independently of the selected view and
 requests awaited inventory reads even when an older requirement is active;
 the lane coalesces them. It does not call `requestPressure`.
-Dashboard pull and `detachToAgents` use this same intent; the old method does
+dashboard pull and `detachToSessions` use this same intent; the old `refresh` method does
 not remain as an alias.
 
 ### Awaited-read ownership
@@ -176,7 +180,11 @@ inventory result: MachineHandle + completed read sequence
 The lane may encode the sequence internally, but its tested contract is the
 ordering above; do not export a general operation/ticket framework.
 
-## Hard cut and cleanup
+## historical original hard cut and cleanup
+
+the following cleanup, ownership and red/green instructions record the original
+pull-to-refresh delivery. they are not a new assignment or retained test suite;
+[testing policy](rules/testing.md) governs current work.
 
 - Delete the header `TextButton`, `onRefresh`, and `refreshing` top-bar
   parameters.
@@ -193,7 +201,7 @@ ordering above; do not export a general operation/ticket framework.
 - Do not extract a generic refresh surface, operation framework, or shared
   gesture library: there is one consumer.
 
-## Work split
+## historical original work split
 
 Work is sequential at the named API seam; paths do not overlap.
 Before builder work, the root integrator replaces architecture's header-button
@@ -212,7 +220,7 @@ No owner changes `GatewayClient.kt`, gateway/tmux code, build files,
 owns and observes its red before production edits. The verifier writes no test
 or production file.
 
-## Red / green / refactor
+## historical original red / green / refactor
 
 ### Red
 
@@ -250,18 +258,16 @@ abstraction without a second production consumer.
 - Pull is the only manual verification affordance and works in every collection
   state at the top of the viewport.
 - The indicator cannot finish on a read that began before the pull.
-- Current-filter routing, per-machine partial failure, stale mutation fencing,
+- fleet targeting, per-machine partial failure, stale mutation fencing,
   card identity, fixed chrome, and five-second recovery remain intact.
 - Manual pull performs no pressure request and no mutation/input operation.
 - Recoverable failure copy teaches the gesture; auth/identity copy remains
   truthful and distinct.
-- Routine verification is green.
-- One separately approved S22+ platform pass is green, plus one hands-on pull
-  confirming native resistance/threshold, no scroll jump, and no essential
-  first-row text or control obscured by the indicator. Without that device,
-  both are `NOT_RUN`, never pass.
-- Integration, live publication, product/three-host, tmux, and host gates are not
-  required because their boundaries are byte-identical; do not invoke them.
+- current engineering checks and session-view qualification belong to
+  [session views](session-views.md#acceptance); historical passes above do not
+  qualify the cutover. a hands-on pull checks native resistance/threshold,
+  no scroll jump and no obscured first-row text or control. without its real
+  device boundary it remains `NOT_RUN`, never pass.
 
 ## Non-goals
 

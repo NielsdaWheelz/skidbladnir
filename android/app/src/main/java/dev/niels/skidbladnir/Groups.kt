@@ -57,43 +57,47 @@ internal fun groupFingerprint(label: GroupLabel): String {
     return digest.digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
-internal sealed interface DashboardGroupKey {
-    data object All : DashboardGroupKey
-    data object Unassigned : DashboardGroupKey
-    data class Named(val fingerprint: String) : DashboardGroupKey {
+internal sealed interface DashboardViewKey {
+    data object NeedsInput : DashboardViewKey
+    data object All : DashboardViewKey
+    data object Unassigned : DashboardViewKey
+    data class Named(val fingerprint: String) : DashboardViewKey {
         init { require(DashboardCardKey.isFingerprint(fingerprint)) }
     }
 }
 
-internal sealed interface DashboardGroupSelection {
-    val key: DashboardGroupKey
-    data object All : DashboardGroupSelection { override val key = DashboardGroupKey.All }
-    data object Unassigned : DashboardGroupSelection { override val key = DashboardGroupKey.Unassigned }
-    data class Named(val fingerprint: String, val label: GroupLabel? = null) : DashboardGroupSelection {
+internal sealed interface DashboardViewSelection {
+    val key: DashboardViewKey
+    data object NeedsInput : DashboardViewSelection { override val key = DashboardViewKey.NeedsInput }
+    data object All : DashboardViewSelection { override val key = DashboardViewKey.All }
+    data object Unassigned : DashboardViewSelection { override val key = DashboardViewKey.Unassigned }
+    data class Named(val fingerprint: String, val label: GroupLabel? = null) : DashboardViewSelection {
         init {
             require(DashboardCardKey.isFingerprint(fingerprint))
             require(label == null || groupFingerprint(label) == fingerprint)
         }
-        override val key = DashboardGroupKey.Named(fingerprint)
+        override val key = DashboardViewKey.Named(fingerprint)
     }
 }
 
-internal fun DashboardGroupKey.selection(): DashboardGroupSelection = when (this) {
-    DashboardGroupKey.All -> DashboardGroupSelection.All
-    DashboardGroupKey.Unassigned -> DashboardGroupSelection.Unassigned
-    is DashboardGroupKey.Named -> DashboardGroupSelection.Named(fingerprint)
+internal fun DashboardViewKey.selection(): DashboardViewSelection = when (this) {
+    DashboardViewKey.NeedsInput -> DashboardViewSelection.NeedsInput
+    DashboardViewKey.All -> DashboardViewSelection.All
+    DashboardViewKey.Unassigned -> DashboardViewSelection.Unassigned
+    is DashboardViewKey.Named -> DashboardViewSelection.Named(fingerprint)
 }
 
-internal fun DashboardGroupSelection.matches(label: GroupLabel?): Boolean = when (this) {
-    DashboardGroupSelection.All -> true
-    DashboardGroupSelection.Unassigned -> label == null
-    is DashboardGroupSelection.Named -> label != null && groupFingerprint(label) == fingerprint
+internal fun DashboardViewSelection.matchesGroup(label: GroupLabel?): Boolean = when (this) {
+    DashboardViewSelection.NeedsInput, DashboardViewSelection.All -> true
+    DashboardViewSelection.Unassigned -> label == null
+    is DashboardViewSelection.Named -> label != null && groupFingerprint(label) == fingerprint
 }
 
-internal fun DashboardGroupSelection.displayLabel(): String = when (this) {
-    DashboardGroupSelection.All -> "all groups"
-    DashboardGroupSelection.Unassigned -> "unassigned"
-    is DashboardGroupSelection.Named -> label?.text ?: "previously selected group"
+internal fun DashboardViewSelection.displayLabel(): String = when (this) {
+    DashboardViewSelection.NeedsInput -> "needs input"
+    DashboardViewSelection.All -> "all"
+    DashboardViewSelection.Unassigned -> "unassigned"
+    is DashboardViewSelection.Named -> label?.text ?: "previously selected group"
 }
 
 internal sealed interface GroupDraft {
@@ -101,9 +105,9 @@ internal sealed interface GroupDraft {
     data class Chosen(val text: String) : GroupDraft
 }
 
-internal fun DashboardGroupSelection.creationDraft(): GroupDraft = when (this) {
-    DashboardGroupSelection.All, DashboardGroupSelection.Unassigned -> GroupDraft.Chosen("")
-    is DashboardGroupSelection.Named -> label?.let { GroupDraft.Chosen(it.text) } ?: GroupDraft.Unresolved
+internal fun DashboardViewSelection.creationDraft(): GroupDraft = when (this) {
+    DashboardViewSelection.NeedsInput, DashboardViewSelection.All, DashboardViewSelection.Unassigned -> GroupDraft.Chosen("")
+    is DashboardViewSelection.Named -> label?.let { GroupDraft.Chosen(it.text) } ?: GroupDraft.Unresolved
 }
 
 internal fun observedGroups(machines: List<MachineState>): List<GroupLabel> = machines
@@ -156,26 +160,29 @@ internal sealed interface DashboardItem {
     data class Session(val visible: VisibleSession) : DashboardItem { override val key = visible.cardKey }
 }
 
-/**
- * The dashboard's one ordered projection of the scoped [machines]: headings by label with unassigned
- * last, sessions by machine then tmux id. Filtering before grouping leaves no empty heading.
- */
+/** One projection owns queue priority, group order, rendering keys and restored anchors. */
 internal fun dashboardItems(
     machines: List<MachineState>,
-    group: DashboardGroupSelection,
-    needsInputOnly: Boolean,
+    view: DashboardViewSelection,
 ): List<DashboardItem> {
-    val grouped = machines
-        .flatMap { state ->
-            state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
-                .filter { group.matches(it.group) && (!needsInputOnly || sessionNeedsInput(it, state.canMutate)) }
-                .map { VisibleSession(state.machine, SessionTarget(state.machine.handle, it), state.executionContext(it)) }
-        }
-        .sortedWith(compareBy<VisibleSession> { it.machine.label.text.lowercase(Locale.ROOT) }
-            .thenBy { it.machine.label.text }
-            .thenBy { it.machine.handle.encoded }
-            .thenBy { it.target.session.tmuxId.substring(1).toBigInteger() })
-        .groupBy { it.target.session.group }
+    val sessions = machines.flatMap { state ->
+        state.inventory.lastSnapshot()?.inventory?.sessions.orEmpty()
+            .filter { view.matchesGroup(it.group) }
+            .map { session ->
+                val target = SessionTarget(state.machine.handle, session)
+                val notification = state.notifications[NotificationKey(target)] ?: NotificationPresentation()
+                VisibleSession(state.machine, target, state.executionContext(session)) to
+                    sessionStatusContent(session, state.canMutate, notification).queueCategory
+            }
+    }.sortedWith(compareBy<Pair<VisibleSession, SessionQueueCategory>> { it.first.machine.label.text.lowercase(Locale.ROOT) }
+        .thenBy { it.first.machine.label.text }
+        .thenBy { it.first.machine.handle.encoded }
+        .thenBy { it.first.target.session.tmuxId.substring(1).toBigInteger() })
+    if (view == DashboardViewSelection.NeedsInput) {
+        return sessions.filter { it.second != SessionQueueCategory.Excluded }
+            .sortedBy { it.second }.map { DashboardItem.Session(it.first) }
+    }
+    val grouped = sessions.map { it.first }.groupBy { it.target.session.group }
     val labels = grouped.keys.filterNotNull()
         .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
     return buildList {
@@ -183,9 +190,9 @@ internal fun dashboardItems(
             add(DashboardItem.Heading(label))
             grouped.getValue(label).forEach { add(DashboardItem.Session(it)) }
         }
-        grouped[null]?.let { sessions ->
+        grouped[null]?.let { unassigned ->
             add(DashboardItem.Heading(null))
-            sessions.forEach { add(DashboardItem.Session(it)) }
+            unassigned.forEach { add(DashboardItem.Session(it)) }
         }
     }
 }
