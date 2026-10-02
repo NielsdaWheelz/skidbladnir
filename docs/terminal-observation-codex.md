@@ -563,8 +563,9 @@ count alone fills a one-row footer (the count, when added, comes before it).
     the timer (`:1183`, `:1457`). resolution submits empty answers
     (`submit_empty_auto_resolution`, `:892-909`) and the model continues the turn
     on them, so an unvisited question disappears and the pane reads the
-    continuation: question → idle raises no ready (spec §6), and working sampled
-    in the continuation arms ready as usual.
+    continuation. [terminal attention](reply-notifications.md#behavior) owns
+    whether the sampled transition raises ready; its implemented 2026-10-01 revision
+    treats question → idle as available again without claiming an answer.
   - observed with the switch on, on darwin with the 0.159.2 TUI embedded and
     against daemons 0.159.2 and 0.159.3: each tool output arrived 120.0 s after
     its question, and the scripted endpoint ended each continuation at once, so

@@ -44,3 +44,8 @@ versions, or the darwin and linux versions are aligned and a version-difference
 check shows the family renders identically, recorded in the capability tables;
 the product, attention, controls, deadline and negative rows run through a real
 linux gateway; then delete this record.
+
+2026-10-01: [revised attention qualification](../reply-notifications.md#qualification)
+passes 76 disk-owner, stream and browser-model cases on linux/arm64 in an isolated
+local container. it does not run installed linux providers, tmux or the fleet's
+real gateway/product/control boundaries listed above.

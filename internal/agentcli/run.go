@@ -391,14 +391,24 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		io.WriteString(stderr, "ctrl-] then d detaches; navigation and terminal size are shared\n")
 		info := parsed.request
 		info.Operation = "info"
+		store, storeErr := fleetclient.DefaultNotificationStore()
+		var expected fleetclient.NotificationSnapshot
+		if storeErr == nil {
+			expected, storeErr = store.Read()
+		}
 		observed := client.Execute(ctx, info)
 		if !observed.OK {
+			if storeErr != nil {
+				fmt.Fprintln(stderr, "notifications unavailable")
+			}
 			return render(parsed, observed, stdout, stderr)
 		}
 		row := observed.Value.(fleetclient.ObservedSession).Session
 		request := fleetclient.Request{Operation: "enter", Ref: row.Ref}
 
-		store, storeErr := fleetclient.DefaultNotificationStore()
+		if storeErr == nil {
+			_, storeErr = store.ObserveSession(row, client.Machines(), expected)
+		}
 		if storeErr != nil {
 			fmt.Fprintln(stderr, "notifications unavailable")
 		}
@@ -694,6 +704,6 @@ func settleVisit(ctx context.Context, client *fleetclient.Client, request fleetc
 	if ref != captured {
 		return nil
 	}
-	_, _, err = store.ObserveSession(value.Session, client.Machines(), expected)
+	_, err = store.ObserveSession(value.Session, client.Machines(), expected)
 	return err
 }

@@ -3,6 +3,10 @@
 tmux owns session state and process lifetimes. each gateway owns one host;
 clients compose independent gateways. there is no application database.
 
+the table describes current source. the
+[attention owner](reply-notifications.md#owner-schemas-and-interfaces) persists
+quiet/armed/ready and revision fences; the clients own freshness and local visits.
+
 | slice | owner | boundary |
 | --- | --- | --- |
 | startup and host configuration | `cmd/skidbladnir`, `internal/hostconfig`, `internal/platform` | compose one host from deployment-owned configuration |
@@ -11,7 +15,7 @@ clients compose independent gateways. there is no application database.
 | host resources | `internal/workdir`, `internal/pressure` | bounded directory browsing and native pressure observation |
 | gateway transport and access | `internal/gateway`, `internal/auth`, `internal/pairing`, `internal/strictjson`, `internal/logging`, `internal/terminal` | authenticated http, strict messages, owned websocket/pty lifetime |
 | desktop clients | `internal/fleetclient`, `internal/agentcli`, `internal/sessionui`, `internal/terminalclient` | shared peer routing and references; one status projection and needs-input predicate (`fleetclient/status.go`); cli, browser, local tty |
-| terminal attention | desktop `internal/fleetclient/notifications.go`, phone `NotificationStore.kt` | serialized pending/boundary persistence and ready classification (phone: private arming/clearing/ready classification and `NotificationSnapshot.presentsReady`; its controller keeps only freshness, read-sequence and visit gates); client-local working predecessors; no native-history feed |
+| terminal attention | desktop `internal/fleetclient/notifications.go`, phone `NotificationStore.kt` | serialized v2 quiet/armed/ready persistence, scoped observation and visit operations; private transition reduction and committed-ready projection; clients keep freshness, read-sequence and visit gates; no native-history feed |
 | phone fleet and dashboard | `MachineStore.kt`, `FleetPersistence.kt`, `FleetInvite.kt`, `GatewayClient.kt`, `SkidbladnirController.kt`, dashboard/forge/group/chooser files | encrypted pairings, reconciliation, selection and mutations; `TerminalControl.kt` status types and validity; `ProductModel.kt` `sessionStatusContent` and `sessionNeedsInput`; `Groups.kt` `dashboardItems` owns dashboard order, grouping and needs-input filtering of the machine list `DashboardMain` scopes |
 | phone polling and ordering | `Polling.kt` | coalesced reads, per-machine mutation fences and awaited inventory reads; the controller owns lane lifetimes |
 | phone machine pressure | `Pressure.kt`, `PressurePresentation.kt`, `MachinePressureRail.kt` | strict pressure contract and state, dashboard visibility and content, rendered rail and details |

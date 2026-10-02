@@ -280,10 +280,11 @@ creation, and content-free restoration contracts:
   bay remains the semantic and accessible source. the exclusive status/attention
   label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
   copy and tone; only `ready` is green.
-  readiness is inferred, never proof of unseen text or completion. first actual
-  terminal presentation clears it; the visit and first qualified closing sample
-  remain quiet. unknown/stale/unavailable retains pending but hides green and
-  breaks transition continuity. no human reply viewer or read receipt. recorded
+  readiness is inferred, never proof of unseen text or completion.
+  [terminal attention](reply-notifications.md) owns dismissal, visit boundaries
+  and durable memory across uncertain observations. the device-local v2 owner
+  remembers non-idle until idle, and actual output presentation acknowledges
+  ready while preserving armed work. no human reply viewer or read receipt. recorded
   native identity is secondary and may differ from the terminal. the machine label
   is quiet footer context in
   `All`; a selected-machine filter supplies that visible context once, so its
@@ -1056,6 +1057,14 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-01 accepted scope: [terminal attention](reply-notifications.md) replaces
+consecutive working-to-idle detection with durable device-local non-idle-to-idle
+attention. its specification owns the exact transitions, visit semantics,
+versioned cache reset, implementation paths and acceptance criteria. source
+implements that contract; [qualification](reply-notifications.md#qualification)
+records its actual boundaries. screen classification, gateway
+protocol, native capabilities and polling cadence stay with their existing owners.
 
 2026-09-30 accepted implementation scope: [non-native terminal observation](terminal-observation.md)
 replaces ordinary terminal status and screen classification at coordinated

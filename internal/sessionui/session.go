@@ -30,8 +30,10 @@ type inventoryMsg struct {
 }
 type tickMsg struct{}
 type actionMsg struct {
-	operation string
-	result    fleetclient.Result
+	operation       string
+	result          fleetclient.Result
+	expected        fleetclient.NotificationSnapshot
+	notificationErr error
 }
 type searchMsg struct {
 	machine  string
@@ -79,7 +81,6 @@ type model struct {
 	notificationStore    *fleetclient.NotificationStore
 	notificationSnapshot fleetclient.NotificationSnapshot
 	notificationFailed   bool
-	predecessors         map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
@@ -94,7 +95,7 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
 	}
 	store, storeErr := fleetclient.DefaultNotificationStore()
-	return &model{notificationStore: store, notificationFailed: storeErr != nil, predecessors: map[fleetclient.TerminalKey]fleetclient.WorkingPredecessor{}, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true}
+	return &model{notificationStore: store, notificationFailed: storeErr != nil, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true}
 }
 func (m *model) Init() tea.Cmd { return tea.Batch(m.fetch(), tick()) }
 func tick() tea.Cmd            { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
@@ -137,7 +138,15 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	m.pending = request
 	m.busy = true
 	return func() tea.Msg {
-		return actionMsg{operation: request.Operation, result: m.client.Execute(m.ctx, request)}
+		message := actionMsg{operation: request.Operation}
+		if request.Operation == "start" || request.Operation == "shell" {
+			message.notificationErr = fleetclient.ErrNotificationsUnavailable
+			if m.notificationStore != nil {
+				message.expected, message.notificationErr = m.notificationStore.Read()
+			}
+		}
+		message.result = m.client.Execute(m.ctx, request)
+		return message
 	}
 }
 
@@ -225,6 +234,15 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch message.operation {
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
+			if m.notificationStore == nil || message.notificationErr != nil {
+				m.notificationFailed = true
+			} else {
+				snapshot, err := m.notificationStore.ObserveSession(value.Session, m.client.Machines(), message.expected)
+				m.notificationFailed = err != nil
+				if err == nil {
+					m.notificationSnapshot = snapshot
+				}
+			}
 			// Confirmed creation reveals the new session in its group.
 			m.page, m.agentsView, m.needsInputOnly = "", false, false
 			if m.machine != "" && m.machine != value.Label {
