@@ -432,6 +432,52 @@ spoken talkback and the full naming/control composition are not supplied by
 these isolated runs. their existing issue records remain open. no retained
 notification regression suite or production test seam was added.
 
+### release and installation
+
+2026-10-01: [implementation pr #50](https://github.com/NielsdaWheelz/skidbladnir/pull/50)
+merged as `a4dd2c646ff63adf65d8ac05b417893af7d8d44c`; its tree matches the
+reviewed merge and all six runtime files remain byte-identical to the qualified
+source above. pr verification and exact merged-main
+[verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/36953073769)
+passed. signed, immutable [v0.12.2](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.12.2)
+passed independent draft review, exact-source reproduction of both host binaries,
+fresh public download verification and `scripts/check published-release` from
+the merged upstream pin, `c531b835c919ae7dcade418754c0bb0dd9a17c71`.
+[`release-pin.json`](../release-pin.json) owns the five public asset digests.
+
+the [deployment pin](https://github.com/NielsdaWheelz/dev-server/pull/152) merged
+as `ee872ee65fd449013268da148653c07f9168ece1`. gateway-only apply completed on
+macbook, devbox and arch, followed by successful committed-pin `scripts/fleet
+verify`: each active generation and both public desktop commands match the
+release, and each installed client can read the complete three-peer inventory.
+the verified generation receipts are:
+
+| host | generation sha256 |
+| --- | --- |
+| macbook | `dd59c6d15b07f5a1869428133077ba4809dc6d13da0bb4c1564dec91073bd7cc` |
+| devbox | `80578f02a56f5d4448db2783f1d22eb19984051064a7806c6ff18d8d381a8709` |
+| arch | `bd30904a037a210cccb59c14cb45c4c2993cbc5513a5f36d742af0c2acd87801` |
+
+devbox's root cli also matches v0.12.2 and jarvis remains inactive, successful
+and pid zero. each installed helper retains source
+`992e7915caf1111ffad3a82d6593a1c8673dcf1f`; gateway apply upgraded its bootstrap
+uv from 0.12.21 to 0.12.22 on all three hosts. these checks prove installation,
+activation and client inventory access, not another provider turn or ready journey.
+
+the production phone received the signed apk in place, preserving app data.
+its installed version is v0.12.2, version code 12002; installed apk sha256 is
+`01202765268a44ab3cc965855719e43289a3e007b9837b075459b9a421db598b`,
+identical to the freshly downloaded public asset. the initial owner smoke failed:
+all three machines were unreachable. phone hostname probes timed out while
+numeric peer routes connected; the public-domain control also failed. restarting
+tailscale without clearing its data restored dns and hostname connections to
+all three peers. after backing out of reconnect and refreshing skid, the owner
+confirmed all three machines showed their existing sessions without pairing again.
+the installation issue is closed.
+the [dns recurrence issue](issues/phone-tailscale-dns.md) records the upstream
+hypothesis and recovery limits. this installation evidence does not supply
+another provider turn or ready journey.
+
 ## historical qualification
 
 these results qualify the policies implemented at their recorded sources. their
