@@ -60,13 +60,13 @@ ordinary status is inferred from the current local terminal as independent
 activity, interaction and notice facts
 ([terminal observation](terminal-observation.md)): a working agent can also need
 an answer, and ambiguity is unknown rather than guessed. native recorded identity
-is secondary metadata. `ready` is exclusive green attention after a working-to-idle
-transition with no request or menu; a turn ending on an interruption or error
-becomes ready under its notice label. it asserts no unseen text or task result. [observation §6](terminal-observation.md#6-content-attention-and-filtering)
-owns every other label and tone.
-first actual terminal output presentation clears attention; the whole visit and
-first qualified post-visit observation are quiet. unknown/stale/outage breaks
-continuity. no reply viewer, result-id scan/store or human acknowledgement remains.
+is secondary metadata. [terminal attention](reply-notifications.md) owns exclusive
+green `ready`, its non-idle-to-idle memory and terminal-visit acknowledgement.
+the v2 store remembers non-idle through uncertainty and restart; presentation
+acknowledges ready while preserving armed work. ready asserts no unseen
+text or task result. [observation §6](terminal-observation.md#6-content-attention-and-filtering)
+owns label priority and tone, including current interruption/error notices.
+no reply viewer, result-id scan/store or separate acknowledgement action remains.
 notification failure is secondary and never disconnects the terminal.
 [terminal attention](reply-notifications.md) owns exact identities, revisions,
 serialized merges, failure semantics, content and acceptance.

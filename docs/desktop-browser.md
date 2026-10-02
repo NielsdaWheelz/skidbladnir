@@ -216,8 +216,10 @@ and an unresolved connection `remote context unknown`. columns other than
 status shrink widest-first to fit. in the all view a faint heading (the bare
 label or `unassigned`) precedes each group. the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
-copy, coloured by its tone. a pending working-to-idle transition projects
-exclusive green `ready`. stale/unknown/visiting/closing baselines hide readiness.
+copy, coloured by its tone. [terminal attention](reply-notifications.md) owns
+exclusive green `ready`, durable non-idle-to-idle memory and visit boundaries.
+creation responses enter the same scoped owner before auto-entry. only actual
+output presentation acknowledges ready; armed work survives entry and departure.
 recorded native identity never supplies status. shell/remote rows use
 `terminal`/existing unknown context. a row of a host whose read failed is stale:
 its cell reads muted `last observed: <label>` and is never ready, and it stays
@@ -364,7 +366,7 @@ accepted costs:
   markers. labels differing only in invisible characters read alike, and one can
   read as `all` or `agents`
   ([issue](issues/group-label-invisible-characters.md)).
-- inference: unknown/unavailable layouts do not establish idle; sampled working-to-idle
+- inference: unknown/unavailable layouts do not establish idle; sampled non-idle-to-idle
   attention may miss work between polls or treat cancellation/navigation as ready.
   recorded native identity is secondary and cannot repair that epistemic limit.
 - appearance follows the operator's terminal theme. bright yellow (the cursor bar

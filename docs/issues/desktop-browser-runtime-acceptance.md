@@ -41,3 +41,10 @@ replay, fresh-read fences and unavailable/replaced targets. temporary model and
 loopback HTTP fixtures qualify client behavior, not the real gateway/tmux write
 or terminal interaction. the live editing journey is `NOT_RUN`; current-turn
 tmux approval is the remaining prerequisite.
+
+2026-10-01: [revised attention qualification](../reply-notifications.md#qualification)
+passes actual darwin browser → pty → gateway → isolated tmux attachment, ready
+consumption and return, plus standalone entry and typed creation-response
+admission. this attention slice does not qualify the full creation, naming,
+control, duplicate/lost-reply and navigation matrix above; this record remains
+open for those rows.

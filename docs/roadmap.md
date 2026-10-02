@@ -30,9 +30,7 @@ required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwi
 [live stale and checking cells](issues/terminal-observation-stale-live.md).
 [status detection](issues/terminal-status-detection.md) closes with the coverage
 and smoke records, and [needs input](issues/agent-needs-input.md) with the phone
-run and an attention run through cancellation;
-[baselinePending](issues/notification-baseline-pending.md) records the attention
-store's dead field. [list latency](issues/session-list-latency.md) and
+run and an attention run through cancellation. [list latency](issues/session-list-latency.md) and
 [hook tmux waits](issues/agenthook-tmux-wait-delay.md) are pre-existing costs found
 during qualification.
 
@@ -53,28 +51,31 @@ deployment. the spec records contracts, costs and bounded evidence.
 
 ## terminal control and attention — source cutover
 
+2026-10-01: source implements the revised [attention contract](reply-notifications.md).
+a v2 device-local owner remembers non-idle across unknown, outage and restart;
+subsequent idle raises ready. output presentation consumes ready while preserving
+armed activity; departure fences late samples. creation and explicit entry
+preflights use the same scoped owner. predecessor maps and closing flags are removed.
+
+[current qualification](reply-notifications.md#qualification) passes the temporary
+transition, persistence, identity, concurrency and visit probes: actual darwin
+gateway/tmux/browser/tty with both stock providers using local backends; linux
+owner/stream/model in a local container; the isolated physical-phone app with
+scripted TLS/WSS peers, actual WebView output, fresh process restoration and
+storage failures. those boundaries do not establish installed-fleet deployment,
+cloud-provider behavior or unrelated naming/control acceptance. tests are removed
+under [testing policy](rules/testing.md).
+
 [terminal control](terminal-agent-control.md) replaces ordinary native-first
 observation/control with exact terminal operations. explicit native targets stay
 separate; stock launch, provider-owned names and existing bindings are preserved.
-[terminal attention](reply-notifications.md) replaces human unread/viewer paths
-with exclusive inferred `ready`, working/idle colors and presentation-owned visits.
-unknown/outage breaks transition continuity; first qualified post-visit observation
-is quiet. revision comparisons prevent stale polls from restoring consumed state.
-
-desktop real gateway/tmux/tty and stock Codex/Claude terminal journeys pass;
-Android isolated physical-phone controller/datastore/TLS/WSS/xterm, restart,
-corruption, delayed-response, accessibility/bounds and pixel checks pass. explicit
-native machine reads pass gateway/helper/decoder protocol fixtures. this qualifies
-source on the earlier `{state, source}` observation and working/blocked/idle
-attention machine (see the observation cutover above), not deployment or
-cloud/native completion. the additional [merged phone
-composition](issues/reply-notifications-phone-composition.md) is explicitly skipped/NOT_RUN.
-tests are removed by policy;
-engineering verification passes. accepted inference/sampling/closing-boundary/
-concurrent-client costs are explicit in the spec. [Claude history completeness](issues/claude-history-completeness.md)
-remains an independent native-provider issue, no longer a notification prerequisite.
-[terminal qualification](terminal-agent-control-qualification.md) records the
-remaining detector/input/deletion hardening and current-main composition checks.
+[terminal attention](reply-notifications.md) owns exclusive inferred ready and
+presentation-owned visits; its historical results remain source-attributed.
+[merged phone naming composition](issues/reply-notifications-phone-composition.md)
+retains its unperformed naming rows; the new attention/visit portions passed.
+[claude history completeness](issues/claude-history-completeness.md) remains an
+independent native-provider issue. [terminal qualification](terminal-agent-control-qualification.md)
+records the remaining detector/input/deletion and fleet boundaries.
 
 ## skid-only cutover
 
@@ -174,8 +175,9 @@ sessions retain their original launch policy.
 
 - [sequential cleanup](codebase-map.md): verified findings live in [issues](issues),
   one per issue. finish one reviewed pr before starting the next.
-- [darwin desktop browser](issues/desktop-browser-runtime-acceptance.md): the
-  real browser/pty/gateway/isolated-tmux journey remains skipped by user direction.
+- [desktop browser](issues/desktop-browser-runtime-acceptance.md): the full
+  naming/control/creation journey remains unqualified; the new darwin attention
+  attachment and return boundary passed.
 - [groups and shells hands-on](issues/groups-shells-hands-on.md): human workflow
   and usability acceptance remains unperformed; automated phone results do not
   supply it.

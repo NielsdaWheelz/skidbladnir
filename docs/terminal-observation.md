@@ -17,7 +17,11 @@ provider classification, guarded-send admission and the terminal wait states;
 [terminal control](terminal-agent-control.md) keeps terminal targets, the tmux
 capture mechanics, effects, routes, wait's polling loop and the observation
 sample's composition, and [terminal attention](reply-notifications.md) keeps the
-ready machine's store and visits. host and clients cut over together.
+ready machine's store and visits. host and clients cut over together for the
+observation protocol. the 2026-10-01 [attention revision](reply-notifications.md)
+is implemented separately; it changes client memory and visits without changing
+observation facts or the host protocol. [attention qualification](reply-notifications.md#qualification)
+records the new runtime evidence.
 
 ## 1. requirements and limits
 
@@ -333,19 +337,14 @@ projection for desktop/cli. labels, tone and predicates must derive from the
 same facts; never compare rendered strings to choose behavior. preserve status
 before cwd at narrow sizes. no badge stack, new palette or approve/answer action.
 
-ready arms only on fresh working + interaction none, and appears only when the
-next qualified observation is idle + interaction none. a turn that stops on an
-interruption or error still becomes ready; its card shows the notice label,
-which takes precedence. fresh requests, menus, starting and working clear
-existing pending ready and disarm its predecessor; qualifying working then arms
-a new predecessor.
-unknown/stale/unavailable only disarm and hide, preserving existing pending ready.
-positive requests clear it even when activity is unknown. no observation gap
-can bridge working to idle.
-retain existing pending-store, revision, identity and visit/closing-baseline
-semantics. visit consumes ready, never a current request. request→idle produces
-idle, not ready; disappearance never says answered. no request ids, durable
-request records, acknowledgement state or notification-store migration.
+the accepted [attention contract](reply-notifications.md#behavior) owns when
+non-idle-to-idle observation creates ready, which gaps preserve memory, and what
+dismisses attention. its implemented 2026-10-01 revision supersedes this
+section's former consecutive-sample and closing-baseline rules.
+this table still owns presentation priority: a current interruption/error notice
+can hide a saved ready; a visit never dismisses a current request. available again
+does not assert that a question was answered. no request ids or durable request
+records are introduced.
 
 `needs input` is an independent boolean filter after existing machine/group/view
 selection. its predicate is fresh + source terminal + interaction in
@@ -441,7 +440,7 @@ existing engineering checks. do not recreate a retired gate or production seam.
 | negatives | composer during active codex work; quoted old chrome; menu versus request; title-generation spinner, static claude title and inherited busy/action-required/progress across provider→shell→same provider (except §9's accepted false claims); historical errors under current work |
 | recognition | managed, bare, absolute, relative and symlink launches on darwin/linux; unrelated executables, exit/replacement and foreground suspend/resume |
 | full product | real gateway→cli/desktop and gateway→physical phone: work, each request label, concurrent work, stale/unavailable, filter membership/order, visits, return restoration, accessibility/large text |
-| attention | work→idle ready; work→interruption/error→idle ready with the notice shown; work→question→idle not ready; pending ready→request→idle stays idle; visit does not dismiss unanswered request; unknown/outage cannot bridge readiness; delayed response cannot restore consumed ready |
+| attention | use the separately accepted [attention acceptance](reply-notifications.md#acceptance); prior attention results qualify the former policy only |
 | controls | empty ordinary composer send succeeds; draft/dialog/menu/unknown/clipped/changed target refuses without bytes; explicit text/keys and stop/close unchanged |
 | diagnostics/cost | reason and same-sample explanation agree; logs/envelopes contain no content; 1 and 16 represented sessions on each host platform fit the existing two-second enrichment budget with no induced timeouts; compare per-stage timing before/after |
 
@@ -483,8 +482,9 @@ installing are separate operations.
 
 explicit costs:
 
-- conservative unknown loses some idle waits and ready notices; five-second
-  sampling misses brief transitions.
+- conservative unknown loses some idle waits and delays ready until idle is
+  recognized; the accepted attention revision preserves memory across gaps.
+  five-second sampling still misses brief transitions.
 - codex ([grammar §6](terminal-observation-codex.md#6-accepted-costs)):
   idle needs the main placeholder on a clean band, no status row, no external
   editor and a visible transcript terminator; goal pursuit withholds idle; status describes
