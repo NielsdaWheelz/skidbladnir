@@ -300,7 +300,8 @@ which dimensions matched; a classifier defect is not disguised as unavailable.
 
 the content designer owns this table and reviews every rendered feature against
 it. good content names an observed action, distinguishes knowledge from outcome,
-fits the existing status bay and remains meaningful without colour.
+fits the card's [status line](session-card.md#status-line) and remains
+meaningful without colour.
 
 | condition | exact primary copy | tone |
 | --- | --- | --- |

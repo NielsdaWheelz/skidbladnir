@@ -147,24 +147,29 @@ internal fun TerminalScreen(
                     onClick = { expanded = true }, modifier = Modifier.width(48.dp),
                 )
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(text = { Text(TERMINAL_STOP_ACTION) }, onClick = {
-                        expanded = false
-                        controller.stopTerminal(state.target)
-                    }, enabled = actionsEnabled)
-                    DropdownMenuItem(text = { Text(TERMINAL_CLOSE_ACTION) }, onClick = {
-                        expanded = false
-                        controller.requestClose(state.target)
-                    }, enabled = actionsEnabled)
-                    DropdownMenuItem(text = { Text(TERMINAL_ONLY_CLOSE_ACTION) }, onClick = {
-                        expanded = false
-                        controller.requestTerminalClose(state.target)
-                    }, enabled = actionsEnabled)
+                    terminalLifetimeActions(
+                        actionsEnabled,
+                        onStop = { controller.stopTerminal(state.target) },
+                        onTerminalClose = { controller.requestTerminalClose(state.target) },
+                        onClose = { controller.requestClose(state.target) },
+                    ).forEach { action ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(action.label, color = if (action.destructive && action.enabled) noticeToneColor(NoticeTone.Failure) else Color.Unspecified)
+                            },
+                            onClick = {
+                                expanded = false
+                                action.perform()
+                            },
+                            enabled = action.enabled,
+                        )
+                    }
                 }
             }
         }
         val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
         val content = sessionStatusContent(state.target.session, state.machine.canMutate, notification)
-        Text(listOfNotNull(content.label, content.detail).joinToString(" · "), color = sessionStatusColor(content.tone), style = MaterialTheme.typography.labelSmall,
+        Text(listOfNotNull(content.label, content.detail, content.evidence).joinToString(" · "), color = sessionStatusColor(content.tone), style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
                 .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
         if (state.target.session.conversation != null) {

@@ -51,7 +51,10 @@ collection `y = 0..2dp`. It is full-opacity `Gold`, with a transparent track,
 straight butt ends, and no container, shape, elevation, glow, stop mark, visible
 label, or reserved height. The first grid item begins at `y = 12dp`, leaving
 `10dp` clear.
-Start/end padding remains `12dp`, bottom padding `84dp`, and card gaps `10dp`.
+Start/end padding remains `12dp`. Since 2026-10-02 the `84dp` bottom
+clearance is trailing content padding, not a viewport exclusion
+([forge seal](forge-seal.md#placement-and-semantics)), and card gaps are `8dp`
+([session card](session-card.md#grid)).
 For a selected machine with no intervening notice, the existing rail wrapper
 makes the visible rail-to-card gap `16dp`; do not change that wrapper. A notice
 remains a real intervening sibling and owns its existing height.

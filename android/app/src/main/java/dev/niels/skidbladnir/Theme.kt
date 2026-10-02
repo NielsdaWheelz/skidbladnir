@@ -70,7 +70,8 @@ internal object NidavellirShapes {
 
     // The only asymmetric shape in the product: the chip facet is 4dp and the
     // cleft corner is 14dp, so the control reads as material cleaved off
-    // rather than softened. Kill controls only. Named "Cleft" and not
+    // rather than softened. The commit control of a destructive confirmation
+    // only (docs/session-card.md). Named "Cleft" and not
     // "Struck" because the seal vocabulary reserves struck/unstruck for
     // minted-vs-blank, and one word cannot mean both.
     val Cleft = CutCornerShape(topStart = 14.dp, topEnd = 4.dp, bottomEnd = 4.dp, bottomStart = 4.dp)

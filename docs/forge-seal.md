@@ -165,8 +165,12 @@ reports a fact the app holds (`MachineState.canForge`), never activity.
   layout modifier on the same node, so threading it through the control would
   report semantics bounds 32dp larger than the octagon a user can see — and the
   clearance below is measured against exactly those bounds.
-- reserve `16 + 56 + 12 = 84dp` below the grid's scroll viewport. trailing
-  content padding alone allows intermediate controls to scroll under the seal.
+- reserve `16 + 56 + 12 = 84dp` as the grid's trailing content padding.
+  cards pass beneath the seal while scrolling, and the last row's overflow
+  scrolls clear of it. until 2026-10-02 the clearance sat below the scroll
+  viewport, so that inline card controls could never rest under the seal;
+  those controls are now one [overflow](session-card.md#actions) per card, and
+  the user reported the empty strip the exclusion left as unwanted.
 - `contentDescription = "New dwarf"`; `Role.Button`; `enabled = canForge` so
   disabled state is spoken; 56dp ≥ the 48dp floor, so no
   `minimumInteractiveComponentSize()`.
@@ -179,7 +183,7 @@ Box(fillMaxSize, Ink, systemBarsPadding)
 |  |- DashboardTopBar            <- title + summary; fixed 64dp; no click surface
 |  |- MachineFilters / MachineStrip* / notices / recovery
 |  `- PullToRefreshBox           <- P2R
-|     `- Box / LazyVerticalGrid  <- viewport bottom clearance 84dp
+|     `- Box / LazyVerticalGrid  <- trailing content clearance 84dp
 `- ForgeSeal(align = BottomEnd, padding 16dp)
       canForge -> field + metal
       click    -> controller.openForge()
@@ -367,7 +371,7 @@ rules/cleanliness forbids.
 The **scrolled** last-row clearance is hands-on, not automated. The journey runs
 against whatever sessions two real machines happen to hold — as few as two, which
 never fill the viewport, so a scroll-and-measure assertion there would pass
-without exercising the 84dp inset at all. Proof 5 asserts the honest,
+without exercising the 84dp clearance at all. Proof 5 asserts the honest,
 deterministic part (the seal overlaps no rendered card, on a card count that must
 be non-zero); the scrolled case is the acceptance glance below.
 

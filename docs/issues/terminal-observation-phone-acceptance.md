@@ -4,7 +4,8 @@ problem: the physical-phone run of the [terminal observation](../terminal-observ
 cutover (2026-10-01, [record](../terminal-agent-control-qualification.md#2026-10-01-production-cutover-and-physical-phone))
 did not cover four spec §8 rows: concurrent work with a request (`work continues`),
 the generic `needs input` subtype, a delayed response that must not restore
-consumed ready, and talkback's spoken reading of the chip and status bay.
+consumed ready, and talkback's spoken reading of the card's status (now one card sentence,
+[session card](../session-card.md#speech)).
 
 impact: the remaining production-gateway journeys lack physical-phone
 qualification; a device-only defect there would ship unseen. the isolated client

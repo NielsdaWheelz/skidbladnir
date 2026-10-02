@@ -474,12 +474,12 @@ sheet lists all groups, unassigned, and observed named groups. current unresolve
 or empty selection stays visible. add one full-span heading per nonempty group
 in the current lazy grid, including unassigned.
 
-each card gains an explicit `group` text action beside the existing stop/kill
-action. preserve readable machine/profile footer text above actions if width
-requires; never shrink text/touch targets. card-body tap still opens terminal.
-the new action neither attaches nor invokes the card tap. its spoken name names
-session, host, and membership. editing is dashboard-only; terminal chrome gains
-no control.
+each card offers `change group` as the first row of its overflow menu and its
+first TalkBack custom action ([session card](session-card.md#actions)), not as a
+visible card button. never shrink text/touch targets. card-body tap still opens
+terminal. the action neither attaches nor invokes the card tap. it is spoken in
+the card's context, which names session and host; the group heading names
+membership. editing is dashboard-only; terminal chrome gains no control.
 
 use controller-owned drafts and ordinary transient compose state, never
 `rememberSaveable` for labels, group editors, or forge membership fields.
@@ -491,10 +491,7 @@ disable autocorrect/automatic capitalisation; permit unicode. one group-field
 composable serves forge and the editor. suggestions only fill; clear saves
 unassigned and never deletes sessions.
 the observed suggestions open in one disclosure menu so a large observed set
-does not lengthen the form. the card footer sits above the spaced action row,
-accepting extra card height to retain readable context and 48dp targets. when
-width or enlarged text prevents both actions fitting, the action container wraps
-with the same 8dp separation; labels and touch targets remain complete.
+does not lengthen the form.
 
 follow [design-language.md](design-language.md): literal labels, existing body/data
 faces and surfaces, quiet headings, gold selection, 48dp actions, existing spacing,
@@ -653,7 +650,7 @@ cross-owner adversarial reviews make no test or production edits.
 | android `WorkingDirectoryPicker.kt`, `TerminalConnection.kt` | only exhaustive error-enum consumers made necessary by `GroupInvalid`; no route or behavior expansion |
 | android `SkidbladnirController.kt`, `SessionRename.kt` | group operation and shared metadata-fence bookkeeping; distinct rename semantics |
 | android `DashboardEntryState.kt`, `DashboardScreen.kt` | two filters, item projection, schema-2 capsule, selector and restoration |
-| android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action and shared group field using existing chrome |
+| android `SessionCard.kt`, `ForgeSheet.kt`, new `GroupSheet.kt` | card action (since 2026-10-02 the overflow's first row) and shared group field using existing chrome |
 | android `MainActivity.kt` | thread events only as required; retain single saved-state owner |
 | temporary boundary checks under [testing policy](rules/testing.md) | label/transport/group/filter/fence/restore behavior |
 | temporary integration/live checks under [testing policy](rules/testing.md) | authenticated host/tmux membership and phone restore/interaction boundaries |
@@ -754,7 +751,7 @@ release and runtime workflows.
 | filtering source inventory locally | no source payload reduction or group-derived host scope; preserve discovery and honest partial results |
 | confirmed creation can change filters | deliberate creation may change return context; edits and uncertain creation cannot; tui reveals the created machine when needed |
 | phone editing on dashboard | detach to refile; no terminal-chrome cost or added terminal navigation |
-| phone suggestions and action row | one extra tap opens suggestions; cards gain height to preserve readable context and 48dp actions |
+| phone suggestions and overflow | one extra tap opens suggestions; change group sits one tap behind the card's overflow, so cards stay compact with 48dp menu rows |
 | saved label fingerprint | disappeared name becomes generic after recreation; creation requires explicit choice; hashes do not conceal guessable labels |
 | rendered-item anchors | a vanished anchor may clamp to a heading; no saved historical neighbour list |
 | task schema 3 | upgrade may reset navigation once; pairing preserved; no old decoder |
