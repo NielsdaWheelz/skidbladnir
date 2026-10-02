@@ -33,26 +33,32 @@ type Foreground struct {
 	StartIdentity string `json:"startIdentity"`
 }
 
+type NotificationState string
+
+const (
+	NotificationQuiet NotificationState = "quiet"
+	NotificationArmed NotificationState = "armed"
+	NotificationReady NotificationState = "ready"
+)
+
 type NotificationRecord struct {
-	Key             TerminalKey `json:"key"`
-	Revision        int64       `json:"revision"`
-	Foreground      *Foreground `json:"foreground,omitempty"`
-	Pending         bool        `json:"pending"`
-	BaselinePending bool        `json:"baselinePending"`
+	Key        TerminalKey       `json:"key"`
+	Revision   int64             `json:"revision"`
+	Foreground *Foreground       `json:"foreground,omitempty"`
+	State      NotificationState `json:"state"`
 }
 
 func (record *NotificationRecord) UnmarshalJSON(encoded []byte) error {
 	var value struct {
-		Key             TerminalKey `json:"key"`
-		Revision        *int64      `json:"revision"`
-		Foreground      *Foreground `json:"foreground,omitempty"`
-		Pending         *bool       `json:"pending"`
-		BaselinePending *bool       `json:"baselinePending"`
+		Key        TerminalKey        `json:"key"`
+		Revision   *int64             `json:"revision"`
+		Foreground *Foreground        `json:"foreground,omitempty"`
+		State      *NotificationState `json:"state"`
 	}
-	if strictjson.Decode(encoded, &value) != nil || value.Revision == nil || value.Pending == nil || value.BaselinePending == nil {
+	if strictjson.Decode(encoded, &value) != nil || value.Revision == nil || value.State == nil {
 		return ErrNotificationsUnavailable
 	}
-	*record = NotificationRecord{value.Key, *value.Revision, value.Foreground, *value.Pending, *value.BaselinePending}
+	*record = NotificationRecord{value.Key, *value.Revision, value.Foreground, *value.State}
 	return nil
 }
 
@@ -68,11 +74,6 @@ func (snapshot NotificationSnapshot) Record(key TerminalKey) (NotificationRecord
 		}
 	}
 	return NotificationRecord{}, false
-}
-
-type WorkingPredecessor struct {
-	Foreground Foreground
-	Revision   int64
 }
 
 type NotificationStore struct{ path string }
@@ -92,39 +93,29 @@ func DefaultNotificationStore() (*NotificationStore, error) {
 		}
 		directory = filepath.Join(home, ".local", "state")
 	}
-	return NewNotificationStore(filepath.Join(directory, "skidbladnir", "notifications.json"))
+	return NewNotificationStore(filepath.Join(directory, "skidbladnir", "notifications-v2.json"))
 }
 func (store *NotificationStore) Read() (NotificationSnapshot, error) {
 	return store.merge(func(*NotificationSnapshot) (bool, error) { return false, nil })
 }
 
-// Observe commits one inventory batch. expected is read before its network
-// dispatch; predecessors belong to this client, never to the persisted cache.
-// Conflicting observations are discarded, not rebased onto another client's work.
-func (store *NotificationStore) Observe(peers []Peer, machines []Machine, expected NotificationSnapshot, predecessors map[TerminalKey]WorkingPredecessor) (NotificationSnapshot, map[TerminalKey]WorkingPredecessor, error) {
-	return store.observe(peers, machines, expected, predecessors, true)
+// Observe commits one inventory batch. expected is read before network dispatch.
+// Conflicting observations are discarded, never rebased onto another client's work.
+func (store *NotificationStore) Observe(peers []Peer, machines []Machine, expected NotificationSnapshot) (NotificationSnapshot, error) {
+	return store.observe(peers, machines, expected, true)
 }
 
-// ObserveSession settles a standalone visit using an exact info observation.
-// A single-session observation cannot retire unrelated sessions.
-func (store *NotificationStore) ObserveSession(session Session, machines []Machine, expected NotificationSnapshot) (NotificationSnapshot, map[TerminalKey]WorkingPredecessor, error) {
+// ObserveSession admits one fresh scoped terminal observation without retiring unrelated sessions.
+func (store *NotificationStore) ObserveSession(session Session, machines []Machine, expected NotificationSnapshot) (NotificationSnapshot, error) {
 	ref, _ := DecodeReference(session.Ref)
-	return store.observe([]Peer{{Machine: ref.Machine, OK: true, Sessions: []Session{session}}}, machines, expected, nil, false)
+	return store.observe([]Peer{{Machine: ref.Machine, OK: true, Sessions: []Session{session}}}, machines, expected, false)
 }
 
-func (store *NotificationStore) observe(peers []Peer, machines []Machine, expected NotificationSnapshot, predecessors map[TerminalKey]WorkingPredecessor, inventory bool) (NotificationSnapshot, map[TerminalKey]WorkingPredecessor, error) {
-	next := map[TerminalKey]WorkingPredecessor{}
-	snapshot, err := store.merge(func(snapshot *NotificationSnapshot) (bool, error) {
+func (store *NotificationStore) observe(peers []Peer, machines []Machine, expected NotificationSnapshot, inventory bool) (NotificationSnapshot, error) {
+	return store.merge(func(snapshot *NotificationSnapshot) (bool, error) {
 		changed := false
 		snapshot.Terminals = slices.DeleteFunc(snapshot.Terminals, func(record NotificationRecord) bool {
-			configured := false
-			for _, m := range machines {
-				if m.Handle == record.Key.Machine {
-					configured = true
-					break
-				}
-			}
-			if !configured {
+			if !slices.ContainsFunc(machines, func(machine Machine) bool { return machine.Handle == record.Key.Machine }) {
 				changed = true
 				return true
 			}
@@ -150,15 +141,6 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 			}
 			return false
 		})
-		// A scoped inventory says nothing about other hosts. Preserve their local
-		// predecessors only while the durable revision still matches exactly.
-		for key, predecessor := range predecessors {
-			sampled := slices.ContainsFunc(peers, func(peer Peer) bool { return peer.Machine == key.Machine })
-			record, found := snapshot.Record(key)
-			if !sampled && found && record.Revision == predecessor.Revision {
-				next[key] = predecessor
-			}
-		}
 		for _, peer := range peers {
 			if !peer.OK {
 				continue
@@ -172,68 +154,70 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 				if present != expectedPresent || present && previous.Revision != before.Revision {
 					continue
 				}
+				// Selection is one session observation: either admit the selected pane
+				// and every sibling fence, or discard the whole sample.
+				selectionCurrent := true
+				for _, sibling := range snapshot.Terminals {
+					if sibling.Key.Machine != key.Machine || sibling.Key.TmuxID != key.TmuxID || sibling.Key.IdentityToken != key.IdentityToken || sibling.Key.PaneID == key.PaneID {
+						continue
+					}
+					before, found := expected.Record(sibling.Key)
+					if !found || before.Revision != sibling.Revision {
+						selectionCurrent = false
+						break
+					}
+				}
+				for _, sibling := range expected.Terminals {
+					if sibling.Key.Machine == key.Machine && sibling.Key.TmuxID == key.TmuxID && sibling.Key.IdentityToken == key.IdentityToken && sibling.Key.PaneID != key.PaneID {
+						if _, found := snapshot.Record(sibling.Key); !found {
+							selectionCurrent = false
+							break
+						}
+					}
+				}
+				if !selectionCurrent {
+					continue
+				}
 				if previous.Revision == math.MaxInt64 {
 					return false, ErrNotificationsUnavailable
 				}
-				// A changed selection proves only that the former pane is unselected.
-				// Keep its revision so late samples cannot recreate consumed attention.
+				// A changed selection clears the former pane but retains its revision fence.
 				for i := range snapshot.Terminals {
 					old := &snapshot.Terminals[i]
 					if old.Key.Machine != key.Machine || old.Key.TmuxID != key.TmuxID || old.Key.IdentityToken != key.IdentityToken || old.Key.PaneID == key.PaneID {
 						continue
 					}
-					before, found := expected.Record(old.Key)
-					if !found || before.Revision != old.Revision {
-						continue
-					}
 					if old.Revision == math.MaxInt64 {
 						return false, ErrNotificationsUnavailable
 					}
-					old.Pending = false
-					old.BaselinePending = false
+					old.State, old.Foreground = NotificationQuiet, nil
 					old.Revision++
 					changed = true
 				}
 				record := previous
 				record.Key = key
+				if !present {
+					record.State = NotificationQuiet
+				}
 				status := session.TerminalStatus
-				terminal := status.Source == sessions.SourceTerminal
 				var foreground *Foreground
 				if session.Agent != nil && session.Connection == nil {
 					foreground = &Foreground{session.Agent.Provider, session.Agent.PID, session.Agent.StartIdentity}
 				}
 				same := foreground != nil && previous.Foreground != nil && *foreground == *previous.Foreground
-				// An unavailable capture lacks positive exit evidence. Fresh captured shell
-				// or changed process facts can clear the former foreground's attention.
-				positive := terminal || foreground != nil
+				// Missing identity in a failed observation supplies no exit evidence.
+				// A captured shell, local process or remote transport does.
+				positive := status.Source == sessions.SourceTerminal || foreground != nil || session.Connection != nil
 				if positive && !same {
-					record.Pending = false
-					record.Foreground = foreground
+					record.State, record.Foreground = NotificationQuiet, foreground
 				}
 				record.Revision++
-				// Only a local agent's terminal sample qualifies. Everything else,
-				// including idle with an unknown interaction, only disarms: no
-				// observation gap can bridge working to idle. A notice is how the
-				// latest turn ended, so work that stops on an interruption or error
-				// still becomes ready.
-				clearing, arming, ready := false, false, false
-				if foreground != nil && terminal {
-					quiet := status.Interaction == sessions.InteractionNone
-					arming = quiet && status.Activity == sessions.ActivityWorking
-					ready = quiet && status.Activity == sessions.ActivityIdle
-					clearing = NeedsInput(status) || status.Interaction == sessions.InteractionMenu || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking
-				}
-				switch {
-				case record.BaselinePending && (clearing || ready || terminal && foreground == nil):
-					record.Pending = false
-					record.BaselinePending = false
-				case clearing:
-					record.Pending = false
-				case ready:
-					// Only its armed predecessor makes idle ready; later idle samples keep it.
-					predecessor, found := predecessors[key]
-					if same && found && predecessor.Foreground == *foreground && predecessor.Revision == previous.Revision {
-						record.Pending = true
+				if foreground != nil && status.Source == sessions.SourceTerminal {
+					switch {
+					case status.Interaction.Request() || status.Interaction == sessions.InteractionMenu || status.Activity == sessions.ActivityStarting || status.Activity == sessions.ActivityWorking:
+						record.State = NotificationArmed
+					case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && record.State == NotificationArmed:
+						record.State = NotificationReady
 					}
 				}
 				if index < 0 {
@@ -241,45 +225,39 @@ func (store *NotificationStore) observe(peers []Peer, machines []Machine, expect
 				} else {
 					snapshot.Terminals[index] = record
 				}
-				if arming {
-					next[key] = WorkingPredecessor{*foreground, record.Revision}
-				}
 				changed = true
 			}
 		}
 		return changed, nil
 	})
-	if err != nil {
-		return NotificationSnapshot{}, nil, err
-	}
-	return snapshot, next, nil
 }
 
 func (store *NotificationStore) Presented(key TerminalKey) (NotificationSnapshot, error) {
-	return store.consume(key, false)
+	return store.visit(key, true)
 }
 func (store *NotificationStore) EndVisit(key TerminalKey) (NotificationSnapshot, error) {
-	return store.consume(key, true)
+	return store.visit(key, false)
 }
-func (store *NotificationStore) consume(key TerminalKey, ended bool) (NotificationSnapshot, error) {
+func (store *NotificationStore) visit(key TerminalKey, presented bool) (NotificationSnapshot, error) {
 	return store.merge(func(snapshot *NotificationSnapshot) (bool, error) {
 		index := slices.IndexFunc(snapshot.Terminals, func(record NotificationRecord) bool { return record.Key == key })
 		if index < 0 {
-			snapshot.Terminals = append(snapshot.Terminals, NotificationRecord{Key: key})
+			snapshot.Terminals = append(snapshot.Terminals, NotificationRecord{Key: key, State: NotificationQuiet})
 			index = len(snapshot.Terminals) - 1
 		}
 		record := &snapshot.Terminals[index]
 		if record.Revision == math.MaxInt64 {
 			return false, ErrNotificationsUnavailable
 		}
-		record.Pending = false
-		record.BaselinePending = ended
+		if presented && record.State == NotificationReady {
+			record.State = NotificationQuiet
+		}
 		record.Revision++
 		return true, nil
 	})
 }
 
-// Ready reports this session's committed pending attention. The stored
+// Ready reports this session's committed attention. The stored
 // foreground must equal the observed one, so a replacement agent cannot show
 // its predecessor's attention before the store update commits.
 func (snapshot NotificationSnapshot) Ready(session Session) bool {
@@ -289,7 +267,7 @@ func (snapshot NotificationSnapshot) Ready(session Session) bool {
 	ref, _ := DecodeReference(session.Ref)
 	record, found := snapshot.Record(NotificationKey(ref))
 	foreground := Foreground{session.Agent.Provider, session.Agent.PID, session.Agent.StartIdentity}
-	return found && record.Pending && !record.BaselinePending && record.Foreground != nil && *record.Foreground == foreground
+	return found && record.State == NotificationReady && record.Foreground != nil && *record.Foreground == foreground
 }
 
 // A stable sidecar is locked across read–merge–atomic-replace. Locking the
@@ -315,7 +293,7 @@ func (store *NotificationStore) merge(update func(*NotificationSnapshot) (bool, 
 			resultErr = ErrNotificationsUnavailable
 		}
 	}()
-	snapshot = NotificationSnapshot{Schema: 1, Terminals: []NotificationRecord{}}
+	snapshot = NotificationSnapshot{Schema: 2, Terminals: []NotificationRecord{}}
 	encoded, err := os.ReadFile(store.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return NotificationSnapshot{}, ErrNotificationsUnavailable
@@ -372,7 +350,7 @@ func (store *NotificationStore) merge(update func(*NotificationSnapshot) (bool, 
 }
 
 func validNotificationSnapshot(snapshot NotificationSnapshot) bool {
-	if snapshot.Schema != 1 || snapshot.Terminals == nil {
+	if snapshot.Schema != 2 || snapshot.Terminals == nil {
 		return false
 	}
 	keys := map[TerminalKey]bool{}
@@ -386,7 +364,13 @@ func validNotificationSnapshot(snapshot NotificationSnapshot) bool {
 		if foreground := record.Foreground; foreground != nil && (foreground.Provider != "Codex" && foreground.Provider != "Claude" || foreground.PID <= 0 || foreground.StartIdentity == "") {
 			return false
 		}
-		if record.Pending && (record.Foreground == nil || record.BaselinePending) {
+		switch record.State {
+		case NotificationQuiet:
+		case NotificationArmed, NotificationReady:
+			if record.Foreground == nil {
+				return false
+			}
+		default:
 			return false
 		}
 		keys[record.Key] = true
