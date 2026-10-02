@@ -31,6 +31,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[profile usage](profile-usage.md) owns desktop quota disclosure and its separate
+profile reads; source is qualified and installed acceptance is pending.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
@@ -95,7 +97,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no writer remains; clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. claude's managed statusline stores one replaceable quota-only report per explicit home. clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -190,7 +192,7 @@ generalized hook runtime or trust-store editor, git/project-root
 resolution, router-owned provider payload interception, SQLite lifecycle facts,
 durable command receipts and replay,
 adoption, pin-parity launch refusal, upgrade rehearsals, proof-ledger
-acceptance matrices, project enrollment, quotas,
+acceptance matrices, project enrollment, quota enforcement,
 scheduling, autonomous orchestration services, and multi-user anything. See §8 for what would
 ever bring the retired machinery back.
 
@@ -419,6 +421,15 @@ hooks never publish status, activity, lifecycle, attention, prompts or results.
 `skid-notify` may emit BEL to its inherited exact pane as terminal-local
 presentation. it stores no state, calls no gateway and has no privileged
 product meaning.
+
+### profile usage
+
+[profile usage](profile-usage.md) owns independent read-only desktop quota
+observations from codex's existing account daemon and claude's managed statusline
+input. one replaceable quota-only claude report belongs to each configured home;
+a separate machine-bound route reads profiles without session-status enrichment
+or an identity-hook extension. source age, expiry, refresh and presentation
+follow that specification.
 
 ### Start (The Forge)
 
@@ -699,7 +710,9 @@ history item is `current`.
   identities and excludes old herdr-backed rollback generations. sleep, logout,
   Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
-  Codex and Claude are installed from exact reviewable npm locks; tmux follows
+  codex and claude use shared upstream native installations at their canonical
+  commands; gateway apply validates those existing commands. host-tool apply
+  and provider self-updaters own their installation and updates. tmux follows
   each platform's native stable package channel. new skid agent sessions use
   the deployment-owned permission bypasses in §2.
 - accepted 2026-09-17 operator scope: `scripts/fleet` owns only `verify`, `invite`,
@@ -763,6 +776,7 @@ history item is `current`.
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
 | `POST /v1/sessions/{tmuxId}/terminal/{operation}` | exact `{identityToken,paneId}` plus operation fields; inferred `inspect`, rendered `read`, guarded `send`, deliberate `text`/`keys`, interrupt `stop`, separate-effects `close`; [terminal contract](terminal-agent-control.md#4-api-and-client-commands) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
+| `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` quota observation; configured descriptors plus source, read state and optional normalized report, governed by [profile usage](profile-usage.md) |
 
 errors use `{code,message}` and the existing optional `dispatch` for operations
 that distinguish `not_sent` from `unknown`. the groups route requires that
@@ -1020,6 +1034,15 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-02 accepted design: [desktop profile usage](profile-usage.md) adds a
+compact main-browser summary and expandable profile disclosure. codex reads its
+existing account daemon; claude's managed statusline publishes one atomic,
+quota-only latest report in its configured home. this narrowly extends the
+state contract with that replaceable observation and the api with an independent
+profile read, scheduled by the existing browser tick. it adds no lifecycle store,
+hook, screen fallback, provider owner, phone surface or quota enforcement.
+source qualification passed; managed installation and installed acceptance remain pending.
 
 2026-10-02 accepted design: [session views and needs input](session-views.md)
 replaces phone machine/group/needs-input controls and the desktop agents view

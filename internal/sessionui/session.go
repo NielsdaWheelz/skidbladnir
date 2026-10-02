@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -79,24 +80,41 @@ type model struct {
 	notificationStore    *fleetclient.NotificationStore
 	notificationSnapshot fleetclient.NotificationSnapshot
 	notificationFailed   bool
+	usagePeers           []usagePeer
+	usageNext            time.Time
+	usageGeneration      uint64
+	usageCancel          context.CancelFunc
+	usagePending         bool
+	usageAttached        bool
+	usageStopped         bool
+	usageWorkers         sync.WaitGroup
 }
 
 func Run(ctx context.Context, client *fleetclient.Client, input, output *os.File) error {
 	m := newModel(ctx, client, input, output)
 	defer m.clearDirectorySearch()
+	defer func() {
+		m.usageStopped = true
+		m.cancelUsage()
+		m.usageWorkers.Wait()
+	}()
 	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
 	return err
 }
 func newModel(ctx context.Context, client *fleetclient.Client, input, output *os.File) *model {
 	peers := []fleetclient.Peer{}
+	usagePeers := []usagePeer{}
 	for _, machine := range client.Machines() {
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
+		usagePeers = append(usagePeers, usagePeer{machine: machine})
 	}
 	store, storeErr := fleetclient.DefaultNotificationStore()
-	return &model{notificationStore: store, notificationFailed: storeErr != nil, ctx: ctx, client: client, input: input, output: output, peers: peers, cursor: -1, width: 100, height: 30, refreshing: true}
+	return &model{notificationStore: store, notificationFailed: storeErr != nil, ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
 }
-func (m *model) Init() tea.Cmd { return tea.Batch(m.fetch(), tick()) }
-func tick() tea.Cmd            { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
+func (m *model) Init() tea.Cmd {
+	return tea.Batch(m.fetch(), m.refreshUsage(time.Now(), false), tick())
+}
+func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return tickMsg{} }) }
 func (m *model) fetch() tea.Cmd {
 	machine := m.machine
 	return func() tea.Msg {
@@ -148,15 +166,34 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	}
 }
 
-func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	defer m.fitViewports()
+func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
+	previousScope, wasVisible := m.usageScope()
+	previousPage := m.page
+	previousMachine := m.machine
+	defer func() {
+		scope, visible := m.usageScope()
+		if previousPage != m.page || previousScope != scope || wasVisible != visible {
+			m.cancelUsage()
+			// Disclosure and machine changes read immediately. A hidden form or
+			// fullscreen visit retires work while preserving the attempt cadence.
+			if previousMachine != m.machine || previousPage == "usage" || m.page == "usage" {
+				m.usageNext = time.Time{}
+			}
+			command = tea.Batch(command, m.refreshUsage(time.Now(), false))
+		}
+		m.fitViewports()
+	}()
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.height = message.Height
 	case tickMsg:
-		return m, tea.Batch(m.refresh(), tick())
+		return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), false), tick())
+	case usageMsg:
+		m.acceptUsage(message)
+		return m, nil
 	case inventoryMsg:
+		usageChanged := false
 		m.refreshing = false
 		if m.refreshAfterAction || message.machine != m.machine {
 			m.refreshAfterAction = false
@@ -172,6 +209,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			for _, received := range message.value.Peers {
+				if received.OK && m.reconcileUsageProfiles(received) {
+					usageChanged = true
+				}
 				found := false
 				for index, previous := range m.peers {
 					if previous.Machine != received.Machine {
@@ -201,6 +241,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.reconcileMetadata()
 		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
 			m.refreshInfo()
+		}
+		if usageChanged {
+			return m, m.refreshUsage(time.Now(), false)
 		}
 		return m, nil
 	case actionMsg:
@@ -343,6 +386,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case attachedMsg:
+		m.usageAttached = false
 		m.notificationFailed = message.notificationErr != nil
 		if message.notificationErr == nil {
 			m.notificationSnapshot = message.snapshot
@@ -387,12 +431,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key == "ctrl+c" {
 			m.clearDirectorySearch()
+			m.usageStopped = true
+			m.cancelUsage()
 			return m, tea.Quit
 		}
 		if m.width < 80 || m.height < 24 {
 			cancel := key == "esc"
 			switch m.page {
-			case "", "machine-picker", "details":
+			case "", "machine-picker", "details", "usage":
 				cancel = cancel || key == "q"
 			case "confirm":
 				cancel = cancel || key == "q" || key == "n"
@@ -402,7 +448,17 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if key == "ctrl+r" {
+			if m.page == "usage" {
+				return m, m.refreshUsage(time.Now(), true)
+			}
+			if m.page == "" {
+				return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), true))
+			}
 			return m, m.refresh()
+		}
+		if m.page == "usage" {
+			m.usageKey(key)
+			return m, nil
 		}
 		if m.page == "machine-picker" {
 			return m, m.editPicker(key)
@@ -460,7 +516,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch key {
 		case "q":
+			m.usageStopped = true
+			m.cancelUsage()
 			return m, tea.Quit
+		case "u":
+			m.page, m.offset = "usage", 0
+			m.pending = fleetclient.Request{}
+			return m, nil
 		case "esc":
 			// escape closes pages; the table is its floor, never an exit.
 			return m, nil

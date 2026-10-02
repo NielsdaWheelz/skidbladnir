@@ -189,6 +189,8 @@ func (gateway *Gateway) serveHTTP(writer *trackedResponseWriter, request *http.R
 		gateway.terminalOperation(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/sessions":
 		gateway.listSessions(writer, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/profile-usage":
+		gateway.readProfileUsage(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/sessions":
 		gateway.createSession(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/directory-listings":
@@ -825,6 +827,8 @@ func requestRoute(path string) logging.Route {
 		return logging.RouteHealth
 	case path == "/v1/sessions":
 		return logging.RouteSessions
+	case path == "/v1/profile-usage":
+		return logging.RouteProfileUsage
 	case path == "/v1/pairing-invites":
 		return logging.RoutePairingInvites
 	case path == "/v1/pairings":
