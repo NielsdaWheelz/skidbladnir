@@ -31,6 +31,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[profile usage](profile-usage.md) owns desktop quota disclosure and its separate
+profile reads; source is qualified and installed acceptance is pending.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
@@ -190,7 +192,7 @@ generalized hook runtime or trust-store editor, git/project-root
 resolution, router-owned provider payload interception, SQLite lifecycle facts,
 durable command receipts and replay,
 adoption, pin-parity launch refusal, upgrade rehearsals, proof-ledger
-acceptance matrices, project enrollment, quotas,
+acceptance matrices, project enrollment, quota enforcement,
 scheduling, autonomous orchestration services, and multi-user anything. See §8 for what would
 ever bring the retired machinery back.
 
@@ -452,6 +454,15 @@ hooks never publish status, activity, lifecycle, attention, prompts or results.
 `skid-notify` may emit BEL to its inherited exact pane as terminal-local
 presentation. it stores no state, calls no gateway and has no privileged
 product meaning.
+
+### profile usage
+
+[profile usage](profile-usage.md) owns independent read-only desktop quota
+observations from codex's existing account daemon and claude's managed statusline
+input. one replaceable quota-only claude report belongs to each configured home;
+a separate machine-bound route reads profiles without session-status enrichment
+or an identity-hook extension. source age, expiry, refresh and presentation
+follow that specification.
 
 ### Start (The Forge)
 
@@ -796,6 +807,7 @@ history item is `current`.
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
 | `POST /v1/sessions/{tmuxId}/terminal/{operation}` | exact `{identityToken,paneId}` plus operation fields; inferred `inspect`, rendered `read`, guarded `send`, deliberate `text`/`keys`, interrupt `stop`, separate-effects `close`; [terminal contract](terminal-agent-control.md#4-api-and-client-commands) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
+| `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` quota observation; configured descriptors plus source, read state and optional normalized report, governed by [profile usage](profile-usage.md) |
 
 errors use `{code,message}` and the existing optional `dispatch` for operations
 that distinguish `not_sent` from `unknown`. the groups route requires that
@@ -1065,6 +1077,15 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-02 accepted design: [desktop profile usage](profile-usage.md) adds a
+compact main-browser summary and expandable profile disclosure. codex reads its
+existing account daemon; claude's managed statusline publishes one atomic,
+quota-only latest report in its configured home. this narrowly extends the
+state contract with that replaceable observation and the api with an independent
+profile read, scheduled by the existing browser tick. it adds no lifecycle store,
+hook, screen fallback, provider owner, phone surface or quota enforcement.
+source qualification passed; managed installation and installed acceptance remain pending.
 
 2026-10-01 accepted scope: [terminal attention](reply-notifications.md) replaces
 consecutive working-to-idle detection with durable device-local non-idle-to-idle

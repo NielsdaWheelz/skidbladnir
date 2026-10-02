@@ -500,13 +500,13 @@ func (client *Client) peerByMachine(machine string) (peer, bool) {
 
 func (client *Client) call(ctx context.Context, target peer, operation, path string, body []byte) Result {
 	dispatch := "not_sent"
-	writes := operation != "list" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
+	writes := operation != "list" && operation != "profile_usage" && operation != "read" && operation != "terminal_read" && operation != "terminal_inspect" && operation != "terminal_explain" && operation != "directory_search" && operation != "terminal_context" && operation != "results" && operation != "inspect"
 	if ctx.Err() != nil {
 		return Failed("unavailable", dispatch)
 	}
 	method := http.MethodPost
 	var reader io.Reader
-	if operation == "list" || operation == "terminal_context" {
+	if operation == "list" || operation == "profile_usage" || operation == "terminal_context" {
 		method = http.MethodGet
 	} else {
 		if operation == "group" {
@@ -544,6 +544,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 		limit = MaximumInventoryBytes
 	}
 	encoded, err := io.ReadAll(io.LimitReader(response.Body, int64(limit+1)))
+	receivedAt := time.Now()
 	if err != nil {
 		return Failed("unavailable", dispatch)
 	}
@@ -588,6 +589,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	value, ok := decodeResponse(operation, encoded, target)
 	if !ok {
 		return Failed("protocol_error", dispatch)
+	}
+	if operation == "profile_usage" {
+		observed := value.(ProfileUsagePeer)
+		observed.ReceivedAt = receivedAt
+		value = observed
 	}
 	return success(value)
 }

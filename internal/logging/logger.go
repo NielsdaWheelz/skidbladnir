@@ -41,6 +41,7 @@ const (
 	RouteConversations     Route = "/v1/conversations/{operation}"
 	RouteHealth            Route = "/healthz"
 	RouteSessions          Route = "/v1/sessions"
+	RouteProfileUsage      Route = "/v1/profile-usage"
 	RouteSession           Route = "/v1/sessions/{tmuxId}"
 	RouteSessionGroup      Route = "/v1/sessions/{tmuxId}/group"
 	RouteSessionShell      Route = "/v1/sessions/{tmuxId}/shell"
@@ -56,7 +57,7 @@ const (
 
 func (route Route) valid() bool {
 	switch route {
-	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
+	case RouteTerminalControl, RouteConversations, RouteHealth, RouteSessions, RouteProfileUsage, RouteSession, RouteSessionGroup, RouteSessionShell, RouteTerminal, RoutePressure, RoutePairingInvites, RoutePairings, RouteDirectoryListings, RouteDirectorySearches, RouteTerminalContexts, RouteUnmatched:
 		return true
 	default:
 		return false

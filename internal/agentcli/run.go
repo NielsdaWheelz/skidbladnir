@@ -66,12 +66,14 @@ browser (80x24 minimum)
   a selects agents; m chooses machine; n opens terminal; N opens options
   f shows only sessions that need input; f again shows every session
   enter attaches; space opens info
+  u opens profile usage; arrows/j/k scroll; q/escape returns
   info: r edits name; g edits group; escape returns to the table
   editors: enter saves; escape cancels to info; ctrl-a restores automatic naming
   shift+t creates and enters a shell on the selected session's machine,
   in its current directory and group; the original session keeps running
   s sends interrupt; x interrupts and closes terminal
-  ctrl-r refreshes; escape closes a page; q quits from the table
+  ctrl-r refreshes inventory and usage; on usage it refreshes usage only
+  escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 
 workflow

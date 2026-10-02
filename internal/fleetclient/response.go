@@ -242,6 +242,8 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		return nil, false
 	}
 	switch operation {
+	case "profile_usage":
+		return decodeProfileUsage(encoded, target)
 	case "terminal_context":
 		var value *RemoteContext
 		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Agent != nil && value.Connection != nil {

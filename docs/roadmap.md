@@ -5,6 +5,17 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## desktop profile usage
+
+2026-10-02: [the accepted spec and plan](profile-usage.md) adds a compact main-tui
+quota summary and expandable per-profile disclosure. codex uses existing account
+daemon reads; claude exports structured statusline quota reports. usage remains
+independent of inventory, terminal status and account admission.
+[source qualification](profile-usage.md#acceptance) passed; three-host
+[installed acceptance](issues/profile-usage.md) remains pending.
+[fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
+is a separate follow-up, not a first-version gate.
+
 ## non-native status and needs input — source implemented
 
 [terminal observation](terminal-observation.md) specifies the coordinated status

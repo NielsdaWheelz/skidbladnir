@@ -1,5 +1,10 @@
 # desktop browser
 
+[profile usage](profile-usage.md) owns the compact quota summary and read-only
+`u usage` disclosure, with independent profile reads on the existing tick.
+that capability extends this document's api/state limit only for its accepted
+route, replaceable report and presentation.
+
 implemented. one table with agents and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
 [terminal observation](terminal-observation.md) owns inferred status, its copy
