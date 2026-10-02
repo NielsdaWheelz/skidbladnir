@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.12.2](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.12.2).
+current published generation: [v0.13.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.13.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)

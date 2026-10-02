@@ -192,8 +192,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.12.2` from
-`a4dd2c646ff63adf65d8ac05b417893af7d8d44c`; it does not assert the
+source and artifact digests. it pins immutable `v0.13.0` from
+`b2ea62aea57a87668835eefbcaebcffcf5761559`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.
