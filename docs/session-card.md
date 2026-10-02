@@ -1,5 +1,10 @@
 # session card
 
+2026-10-02 accepted design: [session views](session-views.md) makes machine
+context visible in every phone view and adds one quiet group-context line only
+in its flat needs-input queue. implementation is pending; the structure and
+evidence below describe the current card.
+
 status: current contract for the phone dashboard's session card, implemented
 2026-10-02. it replaces `dashboard-card-refactor.md` (the 2026-08-27 delivery
 recipe, retained in git history). hands-on device acceptance is `NOT_RUN`

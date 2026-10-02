@@ -1066,6 +1066,24 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
+2026-10-02 accepted design: [session views and needs input](session-views.md)
+replaces phone machine/group/needs-input controls and the desktop agents view
+with exclusive needs-input/all/group views. needs input includes ready, explicit
+requests and current error/interruption notices, ordered ready first; quiet idle
+is excluded. phone browsing spans the fleet, with pressure/reconnect in a
+separate machine disclosure. desktop machine scope remains. the spec owns the
+replacement navigation, schema-4 task capsule, narrow implementation plan and
+acceptance, superseding affected collection/pressure clauses in §§2, 4 and 6.
+implementation is pending; observation, attention persistence/visits and exact
+control identities retain their existing owners. no crash/exit notification or
+notice-acknowledgement lifecycle is added.
+
+2026-10-02 accepted design: [searchable group entry](group-entry.md) adds local
+observed-label matching to desktop and phone creation/editing, with explicit
+desktop create/save actions after group. it owns the input contract, narrow
+implementation plan and acceptance. implementation is pending; membership,
+observation scope, transport and persistence retain their existing owners.
+
 2026-10-01 accepted scope: [terminal attention](reply-notifications.md) replaces
 consecutive working-to-idle detection with durable device-local non-idle-to-idle
 attention. its specification owns the exact transitions, visit semantics,

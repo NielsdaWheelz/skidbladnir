@@ -1,5 +1,10 @@
 # v0 dashboard pull-to-refresh delta
 
+2026-10-02 accepted design: [session views](session-views.md) removes phone
+machine filtering, so manual verification targets every live fleet inventory
+poller. implementation is pending; request/completion fencing, collection
+geometry and inventory-only refresh remain governed here.
+
 2026-09-15 groups amendment: [groups](groups.md) adds a presentation filter only.
 manual verification still snapshots machine scope and reads every live machine
 in it, including hosts with no previously observed membership in the selected

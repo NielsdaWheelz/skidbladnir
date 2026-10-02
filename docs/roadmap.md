@@ -5,6 +5,22 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## session views and needs input
+
+2026-10-02: [the accepted spec and plan](session-views.md) replaces phone machine
+filtering and the desktop agents view with needs-input/all/group navigation.
+ready sorts before requests and current error/interruption notices; quiet idle
+stays out. all/group ordering remains stable. [implementation](issues/session-views.md)
+is pending; behavioral acceptance is `NOT_RUN`. this is documentation only.
+[agent exit attention](issues/agent-exit-attention.md) is a separate scope gap.
+
+## searchable group entry
+
+2026-10-02: [the accepted spec and plan](group-entry.md) covers local search/select
+in desktop and phone creation/editing, plus explicit desktop create/save actions
+after the group field. [implementation](issues/group-entry.md) is pending;
+runtime and device acceptance are `NOT_RUN`. this is a documentation change.
+
 ## non-native status and needs input — source implemented
 
 [terminal observation](terminal-observation.md) specifies the coordinated status

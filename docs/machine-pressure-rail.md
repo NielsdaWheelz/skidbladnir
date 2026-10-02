@@ -1,5 +1,11 @@
 # Machine pressure rail
 
+2026-10-02 accepted design: [session views](session-views.md) replaces
+machine-filter-dependent placement with a separate machines disclosure and
+machine-bound details. implementation is pending. pressure facts, rail/history
+rendering and freshness keep their existing owners; the evidence below applies
+to the previous placement.
+
 Status: the typographic rail source is implemented; its pure and real-Compose
 reds, focused unit, signed same-version S22+ component, routine verification,
 and approved hands-on visual glance are green. The All-filter density follow-up

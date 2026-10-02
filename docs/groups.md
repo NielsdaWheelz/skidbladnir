@@ -1,5 +1,13 @@
 # groups
 
+2026-10-02: [session views](session-views.md) owns the accepted replacement for
+collection selection, phone machine scope and the task capsule. implementation
+is pending. label identity, membership and cli filtering below remain unchanged.
+
+2026-10-02: [searchable group entry](group-entry.md) owns the accepted replacement
+for create/edit suggestions and desktop submission keys. implementation is
+pending; [the issue](issues/group-entry.md) tracks its separate acceptance.
+
 implemented: session labels, grouping/filtering, restoration and group-aware
 creation under [the composition plan](groups-and-shells.md).
 the groups cutover changes product and wire names in one coordinated release.
@@ -440,7 +448,8 @@ removes the table row. [desktop browser](desktop-browser.md#4-actions-and-return
 owns the shared metadata-editing and unknown-outcome return rules.
 
 the group editor has the pinned machine/name, current membership, one text field,
-observed suggestions, explicit unassigned, and save/cancel. selecting a suggestion
+searchable observed suggestions, explicit unassigned, and save/cancel under
+[group entry](group-entry.md). selecting a suggestion
 fills the draft, never submits. blank means unassigned in an ordinary editor.
 disable unchanged save and invalid input; direct api no-ops remain valid. after
 a possible write, request inventory and preserve uncertainty without replay.
@@ -490,8 +499,9 @@ gesture-only editing, per-group colour/icon, counters, or decorative hierarchy.
 disable autocorrect/automatic capitalisation; permit unicode. one group-field
 composable serves forge and the editor. suggestions only fill; clear saves
 unassigned and never deletes sessions.
-the observed suggestions open in one disclosure menu so a large observed set
-does not lengthen the form.
+the observed suggestions use the bounded searchable disclosure in
+[group entry](group-entry.md#phone-interaction), keeping a large observed set from
+lengthening the form.
 
 follow [design-language.md](design-language.md): literal labels, existing body/data
 faces and surfaces, quiet headings, gold selection, 48dp actions, existing spacing,

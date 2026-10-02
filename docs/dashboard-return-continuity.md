@@ -1,5 +1,11 @@
 # dashboard return continuity
 
+2026-10-02 accepted design: [session views](session-views.md) replaces the
+machine/group/boolean selection with one view and a schema-4 task capsule.
+implementation is pending. this document retains the semantic viewport,
+saved-task lifecycle and one-owner restoration contract except where that
+specification explicitly replaces scope or recovery behavior.
+
 2026-09-15 target amendment: [groups](groups.md) extends this retained-entry
 contract with independent group selection, heading-aware viewport keys, and the
 exact task capsule. source is implemented;

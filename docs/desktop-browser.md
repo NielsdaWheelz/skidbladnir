@@ -1,5 +1,13 @@
 # desktop browser
 
+2026-10-02: [session views](session-views.md) owns the accepted replacement for
+the agents view, independent needs-input toggle, ordering and navigation keys.
+implementation is pending; existing browser behavior and evidence follow below.
+
+2026-10-02: [searchable group entry](group-entry.md) specifies local group matching
+and explicit create/save actions after group. this accepted change is pending
+implementation; the delivery status below applies to the existing browser.
+
 implemented. one table with agents and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
 [terminal observation](terminal-observation.md) owns inferred status, its copy
@@ -30,7 +38,7 @@ are the same table over the same observations.
 
 design for a half-screen terminal: 3–4 groups, 6–7 agents, about 3 sessions per
 group; fully usable at 80 columns × 24 rows. no mouse interaction, embedding,
-new dependency, host/android change, search, saved empty groups, manual ordering,
+new dependency, host/android change, table search, saved empty groups, manual ordering,
 collapsing, panes, attention counters or badges, or
 navigation history. one current selection and scroll position; no disk state.
 
@@ -124,7 +132,8 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 | ordinary navigation | `a` agents; left/right view; `f` needs-input filter; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
-| metadata editor | enter saves; escape cancels or dismisses to the same info page; group retains observed suggestions and explicit clearing; name offers `ctrl-a` for `use automatic title` in manual mode |
+| name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
+| group editor | [group entry](group-entry.md#desktop-interaction) owns search/select and the separate save focus stop; escape cancels or dismisses to the same info page |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
 | operation in flight | every key, `ctrl-c` included, is refused with the in-flight notice; nothing quits |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
@@ -158,7 +167,8 @@ retains it with a conflict notice and a fresh expectation for deliberate resubmi
 
 `n` creates a terminal at home on the target machine (the machine filter,
 otherwise the configured default; never the first reachable peer) in the selected
-named group. `N` opens the five-field machine/launch/name/cwd/group form. its
+named group. `N` opens machine/launch/name/cwd/group followed by an explicit
+`create` action, under [group entry](group-entry.md#desktop-interaction). its
 directory field starts empty, visibly defaulting to home: typing ordinary words
 searches that machine's visited directories after a 150 ms pause, without a `z`
 prefix, enter, or a separate page. `/…` and `~…` stay literal path drafts;
@@ -167,12 +177,12 @@ the first ranked match appears beneath the unchanged query, with its full path
 and position. left/right cycles the matches with wraparound. tab or enter accepts
 the selected path and advances; shift-tab goes back without accepting. ctrl-u
 clears the field to home. empty results, pending search and failures cannot be
-accepted or submitted as a cwd. final-field creation returns to directory if a
+accepted or submitted as a cwd. the create action returns to directory if a
 query has not been accepted, including one bypassed with shift-tab.
 machine changes restore the empty home default;
 editing, cancellation and machine changes invalidate and cancel pending search.
 late results cannot alter another draft. selection only edits the draft;
-creation remains the separate final-field action and revalidates the chosen path.
+creation uses the separate create action and revalidates the chosen path.
 `n`, `N` and `T` share one completion path:
 it reveals and selects the returned session in its group view, leaving the agents
 view and clearing the needs-input filter, then attaches it. the pending request

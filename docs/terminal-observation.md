@@ -298,6 +298,12 @@ which dimensions matched; a classifier defect is not disguised as unavailable.
 
 ## 6. content, attention and filtering
 
+2026-10-02 accepted design: [session views](session-views.md) supersedes this
+section's independent ui needs-input filter and collection-order clauses when
+implemented. its human queue includes ready, requests and current notices.
+this document retains status facts, copy/precedence and the strict request
+predicate used by cli wait. source still implements the filter described below.
+
 the content designer owns this table and reviews every rendered feature against
 it. good content names an observed action, distinguishes knowledge from outcome,
 fits the card's [status line](session-card.md#status-line) and remains
