@@ -352,7 +352,7 @@ repairs and native history/notification qualification retain their own issues.
 assign a designer to each client slice and a content reviewer to shared cli/api
 errors. good content names the actual terminal/machine, distinguishes observation
 from delivery, exposes an available action, and stays legible at narrow widths.
-one presentation function per client serves cards, details, terminal menus and
+one presentation function per client serves cards, details, the terminal session sheet and
 accessibility; never duplicate classifier logic in clients.
 
 | feature | required content / behavior |

@@ -517,6 +517,16 @@ it as a red test, not an assumption.
   change, never opacity alone. Icon-only, spoken `New dwarf`, no ornament,
   and the lit/cold flip does not animate. [forge-seal.md](forge-seal.md) owns
   its geometry.
+- **Terminal rail**: the terminal's only top chrome. One DeepSurface stratum
+  carried under the status bar, one row of at least 48dp: Gold body-face
+  `Detach`, then the Data-face tmux name over a Muted `place · presence` line
+  (Ember only for frozen input) and a trailing Gold `⋯`, all one disclosure
+  control.
+  No chips, hairlines or ornament; the tonal step alone separates it from the
+  terminal. [terminal chrome](terminal-chrome.md) owns its contract.
+- **Session sheet**: the standard 12dp top-cut DeepSurface sheet. Data-face
+  facts, then the session card menu's rows; the two closures are Ember text
+  without ornament and commit only through the existing Cleft confirmation.
 - **Terminal key deck**: RaisedSurface bezel with an optional 8dp fret edge
   (unscheduled — no delta ships it; adopting it later is its own small
   slice), keys 4dp cut, mono labels, equal 48dp-minimum cells with 2dp grid
@@ -572,7 +582,7 @@ the implemented component contracts are [terminal theme](terminal-theme.md),
 [ornament](ornament-pipeline.md), [forge seal](forge-seal.md),
 [destructive and notice chrome](destructive-chrome.md),
 [launcher mark](launcher-mark.md), [hlíðskjálf mark](hlidskjalf-mark.md),
-[detach chrome](detach-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
+[terminal chrome](terminal-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
 this document owns their common visual values. historical delivery recipes in
 those plans do not override current testing policy or claim human acceptance.
 
@@ -623,10 +633,11 @@ fret, runes, icons or motion.
 ## 20. session naming content
 
 [automatic naming](automatic-session-names.md#names-and-content) owns exact copy.
-one actual tmux name occupies the existing card/header; rename preserves draft,
+one actual tmux name occupies the existing card and terminal rail; rename preserves draft,
 focus and attachment. automatic ticks add no toast, icon or announcement. manual
 mode offers `use automatic title`; saving selects manual ownership. desktop
 handles identify control targets in cli output/details, with no added phone row.
-terminal context/navigation and actions occupy separate rows. give the name its
-own weighted space and bound the close label within the action row; large text
-must not collapse the rename target. existing viewport sizing absorbs the height.
+the terminal rail gives the name its weighted space beside `Detach`; rename and
+every other session action live in the session sheet, so no label competes with
+the name and large text grows the rail rather than adding a row
+([terminal chrome](terminal-chrome.md)).

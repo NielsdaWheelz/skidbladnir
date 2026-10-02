@@ -29,7 +29,7 @@ Tab   Ctrl  Alt   ←      ↓     →      PgDn
 The deck is always present on the terminal screen and is disabled whenever the
 terminal cannot accept input. It contains no navigation, attachment lifecycle,
 destructive action, provider semantic, local history action, or macro. `Detach`,
-Android Back, and confirmed Kill remain separate lifecycle controls.
+Android Back, and the session sheet's confirmed closures remain separate lifecycle controls.
 
 ## Rules
 
@@ -63,12 +63,12 @@ Android Back, and confirmed Kill remain separate lifecycle controls.
 - Outer padding is `4dp`; row and column gaps are `2dp`; every equal-width cell
   is at least `48dp x 48dp`.
 - At font scale `1.0`, the minimum complete grid is `356dp x 106dp`. At
-  `>=356dp`, all seven columns fill the rail without scrolling.
+  `>=356dp`, all seven columns fill the deck without scrolling.
 - Below `356dp`, or when text needs more width at font scale up to `2.0`, both
   rows widen and move together through one shared horizontal scroll state.
   Targets never shrink, rows never wrap or scroll independently, and labels do
   not clip.
-- `TerminalScreen`'s existing `imePadding` remains the sole inset owner.
+- `TerminalScreen` remains the sole inset owner ([terminal chrome](terminal-chrome.md)).
 
 ## Capability contract
 
@@ -118,7 +118,7 @@ and Alt snapshot. On page-port bind, the page publishes `Off/Off` before
 `Ready`. On consumption, it publishes `Off/Off` before `Input`.
 
 Reset without input on page failure, disconnect or reconnect, window-focus
-loss, backgrounding, rotation or recreation, Kill opening, detach, Back,
+loss, backgrounding, rotation or recreation, close confirmation opening, detach, Back,
 navigation, and disposal. Moving focus between the WebView and the deck does
 not reset. There is no timeout, persistence, replay, lock, repeat, or recovery
 branch.

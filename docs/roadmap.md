@@ -45,7 +45,8 @@ manual linking is removed below. the earlier naming qualification predates that
 removal: actual codex/claude launch and title emission,
 exact-id native controls after association, and both approved physical-phone
 journeys pass. large text exposed a collapsed rename target; separating context
-and action rows repaired it. temporary behavioral tests are removed; final
+and action rows repaired it; the one-row [terminal chrome](terminal-chrome.md)
+later moved rename into the session sheet. temporary behavioral tests are removed; final
 `scripts/check verify` passes. this is coordinated source cutover, not
 deployment. the spec records contracts, costs and bounded evidence.
 
@@ -147,7 +148,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | desktop browser (agents and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, session card, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [session card](session-card.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |
-| terminal sizing, keys, touch, selection and input composition | [sizing](terminal-readable-sizing.md), [key deck](terminal-key-deck.md), [touch](terminal-touch-scroll.md), [selection](terminal-selection-copy.md) |
+| terminal chrome, sizing, keys, touch, selection and input composition | [chrome](terminal-chrome.md), [sizing](terminal-readable-sizing.md), [key deck](terminal-key-deck.md), [touch](terminal-touch-scroll.md), [selection](terminal-selection-copy.md) |
 | visual language and generated assets | [design language](design-language.md) |
 
 source implementation does not establish every runtime or human acceptance
@@ -202,6 +203,10 @@ sessions retain their original launch policy.
   retains one unexplained missing baseline session lifetime.
 - [terminal embedding](groups-and-shells.md): separate feasibility work; there
   is no accepted production embedding contract.
+- [terminal chrome](terminal-chrome.md): source implemented 2026-10-02; open:
+  [physical-phone acceptance](issues/terminal-chrome-hands-on.md),
+  [keyboard resize churn](issues/terminal-resize-churn.md) and
+  [landscape with the keyboard](issues/terminal-landscape-keyboard.md).
 - [terminal observation](terminal-observation.md): the blockers listed in its
   section above remain open; the physical-phone rows wait for an approved device
   run.

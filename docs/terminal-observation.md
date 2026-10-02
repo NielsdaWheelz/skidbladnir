@@ -333,9 +333,9 @@ the selected row's facts read `checking; last observed: <label>`
 no repeated announcement, pulse or sound for unchanged polls. retain secondary
 `notifications unavailable` independently of live status.
 
-reuse android `SessionStatusContent` for card/header and one equivalent go
-projection for desktop/cli. labels, tone and predicates must derive from the
-same facts; never compare rendered strings to choose behavior. preserve status
+reuse android `SessionStatusContent` for the card and the terminal session
+sheet, and one equivalent go projection for desktop/cli. labels, tone and
+predicates must derive from the same facts; never compare rendered strings to choose behavior. preserve status
 before cwd at narrow sizes. no badge stack, new palette or approve/answer action.
 
 the accepted [attention contract](reply-notifications.md#behavior) owns when

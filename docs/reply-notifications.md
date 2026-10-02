@@ -229,7 +229,7 @@ direct tmux attachment outside skid emits no local acknowledgement event.
 
 ## content and removal
 
-retain one status projection per client for cards/table, detail, terminal header
+retain one status projection per client for cards/table, detail, terminal session sheet
 and accessibility. show green `ready` only with committed state ready, an exact
 matching local foreground, fresh idle + interaction none, and no local visit.
 requests, menus and current error/interruption notices keep observation §6's

@@ -127,7 +127,8 @@ the card's verbs are one ordered list of `SessionAction`s
 | 4 | `interrupt and close terminal` | same | Ember | close confirmation |
 
 `terminalLifetimeActions` owns rows 2–4, their order and tones; the card and
-the terminal surface both render them from it. the dashboard alone adds row 1.
+the terminal's [session sheet](terminal-chrome.md#session-sheet) both render
+them from it through `SessionActionRows`. the dashboard alone adds row 1.
 
 - **overflow**: a 48dp target at the card's top end carrying a drawn mark of
   three 3dp studs (squares: §6 has no circles), centred on the tmux name's first

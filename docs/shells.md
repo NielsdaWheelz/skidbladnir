@@ -46,7 +46,7 @@ separate ordinary tmux session, never a window, split, or linked session group.
 | tui `N` | advanced machine, launch, optional name, cwd, and group form; create and attach. |
 | tui `T` (shift+t) | on a fresh selected session, create here and immediately attach the returned session. works on agent and terminal rows. |
 | android forge | terminal in the launch picker; existing name/cwd/group/objective fields and automatic post-create attachment. |
-| android attach header | one-tap terminal-plus action, spoken “new terminal here”, minimum 48dp target; same create-here behavior for any attached session. fit the existing header height and visual language. |
+| android terminal session sheet | `new terminal on <owner>` row, minimum 48dp target, one tap behind the rail; create-here on a local pane, the source-scoped forge on an ssh/mosh pane ([terminal chrome](terminal-chrome.md)). |
 
 the shortcut has no form: allocate the smallest free `skidbladnir-terminal-N`
 name and an ordinary dwarf identity, then follows the active pane title under
@@ -272,7 +272,7 @@ the host fixture owns gateway/socket cleanup. no production pairing is changed.
 
 ## 7. accepted costs
 
-- one-tap creation follows the terminal title after an initial generated name; manual
+- shortcut creation follows the terminal title after an initial generated name; manual
   customization uses the existing form.
 - directory/group are host samples; later changes do not synchronize sessions.
 - one small exec helper enforces startup correctness; success promises no ready
@@ -280,7 +280,7 @@ the host fixture owns gateway/socket cleanup. no production pairing is changed.
 - unknown creation may need manual inventory inspection; no durable receipts.
 - a collision detected only after tmux starts can remain unknown; do not infer
   dispatch from tmux's human stderr or later inventory.
-- compact detach/menu/text-size glyphs make room in the header; the title may
-  truncate. retain its existing height behavior at each font scale; no extra row.
+- the action sits in the terminal session sheet, one tap behind the rail; the
+  rail stays one row at each font scale.
 - returning to the agent requires browser navigation, including in pr 3.
 - strict wire cutover requires coordinated host/cli/android updates and rollback.
