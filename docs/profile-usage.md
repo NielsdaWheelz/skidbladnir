@@ -264,7 +264,8 @@ qualified `llm-calling` helper source:
 `92cf72aa15817a6f0e14b4c5a861b8c6cdd6d589`. the producer's qualified bytes
 remain unchanged through the shared-native-installation merge.
 
-candidate composition passed on macbook, devbox and arch using their actual
+candidate composition of skid source
+`a2fea3e6de46b1eee06e8cb1cde05b83ddd380ea` passed on macbook, devbox and arch using their actual
 installed profile configuration and existing account endpoints. the changed
 helper, gateway and fleetclient read weekly codex usage; those native responses
 omitted 5h. arch's absent work/work2 owners remained absent and unavailable.

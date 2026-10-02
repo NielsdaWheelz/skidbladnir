@@ -710,7 +710,9 @@ history item is `current`.
   identities and excludes old herdr-backed rollback generations. sleep, logout,
   Tailscale loss, or service absence is ordinary
   machine-local unreachability; Skíðblaðnir does not wake a host.
-  Codex and Claude are installed from exact reviewable npm locks; tmux follows
+  codex and claude use shared upstream native installations at their canonical
+  commands; gateway apply validates those existing commands. host-tool apply
+  and provider self-updaters own their installation and updates. tmux follows
   each platform's native stable package channel. new skid agent sessions use
   the deployment-owned permission bypasses in §2.
 - accepted 2026-09-17 operator scope: `scripts/fleet` owns only `verify`, `invite`,
