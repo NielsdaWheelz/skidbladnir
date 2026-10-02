@@ -1,5 +1,11 @@
 # Machine pressure rail
 
+2026-10-02 accepted design: [session views](session-views.md) replaces
+machine-filter-dependent placement with a separate machines disclosure and
+machine-bound details. source implements that placement. pressure facts, rail/history
+rendering and freshness keep their existing owners; the evidence below applies
+to the previous placement.
+
 Status: the typographic rail source is implemented; its pure and real-Compose
 reds, focused unit, signed same-version S22+ component, routine verification,
 and approved hands-on visual glance are green. The All-filter density follow-up
@@ -34,15 +40,12 @@ owner, alert, or second pressure model.
 
 ### All-filter density follow-up
 
-The reviewed 2026-08-28 follow-up supersedes only the rail-placement clauses
-below: `All` renders no pressure rail, while an explicit machine filter renders
-exactly that machine's rail and details disclosure. Compact exceptional machine
-notices remain in `All`; pressure polling, accepted snapshots, presentation,
-history, disclosure, and action admission remain unchanged.
-
-The details surface deliberately has no partially expanded resting state. That
-forgoes an intermediate sheet height so one system Back consistently dismisses
-the modal details and returns focus to the originating rail.
+the 2026-08-28 follow-up's placement evidence is historical. rails now live in
+the separate machines disclosure under [session views](session-views.md), which
+also owns list/detail back and dismissal. compact exceptional machine notices
+remain on the dashboard in every view. pressure polling, snapshots, metrics,
+history and action admission retain their existing owners. the modal has no
+partially expanded resting state.
 
 ## Scope and closed decisions
 
@@ -203,7 +206,7 @@ Ownership is fixed:
 | Wire projection and strict decoding | Gateway/client boundary | Existing single `GET /v1/pressure` shape; unchanged |
 | Text, precision, order, marks, accents, accessibility summary | `PressurePresentation.kt` | Pure, exhaustive, no I/O |
 | Rail geometry, spans, scrolling, semantics, disclosure | `MachinePressureRail.kt` | Real Compose presentation |
-| Placement and selected machine | `DashboardScreen.kt` | No rail in `All`; exactly the selected machine's rail under an explicit filter |
+| placement and disclosure | `DashboardScreen.kt` | every accepted machine rail is reachable through machines; detail selection never filters cards |
 | History geometry | `PressureHistoryBand` | Frozen source and pixel contract |
 
 The external API remains exactly one strict shape:
@@ -334,9 +337,9 @@ hands-on acceptance remain `NOT_RUN`; `NOT_RUN` is never a pass.
 - An accepted snapshot has one neutral machine identity, one status with
   dynamic-state colour, one flat metric row, and the unchanged history band;
   Reading/Unavailable states are honest header-only disclosures.
-- `All` renders no pressure rail. An explicit machine filter renders exactly
-  that machine's rail; switching back to `All` removes it. Compact exceptional
-  machine notices remain visible in `All`.
+- the dashboard collection shows exceptional machine notices in every view.
+  machines opens all accepted rails and exact-machine details in one modal;
+  its selection never narrows collection scope.
 - No metric pill, fill, border, nested surface/action, Frost informational wash,
   or Moss normal wash remains.
 - A fresh default rail is 68-76dp at 360dp/font scale 1.0; 320dp and large text
@@ -363,6 +366,6 @@ animation, external API/wire-schema change, polling change, or details-sheet
 redesign.
 
 Final state: one host-owned pressure model and wire format feed one pure Android
-presentation owner. An explicit machine filter renders that machine's quiet
-typographic pressure rail, frozen history band, and local details sheet; `All`
-renders none of those rails. The gem model and every legacy path are absent.
+presentation owner. the machines disclosure renders every accepted machine's
+quiet rail/history and routes to its local details within one modal. dashboard
+views share the same fleet scope and exceptional notices. The gem model and every legacy path are absent.

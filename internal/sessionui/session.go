@@ -12,7 +12,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
-	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 )
 
@@ -63,13 +62,12 @@ type model struct {
 	pendingLabel, pendingName string
 	form                      [5]string
 	field                     int
+	groupSelection            groupSelection
 	machine                   string
-	groupFilter               group.Filter
+	view                      selectedView
 	scopeReady                bool
 	picker                    int
 	metadata                  *metadataEditor
-	agentsView                bool
-	needsInputOnly            bool
 	top                       int
 	// pageRow is info's captured lifetime as last observed; refresh follows it
 	// without retargeting.
@@ -233,9 +231,14 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 		}
 
-		m.rebuild()
-		m.reconcileMetadata()
 		m.observeNotifications(message)
+		m.rebuild()
+		observed := fleetclient.ObservedGroups(m.scopedPeers())
+		m.groupSelection.retain(groupChoices(m.form[4], observed))
+		if m.metadata != nil && m.metadata.request.Operation == "group" {
+			m.metadata.selection.retain(groupChoices(m.metadata.draft, observed))
+		}
+		m.reconcileMetadata()
 		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
 			m.refreshInfo()
 		}
@@ -287,13 +290,13 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				}
 			}
 			// Confirmed creation reveals the new session in its group.
-			m.page, m.agentsView, m.needsInputOnly = "", false, false
+			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
 				m.machine = value.Label
 				m.scopeReady = false
 			}
-			if !m.groupFilter.Matches(value.Session.Group) {
-				m.groupFilter = filterFor(value.Session.Group)
+			if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
+				m.view = selectedView{kind: viewGroup, label: value.Session.Group}
 			}
 			created, _ := fleetclient.DecodeReference(value.Session.Ref)
 			found := false
@@ -388,6 +391,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if message.notificationErr == nil {
 			m.notificationSnapshot = message.snapshot
 		}
+		m.rebuild()
 		if m.refreshing {
 			m.refreshAfterAction = true
 		}
@@ -399,10 +403,13 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking {
+			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking && !m.metadata.saveFocused {
 				m.metadata.draft += message.Content
+				if m.page == "group-edit" {
+					m.metadata.selection.reset(m.metadata.draft, m.groupChoices(m.metadata.draft))
+				}
 			}
-			if m.page == "create" && m.field >= 2 {
+			if m.page == "create" && m.field >= 2 && m.field < len(m.form) {
 				if m.field == 4 {
 					m.form[m.field] += message.Content
 				} else {
@@ -410,6 +417,9 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				}
 				if m.field == 3 {
 					return m, m.searchDirectory()
+				}
+				if m.field == 4 {
+					m.groupSelection.reset(m.form[4], m.groupChoices(m.form[4]))
 				}
 			}
 		}
@@ -516,12 +526,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		case "esc":
 			// escape closes pages; the table is its floor, never an exit.
 			return m, nil
-		case "a":
-			m.showAgents()
-			return m, nil
 		case "f":
-			m.needsInputOnly = !m.needsInputOnly
-			m.rebuildForFilter()
+			m.selectView(selectedView{kind: viewNeedsInput})
 			return m, nil
 		case "up", "k":
 			m.move(-1)
@@ -555,7 +561,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				return m, nil
 			}
 			m.inform("opening terminal on " + peer.Label + "…")
-			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.groupFilter.Label()})
+			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.view.label})
 		case "N":
 			peer := m.creationPeer()
 			if peer == nil {
@@ -564,7 +570,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 			m.page, m.field = "create", 0
 			m.clearDirectorySearch()
-			m.form = [5]string{peer.Label, "terminal", "", "", m.groupFilter.Label().String()}
+			m.form = [5]string{peer.Label, "terminal", "", "", m.view.label.String()}
+			m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
 			m.inform("")
 			return m, nil
 		}
@@ -612,13 +619,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
-func filterFor(label group.Label) group.Filter {
-	if label.IsUnassigned() {
-		return group.UnassignedFilter()
-	}
-	filter, _ := group.NamedFilter(label)
-	return filter
-}
 func (m *model) scopedPeers() []fleetclient.Peer {
 	if m.machine == "" {
 		return m.peers
@@ -673,28 +673,6 @@ func (m *model) editPicker(key string) tea.Cmd {
 		return m.refresh()
 	}
 	return nil
-}
-func (m *model) nextGroupDraft(draft string, previous bool) string {
-	options := []string{""}
-	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
-		options = append(options, label.String())
-	}
-	index := -1
-	canonical, err := group.ParseDraft(draft)
-	if err == nil {
-		for i, option := range options {
-			if canonical.String() == option {
-				index = i
-				break
-			}
-		}
-	}
-	if previous {
-		index = (max(0, index) + len(options) - 1) % len(options)
-	} else {
-		index = (index + 1) % len(options)
-	}
-	return options[index]
 }
 func (m *model) selectedRow() *listedRow {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {

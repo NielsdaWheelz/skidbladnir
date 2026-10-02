@@ -14,14 +14,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -175,77 +172,68 @@ internal fun PressureHistoryBand(history: List<PressureHistorySample>) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MachinePressureDetailsSheet(
+internal fun MachinePressureDetails(
     machine: PairedMachine,
     state: PressureState,
     onDismiss: () -> Unit,
 ) {
     val content = pressureDetailsContent(machine.label.text, state)
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = NidavellirShapes.Sheet,
-        containerColor = DeepSurface,
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = content.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontFamily = NidavellirType.Display,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(text = content.summary, color = Muted)
-            content.rows.forEach { row ->
-                val color = pressureColor(row.colorRole)
-                Surface(
-                    color = RaisedSurface,
-                    shape = NidavellirShapes.Chip,
-                    border = BorderStroke(1.dp, color),
+        Text(
+            text = content.title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontFamily = NidavellirType.Display,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(text = content.summary, color = Muted)
+        content.rows.forEach { row ->
+            val color = pressureColor(row.colorRole)
+            Surface(
+                color = RaisedSurface,
+                shape = NidavellirShapes.Chip,
+                border = BorderStroke(1.dp, color),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                row.fullLabel,
-                                color = Muted,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Text(row.value, color = Bone, fontFamily = NidavellirType.Data)
-                        }
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            row.stateWord,
-                            color = color,
+                            row.fullLabel,
+                            color = Muted,
                             style = MaterialTheme.typography.labelMedium,
-                            fontFamily = NidavellirType.Data,
-                            fontWeight = FontWeight.Bold,
                         )
+                        Text(row.value, color = Bone, fontFamily = NidavellirType.Data)
                     }
+                    Text(
+                        row.stateWord,
+                        color = color,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = NidavellirType.Data,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End).semantics {
-                    contentDescription = content.dismissLabel
-                },
-            ) {
-                Text("Dismiss")
-            }
+        }
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.align(Alignment.End).semantics {
+                contentDescription = content.dismissLabel
+            },
+        ) {
+            Text("Dismiss")
         }
     }
 }

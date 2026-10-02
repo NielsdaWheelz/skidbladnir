@@ -1,11 +1,12 @@
 package dev.niels.skidbladnir
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,8 +16,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -25,18 +28,23 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -48,13 +56,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -135,57 +144,25 @@ internal fun DashboardMain(
     onVerify: () -> Unit,
     onOpenTerminal: (SessionTarget) -> Unit,
 ) {
-    var selectedPressureHandle by rememberSaveable { mutableStateOf<String?>(null) }
-    val scope = entry.scope
-    val selectedPressureMachine = selectedPressureHandle?.let { handle ->
-        when (scope) {
-            DashboardScope.All -> null
-            is DashboardScope.Machine -> state.machines.singleOrNull {
-                it.machine.handle.encoded == handle && it.machine.handle == scope.handle
-            }
-        }
-    }
-    if (selectedPressureHandle != null && selectedPressureMachine == null) {
-        LaunchedEffect(selectedPressureHandle) { selectedPressureHandle = null }
-    }
-    val machines = state.machines.filter { machine ->
-        when (scope) {
-            DashboardScope.All -> true
-            is DashboardScope.Machine -> machine.machine.handle == scope.handle
-        }
-    }
-    val items = dashboardItems(machines, entry.group, entry.needsInputOnly)
+    var machineSelection by remember { mutableStateOf<DashboardMachineSelection?>(null) }
+    val machines = state.machines
+    val items = dashboardItems(machines, entry.view)
     val canForge = machines.any(MachineState::canForge)
-    val showPressureRails = pressureRailsVisible(scope)
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
                 summary = dashboardSummary(items.count { it is DashboardItem.Session }, machines.size),
-                onReconnect = controller::requestFleetReconnect,
+                onMachines = { machineSelection = DashboardMachineSelection.Machines },
             )
 
-            MachineFilters(state.machines, scope, entry::selectScope)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(end = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                GroupSelector(entry.group, observedGroups(state.machines), entry::selectGroup, Modifier.weight(1f))
-                FilterChip(
-                    selected = entry.needsInputOnly,
-                    onClick = entry::toggleNeedsInputOnly,
-                    label = { Text("needs input", fontFamily = NidavellirType.Data) },
-                    shape = NidavellirShapes.Chip,
-                )
-            }
+            DashboardViewStrip(machines, entry.view, entry::selectView)
             machines.forEach { machine ->
                 key(machine.machine.handle) {
-                    MachineStrip(
-                        machine = machine,
-                        showPressureRail = showPressureRails,
-                        onShowPressure = { selectedPressureHandle = machine.machine.handle.encoded },
-                    )
+                    MachineStrip(machine)
                 }
+            }
+            if (state.notificationsUnavailable) {
+                NoticePanel(tone = NoticeTone.Degraded, body = "notifications unavailable")
             }
 
             state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
@@ -193,7 +170,7 @@ internal fun DashboardMain(
             state.forgeRecovery?.let { recovery ->
                 NoticePanel(
                     tone = NoticeTone.Armed,
-                    body = forgeRecoveryMessage(state, recovery, scope),
+                    body = forgeRecoveryMessage(state, recovery),
                     actions = if (recovery is ForgeRecovery.ReviewReady) {
                         {
                             TextButton(onClick = controller::resumeForgeRecovery) { Text("Resume draft") }
@@ -208,7 +185,6 @@ internal fun DashboardMain(
             DashboardDwarfCollection(
                 state = state,
                 entry = entry,
-                machines = machines,
                 items = items,
                 onVerify = onVerify,
                 onRestore = controller::restoreDashboardOnce,
@@ -231,11 +207,16 @@ internal fun DashboardMain(
             ForgeSeal(canForge = canForge, onClick = controller::openForge)
         }
     }
-    selectedPressureMachine?.let { machine ->
-        MachinePressureDetailsSheet(
-            machine = machine.machine,
-            state = machine.pressure,
-            onDismiss = { selectedPressureHandle = null },
+    machineSelection?.let { selection ->
+        DashboardMachineSheet(
+            machines = machines,
+            selection = selection,
+            onSelect = { machineSelection = it },
+            onDismiss = { machineSelection = null },
+            onReconnect = {
+                machineSelection = null
+                controller.requestFleetReconnect()
+            },
         )
     }
 }
@@ -245,7 +226,6 @@ internal fun DashboardMain(
 internal fun DashboardDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
-    machines: List<MachineState>,
     items: List<DashboardItem>,
     onVerify: () -> Unit,
     onRestore: (List<DashboardItemKey>) -> Unit,
@@ -255,15 +235,16 @@ internal fun DashboardDwarfCollection(
     onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
 ) {
-    val scope = entry.scope
+    val machines = state.machines
+    val needsInputView = entry.view == DashboardViewSelection.NeedsInput
     val keys = items.map(DashboardItem::key)
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)
     }
-    LaunchedEffect(entry.restorationPending, scope, restorationOutcomes, keys) {
+    LaunchedEffect(entry.restorationPending, entry.view.key, restorationOutcomes, state.needsInputSettled, keys) {
         if (entry.restorationPending) onRestore(keys)
     }
-    if (entry.restorationPending) {
+    if (entry.restorationPending || needsInputView && items.isEmpty() && !state.needsInputSettled) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -274,10 +255,8 @@ internal fun DashboardDwarfCollection(
         PullableDwarfCollection(state = state, motionEnabled = motionEnabled, onVerify = onVerify) {
             DashboardDwarfGrid(
                 state,
-                scope,
-                machines,
                 items,
-                entry.needsInputOnly,
+                needsInputView,
                 entry.gridState,
                 motionEnabled,
                 onOpen,
@@ -290,10 +269,8 @@ internal fun DashboardDwarfCollection(
     } else {
         DashboardDwarfGrid(
             state,
-            scope,
-            machines,
             items,
-            entry.needsInputOnly,
+            needsInputView,
             entry.gridState,
             motionEnabled,
             onOpen,
@@ -383,10 +360,8 @@ private fun DwarfCollectionPullIndicator(
 @Composable
 private fun DashboardDwarfGrid(
     state: SkidbladnirUiState.Dashboard,
-    scope: DashboardScope,
-    machines: List<MachineState>,
     items: List<DashboardItem>,
-    needsInputOnly: Boolean,
+    needsInputView: Boolean,
     gridState: LazyGridState,
     motionEnabled: Boolean,
     onOpen: (SessionTarget) -> Unit,
@@ -395,6 +370,7 @@ private fun DashboardDwarfGrid(
     onTerminalClose: (SessionTarget) -> Unit,
     onGroup: (SessionTarget) -> Unit,
 ) {
+    val machines = state.machines
     val topPadding = 12.dp
     // The Forge seal floats over the grid (forge-seal.md "Placement and
     // semantics"): cards pass beneath it while scrolling, and the trailing
@@ -425,7 +401,7 @@ private fun DashboardDwarfGrid(
                     Box(Modifier.fillMaxWidth().height(emptyItemHeight)) {
                         val wait = dashboardInventoryWaitCopy(machines)
                         when {
-                            needsInputOnly -> EmptyState("no sessions currently need input in this view", wait)
+                            needsInputView -> EmptyState("no sessions currently need input in this view", wait)
                             wait != null -> EmptyState("no matching sessions in available inventory", wait)
                             else -> EmptyState(
                                 "no sessions in this view",
@@ -462,7 +438,7 @@ private fun DashboardDwarfGrid(
                                 visible,
                                 machine,
                                 state.machines,
-                                showMachineLabel = scope == DashboardScope.All,
+                                needsInputView = needsInputView,
                                 motionEnabled = motionEnabled,
                                 terminalControlPending = state.terminalControlPending,
                                 onOpen = { onOpen(visible.target) },
@@ -482,7 +458,7 @@ private fun DashboardDwarfGrid(
 @Composable
 internal fun DashboardTopBar(
     summary: String,
-    onReconnect: () -> Unit,
+    onMachines: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -515,61 +491,93 @@ internal fun DashboardTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        TextButton(onClick = onReconnect) {
-            Text("Reconnect fleet", maxLines = 1)
+        TextButton(onClick = onMachines) {
+            Text("machines", maxLines = 1)
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MachineFilters(
+internal fun DashboardViewStrip(
     machines: List<MachineState>,
-    scope: DashboardScope,
-    onSelect: (DashboardScope) -> Unit,
+    view: DashboardViewSelection,
+    onSelect: (DashboardViewSelection) -> Unit,
 ) {
+    val labels = observedGroups(machines).toMutableList()
+    val selectedGroup = view as? DashboardViewSelection.Named
+    selectedGroup?.label?.let { if (it !in labels) labels.add(it) }
+    val views = buildList<DashboardViewSelection> {
+        add(DashboardViewSelection.NeedsInput)
+        add(DashboardViewSelection.All)
+        labels.sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
+            .forEach { add(DashboardViewSelection.Named(groupFingerprint(it), it)) }
+        if (selectedGroup != null && selectedGroup.label == null && none { it.key == selectedGroup.key }) {
+            add(selectedGroup)
+        }
+        if (view == DashboardViewSelection.Unassigned || machines.any { machine ->
+                machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().any { it.group == null }
+            }) add(DashboardViewSelection.Unassigned)
+    }
     val selectedChip = remember { BringIntoViewRequester() }
-    LaunchedEffect(scope) { selectedChip.bringIntoView() }
-    CompositionLocalProvider(LocalBringIntoViewSpec provides MachineFilterBringIntoViewSpec) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(remember { ScrollState(0) })
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val allSelected = when (scope) {
-                DashboardScope.All -> true
-                is DashboardScope.Machine -> false
-            }
-            FilterChip(
-                selected = allSelected,
-                onClick = { onSelect(DashboardScope.All) },
-                label = { Text("All", fontFamily = NidavellirType.Data) },
-                shape = NidavellirShapes.Chip,
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Inventory can change the other tabs while the operator browses the strip.
+        // Only selection, its resolved name, or viewport geometry requests a reveal.
+        LaunchedEffect(view.key, view.displayLabel(), maxWidth) { selectedChip.bringIntoView() }
+        val maximumWidth = (maxWidth - 32.dp).coerceAtLeast(48.dp)
+        CompositionLocalProvider(LocalBringIntoViewSpec provides ViewStripBringIntoViewSpec) {
+            Row(
                 modifier = Modifier
-                    .then(if (allSelected) Modifier.bringIntoViewRequester(selectedChip) else Modifier),
-            )
-            machines.forEach { machine ->
-                val machineScope = DashboardScope.Machine(machine.machine.handle)
-                val selected = when (scope) {
-                    DashboardScope.All -> false
-                    is DashboardScope.Machine -> scope.handle == machineScope.handle
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .selectableGroup()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                views.forEach { choice ->
+                    key(choice.key) {
+                        val selected = choice.key == view.key
+                        val named = choice is DashboardViewSelection.Named
+                        val label = choice.displayLabel()
+                        Surface(
+                            color = if (selected) RaisedSurface else Color.Transparent,
+                            shape = NidavellirShapes.Chip,
+                            border = BorderStroke(1.dp, if (selected) Gold else Muted.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .widthIn(min = 48.dp, max = maximumWidth)
+                                .heightIn(min = 48.dp)
+                                .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier)
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.Tab,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = AngularIndication(NidavellirShapes.Chip),
+                                    onClick = { onSelect(choice) },
+                                )
+                                .semantics { contentDescription = if (named) "group: $label" else label },
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clearAndSetSemantics {},
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                val color = if (selected) Gold else Bone
+                                if (named) Text("\"", color = color, fontFamily = NidavellirType.Data)
+                                Text(
+                                    label, color = color, fontFamily = NidavellirType.Data,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                if (named) Text("\"", color = color, fontFamily = NidavellirType.Data)
+                            }
+                        }
+                    }
                 }
-                FilterChip(
-                    selected = selected,
-                    onClick = { onSelect(machineScope) },
-                    label = { Text(machine.machine.label.text, fontFamily = NidavellirType.Data) },
-                    shape = NidavellirShapes.Chip,
-                    modifier = Modifier
-                        .then(if (selected) Modifier.bringIntoViewRequester(selectedChip) else Modifier),
-                )
             }
         }
     }
 }
 
-private object MachineFilterBringIntoViewSpec : BringIntoViewSpec {
+private object ViewStripBringIntoViewSpec : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         if (size > containerSize) return offset
         val trailingDistance = offset + size - containerSize
@@ -584,29 +592,76 @@ private object MachineFilterBringIntoViewSpec : BringIntoViewSpec {
 @Composable
 private fun MachineStrip(
     machine: MachineState,
-    showPressureRail: Boolean,
-    onShowPressure: () -> Unit,
+    modifier: Modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
 ) {
-    val notice = machineNotice(machine)
-    if (!showPressureRail && notice == null) return
-    Column {
-        if (showPressureRail) {
-            MachinePressureRail(
-                machine = machine.machine,
-                state = machine.pressure,
-                onOpenDetails = onShowPressure,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        notice?.let {
-            Text(
-                it.message,
-                color = noticeToneColor(it.tone),
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
-            )
+    val notice = machineNotice(machine) ?: return
+    Text(
+        notice.message,
+        color = noticeToneColor(notice.tone),
+        style = MaterialTheme.typography.labelMedium,
+        modifier = modifier,
+    )
+}
+
+internal sealed interface DashboardMachineSelection {
+    data object Machines : DashboardMachineSelection
+    data class Details(val handle: MachineHandle) : DashboardMachineSelection
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DashboardMachineSheet(
+    machines: List<MachineState>,
+    selection: DashboardMachineSelection,
+    onSelect: (DashboardMachineSelection) -> Unit,
+    onDismiss: () -> Unit,
+    onReconnect: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = NidavellirShapes.Sheet,
+        containerColor = DeepSurface,
+        properties = ModalBottomSheetProperties(
+            shouldDismissOnBackPress = selection == DashboardMachineSelection.Machines,
+        ),
+    ) {
+        when (selection) {
+            DashboardMachineSelection.Machines -> Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp).padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "machines", style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = NidavellirType.Display, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.semantics { heading() },
+                )
+                machines.forEach { machine ->
+                    key(machine.machine.handle) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            MachinePressureRail(
+                                machine.machine, machine.pressure,
+                                onOpenDetails = { onSelect(DashboardMachineSelection.Details(machine.machine.handle)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            MachineStrip(machine, Modifier.padding(horizontal = 12.dp))
+                        }
+                    }
+                }
+                TextButton(onClick = onReconnect, modifier = Modifier.align(Alignment.End)) {
+                    Text("reconnect fleet")
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                    Text("dismiss")
+                }
+            }
+            is DashboardMachineSelection.Details -> {
+                ModalBackHandler { onSelect(DashboardMachineSelection.Machines) }
+                val machine = machines.single { it.machine.handle == selection.handle }
+                MachinePressureDetails(machine.machine, machine.pressure, onDismiss)
+            }
         }
     }
 }
@@ -679,7 +734,6 @@ internal fun EmptyState(
 internal fun forgeRecoveryMessage(
     dashboard: SkidbladnirUiState.Dashboard,
     recovery: ForgeRecovery,
-    scope: DashboardScope,
 ): String {
     val target = dashboard.machines.singleOrNull {
         it.machine.handle == recovery.draft.machineHandle
@@ -691,17 +745,7 @@ internal fun forgeRecoveryMessage(
                 null, MachineAccess.IdentityChanged ->
                     "Fleet reset is required before reviewing this draft."
                 MachineAccess.AuthRequired -> "Reconnect fleet before reviewing this draft."
-                MachineAccess.Ready -> {
-                    val targetVisible = when (scope) {
-                        DashboardScope.All -> true
-                        is DashboardScope.Machine -> scope.handle == target.machine.handle
-                    }
-                    if (targetVisible) {
-                        "Pull down to check again before reviewing this draft."
-                    } else {
-                        "Select $label, then pull down to check again before reviewing this draft."
-                    }
-                }
+                MachineAccess.Ready -> "Pull down to check again before reviewing this draft."
             }
             "$label: create outcome unknown. $repair"
         }

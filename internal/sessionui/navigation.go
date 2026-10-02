@@ -6,8 +6,22 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
-	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 )
+
+type viewKind uint8
+
+const (
+	viewAll viewKind = iota
+	viewNeedsInput
+	viewGroup
+)
+
+// selectedView is one collection, not intersecting filters. Its zero value is
+// all; a group with the zero label selects unassigned sessions.
+type selectedView struct {
+	kind  viewKind
+	label group.Label
+}
 
 func sameSession(a, b fleetclient.Session) bool {
 	left, _ := fleetclient.DecodeReference(a.Ref)
@@ -22,34 +36,34 @@ func (m *model) rebuild() {
 	}
 	previous := m.cursor
 	m.rows = nil
-	if m.agentsView {
+	switch m.view.kind {
+	case viewNeedsInput:
 		for _, peer := range m.scopedPeers() {
 			for _, session := range peer.Sessions {
 				row := listedRow{peer.Label, peer.Machine, peer.ObservedAt, session, peer.OK && m.scopeReady}
-				if m.current(&row).Agent != nil {
+				if m.statusView(row).Queue != fleetclient.QueueExcluded {
 					m.rows = append(m.rows, row)
 				}
 			}
 		}
 		slices.SortStableFunc(m.rows, func(a, b listedRow) int {
-			if a.available != b.available {
-				if a.available {
-					return -1
-				}
-				return 1
-			}
-			return cmp.Compare(attentionRank(a.session.TerminalStatus), attentionRank(b.session.TerminalStatus))
+			return cmp.Compare(m.statusView(a).Queue, m.statusView(b).Queue)
 		})
-	} else {
-		for _, group := range fleetclient.Groups(m.scopedPeers(), m.groupFilter) {
+	case viewAll, viewGroup:
+		filter := group.Filter{}
+		if m.view.kind == viewGroup {
+			filter = group.UnassignedFilter()
+			if !m.view.label.IsUnassigned() {
+				filter, _ = group.NamedFilter(m.view.label)
+			}
+		}
+		for _, group := range fleetclient.Groups(m.scopedPeers(), filter) {
 			for _, row := range group.Rows {
 				m.rows = append(m.rows, listedRow{row.Label, row.Machine, row.ObservedAt, row.Session, row.Available && m.scopeReady})
 			}
 		}
-	}
-	// The filter narrows the chosen view without reordering it; stale rows never qualify.
-	if m.needsInputOnly {
-		m.rows = slices.DeleteFunc(m.rows, func(row listedRow) bool { return !row.available || !fleetclient.NeedsInput(row.session.TerminalStatus) })
+	default:
+		panic("invalid selected view") // justify-defect: only the closed view kinds populate the model.
 	}
 	m.cursor = -1
 	for index, row := range m.rows {
@@ -77,76 +91,42 @@ func (m *model) rebuildForFilter() {
 	m.top = 0
 }
 
-// groupOptions is the view sequence after agents: all, then each group observed
-// in scope plus the current one, in group order, so unassigned comes last.
+// viewOptions includes every group observed in scope plus the selected group,
+// in group order, so an empty selection survives and unassigned comes last.
 // step walks it and header draws it, so drawn and stepped order are one.
-func (m *model) groupOptions() []group.Filter {
+func (m *model) viewOptions() []selectedView {
 	labels := []group.Label{}
 	for _, observed := range fleetclient.Groups(m.scopedPeers(), group.Filter{}) {
 		labels = append(labels, observed.Label)
 	}
-	if m.groupFilter.Kind() != group.FilterAll && !slices.Contains(labels, m.groupFilter.Label()) {
-		labels = append(labels, m.groupFilter.Label())
+	if m.view.kind == viewGroup && !slices.Contains(labels, m.view.label) {
+		labels = append(labels, m.view.label)
 		slices.SortFunc(labels, group.Compare)
 	}
-	options := []group.Filter{{}}
+	options := []selectedView{{kind: viewNeedsInput}, {kind: viewAll}}
 	for _, label := range labels {
-		options = append(options, filterFor(label))
+		options = append(options, selectedView{kind: viewGroup, label: label})
 	}
 	return options
 }
 
-// step moves along the strip's views: agents, all, then each group. the
-// agents view always spans all groups.
+// step clamps at each end of the same sequence the header renders.
 func (m *model) step(delta int) {
-	options := m.groupOptions()
-	index := 0
-	if !m.agentsView {
-		index = 1 + slices.Index(options, m.groupFilter)
-	}
-	next := min(max(0, index+delta), len(options))
-	if next == index {
-		return
-	}
-	m.agentsView = next == 0
-	m.groupFilter = group.Filter{}
-	if next > 0 {
-		m.groupFilter = options[next-1]
-	}
-	m.rebuildForFilter()
+	options := m.viewOptions()
+	index := slices.Index(options, m.view)
+	m.selectView(options[min(max(0, index+delta), len(options)-1)])
 }
 
-// showAgents opens the agents view on its most urgent row.
-func (m *model) showAgents() {
-	m.agentsView, m.groupFilter = true, group.Filter{}
-	m.rebuild()
-	m.cursor = min(0, len(m.rows)-1)
-	m.top = 0
+func (m *model) selectView(view selectedView) {
+	if m.view == view {
+		return
+	}
+	m.view = view
+	m.rebuildForFilter()
 }
 
 func (m *model) move(delta int) {
 	if len(m.rows) > 0 {
 		m.cursor = min(max(0, m.cursor+delta), len(m.rows)-1)
 	}
-}
-
-// attentionRank puts what may be waiting on the operator first: requests and
-// menus, then idle, then unknown (including unavailable), then starting or
-// working. Idle ranks by the facts that label a row idle or ready; idle with an
-// unknown interaction is labelled status unknown and ranks with it. The sort is
-// stable within a rank.
-func attentionRank(status sessions.TerminalStatus) int {
-	switch {
-	case fleetclient.NeedsInput(status) || status.Interaction == sessions.InteractionMenu:
-		return 0
-	case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone:
-		return 1
-	}
-	switch status.Activity {
-	case sessions.ActivityIdle, sessions.ActivityUnknown:
-		return 2
-	case sessions.ActivityStarting, sessions.ActivityWorking:
-		return 3
-	}
-	panic("invalid owned terminal activity") // justify-defect: ingress admits only Valid statuses.
 }

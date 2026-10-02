@@ -1,5 +1,11 @@
 # v0 dashboard refresh-boundary correction
 
+2026-10-02: [session views](session-views.md) removes phone machine selection and
+moves pressure to the machines disclosure. source implements that cutover;
+qualification belongs to session views. the collection geometry and refresh
+presentation below remain current. original delivery evidence follows and
+retains its recorded source boundary.
+
 Status: source implemented 2026-08-28. The focused signed same-version S22+
 owner red was observed against the retired source, and the final two-test green
 passed at system animator scale `0.0`; the exact original release and encrypted
@@ -19,7 +25,7 @@ Hard-cut the permanent pull-threshold gutter. The dwarf collection rests at the
 normal dashboard rhythm while native pull mechanics and stationary content
 remain unchanged.
 
-Goals: restore machine/session proximity, make transient feedback spend only
+goals: restore normal collection spacing, make transient feedback spend only
 transient space, and preserve framework-owned interaction and truthful progress.
 
 ## Capability contract
@@ -29,13 +35,13 @@ transient space, and preserve framework-owned interaction and truthful progress.
 - Pulling shows one determinate Gold boundary line from clamped
   `distanceFraction`; accepted verification shows one indeterminate line in the
   same band.
-- The line is absent, including pixels and semantics, at rest and for a scope
-  with no live poller.
+- the line is absent, including pixels and semantics, at rest and when the
+  accepted fleet has no live poller.
 - Cards, empty content, fixed chrome, pressure rails, notices, focus, stable
   keys, and scroll position never move.
-- Current-filter targeting, `verifyVisibleInventory()`, awaited-read completion,
-  pressure independence, and Material threshold/resistance/nested-scroll/fling
-  behavior remain unchanged contracts.
+- `verifyVisibleInventory()` targets every live fleet inventory poller in every
+  view. awaited-read completion, pressure independence, and material
+  threshold/resistance/nested-scroll/fling behavior retain their contracts.
 
 ## Final composition
 
@@ -55,9 +61,10 @@ Start/end padding remains `12dp`. Since 2026-10-02 the `84dp` bottom
 clearance is trailing content padding, not a viewport exclusion
 ([forge seal](forge-seal.md#placement-and-semantics)), and card gaps are `8dp`
 ([session card](session-card.md#grid)).
-For a selected machine with no intervening notice, the existing rail wrapper
-makes the visible rail-to-card gap `16dp`; do not change that wrapper. A notice
-remains a real intervening sibling and owns its existing height.
+pressure rails live in the machines disclosure under
+[session views](session-views.md#phone-presentation-and-machine-scope-removal),
+so no selected-machine rail-to-card gap remains. a dashboard notice is still a
+real intervening sibling and owns its existing height.
 
 While pulling, exactly one semantics node exposes determinate progress and no
 custom description or action. While refreshing, exactly one node exposes
@@ -85,7 +92,12 @@ polling lane, gateway, tmux, persistence, pressure, card, Forge, or terminal
 change exists. Add no generic progress surface, spacing system, motion token,
 or test-only production seam for this single consumer.
 
-## Hard cut and cleanup
+## historical original hard cut and cleanup
+
+the following cleanup, ownership and proof recipe record the 2026-08-28 change.
+they are not a new assignment or retained suite; [testing policy](rules/testing.md)
+governs current verification. the selected-machine pressure proof below is
+historical; session views supersedes that placement.
 
 Delete in the same change:
 
@@ -97,7 +109,7 @@ Keep `CircularProgressIndicator` because Forge still consumes it. Retain no
 circular renderer, feature flag, compatibility path, fallback, responsive
 variant, negative margin, or custom gesture engine.
 
-## Files and ownership
+## historical original files and ownership
 
 | Owner | Paths | Proof |
 | --- | --- | --- |
@@ -109,7 +121,7 @@ The runtime slice cannot be split further without violating builder-owned red
 or duplicating the only changed behavior boundary. No owner touches card,
 pressure, controller/model, gateway, build, catalog, or `scripts/test` paths.
 
-## Red / green / refactor
+## historical original red / green / refactor
 
 **Red:** extend
 `dwarfCollectionPullKeepsContentAndExposesOnlyActiveCheckingProgress`. On the
@@ -138,32 +150,30 @@ bound; never sleep or pin an animation timestamp.
 
 ## Acceptance and 80/20 verification
 
-- Live `All`: `12dp` rest inset, no pressure rail, stationary first card.
-- Live selected machine without a notice: one unchanged rail, `16dp`
-  rail-to-card interval. Existing notices may intervene.
+- every view with a live fleet poller: `12dp` rest inset and stationary first
+  card. pressure belongs to the machines disclosure; notices may intervene.
 - Live empty collection: the same grid inset and existing pull/retention
   behavior, with no second layout path.
 - Scrolled collection: existing top/threshold admission remains unchanged.
-- No-live selected machine: inert, `12dp`, no progress pixels or semantics.
+- no live fleet poller: inert, `12dp`, no progress pixels or semantics.
 - Active line has the exact contracted bounds and never intersects chrome,
   empty text, cards, or Kill controls at the focused `360dp / 1.0x` fixture;
   the parent seam additionally holds at `320dp / 2.0x`.
 - Completion is quiet: no toast, haptic, success mark, or card animation.
 
-Verification order is one focused real-Compose red, the same focused green,
-`./scripts/test verify` on the final SHA, then—only with separate current-turn
-approval—one `./scripts/test platform --allow-device-mutation` pass and one
-hands-on S22+ pull/reduced-motion glance. Without approval those gates are
-`NOT_RUN`, never pass. Integration, live, provider-live, product, second-phone,
-release, host, and tmux gates do not re-prove the unchanged external boundaries
-and must not run.
+current engineering checks and session-view qualification belong to
+[session views](session-views.md#acceptance). a hands-on pull/reduced-motion
+glance requires the real device and current-turn approval; absent that boundary
+it remains `NOT_RUN`. the original runtime evidence above does not qualify the
+new view or pressure placement.
 
 ## Non-goals and tradeoff
 
-No pressure visibility/polling change; inventory sequencing or cadence change;
-tap/accessibility refresh action; whole-dashboard scrolling; header, filter,
-Forge, card, or large-screen redesign; density setting; screenshot golden;
-analytics; or inferred agent state.
+this spacing/indicator contract adds no pressure polling, inventory sequencing
+or cadence change; tap/accessibility refresh action; whole-dashboard scrolling;
+forge, card or large-screen redesign; density setting; screenshot golden;
+analytics; or inferred agent state. session views owns the separate navigation
+and pressure-placement change.
 
 Tradeoff: the boundary line is less familiar and less conspicuous than the
 Material circle. The accepted gain is an unambiguous dense resting hierarchy,

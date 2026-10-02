@@ -1,5 +1,11 @@
 # session card
 
+2026-10-02 accepted design: [session views](session-views.md) makes machine
+context visible in every phone view and adds one quiet group-context line only
+in its flat needs-input queue. source implements those changes; qualification
+belongs to that specification. earlier evidence below retains its recorded
+source boundary.
+
 status: current contract for the phone dashboard's session card, implemented
 2026-10-02. it replaces `dashboard-card-refactor.md` (the 2026-08-27 delivery
 recipe, retained in git history). hands-on device acceptance is `NOT_RUN`
@@ -30,8 +36,7 @@ verb is one tap further, behind the overflow.
    the facet beside it is decoration.
 3. the dwarf display name is visible on every card, exact, in the Display face,
    quieter than the tmux name.
-4. in `All`, the machine is visible; in a machine filter it is visually omitted
-   because the filter names it once. speech, the overflow's name, every routed
+4. every card shows its machine. speech, the overflow's name, every routed
    action and every confirmation always name it.
 5. the complete cwd is spoken exactly once. the visible directory may be
    abbreviated but never rewritten.
@@ -42,7 +47,9 @@ verb is one tap further, behind the overflow.
    fenced, and names the fence on its face.
 9. the card synthesizes no fact. absent values are omitted, never filled.
 10. at the default font scale a card's height does not change when its status
-    changes, unless the status label itself needs a second line.
+    changes, unless the status label itself needs a second line. needs input
+    also permits its menu/notice status to wrap so the inclusion reason remains
+    visible; ordinary all/group status geometry is unchanged.
 
 ## structure
 
@@ -74,14 +81,17 @@ verb is one tap further, behind the overflow.
   resolved runtime profile label, `<provider> · profile unknown` for an agent
   without one, and absent for a pane without an agent: its status already
   reads `terminal`.
-- **where**: Data `labelSmall`, Muted, one line. a local card in `All` shows
-  `{machine} · {directory}`; in a machine filter, `{directory}`. a remote card
+- **where**: Data `labelSmall`, Muted, one line. every local card shows
+  `{machine} · {directory}`. a remote card
   shows `running on {X} · terminal on {Y} · {directory}`, with
   `directory unavailable` when the remote cwd is unknown; an unknown remote
   context shows `remote context unknown · terminal on {Y}`. the host never
   yields width to the path. the directory is `abbreviatedDirectory` (two
   trailing segments behind `…/`) and yields further from its head
   (`StartEllipsis`), so the segment that names the work stays legible.
+- **group**: needs input only, after where: `group: {label}` or `unassigned`,
+  Data `labelSmall`, Muted, one line with ellipsis. the complete group is spoken
+  once in the body account. ordinary grouped views retain their headings.
 - the surface is DeepSurface with 10dp cut corners and the 25% Gold top lip.
   the whole body presses with the angular flash.
 
@@ -99,6 +109,12 @@ cannot fit. `detail` is Muted: `work continues` when a request is shown over
 visible work, or the active command of a plain local pane. it takes the width
 the label leaves and ellipsizes, so a status change cannot reflow the list;
 speech carries it whole.
+
+in needs input, a menu over an independent error/interruption notice keeps
+`menu open` primary and shows the notice in this same detail on the next line.
+the detail wraps without clipping the reason, including at doubled text size;
+any `work continues` fact stays in it. this exception costs a status line at
+default size and may need more at large text.
 
 the inference qualifier (`inferred from terminal`) is spoken on the card and
 shown on the terminal surface. it is not drawn on the card: it is identical on

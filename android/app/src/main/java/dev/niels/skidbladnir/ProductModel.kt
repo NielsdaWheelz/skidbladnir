@@ -904,14 +904,6 @@ internal fun dashboardCardKey(target: SessionTarget): DashboardCardKey {
 }
 
 
-internal fun visibleInventoryTargets(
-    liveMachineHandles: Collection<MachineHandle>,
-    scope: DashboardScope,
-): Set<MachineHandle> = when (scope) {
-    DashboardScope.All -> liveMachineHandles.toSet()
-    is DashboardScope.Machine -> if (scope.handle in liveMachineHandles) setOf(scope.handle) else emptySet()
-}
-
 internal enum class ApiErrorCode(val wireName: String) {
     Unauthenticated("Unauthenticated"), InvalidRequest("InvalidRequest"), RequestTooLarge("RequestTooLarge"),
     WorkingDirectoryInvalid("WorkingDirectoryInvalid"), WorkingDirectoryUnavailable("WorkingDirectoryUnavailable"),
@@ -970,11 +962,13 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
 internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
+internal enum class SessionQueueCategory { Ready, Action, Excluded }
 // `detail` tells one session's state from another's; `evidence` names how status was
 // known. The card shows only the first, since the qualifier is the same on every agent card.
 internal data class SessionStatusContent(
     val label: String, val accessibilityLabel: String, val detail: String?, val evidence: String?,
-    val tone: SessionStatusTone, val secondary: String?,
+    val tone: SessionStatusTone, val secondary: String?, val queueCategory: SessionQueueCategory,
+    val detailExplainsQueue: Boolean,
 )
 
 /**
@@ -982,9 +976,29 @@ internal data class SessionStatusContent(
  * first matching row wins. A response request, menu or current notice outranks visible work, which
  * then survives as `work continues`. Only a local agent's terminal sample makes an inference claim.
  */
-internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notification: NotificationPresentation): SessionStatusContent {
+internal fun sessionStatusContent(
+    session: TmuxSession, fresh: Boolean, notification: NotificationPresentation, showQueueReason: Boolean = false,
+): SessionStatusContent {
     val status = session.terminalStatus
-    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null
+    val inferred = status.source == TerminalStatusSource.Terminal && session.agent != null && session.connection == null
+    val request = when (status.interaction) {
+        TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Setup,
+        TerminalInteraction.Confirmation, TerminalInteraction.Input -> true
+        TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
+    }
+    val notice = when (status.notice) {
+        TerminalNotice.Interrupted -> "interruption shown"
+        TerminalNotice.Error -> "error shown"
+        TerminalNotice.None -> null
+    }
+    val ready = inferred && fresh && notification.ready && !notification.unavailable &&
+        status.activity == TerminalActivity.Idle && status.interaction == TerminalInteraction.None && status.notice == TerminalNotice.None
+    val queueCategory = when {
+        !inferred || !fresh -> SessionQueueCategory.Excluded
+        request || status.notice != TerminalNotice.None -> SessionQueueCategory.Action
+        ready -> SessionQueueCategory.Ready
+        else -> SessionQueueCategory.Excluded
+    }
     val requestMenuOrNotice = when (status.interaction) {
         TerminalInteraction.Permission -> "needs permission" to SessionStatusTone.Attention
         TerminalInteraction.Question -> "needs answer" to SessionStatusTone.Attention
@@ -1008,7 +1022,7 @@ internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notifica
             // No request, menu or notice remains, so interaction is none or unknown here.
             TerminalActivity.Idle -> when {
                 status.interaction == TerminalInteraction.Unknown -> "status unknown" to SessionStatusTone.Muted
-                fresh && notification.ready -> "ready" to SessionStatusTone.Ready
+                ready -> "ready" to SessionStatusTone.Ready
                 else -> "idle" to SessionStatusTone.Muted
             }
             TerminalActivity.Unknown -> "status unknown" to SessionStatusTone.Muted
@@ -1017,24 +1031,19 @@ internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notifica
     val workContinues = inferred && requestMenuOrNotice != null && status.activity == TerminalActivity.Working
     val label = if (fresh) state else "last observed: $state"
     val secondary = if (notification.unavailable) "notifications unavailable" else null
+    val queueNotice = notice.takeIf { showQueueReason && inferred && status.interaction == TerminalInteraction.Menu }
+    val detail = if (queueNotice != null || workContinues) {
+        listOfNotNull(queueNotice, "work continues".takeIf { workContinues }).joinToString(" · ")
+    } else session.activeCommand.takeIf { !inferred && session.connection == null }
     return SessionStatusContent(
         label,
-        label + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
+        label + (queueNotice?.let { "; $it" } ?: "") + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
             (secondary?.let { "; $it" } ?: ""),
-        if (workContinues) "work continues" else session.activeCommand.takeIf { !inferred && session.connection == null },
+        detail,
         if (inferred) "inferred from terminal" else null,
-        if (fresh) tone else SessionStatusTone.Muted, secondary,
+        if (fresh) tone else SessionStatusTone.Muted, secondary, queueCategory,
+        detailExplainsQueue = queueNotice != null,
     )
-}
-
-/**
- * The needs-input filter (terminal-observation.md §6): a fresh sample showing a response request,
- * whatever its activity, notice or reason. An unavailable sample never carries an interaction.
- */
-internal fun sessionNeedsInput(session: TmuxSession, fresh: Boolean): Boolean = fresh && when (session.terminalStatus.interaction) {
-    TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Confirmation,
-    TerminalInteraction.Setup, TerminalInteraction.Input -> true
-    TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
 }
 
 private fun JsonObject.requireSessionOptionalFields() {

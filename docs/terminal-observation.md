@@ -298,6 +298,12 @@ which dimensions matched; a classifier defect is not disguised as unavailable.
 
 ## 6. content, attention and filtering
 
+2026-10-02 accepted design: [session views](session-views.md) supersedes this
+section's former independent ui filter and ordering. its human queue includes
+ready, requests and current notices.
+this document retains status facts, copy/precedence and the strict request
+predicate used by cli wait. the clients implement the exclusive queue view.
+
 the content designer owns this table and reviews every rendered feature against
 it. good content names an observed action, distinguishes knowledge from outcome,
 fits the card's [status line](session-card.md#status-line) and remains
@@ -347,33 +353,12 @@ can hide a saved ready; a visit never dismisses a current request. available aga
 does not assert that a question was answered. no request ids or durable request
 records are introduced.
 
-`needs input` is an independent boolean filter after existing machine/group/view
-selection. its predicate is fresh + source terminal + interaction in
-permission/question/confirmation/setup/input, independent of activity, notice or
-reason. an unknown activity with a recognized question remains included.
-menus, notices and ready alone do not qualify. desktop uses `f` and visible help;
-android uses a labelled filter chip in the existing filter controls. empty copy:
-`no sessions currently need input in this view`. suppress empty group headings;
-keep existing unavailable-machine notices outside the filter.
-
-preserve relative order from the chosen view; the filter adds no sorting.
-desktop agents view retains its existing attention order, replacing blocked's
-rank with request/menu, then idle, unknown, starting/working. group/phone order
-stays stable. reuse `rebuildForFilter`: retain the exact selected row if present,
-otherwise select the first visible row, or none when empty. use existing viewport
-reset/clamping. refresh retains surviving keys; actions never reuse a removed
-row's target.
-
-retain the filter through terminal visits and existing dashboard restoration.
-confirmed creation clears it on both clients, then cancels saved restoration and
-resets the viewport: dashboard membership follows the next inventory sample, and
-the creation response usually observes the instant before the provider draws, so a
-kept filter could hide the new session.
-extend the existing android task capsule to schema 3 with required
-`needsInputOnly: boolean`; default false for a new task. hard-cut older capsules
-using existing invalid-capsule handling, no migration. this resets the old task's
-dashboard position once; pairings and notification storage are unaffected.
-desktop keeps it in its existing in-memory view state.
+`needs input` is the exclusive human attention view specified by
+[session views](session-views.md#membership-and-ordering). it includes qualified
+ready, explicit requests and current error/interruption notices, ordered ready
+first. all/group ordering stays stable. cli `wait --state needs-input` retains
+the narrower explicit-response-request predicate above. selection, restoration
+and creation transitions belong to the session-views contract.
 
 diagnostic heading: `status evidence`. show activity, interaction and notice
 separately, then reason, matched rules, capture and timing. exact reason copy:

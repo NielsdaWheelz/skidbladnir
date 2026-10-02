@@ -255,6 +255,14 @@ a selected session, omissions, stale/reset presentation, independent refresh and
 quit during an observed blocked usage request. adversarial review covered the
 implementation and test sensitivity. these temporary source tests are removed
 before commit; `scripts/check verify host` separately passed engineering checks.
+integration with the subsequently merged session views and searchable group
+entry passed focused race checks and the updated actual-terminal probe: view
+changes leave quota scope/cadence intact, usage returns to the selected group
+and session, and forms retain their explicit create/save actions.
+
+qualified `llm-calling` helper source:
+`92cf72aa15817a6f0e14b4c5a861b8c6cdd6d589`. the producer's qualified bytes
+remain unchanged through the shared-native-installation merge.
 
 candidate composition passed on macbook, devbox and arch using their actual
 installed profile configuration and existing account endpoints. the changed

@@ -66,19 +66,24 @@ func (m *model) header() string {
 		machine = ansi.Truncate("machine: "+singleLine(m.machine), 24, "…")
 		room -= ansi.StringWidth(machine) + 2
 	}
-	tabs, current := []tab{{fixed: "agents"}, {fixed: "all"}}, 0
-	if !m.agentsView {
-		current = 1
-	}
-	for index, filter := range m.groupOptions()[1:] {
-		label := singleLine(filter.Label().String())
-		if filter.Kind() == group.FilterUnassigned {
-			tabs = append(tabs, tab{fixed: "unassigned"})
-		} else {
-			tabs = append(tabs, tab{label: label})
+	tabs, current := []tab{}, 0
+	for index, view := range m.viewOptions() {
+		switch view.kind {
+		case viewNeedsInput:
+			tabs = append(tabs, tab{fixed: "needs input"})
+		case viewAll:
+			tabs = append(tabs, tab{fixed: "all"})
+		case viewGroup:
+			if view.label.IsUnassigned() {
+				tabs = append(tabs, tab{fixed: "unassigned"})
+			} else {
+				tabs = append(tabs, tab{label: singleLine(view.label.String())})
+			}
+		default:
+			panic("invalid selected view") // justify-defect: viewOptions emits only the closed view kinds.
 		}
-		if !m.agentsView && filter == m.groupFilter {
-			current = index + 2
+		if view == m.view {
+			current = index
 		}
 	}
 	line := wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
@@ -92,7 +97,7 @@ func (m *model) header() string {
 // label is an operator's group label and may.
 type tab struct{ fixed, label string }
 
-// strip lays out tabs in at most room cells, for room ≥ 45. agents and all
+// strip lays out tabs in at most room cells, for room ≥ 45. needs input and all
 // always show whole. group labels share one cap, the largest from 24 down to 7
 // that fits; while a group is current the fit reserves room for the widest
 // label whole, so stepping between groups keeps the cap. below the floor, the
@@ -101,7 +106,10 @@ type tab struct{ fixed, label string }
 // no room.
 func strip(tabs []tab, current, room int, stepping bool) string {
 	cells := func(t tab, limit int) int {
-		return ansi.StringWidth(t.fixed) + min(ansi.StringWidth(t.label), limit)
+		if t.label != "" {
+			return 2 + min(ansi.StringWidth(t.label), limit)
+		}
+		return ansi.StringWidth(t.fixed)
 	}
 	marker := func(hidden int) int {
 		if hidden == 0 {
@@ -137,7 +145,7 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	}
 	for !fits(limit, first, last) && first < last {
 		// hide the group farthest from the current view; ties hide the left
-		// one, and with agents or all current, groups hide from the right.
+		// one, and with needs input or all current, groups hide from the right.
 		if current-first >= last-current && first != current {
 			first++
 		} else {
@@ -162,7 +170,10 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 		if index == current {
 			size = whole
 		}
-		text := t.fixed + ansi.Truncate(t.label, size, "…")
+		text := t.fixed
+		if t.label != "" {
+			text = `"` + ansi.Truncate(t.label, size, "…") + `"`
+		}
 		switch {
 		case index == current && stepping:
 			line += here.Styled("‹") + bold.Styled(text) + here.Styled("›")
@@ -197,14 +208,7 @@ func (m *model) footerLines() []string {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
-		// The filter hides rows, so it reads plainly; the scrolled position recedes.
-		if m.needsInputOnly {
-			end = " needs input"
-		}
 		if position != "" {
-			if end != "" {
-				position = "· " + position
-			}
 			end += faint.Styled(" " + position)
 		}
 	case "confirm":
@@ -270,22 +274,32 @@ func (m *model) hints() [][]hint {
 		if m.metadata.checking {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
 		}
-		keys := []hint{{"enter", "save"}, {"escape", "cancel"}}
 		if m.page == "group-edit" {
-			keys = append([]hint{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}}, keys...)
-		} else {
-			keys[0].label = "save name"
-			if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
-				keys = append(keys, hint{"ctrl-a", "use automatic title"})
+			keys := []hint{{"enter", "save"}, {"tab", "group"}, {"shift-tab", "back"}, {"ctrl-s", "save draft"}, {"escape", "cancel"}}
+			if !m.metadata.saveFocused {
+				keys[0].label, keys[1].label = "uses and continues", "uses and continues"
+				keys = append([]hint{{"←→", "choose"}, {"ctrl-u", "unassigned"}}, keys...)
 			}
+			return [][]hint{keys}
+		}
+		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
+		if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
+			keys = append(keys, hint{"ctrl-a", "use automatic title"})
 		}
 		return [][]hint{keys}
 	case "create":
 		enter := hint{"enter", "next"}
-		if m.field == 4 {
+		next := hint{"tab", "next"}
+		if m.field == len(m.form) {
 			enter.label = "create"
+		} else if m.field == 4 {
+			enter.label = "uses and continues"
+			next.label = "uses and continues"
 		}
-		hints := []hint{{"tab", "next"}, {"shift-tab", "back"}, {"←→", "choose"}, enter, {"escape", "cancel"}}
+		hints := []hint{next, {"shift-tab", "back"}, enter, {"escape", "cancel"}}
+		if m.field == 0 || m.field == 1 || m.field == 3 || m.field == 4 {
+			hints = append([]hint{{"←→", "choose"}}, hints...)
+		}
 		if m.field == 3 {
 			hints = append(hints, hint{"ctrl-u", "home"})
 		} else if m.field == 4 {
@@ -312,10 +326,9 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	// f toggles the filter; the rule's end shows when it is on. The strip's
-	// chevrons and --help teach ←→, so the global keys keep one 80-column line
+	// The strip's chevrons and --help teach ←→, so the global keys keep one 80-column line
 	// for host labels up to 9 cells.
-	return [][]hint{session, {{"a", "agents"}, {"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
+	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -453,9 +466,22 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, field("current", value, false, false, axis, width)...)
 		}
 		focusStart := len(lines)
-		lines = append(lines, field(label, draft, !editor.checking && !m.busy, false, axis, width)...)
+		lines = append(lines, field(label, draft, !editor.checking && !m.busy && !editor.saveFocused, false, axis, width)...)
 		focusEnd := len(lines)
 		status := "enter saves"
+		if m.page == "group-edit" {
+			if editor.saveFocused {
+				focusStart = len(lines)
+			} else {
+				lines = append(lines, m.groupPreview(editor.draft, &editor.selection, axis, width)...)
+				focusEnd = len(lines)
+				status = "left/right chooses; enter uses and continues"
+			}
+			lines = append(lines, field("", "save", editor.saveFocused && !editor.checking && !m.busy, false, axis, width)...)
+			if editor.saveFocused {
+				focusEnd = len(lines)
+			}
+		}
 		switch {
 		case m.busy:
 			status = "saving; delivery will be reported"
@@ -478,9 +504,7 @@ func (m *model) bodyLines(height int) []string {
 		lines = append(lines, "")
 		lines = append(lines, wrapped(status, width)...)
 		lines = append(lines, "")
-		if m.page == "group-edit" {
-			lines = append(lines, m.suggestions(width)...)
-		} else {
+		if m.page == "name-edit" {
 			lines = append(lines, "saving a name stops automatic naming.")
 			if current != nil && current.session.NameMode == "automatic" {
 				lines = append(lines, "follows the active pane's terminal title.")
@@ -517,9 +541,19 @@ func (m *model) bodyLines(height int) []string {
 					lines = append(lines, field("use", preview, false, false, 9, width)...)
 				}
 			}
+			if index == 4 && m.field == 4 {
+				lines = append(lines, m.groupPreview(m.form[4], &m.groupSelection, 9, width)...)
+			}
 			if index == m.field {
 				focusEnd = len(lines)
 			}
+		}
+		if m.field == len(m.form) {
+			focusStart = len(lines)
+		}
+		lines = append(lines, field("", "create", m.field == len(m.form), false, 9, width)...)
+		if m.field == len(m.form) {
+			focusEnd = len(lines)
 		}
 		lines = append(lines, "", "name: leave blank to follow the terminal title.")
 		if m.field == 3 {
@@ -531,7 +565,7 @@ func (m *model) bodyLines(height int) []string {
 		if _, err := group.ParseDraft(m.form[4]); err != nil {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
-		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
+		return window(lines, focusStart, focusEnd, height)
 	case "details":
 		title := bold.Styled("info")
 		// The title stays pinned; only the captured snapshot scrolls.
@@ -549,12 +583,10 @@ func (m *model) bodyLines(height int) []string {
 		switch {
 		case !m.scopeReady:
 			return []string{"checking inventory"}
-		case m.needsInputOnly:
+		case m.view.kind == viewNeedsInput:
 			return []string{"no sessions currently need input in this view"}
 		case partial:
 			return []string{"no matching sessions in available inventory"}
-		case m.agentsView:
-			return []string{"no agents in this view"}
 		}
 		return []string{"no sessions in this view"}
 	}
@@ -602,12 +634,27 @@ func field(label, value string, focused, choice bool, labelWidth, width int) []s
 	return lines
 }
 
-func (m *model) suggestions(width int) []string {
-	labels := []string{}
-	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
-		labels = append(labels, fleetclient.GroupHeading(label))
+func (m *model) groupPreview(draft string, selection *groupSelection, axis, width int) []string {
+	choices := m.groupChoices(draft)
+	lines := field("", "observed groups", false, false, axis, width)
+	if choices[0].literal || choices[0].label.IsUnassigned() {
+		lines = append(lines, field("", "no observed matches", false, false, axis, width)...)
 	}
-	return wrapped("observed groups: "+strings.Join(labels, " · "), width)
+	preview := "no choice selected"
+	for index, choice := range choices {
+		if selection.choice == nil || choice != *selection.choice {
+			continue
+		}
+		value := "label: " + choice.label.String()
+		if choice.label.IsUnassigned() {
+			value = "unassigned (no membership)"
+		} else if choice.literal {
+			value = "use label: " + choice.label.String()
+		}
+		preview = fmt.Sprintf("‹ %d/%d › %s", index+1, len(choices), value)
+		break
+	}
+	return append(lines, field("use", preview, false, false, axis, width)...)
 }
 
 func (m *model) detailLines() []string {
@@ -633,7 +680,7 @@ func (m *model) pageCapacity() int {
 }
 
 func (m *model) headings() bool {
-	return !m.agentsView && m.groupFilter.Kind() == group.FilterAll
+	return m.view.kind == viewAll
 }
 
 // opensGroup reports whether a group heading precedes this row.
@@ -673,7 +720,7 @@ func (m *model) fitViewports() {
 }
 
 // tableLines lays out one line per row, with a quiet heading wherever the
-// all view enters another group. the agents view names each row's group
+// all view enters another group. needs input names each row's group
 // in a column instead; machine appears only when all machines are in scope.
 func (m *model) tableLines(width int) []string {
 	name, status, agent, label, machine := 4, 0, 0, 0, 0
@@ -682,7 +729,7 @@ func (m *model) tableLines(width int) []string {
 		printed, _ := m.tableStatus(row)
 		status = max(status, ansi.StringWidth(printed))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
-		if m.agentsView {
+		if m.view.kind == viewNeedsInput {
 			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
 		}
 		if m.machine == "" {
@@ -754,7 +801,12 @@ func (m *model) tableLines(width int) []string {
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a working notification store.
 func (m *model) statusView(row listedRow) fleetclient.StatusView {
-	return fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	view := fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
+		view.Label += " · " + view.QueueDetail
+		view.Detail += " · " + view.QueueDetail
+	}
+	return view
 }
 
 // hostChecking reports a row without remote actions whose host has not failed a

@@ -33,36 +33,40 @@ func (m *model) createAvailable() bool {
 
 func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	previousDirectory := m.form[3]
+	previousGroup := m.form[4]
 	switch key.String() {
 	case "esc":
 		m.page = ""
 		m.clearDirectorySearch()
-	case "tab":
+	case "tab", "enter":
 		if m.field == 3 && !m.acceptDirectory() {
 			return nil
 		}
-		m.field = (m.field + 1) % 5
-	case "shift+tab":
-		m.field = (m.field + 4) % 5
-	case "enter":
-		if m.field == 4 && directoryIsQuery(m.form[3]) {
+		if m.field == 4 {
+			draft, err := m.groupSelection.accept(m.form[4])
+			if err != nil {
+				m.fail(group.ErrInvalid.Error())
+				return nil
+			}
+			m.form[4] = draft
+			m.groupSelection.prefill(draft, m.groupChoices(draft))
+		}
+		if key.String() == "tab" || m.field < len(m.form) {
+			m.focusForm((m.field + 1) % (len(m.form) + 1))
+			return nil
+		}
+		if directoryIsQuery(m.form[3]) {
 			m.field = 3
-			return nil
-		}
-		if m.field == 3 && !m.acceptDirectory() {
-			return nil
-		}
-		if m.field < 4 {
-			m.field++
-			return nil
-		}
-		if !m.createAvailable() {
-			m.inform("host unavailable; refresh before creating")
 			return nil
 		}
 		label, err := group.ParseDraft(m.form[4])
 		if err != nil {
+			m.focusForm(4)
 			m.inform(group.ErrInvalid.Error())
+			return nil
+		}
+		if !m.createAvailable() {
+			m.inform("host unavailable; refresh before creating")
 			return nil
 		}
 		cwd := m.form[3]
@@ -78,6 +82,8 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return m.execute(request)
+	case "shift+tab":
+		m.focusForm((m.field + len(m.form)) % (len(m.form) + 1))
 	case "left", "right":
 		if m.field == 3 && len(m.searchDirectories) > 0 {
 			step := 1
@@ -88,7 +94,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if m.field == 4 {
-			m.form[4] = m.nextGroupDraft(m.form[4], key.String() == "left")
+			m.groupSelection.cycle(m.groupChoices(m.form[4]), key.String() == "left")
 			return nil
 		}
 		if m.field > 1 {
@@ -144,12 +150,12 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			m.form[m.field] = ""
 		}
 	case "backspace":
-		if m.field >= 2 && m.form[m.field] != "" {
+		if m.field >= 2 && m.field < len(m.form) && m.form[m.field] != "" {
 			_, size := utf8.DecodeLastRuneInString(m.form[m.field])
 			m.form[m.field] = m.form[m.field][:len(m.form[m.field])-size]
 		}
 	default:
-		if m.field >= 2 {
+		if m.field >= 2 && m.field < len(m.form) {
 			if m.field == 4 {
 				m.form[m.field] += key.Text
 			} else {
@@ -160,7 +166,17 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	if m.field == 3 && m.form[3] != previousDirectory {
 		return m.searchDirectory()
 	}
+	if m.field == 4 && (m.form[4] != previousGroup || key.String() == "ctrl+u") {
+		m.groupSelection.reset(m.form[4], m.groupChoices(m.form[4]))
+	}
 	return nil
+}
+
+func (m *model) focusForm(field int) {
+	m.field = field
+	if field == 4 {
+		m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
+	}
 }
 
 func directoryIsQuery(draft string) bool {

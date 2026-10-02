@@ -46,11 +46,6 @@ internal enum class PressureRailAccent { None, Gold, Ember, Muted }
 
 internal enum class PressureColorRole { Frost, Moss, Gold, Ember, Muted }
 
-internal fun pressureRailsVisible(scope: DashboardScope): Boolean = when (scope) {
-    DashboardScope.All -> false
-    is DashboardScope.Machine -> true
-}
-
 internal fun pressureRailContent(machineLabel: String, state: PressureState): PressureRailContent {
     val response = state.response()
     val metrics = response?.current?.signals?.let(::railMetrics).orEmpty()
