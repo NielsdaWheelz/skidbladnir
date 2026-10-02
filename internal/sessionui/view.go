@@ -64,19 +64,24 @@ func (m *model) header() string {
 		machine = ansi.Truncate("machine: "+singleLine(m.machine), 24, "…")
 		room -= ansi.StringWidth(machine) + 2
 	}
-	tabs, current := []tab{{fixed: "agents"}, {fixed: "all"}}, 0
-	if !m.agentsView {
-		current = 1
-	}
-	for index, filter := range m.groupOptions()[1:] {
-		label := singleLine(filter.Label().String())
-		if filter.Kind() == group.FilterUnassigned {
-			tabs = append(tabs, tab{fixed: "unassigned"})
-		} else {
-			tabs = append(tabs, tab{label: label})
+	tabs, current := []tab{}, 0
+	for index, view := range m.viewOptions() {
+		switch view.kind {
+		case viewNeedsInput:
+			tabs = append(tabs, tab{fixed: "needs input"})
+		case viewAll:
+			tabs = append(tabs, tab{fixed: "all"})
+		case viewGroup:
+			if view.label.IsUnassigned() {
+				tabs = append(tabs, tab{fixed: "unassigned"})
+			} else {
+				tabs = append(tabs, tab{label: singleLine(view.label.String())})
+			}
+		default:
+			panic("invalid selected view") // justify-defect: viewOptions emits only the closed view kinds.
 		}
-		if !m.agentsView && filter == m.groupFilter {
-			current = index + 2
+		if view == m.view {
+			current = index
 		}
 	}
 	line := wordmark.Styled(" skid ") + " " + strip(tabs, current, room, m.page == "" && !m.busy)
@@ -90,7 +95,7 @@ func (m *model) header() string {
 // label is an operator's group label and may.
 type tab struct{ fixed, label string }
 
-// strip lays out tabs in at most room cells, for room ≥ 45. agents and all
+// strip lays out tabs in at most room cells, for room ≥ 45. needs input and all
 // always show whole. group labels share one cap, the largest from 24 down to 7
 // that fits; while a group is current the fit reserves room for the widest
 // label whole, so stepping between groups keeps the cap. below the floor, the
@@ -99,7 +104,10 @@ type tab struct{ fixed, label string }
 // no room.
 func strip(tabs []tab, current, room int, stepping bool) string {
 	cells := func(t tab, limit int) int {
-		return ansi.StringWidth(t.fixed) + min(ansi.StringWidth(t.label), limit)
+		if t.label != "" {
+			return 2 + min(ansi.StringWidth(t.label), limit)
+		}
+		return ansi.StringWidth(t.fixed)
 	}
 	marker := func(hidden int) int {
 		if hidden == 0 {
@@ -135,7 +143,7 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	}
 	for !fits(limit, first, last) && first < last {
 		// hide the group farthest from the current view; ties hide the left
-		// one, and with agents or all current, groups hide from the right.
+		// one, and with needs input or all current, groups hide from the right.
 		if current-first >= last-current && first != current {
 			first++
 		} else {
@@ -160,7 +168,10 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 		if index == current {
 			size = whole
 		}
-		text := t.fixed + ansi.Truncate(t.label, size, "…")
+		text := t.fixed
+		if t.label != "" {
+			text = `"` + ansi.Truncate(t.label, size, "…") + `"`
+		}
 		switch {
 		case index == current && stepping:
 			line += here.Styled("‹") + bold.Styled(text) + here.Styled("›")
@@ -195,14 +206,7 @@ func (m *model) footerLines() []string {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
-		// The filter hides rows, so it reads plainly; the scrolled position recedes.
-		if m.needsInputOnly {
-			end = " needs input"
-		}
 		if position != "" {
-			if end != "" {
-				position = "· " + position
-			}
 			end += faint.Styled(" " + position)
 		}
 	case "confirm":
@@ -306,10 +310,9 @@ func (m *model) hints() [][]hint {
 	if target == "" {
 		target = m.client.DefaultMachine().Label
 	}
-	// f toggles the filter; the rule's end shows when it is on. The strip's
-	// chevrons and --help teach ←→, so the global keys keep one 80-column line
+	// The strip's chevrons and --help teach ←→, so the global keys keep one 80-column line
 	// for host labels up to 9 cells.
-	return [][]hint{session, {{"a", "agents"}, {"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -541,12 +544,10 @@ func (m *model) bodyLines(height int) []string {
 		switch {
 		case !m.scopeReady:
 			return []string{"checking inventory"}
-		case m.needsInputOnly:
+		case m.view.kind == viewNeedsInput:
 			return []string{"no sessions currently need input in this view"}
 		case partial:
 			return []string{"no matching sessions in available inventory"}
-		case m.agentsView:
-			return []string{"no agents in this view"}
 		}
 		return []string{"no sessions in this view"}
 	}
@@ -625,7 +626,7 @@ func (m *model) pageCapacity() int {
 }
 
 func (m *model) headings() bool {
-	return !m.agentsView && m.groupFilter.Kind() == group.FilterAll
+	return m.view.kind == viewAll
 }
 
 // opensGroup reports whether a group heading precedes this row.
@@ -665,7 +666,7 @@ func (m *model) fitViewports() {
 }
 
 // tableLines lays out one line per row, with a quiet heading wherever the
-// all view enters another group. the agents view names each row's group
+// all view enters another group. needs input names each row's group
 // in a column instead; machine appears only when all machines are in scope.
 func (m *model) tableLines(width int) []string {
 	name, status, agent, label, machine := 4, 0, 0, 0, 0
@@ -674,7 +675,7 @@ func (m *model) tableLines(width int) []string {
 		printed, _ := m.tableStatus(row)
 		status = max(status, ansi.StringWidth(printed))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
-		if m.agentsView {
+		if m.view.kind == viewNeedsInput {
 			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
 		}
 		if m.machine == "" {
@@ -746,7 +747,12 @@ func (m *model) tableLines(width int) []string {
 // statusView projects a row's terminal status. A row without remote actions
 // is stale; readiness also requires a working notification store.
 func (m *model) statusView(row listedRow) fleetclient.StatusView {
-	return fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	view := fleetclient.ProjectStatus(row.session, row.available, !m.notificationFailed && m.notificationSnapshot.Ready(row.session))
+	if m.view.kind == viewNeedsInput && view.QueueDetail != "" {
+		view.Label += " · " + view.QueueDetail
+		view.Detail += " · " + view.QueueDetail
+	}
+	return view
 }
 
 // hostChecking reports a row without remote actions whose host has not failed a

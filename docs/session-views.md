@@ -1,6 +1,6 @@
 # session views and needs input
 
-accepted 2026-10-02; implementation pending. phone and desktop expose one
+accepted 2026-10-02; source implemented in `session-views`. phone and desktop expose one
 selected view: `needs input`, `all`, then groups. the phone removes machine
 filtering and uses one horizontally scrolling view strip. `needs input` collects
 agents ready for the operator's next action: ready first, then requests and
@@ -10,10 +10,9 @@ their stable order.
 this document owns the replacement collection/navigation contract and its
 implementation plan. it supersedes the independent needs-input toggle, desktop
 agents view, phone machine filter and their dependent restoration/pressure
-placement clauses in the linked specifications. source still implements the
-predecessor behavior. [the roadmap](roadmap.md) and
-[implementation issue](issues/session-views.md) track delivery; runtime and
-device acceptance are `NOT_RUN`.
+placement clauses in the linked specifications. [the roadmap](roadmap.md)
+tracks delivery; [qualification](#qualification) records the implemented source
+and its verified boundaries.
 
 [terminal observation](terminal-observation.md) retains status facts, copy,
 presentation precedence and the strict request predicate used by cli wait.
@@ -86,10 +85,17 @@ retains that group's existing order. both include ordinary terminals, working
 and unknown agents, and explicitly stale retained rows. the cli's inventory
 ordering is unchanged.
 
-failed-host notices remain outside every view. notification-store failure hides
-ready without hiding fresh requests/notices; expose `notifications unavailable`
-outside the filtered collection, including when no cards survive. derive this
-disclosure from the existing failure owner, with no second failure state machine.
+failed-host notices remain outside every view. a failed attention admission hides
+that machine's ready without hiding fresh requests/notices. its failed outcome
+remains attached while that inventory is admitted; only its matching success can
+repair it. inventory/visit invalidation or a modeled non-live outcome replaces
+the sample and its outcome. another machine's no-op store transaction cannot
+repair the still-admitted failure. the existing global
+operation failure also hides ready while current. successfully matched machines
+can show ready when that global operation failure has cleared. expose
+`notifications unavailable` outside the filtered collection while either failure
+remains, including when no cards survive. derive this disclosure from the existing
+failure owner and admitted outcomes, with no second failure state machine.
 while initial inventory/restoration is unresolved, keep the existing checking
 presentation. once settled, an empty queue reads
 `no sessions currently need input in this view`; uncertainty notices remain
@@ -197,9 +203,11 @@ host does not prevent another host's actions.
 for a restored needs-input view, a fresh inventory is insufficient until its
 corresponding attention result is admitted or storage failure is modeled.
 settle the queue projection and anchor from those matched outcomes, using the
-existing read-sequence and completion callbacks. the current phone publishes
-fresh inventory before its asynchronous attention observation returns; do not
-consume restoration or show a settled empty queue in that intermediate state.
+existing read-sequence and completion callbacks. admit inventory and its attention
+projection together; retain the preceding admitted sample while its successor
+joins the store. do not consume restoration or show a settled empty queue in that
+intermediate state. completion callbacks may settle a pull only for their current
+credential generation and poll runtime; an old runtime still releases its own lane.
 this adds no poll or store and does not make failed hosts wait for recovery.
 
 replace the top-bar `reconnect fleet` button with `machines`, opening one small
@@ -228,6 +236,22 @@ domain-separated fingerprints and semantic restoration algorithm. remove machine
 scope and the independent needs-input boolean; no raw label, terminal token,
 inventory, priority tier or notification state enters the capsule.
 
+the exact primitive bundle uses the existing registry key
+`dev.niels.skidbladnir.dashboard-entry`:
+
+| key | value |
+| --- | --- |
+| `version` | integer `4` |
+| `viewKind` | `needsInput`, `all`, `unassigned`, or `named` |
+| `viewLabelSha256` | only named; 64 lowercase hex |
+| `anchorKind` | `none`, `session`, `space`, or `unassigned` |
+| `anchorSha256` | only session/space; 64 lowercase hex |
+| `fallbackIndex`, `offsetPx` | nonnegative integer rendered index/pixel offset; both zero without anchor |
+
+extra keys, wrong primitive types and inconsistent current-version variants are
+trusted-state defects. `space` and the retained `space:` item-key prefix mean a
+group; neither changes group identity.
+
 preserve unresolved named-group restoration and save-again behavior while
 inventory is pending. use one exact-version reader/writer. unsupported older
 capsules reset to all/top; malformed current-version state follows the existing
@@ -251,7 +275,7 @@ sooner. modal pages retain their input ownership. the independent
 
 ## implementation plan
 
-implement one focused change after implementation is requested. these are code
+the implementation follows these existing ownership boundaries. these are code
 ownership boundaries, not requirements for new modules or separate agents.
 
 1. **typed collection projection.** extend the existing status presentation in
@@ -333,6 +357,9 @@ content-free and credential-free. recording the plan supplies no runtime pass.
 - the flat phone queue gains one group-context line per card; ordinary grouped
   views retain their density. tie order can differ across clients by existing
   contract, while tiers and membership rules agree.
+- a menu's independent notice must remain visible. in needs input, its detail
+  begins on the next line and wraps. this costs a status line even at default
+  text size; all/group status geometry remains unchanged.
 - horizontal scrolling hides some groups. longer tui fixed copy hides other
   tabs sooner; quoted named-group tabs cost two additional characters to avoid
   ambiguity with system views. no tab search, counts, badges or per-view history
@@ -343,5 +370,93 @@ content-free and credential-free. recording the plan supplies no runtime pass.
   the dashboard. both remain available without recreating machine filtering.
 - old saved navigation resets once. new restoration waits for fleet outcomes
   and retains existing sampling/visit limitations; no inventory is persisted.
+- phone inventory publication waits for its serialized attention write, including
+  modeled failure. this trades a small publication delay for one coherent sample
+  and retains preceding admitted ready rows during ordinary polls.
+- every machine update derives its notification projection at the existing
+  installation owner. this adds bounded local projection work on existing
+  updates, with no new polling or state owner.
+- failed attention admissions stay unavailable per machine while that sample
+  remains admitted, until its matching success. invalidation replaces the sample,
+  rather than retaining historical failure. the global operation failure briefly
+  hides all ready. after a successful store operation clears that gate, other
+  successfully matched machines can show ready; the fleet disclosure may therefore
+  coexist with ready rows.
+  this is matched-sample availability, not a filesystem-health monitor.
 - process-exit notification and inspected-error dismissal are separate future
   capabilities. this plan does not close those observation/acknowledgement gaps.
+
+## qualification
+
+2026-10-02, isolated `session-views` worktree, based on `13f9ebc`. temporary
+checks exercise production projections and owners, not another collection
+implementation. original-source probes fail on missing ready/notice membership,
+independent selection, obsolete desktop keys and ambiguous named tabs. observation
+before rebuild and attachment rederive probes also reject their corresponding
+mutants.
+
+host evidence passes on darwin through an isolated tmux socket, authored native
+dummy provider frames, the production process observer/detector, a real tls
+gateway, desktop model and tty/websocket attachment. it covers first-update ready,
+failed-entry retention, output consumption before another inventory, request
+retention and work-to-idle reentry. temporary model/projection probes cover categories,
+stable peer/id ties, selection/reorder/removal, pinned confirmation/editor targets,
+creation completion/reveal, notification-store failure/recovery and the 80×24
+strip/rows. visible menu-notice reasons pass in selected and unselected rows;
+targeted ordering/target-ownership mutants fail their intended assertions. this is neither stock or
+cloud-provider qualification nor a full interactive metadata-editing journey.
+
+physical-phone evidence passes on the sm-s906w, android 16/api 36, in a separate
+application id with controlled loopback tls/wss peers. the actual gateway client,
+encrypted pairing store, attention datastore, controller, main activity, compose
+dashboard and webview output/acknowledgement paths run unchanged. the installed
+fleet application and credentials are untouched.
+
+the dashboard journey covers default all, fleet-wide inventory/pull, ready-first
+membership and group speech, actual output consumption, failed entry, request
+retention, notice clearing, reentry, detach and activity recreation, selected
+group restoration/landscape, explicit standalone host selection/cancellation,
+and machines/details/back/reconnect. qr capture is blocked at its external
+activity boundary; reconnect navigation and cancellation use their real owner.
+no production session creation, qr redemption or installed-fleet deployment is
+claimed.
+
+five controller-boundary probes use real tls replies and the actual serialized
+datastore. delayed matched attention preserves a restored queue anchor and prior
+admitted ready. old callbacks cannot finish a replacement generation's held pull.
+real failed atomic writes preserve requests, settle restoration and expose failure
+copy even with an empty queue; another peer's no-op cannot repair that failed
+sample, and matching recovery restores ready/removes failure copy. definitive
+creation rejection cannot revive ready before the matching inventory/attention
+result. after real webview output, detach immediately hides another same-machine
+ready row while its visit-end transaction is held; the matching read restores
+only the unvisited ready. each failure mode reproduced before its repair.
+
+physical model/layout probes cover all request kinds, both notices, uncertainty,
+remote/stale exclusion, stable queue/all/group ordering, schema-4 saved-registry
+round trips and unresolved save-again, one-time older-version reset and confirmed
+creation reveal. at 320dp/2× and in landscape, tabs preserve full spoken labels,
+one selection, targets and manual scrolling through polls. measured glyph bounds
+and card-only captures prove menu/notice/work detail remains visible. ordinary
+card height is retained. real outside taps and swipes close machines and details;
+hardware back and explicit dismissal retain their separate meanings.
+
+the actual access-loss and draft-recovery helpers preserve fleet scope and the
+selected view; access loss resets the restored viewport, and recovery retains
+the draft's explicit host/group. source-forge host binding is reviewed at its
+existing owner; no live creation is claimed.
+
+the combined instrumentation runner stalled in espresso's idle loop after its
+four controller probes passed. the dashboard journey and model/layout probes
+then passed in separate instrumentation processes on the same compiled source.
+this evidence does not qualify stock/cloud providers, process-kill restoration
+or unrelated camera/pairing behavior.
+
+final `scripts/check verify` passes with scope `all`: host checks/build and
+android lint/debug assembly. the five controller probes, dashboard journey and
+fourteen model/layout probes pass in separate instrumentation processes on the
+final source. all temporary behavioral tests, dependencies, test application
+configuration and trust fixtures are removed before commit. the two phone test
+packages and temporary baseline worktree are removed; the ordinary debug apk
+contains no temporary trust assets. no production app installation or fleet
+deployment was performed.

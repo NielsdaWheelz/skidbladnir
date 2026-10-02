@@ -1,17 +1,18 @@
 # desktop browser
 
-2026-10-02: [session views](session-views.md) owns the accepted replacement for
-the agents view, independent needs-input toggle, ordering and navigation keys.
-implementation is pending; existing browser behavior and evidence follow below.
+2026-10-02: [session views](session-views.md) owns the exclusive needs-input view,
+queue membership/order and navigation keys. source implements this cutover;
+that specification owns its qualification. earlier evidence below retains its
+recorded source boundary.
 
 2026-10-02: [searchable group entry](group-entry.md) specifies local group matching
 and explicit create/save actions after group. this accepted change is pending
 implementation; the delivery status below applies to the existing browser.
 
-implemented. one table with agents and group views, under a row-1 view strip,
+implemented. one table with needs-input, all and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.
 [terminal observation](terminal-observation.md) owns inferred status, its copy
-and the needs-input predicate; [terminal control](terminal-agent-control.md) owns
+and the strict request predicate; [terminal control](terminal-agent-control.md) owns
 ordinary read/send/wait/stop/close. [terminal attention](reply-notifications.md)
 owns notices and visits. native history/control remains explicitly addressed.
 [darwin native acceptance](issues/desktop-browser-runtime-acceptance.md) remains
@@ -19,7 +20,7 @@ skipped. [architecture](architecture.md) owns scope; [roadmap](roadmap.md) owns
 delivery/evidence; [the design language](design-language.md#19-terminal-browser)
 owns visual values. this spec replaces the desktop table/picker layout and affected
 navigation rules in [groups](groups.md) and [agent-control ux](agent-control-ux.md).
-phone behavior is unchanged. [terminal continuity](terminal-continuity.md) owns
+this document governs desktop behavior. [terminal continuity](terminal-continuity.md) owns
 creation (`n`, `N`, directory search) and the current execution context rows
 display. [pr 4](groups-and-shells.md) separately investigates terminal embedding.
 
@@ -32,9 +33,10 @@ the keys act on. forms, confirmations, details and explicitly requested output
 take the table's place. entering a session still replaces the whole screen.
 detach resumes the same browser state and refreshes.
 
-the agents view answers the most frequent question, which agents may be waiting
-on the operator, across every group. group views answer where work lives. both
-are the same table over the same observations.
+the needs-input view collects qualified ready, response requests and current
+error/interruption notices across groups, ready first. group views answer where
+work lives. [session views](session-views.md) owns membership, ordering and
+removal; both use the same table and admitted observations.
 
 design for a half-screen terminal: 3–4 groups, 6–7 agents, about 3 sessions per
 group; fully usable at 80 columns × 24 rows. no mouse interaction, embedding,
@@ -52,13 +54,13 @@ sessionui (one bubble tea model)
 
 no new public api, route, dto, config, or persisted schema. reuse `Peer`, `Session`,
 `Reference.SessionEqual`, `group.Filter`, `fleetclient.Groups` and `ObservedGroups`.
-retain fleetclient's cli ordering; only the agents view adds status ordering.
+retain fleetclient's cli ordering; only needs input adds queue-tier ordering.
 tmux still owns processes; groups are labels, rows present sessions, agent status
 is a sampled property of a session. names and row positions are never control
 identities.
 
-the model owns scoped peer observations, the machine filter, the view (agents, or
-a group filter), the needs-input filter, the selected session lifetime (or none),
+the model owns scoped peer observations, the machine filter, one selected view
+(needs input, all or a group), the selected session lifetime (or none),
 the table's scroll position, and existing modal/pending-operation state. rows
 derive from those observations. no independent highlighted-session,
 preview-session or open-tab state.
@@ -75,11 +77,11 @@ or none. the machine filter applies to every view.
 
 | view | rows and order |
 | --- | --- |
-| agents | one row per agent in its current execution context across all groups, including resolved remote agents (ordered as unknown) and retained unavailable rows: request or menu interaction; idle with interaction none; unknown (unknown activity, idle with unknown interaction, unavailable); starting or working. notices rank by activity. unavailable hosts last; ties keep configured peer then numeric tmux-id order |
+| needs input | fresh local agents with qualified ready first, then explicit requests/current error or interruption notices; ties keep configured peer then numeric tmux-id order |
 | all | every session, including terminals, in existing `Groups` order, each group under a heading |
 | a named group, unassigned | that group's sessions in `Groups` order |
 
-the views are agents, all, then the labels observed in scope plus the current
+the views are needs input, all, then the labels observed in scope plus the current
 view's label in `group.Compare` order (ascii-case-folded; unassigned, the zero
 label, last), so drawn, stepped and all-view heading order are one order and a
 selected empty label stays. the current view is a value, never a position: a
@@ -88,30 +90,19 @@ label appearing or vanishing to its left moves its tab, never the view.
 left/right (also h/l) step to the previous or next view in the strip, clamping
 at the ends, never wrapping. a new view keeps the current session if it contains
 it, otherwise selects its first row. up/down (also j/k) move the cursor, clamping.
-`a` opens the agents view on its first row from anywhere, so after handling one
-agent the next is one key away. movement never attaches or fetches output.
-changing machine uses the same keep-if-matching/otherwise-first rule.
+`f` selects needs input through ordinary view selection; repeated `f` is a
+no-op. movement never attaches or fetches output. changing machine uses the
+same keep-if-matching/otherwise-first rule. `a` has no obsolete action.
 
-the agents view puts what may be waiting on the operator first. idle is inferred
-from qualified ready-state evidence; unknown can be an unrecognized dialog. no
-state establishes task completion. the order updates on every refresh. the
-cursor follows its session's lifetime, never a row position, so a reorder moves
-rows but never retargets a key. an exited agent remains in terminal/group views;
-unknown is not offline. the contract publishes no transition age, so nothing is
-ordered by time.
+the queue rederives after admitted inventory/attention and attachment
+acknowledgement. its cursor follows the exact session lifetime through reorder.
+quiet idle, plain working/unknown, menus alone, remote agents and stale rows
+stay outside it. all/groups retain those rows for inspection. readiness is
+device-local and inferred; no state proves successful task completion.
 
-named labels read as bare labels in group headings and details. the agents
-view's group column shows bare labels and stays blank for unassigned sessions; a
-label cannot be empty.
-
-`f` toggles an independent
-[needs-input filter](terminal-observation.md#6-content-attention-and-filtering)
-after machine and view selection; that section owns its predicate, empty copy and
-notice placement. rows of an unavailable or checking host never qualify. the
-filter preserves the view's order. toggling keeps the exact selected row if it
-survives, otherwise selects the first visible row, or none, and scrolls the table
-to its top. the filter survives terminal visits and refreshes in memory;
-confirmed creation clears it.
+named tabs are double-quoted; headings/details and the queue's group column
+keep bare labels. unassigned rows have a blank group column. current hidden
+menu notices appear in queue status/detail so inclusion has a visible reason.
 
 session actions require a selected row and target exactly the session named by
 the rule. refresh retains the selected lifetime while it stays in the view;
@@ -129,7 +120,7 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 
 | context | keys/behavior |
 | --- | --- |
-| ordinary navigation | `a` agents; left/right view; `f` needs-input filter; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
+| ordinary navigation | `f` needs input; left/right view; `n` terminal on the target machine; `N` options; `m` existing machine picker; `ctrl-r` refresh; `q` or `ctrl-c` quit; `escape` does nothing and shows no notice |
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
 | name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
@@ -184,8 +175,9 @@ editing, cancellation and machine changes invalidate and cancel pending search.
 late results cannot alter another draft. selection only edits the draft;
 creation uses the separate create action and revalidates the chosen path.
 `n`, `N` and `T` share one completion path:
-it reveals and selects the returned session in its group view, leaving the agents
-view and clearing the needs-input filter, then attaches it. the pending request
+it retains an all/group view that admits the returned session; otherwise it
+selects the returned group, leaving needs input on confirmed creation. it reveals
+and selects that exact session, then attaches it. the pending request
 and page adopt the completion: `n` and `T` from the table, `N` from its form.
 detach or attachment failure leaves the new terminal selected; retry attachment,
 never creation. failure/unknown creation changes no filters/selection. reuse
@@ -203,11 +195,12 @@ input-reader cancellation/joining, geometry, and session preservation.
 row 1 is the reversed ` skid ` wordmark, the view strip and, only when a machine
 filter narrows the scope, `machine: <label>` (at most 24 cells) at the right
 edge; its absence means all machines. one blank row follows. the strip reads
-`agents`, `all`, then each group as its bare label or `unassigned`. named labels
-receive no prefix, including labels that match skid's selector words.
+`needs input`, `all`, then each named group in double quotes or the unquoted
+`unassigned` view. quotes distinguish group labels from skid's selector words;
+truncate long labels inside the quotes.
 the current tab is bold,
 between gold `‹ ›` at the table while no operation is in flight; nothing in the
-strip is faint. skid's words never truncate; `agents`, `all` and the current tab
+strip is faint. skid's words never truncate; `needs input`, `all` and the current tab
 never hide. other labels share one cap, 24 cells down to 7, that does not change
 while the current view moves between groups; the current label is whole up to 24
 cells unless a long machine filter leaves no room. past the floor, the groups
@@ -219,14 +212,17 @@ from `all` may reflow the strip once.
 
 the table's two-cell gutter carries the cursor mark. columns follow: name,
 status, agent (the configured profile label, else `<provider> · profile
-unknown`), group (agents view only), machine (the terminal's owner, only when all
+unknown`), group (needs-input view only), machine (the terminal's owner, only when all
 machines are in scope), and the current directory in the remaining width,
 truncated from the left and omitted below 8 cells; remote work reads `host:path`
 and an unresolved connection `remote context unknown`. columns other than
 status shrink widest-first to fit. in the all view a faint heading (the bare
 label or `unassigned`) precedes each group. the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
-copy, coloured by its tone. [terminal attention](reply-notifications.md) owns
+copy, coloured by its tone. only in needs input, a menu with a qualifying notice
+adds that notice to the status cell and selected detail, as specified by
+[session views](session-views.md#membership-and-ordering).
+[terminal attention](reply-notifications.md) owns
 exclusive green `ready`, durable non-idle-to-idle memory and visit boundaries.
 creation responses enter the same scoped owner before auto-entry. only actual
 output presentation acknowledges ready; armed work survives entry and departure.
@@ -237,16 +233,16 @@ stale while that host is re-read. a row of any other host being re-read (a
 pending scoped read, or the re-read after a metadata change) is never ready, and
 its cell makes no status claim: it reads faint `checking`. a failed host keeps
 its notice. the stale cell is up to 33 cells (`last observed: status
-unavailable`) against 18 for the widest fresh label, so while a host's read has
-failed the other columns give way (in an 80×24 render with a failed host, names
+unavailable`); the longest ordinary fresh label is 18 cells, while queue-only
+menu/notice detail can be wider. other columns give way to status (in an 80×24
+render with a failed host, names
 fell from 24 to 12 cells). the outage form is accepted with that cost, an
 exception to [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
 fit rule; the 8-cell `checking` widens nothing.
 
 below the table, top to bottom: scoped notices; the rule, with the target set into
-it and, at its end, `needs input` in plain text while the filter is on and, only
-when the table scrolls, the faint cursor position (`· i of n` after the filter
-word, otherwise `i of n`); the selected session's facts on one line:
+it and, only when the table scrolls, the faint cursor position (`i of n`) at its
+end; the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
 status label (`last observed: <label>` on those rows) with `work continues` and
 `inferred from terminal` when they apply, `: <command>` for a non-agent program,
@@ -262,7 +258,7 @@ target instead. observed text is sanitized for display: controls, format
 characters such as bidi overrides, and line separators become spaces.
 
 hints list actions, not navigation: the selected session's remaining verbs, then
-`a agents  f needs input  m machine  n terminal on <host>  N options  q quit`. each
+`f needs input  m machine  n terminal on <host>  N options  q quit`. each
 set of hints stays on one line when it fits and otherwise wraps by whole hints; the
 key is bold, the label plain. the global keys fit one 80-column line for host
 labels up to 9 cells; a longer label wraps them and costs one table row. the
@@ -320,8 +316,8 @@ records the boundary of current evidence.
 
 | criterion | proof |
 | --- | --- |
-| a1: arrows, `a`, modal keys, the view strip and the displayed target agree: the strip lists the views in stepping order and marks the current one by value; no arrow attaches | model interaction cases; verify resulting views and captured exact requests |
-| a2: agents order, identity under reorder, view stepping, unavailable peers, and captured targets under refresh preserve the rules above | small deterministic observation/transition cases |
+| a1: arrows, `f`, modal keys, the view strip and the displayed target agree: the strip lists the views in stepping order and marks the current one by value; no arrow attaches; repeated `f` is a no-op and `a` has no action | model interaction cases; verify resulting views and captured exact requests |
+| a2: needs-input ordering, identity under reorder, view stepping, unavailable peers, and captured targets under refresh preserve the rules above | small deterministic observation/transition cases; queue qualification belongs to [session views](session-views.md#acceptance) |
 | a3: 80×24 fits the stated working set; long labels, strip overflow (shared cap, counted markers, the current view whole and never hidden, a long machine filter), empty/offline states, forms and resize notice stay usable in color and under NO_COLOR | rendered fixture inspection |
 | a4: create → select, shell-here → exact fullscreen attach → detach on new shell; ordinary enter → detach preserves context and the first subsequent navigation key; escape after `ctrl-] d` stays in skid; `ctrl-c` quits; source survives; lost reply never repeats creation | the real browser → pty → gateway → isolated tmux journey on linux and darwin |
 | a5: old keys gone; escape never quits, `q` quits from the table, `ctrl-c` quits from any browser frame unless an operation is in flight; help and browser agree | diff review, `scripts/check verify`, and the real binary under a pty: a bare escape keeps it running, `q` and 0x03 exit 0 |
@@ -357,8 +353,9 @@ resolved dismissal and cross-host-creation traps. temporary tests were removed;
 
 accepted costs:
 - attached: chrome/status disappear; navigation requires detach.
-- views: a group view hides agents elsewhere, though the agents view is one key
-  away; group views do not sort by urgency. unassigned sorts last, and its tab
+- views: a group view hides sessions elsewhere; needs input is one key away for
+  qualified attention, and all retains the full roster. group views do not sort
+  by urgency. unassigned sorts last, and its tab
   comes and goes with observation.
 - `ctrl-c` quits from any browser frame, discarding drafts. in flight it is
   refused for at most the 15 s timeout; a held or repeated `ctrl-c` then quits
@@ -367,14 +364,12 @@ accepted costs:
   terminal still attaches: detach, then quit. a reflexive `ctrl-c` after
   `ctrl-] d` quits skid.
 - long labels: at 80 columns they share one cap, so prefix twins (`infra-…`)
-  read alike until one is current; beyond about four long groups in a group
-  view, or six from agents or all, tabs hide behind counted markers; a label
-  containing spaces can read as several tabs until it is current; truncated
-  labels, and labels shaped like `←n` or `n→`, can read alike. every group view
+  can read alike until one is current; excess tabs hide behind counted markers.
+  quotes distinguish label boundaries and skid's words, but consume two cells
+  per named tab; the longer needs-input label also leaves less room. every group view
   reserves room for the widest label whole, so with a machine filter at 80
   columns one label of 24 cells can leave a short current label alone between
-  markers. labels differing only in invisible characters read alike, and one can
-  read as `all` or `agents`
+  markers. labels differing only in invisible characters can still read alike
   ([issue](issues/group-label-invisible-characters.md)).
 - inference: unknown/unavailable layouts do not establish idle; sampled non-idle-to-idle
   attention may miss work between polls or treat cancellation/navigation as ready.
@@ -394,7 +389,7 @@ many long things, sessions, on one horizontal strip. at 80 columns the default v
 showed 3 of 11 sessions. its agent list was a sorted projection of sessions rather
 than a concept, so one session had two cursors. arrows meant different things
 per region, selecting an agent silently rewrote the group filter, and the sort
-needed a freeze-while-focused rule. the agents view keeps that list's purpose
+needed a freeze-while-focused rule. the needs-input view keeps that list's purpose
 as a view of the same table. its status color gives a single-feature target that
 the eye finds in parallel, so group views need no urgency sort and keep their rows
 still.

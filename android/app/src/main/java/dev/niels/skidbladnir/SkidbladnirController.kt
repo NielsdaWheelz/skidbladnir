@@ -47,6 +47,8 @@ internal sealed interface SkidbladnirUiState {
         val forgeRecovery: ForgeRecovery?,
         val close: CloseState?,
         val groupEditor: GroupEditor? = null,
+        val notificationsUnavailable: Boolean = false,
+        val needsInputSettled: Boolean = true,
         val terminalControlPending: Boolean = false,
     ) : Workspace
 
@@ -66,21 +68,14 @@ internal sealed interface SkidbladnirUiState {
 }
 
 internal fun dashboardRestorationReady(
-    scope: DashboardScope,
+    view: DashboardViewSelection,
     machines: Collection<MachineState>,
     livePollers: Set<MachineHandle>,
     foreground: Boolean,
+    needsInputSettled: Boolean,
 ): Boolean {
     if (!foreground) return false
-    // justify-defect: acceptFleet validates restored scope before Dashboard publication;
-    // absence here means controller and entry ownership have diverged.
-    val scopedMachines = when (scope) {
-        DashboardScope.All -> machines
-        is DashboardScope.Machine -> listOf(
-            checkNotNull(machines.singleOrNull { it.machine.handle == scope.handle }),
-        )
-    }
-    return scopedMachines.all { machine ->
+    return machines.all { machine ->
         when (machine.access) {
             MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> true
             MachineAccess.Ready -> when (machine.inventory) {
@@ -99,7 +94,7 @@ internal fun dashboardRestorationReady(
                 }
             }
         }
-    }
+    } && (view != DashboardViewSelection.NeedsInput || needsInputSettled)
 }
 
 internal fun fleetReconnectCanCancel(state: SkidbladnirUiState.FleetConnect): Boolean =
@@ -196,14 +191,12 @@ internal fun forgeCarry(state: SkidbladnirUiState): ForgeCarry {
 
 internal fun resumeForgeRecovery(
     dashboard: SkidbladnirUiState.Dashboard,
-    dashboardEntry: DashboardEntryState,
 ): SkidbladnirUiState.Dashboard {
     val recovery = dashboard.forgeRecovery as? ForgeRecovery.ReviewReady ?: return dashboard
     val target = dashboard.machines.singleOrNull {
         it.machine.handle == recovery.draft.machineHandle
     } ?: return dashboard
     if (!target.canMutate) return dashboard
-    dashboardEntry.selectScope(DashboardScope.Machine(target.machine.handle))
     return dashboard.copy(
         forge = ForgeState(
             ForgeForm(recovery.draft),
@@ -288,14 +281,18 @@ internal fun dashboardAfterTerminalAccessLoss(
     machines: List<MachineState>,
     refreshing: Boolean,
     dashboardEntry: DashboardEntryState,
+    notificationsUnavailable: Boolean,
+    needsInputSettled: Boolean,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == terminal.target.machineHandle }
     require(machine.access != MachineAccess.Ready)
-    dashboardEntry.selectTerminalAccessLoss(machine.machine.handle)
+    dashboardEntry.resetViewportAfterAccessLoss()
     return SkidbladnirUiState.Dashboard(
         machines = machines,
         refreshing = refreshing,
         notice = machineAccessMessage(machine),
+        notificationsUnavailable = notificationsUnavailable,
+        needsInputSettled = needsInputSettled,
         forge = null,
         forgeRecovery = null,
         close = null,
@@ -307,7 +304,6 @@ internal fun dashboardAfterMachineAccessLoss(
     machines: List<MachineState>,
     handle: MachineHandle,
     refreshing: Boolean,
-    dashboardEntry: DashboardEntryState,
     failure: GatewayFailure.Api,
 ): SkidbladnirUiState.Dashboard {
     val machine = machines.single { it.machine.handle == handle }
@@ -319,14 +315,6 @@ internal fun dashboardAfterMachineAccessLoss(
     )
     val message = machineAccessMessage(machine)
     val affectedForge = dashboard.forge?.takeIf { it.form.machineHandle == handle }
-    val affectedClose = dashboard.close?.takeIf { it.target.machineHandle == handle }
-    val recoveryOwnsScope =
-        affectedForge?.pending == true ||
-            affectedForge?.surface is ForgeSurface.DirectoryPicker ||
-            affectedClose != null
-    if (recoveryOwnsScope) {
-        dashboardEntry.selectScope(DashboardScope.Machine(handle))
-    }
     return dashboard.copy(
         machines = machines,
         refreshing = refreshing,
@@ -352,13 +340,16 @@ private fun machineAccessMessage(machine: MachineState): String = when (machine.
         "${machine.machine.label.text}: machine identity changed. Fleet reset is required."
 }
 
+private enum class NotificationAdmission { Available, Unavailable }
+
 private data class PollRuntime(
     val inventory: CoalescingPollLane = CoalescingPollLane(),
     val pressure: CoalescingPollLane = CoalescingPollLane(),
     val inventoryOperation: InventoryOperationLane,
     var inventoryFuture: ScheduledFuture<*>? = null,
     var pressureFuture: ScheduledFuture<*>? = null,
-    @Volatile var notificationReadSequence: Long? = null,
+    var notificationAdmission: NotificationAdmission? = null,
+    @Volatile var notificationPendingSequence: Long? = null,
 )
 
 private data class CreatedTerminalAdmission(
@@ -768,7 +759,7 @@ internal class SkidbladnirController(
         val activeGeneration = generation
         // Only machines that still own live polling work can be refreshed; a machine whose access
         // failed says so instead of silently dropping the request.
-        val targets = visibleInventoryTargets(polling.keys, dashboardEntry.scope)
+        val targets = polling.keys.toList()
         var requested = false
         targets.forEach { handle -> if (awaitInventory(handle, activeGeneration)) requested = true }
         state = current.copy(
@@ -776,7 +767,7 @@ internal class SkidbladnirController(
             notice = if (requested) {
                 null
             } else {
-                unrefreshableNotice(dashboardEntry.scope)
+                unrefreshableNotice()
             },
         )
     }
@@ -784,41 +775,25 @@ internal class SkidbladnirController(
     fun restoreDashboardOnce(keys: List<DashboardItemKey>) {
         if (!dashboardEntry.restorationPending) return
         if (dashboardRestorationReady(
-            scope = dashboardEntry.scope,
+            view = dashboardEntry.view,
             machines = machineStates.values,
             livePollers = polling.keys,
             foreground = foreground,
+            needsInputSettled = needsInputSettled(),
         )) dashboardEntry.restoreOnce(keys)
     }
 
-    private fun unrefreshableNotice(scope: DashboardScope): String {
-        val visible = machineStates.values.filter { machine ->
-            when (scope) {
-                DashboardScope.All -> true
-                is DashboardScope.Machine -> machine.machine.handle == scope.handle
-            }
-        }
-        if (visible.isEmpty()) {
-            return "No fleet is connected."
-        }
-        return visible.joinToString(" ", transform = ::machineAccessMessage)
+    private fun unrefreshableNotice(): String {
+        if (machineStates.isEmpty()) return "No fleet is connected."
+        return machineStates.values.joinToString(" ", transform = ::machineAccessMessage)
     }
 
     fun openForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val scope = dashboardEntry.scope
-        val handle = when (scope) {
-            DashboardScope.All -> null
-            is DashboardScope.Machine -> scope.handle
-        }
-        val admissible = when (scope) {
-            DashboardScope.All -> machineStates.values.any { it.canForge }
-            is DashboardScope.Machine -> machineStates[scope.handle]?.canForge == true
-        }
-        if (!admissible || current.groupEditor != null) return
+        if (machineStates.values.none { it.canForge } || current.groupEditor != null) return
         state = current.copy(
             forge = ForgeState(
-                ForgeForm(handle, "", null, "", "", dashboardEntry.group.creationDraft()),
+                ForgeForm(null, "", null, "", "", dashboardEntry.view.creationDraft()),
                 pending = false,
                 failure = ForgeFailure.None,
                 surface = ForgeSurface.Form,
@@ -1025,7 +1000,7 @@ internal class SkidbladnirController(
 
     fun resumeForgeRecovery() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        state = dev.niels.skidbladnir.resumeForgeRecovery(current, dashboardEntry)
+        state = dev.niels.skidbladnir.resumeForgeRecovery(current)
     }
 
     fun dismissForge() {
@@ -1110,6 +1085,8 @@ internal class SkidbladnirController(
                         state = dashboard.copy(
                             machines = sortedMachineStates(),
                             refreshing = awaitedInventoryReads.isActive,
+                            notificationsUnavailable = dashboardNotificationsUnavailable(),
+                            needsInputSettled = needsInputSettled(),
                             forge = activeForge.copy(
                                 pending = false,
                                 failure = definiteFailure,
@@ -1121,6 +1098,8 @@ internal class SkidbladnirController(
                         state = dashboard.copy(
                             machines = sortedMachineStates(),
                             refreshing = awaitedInventoryReads.isActive,
+                            notificationsUnavailable = dashboardNotificationsUnavailable(),
+                            needsInputSettled = needsInputSettled(),
                             forge = null,
                             forgeRecovery = ForgeRecovery.RefreshRequired(
                                 checkNotNull(activeForge.form.submission()),
@@ -1140,7 +1119,6 @@ internal class SkidbladnirController(
         val handle = source.target.machineHandle
         if (machineStates[handle]?.canForge != true) return
         leaveTerminal()
-        dashboardEntry.selectScope(DashboardScope.Machine(handle))
         publishDashboard(carry = ForgeCarry(
             ForgeState(
                 ForgeForm(handle, "", LaunchChoice.Terminal, "", "",
@@ -1815,6 +1793,7 @@ internal class SkidbladnirController(
             },
         )
         polling[handle] = runtime
+        updateMachine(handle) { it }
         awaitInventory(handle, activeGeneration)
         // justify-polling: tmux and host pressure expose no push inventory; the product fixes a five-second
         // foreground cadence, coalesces overlaps, and stopPolling cancels both schedules on loss/background.
@@ -1922,59 +1901,87 @@ internal class SkidbladnirController(
                     return@post
                 }
                 val handle = credential.machine.handle
-                var notificationSessions: List<TmuxSession>? = null
-                awaitedInventoryReads.readLanded(handle, completedReadSequence)
+                fun finishRead() {
+                    if (runtime.notificationPendingSequence == completedReadSequence) runtime.notificationPendingSequence = null
+                    if (isCredentialActive(activeGeneration, credential) && polling[handle] === runtime) {
+                        awaitedInventoryReads.readLanded(handle, completedReadSequence)
+                        publishDashboardIfVisible()
+                    }
+                    onCompleted()
+                }
                 val machine = machineStates[handle]
-                if (machine != null && machine.access == MachineAccess.Ready &&
-                    mutationFenceSatisfied(machine.inventory, completedMutationFence)
+                if (machine == null || machine.access != MachineAccess.Ready ||
+                    !mutationFenceSatisfied(machine.inventory, completedMutationFence)
                 ) {
-                    when (result) {
-                        is GatewayResult.Failure -> if (!acceptAccessFailure(handle, result.failure) &&
+                    finishRead()
+                    return@post
+                }
+                val inventory = when (result) {
+                    is GatewayResult.Failure -> {
+                        if (!acceptAccessFailure(handle, result.failure) &&
                             pendingMetadataFences[handle]?.let { completedMutationFence >= it } != true
                         ) markInventoryFailed(handle, result.failure)
-                        is GatewayResult.Success -> if (acceptMachineIdentity(credential, result.value)) {
-                            runtime.notificationReadSequence = completedReadSequence.takeIf {
-                                nextTerminalAttempt == terminalAttempt && terminalOwner === owner && notificationVisit == visiting
-                            }
-                            updateMachine(handle) {
-                                it.copy(
-                                    access = MachineAccess.Ready,
-                                    inventory = InventoryState.Fresh(InventorySnapshot(result.value, receivedAt)),
-                                    remoteContexts = remoteContexts,
-                                )
-                            }
-                            pendingMetadataFences[handle]?.let { fence ->
-                                if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
-                            }
-                            notificationSessions = result.value.sessions
-                            publishNotifications()
-                            advanceTerminalRename(handle)
-                            advanceGroupEditor(handle)
-                            dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
-                        }
+                        advanceCreatedTerminalAdmission(handle, completedMutationFence)
+                        finishRead()
+                        return@post
                     }
+                    is GatewayResult.Success -> result.value
+                }
+                if (!acceptMachineIdentity(credential, inventory)) {
+                    finishRead()
+                    return@post
+                }
+                runtime.notificationPendingSequence = completedReadSequence
+                val valid = {
+                    isCredentialActive(activeGeneration, credential) && polling[handle] === runtime &&
+                        runtime.notificationPendingSequence == completedReadSequence &&
+                        nextTerminalAttempt == terminalAttempt && terminalOwner === owner && notificationVisit == visiting
+                }
+                // Retain the preceding admitted inventory while its successor joins the attention store.
+                // Both the dashboard and terminal receive the successor's facts and ready projection together.
+                fun admitInventory(admission: NotificationAdmission) {
+                    runtime.notificationAdmission = admission
+                    runtime.notificationPendingSequence = null
+                    updateMachine(handle) {
+                        it.copy(
+                            access = MachineAccess.Ready,
+                            inventory = InventoryState.Fresh(InventorySnapshot(inventory, receivedAt)),
+                            remoteContexts = remoteContexts,
+                        )
+                    }
+                    pendingMetadataFences[handle]?.let { fence ->
+                        if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
+                    }
+                    publishNotifications()
+                    advanceTerminalRename(handle)
+                    advanceGroupEditor(handle)
+                    dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
                     advanceCreatedTerminalAdmission(handle, completedMutationFence)
                 }
-                publishDashboardIfVisible()
-                val sessions = notificationSessions
-                if (sessions == null || expected == null) {
-                    onCompleted()
-                } else {
-                    val valid = {
-                        isCredentialActive(activeGeneration, credential) && polling[handle] === runtime &&
-                            runtime.notificationReadSequence == completedReadSequence &&
-                            nextTerminalAttempt == terminalAttempt && terminalOwner === owner && notificationVisit == visiting
+                if (expected == null) {
+                    if (valid()) {
+                        notificationsUnavailable = true
+                        admitInventory(NotificationAdmission.Unavailable)
                     }
+                    finishRead()
+                } else {
                     notificationStore.observe(
-                        handle, sessions, expected,
+                        handle, inventory.sessions, expected,
                         visiting = visiting,
                         valid = valid,
                         onReady = { snapshot ->
-                            if (valid()) acceptNotificationSnapshot(snapshot)
-                            onCompleted()
+                            if (valid()) {
+                                notificationSnapshot = snapshot
+                                notificationsUnavailable = false
+                                admitInventory(NotificationAdmission.Available)
+                            }
+                            finishRead()
                         }, onUnavailable = {
-                            if (valid()) notificationStoreUnavailable()
-                            onCompleted()
+                            if (valid()) {
+                                notificationsUnavailable = true
+                                admitInventory(NotificationAdmission.Unavailable)
+                            }
+                            finishRead()
                         },
                     )
                 }
@@ -2005,7 +2012,10 @@ internal class SkidbladnirController(
         valid: () -> Boolean, onCompleted: () -> Unit,
     ) {
         if (valid()) {
-            polling[machine]?.notificationReadSequence = null
+            polling[machine]?.let { runtime ->
+                runtime.notificationAdmission = null
+                runtime.notificationPendingSequence = null
+            }
             publishNotifications()
         }
         if (expected == null) {
@@ -2029,18 +2039,22 @@ internal class SkidbladnirController(
         publishNotifications()
     }
 
-    private fun publishNotifications() {
-        for ((handle, machine) in machineStates.toMap()) {
-            val notifications = machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
-                val key = NotificationKey(SessionTarget(handle, session))
-                key to NotificationPresentation(
-                    ready = !notificationsUnavailable && machine.canMutate && polling[handle]?.notificationReadSequence != null && notificationVisit != key &&
-                        notificationSnapshot?.presentsReady(key, session) == true,
-                    unavailable = session.agent != null && notificationsUnavailable,
-                )
-            }
-            updateMachine(handle) { it.copy(notifications = notifications) }
+    private fun projectNotifications(machine: MachineState): Map<NotificationKey, NotificationPresentation> {
+        val handle = machine.machine.handle
+        val admission = polling[handle]?.notificationAdmission
+        val unavailable = notificationsUnavailable || admission == NotificationAdmission.Unavailable
+        return machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
+            val key = NotificationKey(SessionTarget(handle, session))
+            key to NotificationPresentation(
+                ready = !unavailable && machine.canMutate && admission == NotificationAdmission.Available &&
+                    notificationVisit != key && notificationSnapshot?.presentsReady(key, session) == true,
+                unavailable = session.agent != null && unavailable,
+            )
         }
+    }
+
+    private fun publishNotifications() {
+        for (handle in machineStates.keys) updateMachine(handle) { it }
         publishDashboardIfVisible()
     }
 
@@ -2191,8 +2205,10 @@ internal class SkidbladnirController(
                 machines,
                 handle,
                 refreshing = awaitedInventoryReads.isActive,
-                dashboardEntry = dashboardEntry,
                 failure = apiFailure,
+            ).copy(
+                notificationsUnavailable = dashboardNotificationsUnavailable(),
+                needsInputSettled = needsInputSettled(),
             )
             is SkidbladnirUiState.Terminal -> if (current.target.machineHandle == handle) {
                 leaveTerminal()
@@ -2201,6 +2217,8 @@ internal class SkidbladnirController(
                     machines,
                     refreshing = awaitedInventoryReads.isActive,
                     dashboardEntry = dashboardEntry,
+                    notificationsUnavailable = dashboardNotificationsUnavailable(),
+                    needsInputSettled = needsInputSettled(),
                 )
             } else {
                 pendingDashboardNotice = machineAccessMessage(machineStates.getValue(handle))
@@ -2216,12 +2234,18 @@ internal class SkidbladnirController(
     }
 
     private fun markInventoryFailed(handle: MachineHandle, failure: GatewayFailure) {
-        polling[handle]?.notificationReadSequence = null
+        polling[handle]?.let { runtime ->
+            runtime.notificationAdmission = null
+            runtime.notificationPendingSequence = null
+        }
         updateMachine(handle) { it.inventoryFailed(failure) }
     }
 
     private fun requireInventoryRefresh(handle: MachineHandle, fence: Long) {
-        polling[handle]?.notificationReadSequence = null
+        polling[handle]?.let { runtime ->
+            runtime.notificationAdmission = null
+            runtime.notificationPendingSequence = null
+        }
         updateMachine(handle) { machine ->
             when (val inventory = machine.inventory) {
                 is InventoryState.Fresh ->
@@ -2231,8 +2255,7 @@ internal class SkidbladnirController(
                 -> machine
             }
         }
-        val dashboard = state as? SkidbladnirUiState.Dashboard
-        if (dashboard != null) state = dashboard.copy(machines = sortedMachineStates())
+        publishDashboardIfVisible()
     }
 
     private fun requireMetadataInventoryRefresh(handle: MachineHandle, fence: Long) {
@@ -2282,9 +2305,11 @@ internal class SkidbladnirController(
         }
     }
 
+    /** Every installed machine projection pairs its current facts with its admitted attention outcome. */
     private fun updateMachine(handle: MachineHandle, transform: (MachineState) -> MachineState) {
         val machine = machineStates[handle] ?: return
-        val updated = transform(machine)
+        val transformed = transform(machine)
+        val updated = transformed.copy(notifications = projectNotifications(transformed))
         machineStates[handle] = updated
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
         if (terminal.target.machineHandle == handle) {
@@ -2301,11 +2326,28 @@ internal class SkidbladnirController(
         } else state = terminal.copy(machines = sortedMachineStates())
     }
 
+    private fun dashboardNotificationsUnavailable(): Boolean = notificationsUnavailable ||
+        polling.values.any { it.notificationAdmission == NotificationAdmission.Unavailable }
+
+    /** Fresh inventory settles its ready rows only after that read's attention result is admitted. */
+    private fun needsInputSettled(): Boolean = machineStates.values.all { machine ->
+        when (machine.access) {
+            MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> true
+            MachineAccess.Ready -> when (machine.inventory) {
+                InventoryState.Reading -> false
+                is InventoryState.Fresh -> polling[machine.machine.handle]?.notificationAdmission != null
+                is InventoryState.Superseded, is InventoryState.Stale, is InventoryState.Unreachable -> true
+            }
+        }
+    }
+
     private fun publishDashboardIfVisible() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         state = current.copy(
             machines = sortedMachineStates(),
             refreshing = awaitedInventoryReads.isActive,
+            notificationsUnavailable = dashboardNotificationsUnavailable(),
+            needsInputSettled = needsInputSettled(),
             forgeRecovery = advanceForgeRecovery(current.forgeRecovery, machineStates.values),
         )
     }
@@ -2319,6 +2361,8 @@ internal class SkidbladnirController(
         state = SkidbladnirUiState.Dashboard(
             machines = sortedMachineStates(),
             refreshing = awaitedInventoryReads.isActive,
+            notificationsUnavailable = dashboardNotificationsUnavailable(),
+            needsInputSettled = needsInputSettled(),
             notice = dashboardNotice,
             forge = carry.forge,
             forgeRecovery = carry.recovery,
@@ -2341,7 +2385,11 @@ internal class SkidbladnirController(
         terminalPage = null
         if (visited != null) {
             val handle = checkNotNull(MachineHandle.parse(visited.machine))
-            polling[handle]?.notificationReadSequence = null
+            polling[handle]?.let { runtime ->
+                runtime.notificationAdmission = null
+                runtime.notificationPendingSequence = null
+            }
+            updateMachine(handle) { it }
             val activeGeneration = generation
             val terminalAttempt = nextTerminalAttempt
             val valid = {

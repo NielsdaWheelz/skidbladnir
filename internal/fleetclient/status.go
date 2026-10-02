@@ -13,13 +13,27 @@ const (
 	ToneMoss
 )
 
+// QueueCategory derives human collection membership and order, never control
+// admission. Only Ready and Action participate, in that order.
+type QueueCategory int
+
+const (
+	QueueExcluded QueueCategory = iota
+	QueueReady
+	QueueAction
+)
+
 // StatusView is the one terminal-status projection shared by the cli and the
 // desktop browser. It derives from observed facts only.
 type StatusView struct {
 	Label string
 	Tone  Tone
+	Queue QueueCategory
 	// Detail is the label with its secondary facts, for the existing detail space.
 	Detail string
+	// QueueDetail is the notice phrase a menu hides. Queue rows append it to
+	// their label and detail so their inclusion is visible without selection.
+	QueueDetail string
 	// Reason explains the observation without terminal content.
 	Reason string
 }
@@ -33,6 +47,15 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 		panic("invalid owned terminal status") // justify-defect: ingress admits only Valid statuses.
 	}
 	local := session.Agent != nil && session.Connection == nil
+	queue := QueueExcluded
+	if fresh && local && status.Source == sessions.SourceTerminal {
+		switch {
+		case NeedsInput(status) || status.Notice != sessions.NoticeNone:
+			queue = QueueAction
+		case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && ready:
+			queue = QueueReady
+		}
+	}
 	// The first matching row names the status. overlay marks a request, menu or
 	// notice row, which outranks visible activity; inspect marks the rows only
 	// the terminal itself can settle.
@@ -62,7 +85,7 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 		label, tone = "starting", ToneFrost
 	case status.Activity == sessions.ActivityWorking:
 		label, tone = "working", ToneFrost
-	case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone && fresh && ready:
+	case queue == QueueReady:
 		label, tone = "ready", ToneMoss
 	case status.Activity == sessions.ActivityIdle && status.Interaction == sessions.InteractionNone:
 		label = "idle"
@@ -73,6 +96,15 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 		label, tone = "last observed: "+label, ToneMuted
 	}
 	detail := label
+	queueDetail := ""
+	if queue == QueueAction && status.Interaction == sessions.InteractionMenu {
+		switch status.Notice {
+		case sessions.NoticeError:
+			queueDetail = "error shown"
+		case sessions.NoticeInterrupted:
+			queueDetail = "interruption shown"
+		}
+	}
 	if overlay && status.Activity == sessions.ActivityWorking {
 		detail += " · work continues"
 	}
@@ -109,7 +141,7 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 	if inspect {
 		reason += "; open the terminal to inspect"
 	}
-	return StatusView{Label: label, Tone: tone, Detail: detail, Reason: reason}
+	return StatusView{Label: label, Tone: tone, Queue: queue, Detail: detail, QueueDetail: queueDetail, Reason: reason}
 }
 
 // NeedsInput reports a human request interaction, whatever the activity,

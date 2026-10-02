@@ -231,8 +231,8 @@ direct tmux attachment outside skid emits no local acknowledgement event.
 
 2026-10-02 accepted design: [session views](session-views.md) replaces the
 collection predicate/order referenced below, while preserving this document's
-ready transitions, identities, store and visit contract. its implementation is
-pending; current errors/interruptions gain no acknowledgement state.
+ready transitions, identities, store and visit contract. source implements the
+queue; current errors/interruptions gain no acknowledgement state.
 
 retain one status projection per client for cards/table, detail, terminal session sheet
 and accessibility. show green `ready` only with committed state ready, an exact

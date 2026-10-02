@@ -103,12 +103,12 @@ internal fun ForgeSheet(
 }
 
 @Composable
-private fun ModalBackHandler(onBack: () -> Unit) {
+internal fun ModalBackHandler(onBack: () -> Unit) {
     val currentOnBack by rememberUpdatedState(onBack)
     val view = LocalView.current
     DisposableEffect(view) {
         val dispatcher = checkNotNull(view.findOnBackInvokedDispatcher()) {
-            "Forge modal must be attached to a Back dispatcher"
+            "Modal must be attached to a Back dispatcher"
         }
         val callback = OnBackInvokedCallback { currentOnBack() }
         dispatcher.registerOnBackInvokedCallback(

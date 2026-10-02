@@ -63,12 +63,10 @@ type model struct {
 	form                      [5]string
 	field                     int
 	machine                   string
-	groupFilter               group.Filter
+	view                      selectedView
 	scopeReady                bool
 	picker                    int
 	metadata                  *metadataEditor
-	agentsView                bool
-	needsInputOnly            bool
 	top                       int
 	// pageRow is info's captured lifetime as last observed; refresh follows it
 	// without retargeting.
@@ -193,9 +191,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		m.observeNotifications(message)
 		m.rebuild()
 		m.reconcileMetadata()
-		m.observeNotifications(message)
 		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
 			m.refreshInfo()
 		}
@@ -244,13 +242,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			// Confirmed creation reveals the new session in its group.
-			m.page, m.agentsView, m.needsInputOnly = "", false, false
+			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
 				m.machine = value.Label
 				m.scopeReady = false
 			}
-			if !m.groupFilter.Matches(value.Session.Group) {
-				m.groupFilter = filterFor(value.Session.Group)
+			if m.view.kind == viewNeedsInput || m.view.kind == viewGroup && m.view.label != value.Session.Group {
+				m.view = selectedView{kind: viewGroup, label: value.Session.Group}
 			}
 			created, _ := fleetclient.DecodeReference(value.Session.Ref)
 			found := false
@@ -344,6 +342,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.notificationErr == nil {
 			m.notificationSnapshot = message.snapshot
 		}
+		m.rebuild()
 		if m.refreshing {
 			m.refreshAfterAction = true
 		}
@@ -454,12 +453,8 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			// escape closes pages; the table is its floor, never an exit.
 			return m, nil
-		case "a":
-			m.showAgents()
-			return m, nil
 		case "f":
-			m.needsInputOnly = !m.needsInputOnly
-			m.rebuildForFilter()
+			m.selectView(selectedView{kind: viewNeedsInput})
 			return m, nil
 		case "up", "k":
 			m.move(-1)
@@ -493,7 +488,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.inform("opening terminal on " + peer.Label + "…")
-			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.groupFilter.Label()})
+			return m, m.execute(fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchTerminal, Machine: peer.Label, CWD: "~", Group: m.view.label})
 		case "N":
 			peer := m.creationPeer()
 			if peer == nil {
@@ -502,7 +497,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.page, m.field = "create", 0
 			m.clearDirectorySearch()
-			m.form = [5]string{peer.Label, "terminal", "", "", m.groupFilter.Label().String()}
+			m.form = [5]string{peer.Label, "terminal", "", "", m.view.label.String()}
 			m.inform("")
 			return m, nil
 		}
@@ -550,13 +545,6 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) inform(text string) { m.notice, m.noticeFailure = text, false }
 func (m *model) fail(text string)   { m.notice, m.noticeFailure = text, true }
 
-func filterFor(label group.Label) group.Filter {
-	if label.IsUnassigned() {
-		return group.UnassignedFilter()
-	}
-	filter, _ := group.NamedFilter(label)
-	return filter
-}
 func (m *model) scopedPeers() []fleetclient.Peer {
 	if m.machine == "" {
 		return m.peers

@@ -96,7 +96,7 @@ machine does not block or authorize action against another.
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
 | State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no writer remains; clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
-| groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts and intersect independent machine/group filters; no group registry or lifecycle |
+| groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
 | Handoff | direct tmux clients; laptop and phone share session, window/pane navigation, and latest-client sizing |
@@ -245,13 +245,14 @@ them.
 
 ### Dashboard
 
-independent `GET /v1/sessions` inventories drive one dense grouped card grid.
-machine selection (`All` or one paired machine) intersects a separate group
-selection (all groups, unassigned, or one named group). equal canonical group
-labels group across hosts; local session ids, names, identity tokens, profile
-keys, and dwarf keys remain machine-scoped. unavailable-machine notices are
-outside group filtering. [groups](groups.md) owns the exact grouping, editing,
-creation, and content-free restoration contracts:
+independent `GET /v1/sessions` inventories drive one fleet-wide card collection.
+one selected view is `needs input`, `all`, a named group or unassigned. needs
+input collects fresh local agents with qualified ready first, then explicit
+requests and current error/interruption notices. all/groups retain stable group
+and session order, including ordinary terminals and explicitly stale rows.
+[session views](session-views.md) owns membership, ordering, navigation and
+schema-4 restoration; [groups](groups.md) owns exact label identity/membership.
+failed-machine and notification-store notices remain outside every view.
 
 - One card anchors to the session's current window and that window's active
   pane. cwd, command, foreground process, and runtime registration come
@@ -287,9 +288,9 @@ creation, and content-free restoration contracts:
   remembers non-idle until idle, and actual output presentation acknowledges
   ready while preserving armed work. no human reply viewer or read receipt. recorded
   native identity is secondary and may differ from the terminal. the machine label
-  leads the quiet `where` line (machine · directory) in
-  `All`; a selected-machine filter supplies that visible context once, so its
-  cards omit the repeated visual machine label while retaining machine identity
+  leads the quiet `where` line (machine · directory) on every card. the flat
+  needs-input queue adds one quiet group-context line; all/group views retain
+  their existing headings and card density. machine identity remains present
   in accessibility and every routed or destructive action. The quiet `who` line
   follows the dwarf signature with the configured runtime profile label for a
   proven runtime profile, `<provider> · profile unknown` for an agent without
@@ -336,94 +337,60 @@ creation, and content-free restoration contracts:
   history only with its configured profile/scope. only claude
   registration supplies projected profile/provider-session id; codex's old
   hook registration is not used for native binding or projected identity.
-- grid order: named group headings in the shared ascii-folded/exact utf-8 label
-  order, then unassigned. within each group use the current agent-control order:
-  case-folded/exact machine label, machine handle, then numeric local tmux id. no urgency sorting. retained stale rows remain explicitly
-  unavailable and non-actionable. a
-  [`needs input`](terminal-observation.md#6-content-attention-and-filtering)
-  filter chip narrows the machine/group selection and keeps that order. clients
-  own numeric local tmux-id ordering and grouping; the host inventory envelope
-  makes no display-order promise.
+- all/group grid order: named headings in ascii-folded/exact utf-8 label order,
+  then unassigned; sessions within each group by case-folded/exact machine label,
+  machine handle and numeric tmux id. needs input is flat, by ready/action tier
+  then that same session order. the host envelope promises no display order.
+- the human queue never supplies control admission. cli `wait --state needs-input`
+  remains explicit-response-request only. quiet idle includes acknowledged ready
+  and first-observed idle; available again does not prove successful completion.
 
-The Dashboard is one retained Android navigation entry. Opening Terminal does
-not replace that entry: top `Detach` and Android Back return to its same typed
-machine, group and needs-input filters. those filters restore before inventory
-verification; the semantic first-visible session or heading and offset settle before dashboard
-interaction. an unchanged list returns to the same item and pixel offset; live
-insertion/reorder preserves its key; a removed item clamps its former rendered
-index. an empty or unavailable selected machine or group remains
-selected. Restoration is immediate, non-animated, and one-shot before cards
-become interactive; selecting a different filter cancels pending restoration,
-while selecting the active filter is a no-op. terminal access-loss recovery
-selects the affected machine, retains group selection, resets viewport to top,
-and shows its notice. confirmed creation outside the selected group changes that
-group filter before post-create navigation, and confirmed creation clears the
-needs-input filter; ordinary membership edits do not.
-the schema-3 task capsule stores the needs-input flag, a group-label fingerprint
-and typed heading or session anchor, never raw labels. a missing restored label
-stays selected as `previously selected group`; creation then requires an
-explicit named/unassigned choice. older navigation is discarded, with no
-compatibility reader. Lifecycle stop never consumes pending restoration; only a
-modeled non-live machine outcome may resolve it without an inventory snapshot.
-The filter strip need not retain its exact horizontal offset, but it reveals the
-selected machine chip before the restored Dashboard is settled. Filter changes
-use the one live grid's stable-key clamping; no per-filter viewport history
-exists.
+the dashboard is one retained android entry. detach/back preserve selected view
+and semantic session/heading anchor; removal clamps the former rendered index.
+view changes cancel pending restoration; active selection is a no-op. terminal
+access loss resets viewport to top and shows the affected machine notice while
+retaining view. confirmed creation reveals its returned group when needed;
+edits and uncertain creation retain view. the schema-4 task capsule contains
+only the comparison-only view key, typed anchor, former index and pixel offset.
+unresolved named groups persist and require an explicit group choice before
+creation. older task capsules reset once; no compatibility reader or per-view
+history exists. inventory, raw labels and terminal targets are never persisted.
 
-Pressure remains machine-local per
-[`machine-pressure-rail.md`](machine-pressure-rail.md). `All` omits pressure
-rails; an explicit machine filter renders exactly that machine's rail and local
-details disclosure. Compact exceptional machine notices remain visible in
-`All`, so removing the repeated diagnostic rails does not hide stale,
-unreachable, unauthenticated, identity-changed, or failed-pressure state. Each
-machine retains independent five-second poll work. A failed inventory poll preserves only
-that machine's last in-memory snapshot as literal `STALE`; stale, unreachable,
-unauthenticated, or identity-changed machines cannot create, attach, send
-terminal input, or kill. Pressure failure never disables action against a
-fresh inventory. Polls may overlap across machines but coalesce per
-machine/resource; mutations and terminal input are never retried or replayed.
-The session service captures one projection clock after collecting and
-validating the tmux snapshot. Inventory and create expose that exact value as
-`observedAt`, before optional process enrichment. agent-control enrichment
-runs after releasing the session lock
-and does not replace that timestamp. the result is a sampled observation, not
-an atomic provider snapshot. host clocks are never compared to each other.
-The dashboard header is one compact row carrying the title and machine
-summary. The primary `New dwarf` action is the Forge seal, a
-bottom-trailing octagonal control over the grid; it is lit when a machine
-can create and cold when none can. Automatic five-second reconciliation
-remains primary. Standard pull-to-refresh over the dwarf collection is the
-sole manual verification shortcut: it snapshots the current machine filter,
-requests inventory only, and remains visibly active until a post-request
-inventory read has landed for every live target. A pre-request read cannot
-satisfy that intent. Fixed chrome does not pull, existing collection content
-remains in place, and there is no tap, overflow, contextual-retry, or
-custom-accessibility equivalent. The pull owner is active only when the
-visible scope has a live poller; otherwise the same collection is inert and
-its access/connect outcome remains visible. The collection always rests at a
-`12dp` top inset; the pull threshold reserves no layout space. Pulling and
-checking render one active-only `2dp` Gold progress line inside that gutter,
-with determinate progress semantics while pulling and indeterminate checking
-semantics after release. The line never moves or obscures collection content
-and is wholly absent at rest and in inert scopes. Forge outcome-unknown
-recovery copy is target-aware: a visible ready target teaches the pull, a
-ready target hidden by another filter first names the filter change,
-authentication names whole-fleet reconnect, and a changed or missing identity
-names app-data reset and a fresh connect. Review-ready copy remains a past-tense fact,
-not another verification command. Under an explicit machine filter, the one
-pressure rail is a compact disclosure control: a
-machine/aggregate/cause/freshness header, one stable non-wrapping
-flat typographic metric row, then the unchanged 16dp categorical history band
-with no title. Metric labels are neutral; informational and normal values are
-quiet, while only host-evaluated warm/hot values and marks spend Gold/Ember.
-CPU and swap are visibly informational, missing supported evidence remains
-muted as `NO DATA ?`, and unsupported inventory is never product copy. Android
-never derives a pressure state or colour from a raw value. A tap opens one
-machine-bound details sheet containing every supported current metric,
-full states, reasons, freshness, and `NO DATA`; it reads the accepted pressure
-snapshot and performs no request or mutation. Pressure freshness is independent
-of inventory freshness. Stale pressure preserves and labels its last snapshot;
-missing and unsupported remain distinct in the protocol.
+phone inventories and attention outcomes are admitted together. preceding
+admitted rows remain usable while the next attention update completes; initial
+restoration waits for every fleet machine's admitted or modeled non-live outcome.
+failed attention remains unavailable for its still-admitted machine sample;
+unrelated store success cannot restore that sample's ready. successfully matched
+machines remain eligible once the global operation failure clears, and the fleet
+disclosure remains visible for any current failure. fresh requests/notices survive
+storage failure. machine updates derive notification presentation from the same
+facts/outcome; pressure publication never exposes an interim collection.
+
+pressure stays machine-local under [machine pressure](machine-pressure-rail.md).
+the top-bar `machines` control opens one transient modal disclosure containing
+every accepted machine's existing rail/access state and reconnect. rail selection
+shows its existing pressure details in that same modal; back returns to machines,
+and dismissal closes from either page. reconnect closes the sheet first.
+exceptional machine notices remain visible on the dashboard. disclosure performs
+no request and never filters cards or prefills creation. each machine retains
+independent five-second inventory/pressure polling. stale/unreachable/access-lost
+inventory disables that host's actions; pressure failure never does.
+
+standard pull over the collection is the sole manual inventory verification
+shortcut. it captures every live fleet poller and retains the post-request read
+completion fence. pressure is independent. the view strip, notices and forge stay
+outside its gesture owner. the collection retains its `12dp` top gutter and
+active-only `2dp` gold progress line, with existing determinate/indeterminate
+semantics and no resting layout space. no tap/retry/accessibility duplicate or
+mutation replay exists. recovery names pull, reconnect or external identity reset
+according to the exact target's modeled access, never a hidden machine filter.
+
+polls coalesce per machine/resource and may overlap across machines; mutations
+and terminal input are never retried. the host captures `observedAt` after its
+required tmux snapshot is validated, then enriches optional process observations
+outside the session lock. that clock is sampled evidence, not an atomic provider
+snapshot; host clocks are never compared. phone pressure state and colour come
+from host-evaluated signals, never locally inferred thresholds.
 
 ### agent observation and identity hooks
 
@@ -457,8 +424,8 @@ product meaning.
 
 The Forge first requires a machine and then offers terminal and that machine's
 declared agent profiles. Terminal remains available with zero profiles.
-An explicit machine filter may preselect it; otherwise no
-machine is inferred. A fresh machine replaces the primary cwd editor with one
+phone standalone creation requires an explicit machine; source creation retains
+its exact source host. desktop machine scope may preselect its create target. A fresh machine replaces the primary cwd editor with one
 full-height, machine-bound chooser: Home, distinct current tmux cwd values,
 one-level-at-a-time Home browsing with local folder filtering, ranked zoxide
 search, and a secondary exact-path page. Folder entry and explicit `Use` remain distinct; selection
@@ -609,10 +576,10 @@ of target, not semantic safety.
 
 ### desktop and agent controls
 
-the implemented [desktop browser](desktop-browser.md) presents one table: an agents
-view ordered by what may be waiting on the operator, and a view per group label,
-with forms and details in the same frame; `f` narrows any view to sessions
-needing input. it owns the exact selection, keys,
+the implemented [desktop browser](desktop-browser.md) presents one table:
+needs input ordered ready first then requests/notices, all and per-group views
+in stable order, with forms/details in the same frame. `f` selects needs input
+through the ordinary exclusive view path. it owns the exact selection, keys,
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
@@ -916,30 +883,18 @@ enum values are defects, with no protocol branch or compatibility state.
   it requires an external app-data reset. ordinary upgrades preserve the
   collection; app-data loss returns to Connect. there is no old store reader,
   ADB provisioning path, or smaller-fleet branch.
-- Grid, selected-machine pressure rail/details sheet, filters, Forge, and
-  terminal follow §4. One Dashboard entry lives above the Dashboard/Terminal
-  destination switch and exclusively owns machine/group/needs-input selection, the
-  live lazy-grid state, and pending saved restoration. Android saved-instance state
-  may retain one exact-version schema-3 capsule containing only the machine and
-  group discriminants, the needs-input flag,
-  the machine handle when selected, a comparison-only group-label fingerprint
-  when named, a typed session/heading anchor, rendered-item index, and pixel
-  offset. [groups](groups.md#10-android-navigation-and-content-free-restoration)
-  owns its exact schema and unresolved-label behavior. it is validated
-  against the newly accepted fleet, never interpreted as a terminal target, and
-  never written to preferences, files, tmux, or a gateway. session fingerprints
-  retain the domain-separated sha-256 over machine handle, tmux id, and
-  high-entropy inventory token. named filter/heading fingerprints use the separate
-  label domain specified in groups; neither raw token nor raw label enters saved
-  state. machine scope
-  validation uses store-accepted paired handles, never current reachability or
-  inventory freshness. A fresh task or explicit app-data/fleet reset starts
-  `All` at top; no compatibility reader or per-filter history exists. The Forge
-  preserves invalid drafts. Exact cwd entry
-  exists only on the chooser's focused URI-keyboard page with autocorrect and
-  smart punctuation disabled; IME Done uses the path and never creates a
-  session. Picker state, inventory snapshots, and drafts are process-memory
-  only.
+- dashboard fleet collection, exclusive views, one machines/details disclosure,
+  forge and terminal follow §4. one dashboard entry lives above the destination
+  switch and owns selected view, one live lazy grid and pending restoration.
+  android saved state carries one exact-version schema-4 capsule under
+  [session views](session-views.md#saved-navigation), using domain-separated
+  comparison fingerprints and typed session/heading anchors. it never contains
+  raw labels/tokens, inventory, attachment or credentials and is never stored in
+  preferences, files, tmux or gateways. unsupported versions start all/top.
+  pairings, text size and independent v2 attention remain unchanged. forge keeps
+  invalid drafts; exact cwd entry remains on its focused uri-keyboard page with
+  autocorrect/smart punctuation off and ime done selecting without creation.
+  picker state, inventory and drafts remain process-memory only.
 - terminal renderer: Vendored pinned xterm.js in a locked WebView
   (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
   network/file access; Kotlin owns WSS/auth; bearer never enters WebView).
@@ -1074,8 +1029,8 @@ is excluded. phone browsing spans the fleet, with pressure/reconnect in a
 separate machine disclosure. desktop machine scope remains. the spec owns the
 replacement navigation, schema-4 task capsule, narrow implementation plan and
 acceptance, superseding affected collection/pressure clauses in §§2, 4 and 6.
-implementation is pending; observation, attention persistence/visits and exact
-control identities retain their existing owners. no crash/exit notification or
+source implements this design; observation, attention persistence/visits and
+exact control identities retain their existing owners. no crash/exit notification or
 notice-acknowledgement lifecycle is added.
 
 2026-10-02 accepted design: [searchable group entry](group-entry.md) adds local

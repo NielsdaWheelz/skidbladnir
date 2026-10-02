@@ -7,11 +7,17 @@ this index records present scope and open work, not a release diary.
 
 ## session views and needs input
 
-2026-10-02: [the accepted spec and plan](session-views.md) replaces phone machine
-filtering and the desktop agents view with needs-input/all/group navigation.
-ready sorts before requests and current error/interruption notices; quiet idle
-stays out. all/group ordering remains stable. [implementation](issues/session-views.md)
-is pending; behavioral acceptance is `NOT_RUN`. this is documentation only.
+2026-10-02: source implements [session views](session-views.md) in the isolated
+branch: exclusive needs-input/all/group navigation, fleet-wide phone browsing,
+horizontal tabs, schema-4 restoration and one machines/pressure disclosure.
+ready sorts before requests and current notices; quiet idle stays out; all/group
+ordering remains stable. inventory and attention admit together, including failure,
+and rejected creation cannot revive unmatched ready.
+[qualification](session-views.md#qualification) passes its darwin gateway/tmux/tty
+and physical-phone controller, output, navigation and layout boundaries using
+authored frames and controlled tls/wss peers. release and installed-fleet
+deployment are separate. final engineering checks and test retirement are recorded
+with that evidence.
 [agent exit attention](issues/agent-exit-attention.md) is a separate scope gap.
 
 ## searchable group entry

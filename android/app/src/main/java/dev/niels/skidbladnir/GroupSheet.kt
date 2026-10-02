@@ -34,9 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -141,36 +139,6 @@ internal fun GroupSheet(
                     Text("cancel")
                 }
                 Button(onClick = onSubmit, enabled = groupSubmissionAdmissible(editor, machine)) { Text("save") }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun GroupSelector(
-    selected: DashboardGroupSelection,
-    labels: List<GroupLabel>,
-    onSelect: (DashboardGroupSelection) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    GroupTextAction(selected.displayLabel(), true, { expanded = true }, modifier = modifier)
-    if (!expanded) return
-    ModalBottomSheet(onDismissRequest = { expanded = false }, shape = NidavellirShapes.Sheet, containerColor = DeepSurface) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-            Text("groups", modifier = Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-            val choices = listOf(DashboardGroupSelection.All, DashboardGroupSelection.Unassigned) +
-                labels.map { DashboardGroupSelection.Named(groupFingerprint(it), it) }
-            choices.forEach { choice ->
-                if (choice is DashboardGroupSelection.Named && choice == choices.getOrNull(2)) {
-                    Text("observed groups", color = Muted, style = MaterialTheme.typography.labelSmall)
-                }
-                GroupTextAction(choice.displayLabel(), true, { onSelect(choice); expanded = false },
-                    modifier = Modifier.fillMaxWidth().semantics { this.selected = choice.key == selected.key },
-                    color = if (choice.key == selected.key) Gold else Bone,
-                )
             }
         }
     }
