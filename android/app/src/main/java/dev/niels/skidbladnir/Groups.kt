@@ -1,9 +1,9 @@
 package dev.niels.skidbladnir
 
-import java.security.MessageDigest
-import java.util.Locale
 import android.icu.text.Normalizer2
 import android.icu.text.UnicodeSet
+import java.security.MessageDigest
+import java.util.Locale
 
 internal const val GROUP_INVALID = "use 1–64 nfc characters; only interior ordinary spaces, without display controls."
 internal const val GROUP_OUTCOME_UNKNOWN = "group outcome unknown. review the current membership before another attempt."
@@ -110,6 +110,42 @@ internal fun observedGroups(machines: List<MachineState>): List<GroupLabel> = ma
     .flatMap { it.inventory.lastSnapshot()?.inventory?.sessions.orEmpty() }
     .mapNotNull(TmuxSession::group).distinct()
     .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
+
+internal data class GroupCandidates(val observed: List<GroupLabel>, val literal: GroupLabel?)
+
+internal fun groupCandidates(text: String, labels: List<GroupLabel>): GroupCandidates {
+    if (text.isEmpty()) return GroupCandidates(labels, null)
+    val canonical = GroupLabel.fromDraft(text)
+    val query = canonical?.text ?: text
+    val foldedQuery = foldGroupAscii(query)
+    // Stable sorting retains the observed label order for equal ranks.
+    val observed = labels.mapNotNull { label ->
+        val foldedLabel = foldGroupAscii(label.text)
+        val rank = when {
+            label.text == query -> 0
+            foldedLabel == foldedQuery -> 1
+            foldedLabel.startsWith(foldedQuery) -> 2
+            foldedLabel.contains(foldedQuery) -> 3
+            else -> {
+                var queryIndex = 0
+                var labelIndex = 0
+                while (queryIndex < foldedQuery.length && labelIndex < foldedLabel.length) {
+                    val labelScalar = foldedLabel.codePointAt(labelIndex)
+                    val queryScalar = foldedQuery.codePointAt(queryIndex)
+                    if (labelScalar == queryScalar) queryIndex += Character.charCount(queryScalar)
+                    labelIndex += Character.charCount(labelScalar)
+                }
+                if (queryIndex == foldedQuery.length) 4 else return@mapNotNull null
+            }
+        }
+        rank to label
+    }.sortedBy { it.first }.map { it.second }
+    return GroupCandidates(observed, canonical?.takeUnless { it in labels })
+}
+
+private fun foldGroupAscii(text: String): String = buildString(text.length) {
+    text.forEach { append(if (it in 'A'..'Z') it + ('a' - 'A') else it) }
+}
 
 internal sealed interface DashboardItem {
     val key: DashboardItemKey

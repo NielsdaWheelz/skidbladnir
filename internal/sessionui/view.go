@@ -266,22 +266,32 @@ func (m *model) hints() [][]hint {
 		if m.metadata.checking {
 			return [][]hint{{{"ctrl-r", "refresh"}, {"escape", "info"}}}
 		}
-		keys := []hint{{"enter", "save"}, {"escape", "cancel"}}
 		if m.page == "group-edit" {
-			keys = append([]hint{{"←→", "suggestion"}, {"ctrl-u", "unassigned"}}, keys...)
-		} else {
-			keys[0].label = "save name"
-			if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
-				keys = append(keys, hint{"ctrl-a", "use automatic title"})
+			keys := []hint{{"enter", "save"}, {"tab", "group"}, {"shift-tab", "back"}, {"ctrl-s", "save draft"}, {"escape", "cancel"}}
+			if !m.metadata.saveFocused {
+				keys[0].label, keys[1].label = "uses and continues", "uses and continues"
+				keys = append([]hint{{"←→", "choose"}, {"ctrl-u", "unassigned"}}, keys...)
 			}
+			return [][]hint{keys}
+		}
+		keys := []hint{{"enter", "save name"}, {"escape", "cancel"}}
+		if row := m.rowForReference(m.pageRow.session.Ref); row != nil && row.available && row.session.NameMode == "manual" {
+			keys = append(keys, hint{"ctrl-a", "use automatic title"})
 		}
 		return [][]hint{keys}
 	case "create":
 		enter := hint{"enter", "next"}
-		if m.field == 4 {
+		next := hint{"tab", "next"}
+		if m.field == len(m.form) {
 			enter.label = "create"
+		} else if m.field == 4 {
+			enter.label = "uses and continues"
+			next.label = "uses and continues"
 		}
-		hints := []hint{{"tab", "next"}, {"shift-tab", "back"}, {"←→", "choose"}, enter, {"escape", "cancel"}}
+		hints := []hint{next, {"shift-tab", "back"}, enter, {"escape", "cancel"}}
+		if m.field == 0 || m.field == 1 || m.field == 3 || m.field == 4 {
+			hints = append([]hint{{"←→", "choose"}}, hints...)
+		}
 		if m.field == 3 {
 			hints = append(hints, hint{"ctrl-u", "home"})
 		} else if m.field == 4 {
@@ -447,9 +457,22 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, field("current", value, false, false, axis, width)...)
 		}
 		focusStart := len(lines)
-		lines = append(lines, field(label, draft, !editor.checking && !m.busy, false, axis, width)...)
+		lines = append(lines, field(label, draft, !editor.checking && !m.busy && !editor.saveFocused, false, axis, width)...)
 		focusEnd := len(lines)
 		status := "enter saves"
+		if m.page == "group-edit" {
+			if editor.saveFocused {
+				focusStart = len(lines)
+			} else {
+				lines = append(lines, m.groupPreview(editor.draft, &editor.selection, axis, width)...)
+				focusEnd = len(lines)
+				status = "left/right chooses; enter uses and continues"
+			}
+			lines = append(lines, field("", "save", editor.saveFocused && !editor.checking && !m.busy, false, axis, width)...)
+			if editor.saveFocused {
+				focusEnd = len(lines)
+			}
+		}
 		switch {
 		case m.busy:
 			status = "saving; delivery will be reported"
@@ -472,9 +495,7 @@ func (m *model) bodyLines(height int) []string {
 		lines = append(lines, "")
 		lines = append(lines, wrapped(status, width)...)
 		lines = append(lines, "")
-		if m.page == "group-edit" {
-			lines = append(lines, m.suggestions(width)...)
-		} else {
+		if m.page == "name-edit" {
 			lines = append(lines, "saving a name stops automatic naming.")
 			if current != nil && current.session.NameMode == "automatic" {
 				lines = append(lines, "follows the active pane's terminal title.")
@@ -511,9 +532,19 @@ func (m *model) bodyLines(height int) []string {
 					lines = append(lines, field("use", preview, false, false, 9, width)...)
 				}
 			}
+			if index == 4 && m.field == 4 {
+				lines = append(lines, m.groupPreview(m.form[4], &m.groupSelection, 9, width)...)
+			}
 			if index == m.field {
 				focusEnd = len(lines)
 			}
+		}
+		if m.field == len(m.form) {
+			focusStart = len(lines)
+		}
+		lines = append(lines, field("", "create", m.field == len(m.form), false, 9, width)...)
+		if m.field == len(m.form) {
+			focusEnd = len(lines)
 		}
 		lines = append(lines, "", "name: leave blank to follow the terminal title.")
 		if m.field == 3 {
@@ -525,7 +556,7 @@ func (m *model) bodyLines(height int) []string {
 		if _, err := group.ParseDraft(m.form[4]); err != nil {
 			lines = append(lines, wrapped(group.ErrInvalid.Error(), width)...)
 		}
-		return window(append(lines, m.suggestions(width)...), focusStart, focusEnd, height)
+		return window(lines, focusStart, focusEnd, height)
 	case "details":
 		title := bold.Styled("info")
 		// The title stays pinned; only the captured snapshot scrolls.
@@ -594,12 +625,27 @@ func field(label, value string, focused, choice bool, labelWidth, width int) []s
 	return lines
 }
 
-func (m *model) suggestions(width int) []string {
-	labels := []string{}
-	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
-		labels = append(labels, fleetclient.GroupHeading(label))
+func (m *model) groupPreview(draft string, selection *groupSelection, axis, width int) []string {
+	choices := m.groupChoices(draft)
+	lines := field("", "observed groups", false, false, axis, width)
+	if choices[0].literal || choices[0].label.IsUnassigned() {
+		lines = append(lines, field("", "no observed matches", false, false, axis, width)...)
 	}
-	return wrapped("observed groups: "+strings.Join(labels, " · "), width)
+	preview := "no choice selected"
+	for index, choice := range choices {
+		if selection.choice == nil || choice != *selection.choice {
+			continue
+		}
+		value := "label: " + choice.label.String()
+		if choice.label.IsUnassigned() {
+			value = "unassigned (no membership)"
+		} else if choice.literal {
+			value = "use label: " + choice.label.String()
+		}
+		preview = fmt.Sprintf("‹ %d/%d › %s", index+1, len(choices), value)
+		break
+	}
+	return append(lines, field("use", preview, false, false, axis, width)...)
 }
 
 func (m *model) detailLines() []string {

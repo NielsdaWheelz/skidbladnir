@@ -5,6 +5,15 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## searchable group entry — source implemented
+
+2026-10-02: [the accepted spec and plan](group-entry.md) covers local search/select
+in desktop and phone creation/editing, plus explicit desktop create/save actions
+after the group field. [qualification](group-entry.md#qualification) records
+desktop input/transport checks and production phone-sheet journeys on the
+connected device, including native 2× text. production deployment is outside
+this change.
+
 ## non-native status and needs input — source implemented
 
 [terminal observation](terminal-observation.md) specifies the coordinated status

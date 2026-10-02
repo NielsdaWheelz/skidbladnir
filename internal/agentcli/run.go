@@ -67,7 +67,9 @@ browser (80x24 minimum)
   f shows only sessions that need input; f again shows every session
   enter attaches; space opens info
   info: r edits name; g edits group; escape returns to the table
-  editors: enter saves; escape cancels to info; ctrl-a restores automatic naming
+  name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
+  group: left/right chooses; enter uses and continues to create/save
+  create/save: enter submits; group editor ctrl-s saves the typed draft
   shift+t creates and enters a shell on the selected session's machine,
   in its current directory and group; the original session keeps running
   s sends interrupt; x interrupts and closes terminal

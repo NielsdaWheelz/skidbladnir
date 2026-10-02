@@ -62,6 +62,7 @@ type model struct {
 	pendingLabel, pendingName string
 	form                      [5]string
 	field                     int
+	groupSelection            groupSelection
 	machine                   string
 	groupFilter               group.Filter
 	scopeReady                bool
@@ -194,6 +195,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.rebuild()
+		observed := fleetclient.ObservedGroups(m.scopedPeers())
+		m.groupSelection.retain(groupChoices(m.form[4], observed))
+		if m.metadata != nil && m.metadata.request.Operation == "group" {
+			m.metadata.selection.retain(groupChoices(m.metadata.draft, observed))
+		}
 		m.reconcileMetadata()
 		m.observeNotifications(message)
 		if m.page == "details" || m.page == "name-edit" || m.page == "group-edit" {
@@ -355,10 +361,13 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refresh()
 	case tea.PasteMsg:
 		if !m.busy && m.width >= 80 && m.height >= 24 {
-			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking {
+			if (m.page == "group-edit" || m.page == "name-edit") && !m.metadata.checking && !m.metadata.saveFocused {
 				m.metadata.draft += message.Content
+				if m.page == "group-edit" {
+					m.metadata.selection.reset(m.metadata.draft, m.groupChoices(m.metadata.draft))
+				}
 			}
-			if m.page == "create" && m.field >= 2 {
+			if m.page == "create" && m.field >= 2 && m.field < len(m.form) {
 				if m.field == 4 {
 					m.form[m.field] += message.Content
 				} else {
@@ -366,6 +375,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.field == 3 {
 					return m, m.searchDirectory()
+				}
+				if m.field == 4 {
+					m.groupSelection.reset(m.form[4], m.groupChoices(m.form[4]))
 				}
 			}
 		}
@@ -503,6 +515,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.page, m.field = "create", 0
 			m.clearDirectorySearch()
 			m.form = [5]string{peer.Label, "terminal", "", "", m.groupFilter.Label().String()}
+			m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
 			m.inform("")
 			return m, nil
 		}
@@ -611,28 +624,6 @@ func (m *model) editPicker(key string) tea.Cmd {
 		return m.refresh()
 	}
 	return nil
-}
-func (m *model) nextGroupDraft(draft string, previous bool) string {
-	options := []string{""}
-	for _, label := range fleetclient.ObservedGroups(m.scopedPeers()) {
-		options = append(options, label.String())
-	}
-	index := -1
-	canonical, err := group.ParseDraft(draft)
-	if err == nil {
-		for i, option := range options {
-			if canonical.String() == option {
-				index = i
-				break
-			}
-		}
-	}
-	if previous {
-		index = (max(0, index) + len(options) - 1) % len(options)
-	} else {
-		index = (index + 1) % len(options)
-	}
-	return options[index]
 }
 func (m *model) selectedRow() *listedRow {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
