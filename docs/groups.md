@@ -6,8 +6,9 @@ that cutover; its qualification belongs to session views. label identity,
 membership and cli filtering below remain unchanged.
 
 2026-10-02: [searchable group entry](group-entry.md) owns the accepted replacement
-for create/edit suggestions and desktop submission keys. implementation is
-pending; [the issue](issues/group-entry.md) tracks its separate acceptance.
+for create/edit suggestions and desktop submission keys. source implements the
+contract; [qualification](group-entry.md#qualification) records its separate
+acceptance.
 
 implemented: session labels, grouping/filtering, restoration and group-aware
 creation under [the composition plan](groups-and-shells.md).

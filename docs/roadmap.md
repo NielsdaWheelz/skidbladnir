@@ -20,12 +20,14 @@ deployment are separate. final engineering checks and test retirement are record
 with that evidence.
 [agent exit attention](issues/agent-exit-attention.md) is a separate scope gap.
 
-## searchable group entry
+## searchable group entry — source implemented
 
 2026-10-02: [the accepted spec and plan](group-entry.md) covers local search/select
 in desktop and phone creation/editing, plus explicit desktop create/save actions
-after the group field. [implementation](issues/group-entry.md) is pending;
-runtime and device acceptance are `NOT_RUN`. this is a documentation change.
+after the group field. [qualification](group-entry.md#qualification) records
+desktop input/transport checks and production phone-sheet journeys on the
+connected device, including native 2× text. production deployment is outside
+this change.
 
 ## non-native status and needs input — source implemented
 
@@ -167,7 +169,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
 | persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
-| desktop browser (agents and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
+| desktop browser (needs-input, all and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, session card, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [session card](session-card.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |
 | terminal chrome, sizing, keys, touch, selection and input composition | [chrome](terminal-chrome.md), [sizing](terminal-readable-sizing.md), [key deck](terminal-key-deck.md), [touch](terminal-touch-scroll.md), [selection](terminal-selection-copy.md) |

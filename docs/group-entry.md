@@ -1,6 +1,6 @@
 # searchable group entry
 
-accepted 2026-10-02; implementation pending. this specification and plan covers
+accepted and source implemented 2026-10-02. this specification covers
 group entry during session creation and membership editing on desktop and
 android. typing filters observed labels; selecting a suggestion fills the draft;
 a separate create or save action submits it. the desktop create form gains an
@@ -10,21 +10,20 @@ explicit `create` action below group, and the group editor gains `save`.
 creation defaults and return behavior. [desktop browser](desktop-browser.md)
 owns the surrounding form and navigation. this document replaces their group
 input presentation and desktop submission keys only. the [roadmap](roadmap.md)
-and [implementation issue](issues/group-entry.md) track delivery. runtime and
-device acceptance are `NOT_RUN`.
+tracks delivery; [qualification](#qualification) records the exercised boundaries.
 
 ## problem and scope
 
-desktop create and edit share `nextGroupDraft`, which cycles all observed labels
-without filtering. right from an unmatched draft replaces it with unassigned.
-android create and edit share `GroupField`, whose separate observed-groups menu
-also ignores the text being entered. both clients already have the labels.
+desktop create and edit previously shared `nextGroupDraft`, which cycled all
+observed labels without filtering. right from an unmatched draft replaced it
+with unassigned. android's shared `GroupField` used a separate observed-groups
+menu that ignored the text being entered. both clients already had the labels.
 
 reuse the directory interaction: editable text, matching choices and explicit
 acceptance. group matching runs synchronously over retained inventory. directory
 search keeps its host requests, zoxide ranking and path semantics. this change
 adds no endpoint, discovery, registry, persistence, dependency or poller.
-dashboard group filters, cli arguments, session naming and immediate desktop
+dashboard collection views, cli arguments, session naming and immediate desktop
 `n`/`T` creation retain their existing behavior.
 
 ## choices and matching
@@ -34,7 +33,7 @@ and observed labels; highlighting never rewrites it. create and edit use one
 group candidate owner per client.
 
 - desktop uses `fleetclient.ObservedGroups(m.scopedPeers())`: the dashboard's
-  machine scope, independent of the form's target machine and group filter.
+  machine scope, independent of the form's target machine and selected view.
   android uses `observedGroups(machines)` across all retained machine snapshots.
   neither client performs an extra read when the field opens or changes.
 - empty text exposes all observed labels in the existing group order. an
@@ -100,9 +99,11 @@ covers deliberately reaching create through backward traversal. invalid text
 returns focus to group. an unresolved directory query returns focus to directory
 under its existing rules. keep the target-availability and unchanged-save checks.
 
-show one candidate preview below group, with its complete label and position,
-using the directory preview's layout. distinguish `use label` and `unassigned`
-actions from observed labels. remove the unfiltered paragraph of all groups.
+while group is focused, show one candidate preview below it, with its complete
+label and position, using the directory preview's layout. action focus shows the
+literal draft and action; it does not suggest that submission accepts a candidate.
+distinguish `use label` and `unassigned` actions from observed labels. remove the
+unfiltered paragraph of all groups.
 keep the active field or action and its relevant preview visible at 80×24, with
 wrapped labels and the existing form viewport. helper copy teaches `left/right
 chooses; enter uses and continues` at group and the action's effect when focused.
@@ -119,21 +120,30 @@ retain one `GroupField` for forge and membership editing. focusing it or opening
 `observed groups` reveals a filtered list beneath the field in the same sheet.
 typing retains keyboard focus and updates the list immediately. constrain the
 list to available sheet space and scroll its contents; a large inventory must
-not lengthen the whole form without bound. existing create/save buttons remain
-separate and reachable with the keyboard open.
+not lengthen the whole form without bound. reveal the group field and first
+matching result when suggestions open or the keyboard changes the available
+space. typing resets the list to its first result. the group field and bounded
+results stay above the separate create/save action; only preceding form content
+scrolls. the final action remains reachable with the keyboard open. keeping
+group visible gives preceding fields a smaller viewport while suggestions are
+open.
 
 tapping an observed result or `use label` fills the draft and closes suggestions.
-the explicit unassigned action clears membership. each action only edits the
-draft. keyboard next/enter accepts the valid literal draft, closes suggestions
-and hides the keyboard to expose create/save; it never activates that button.
+the explicit unassigned action is inside the choice list: first for empty text,
+after matches and the literal action for nonempty text. it clears membership;
+each action only edits the draft. keyboard next/enter accepts the valid literal
+draft, closes suggestions and hides the keyboard to expose create/save; it never
+activates that button.
 invalid input remains editable with validation. there is no separate phone
 candidate highlight. tapping create/save submits the visible draft literally
 through existing validation, without silently choosing a suggestion.
 
-back hides the keyboard first when visible, then closes open suggestions, then
-uses the containing sheet's existing cancel behavior. dismissing suggestions
-retains the draft. reopening suggestions retains the current draft. prefilled
-labels and the unresolved restored-group state keep their existing meanings:
+back hides the keyboard and ends text focus first when visible, retaining the
+draft and choices; the next tap starts a fresh input session. then back closes
+open suggestions, then uses the containing sheet's existing cancel behavior.
+dismissing suggestions retains the draft. reopening suggestions retains the
+current draft. prefilled labels and the unresolved restored-group state keep
+their existing meanings:
 an untouched unresolved field cannot silently become unassigned; it requires an
 explicit choice, including an explicit unassigned action.
 
@@ -144,8 +154,8 @@ remain authoritative. no raw label or query enters saved state or logs.
 
 ## implementation plan
 
-implement the complete change in one focused pr after implementation is requested.
-these are ownership boundaries, not a requirement for separate files or agents.
+these are the implementation ownership boundaries, not a requirement for
+separate files or agents.
 
 1. **group candidates.** add a small pure candidate/ranking function beside each
    client's group input owner. reuse the existing label parser, ordering and
@@ -164,9 +174,9 @@ these are ownership boundaries, not a requirement for separate files or agents.
    preserve the public callbacks and controller-owned drafts where possible.
 4. **verify and close.** exercise the acceptance below, remove temporary checks
    under [testing policy](rules/testing.md), run `scripts/check verify`, and update
-   the issue and delivery status with actual evidence. runtime checks remain
-   separate from engineering checks. no release, installation or deployment is
-   included in this plan.
+   delivery status with actual evidence. runtime checks remain separate from
+   engineering checks. temporary device test installation is part of approved
+   qualification; release and production deployment are outside this scope.
 
 ## acceptance
 
@@ -185,8 +195,51 @@ on selection and one on the final action; do not build a second form implementat
 or recreate retired harnesses. phone interaction requires an approved device
 journey; source checks cannot establish it. tmux and device operations retain
 their explicit current-turn approval requirements. any unexecuted boundary is
-`NOT_RUN` and stays recorded in the implementation issue.
+`NOT_RUN` and stays recorded in its own issue.
 
 the pre-existing [invisible-label ambiguity](issues/group-label-invisible-characters.md)
 remains outside this change; search preserves label identity and does not resolve
 that separate display contract.
+
+## qualification
+
+2026-10-02: the specified client boundaries passed temporary acceptance checks
+after adversarial source and probe review. the production source remained frozen
+after its final behavioral checks.
+
+- **baseline RED:** three desktop checks exposed immediate group submission and
+  unfiltered cycling; two phone checks failed at the actual shared field before
+  filtered suggestions were implemented. a later native 2× check failed in
+  both sheets when reopening an unchanged, scrolled query; the existing scroll
+  reset was corrected and the same checks passed.
+- **desktop PASS:** 14 temporary tests passed with the race detector. they used
+  the actual model, rendering and input decoder, plus a running `tea.Program`
+  and the existing client against an isolated https mutation endpoint. selection
+  sent zero requests; the final action sent one. checks covered choice rules,
+  refresh identity and scope, captured targets, literal prefill and traversal,
+  action-focused input, validation, cancellation, in-flight suppression, 80×24
+  wrapped rendering without color, help, directory behavior and the name editor.
+- **phone PASS:** 13 ordinary checks and two native 2× journeys passed on the
+  approved connected phone. the probe mounted production forge/edit sheets
+  under the production theme and surface, with synthetic inventory and the
+  existing draft/admission types. it intercepted their parent callbacks:
+  selection and keyboard acceptance submitted nothing; the final button
+  submitted once. checks covered matching, literal/unassigned choices,
+  unresolved drafts, native enter and three-stage back, stale-target admission,
+  scrolling through 100 labels plus a 64-character label, unchanged-query
+  reopening, full spoken labels, visible 48dp choices and create/save with the
+  keyboard open, including hide/reopen and subsequent typing. native 2× text
+  was verified from the field's actual
+  text layout. synthetic screenshots were visually reviewed. this qualifies
+  the changed sheets and their callback boundary; the unchanged phone
+  controller/gateway transport was outside the probe.
+- **engineering PASS:** `scripts/check verify` passed for all build scopes after
+  temporary checks and probe configuration were removed: formatting, shell and
+  python checks, catalogue/assets/ornament validation, go module verification,
+  vet/build and android lint/debug assembly. these checks are separate from the
+  behavioral evidence above.
+
+temporary tests, their android host and dependencies, and installed probe
+packages were removed. the phone's original font scale was restored. release
+and production deployment are outside this change. the existing
+[testing coverage gap](issues/test-system-reset.md) remains explicit.

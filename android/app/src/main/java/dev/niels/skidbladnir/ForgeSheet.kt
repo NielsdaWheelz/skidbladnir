@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -108,7 +109,7 @@ internal fun ModalBackHandler(onBack: () -> Unit) {
     val view = LocalView.current
     DisposableEffect(view) {
         val dispatcher = checkNotNull(view.findOnBackInvokedDispatcher()) {
-            "Modal must be attached to a Back dispatcher"
+            "modal must be attached to a Back dispatcher"
         }
         val callback = OnBackInvokedCallback { currentOnBack() }
         dispatcher.registerOnBackInvokedCallback(
@@ -134,131 +135,145 @@ private fun ForgeFormContent(
     Column(
         Modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
             .imePadding()
             .padding(horizontal = 20.dp)
             .padding(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            "Create dwarf",
-            style = MaterialTheme.typography.headlineSmall,
-            fontFamily = NidavellirType.Display,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Canvas(Modifier.fillMaxWidth().height(12.dp)) {
-            drawFretBand(Gold.copy(alpha = 0.40f))
-        }
-        Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            machines.forEach { machine ->
-                FilterChip(
-                    selected = machine.machine.handle == state.form.machineHandle,
-                    onClick = {
-                        actions.updateDraft { it.copy(machineHandle = machine.machine.handle) }
-                    },
-                    enabled = !state.pending && machine.canMutate,
-                    label = {
-                        Text(
-                            bidiIsolate(forgeMachineChoiceLabel(machine)),
-                            fontFamily = NidavellirType.Data,
-                        )
-                    },
-                    shape = NidavellirShapes.Chip,
-                    modifier = Modifier.semantics {
-                        contentDescription = forgeMachineChoiceLabel(machine)
-                    },
-                )
-            }
-        }
-        if (selected == null) {
-            Text(
-                "Choose a machine to choose a working directory and launch.",
-                color = Muted,
-            )
-        } else {
-            Text(
-                "Launch on ${bidiIsolate(selected.machine.label.text)}",
-                color = Muted,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        BoxWithConstraints(Modifier.weight(1f, fill = false)) {
+            val maxSuggestionsHeight = maxHeight / 3
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                inventory?.profiles.orEmpty().forEach { profile ->
-                    FilterChip(
-                        selected = state.form.launch == LaunchChoice.Agent(profile.key),
-                        onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Agent(profile.key)) } },
+                Column(
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "Create dwarf",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontFamily = NidavellirType.Display,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Canvas(Modifier.fillMaxWidth().height(12.dp)) {
+                        drawFretBand(Gold.copy(alpha = 0.40f))
+                    }
+                    Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        machines.forEach { machine ->
+                            FilterChip(
+                                selected = machine.machine.handle == state.form.machineHandle,
+                                onClick = {
+                                    actions.updateDraft { it.copy(machineHandle = machine.machine.handle) }
+                                },
+                                enabled = !state.pending && machine.canMutate,
+                                label = {
+                                    Text(
+                                        bidiIsolate(forgeMachineChoiceLabel(machine)),
+                                        fontFamily = NidavellirType.Data,
+                                    )
+                                },
+                                shape = NidavellirShapes.Chip,
+                                modifier = Modifier.semantics {
+                                    contentDescription = forgeMachineChoiceLabel(machine)
+                                },
+                            )
+                        }
+                    }
+                    if (selected == null) {
+                        Text(
+                            "Choose a machine to choose a working directory and launch.",
+                            color = Muted,
+                        )
+                    } else {
+                        Text(
+                            "Launch on ${bidiIsolate(selected.machine.label.text)}",
+                            color = Muted,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            inventory?.profiles.orEmpty().forEach { profile ->
+                                FilterChip(
+                                    selected = state.form.launch == LaunchChoice.Agent(profile.key),
+                                    onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Agent(profile.key)) } },
+                                    enabled = fieldsEnabled,
+                                    label = { Text(profile.label, fontFamily = NidavellirType.Data) },
+                                    shape = NidavellirShapes.Chip,
+                                )
+                            }
+                            FilterChip(
+                                selected = state.form.launch == LaunchChoice.Terminal,
+                                onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Terminal) } },
+                                enabled = fieldsEnabled,
+                                label = { Text("Terminal", fontFamily = NidavellirType.Data) },
+                                shape = NidavellirShapes.Chip,
+                            )
+                        }
+                        ForgeWorkingDirectorySelection(
+                            state = state,
+                            machine = selected.machine,
+                            enabled = fieldsEnabled,
+                            onChoose = actions.openWorkingDirectoryPicker,
+                            onRepair = actions.openExactWorkingDirectoryPicker,
+                        )
+                        forgeUnavailableCopy(selected)?.let { notice ->
+                            Text(
+                                bidiIsolate(notice.message),
+                                color = noticeToneColor(notice.tone),
+                                modifier = Modifier.semantics {
+                                    contentDescription = notice.message
+                                },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = state.form.optionalTmuxName,
+                        onValueChange = { value ->
+                            actions.updateDraft { it.copy(optionalTmuxName = value) }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                         enabled = fieldsEnabled,
-                        label = { Text(profile.label, fontFamily = NidavellirType.Data) },
-                        shape = NidavellirShapes.Chip,
+                        label = { Text("session name (optional)") },
+                        supportingText = { Text("leave blank to follow the terminal title.") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrectEnabled = false,
+                        ),
+                    )
+                    OutlinedTextField(
+                        value = state.form.objective,
+                        onValueChange = { value -> actions.updateDraft { it.copy(objective = value) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = fieldsEnabled,
+                        label = { Text("Objective (optional)") },
+                        minLines = 2,
+                        maxLines = 4,
                     )
                 }
-                FilterChip(
-                    selected = state.form.launch == LaunchChoice.Terminal,
-                    onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Terminal) } },
-                    enabled = fieldsEnabled,
-                    label = { Text("Terminal", fontFamily = NidavellirType.Data) },
-                    shape = NidavellirShapes.Chip,
+                GroupField(
+                    draft = state.form.group,
+                    labels = observedGroups(machines),
+                    enabled = !state.pending && (selected == null || selected.canMutate),
+                    maxSuggestionsHeight = maxSuggestionsHeight,
+                    onChange = { text -> actions.updateDraft { it.copy(group = GroupDraft.Chosen(text)) } },
                 )
+                when (val failure = state.failure) {
+                    ForgeFailure.None -> Unit
+                    is ForgeFailure.Definite -> Text(
+                        gatewayFailureMessage(failure.rejection),
+                        color = noticeToneColor(NoticeTone.Failure),
+                    )
+                }
             }
-            ForgeWorkingDirectorySelection(
-                state = state,
-                machine = selected.machine,
-                enabled = fieldsEnabled,
-                onChoose = actions.openWorkingDirectoryPicker,
-                onRepair = actions.openExactWorkingDirectoryPicker,
-            )
-            forgeUnavailableCopy(selected)?.let { notice ->
-                Text(
-                    bidiIsolate(notice.message),
-                    color = noticeToneColor(notice.tone),
-                    modifier = Modifier.semantics {
-                        contentDescription = notice.message
-                    },
-                )
-            }
-        }
-        OutlinedTextField(
-            value = state.form.optionalTmuxName,
-            onValueChange = { value ->
-                actions.updateDraft { it.copy(optionalTmuxName = value) }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = fieldsEnabled,
-            label = { Text("session name (optional)") },
-            supportingText = { Text("leave blank to follow the terminal title.") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = false,
-            ),
-        )
-        OutlinedTextField(
-            value = state.form.objective,
-            onValueChange = { value -> actions.updateDraft { it.copy(objective = value) } },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = fieldsEnabled,
-            label = { Text("Objective (optional)") },
-            minLines = 2,
-            maxLines = 4,
-        )
-        GroupField(
-            draft = state.form.group,
-            labels = observedGroups(machines),
-            enabled = !state.pending && (selected == null || selected.canMutate),
-            onChange = { text -> actions.updateDraft { it.copy(group = GroupDraft.Chosen(text)) } },
-        )
-        when (val failure = state.failure) {
-            ForgeFailure.None -> Unit
-            is ForgeFailure.Definite -> Text(
-                gatewayFailureMessage(failure.rejection),
-                color = noticeToneColor(NoticeTone.Failure),
-            )
         }
         Button(
             onClick = actions.submit,

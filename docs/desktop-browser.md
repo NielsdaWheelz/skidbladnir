@@ -6,8 +6,9 @@ that specification owns its qualification. earlier evidence below retains its
 recorded source boundary.
 
 2026-10-02: [searchable group entry](group-entry.md) specifies local group matching
-and explicit create/save actions after group. this accepted change is pending
-implementation; the delivery status below applies to the existing browser.
+and explicit create/save actions after group. source implements that contract;
+[qualification](group-entry.md#qualification) records the focused evidence.
+the broader browser delivery status below remains separate.
 
 implemented. one table with needs-input, all and group views, under a row-1 view strip,
 replaces pr 3's sidebar, agent list and session tabs; the reasoning is in §8.

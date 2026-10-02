@@ -388,7 +388,8 @@ content-free and credential-free. recording the plan supplies no runtime pass.
 
 ## qualification
 
-2026-10-02, isolated `session-views` worktree, based on `13f9ebc`. temporary
+2026-10-02, isolated `session-views` worktree, implementation `7de45db`, based
+on `13f9ebc`. temporary
 checks exercise production projections and owners, not another collection
 implementation. original-source probes fail on missing ready/notice membership,
 independent selection, obsolete desktop keys and ambiguous named tabs. observation
@@ -460,3 +461,17 @@ configuration and trust fixtures are removed before commit. the two phone test
 packages and temporary baseline worktree are removed; the ordinary debug apk
 contains no temporary trust assets. no production app installation or fleet
 deployment was performed.
+
+2026-10-02 merge integration: `main` at `6b4865e` adds the independently qualified
+[searchable group entry](group-entry.md#qualification). conflict resolution keeps
+that implementation and exclusive views; attention, controller and task-restoration
+owners are unchanged. full-scope `scripts/check verify` passes on the combined
+source. a temporary desktop model/client probe passes with the race detector for
+needs input, an empty named view with literal prefill, and all. suggestions come
+from retained scoped inventory even when the queue is empty; group acceptance
+dispatches nothing; the separate create action sends one request through the real
+fleet client to a test-owned https endpoint. repeated in-flight submission is
+suppressed. the modeled creation reply reveals the returned group when needed,
+selects its exact lifetime and schedules attachment; attachment is not executed.
+the probe and listener are removed. this integration step runs no tmux or device
+journey; the live/device evidence above retains its pre-integration source boundary.

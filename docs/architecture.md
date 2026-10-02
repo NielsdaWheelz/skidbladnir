@@ -1033,11 +1033,12 @@ source implements this design; observation, attention persistence/visits and
 exact control identities retain their existing owners. no crash/exit notification or
 notice-acknowledgement lifecycle is added.
 
-2026-10-02 accepted design: [searchable group entry](group-entry.md) adds local
+2026-10-02 source implemented: [searchable group entry](group-entry.md) adds local
 observed-label matching to desktop and phone creation/editing, with explicit
 desktop create/save actions after group. it owns the input contract, narrow
-implementation plan and acceptance. implementation is pending; membership,
-observation scope, transport and persistence retain their existing owners.
+implementation plan and acceptance; [qualification](group-entry.md#qualification)
+records the exercised boundaries. membership, observation scope, transport and
+persistence retain their existing owners.
 
 2026-10-01 accepted scope: [terminal attention](reply-notifications.md) replaces
 consecutive working-to-idle detection with durable device-local non-idle-to-idle
