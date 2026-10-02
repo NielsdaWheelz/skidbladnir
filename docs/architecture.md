@@ -274,10 +274,11 @@ creation, and content-free restoration contracts:
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
-- **Card presentation:** the operator-owned tmux name is the primary work
+- **Card presentation:** [session card](session-card.md) owns the card's
+  structure, actions and speech. the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
-  a fixed status facet is redundant decoration; the adjacent named status
-  bay remains the semantic and accessible source. the exclusive status/attention
+  the status line's leading facet is redundant decoration; the line's literal
+  label remains the semantic and accessible source. the exclusive status/attention
   label uses [observation §6](terminal-observation.md#6-content-attention-and-filtering)
   copy and tone; only `ready` is green.
   readiness is inferred, never proof of unseen text or completion.
@@ -286,16 +287,19 @@ creation, and content-free restoration contracts:
   remembers non-idle until idle, and actual output presentation acknowledges
   ready while preserving armed work. no human reply viewer or read receipt. recorded
   native identity is secondary and may differ from the terminal. the machine label
-  is quiet footer context in
+  leads the quiet `where` line (machine · directory) in
   `All`; a selected-machine filter supplies that visible context once, so its
   cards omit the repeated visual machine label while retaining machine identity
-  in accessibility and every routed or destructive action. The quiet footer
-  shows the configured runtime profile label for a proven runtime profile,
-  `<provider> · profile unknown` for an agent without one, or the launch
-  profile/unknown for a pane without an agent. It never substitutes launch
+  in accessibility and every routed or destructive action. The quiet `who` line
+  follows the dwarf signature with the configured runtime profile label for a
+  proven runtime profile, `<provider> · profile unknown` for an agent without
+  one, and no profile for a pane without an agent, whose status already reads
+  `terminal`. It never substitutes launch
   profile for missing runtime profile. Cwd abbreviation never changes its
   complete spoken value. the tracked conversation id is explicit; foreground
-  provider session name and PID stay off the card.
+  provider session name and PID stay off the card. a tap opens the terminal;
+  change group, send interrupt and both confirmed closures sit behind the
+  card's overflow and are mirrored as TalkBack custom actions.
 - Character normalization runs under the gateway's one mutation lock. Valid assignments are retained. Missing or
   invalid assignments use least-live-use selection with a stable
   server-epoch/session-id tie-break and one identity-guarded conditional tmux

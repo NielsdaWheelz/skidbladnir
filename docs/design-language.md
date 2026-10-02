@@ -11,7 +11,8 @@ current [testing policy](rules/testing.md).
 
 2026-09-15 accepted [groups](groups.md) target reuses these visual primitives for
 one compact dashboard selector, quiet full-span group headings, a literal card
-action, and a shared editor/forge field. no new palette, icon family, ornament,
+action (since 2026-10-02 the first row of the card's
+[overflow](session-card.md#actions)), and a shared editor/forge field. no new palette, icon family, ornament,
 animation, or terminal chrome. group labels retain authored case and use the
 existing body/data typography, never display-face capitalisation. this target's
 source is implemented; [hands-on acceptance](issues/groups-shells-hands-on.md)
@@ -223,12 +224,12 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
 - **Corners are cut, not rounded.** `CutCornerShape` everywhere a radius
   exists today. Facet unit: cards 10dp cut; chips and keys 4dp; sheets 12dp on
   the top corners only. All cuts are 45°.
-- **One shape is allowed to disagree with itself.** The kill control's `Cleft`
-  keeps the 4dp chip facet on three corners and cuts 14dp on the fourth
-  (top-start). It is the only asymmetric shape in the product and it is
-  reserved to destructive controls, which is what makes it legible as
+- **One shape is allowed to disagree with itself.** `Cleft` keeps the 4dp
+  chip facet on three corners and cuts 14dp on the fourth (top-start). It is
+  the only asymmetric shape in the product and it is reserved to the commit
+  button of a destructive confirmation, which is what makes it legible as
   meaning rather than as a mistake: architecture's guarantee that detach and
-  kill are visibly different actions has to survive greyscale, and §15
+  close are visibly different actions has to survive greyscale, and §15
   forbids the icon that would otherwise carry it. A second asymmetric shape
   would spend the distinction, so adding one reopens this clause.
 - **Portrait frames are octagons.** A square with all corners cut at 29% of
@@ -239,8 +240,9 @@ external 8-hue protocol that git/ripgrep/pytest assume exists.
   below the perceptual floor for a hairline outline, and not worth re-cutting
   every seal already struck. Whatever draws the octagon reads the same shipped constant
   the clip does, so a frame and its clip can never disagree.
-- **Activity facets are cut, never badged.** The fixed card facet reuses the
-  12dp cut-corner chip geometry. Activity has no unread marker or lozenge.
+- **Activity facets are cut, never badged.** The card's status line leads with
+  a 12dp facet in the cut-corner chip geometry. Activity has no unread marker
+  or lozenge.
 - **Faceting replaces gradients.** Where a surface needs richness, split it
   into 2–3 flat planes differing by one elevation step — the faceted-gemstone
   armor rule — never a smooth gradient or soft shadow.
@@ -342,7 +344,7 @@ covers ǫ, which appears solely in verbatim Old Norse.
 | --- | --- | --- | --- |
 | Display | Big Shoulders (condensed industrial gothic; caps, +4% tracking, weight 600–700) | Wordmark `SKÍÐBLAÐNIR`, screen titles, dwarf signatures on cards | Body copy, sentences |
 | UI body | System Roboto (deliberate: quiet, zero bytes, Android-native) | All running text, labels, buttons, errors | Display duty above `titleLarge` |
-| Data | JetBrains Mono (~293 KB variable) | Activity bays, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
+| Data | JetBrains Mono (~293 KB variable) | Status lines, freshness, cwd paths, session ids, key-deck labels, pressure numerals — every machine fact | Prose |
 | Scholarly | Junicode 2 (subset to the quotation repertoire) | Verbatim Old Norse only: Dvergatal stanza epigraphs in a future About/catalogue view | UI chrome, dynamic text |
 
 The Display role's caps direction applies only where the source is caps, such
@@ -358,9 +360,9 @@ catalogue casing.
   voice for everything tmux/proc reported — a quiet, honest bridge between
   the two surfaces.
 - **Work-first hierarchy** on the session card: tmux name (Data, largest and
-  highest contrast) → dwarf display-name signature (Display, smaller and
-  quieter) → named status bay → objective → directory and conditional
-  machine/profile context (Data, smallest, ≥ 11sp). A stepped decay around the
+  highest contrast) → named status line → objective → dwarf display-name
+  signature (Display, smaller and quieter) · runtime profile → conditional
+  machine · directory (Data, smallest, ≥ 11sp). A stepped decay around the
   operator's work label, not a flat metadata stack.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
   apps). Norse by Joël Carrouché is unusable (embedding rights ambiguous).
@@ -481,17 +483,20 @@ it as a red test, not an assumption.
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  work-first text stack (§9), fixed 12dp status facet at top right, then 48dp
-  seal beside the named status bay. Machine/profile form one quiet unbadged footer line;
-  machine renders there only in `All`.
-  Global grid order is architecture-owned.
-- **status bay**: 4dp cut corners, fill = status color at 18% over surface,
-  1dp hairline, literal sampled status label and terminal-inference qualifier,
-  JetBrains Mono caps ≥ 11sp. no transition age or unread signal. a plain pane
-  reads `TERMINAL`; stale accessibility names the last observation.
+  48dp seal at the start, then the work-first text stack (§9). Dwarf/profile
+  and machine/directory form two quiet unbadged lines; machine renders only in
+  `All`. Its verbs sit behind a drawn three-stud overflow whose menu is
+  RaisedSurface, Card cut, shadowless, with Ember destructive rows after a
+  hairline rule. [session card](session-card.md) owns its structure, actions
+  and speech. Global grid order is architecture-owned.
+- **status line**: unboxed; a leading status facet, then the literal sampled
+  status label, bold in the status tone, and an optional Muted detail, Data
+  face ≥ 11sp. no transition age or unread signal. the terminal-inference
+  qualifier is spoken, not drawn. a plain pane reads `terminal`; stale
+  accessibility names the last observation.
 - **status facet**: 12dp `Chip` shape, solid status color, no border, text or
-  semantics. the §12 spinner requires fresh working status; the named bay owns
-  meaning and accessibility.
+  semantics, inline as the status line's first glyph. the §12 spinner requires
+  fresh working status; the named label owns meaning and accessibility.
 - **Dashboard refresh boundary**: active-only 2dp Gold line, straight butt
   ends, transparent track, horizontally inset 12dp at the collection's top
   edge. Determinate while pulling and indeterminate while checking; absent at
@@ -562,7 +567,8 @@ GPL knot code; fonts outside §9's table without a license entry here.
 ## 17. component contracts
 
 the implemented component contracts are [terminal theme](terminal-theme.md),
-[chrome tokens](chrome-tokens.md), [dwarf seals](dwarf-seals.md),
+[chrome tokens](chrome-tokens.md), [session card](session-card.md),
+[dwarf seals](dwarf-seals.md),
 [ornament](ornament-pipeline.md), [forge seal](forge-seal.md),
 [destructive and notice chrome](destructive-chrome.md),
 [launcher mark](launcher-mark.md), [hlíðskjálf mark](hlidskjalf-mark.md),

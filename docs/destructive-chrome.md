@@ -16,6 +16,13 @@ MacBook-owned, and this run replaced the phone's pinned-signed install with a
 devbox debug-signed one, so `scripts/test platform` will refuse until a signed
 build is reinstalled from the MacBook.
 
+current [session card](session-card.md) owns the card's destructive
+presentation. since 2026-10-02 the card has no destructive control on its face:
+its closures are Ember rows after a hairline rule in the card's overflow, and
+`Cleft` survives only on the close confirmation's commit button. this delta's
+`KillButton` (later `CloseButton`) and the status bay it was measured against
+are retired; the body below is historical for both.
+
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including product language and the visibly-distinct detach/kill guarantee;
 [`design-language.md`](design-language.md) owns the visual values (§5 color,

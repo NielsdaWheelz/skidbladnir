@@ -225,7 +225,7 @@ internal fun DashboardMain(
         // every dashboard state including zero machines, where it is cold.
         // Absence is displayed, not hidden. The 16dp margin is the wrapper's,
         // not the seal's — padding threaded into ForgeSeal would grow its
-        // semantics bounds past its ink, and the grid's viewport clearance below is
+        // semantics bounds past its ink, and the grid's trailing clearance is
         // measured against those bounds.
         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             ForgeSeal(canForge = canForge, onClick = controller::openForge)
@@ -396,21 +396,26 @@ private fun DashboardDwarfGrid(
     onGroup: (SessionTarget) -> Unit,
 ) {
     val topPadding = 12.dp
-    // Reserve the seal's 16dp margin + 56dp target + 12dp gap outside the scroll
-    // viewport. Trailing content padding alone lets visible controls scroll under it.
-    BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 84.dp)) {
-        val emptyItemHeight = (maxHeight - topPadding).coerceAtLeast(0.dp)
+    // The Forge seal floats over the grid (forge-seal.md "Placement and
+    // semantics"): cards pass beneath it while scrolling, and the trailing
+    // clearance (16dp margin + 56dp seal + 12dp gap) lets the last row's
+    // overflow scroll clear of it.
+    val sealClearance = 84.dp
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val emptyItemHeight = (maxHeight - topPadding - sealClearance).coerceAtLeast(0.dp)
+        // One card per row on a phone; wider windows take further columns of the same card.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(170.dp),
+            columns = GridCells.Adaptive(300.dp),
             modifier = Modifier.fillMaxSize(),
             state = gridState,
             contentPadding = PaddingValues(
                 start = 12.dp,
                 top = topPadding,
                 end = 12.dp,
+                bottom = sealClearance,
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (items.isEmpty()) {
                 item(
@@ -439,6 +444,7 @@ private fun DashboardDwarfGrid(
                     items = items,
                     key = { it.key.encoded },
                     span = { if (it is DashboardItem.Heading) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+                    contentType = { it::class },
                 ) { item ->
                     when (item) {
                         is DashboardItem.Heading -> {
@@ -458,12 +464,12 @@ private fun DashboardDwarfGrid(
                                 state.machines,
                                 showMachineLabel = scope == DashboardScope.All,
                                 motionEnabled = motionEnabled,
+                                terminalControlPending = state.terminalControlPending,
                                 onOpen = { onOpen(visible.target) },
-                                onClose = { onClose(visible.target) },
+                                onGroup = { onGroup(visible.target) },
                                 onStop = { onStop(visible.target) },
                                 onTerminalClose = { onTerminalClose(visible.target) },
-                                terminalControlPending = state.terminalControlPending,
-                                onGroup = { onGroup(visible.target) },
+                                onClose = { onClose(visible.target) },
                             )
                         }
                     }

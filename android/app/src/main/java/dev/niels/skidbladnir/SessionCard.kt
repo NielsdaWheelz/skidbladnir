@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,19 +12,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,18 +35,28 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
-// M3's `Card(onClick)` hardcodes its internal ripple and never reads
-// LocalIndication, so the card is a plain Surface carrying the same
-// `clickable` the Card built for it — same click action, same merged
-// descendant semantics, same roleless node, same minimum interactive size —
-// with the angular press flash (docs/chrome-tokens.md "Interaction states").
+// The session card (docs/session-card.md): persona left, then four lines of
+// work: what (tmux name), state (status), who (dwarf signature and runtime
+// profile), where (host and directory). Verbs live behind the overflow. The
+// clickable body owns the card's whole spoken account in one node; the
+// overflow is its only sibling. M3's `Card(onClick)` hardcodes its ripple, so
+// the body is a plain clickable with the angular press flash
+// (docs/chrome-tokens.md "Interaction states").
 @Composable
 internal fun SessionCard(
     visibleSession: VisibleSession,
@@ -58,221 +64,232 @@ internal fun SessionCard(
     machines: List<MachineState>,
     showMachineLabel: Boolean,
     motionEnabled: Boolean,
+    terminalControlPending: Boolean,
     onOpen: () -> Unit,
-    onClose: () -> Unit,
+    onGroup: () -> Unit,
     onStop: () -> Unit,
     onTerminalClose: () -> Unit,
-    terminalControlPending: Boolean,
-    onGroup: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val session = visibleSession.target.session
     val snapshot = machine.inventory.lastSnapshot() ?: return
     val context = visibleSession.context
+    val terminalMachine = visibleSession.machine.label.text
     val notification = machine.notifications[NotificationKey(visibleSession.target)] ?: NotificationPresentation()
     val status = sessionStatusContent(session, machine.canMutate, notification)
     val tone = sessionStatusColor(status.tone)
+    val availability = sessionAvailabilityContent(machine)
+    val actions = listOf(SessionAction("change group", machine.canMutate, destructive = false, onGroup)) +
+        terminalLifetimeActions(machine.canMutate && !terminalControlPending, onStop, onTerminalClose, onClose)
+    // A plain pane has no runtime to name: its status line already reads `terminal`.
     val profile = when (context) {
         is ExecutionContext.Local -> sessionProfileLabel(session, snapshot.inventory.profiles)
-        is ExecutionContext.Remote -> remoteAgentLabel(context, machines)
-        ExecutionContext.RemoteUnknown -> "remote context unknown"
+        is ExecutionContext.Remote -> context.agent?.let { remoteAgentLabel(context, machines) }
+        ExecutionContext.RemoteUnknown -> null
     }
-    val visibleContext = when (context) {
-        is ExecutionContext.Local -> sessionFooterText(visibleSession.machine.label, profile, showMachineLabel)
-        is ExecutionContext.Remote -> "running on ${context.machine.label.text} · $profile · terminal on ${visibleSession.machine.label.text}"
-        ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on ${visibleSession.machine.label.text}"
+    val directory = when (context) {
+        is ExecutionContext.Local -> context.cwd
+        is ExecutionContext.Remote -> context.cwd
+        ExecutionContext.RemoteUnknown -> null
     }
-    Surface(
-        color = DeepSurface,
-        shape = NidavellirShapes.Card,
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = AngularIndication(NidavellirShapes.Card),
-                enabled = machine.canMutate,
-                onClick = onOpen,
-            ),
-    ) {
-        Column(
-            modifier = Modifier
-                .drawBehind {
-                    drawRect(color = Gold.copy(alpha = 0.25f), size = size.copy(height = 1.dp.toPx()))
-                }
-                .padding(10.dp),
-        ) {
-            SessionIdentityHeader(
-                tmuxName = session.tmuxName,
-                dwarfName = session.character.displayName,
-                working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
-                activityTone = tone,
-                animateActivity = machine.canMutate && motionEnabled,
-            )
+    // A machine filter already names the machine once, so a local card drops it
+    // from sight; speech and every routed action keep it.
+    val host = when (context) {
+        is ExecutionContext.Local -> terminalMachine.takeIf { showMachineLabel }
+        is ExecutionContext.Remote -> "running on ${context.machine.label.text} · terminal on $terminalMachine"
+        ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on $terminalMachine"
+    }
+    val shownDirectory = directory?.let(::abbreviatedDirectory)
+        ?: "directory unavailable".takeIf { context is ExecutionContext.Remote }
+    val density = LocalDensity.current
+    val facetSize = with(density) { 12.dp.toSp() }
+    val nameLineHeight = with(density) { MaterialTheme.typography.titleSmall.lineHeight.toDp() }
+    val spoken = buildString {
+        append("${session.tmuxName}. ${status.accessibilityLabel}. ${session.character.displayName}. ")
+        append(
+            when (context) {
+                is ExecutionContext.Local -> "Machine $terminalMachine."
+                is ExecutionContext.Remote -> "Running on ${context.machine.label.text}. Terminal on $terminalMachine."
+                ExecutionContext.RemoteUnknown -> "Remote context unknown. Terminal on $terminalMachine."
+            },
+        )
+        profile?.let { append(" Profile $it.") }
+        directory?.let { append(" Directory $it.") }
+        if (directory == null && context is ExecutionContext.Remote) append(" Directory unavailable.")
+        availability?.let { append(" ${it.label}.") }
+        session.objective?.let { append(" Objective: $it") }
+    }
+    Surface(color = DeepSurface, shape = NidavellirShapes.Card) {
+        Box(Modifier.drawBehind { drawRect(Gold.copy(alpha = 0.25f), size = size.copy(height = 1.dp.toPx())) }) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = AngularIndication(NidavellirShapes.Card),
+                        enabled = machine.canMutate,
+                        onClickLabel = "open terminal",
+                        onClick = onOpen,
+                    )
+                    .clearAndSetSemantics {
+                        contentDescription = spoken
+                        customActions = actions.filter(SessionAction::enabled).map { action ->
+                            CustomAccessibilityAction(action.label) {
+                                action.perform()
+                                true
+                            }
+                        }
+                    }
+                    // The end inset is the overflow's 48dp column: text never runs under it.
+                    .padding(start = CardPadding, top = CardPadding, end = 48.dp, bottom = CardPadding),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 DwarfPortrait(session.character)
-                SessionStatusBay(status = status, tone = tone, modifier = Modifier.weight(1f))
-            }
-            sessionAvailabilityContent(machine)?.let { availability ->
-                Text(
-                    availability.label,
-                    color = noticeToneColor(availability.tone),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-            status.secondary?.let {
-                Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data, modifier = Modifier.padding(top = 8.dp))
-            }
-            session.objective?.let {
-                Text(
-                    text = it,
-                    modifier = Modifier
-                        .padding(top = 8.dp),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            val directory = when (context) {
-                is ExecutionContext.Local -> context.cwd
-                is ExecutionContext.Remote -> context.cwd
-                ExecutionContext.RemoteUnknown -> null
-            }
-            directory?.let { directory ->
-                Text(
-                    text = abbreviatedDirectory(directory),
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .semantics { contentDescription = "Directory $directory" },
-                    color = Muted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                )
-            }
-            if (directory == null && context is ExecutionContext.Remote) {
-                Text("Directory unavailable", color = Muted,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 8.dp))
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = visibleContext,
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            contentDescription =
-                                "${visibleContext}." + (directory?.let { " Directory $it." } ?: "")
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = session.tmuxName,
+                        color = Bone,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontFamily = NidavellirType.Data,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // The facet is the status line's first glyph, so it holds the
+                    // first line at every font scale and wraps with the words. The
+                    // label never yields; the detail takes what width remains, so a
+                    // status change cannot reflow the list (session-card.md
+                    // invariant 10).
+                    Row {
+                        Text(
+                            text = buildAnnotatedString {
+                                appendInlineContent(FACET)
+                                append(" ")
+                                withStyle(SpanStyle(color = tone, fontWeight = FontWeight.Bold)) { append(status.label) }
+                            },
+                        inlineContent = mapOf(
+                            FACET to InlineTextContent(Placeholder(facetSize, facetSize, PlaceholderVerticalAlign.TextCenter)) {
+                                ActivityFacet(
+                                    working = session.agent != null &&
+                                        session.terminalStatus.activity == TerminalActivity.Working,
+                                    tone = tone,
+                                    animate = machine.canMutate && motionEnabled,
+                                )
+                            },
+                        ),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = NidavellirType.Data,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                        status.detail?.let {
+                            Text(
+                                text = " · $it",
+                                color = Muted,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = NidavellirType.Data,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                            )
+                        }
+                    }
+                    availability?.let { CardFact(it.label, noticeToneColor(it.tone)) }
+                    status.secondary?.let { CardFact(it, Muted) }
+                    session.objective?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    // Who: the dwarf signs in the display face; its runtime follows as a machine fact.
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(
+                                SpanStyle(
+                                    fontFamily = NidavellirType.Display,
+                                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
+                                ),
+                            ) { append(session.character.displayName) }
+                            profile?.let { append(" · $it") }
                         },
-                )
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-
-                    GroupTextAction(
-                        label = "change group", enabled = machine.canMutate, onClick = onGroup,
-                        description = "change group for ${session.tmuxName} on ${visibleSession.machine.label.text}: " +
-                            (session.group?.text ?: "unassigned"),
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = NidavellirType.Data,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    GroupTextAction(
-                        label = TERMINAL_STOP_ACTION, enabled = machine.canMutate && !terminalControlPending, onClick = onStop,
-                        description = "send one interrupt to the selected pane of ${session.tmuxName} on ${visibleSession.machine.label.text}; stopping is unconfirmed",
-                    )
-                    GroupTextAction(
-                        label = TERMINAL_ONLY_CLOSE_ACTION, enabled = machine.canMutate && !terminalControlPending, onClick = onTerminalClose,
-                        description = closeActionLabel(visibleSession.machine.label, visibleSession.target, terminalOnly = true),
-                    )
-                    CloseButton(
-                        machineLabel = visibleSession.machine.label,
-                        target = visibleSession.target,
-                        enabled = machine.canMutate && !terminalControlPending,
-                        onClick = onClose,
-                    )
+                    // Where: the host never yields to the path; the path yields from
+                    // its head, so the segment that names the work stays legible.
+                    if (host != null || shownDirectory != null) {
+                        Row(Modifier.fillMaxWidth()) {
+                            host?.let { CardFact(if (shownDirectory != null) "$it · " else it, Muted) }
+                            shownDirectory?.let {
+                                CardFact(it, Muted, Modifier.weight(1f, fill = false), TextOverflow.StartEllipsis)
+                            }
+                        }
+                    }
                 }
             }
+            SessionActionsButton(
+                spokenName = "session actions for ${session.tmuxName} on $terminalMachine",
+                actions = actions,
+                modifier = Modifier.align(Alignment.TopEnd),
+                markCenterY = CardPadding + nameLineHeight / 2,
+            )
         }
     }
 }
 
-internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileChoice>): String {
-    val agent = session.agent
-    return if (agent != null) {
-        agent.profile?.let { runtimeProfile ->
-            profiles.single {
-                it.key == runtimeProfile && it.provider == agent.provider
-            }.label
-        } ?: when (agent.provider) {
-            AgentProvider.Codex -> "Codex · profile unknown"
-            AgentProvider.Claude -> "Claude · profile unknown"
-        }
-    } else {
-        "terminal"
-    }
-}
-
-internal fun sessionFooterText(machine: MachineLabel, profile: String, showMachineLabel: Boolean): String =
-    if (showMachineLabel) "${machine.text} · $profile" else profile
+private val CardPadding = 10.dp
+private const val FACET = "facet"
 
 @Composable
-private fun SessionIdentityHeader(
-    tmuxName: String,
-    dwarfName: String,
-    working: Boolean,
-    activityTone: Color,
-    animateActivity: Boolean,
+private fun CardFact(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = tmuxName,
-                color = Bone,
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = NidavellirType.Data,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = dwarfName,
-                color = Muted,
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = NidavellirType.Display,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        ActivityFacet(working, activityTone, animateActivity)
+    Text(
+        text = text,
+        color = color,
+        style = MaterialTheme.typography.labelSmall,
+        fontFamily = NidavellirType.Data,
+        maxLines = 1,
+        overflow = overflow,
+        modifier = modifier,
+    )
+}
+
+internal fun sessionProfileLabel(session: TmuxSession, profiles: List<ProfileChoice>): String? {
+    val agent = session.agent ?: return null
+    return agent.profile?.let { runtimeProfile ->
+        profiles.single {
+            it.key == runtimeProfile && it.provider == agent.provider
+        }.label
+    } ?: when (agent.provider) {
+        AgentProvider.Codex -> "Codex · profile unknown"
+        AgentProvider.Claude -> "Claude · profile unknown"
     }
 }
 
+// The status line's leading facet: colour-only decoration beside the literal
+// label, which owns meaning and speech. Fresh working status alone turns its
+// notch (design-language.md §12).
 @Composable
 private fun ActivityFacet(
     working: Boolean,
     tone: Color,
     animate: Boolean,
 ) {
-    val active = working
     val modifier = Modifier
-        .size(12.dp)
+        .fillMaxSize()
         .clip(NidavellirShapes.Chip)
-    if (!active || !animate) {
+    if (!working || !animate) {
         Box(modifier.background(tone))
         return
     }
@@ -300,38 +317,6 @@ private fun ActivityFacet(
                 color = DeepSurface,
                 style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Butt, join = StrokeJoin.Miter),
             )
-        }
-    }
-}
-
-@Composable
-private fun SessionStatusBay(status: SessionStatusContent, tone: Color, modifier: Modifier = Modifier) {
-    Surface(
-        color = tone.copy(alpha = 0.18f),
-        shape = NidavellirShapes.Chip,
-        border = BorderStroke(1.dp, tone),
-        modifier = modifier
-            .clearAndSetSemantics { contentDescription = status.accessibilityLabel },
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .padding(horizontal = 3.dp, vertical = 4.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Column {
-            Text(
-                text = status.label,
-                color = tone,
-                style = MaterialTheme.typography.labelLarge,
-                fontFamily = NidavellirType.Data,
-                fontWeight = FontWeight.Bold,
-            )
-            status.detail?.let {
-                Text(it, color = tone, style = MaterialTheme.typography.labelSmall, fontFamily = NidavellirType.Data)
-            }
-            }
         }
     }
 }

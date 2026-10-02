@@ -593,8 +593,8 @@ internal fun changeForgeDraft(current: ForgeForm, proposed: ForgeForm): ForgeFor
 internal fun forgeActionLabel(label: MachineLabel): String = "Create on ${label.text}"
 
 /**
- * Single owner of destructive copy: the action label is also the screen-reader description of every
- * close control, so the spoken description and the dialog title cannot name different sessions.
+ * Single owner of destructive copy: the close confirmation's title and body name the verb and its
+ * exact target from this one string, so the dialog cannot name a different session from the one acted on.
  */
 internal fun closeActionLabel(label: MachineLabel, target: SessionTarget, terminalOnly: Boolean = false): String =
     "${if (terminalOnly) TERMINAL_ONLY_CLOSE_ACTION else TERMINAL_CLOSE_ACTION}: ${target.session.tmuxName} on ${label.text}"
@@ -970,8 +970,11 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
 internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
+// `detail` tells one session's state from another's; `evidence` names how status was
+// known. The card shows only the first, since the qualifier is the same on every agent card.
 internal data class SessionStatusContent(
-    val label: String, val accessibilityLabel: String, val detail: String?, val tone: SessionStatusTone, val secondary: String?,
+    val label: String, val accessibilityLabel: String, val detail: String?, val evidence: String?,
+    val tone: SessionStatusTone, val secondary: String?,
 )
 
 /**
@@ -1018,11 +1021,8 @@ internal fun sessionStatusContent(session: TmuxSession, fresh: Boolean, notifica
         label,
         label + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
             (secondary?.let { "; $it" } ?: ""),
-        when {
-            workContinues -> "work continues · inferred from terminal"
-            inferred -> "inferred from terminal"
-            else -> session.activeCommand.takeIf { session.connection == null }
-        },
+        if (workContinues) "work continues" else session.activeCommand.takeIf { !inferred && session.connection == null },
+        if (inferred) "inferred from terminal" else null,
         if (fresh) tone else SessionStatusTone.Muted, secondary,
     )
 }

@@ -156,9 +156,9 @@ alias, nullable member, alternate registration, dual decoder, schema version,
 or compatibility path exists. Gateway mapping and Android ingress validate
 the provider/profile relationship exhaustively.
 
-The compact card footer renders the runtime profile when proven, otherwise
-`<provider> · profile unknown`; without an agent it renders the launch profile
-when known, otherwise `profile unknown`. Provider ids, provider names, and PID
+The [session card](session-card.md)'s `who` line renders the runtime profile
+when proven, otherwise `<provider> · profile unknown`; without an agent it
+renders no profile. Provider ids, provider names, and PID
 stay off android cards; they add no badge, state bay, raw-id label or action
 there. desktop details may show the accepted provider-session facts.
 

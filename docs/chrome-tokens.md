@@ -10,7 +10,11 @@ MacBook-owned); the hands-on pass (incl. the Forge warm-in) stays
 current [agent control](agent-control.md) owns sampled status and its presentation.
 this delivery plan's earlier status labels/colors and attention badge are
 historical. the token owner, shapes, typography, target sizes and non-state
-chrome remain current.
+chrome remain current. the status bay, the separate status facet and the card's
+kill/close control are retired: since 2026-10-02
+[session card](session-card.md) owns the card's status line, its leading facet
+and its destructive presentation (Ember overflow rows after a rule; `Cleft`
+only on the close confirmation's commit button).
 
 [`architecture.md`](architecture.md) owns product behavior and acceptance —
 including literal labels, 48dp targets and current agent status; [`design-language.md`](design-language.md) owns the visual values
