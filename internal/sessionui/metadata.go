@@ -13,6 +13,8 @@ import (
 type metadataEditor struct {
 	request      fleetclient.Request
 	draft        string
+	selection    groupSelection
+	saveFocused  bool
 	checking     bool
 	acknowledged bool
 	failure      *fleetclient.Failure
@@ -51,6 +53,8 @@ func (m *model) openMetadata(operation string) {
 		editor.request.ExpectedNaming = &naming
 		editor.draft = row.session.Name
 		m.page = "name-edit"
+	} else {
+		editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
 	}
 	m.metadata = editor
 	m.inform("")
@@ -68,26 +72,59 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 	if editor.checking {
 		return nil
 	}
-	switch key.String() {
-	case "enter", "ctrl+s", "ctrl+a":
-		current := m.rowForReference(editor.request.Ref)
-		if current == nil || !current.available {
-			m.inform("session unavailable; refresh before saving")
+	previousDraft := editor.draft
+	if editor.request.Operation == "group" {
+		switch key.String() {
+		case "tab", "enter":
+			if !editor.saveFocused {
+				draft, err := editor.selection.accept(editor.draft)
+				if err != nil {
+					m.fail(group.ErrInvalid.Error())
+					return nil
+				}
+				editor.draft, editor.saveFocused = draft, true
+				editor.selection.prefill(draft, m.groupChoices(draft))
+				return nil
+			}
+			if key.String() == "tab" {
+				editor.saveFocused = false
+				editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
+				return nil
+			}
+		case "shift+tab":
+			editor.saveFocused = !editor.saveFocused
+			if !editor.saveFocused {
+				editor.selection.prefill(editor.draft, m.groupChoices(editor.draft))
+			}
 			return nil
 		}
+		if editor.saveFocused && key.String() != "enter" && key.String() != "ctrl+s" {
+			return nil
+		}
+	}
+	switch key.String() {
+	case "enter", "ctrl+s", "ctrl+a":
 		if editor.request.Operation == "group" {
 			if key.String() == "ctrl+a" {
 				return nil
 			}
 			label, err := group.ParseDraft(editor.draft)
 			if err != nil {
+				editor.saveFocused = false
 				m.fail(group.ErrInvalid.Error())
 				return nil
 			}
-			if current.session.Group == label {
+			editor.request.Group = label
+		}
+		current := m.rowForReference(editor.request.Ref)
+		if current == nil || !current.available {
+			m.inform("session unavailable; refresh before saving")
+			return nil
+		}
+		if editor.request.Operation == "group" {
+			if current.session.Group == editor.request.Group {
 				return nil
 			}
-			editor.request.Group = label
 		} else {
 			naming := fleetclient.Naming{Mode: "manual", Name: editor.draft}
 			if key.String() == "ctrl+a" {
@@ -111,7 +148,7 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 		editor.draft = ""
 	case "left", "right":
 		if editor.request.Operation == "group" {
-			editor.draft = m.nextGroupDraft(editor.draft, key.String() == "left")
+			editor.selection.cycle(m.groupChoices(editor.draft), key.String() == "left")
 		}
 	case "backspace":
 		if editor.draft != "" {
@@ -120,6 +157,9 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 		}
 	default:
 		editor.draft += key.Text
+	}
+	if editor.request.Operation == "group" && (editor.draft != previousDraft || key.String() == "ctrl+u") {
+		editor.selection.reset(editor.draft, m.groupChoices(editor.draft))
 	}
 	return nil
 }
