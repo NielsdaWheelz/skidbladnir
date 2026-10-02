@@ -2,6 +2,7 @@ package dev.niels.skidbladnir
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -45,7 +46,12 @@ class MainActivity : ComponentActivity() {
         dashboardEntry.install(savedStateRegistry)
         controller = SkidbladnirController(applicationContext, dashboardEntry)
         scanner = FleetScanner(this)
-        enableEdgeToEdge()
+        // The app is dark whatever the system theme, so the system bars always
+        // draw light content over the strata painted beneath them.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         setContent {
             NidavellirTheme {
                 Surface(

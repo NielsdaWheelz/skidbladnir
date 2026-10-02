@@ -517,9 +517,11 @@ names the target and sends
 ownership, and h/d/p proof contracts. `POST /v1/sessions/{tmuxId}/shell` accepts
 only `{identityToken}`. the host samples current pane cwd and local group,
 guards creation by session lifetime, then returns a new independent session.
-tui `T` (shift+t) and the android attach-header action create once and attach the returned
-reference; source name or agent replacement does not retarget the operation.
+tui `T` (shift+t) and, on a local pane, the android session sheet's
+`new terminal on <owner>` create once and attach the returned reference;
+source name or agent replacement does not retarget the operation.
 the action is unavailable while the source pane is an ssh/mosh transport;
+there the phone row opens the source-scoped forge instead;
 remote cwd never becomes authority for local creation.
 one-shot launch failure may follow session creation; no shell-readiness promise,
 automatic retry, or persistent creation receipt exists. desktop detach leaves the
@@ -999,11 +1001,13 @@ enum values are defects, with no protocol branch or compatibility state.
   browser-clipboard, persistence, or clipboard-read capability. The closed
   implementation and proof boundary is
   [`terminal-selection-copy.md`](terminal-selection-copy.md).
-- The terminal header always names machine and session; its middle identity
-  block is the literal Rename control and retains separate presence state.
-  Context/navigation and actions use separate rows, so close text cannot consume
-  the name control's width; existing viewport measurement absorbs their height. At
-  most one active phone terminal exists, and its connection owns one exact
+- The terminal's top chrome is one rail row: `Detach`, then the session
+  identity (tmux name over execution host, terminal owner when remote, and
+  presence), which opens the session sheet. The sheet holds status and context,
+  rename, new terminal, text size, interrupt and both closures, each routed to
+  its existing owner. No second row exists, and the rail's height never
+  depends on state; [terminal chrome](terminal-chrome.md) owns the contract.
+  At most one active phone terminal exists, and its connection owns one exact
   `SessionTarget`;
   reconnect re-reads that machine before opening WSS.
   Identity change closes the active terminal and disables that pairing until

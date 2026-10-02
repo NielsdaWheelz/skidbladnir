@@ -1,34 +1,39 @@
 package dev.niels.skidbladnir
 
 import android.view.WindowInsets as PlatformWindowInsets
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -37,16 +42,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
@@ -64,136 +72,39 @@ internal fun TerminalScreen(
             ),
         )
     }
+    var sessionSheet by remember(state.attempt) { mutableStateOf(false) }
     val inputAdmissible = terminalInputAdmissible(state.connection, state.viewport)
     val recovering = terminalPageLive(state.connection) && state.viewport == TerminalViewport.TooSmall
     val execution = state.machine.executionContext(state.target.session)
+    val owner = state.machine.machine.label.text
+    // Where typed input runs, which is the rail's one safety fact: an ssh/mosh
+    // pane executes on its destination, never on the machine owning the pane.
+    val place = when (execution) {
+        is ExecutionContext.Local -> owner
+        is ExecutionContext.Remote -> "${execution.machine.label.text} via $owner"
+        ExecutionContext.RemoteUnknown -> "remote via $owner"
+    }
+    val presence = terminalPresence(state.connection)
 
+    // The screen is the sole inset owner: the rail pads the status bar and a
+    // band under the deck fills the navigation bar or keyboard inset, so both
+    // strata reach the top and bottom edges and the terminal keeps the space
+    // between. Side insets stay Ink.
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Ink)
-            .systemBarsPadding()
-            .imePadding(),
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            HeaderChip(
-                label = "‹",
-                spokenName = "Detach",
-                enabled = true,
-                onClick = onDetach,
-                modifier = Modifier.width(48.dp),
-            )
-            TerminalRenameControl(
-                machine = state.machine.machine,
-                target = state.target,
-                presence = terminalPresence(state),
-                presenceColor = terminalPresenceColor(state.connection),
-                enabled = terminalActionAdmissible(state.machine.canMutate, state.connection),
-                onClick = controller::openRename,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val shellEnabled = !state.shellPending && state.close == null && state.rename == null &&
-                terminalActionAdmissible(state.machine.canMutate, state.connection)
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                HeaderChip(
-                    label = "", spokenName = "new terminal on ${state.machine.machine.label.text}", enabled = shellEnabled,
-                    onClick = if (state.target.session.connection == null) controller::newTerminalHere
-                              else controller::openSourceTerminalForge,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Canvas(Modifier.size(24.dp)) {
-                    val color = if (shellEnabled) Gold else Muted
-                    val stroke = 1.5.dp.toPx()
-                    val unit = size.width / 24f
-                    drawRect(color, Offset(2 * unit, 3 * unit), Size(16 * unit, 15 * unit), style = Stroke(stroke))
-                    drawLine(color, Offset(5 * unit, 7 * unit), Offset(8 * unit, 10 * unit), stroke)
-                    drawLine(color, Offset(8 * unit, 10 * unit), Offset(5 * unit, 13 * unit), stroke)
-                    drawLine(color, Offset(10 * unit, 13 * unit), Offset(14 * unit, 13 * unit), stroke)
-                    drawRect(DeepSurface, Offset(15 * unit, 13 * unit), Size(9 * unit, 11 * unit))
-                    drawLine(color, Offset(19 * unit, 14 * unit), Offset(19 * unit, 22 * unit), stroke)
-                    drawLine(color, Offset(15 * unit, 18 * unit), Offset(23 * unit, 18 * unit), stroke)
-                }
-            }
-            HeaderChip(
-                label = "A",
-                spokenName = "Terminal text size",
-                enabled = state.textSize is TerminalTextSizeState.Ready &&
-                    terminalPageLive(state.connection),
-                onClick = controller::openTextSize,
-                modifier = Modifier.width(48.dp),
-            )
-            var expanded by remember(state.attempt) { mutableStateOf(false) }
-            val actionsEnabled = !state.terminalControlPending && state.close == null && state.rename == null &&
-                terminalActionAdmissible(state.machine.canMutate, state.connection)
-            Box {
-                HeaderChip(
-                    label = "⋯", spokenName = "terminal actions for ${state.target.session.tmuxName} on ${state.machine.machine.label.text}",
-                    enabled = actionsEnabled,
-                    onClick = { expanded = true }, modifier = Modifier.width(48.dp),
-                )
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    terminalLifetimeActions(
-                        actionsEnabled,
-                        onStop = { controller.stopTerminal(state.target) },
-                        onTerminalClose = { controller.requestTerminalClose(state.target) },
-                        onClose = { controller.requestClose(state.target) },
-                    ).forEach { action ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(action.label, color = if (action.destructive && action.enabled) noticeToneColor(NoticeTone.Failure) else Color.Unspecified)
-                            },
-                            onClick = {
-                                expanded = false
-                                action.perform()
-                            },
-                            enabled = action.enabled,
-                        )
-                    }
-                }
-            }
-        }
-        val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
-        val content = sessionStatusContent(state.target.session, state.machine.canMutate, notification)
-        Text(listOfNotNull(content.label, content.detail, content.evidence).joinToString(" · "), color = sessionStatusColor(content.tone), style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                .clearAndSetSemantics { contentDescription = content.accessibilityLabel })
-        if (state.target.session.conversation != null) {
-            Text("recorded native conversation; may differ from terminal", color = Muted, style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-        }
-        content.secondary?.let {
-            Text(it, color = Muted, style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
-        }
-        if (execution !is ExecutionContext.Local) {
-            val description = when (execution) {
-                is ExecutionContext.Remote ->
-                    "Running on ${execution.machine.label.text}. Terminal on ${state.machine.machine.label.text}. " +
-                        "${remoteAgentLabel(execution, state.machines)}. " +
-                        (execution.cwd?.let { "Directory $it." } ?: "Directory unavailable.")
-                ExecutionContext.RemoteUnknown ->
-                    "Remote context unknown. Terminal on ${state.machine.machine.label.text}."
-                is ExecutionContext.Local -> error("local execution already excluded")
-            }
-            Text(description, color = Muted, style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
-                    .semantics { contentDescription = description })
-        }
+        TerminalRail(
+            name = state.target.session.tmuxName,
+            place = place,
+            presence = presence,
+            presenceColor = terminalPresenceColor(state.connection),
+            spokenName = "${state.target.session.tmuxName} on $place, $presence",
+            onDetach = onDetach,
+            onSession = { sessionSheet = true },
+        )
 
         // The recovery overlay sits over the terminal area and the key deck
         // together, so it never changes the WebView's measured bounds and its
@@ -292,8 +203,27 @@ internal fun TerminalScreen(
                 TerminalTooSmall(onTextSize = controller::openTextSize)
             }
         }
+        // The deck's ground continues under the navigation bar or keyboard.
+        // A separate band, not deck padding, so the recovery overlay above
+        // stays bounded by the visible area and its actions remain reachable.
+        Spacer(
+            Modifier
+                .fillMaxWidth()
+                .background(RaisedSurface)
+                .windowInsetsBottomHeight(WindowInsets.safeDrawing),
+        )
     }
 
+    if (sessionSheet) {
+        TerminalSessionSheet(
+            state = state,
+            execution = execution,
+            place = place,
+            presence = presence,
+            controller = controller,
+            onDismiss = { sessionSheet = false },
+        )
+    }
     state.close?.let { close ->
         CloseConfirmation(
             state = close,
@@ -323,6 +253,220 @@ internal fun TerminalScreen(
             onReset = controller::resetTextSize,
             onDismiss = controller::dismissTextSize,
         )
+    }
+}
+
+// The whole top chrome: one stratum, one row. Detach leads; the rest of the
+// row is the session's identity and opens the session sheet, which holds
+// every rarer fact and action. Nothing here may grow a second row: the
+// terminal takes every pixel the rail and the deck leave (terminal-chrome.md).
+@Composable
+private fun TerminalRail(
+    name: String,
+    place: String,
+    presence: String,
+    presenceColor: Color,
+    spokenName: String,
+    onDetach: () -> Unit,
+    onSession: () -> Unit,
+) {
+    Surface(color = DeepSurface, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = AngularIndication(NidavellirShapes.Chip),
+                        role = Role.Button,
+                        onClick = onDetach,
+                    )
+                    .minimumInteractiveComponentSize()
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Detach", color = Gold, style = MaterialTheme.typography.labelLarge)
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = AngularIndication(NidavellirShapes.Chip),
+                        role = Role.Button,
+                        onClickLabel = "open session actions",
+                        onClick = onSession,
+                    )
+                    .clearAndSetSemantics {
+                        contentDescription = spokenName
+                    }
+                    .heightIn(min = 48.dp)
+                    .padding(start = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = name,
+                        color = Bone,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = NidavellirType.Data,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // The host truncates before presence does, and only an
+                    // anomaly spends colour: the resting state stays Muted.
+                    Row {
+                        Text(
+                            text = place,
+                            color = Muted,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = NidavellirType.Data,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(
+                            text = " · $presence",
+                            color = presenceColor,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = NidavellirType.Data,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                Text(
+                    text = "⋯",
+                    color = Gold,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+// Everything the rail does not show. Rows reuse the existing sheets and
+// confirmations rather than re-rendering them, so each action keeps exactly
+// one owner; this sheet only routes to it.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalSessionSheet(
+    state: SkidbladnirUiState.Terminal,
+    execution: ExecutionContext,
+    place: String,
+    presence: String,
+    controller: SkidbladnirController,
+    onDismiss: () -> Unit,
+) {
+    val owner = state.machine.machine.label.text
+    val session = state.target.session
+    val notification = state.machine.notifications[NotificationKey(state.target)] ?: NotificationPresentation()
+    val status = sessionStatusContent(session, state.machine.canMutate, notification)
+    val actionAdmissible = terminalActionAdmissible(state.machine.canMutate, state.connection)
+    // A reconciling rename keeps `rename` set after its sheet hides; every row
+    // whose controller entry would then refuse is disabled, never silently inert.
+    val sheetFree = state.close == null && state.rename == null
+    val renameEnabled = sheetFree && actionAdmissible
+    val actionsEnabled = !state.terminalControlPending && sheetFree && actionAdmissible
+    val shellEnabled = !state.shellPending && sheetFree && actionAdmissible
+    val textSize = state.textSize
+    val context = when (execution) {
+        is ExecutionContext.Local -> null
+        is ExecutionContext.Remote -> listOfNotNull(
+            "running on ${execution.machine.label.text}",
+            execution.agent?.let { remoteAgentLabel(execution, state.machines) },
+            "terminal on $owner",
+        ).joinToString(" · ")
+        ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on $owner"
+    }
+    // An unknown remote context has no directory claim to make, not a missing one.
+    val directory = when (execution) {
+        is ExecutionContext.Local -> "directory ${execution.cwd ?: "unavailable"}"
+        is ExecutionContext.Remote -> "directory ${execution.cwd ?: "unavailable"}"
+        ExecutionContext.RemoteUnknown -> null
+    }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = NidavellirShapes.Sheet,
+        containerColor = DeepSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                // 4dp here plus each row's own 16dp puts every label, fact and
+                // action on the sheets' common 20dp text edge.
+                .padding(horizontal = 4.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = session.tmuxName,
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = NidavellirType.Data,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp).semantics { heading() },
+            )
+            Text(
+                text = buildAnnotatedString {
+                    append("$place · ")
+                    withStyle(SpanStyle(color = terminalPresenceColor(state.connection))) { append(presence) }
+                },
+                color = Muted,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = NidavellirType.Data,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Text(
+                text = listOfNotNull(status.label, status.detail, status.evidence).joinToString(" · "),
+                color = sessionStatusColor(status.tone),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = NidavellirType.Data,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 8.dp)
+                    .clearAndSetSemantics { contentDescription = status.accessibilityLabel },
+            )
+            listOfNotNull(
+                context,
+                directory,
+                "recorded native conversation; may differ from terminal".takeIf { session.conversation != null },
+                status.secondary,
+            ).forEach { line ->
+                Text(line, color = Muted, style = MaterialTheme.typography.labelMedium, fontFamily = NidavellirType.Data,
+                    modifier = Modifier.padding(horizontal = 16.dp))
+            }
+            Column(Modifier.padding(top = 12.dp)) {
+                // The card's lifetime verbs follow the session's own, through
+                // the card's rows (SessionActions.kt), so order, labels and
+                // tone cannot drift between the two surfaces.
+                SessionActionRows(
+                    listOf(
+                        SessionAction("rename", renameEnabled, destructive = false, controller::openRename),
+                        SessionAction("new terminal on $owner", shellEnabled, destructive = false,
+                            if (session.connection == null) controller::newTerminalHere else controller::openSourceTerminalForge),
+                        SessionAction(
+                            if (textSize is TerminalTextSizeState.Ready) "text size · ${textSize.nominalSp}" else "text size",
+                            sheetFree && textSize is TerminalTextSizeState.Ready && terminalPageLive(state.connection),
+                            destructive = false,
+                            controller::openTextSize,
+                        ),
+                    ) + terminalLifetimeActions(
+                        actionsEnabled,
+                        onStop = { controller.stopTerminal(state.target) },
+                        onTerminalClose = { controller.requestTerminalClose(state.target) },
+                        onClose = { controller.requestClose(state.target) },
+                    ),
+                    dismiss = onDismiss,
+                )
+            }
+        }
     }
 }
 
@@ -517,21 +661,23 @@ private fun ReconnectPanel(
     }
 }
 
-private fun terminalPresence(state: SkidbladnirUiState.Terminal): String = when (val connection = state.connection) {
-    TerminalUiStatus.Verifying -> "Verifying machine and session"
-    TerminalUiStatus.Preparing -> "Preparing a fresh attachment"
-    TerminalUiStatus.Connecting -> "Connecting"
-    is TerminalUiStatus.ReconnectRequired -> "Input frozen"
+// Terse because the terminal area's own overlays carry the full sentences.
+private fun terminalPresence(connection: TerminalUiStatus): String = when (connection) {
+    TerminalUiStatus.Verifying -> "verifying"
+    TerminalUiStatus.Preparing -> "preparing"
+    TerminalUiStatus.Connecting -> "connecting"
+    is TerminalUiStatus.ReconnectRequired -> "input frozen"
     is TerminalUiStatus.Connected -> {
         val clients = connection.attachedClients
         "$clients ${if (clients == 1) "client" else "clients"}"
     }
 }
 
+// Transit is absence, not an armed recovery, so only frozen input is coloured.
 private fun terminalPresenceColor(connection: TerminalUiStatus): Color = when (connection) {
-    is TerminalUiStatus.Connected -> Moss
     is TerminalUiStatus.ReconnectRequired -> noticeToneColor(NoticeTone.Failure)
-    TerminalUiStatus.Preparing, TerminalUiStatus.Verifying, TerminalUiStatus.Connecting -> Gold
+    is TerminalUiStatus.Connected, TerminalUiStatus.Preparing, TerminalUiStatus.Verifying,
+    TerminalUiStatus.Connecting -> Muted
 }
 
 internal fun terminalReconnectSafetyCopy(machineLabel: MachineLabel): String =

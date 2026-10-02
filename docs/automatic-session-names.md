@@ -12,7 +12,7 @@ phone acceptance passed on the separately approved physical device.
 
 ## outcome and scope
 
-- `session_name` is the only session name. cards, terminal headers, desktop
+- `session_name` is the only session name. cards, the terminal rail and session sheet, desktop
   tables and tmux display that actual name; there is no display alias.
 - names flow from the running program's terminal title into skid. skid changes
   only the tmux session name; it never sets pane titles, process/tui names or
@@ -80,9 +80,10 @@ two-line card name, ellipsis, full accessible label, literal machine context,
 48dp controls and inline errors. no second session name, success toast, new icon
 or announcement on every title tick. retain recorded native conversation-id
 disclosure; it describes a separate control target, not another session name.
-the terminal header separates context/navigation from actions into two rows;
-close text cannot consume the weighted name control's space. existing viewport
-measurement absorbs the height; do not force a terminal size or shrink text.
+the terminal rail gives the name its weighted space and ellipsizes it visually
+while the spoken name stays complete; rename lives in the session sheet
+([terminal chrome](terminal-chrome.md)). do not force a terminal size or shrink
+text.
 
 ## ownership and state
 
@@ -283,7 +284,7 @@ reconciling retains the unresolved operation, including automatic reset.
 manual success reconciles by lifetime plus manual mode and desired name;
 automatic success by lifetime plus automatic mode, not by a predicted title.
 a later writer wins; show fresh truth, retain the draft for review, never replay.
-update same-lifetime terminal headers from inventory; remove name equality from
+update the same-lifetime terminal rail and session sheet from inventory; remove name equality from
 phone attachment admission/reconnect. keep existing stale-inventory restrictions.
 
 replace name sorting with numeric tmux session-id order inside existing
@@ -302,7 +303,7 @@ update help/return-address examples to use handles or exact refs.
 | marker records current ownership only | external rename-away-and-back between samples is undetectable |
 | preserve old/unmarked sessions as manual | existing generated names require explicit automatic selection |
 | stable session-id order | alphabetical session-name ordering is removed |
-| separate terminal context and action rows | at least 48dp of additional header height; large action labels may wrap, and existing viewport sizing absorbs the space |
+| one terminal rail; rename in the session sheet | renaming costs one more tap; long names ellipsize in the rail |
 | short live selectors plus existing exact refs | short selectors need complete scoped inventory and have the stated collision limit |
 | provider-owned conversation names | new codex sessions have no native card binding; useful terminal titles remain provider-dependent |
 | ordinary remote codex startup | without configured overrides, stock tui policy is read-only rather than the former private pre-creation default; configured permission arguments remain intact |

@@ -141,9 +141,9 @@ claims permanent sizing authority. No copy-generation framework or new theme.
 
 | Feature | Content and interaction acceptance |
 | --- | --- |
-| Text size | Header `Aa`, spoken `Terminal text size`, between identity and Kill; ≥48dp target. Sheet title `Text size`; `−`, current nominal integer, `+`; spoken `Decrease terminal text size`, `Terminal text size, N`, `Increase terminal text size`. Bound buttons disable correctly. |
+| Text size | Session-sheet row `text size · N`, spoken as shown ([terminal chrome](terminal-chrome.md)); ≥48dp target. Sheet title `Text size`; `−`, current nominal integer, `+`; spoken `Decrease terminal text size`, `Terminal text size, N`, `Increase terminal text size`. Bound buttons disable correctly. |
 | Saved setting | `Reset to 16`, disabled at 16; `Done`. `Saved on this phone. Android’s text-size setting also applies.` Applied changes survive dismissal; no Save/Cancel or editable numeric field. |
-| Shared sizing | Sheet: `Screen size is shared with other attached terminals.` Connected header: `1 client` / `N clients`; retain existing connection-failure presentation. |
+| Shared sizing | Sheet: `Screen size is shared with other attached terminals.` Connected rail: `1 client` / `N clients`; retain existing connection-failure presentation. |
 | Insufficient room | `Terminal needs more room`. `Hide the keyboard, reduce text size, or make the app window larger.` Actions: `Hide keyboard` when visible; `Text size` always. Keep Detach accessible; no Retry or automatic shrinking. |
 | Preference failure | Read: `Text size unavailable.` and `Retry` (reread only). Write: `Text size could not be saved.`; previous committed size remains. |
 
@@ -227,7 +227,7 @@ gates are separate scope. No required unrun proof is a pass.
 - One DataStore dependency buys serialized durable writes and surfaced failure;
   it avoids inventing file transactions or involving pairing storage. Applying
   after commit trades a brief disk wait for truthful saved state.
-- `Aa` uses header width; identity may ellipsize. Explicit buttons cost taps;
+- Text size sits one tap behind the rail's session sheet. Explicit buttons cost taps;
   the unchanged key deck retains its height. Initial attach waits for usable
   geometry, and custom tmux policy overrides require operator correction.
 - Reflow can move TUI content. Exact ebook-style reading-position preservation

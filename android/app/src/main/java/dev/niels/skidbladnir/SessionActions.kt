@@ -105,15 +105,22 @@ internal fun SessionActionsButton(
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
         ) {
-            actions.forEachIndexed { index, action ->
-                // The destructive run opens with a rule: the closures are a
-                // different kind of verb, and colour must not be their only cue.
-                if (action.destructive && actions.getOrNull(index - 1)?.destructive == false) {
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Bone.copy(alpha = 0.12f))
-                }
-                SessionActionItem(action) { expanded = false }
-            }
+            SessionActionRows(actions) { expanded = false }
         }
+    }
+}
+
+// The rows of one action list, for the card's menu and the terminal's session
+// sheet alike. Each row dismisses its surface before acting.
+@Composable
+internal fun SessionActionRows(actions: List<SessionAction>, dismiss: () -> Unit) {
+    actions.forEachIndexed { index, action ->
+        // The destructive run opens with a rule: the closures are a
+        // different kind of verb, and colour must not be their only cue.
+        if (action.destructive && actions.getOrNull(index - 1)?.destructive == false) {
+            HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Bone.copy(alpha = 0.12f))
+        }
+        SessionActionItem(action, dismiss)
     }
 }
 

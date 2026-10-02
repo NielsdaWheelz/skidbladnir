@@ -1,8 +1,5 @@
 package dev.niels.skidbladnir
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,9 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -33,16 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 private val tmuxNamePattern = Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
@@ -276,74 +265,6 @@ private fun sameSessionAuthority(first: SessionTarget, second: SessionTarget): B
     first.machineHandle == second.machineHandle &&
         first.session.tmuxId == second.session.tmuxId &&
         first.session.identityToken == second.session.identityToken
-
-@Composable
-internal fun TerminalRenameControl(
-    machine: PairedMachine,
-    target: SessionTarget,
-    presence: String,
-    presenceColor: Color,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Surface(
-        color = DeepSurface,
-        border = BorderStroke(1.dp, (if (enabled) Gold else Muted).copy(alpha = 0.40f)),
-        shape = NidavellirShapes.Chip,
-        modifier = modifier
-            .clickable(
-                interactionSource = interactionSource,
-                indication = AngularIndication(NidavellirShapes.Chip),
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .semantics(mergeDescendants = true) {
-                contentDescription = "Rename ${target.session.tmuxName} on ${machine.label.text}"
-                stateDescription = presence
-            },
-    ) {
-        Column(
-            modifier = Modifier
-                .minimumInteractiveComponentSize()
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = "${machine.label.text} · ${target.session.tmuxName}",
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row {
-                Text(
-                    text = "Rename",
-                    color = presenceColor,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    maxLines = 1,
-                )
-                Text(
-                    text = " · ",
-                    color = presenceColor,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    maxLines = 1,
-                )
-                Text(
-                    text = "${machine.label.text} · $presence",
-                    color = presenceColor,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = NidavellirType.Data,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

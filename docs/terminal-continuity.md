@@ -301,7 +301,7 @@ configured profile labels and current design tokens remain authoritative.
 | search | `search visited directories`, `searching…`, `no matching directories`; unavailable: `directory search unavailable on <host>`; overflow: `too many results; narrow your search`; omitted: `some directories are not shown`; malformed: `enter 1–8 search words`. show full ranked paths and host; selection only edits draft |
 | controls | local-agent controls: `interrupt agent`, `interrupt key sent`, `interrupt outcome unknown`, `stop agent and close terminal`. terminal control: `close <name> on <host>?`, `close terminal` / `cancel`; remote input remains ordinary terminal input |
 | uncertain creation | `creation outcome unknown. check the session list before creating another.` preserve current attachment/draft; never imply a retry is harmless |
-| remote | `running on <host>`; `terminal on <owner>`; `remote context unknown`; `new terminal on <owner>`. show destination beside remote facts, even in owner-filtered views; spoken context includes both hosts/full cwd; close names owner. no remote agent controls; missing cwd alone means `directory unavailable` |
+| remote | `running on <host>`; `terminal on <owner>`; `remote context unknown`; `new terminal on <owner>`. show destination beside remote facts, even in owner-filtered views; the phone terminal rail reads `<host> via <owner>` (`remote via <owner>` when unknown) and its session sheet carries the full context; spoken context includes both hosts/full cwd; close names owner. no remote agent controls; missing cwd alone means `directory unavailable` |
 
 ## 5. exclusive work boundaries
 

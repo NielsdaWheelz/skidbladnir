@@ -219,7 +219,7 @@ existing typography/status bay/chips; no new visual system.
 
 | feature | required copy / behavior |
 | --- | --- |
-| association | recorded native conversation; may differ from terminal; full id in desktop details/info, secondary metadata note in phone terminal |
+| association | recorded native conversation; may differ from terminal; full id in desktop details/info, secondary metadata note in the phone terminal session sheet |
 | unassociated codex | no recorded conversation; terminal operations remain available |
 | native output | explicit machine read; captured conversation visible; no notification effect |
 | native state | working/waiting/idle/done/failed/stopped; status unavailable; no reasons |

@@ -7,7 +7,7 @@ hands-on checks have not been performed and directed that acceptance remain
 `NOT_RUN`.
 
 impact: membership set/change/clear, intersecting filters and return position,
-forge/header terminal creation with cwd/group inheritance, duplicate taps, and
+forge/session-sheet terminal creation with cwd/group inheritance, duplicate taps, and
 narrow/enlarged-text usability remain `NOT_RUN` as hands-on evidence. automated
 host, real phone, and component results retain their original-source attribution.
 the corrected real phone automation passed on that source; it does not supply
