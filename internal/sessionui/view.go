@@ -38,7 +38,9 @@ func (m *model) View() tea.View {
 		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
 	} else {
 		footer := m.footerLines()
-		lines := append([]string{m.header(), ""}, m.bodyLines(m.height-2-len(footer))...)
+		lines := append([]string{m.header()}, m.usageSummary()...)
+		lines = append(lines, "")
+		lines = append(lines, m.bodyLines(m.height-len(lines)-len(footer))...)
 		for len(lines) < m.height-len(footer) {
 			lines = append(lines, "")
 		}
@@ -203,7 +205,7 @@ func (m *model) footerLines() []string {
 		} else if row := m.selectedRow(); row != nil {
 			legend = target(row.session.Name, row.label, width)
 			detail = m.rowDetailLines(*row, width)
-			if m.tableLength() > m.height-3-len(notices)-len(detail)-len(keys) {
+			if m.tableLength() > m.height-3-len(m.usageSummary())-len(notices)-len(detail)-len(keys) {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
@@ -216,6 +218,8 @@ func (m *model) footerLines() []string {
 		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
 	case "create":
 		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
+	case "usage":
+		legend = "profile usage · read only"
 	}
 	lines := append(notices, rule(legend, end, width))
 	lines = append(lines, detail...)
@@ -309,6 +313,8 @@ func (m *model) hints() [][]hint {
 			keys = append([]hint{{"r", "name"}, {"g", "group"}}, keys...)
 		}
 		return [][]hint{keys}
+	case "usage":
+		return [][]hint{{{"↑↓ j/k", "scroll"}, {"pgup pgdn", "page"}, {"ctrl-r", "refresh usage"}, {"q escape", "back"}}}
 	}
 	session := []hint{}
 	if row := m.selectedRow(); row != nil && row.available {
@@ -323,7 +329,7 @@ func (m *model) hints() [][]hint {
 	}
 	// The strip's chevrons and --help teach ←→, so the global keys keep one 80-column line
 	// for host labels up to 9 cells.
-	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"q", "quit"}}}
+	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -569,6 +575,8 @@ func (m *model) bodyLines(height int) []string {
 		body := m.detailLines()
 		offset := min(m.offset, max(0, len(body)-(height-2)))
 		return append([]string{title, ""}, body[offset:min(len(body), offset+max(0, height-2))]...)
+	case "usage":
+		return m.usageBody(height)
 	}
 	if len(m.rows) == 0 {
 		partial := false
@@ -692,7 +700,7 @@ func (m *model) fitViewports() {
 	if m.width < 80 || m.height < 24 || m.page != "" || m.cursor < 0 {
 		return
 	}
-	height := m.height - 2 - len(m.footerLines())
+	height := m.height - 2 - len(m.usageSummary()) - len(m.footerLines())
 	// anchor is the cursor's group heading when its row opens a group.
 	line, anchor := 0, 0
 	for index := range m.rows {

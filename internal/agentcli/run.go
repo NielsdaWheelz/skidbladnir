@@ -66,6 +66,7 @@ browser (80x24 minimum)
   f selects needs input (ready, response requests, error/interruption notices)
   m chooses machine; n opens terminal; N opens options
   enter attaches; space opens info
+  u opens profile usage; arrows/j/k scroll; q/escape returns
   info: r edits name; g edits group; escape returns to the table
   name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
   directory/group: left/right chooses; tab/enter uses and continues
@@ -75,7 +76,8 @@ browser (80x24 minimum)
   shift+t creates and enters a shell on the selected session's machine,
   in its current directory and group; the original session keeps running
   s sends interrupt; x interrupts and closes terminal
-  ctrl-r refreshes; escape closes a page; q quits from the table
+  ctrl-r refreshes inventory and usage; on usage it refreshes usage only
+  escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 
 workflow

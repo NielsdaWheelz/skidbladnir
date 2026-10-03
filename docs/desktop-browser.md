@@ -1,5 +1,10 @@
 # desktop browser
 
+[profile usage](profile-usage.md) owns the compact quota summary and read-only
+`u usage` disclosure, with independent profile reads on the existing tick.
+that capability extends this document's api/state limit only for its accepted
+route, replaceable report and presentation.
+
 2026-10-02: [session views](session-views.md) owns the exclusive needs-input view,
 queue membership/order and navigation keys. source implements this cutover;
 that specification owns its qualification. earlier evidence below retains its

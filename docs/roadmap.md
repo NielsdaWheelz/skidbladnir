@@ -5,6 +5,17 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## desktop profile usage
+
+2026-10-02: [the accepted spec and plan](profile-usage.md) adds a compact main-tui
+quota summary and expandable per-profile disclosure. codex uses existing account
+daemon reads; claude exports structured statusline quota reports. usage remains
+independent of inventory, terminal status and account admission.
+[source and installed qualification](profile-usage.md#acceptance) passed on
+macbook, devbox and arch with the admitted v0.13.0 generation.
+[fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
+is a separate follow-up, not a first-version gate.
+
 ## session views and needs input
 
 2026-10-02: source implements [session views](session-views.md) in the isolated
@@ -190,8 +201,8 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.12.2` from
-`a4dd2c646ff63adf65d8ac05b417893af7d8d44c`; it does not assert the
+source and artifact digests. it pins immutable `v0.13.0` from
+`b2ea62aea57a87668835eefbcaebcffcf5761559`; it does not assert the
 installed version of any host or phone.
 
 `dev-server` owns machine-local installation, services and configuration.

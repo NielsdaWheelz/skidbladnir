@@ -24,6 +24,8 @@ func (m *model) observeNotifications(message inventoryMsg) {
 // tea.Exec pauses browser observations for the attachment. Reject the pending
 // inventory so it cannot publish an observation from before this visit.
 func (m *model) enter(request fleetclient.Request) tea.Cmd {
+	m.usageAttached = true
+	m.cancelUsage()
 	if m.refreshing {
 		m.refreshAfterAction = true
 	}

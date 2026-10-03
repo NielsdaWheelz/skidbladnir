@@ -237,8 +237,10 @@ retains host-search cases beyond this focused change.
 ## qualification
 
 2026-10-02, isolated `feat/directory-group-entry` worktree. the mobile extra-page
-flow and absent automatic search failed the temporary baseline probes. new
-behavior passes at the following distinct boundaries:
+flow and absent automatic search failed the temporary baseline probes. the
+behavioral results below apply to `8eeb634`. integration with main's profile-usage
+changes retains the field implementations, validation and request admission;
+adversarial source review and full engineering checks pass on the combined source.
 
 | boundary | evidence |
 | --- | --- |
