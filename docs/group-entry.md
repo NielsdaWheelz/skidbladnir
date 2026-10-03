@@ -6,6 +6,11 @@ android. typing filters observed labels; selecting a suggestion fills the draft;
 a separate create or save action submits it. the desktop create form gains an
 explicit `create` action below group, and the group editor gains `save`.
 
+[directory and group entry](directory-group-entry.md) owns the common native
+field component, keys and focus contract. this document retains group candidate,
+observation, literal/unassigned and unresolved-prefill rules. its qualification
+below records the predecessor; new component evidence belongs to the common spec.
+
 [groups](groups.md) owns label identity, observation scope, membership mutations,
 creation defaults and return behavior. [desktop browser](desktop-browser.md)
 owns the surrounding form and navigation. this document replaces their group
@@ -64,7 +69,7 @@ highlight the first observed match, otherwise the literal-label action, otherwis
 no choice. empty text highlights unassigned. on phone, suggestions are accepted
 by tapping them; rendering results alone changes nothing.
 
-retain a desktop highlighted choice by exact value through inventory refresh,
+retain a desktop highlighted choice by choice kind and exact value through inventory refresh,
 never by list index. if it disappears, clear the highlight; the visible draft
 remains available as literal input. refresh never rewrites the draft or
 captured session target. an accepted label remains valid when its last observed
@@ -116,41 +121,22 @@ the accepted label and chooses its exact match or literal-label action.
 
 ## phone interaction
 
-retain one `GroupField` for forge and membership editing. focusing it or opening
-`observed groups` reveals a filtered list beneath the field in the same sheet.
-typing retains keyboard focus and updates the list immediately. constrain the
-list to available sheet space and scroll its contents; a large inventory must
-not lengthen the whole form without bound. reveal the group field and first
-matching result when suggestions open or the keyboard changes the available
-space. typing resets the list to its first result. the group field and bounded
-results stay above the separate create/save action; only preceding form content
-scrolls. the final action remains reachable with the keyboard open. keeping
-group visible gives preceding fields a smaller viewport while suggestions are
-open.
+forge and membership editing use one `GroupField` backed by the shared native
+component. [directory and group entry](directory-group-entry.md#phone-interaction)
+owns focus, keyboard, bounded choices, scrolling, acceptance and back.
 
-tapping an observed result or `use label` fills the draft and closes suggestions.
+tapping an observed result or `use label` fills the visible draft.
 the explicit unassigned action is inside the choice list: first for empty text,
 after matches and the literal action for nonempty text. it clears membership;
-each action only edits the draft. keyboard next/enter accepts the valid literal
-draft, closes suggestions and hides the keyboard to expose create/save; it never
-activates that button.
-invalid input remains editable with validation. there is no separate phone
-candidate highlight. tapping create/save submits the visible draft literally
-through existing validation, without silently choosing a suggestion.
+each action only edits the draft. create/save submits that draft through existing
+validation, without silently choosing a suggestion.
 
-back hides the keyboard and ends text focus first when visible, retaining the
-draft and choices; the next tap starts a fresh input session. then back closes
-open suggestions, then uses the containing sheet's existing cancel behavior.
-dismissing suggestions retains the draft. reopening suggestions retains the
-current draft. prefilled labels and the unresolved restored-group state keep
-their existing meanings:
+prefilled labels and the unresolved restored-group state retain their meanings.
 an untouched unresolved field cannot silently become unassigned; it requires an
 explicit choice, including an explicit unassigned action.
 
-keep autocorrect and automatic capitalization disabled, full spoken labels,
-48dp actions, readable large text and existing validation. suggestions use
-ordinary transient compose state; controller-owned drafts and mutation phases
-remain authoritative. no raw label or query enters saved state or logs.
+controller-owned drafts and mutation phases remain authoritative. no raw label
+or query enters saved state or logs.
 
 ## implementation plan
 

@@ -145,15 +145,14 @@ home projection and other-process environment observation; it adds no codex hook
 ### directory search
 
 ordinary shell `z` uses existing shell setup. desktop launch directory entry
-uses [the form's live search](desktop-browser.md#4-actions-and-return): empty means
-home, ordinary words search directly, and `/…` or `~…` remain literal path drafts.
-ranked results preview beneath the query; left/right cycles and tab or enter
-accepts the chosen cwd and advances. no `z` prefix or separate results page.
-mobile retains its exact-path `z <words>` entrance and `search visited directories`
-page. mobile parses that prefix before path validation; leading whitespace is
-invalid, bare `z` requests words, and `/path/z foo` stays literal. words are literal
-whitespace-separated terms; quotes, variables and substitutions have no shell
-meaning. selection fills cwd; neither client creates a session from a search reply.
+and mobile launch entry use [directory and group entry](directory-group-entry.md):
+exact empty input means home, ordinary words search after 150 ms, and `/…` or
+`~…` remain literal path drafts. literal syntax is checked before query parsing;
+whitespace-only input and leading-whitespace paths remain invalid. desktop
+arrows preview choices without editing; tab/enter accepts and advances. mobile
+keeps a focused inline field with ranked touch choices and secondary Home browse.
+`z` is an ordinary search word. quotes, variables and substitutions have no
+shell meaning. selection only fills cwd; neither client creates from a search reply.
 
 ```text
 POST /v1/directory-searches {terms: string[]}
@@ -175,7 +174,7 @@ use strict existing machine/auth/error boundaries. machine change invalidates
 pending search; late results cannot overwrite a new draft.
 
 host config adds required `zoxidePath` as absolute path or explicit null (disabled).
-null produces unavailable, with existing browse/exact-path actions still usable.
+null produces unavailable, with literal entry and secondary Home browse still usable.
 query may perform zoxide's normal database bookkeeping; amend the chooser's
 read-only claim specifically for this operation. no shell expression endpoint.
 
@@ -298,7 +297,7 @@ configured profile labels and current design tokens remain authoritative.
 | desktop creation | `n terminal on <host>`; `opening terminal on <host>…`; `<host> unavailable`. destination visible before acting; `N` options and `T` here are discoverable |
 | mobile creation | preserve forge and `create on <host>`; selected directory/account visible; no required terminal typing; existing 48dp targets and traversal |
 | identity/cwd | configured profile label; `<provider> · profile unknown`; `terminal` means no recognized agent in resolved context. existing desktop/cli details: `agent: not detected`, `directory unavailable`, `started with: <profile>`. abbreviate cwd visually only; no repeated polling announcements |
-| search | `search visited directories`, `searching…`, `no matching directories`; unavailable: `directory search unavailable on <host>`; overflow: `too many results; narrow your search`; omitted: `some directories are not shown`; malformed: `enter 1–8 search words`. show full ranked paths and host; selection only edits draft |
+| search | [directory and group entry](directory-group-entry.md#phone-interaction) owns inline states and focus. preserve host ranking, full spoken paths, omitted-result notice and literal draft; choosing a result edits only cwd |
 | controls | local-agent controls: `interrupt agent`, `interrupt key sent`, `interrupt outcome unknown`, `stop agent and close terminal`. terminal control: `close <name> on <host>?`, `close terminal` / `cancel`; remote input remains ordinary terminal input |
 | uncertain creation | `creation outcome unknown. check the session list before creating another.` preserve current attachment/draft; never imply a retry is harmless |
 | remote | `running on <host>`; `terminal on <owner>`; `remote context unknown`; `new terminal on <owner>`. show destination beside remote facts, even in owner-filtered views; the phone terminal rail reads `<host> via <owner>` (`remote via <owner>` when unknown) and its session sheet carries the full context; spoken context includes both hosts/full cwd; close names owner. no remote agent controls; missing cwd alone means `directory unavailable` |

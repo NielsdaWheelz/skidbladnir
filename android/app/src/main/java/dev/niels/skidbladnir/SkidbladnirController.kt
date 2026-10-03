@@ -13,6 +13,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -108,6 +109,7 @@ internal data class ForgeState(
     val pending: Boolean,
     val failure: ForgeFailure,
     val surface: ForgeSurface,
+    val directorySearch: DirectorySearchState = DirectorySearchState.Idle,
 )
 
 internal fun ForgeState.admissibleSubmission(): ForgeDraft? =
@@ -324,6 +326,7 @@ internal fun dashboardAfterMachineAccessLoss(
                 pending = false,
                 failure = ForgeFailure.Definite(failure),
                 surface = ForgeSurface.Form,
+                directorySearch = DirectorySearchState.Idle,
             )
         } else {
             dashboard.forge
@@ -458,6 +461,8 @@ internal class SkidbladnirController(
     private var createdTerminalAdmission: CreatedTerminalAdmission? = null
     @Volatile private var nextTerminalAttempt = 1
     private var nextWorkingDirectoryPickerInstance = 1L
+    private var directorySearchDebounce: ScheduledFuture<*>? = null
+    private var directorySearchRequest: Future<*>? = null
     private var pendingFleetScan: String? = null
     private var pendingFleetPersistence: PendingFleetPersistence? = null
 
@@ -580,6 +585,7 @@ internal class SkidbladnirController(
 
     fun stopForBackground() {
         if (!foreground) return
+        cancelDirectorySearch()
         foreground = false
         generation += 1
         polling.values.forEach { runtime ->
@@ -791,6 +797,7 @@ internal class SkidbladnirController(
     fun openForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         if (machineStates.values.none { it.canForge } || current.groupEditor != null) return
+        cancelDirectorySearch()
         state = current.copy(
             forge = ForgeState(
                 ForgeForm(null, "", null, "", "", dashboardEntry.view.creationDraft()),
@@ -801,39 +808,16 @@ internal class SkidbladnirController(
         )
     }
 
-    fun openWorkingDirectoryPicker() {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val forge = current.forge ?: return
-        val handle = forge.form.machineHandle ?: return
-        val machine = machineStates[handle] ?: return
-        val opened = openWorkingDirectoryPicker(
-            forge,
-            machine,
-            nextWorkingDirectoryPickerInstance,
-        ) ?: return
-        nextWorkingDirectoryPickerInstance += 1
-        state = current.copy(forge = opened)
-    }
-
-    fun openExactWorkingDirectoryPicker() {
-        val current = state as? SkidbladnirUiState.Dashboard ?: return
-        val forge = current.forge ?: return
-        val handle = forge.form.machineHandle ?: return
-        val machine = machineStates[handle] ?: return
-        val opened = openExactWorkingDirectoryPicker(
-            forge,
-            machine,
-            nextWorkingDirectoryPickerInstance,
-        ) ?: return
-        nextWorkingDirectoryPickerInstance += 1
-        state = current.copy(forge = opened)
-    }
-
     fun browseWorkingDirectoryHome() {
-        val picker = activeWorkingDirectoryPicker() ?: return
-        startWorkingDirectoryRequest(
-            browseWorkingDirectoryHome(picker, generation) ?: return,
-        )
+        val current = state as? SkidbladnirUiState.Dashboard ?: return
+        val forge = current.forge ?: return
+        val machine = machineStates[forge.form.machineHandle] ?: return
+        if (!foreground) return
+        val start = browseWorkingDirectoryHome(forge, machine, nextWorkingDirectoryPickerInstance, generation) ?: return
+        nextWorkingDirectoryPickerInstance += 1
+        cancelDirectorySearch()
+        state = current.copy(forge = forge.copy(directorySearch = DirectorySearchState.Idle))
+        startWorkingDirectoryRequest(start)
     }
 
     fun openWorkingDirectoryChild(directory: HomeDirectory) {
@@ -869,74 +853,103 @@ internal class SkidbladnirController(
         updateWorkingDirectoryPicker { picker -> updateWorkingDirectoryViewport(picker, viewport) }
     }
 
-    fun showExactWorkingDirectory() {
-        updateForge(::showExactWorkingDirectory)
+    fun focusWorkingDirectory() {
+        val forge = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return
+        if (forge.directorySearch is DirectorySearchState.Loading || forge.directorySearch is DirectorySearchState.Ready) return
+        scheduleDirectorySearch()
     }
 
-    fun showDirectorySearch() {
-        updateForge(::showDirectorySearch)
-    }
-
-    fun updateDirectorySearch(draft: String) {
-        updateForge { forge -> updateDirectorySearch(forge, draft) }
-    }
-
-    fun searchDirectories() {
-        val picker = activeWorkingDirectoryPicker() ?: return
-        val start = beginDirectorySearch(picker, generation) ?: return
-        val credential = credentials[start.second.machine.handle] ?: return
-        updateWorkingDirectoryPicker { current -> if (current.instance == picker.instance) start.first else current }
-        executeNetwork {
-            val result = client.searchDirectories(credential, start.second.terms)
-            main.post {
-                if (credentials[start.second.machine.handle] != credential) return@post
-                val active = activeWorkingDirectoryPicker() ?: return@post
-                val page = active.page as? WorkingDirectoryPage.Search ?: return@post
-                if (!isActiveGeneration(start.second.generation) || active.instance != start.second.pickerInstance ||
-                    active.machine != start.second.machine || page.sequence != start.second.sequence) return@post
-                if (result is GatewayResult.Failure && result.failure is GatewayFailure.Api &&
-                    acceptAccessFailure(start.second.machine.handle, result.failure)) return@post
-                updateWorkingDirectoryPicker { current ->
-                    completeDirectorySearch(current, start.second, generation, result) ?: current
-                }
-            }
-        }
-    }
-
-    fun chooseSearchedWorkingDirectory(directory: WorkingDirectoryPath) {
-        updateForge { forge -> chooseSearchedWorkingDirectory(forge, directory) }
-    }
-
-    fun updateExactWorkingDirectory(draft: String) {
-        updateForge { forge -> updateExactWorkingDirectory(forge, draft) }
-    }
-
-    fun chooseActiveWorkingDirectory(directory: WorkingDirectoryPath) {
-        updateForge { forge -> chooseActiveWorkingDirectory(forge, directory) }
-    }
-
-    fun useCurrentWorkingDirectory() {
-        updateForge(::useCurrentWorkingDirectory)
-    }
-
-    fun useExactWorkingDirectory() {
-        updateForge(::useExactWorkingDirectory)
-        if (activeWorkingDirectoryPicker()?.page is WorkingDirectoryPage.Search) searchDirectories()
-    }
-
-    fun workingDirectoryBack() {
-        updateForge(::workingDirectoryBack)
-    }
-
-    fun cancelWorkingDirectoryPicker() {
-        updateForge(::cancelWorkingDirectoryPicker)
-    }
-
-    private fun updateForge(transform: (ForgeState) -> ForgeState) {
+    private fun scheduleDirectorySearch() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
+        if (!foreground || forge.pending || forge.surface != ForgeSurface.Form) return
+        val input = classifyWorkingDirectory(forge.form.cwd) as? WorkingDirectoryInput.Query ?: return
+        val machine = machineStates[forge.form.machineHandle] ?: return
+        if (!machine.canForge) return
+        val credential = credentials[machine.machine.handle] ?: return
+        val activeGeneration = generation
+        val loading = DirectorySearchState.Loading()
+        state = current.copy(forge = forge.copy(directorySearch = loading))
+        directorySearchDebounce = scheduler.schedule({
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential)) return@post
+                val active = (state as? SkidbladnirUiState.Dashboard)?.forge ?: return@post
+                if (active.directorySearch !== loading || active.form.machineHandle != machine.machine.handle) return@post
+                directorySearchDebounce = null
+                if (!machineStates.getValue(machine.machine.handle).canForge) {
+                    updateForge { it.copy(directorySearch = DirectorySearchState.Idle) }
+                    return@post
+                }
+                directorySearchRequest = executeNetwork {
+                    val result = client.searchDirectories(credential, input.terms)
+                    main.post {
+                        if (!isCredentialActive(activeGeneration, credential)) return@post
+                        val dashboard = state as? SkidbladnirUiState.Dashboard ?: return@post
+                        val currentForge = dashboard.forge ?: return@post
+                        if (currentForge.directorySearch !== loading || currentForge.form.machineHandle != machine.machine.handle) return@post
+                        directorySearchRequest = null
+                        if (result is GatewayResult.Failure && acceptAccessFailure(machine.machine.handle, result.failure)) return@post
+                        state = dashboard.copy(forge = currentForge.copy(directorySearch = if (!machineStates.getValue(machine.machine.handle).canForge) {
+                            DirectorySearchState.Idle
+                        } else when (result) {
+                            is GatewayResult.Success -> DirectorySearchState.Ready(result.value)
+                            is GatewayResult.Failure -> DirectorySearchState.Failed(result.failure)
+                        }))
+                    }
+                }
+            }
+        }, 150, TimeUnit.MILLISECONDS)
+    }
+
+    private fun cancelDirectorySearch() {
+        directorySearchDebounce?.cancel(false)
+        directorySearchDebounce = null
+        directorySearchRequest?.cancel(true)
+        directorySearchRequest = null
+    }
+
+    fun chooseWorkingDirectory(directory: WorkingDirectoryPath): Boolean {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return false
+        val forge = current.forge ?: return false
+        val machine = machineStates[forge.form.machineHandle] ?: return false
+        if (!foreground || !machine.canForge || forge.pending || forge.surface != ForgeSurface.Form) return false
+        val literal = when (val input = classifyWorkingDirectory(forge.form.cwd)) {
+            WorkingDirectoryInput.Home -> directory.encoded == "~"
+            is WorkingDirectoryInput.Literal -> directory == input.path
+            is WorkingDirectoryInput.Query, WorkingDirectoryInput.Invalid -> false
+        }
+        if (!literal && directory !in workingDirectoryChoices(forge, machine)) return false
+        cancelDirectorySearch()
+        state = current.copy(forge = forge.copy(
+            form = forge.form.copy(cwd = directory.encoded),
+            failure = forge.failure.afterWorkingDirectoryChoice(),
+            directorySearch = DirectorySearchState.Idle,
+        ))
+        return true
+    }
+
+    fun useCurrentWorkingDirectory(): Boolean {
+        val picker = activeWorkingDirectoryPicker() ?: return false
+        if (!foreground || machineStates[picker.machine.handle]?.canForge != true) return false
+        return updateForge(::useCurrentWorkingDirectory)?.surface == ForgeSurface.Form
+    }
+
+    fun workingDirectoryBack(): Boolean {
+        if (activeWorkingDirectoryPicker() == null) return false
+        return updateForge(::workingDirectoryBack)?.surface == ForgeSurface.Form
+    }
+
+    fun cancelWorkingDirectoryPicker(): Boolean {
+        if (activeWorkingDirectoryPicker() == null) return false
+        return updateForge(::cancelWorkingDirectoryPicker)?.surface == ForgeSurface.Form
+    }
+
+    private fun updateForge(transform: (ForgeState) -> ForgeState): ForgeState? {
+        val current = state as? SkidbladnirUiState.Dashboard ?: return null
+        val forge = current.forge ?: return null
         val updated = transform(forge)
         if (updated != forge) state = current.copy(forge = updated)
+        return updated
     }
 
     private fun updateWorkingDirectoryPicker(
@@ -959,13 +972,12 @@ internal class SkidbladnirController(
     private fun startWorkingDirectoryRequest(start: WorkingDirectoryRequestStart) {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val forge = current.forge ?: return
-        val active = forge.surface as? ForgeSurface.DirectoryPicker ?: return
-        if (active.picker.instance != start.request.pickerInstance) return
+        val active = forge.surface as? ForgeSurface.DirectoryPicker
+        if (!foreground || forge.pending || forge.form.machineHandle != start.request.machine.handle ||
+            machineStates[start.request.machine.handle]?.canForge != true ||
+            active != null && active.picker.instance != start.request.pickerInstance) return
         val credential = credentials[start.request.machine.handle] ?: return
-        if (credential.machine.handle != start.request.machine.handle) return
-        state = current.copy(
-            forge = forge.copy(surface = active.copy(picker = start.picker)),
-        )
+        state = current.copy(forge = forge.copy(surface = ForgeSurface.DirectoryPicker(start.picker)))
         executeNetwork {
             val result = client.listDirectory(
                 credential,
@@ -1005,7 +1017,10 @@ internal class SkidbladnirController(
 
     fun dismissForge() {
         val current = state as? SkidbladnirUiState.Dashboard ?: return
-        if (current.forge?.pending != true) state = current.copy(forge = null)
+        if (current.forge?.pending != true) {
+            cancelDirectorySearch()
+            state = current.copy(forge = null)
+        }
     }
 
     fun discardForgeRecovery() {
@@ -1019,7 +1034,11 @@ internal class SkidbladnirController(
         if (forge.pending) return
         val proposed = transform(forge.form)
         if (proposed.machineHandle != null && machineStates[proposed.machineHandle] == null) return
-        state = current.copy(forge = updateForgeState(forge, proposed))
+        val updated = updateForgeState(forge, proposed)
+        val directoryChanged = updated.form.machineHandle != forge.form.machineHandle || updated.form.cwd != forge.form.cwd
+        if (directoryChanged) cancelDirectorySearch()
+        state = current.copy(forge = updated)
+        if (directoryChanged) scheduleDirectorySearch()
     }
 
     fun forge() {
@@ -2190,6 +2209,7 @@ internal class SkidbladnirController(
             ApiErrorCode.MachineIdentityMismatch -> MachineAccess.IdentityChanged
             else -> return false
         }
+        if ((state as? SkidbladnirUiState.Dashboard)?.forge?.form?.machineHandle == handle) cancelDirectorySearch()
         stopPolling(handle)
         updateMachine(handle) { machine ->
             machine.copy(
@@ -2425,14 +2445,12 @@ internal class SkidbladnirController(
 
     // justify-defect: worker executors and the inventory lanes otherwise swallow same-system
     // invariant failures; rethrowing on the main looper makes them fatal where they are visible.
-    private fun surfaceDefect(defect: RuntimeException) {
+    private fun surfaceDefect(defect: Throwable) {
         main.post { throw defect }
     }
 
-    private fun executeNetwork(action: () -> Unit) {
-        network.execute {
-            try { action() } catch (defect: RuntimeException) { surfaceDefect(defect) }
-        }
+    private fun executeNetwork(action: () -> Unit): Future<*> = network.submit {
+        try { action() } catch (defect: Throwable) { surfaceDefect(defect) }
     }
 
     private fun executeCredentialOperation(action: () -> Unit) {

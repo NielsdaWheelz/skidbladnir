@@ -53,6 +53,7 @@ func (m *model) View() tea.View {
 	}
 	view := tea.NewView(content)
 	view.AltScreen = true
+	view.ReportFocus = true
 	return view
 }
 
@@ -510,9 +511,11 @@ func (m *model) bodyLines(height int) []string {
 		focusStart, focusEnd := 0, 0
 		for index, label := range []string{"machine", "launch", "name", "directory", "group"} {
 			value := m.form[index]
-			if index == 3 && strings.TrimSpace(value) == "" {
-				value = ""
-				if m.field != 3 {
+			if index == 3 {
+				if _, _, problem := parseDirectoryDraft(value); problem != "" {
+					value = strconv.QuoteToASCII(value)
+				}
+				if value == "" && m.field != 3 {
 					value = "home (~)"
 				}
 			}
@@ -524,15 +527,15 @@ func (m *model) bodyLines(height int) []string {
 			}
 			lines = append(lines, field(label, value, index == m.field, index < 2, 9, width)...)
 			if index == 3 && m.field == 3 {
-				if strings.TrimSpace(value) == "" {
+				if value == "" {
 					lines[len(lines)-1] += faint.Styled(" home (~); type to search")
 				}
-				switch {
-				case m.searching:
-					lines = append(lines, field("", "searching…", false, false, 9, width)...)
-				case len(m.searchDirectories) > 0:
-					preview := fmt.Sprintf("‹ %d/%d › %s", m.searchCursor+1, len(m.searchDirectories), m.searchDirectories[m.searchCursor])
+				if len(m.searchDirectories) > 0 {
+					preview := m.directorySelection.preview(m.searchDirectories, func(path string) string { return path })
 					lines = append(lines, field("use", preview, false, false, 9, width)...)
+				}
+				if status := m.directoryStatus(); status != "" {
+					lines = append(lines, field("", status, false, false, 9, width)...)
 				}
 			}
 			if index == 4 && m.field == 4 {
@@ -632,20 +635,15 @@ func (m *model) groupPreview(draft string, selection *groupSelection, axis, widt
 	if choices[0].literal || choices[0].label.IsUnassigned() {
 		lines = append(lines, field("", "no observed matches", false, false, axis, width)...)
 	}
-	preview := "no choice selected"
-	for index, choice := range choices {
-		if selection.choice == nil || choice != *selection.choice {
-			continue
-		}
+	preview := selection.preview(choices, func(choice groupChoice) string {
 		value := "label: " + choice.label.String()
 		if choice.label.IsUnassigned() {
 			value = "unassigned (no membership)"
 		} else if choice.literal {
 			value = "use label: " + choice.label.String()
 		}
-		preview = fmt.Sprintf("‹ %d/%d › %s", index+1, len(choices), value)
-		break
-	}
+		return value
+	})
 	return append(lines, field("use", preview, false, false, axis, width)...)
 }
 

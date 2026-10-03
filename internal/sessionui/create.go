@@ -4,12 +4,34 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
+
+type directorySearchState uint8
+
+const (
+	directorySearchIdle directorySearchState = iota
+	directorySearchLoading
+	directorySearchReady
+	directorySearchFailed
+)
+
+func (m *model) directoryAvailable() bool {
+	if !m.scopeReady {
+		return false
+	}
+	for _, peer := range m.peers {
+		if peer.Label == m.form[0] {
+			return peer.OK
+		}
+	}
+	return false
+}
 
 func (m *model) createAvailable() bool {
 	if !m.scopeReady {
@@ -43,7 +65,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if m.field == 4 {
-			draft, err := m.groupSelection.accept(m.form[4])
+			draft, err := m.groupSelection.accept(m.form[4], m.groupChoices(m.form[4]))
 			if err != nil {
 				m.fail(group.ErrInvalid.Error())
 				return nil
@@ -52,12 +74,15 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			m.groupSelection.prefill(draft, m.groupChoices(draft))
 		}
 		if key.String() == "tab" || m.field < len(m.form) {
-			m.focusForm((m.field + 1) % (len(m.form) + 1))
-			return nil
+			return m.focusForm((m.field + 1) % (len(m.form) + 1))
 		}
-		if directoryIsQuery(m.form[3]) {
-			m.field = 3
-			return nil
+		cwd, terms, problem := parseDirectoryDraft(m.form[3])
+		if problem != "" || len(terms) > 0 {
+			if problem == "" {
+				problem = "choose a matching directory"
+			}
+			m.inform(problem)
+			return m.focusForm(3)
 		}
 		label, err := group.ParseDraft(m.form[4])
 		if err != nil {
@@ -69,10 +94,6 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			m.inform("host unavailable; refresh before creating")
 			return nil
 		}
-		cwd := m.form[3]
-		if strings.TrimSpace(cwd) == "" {
-			cwd = "~"
-		}
 		request := fleetclient.Request{Operation: "start", Kind: fleetclient.LaunchAgent, Machine: m.form[0], Profile: m.form[1], Name: m.form[2], CWD: cwd, Group: label}
 		if m.form[1] == "terminal" {
 			request.Kind, request.Profile = fleetclient.LaunchTerminal, ""
@@ -83,14 +104,10 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		}
 		return m.execute(request)
 	case "shift+tab":
-		m.focusForm((m.field + len(m.form)) % (len(m.form) + 1))
+		return m.focusForm((m.field + len(m.form)) % (len(m.form) + 1))
 	case "left", "right":
-		if m.field == 3 && len(m.searchDirectories) > 0 {
-			step := 1
-			if key.String() == "left" {
-				step = -1
-			}
-			m.searchCursor = (m.searchCursor + step + len(m.searchDirectories)) % len(m.searchDirectories)
+		if m.field == 3 {
+			m.directorySelection.cycle(m.searchDirectories, key.String() == "left")
 			return nil
 		}
 		if m.field == 4 {
@@ -156,7 +173,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 		}
 	default:
 		if m.field >= 2 && m.field < len(m.form) {
-			if m.field == 4 {
+			if m.field == 3 || m.field == 4 {
 				m.form[m.field] += key.Text
 			} else {
 				m.form[m.field] += singleLine(key.Text)
@@ -172,15 +189,53 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (m *model) focusForm(field int) {
+func (m *model) focusForm(field int) tea.Cmd {
 	m.field = field
 	if field == 4 {
 		m.groupSelection.prefill(m.form[4], m.groupChoices(m.form[4]))
 	}
+	if field == 3 && m.searchState == directorySearchIdle {
+		return m.searchDirectory()
+	}
+	return nil
 }
 
-func directoryIsQuery(draft string) bool {
-	return strings.TrimSpace(draft) != "" && !strings.HasPrefix(draft, "/") && !strings.HasPrefix(draft, "~")
+// Exactly one of path, terms or problem is present. This is lexical admission;
+// only the selected host can expand home, normalize and validate existence.
+func parseDirectoryDraft(draft string) (path string, terms []string, problem string) {
+	if draft == "" {
+		return "~", nil, ""
+	}
+	if !utf8.ValidString(draft) || strings.IndexFunc(draft, func(character rune) bool {
+		return unicode.IsControl(character) || character == '\u061c' ||
+			character >= '\u200e' && character <= '\u200f' ||
+			character >= '\u2028' && character <= '\u202e' ||
+			character >= '\u2066' && character <= '\u2069'
+	}) >= 0 {
+		return "", nil, "directory must not contain controls or directional formatting"
+	}
+	if strings.HasPrefix(draft, "/") || strings.HasPrefix(draft, "~") {
+		if len(draft) > 4096 || draft != "~" && !strings.HasPrefix(draft, "~/") && !strings.HasPrefix(draft, "/") {
+			return "", nil, "use ~, ~/… or an absolute path, at most 4096 bytes"
+		}
+		return draft, nil, ""
+	}
+	trimmed := strings.TrimLeftFunc(draft, unicode.IsSpace)
+	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "~") {
+		return "", nil, "remove leading whitespace before the directory path"
+	}
+	terms = strings.Fields(draft)
+	if len(terms) == 0 {
+		return "", nil, "clear the directory for home or enter a path or search words"
+	}
+	bytes := 0
+	for _, term := range terms {
+		bytes += len(term)
+	}
+	if len(terms) > 8 || bytes > 256 {
+		return "", nil, "enter 1–8 search words, at most 256 bytes"
+	}
+	return "", terms, ""
 }
 
 func (m *model) clearDirectorySearch() {
@@ -189,20 +244,25 @@ func (m *model) clearDirectorySearch() {
 		m.searchCancel = nil
 	}
 	m.searchRevision++
-	m.searching, m.searchDirectories, m.searchCursor = false, nil, 0
+	m.searchState, m.searchDirectories, m.directorySelection.choice = directorySearchIdle, nil, nil
+	m.searchProblem, m.searchOmitted = "", false
 }
 
 func (m *model) searchDirectory() tea.Cmd {
 	m.clearDirectorySearch()
-	m.inform("")
-	if !directoryIsQuery(m.form[3]) {
+	_, terms, problem := parseDirectoryDraft(m.form[3])
+	m.inform(problem)
+	if problem != "" || len(terms) == 0 || m.blurred {
 		return nil
 	}
-	m.searching = true
+	if !m.directoryAvailable() {
+		m.inform("host unavailable; refresh before searching")
+		return nil
+	}
+	m.searchState = directorySearchLoading
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.searchCancel = cancel
 	client, machine, revision := m.client, m.form[0], m.searchRevision
-	terms := strings.Fields(m.form[3])
 	return func() tea.Msg {
 		defer cancel()
 		timer := time.NewTimer(150 * time.Millisecond)
@@ -218,18 +278,53 @@ func (m *model) searchDirectory() tea.Cmd {
 
 // Suggestions never edit the query. Advancing accepts the current choice once.
 func (m *model) acceptDirectory() bool {
-	if !directoryIsQuery(m.form[3]) {
+	_, terms, problem := parseDirectoryDraft(m.form[3])
+	if problem != "" {
+		m.inform(problem)
+		return false
+	}
+	if len(terms) == 0 {
 		return true
 	}
-	if m.searching {
-		m.inform("searching…")
+	if m.searchState == directorySearchLoading {
+		m.inform(m.directoryStatus())
 		return false
 	}
-	if len(m.searchDirectories) == 0 {
+	choice, _, selected := m.directorySelection.current(m.searchDirectories)
+	if !selected {
+		m.inform("choose a matching directory")
 		return false
 	}
-	m.form[3] = m.searchDirectories[m.searchCursor]
+	m.form[3] = choice
 	m.clearDirectorySearch()
 	m.inform("")
 	return true
+}
+
+func (m *model) directoryStatus() string {
+	_, terms, problem := parseDirectoryDraft(m.form[3])
+	if problem != "" || len(terms) == 0 {
+		return problem
+	}
+	if !m.directoryAvailable() {
+		return "host unavailable; refresh before searching"
+	}
+	switch m.searchState {
+	case directorySearchIdle:
+		return "choose a matching directory"
+	case directorySearchLoading:
+		return "searching…"
+	case directorySearchFailed:
+		return m.searchProblem
+	case directorySearchReady:
+		if len(m.searchDirectories) == 0 {
+			return "no matching directories"
+		}
+		if m.searchOmitted {
+			return "some directories are not shown"
+		}
+		return ""
+	default:
+		panic("invalid directory search state") // justify-defect: only these four states populate the model.
+	}
 }

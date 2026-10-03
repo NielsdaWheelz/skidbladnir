@@ -73,9 +73,12 @@ type model struct {
 	pageRow              listedRow
 	searchRevision       int
 	searchCancel         context.CancelFunc
-	searching            bool
+	searchState          directorySearchState
+	searchProblem        string
+	searchOmitted        bool
 	searchDirectories    []string
-	searchCursor         int
+	directorySelection   fieldSelection[string]
+	blurred              bool
 	notificationStore    *fleetclient.NotificationStore
 	notificationSnapshot fleetclient.NotificationSnapshot
 	notificationFailed   bool
@@ -154,6 +157,11 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.height = message.Height
+	case tea.BlurMsg:
+		m.blurred = true
+		m.clearDirectorySearch()
+	case tea.FocusMsg:
+		m.blurred = false
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tick())
 	case inventoryMsg:
@@ -191,6 +199,9 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.page == "create" && !m.directoryAvailable() {
+			m.clearDirectorySearch()
+		}
 		m.observeNotifications(message)
 		m.rebuild()
 		observed := fleetclient.ObservedGroups(m.scopedPeers())
@@ -221,8 +232,14 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !message.result.OK {
 			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
-			m.fail(failureText)
 			failure := message.result.Error
+			if message.operation == "start" {
+				m.invalidateAccess(m.pending.Machine, failure)
+				if m.page == "create" && (failure.Code == "WorkingDirectoryInvalid" || failure.Code == "WorkingDirectoryUnavailable") {
+					m.focusForm(3)
+				}
+			}
+			m.fail(failureText)
 			if message.operation == "group" || message.operation == "rename" {
 				m.metadata.failure = failure
 				if failure.Dispatch == "unknown" || failure.Code == "SessionNotFound" || failure.Code == "SessionIdentityMismatch" || failure.Code == "InternalError" || failure.Code == "Unauthenticated" || failure.Code == "MachineIdentityMismatch" || failure.Code == "SessionNameConflict" || failure.Code == "SessionNameChanged" {
@@ -316,24 +333,38 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, m.refresh()
 	case searchMsg:
-		if m.page != "create" || m.form[0] != message.machine || m.searchRevision != message.revision {
+		if m.page != "create" || m.form[0] != message.machine || m.searchRevision != message.revision || m.blurred || !m.directoryAvailable() || m.ctx.Err() != nil {
 			return m, nil
 		}
-		m.searching = false
+		initial := m.searchState == directorySearchLoading
+		if m.searchCancel != nil {
+			m.searchCancel()
+			m.searchCancel = nil
+		}
 		if !message.result.OK {
-			m.fail("directory search unavailable on " + message.machine)
+			m.searchState, m.searchDirectories, m.directorySelection.choice = directorySearchFailed, nil, nil
+			problem := "directory search unavailable on " + message.machine
 			if message.result.Error != nil {
 				switch message.result.Error.Code {
 				case "DirectorySearchTooLarge":
-					m.inform("too many results; narrow your search")
+					problem = "too many results; narrow your search"
 				case "invalid_input":
-					m.inform("enter 1–8 search words, at most 256 bytes")
+					problem = "enter 1–8 search words, at most 256 bytes"
+				case "Unauthenticated", "MachineIdentityMismatch":
+					problem = fleetclient.ErrorMessage(*message.result.Error, fleetclient.Request{}, false)
 				}
 			}
+			m.searchProblem = problem
+			m.invalidateAccess(message.machine, message.result.Error)
+			m.fail(problem)
 			return m, nil
 		}
 		value := message.result.Value.(fleetclient.DirectorySearchResult)
-		m.searchDirectories, m.searchCursor = value.Directories, 0
+		m.searchState, m.searchDirectories, m.searchOmitted = directorySearchReady, value.Directories, value.Omitted
+		m.directorySelection.retain(value.Directories)
+		if initial && len(value.Directories) > 0 {
+			m.directorySelection.choice = &value.Directories[0]
+		}
 		m.inform("")
 		if len(value.Directories) == 0 {
 			m.inform("no matching directories")
@@ -366,7 +397,7 @@ func (m *model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if m.page == "create" && m.field >= 2 && m.field < len(m.form) {
-				if m.field == 4 {
+				if m.field == 3 || m.field == 4 {
 					m.form[m.field] += message.Content
 				} else {
 					m.form[m.field] += singleLine(message.Content)
@@ -574,6 +605,25 @@ func (m *model) invalidatePendingPeer() {
 		if m.peers[index].Machine == target.Machine {
 			m.peers[index].OK = false
 		}
+	}
+	m.rebuild()
+}
+
+// Auth and identity failures are authoritative even before the next inventory.
+func (m *model) invalidateAccess(label string, failure *fleetclient.Failure) {
+	if failure == nil || failure.Code != "Unauthenticated" && failure.Code != "MachineIdentityMismatch" {
+		return
+	}
+	if m.refreshing {
+		m.refreshAfterAction = true
+	}
+	for index := range m.peers {
+		if m.peers[index].Label == label {
+			m.peers[index].OK, m.peers[index].Error = false, failure
+		}
+	}
+	if m.page == "create" && m.form[0] == label {
+		m.clearDirectorySearch()
 	}
 	m.rebuild()
 }
