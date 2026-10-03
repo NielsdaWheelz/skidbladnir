@@ -1,7 +1,7 @@
 # profile usage in the desktop browser
 
-accepted 2026-10-02; source implemented and qualified; installed composition
-remains `NOT_RUN`. show each configured profile's
+accepted 2026-10-02; implemented and qualified on macbook, devbox and arch.
+show each configured profile's
 5-hour and 7-day quota usage in the main tui, with an expandable disclosure for
 reset times, source and report age. codex uses its existing account daemon;
 claude uses the structured input to its managed statusline.
@@ -10,8 +10,8 @@ this document owns the capability and implementation plan.
 [architecture](architecture.md) owns shared invariants;
 [desktop browser](desktop-browser.md) owns the surrounding frame and actions.
 session views remain an independent navigation change.
-[implementation](issues/profile-usage.md) and the
-[inactive-claude follow-up](issues/claude-inactive-profile-usage.md) track open work.
+the [inactive-claude follow-up](issues/claude-inactive-profile-usage.md)
+tracks the remaining first-version limit.
 qualification below distinguishes source, candidate-host and installed evidence.
 
 ## scope and invariants
@@ -274,11 +274,35 @@ only usage reads were allowed; endpoint identities were unchanged, terminal
 operations were fenced, and the owned candidate stages were removed. this is
 candidate evidence, not managed installation or installed browser acceptance.
 
-the installed-composition row remains `NOT_RUN`: the qualified helper must
-reach its repository's default branch, the gateway must reach an admitted
-immutable release, and the managed producer must be distributed before that
-boundary can be tested. no release, installation, service activation or phone
-operation was performed during source qualification.
+2026-10-02 installed composition passed on macbook, devbox and arch through the
+normal managed installation paths. the immutable
+[v0.13.0 release](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.13.0)
+comes from skid source `b2ea62aea57a87668835eefbcaebcffcf5761559`;
+its five public assets passed source/tag, checksum and signer verification,
+and both host binaries reproduced byte-for-byte. both release pins admit this
+generation. the installed helper is default-branch revision
+`4d270abd48dd61240b22b9d741ce737fa611f67b`, with the qualified native usage
+sources unchanged. actual imports, optional sdk, dependency consistency and
+matching installed dependency metadata were checked on all three hosts. the
+managed producer matched its qualified bytes and mode; provider settings stayed
+unchanged.
+
+the existing fleet verifier and each installed public browser passed against
+all three authenticated gateways. the 80×24/no-color browser checks covered
+default summaries, every declared profile including unused profiles, source,
+age, stale/reset presentation, read-only scrolling, return and clean quit.
+the native personal responses supplied weekly windows and omitted 5h.
+arch's absent work/work2 owners remained absent and unavailable. an earlier
+installed macbook check admitted naturally reported claude 5h and 7d values in
+the summary and page. the final three-browser runs separately observed a
+macbook report with neither window and no claude publication on devbox or arch;
+these absences correctly displayed unknown. live account/browser checks invoked
+no inference turn or forced statusline callback.
+
+adversarial review covered the installed receipts and temporary probes. all
+temporary integration/live tests were removed after qualification. devbox's
+jarvis remained cleanly stopped and paused. phone installation and adb work
+were not performed.
 
 ## research evidence and limits
 
