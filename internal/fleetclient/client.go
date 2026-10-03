@@ -31,6 +31,7 @@ type Failure struct {
 	terminalInputMessage string
 	Code                 string `json:"code"`
 	Dispatch             string `json:"dispatch"`
+	Target               string `json:"target,omitempty"`
 }
 type Result struct {
 	OK bool `json:"ok"`
@@ -63,16 +64,38 @@ func (client *Client) InspectReference(ctx context.Context, encoded string) Resu
 	if !found {
 		return Failed("machine_unknown", "not_sent")
 	}
+	return capturedInspection(selected, ref, encoded, client.Execute(ctx, Request{Operation: "inspect", Ref: encoded}))
+}
+
+func capturedInspection(selected peer, ref Reference, encoded string, inspection Result) Result {
 	value := InspectedReference{Label: selected.Label, Machine: selected.Machine}
 	value.Target.Ref = encoded
 	value.Target.Conversation = ref.Conversation.Binding.Conversation
 	value.Target.Turn = ref.Conversation.Turn
-	value.Inspection = client.Execute(ctx, Request{Operation: "inspect", Ref: encoded})
+	value.Inspection = inspection
 	if value.Inspection.OK {
 		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
 		value.ObservedRef = (Reference{Machine: ref.Machine, Conversation: &runtime}).Encode()
 	}
 	return success(value)
+}
+
+// Inspect samples a native handle once; --ref retains its earlier capture.
+func (client *Client) Inspect(parent context.Context, request Request) Result {
+	ctx, cancel := context.WithTimeout(parent, Timeout)
+	defer cancel()
+	if request.Operation != "inspect" || !request.Valid() {
+		return Failed("invalid_input", "not_sent")
+	}
+	if request.Ref != "" {
+		return client.InspectReference(ctx, request.Ref)
+	}
+	ref, _, failure := client.resolve(ctx, request)
+	if failure != nil {
+		return *failure
+	}
+	selected, _ := client.peerByMachine(ref.Machine)
+	return capturedInspection(selected, ref, ref.Encode(), success(*ref.Conversation))
 }
 
 // Execute never retries a write, including after a lost acknowledgement.
@@ -113,25 +136,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 		}
 		return result
 	case "start":
-		selected, ok := client.peerByLabel(request.Machine)
-		if !ok {
-			return Failed("machine_unknown", "not_sent")
-		}
-		cwd := request.CWD
-		if cwd == "" {
-			cwd = "~"
-		}
-		body, _ := json.Marshal(struct {
-			Kind    LaunchKind `json:"kind"`
-			CWD     string     `json:"cwd"`
-			Profile string     `json:"profile,omitempty"`
-			Name    string     `json:"optionalTmuxName,omitempty"`
-			Group   string     `json:"group,omitempty"`
-		}{request.Kind, cwd, request.Profile, request.Name, request.Group.String()})
-		if len(body) > MaximumInputBytes {
-			return Failed("input_limit", "not_sent")
-		}
-		result = client.call(ctx, selected, "start", "/v1/sessions", body)
+		return client.start(ctx, request)
 	default:
 		ref, observed, failure := client.resolve(ctx, request)
 		if failure != nil {
@@ -577,7 +582,7 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if response.StatusCode != expected {
 		var failure *Failure
 		if operation == "group" || operation == "start" || operation == "shell" {
-			failure = decodeMutationFailure(operation, encoded, response.StatusCode)
+			failure = decodeMutationFailure(operation, encoded, response.StatusCode, target.Machine)
 		} else {
 			failure = decodeFailure(encoded, dispatch)
 		}
@@ -617,8 +622,13 @@ func decodeFailure(encoded []byte, dispatch string) *Failure {
 	failure := &Failure{Code: value.Code, Dispatch: dispatch}
 	if value.Code == "TerminalInputBlocked" {
 		switch value.Message {
-		case "respond to the dialog in the terminal.", "terminal contains a draft. open it before sending.":
+		case "send unavailable for this screen. open the terminal or use text/keys.",
+			"respond to the dialog in the terminal.",
+			"terminal contains a draft. open it before sending.",
+			"the requested agent is not ready for its initial prompt. inspect the terminal before sending.":
 			failure.terminalInputMessage = value.Message
+		default:
+			return nil
 		}
 	}
 	return failure
@@ -656,6 +666,11 @@ func (result Result) ExitCode(operation string) int {
 		return 1
 	}
 	switch operation {
+	case "start":
+		value := result.Value.(StartResult)
+		if value.Creation != "created" || value.Prompt != "not_requested" && value.Prompt != "written" || value.Failure != nil {
+			return 1
+		}
 	case "list":
 		if result.Value.(Inventory).Partial {
 			return 1

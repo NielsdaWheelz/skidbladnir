@@ -31,5 +31,5 @@ func validHandle(value, operation string) bool {
 	if strings.HasPrefix(value, "t-") {
 		return operation == "info" || operation == "enter" || operation == "read" || operation == "send" || operation == "text" || operation == "keys" || operation == "wait" || operation == "stop" || operation == "shell" || operation == "group" || operation == "close"
 	}
-	return (operation == "read" || operation == "send" || operation == "wait" || operation == "stop") && strings.HasPrefix(value, "c-")
+	return (operation == "read" || operation == "send" || operation == "wait" || operation == "stop" || operation == "inspect") && strings.HasPrefix(value, "c-")
 }

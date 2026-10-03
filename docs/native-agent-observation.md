@@ -110,6 +110,11 @@ is `{label, machine, target:{ref, conversation, turn?}, inspection, observedRef?
 or protocol failure keeps that target and exits one. malformed references,
 references without a conversation and unknown machines fail the outer envelope.
 names and direct conversation arguments are not accepted by this command.
+2026-10-02: `inspect c-HANDLE [--machine HOST]` also captures through existing
+scoped inventory/native resolution, then returns this same envelope. unavailable
+capture refuses without a fabricated reference. ordinary output uses the short
+handle; `--json` preserves the captured and observed refs. no native association
+or provider method is added.
 
 successful inspection must match the captured conversation. only then,
 `observedRef` encodes that same conversation's newly sampled runtime and turn,
@@ -167,7 +172,8 @@ receipts earn accepted/exit zero. experimental user queueing is intentionally
 unavailable in this cutover, including `--queue`; remove queue dispatch machinery.
 
 claude saved read/results need no live process. status needs a unique native
-session match. stop captures exact background job/PID/kernel lifetime, then uses
+session match. stop captures exact background job/PID/kernel lifetime inside the
+helper at dispatch, then uses
 existing native stop; ambiguous or interactive workers are unavailable. native
 claude peer/user/queue input rejects unavailable/not_sent before discovery.
 
@@ -179,7 +185,10 @@ returns last observation; cancellation stops waiter only. idle is neither job
 completion nor empty queue. native unavailability is an error; only matched exits
 zero.
 
-stop interrupts captured work only: no successor chasing, terminal closure or
+codex stop retains the turn in its captured reference and never follows a successor.
+claude background stop captures its job inside the dispatched helper operation;
+an earlier conversation reference does not pin that job across approval delay.
+the helper interrupts only its exact job/PID lifetime. no terminal closure or
 provider queue purge. idle/no work returns finished without dispatch. terminal
 keys confirm bytes written only. native stop never becomes a session-native
 compound close. terminal closure is independent and never kills the shared daemon

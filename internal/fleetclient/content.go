@@ -2,6 +2,10 @@ package fleetclient
 
 // ErrorMessage is shared by command output and the desktop browser.
 func ErrorMessage(failure Failure, request Request, native bool) string {
+	if (request.Operation == "start" || request.Operation == "shell") && failure.Target != "" {
+		ref, _ := DecodeReference(failure.Target)
+		return "terminal was created (" + ref.Handle() + "); creation follow-up failed. refresh to inspect it."
+	}
 	if failure.Dispatch == "unknown" {
 		if request.Operation == "rename" {
 			return "name change outcome unknown. checking tmux."

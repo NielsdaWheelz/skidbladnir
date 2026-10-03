@@ -46,7 +46,12 @@ internal sealed interface GatewayResult<out Value> {
 internal enum class MutationDispatch { NotSent, Unknown }
 
 internal sealed interface GatewayFailure {
-    data class Api(val code: ApiErrorCode, val dispatch: MutationDispatch? = null, val message: String? = null) : GatewayFailure
+    data class Api(
+        val code: ApiErrorCode,
+        val dispatch: MutationDispatch? = null,
+        val message: String? = null,
+        val capturedTarget: CapturedCreationTarget? = null,
+    ) : GatewayFailure
     data object Transport : GatewayFailure
 }
 
@@ -480,7 +485,7 @@ internal fun decodeCreateHttpFailure(status: Int, encoded: String): GatewayFailu
         ApiErrorCode.GroupInvalid, ApiErrorCode.SessionNameConflict, ApiErrorCode.MachineIdentityMismatch,
         ApiErrorCode.SessionNotFound, ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
         ApiErrorCode.AgentUnavailable,
-    ))
+    ), creation = true)
 }
 
 internal fun decodeCloseTerminalHttpFailure(status: Int, encoded: String): GatewayFailure =
@@ -620,7 +625,9 @@ internal fun decodeAgentHttpFailure(status: Int, encoded: String): GatewayFailur
 internal fun decodeTerminalControlHttpFailure(status: Int, encoded: String): GatewayFailure {
     if (status == 502 || status == 503 || status == 504) return GatewayFailure.Transport
     return decodeProtocol {
-        val response = productJson.decodeFromJsonElement<MutationErrorResponse>(strictJsonObject(encoded))
+        val wire = strictJsonObject(encoded)
+        require("target" !in wire)
+        val response = productJson.decodeFromJsonElement<MutationErrorResponse>(wire)
         val code = parseApiErrorCode(response.code)
         require(code in setOf(
             ApiErrorCode.Unauthenticated, ApiErrorCode.InvalidRequest, ApiErrorCode.RequestTooLarge,
@@ -639,7 +646,12 @@ internal fun decodeTerminalControlHttpFailure(status: Int, encoded: String): Gat
             ApiErrorCode.TerminalUnavailable -> if (dispatch == MutationDispatch.Unknown) {
                 setOf(TERMINAL_INPUT_UNKNOWN, TERMINAL_CLOSE_UNKNOWN)
             } else setOf(apiErrorMessage(code))
-            ApiErrorCode.TerminalInputBlocked -> setOf(apiErrorMessage(code), "terminal contains a draft. open it before sending.", "respond to the dialog in the terminal.")
+            ApiErrorCode.TerminalInputBlocked -> setOf(
+                apiErrorMessage(code),
+                "terminal contains a draft. open it before sending.",
+                "respond to the dialog in the terminal.",
+                "the requested agent is not ready for its initial prompt. inspect the terminal before sending.",
+            )
             else -> setOf(apiErrorMessage(code))
         }
         require(response.message in messages)
@@ -649,7 +661,13 @@ internal fun decodeTerminalControlHttpFailure(status: Int, encoded: String): Gat
 
 @Serializable private data class GroupRequest(val identityToken: String, val group: String)
 @Serializable private data class SessionIdentityRequest(val identityToken: String)
-@Serializable private data class MutationErrorResponse(val code: String, val message: String, val dispatch: String)
+@Serializable internal data class CapturedCreationTarget(val tmuxId: String, val identityToken: String, val paneId: String)
+@Serializable private data class MutationErrorResponse(
+    val code: String,
+    val message: String,
+    val dispatch: String,
+    val target: CapturedCreationTarget? = null,
+)
 
 internal fun decodeGroupHttpFailure(status: Int, encoded: String): GatewayFailure =
     decodeMutationHttpFailure(status, encoded, setOf(
@@ -658,8 +676,15 @@ internal fun decodeGroupHttpFailure(status: Int, encoded: String): GatewayFailur
         ApiErrorCode.SessionIdentityMismatch, ApiErrorCode.InternalError,
     ))
 
-private fun decodeMutationHttpFailure(status: Int, encoded: String, allowed: Set<ApiErrorCode>): GatewayFailure = decodeProtocol {
-    val response = productJson.decodeFromJsonElement<MutationErrorResponse>(strictJsonObject(encoded))
+private fun decodeMutationHttpFailure(
+    status: Int,
+    encoded: String,
+    allowed: Set<ApiErrorCode>,
+    creation: Boolean = false,
+): GatewayFailure = decodeProtocol {
+    val wire = strictJsonObject(encoded)
+    wire.requireAbsentOrNonNull(setOf("target"))
+    val response = productJson.decodeFromJsonElement<MutationErrorResponse>(wire)
     val code = parseApiErrorCode(response.code)
     require(code in allowed)
     require(status == apiErrorHttpStatus(code) && response.message == apiErrorMessage(code))
@@ -669,5 +694,10 @@ private fun decodeMutationHttpFailure(status: Int, encoded: String, allowed: Set
         else -> throw SerializationException("invalid mutation dispatch")
     }
     require(dispatch == MutationDispatch.NotSent || code == ApiErrorCode.InternalError)
-    GatewayFailure.Api(code, dispatch)
+    response.target?.let { target ->
+        require(creation && code == ApiErrorCode.InternalError && dispatch == MutationDispatch.Unknown)
+        require(target.tmuxId.matches(Regex("\\$[0-9]+")) && target.paneId.matches(Regex("%[0-9]+")))
+        require(target.identityToken.isNotEmpty())
+    }
+    GatewayFailure.Api(code, dispatch, capturedTarget = response.target)
 }

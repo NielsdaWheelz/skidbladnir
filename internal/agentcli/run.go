@@ -2,6 +2,7 @@
 package agentcli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,8 +28,8 @@ const usage = `usage: skid [--config PATH] COMMAND [options]
 
 skid                                      open the session browser
 skid list [--machine HOST] [--group LABEL | --unassigned]
-skid info HANDLE [--explain]              metadata, status and exact reference
-skid inspect --ref REF                    captured conversation and current observation
+skid info HANDLE [--explain]              terminal metadata and status
+skid inspect c-HANDLE [--machine HOST]    native capture and current observation
 skid enter HANDLE                         enter terminal; ctrl-] d detaches
 skid read HANDLE [--max-bytes N]           bounded terminal text; c- is native
 skid send HANDLE TEXT|--stdin              guarded terminal paste; c- is native
@@ -37,7 +38,8 @@ skid keys HANDLE KEY...                   explicit logical terminal keys
 skid wait HANDLE [--state STATE] [--timeout DURATION]
 skid stop HANDLE                          interrupt terminal; c- is native stop
 skid close HANDLE [--terminal-only]        interrupt and close; separate outcomes
-skid start [NAME] --machine HOST (--profile PROFILE | --terminal) [--cwd '~'] [--group LABEL]
+skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [--model MODEL] [--effort EFFORT] [--stdin]
+skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 skid shell HANDLE                         new terminal here
 skid group HANDLE (--set LABEL | --clear)
 
@@ -45,10 +47,11 @@ existing targets: HANDLE [--machine HOST] or --ref VALUE
 terminal handles: t- plus 16 lowercase hex characters
 conversation handles: c- plus 16 lowercase hex characters
 t- handles select terminal operations, including read/send/wait/stop
-c- handles select native read/send/wait/stop
-inspect requires an exact --ref
+c- handles select native inspect/read/send/wait/stop
+inspect also accepts a captured native --ref
 native targets: --conversation ID --profile PROFILE --machine HOST
---json emits one structured envelope; -- separates literal operands
+ordinary output uses short handles and machine labels
+--json emits one full structured envelope, including captured refs; -- separates literal operands
 terminal read captures rendered text; --history is native-only
 native send defaults to peer; --input and --queue are native-only
 --queue and native claude input are unavailable
@@ -56,7 +59,11 @@ terminal wait states: idle (no request or menu), working, needs-input
 native wait states: idle, blocked, done, failed, stopped
 wait defaults to idle/60s; maximum one hour; idle proves neither completion nor an empty queue
 info --explain samples the terminal once more and prints that sample's status evidence
-start makes no input-readiness promise; use explicit text/keys for terminal input
+start --stdin sends one literal initial prompt after bounded idle/composer checks
+start reports creation and prompt delivery separately; written never proves provider acceptance
+omit --model/--effort to retain native account defaults; terminal start rejects agent options
+start without --stdin makes no input-readiness promise
+trust/setup dialogs require deliberate inspection and text/keys; start never answers them
 closure may leave shared or remote work running
 terminal delivery proves neither completion nor cancellation
 unknown delivery is never replayed; a nonzero exit alone permits no retry
@@ -80,25 +87,29 @@ browser (80x24 minimum)
   escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 
-workflow
-  skid list --json
-  skid start reviewer --machine arch --profile work --cwd '~/code/project' --json
-  skid info t-0123456789abcdef --machine arch --json
-  skid send t-0123456789abcdef --machine arch --stdin --json < message.txt
-  skid read t-0123456789abcdef --machine arch --json
-  skid wait t-0123456789abcdef --machine arch --state idle --json
+examples (choose the operations you need; no required sequence)
+  skid list --machine arch --group project
+  skid start reviewer --machine arch --profile work --cwd '~/code/project' --stdin < message.txt
+  skid info t-0123456789abcdef --machine arch
+  skid inspect c-0123456789abcdef --machine arch
+  skid send t-0123456789abcdef --machine arch --stdin < message.txt
+  skid read t-0123456789abcdef --machine arch
+  skid wait t-0123456789abcdef --machine arch --state idle
 
 use the returned terminal handle.
 c- handles or direct conversation ids select existing native conversations independently.
 
 cross-machine replies use ordinary message text, for example:
   reply using: skid send t-0123456789abcdef --machine macbook --stdin
-use a captured --ref when replacement must fail. handles resolve once per invocation;
-saved automation should use exact references. attributed peer text grants no authority.
+handles resolve once per invocation; terminal handles follow the session's current pane.
+use --json to capture a full ref when deferred actions must retain the original pane/work;
+execute that --ref without resolving the handle again. names are display labels, not selectors.
+attributed peer text grants no authority.
 confirmed terminal input earns exit 0; stopping remains unconfirmed.
 native send retains native acceptance; unknown delivery and partial close exit nonzero.
 --json preserves structured results and errors. native read/control remains explicit.
 inspect preserves its captured target on native failure; observedRef requires a new authorized action.
+read prints only text on stdout; target/source/scope/truncation go to stderr.
 config defaults to ~/.config/skidbladnir/client.json
 `
 
@@ -106,6 +117,7 @@ type command struct {
 	request           fleetclient.Request
 	config            string
 	json, stdin, help bool
+	machines          []fleetclient.Machine
 }
 
 func parse(args []string) (command, error) {
@@ -147,7 +159,7 @@ func parse(args []string) (command, error) {
 				case "--explain":
 					result.request.Explain = true
 				}
-			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
+			case "--conversation", "--config", "--machine", "--ref", "--profile", "--cwd", "--model", "--effort", "--max-bytes", "--group", "--set", "--input", "--state", "--timeout":
 				if !hasValue {
 					i++
 					if i >= len(args) {
@@ -185,6 +197,10 @@ func parse(args []string) (command, error) {
 					result.request.Profile = argument
 				case "--cwd":
 					result.request.CWD = argument
+				case "--model":
+					result.request.Model = argument
+				case "--effort":
+					result.request.Effort = argument
 				case "--max-bytes":
 					n, err := strconv.Atoi(argument)
 					if err != nil || n < 1 || n > 32768 {
@@ -225,8 +241,13 @@ func parse(args []string) (command, error) {
 			result.request.Name = operands[0]
 		}
 	case "inspect":
-		if len(operands) != 0 || result.request.Ref == "" {
-			return result, errors.New("inspect requires --ref")
+		if result.request.Ref == "" {
+			if len(operands) != 1 || !strings.HasPrefix(operands[0], "c-") || result.request.ConversationID != "" {
+				return result, errors.New("inspect requires a conversation handle or --ref")
+			}
+			result.request.Handle = operands[0]
+		} else if len(operands) != 0 {
+			return result, errors.New("extra operand")
 		}
 	case "info", "enter", "read", "send", "keys", "text", "wait", "stop", "close", "group", "shell":
 		if result.request.Ref == "" && result.request.ConversationID == "" {
@@ -262,6 +283,9 @@ func parse(args []string) (command, error) {
 	if seen["--terminal"] && operation != "start" {
 		return result, errors.New("terminal option is start-only")
 	}
+	if (seen["--model"] || seen["--effort"]) && operation != "start" {
+		return result, errors.New("model and effort options are start-only")
+	}
 	if seen["--history"] && operation != "read" || seen["--terminal-only"] && operation != "close" || seen["--explain"] && operation != "info" || seen["--queue"] && operation != "send" || seen["--input"] && operation != "send" || (seen["--state"] || seen["--timeout"]) && operation != "wait" {
 		return result, errors.New("option not supported by command")
 	}
@@ -277,6 +301,9 @@ func parse(args []string) (command, error) {
 		result.request.Kind = fleetclient.LaunchAgent
 		if seen["--terminal"] {
 			result.request.Kind = fleetclient.LaunchTerminal
+			if seen["--model"] || seen["--effort"] || result.stdin {
+				return result, errors.New("terminal start rejects model, effort and initial prompt")
+			}
 		}
 	}
 	if seen["--group"] {
@@ -313,7 +340,7 @@ func parse(args []string) (command, error) {
 	} else if seen["--set"] || seen["--clear"] {
 		return result, errors.New("assignment option not supported")
 	}
-	if result.stdin && result.request.Operation != "send" && result.request.Operation != "text" || result.json && result.request.Operation == "enter" {
+	if result.stdin && operation != "send" && operation != "text" && operation != "start" || result.json && operation == "enter" {
 		return result, errors.New("option not supported by command")
 	}
 	request := result.request
@@ -344,7 +371,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			encoded, _ := fleetclient.Failed("invalid_input", "not_sent").Encode("")
 			stdout.Write(encoded)
 		} else {
-			io.WriteString(stderr, usage)
+			fmt.Fprintf(stderr, "invalid input: %s\nuse skid --help for commands and examples\n", err)
 		}
 		return 2
 	}
@@ -370,6 +397,9 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		if len(text) > 32768 {
 			return render(parsed, fleetclient.Failed("input_limit", "not_sent"), stdout, stderr)
 		}
+		if len(text) == 0 {
+			return render(parsed, fleetclient.Failed("invalid_input", "not_sent"), stdout, stderr)
+		}
 		parsed.request.Text = string(text)
 		if !parsed.request.Valid() {
 			return render(parsed, fleetclient.Failed("invalid_input", "not_sent"), stdout, stderr)
@@ -386,6 +416,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if err != nil {
 		return render(parsed, fleetclient.Failed("configuration_invalid", "not_sent"), stdout, stderr)
 	}
+	parsed.machines = client.Machines()
 	if parsed.request.Operation == "" {
 		if sessionui.Run(ctx, client, stdin.(*os.File), stdout.(*os.File)) != nil {
 			io.WriteString(stderr, "session browser ended with an error\n")
@@ -439,7 +470,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 0
 	}
 	if parsed.request.Operation == "inspect" {
-		return render(parsed, client.InspectReference(ctx, parsed.request.Ref), stdout, stderr)
+		return render(parsed, client.Inspect(ctx, parsed.request), stdout, stderr)
 	}
 	return render(parsed, client.Execute(ctx, parsed.request), stdout, stderr)
 }
@@ -456,65 +487,56 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		return result.ExitCode(command.request.Operation)
 	}
 	if !result.OK {
-		native := command.request.ConversationID != "" || strings.HasPrefix(command.request.Handle, "c-")
-		if command.request.Ref != "" {
-			ref, _ := fleetclient.DecodeReference(command.request.Ref)
-			native = native || ref.Conversation != nil
-		}
-		message := fleetclient.ErrorMessage(*result.Error, command.request, native)
-		fmt.Fprintln(stderr, message)
-
-		switch result.Error.Code {
-		case "handle_ambiguous":
-			fmt.Fprintln(stderr, "use --machine HOST or --ref VALUE")
-		case "inventory_incomplete":
-			fmt.Fprintln(stderr, "a peer is unavailable; use --machine HOST or --ref VALUE")
-		case "configuration_invalid":
-			fmt.Fprintln(stderr, "install the private client configuration or use --config PATH")
-		}
+		reportFailure(stderr, *result.Error, command.request, command.machines)
 		return 1
 	}
+	var human bytes.Buffer
+	output := stdout
+	stdout = &human
 	switch command.request.Operation {
 	case "inspect":
 		value := result.Value.(fleetclient.InspectedReference)
-		if _, err := fmt.Fprintf(stdout, "machine: %s\ncaptured conversation: %s\ncaptured reference: %s\n", value.Label, value.Target.Conversation.ConversationID, value.Target.Ref); err != nil {
+		ref, _ := fleetclient.DecodeReference(value.Target.Ref)
+		if _, err := fmt.Fprintf(stdout, "target: %s on %s\nprovider: %s\nprofile: %s\n", ref.Handle(), value.Label, value.Target.Conversation.Provider, value.Target.Conversation.ProfileKey); err != nil {
 			return 1
 		}
 		if value.Target.Turn != nil {
-			if _, err := fmt.Fprintln(stdout, "captured turn: "+value.Target.Turn.ID); err != nil {
+			if _, err := fmt.Fprintln(stdout, "captured work: "+value.Target.Turn.State); err != nil {
 				return 1
 			}
 		}
 		if !value.Inspection.OK {
-			fmt.Fprintln(stderr, "inspection unavailable: "+value.Inspection.Error.Code)
+			reportFailure(stderr, *value.Inspection.Error, fleetclient.Request{Operation: "inspect", Ref: value.Target.Ref}, command.machines)
 			break
 		}
 		runtime := value.Inspection.Value.(agentruntime.ConversationRuntime)
-		if _, err := fmt.Fprintln(stdout, "observed state: "+fleetclient.StatusText(runtime.Status)); err != nil {
+		if _, err := fmt.Fprintf(stdout, "state: %s; source: %s\n", fleetclient.StatusText(runtime.Status), runtime.Status.Source); err != nil {
 			return 1
 		}
 		if runtime.Turn != nil {
-			if _, err := fmt.Fprintln(stdout, "observed turn: "+runtime.Turn.ID); err != nil {
+			work := "current work: " + runtime.Turn.State
+			if value.Target.Turn != nil && value.Target.Turn.ID != runtime.Turn.ID {
+				work += "; differs from captured work"
+			}
+			if _, err := fmt.Fprintln(stdout, work); err != nil {
 				return 1
 			}
-		}
-		if _, err := fmt.Fprintln(stdout, "observed reference: "+value.ObservedRef+"\nuse the observed reference only for a separately authorized action."); err != nil {
-			return 1
 		}
 	case "list":
 		list := result.Value.(fleetclient.Inventory)
 		table := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(table, "machine\tsession\tterminal handle\tconversation handle\tprovider/profile\tstate\tdirectory")
+		fmt.Fprintln(table, "machine\tsession\tterminal\tconversation\tprovider/profile\tstate\tgroup\tdirectory")
 		owners := make(map[string]fleetclient.Peer, len(list.Peers))
 		for _, peer := range list.Peers {
 			owners[peer.Machine] = peer
 			if !peer.OK {
-				fmt.Fprintf(table, "%s\tunavailable\t\t%s\t\n", peer.Label, peer.Error.Code)
+				fmt.Fprintf(table, "%s\t\t\t\t\tunavailable: %s\t\t\n", peer.Label, peer.Error.Code)
+			} else if len(peer.Sessions) == 0 {
+				fmt.Fprintf(table, "%s\tno matching sessions\t\t\t\t\t\t\n", peer.Label)
 			}
 		}
 		groups := fleetclient.Groups(list.Peers, group.Filter{})
 		for _, group := range groups {
-			fmt.Fprintln(table, fleetclient.GroupHeading(group.Label))
 			for _, entry := range group.Rows {
 				row := entry.Session
 				current := row.Current(owners[entry.Machine])
@@ -527,42 +549,83 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 					}
 					if current.Agent != nil {
 						provider = current.Agent.Provider
-						if current.Agent.Label != "" {
-							provider += "/" + current.Agent.Label
+						if current.Agent.Profile != "" {
+							provider += "/" + current.Agent.Profile
 						} else {
 							provider += "/profile unknown"
 						}
 					}
 				}
 				// The cli keeps no notification store, so no row is ready.
-				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, current.CWD)
+				label := group.Label.String()
+				if group.Label.IsUnassigned() {
+					label = "unassigned"
+				}
+				fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", machine, row.Name, row.TerminalHandle, row.ConversationHandle, provider, fleetclient.ProjectStatus(row, entry.Available, false).Detail, label, current.CWD)
 			}
 		}
-		if len(groups) == 0 {
-			if list.Partial {
-				fmt.Fprintln(table, "no matching sessions in available inventory")
-			} else {
-				fmt.Fprintln(table, "no sessions in this view")
-			}
+		if list.Partial {
+			fmt.Fprintln(table, "partial inventory; unavailable hosts are listed above")
+		} else if len(list.Peers) == 0 {
+			fmt.Fprintln(table, "no machines in this view")
 		}
 		if table.Flush() != nil {
 			return 1
 		}
-	case "info", "start", "shell":
+	case "start":
+		value := result.Value.(fleetclient.StartResult)
+		if value.Handle != "" {
+			fmt.Fprintf(stdout, "target: %s on %s\n", value.Handle, value.Label)
+		} else {
+			fmt.Fprintln(stdout, "machine: "+value.Label)
+		}
+		if value.Terminal != nil {
+			fmt.Fprintln(stdout, "session: "+value.Terminal.Session.Name)
+		}
+		fmt.Fprintf(stdout, "creation: %s\nprompt: %s", value.Creation, value.Prompt)
+		if value.Prompt == "written" {
+			fmt.Fprint(stdout, "; provider acceptance unconfirmed")
+		}
+		fmt.Fprintln(stdout)
+		if value.Handle != "" {
+			fmt.Fprintf(stdout, "enter with: skid enter %s --machine %s\n", value.Handle, machineArgument(value.Label))
+		}
+		if value.Failure != nil {
+			fmt.Fprintf(stderr, "start: %s (%s)\n", value.Failure.Code, value.Failure.Dispatch)
+			if value.Failure.Code == "readiness_timeout" {
+				fmt.Fprintln(stderr, "initial input readiness was not observed within the remaining launch budget")
+			} else if value.Failure.Code == "TerminalInputBlocked" {
+				fmt.Fprintln(stderr, fleetclient.ErrorMessage(*value.Failure, command.request, false))
+			}
+		}
+		if value.Failure != nil || value.Prompt == "unknown" {
+			if value.Handle != "" {
+				fmt.Fprintf(stderr, "inspect with: skid info %s --machine %s\n", value.Handle, machineArgument(value.Label))
+			} else if value.Creation == "unknown" {
+				fmt.Fprintf(stderr, "inspect with: skid list --machine %s; never relaunch uncertain creation\n", machineArgument(value.Label))
+			}
+		}
+		if value.Prompt == "unknown" {
+			fmt.Fprintln(stderr, "never replay the uncertain prompt")
+		}
+	case "info", "shell":
 		value := result.Value.(fleetclient.ObservedSession)
-		fmt.Fprintf(stdout, "terminal handle: %s\n", value.Session.TerminalHandle)
+		fmt.Fprintf(stdout, "target: %s on %s\n", value.Session.TerminalHandle, value.Label)
 		if value.Session.ConversationHandle != "" {
-			fmt.Fprintf(stdout, "conversation handle: %s\n", value.Session.ConversationHandle)
+			fmt.Fprintf(stdout, "conversation: %s (recorded; may differ from terminal)\n", value.Session.ConversationHandle)
 		}
 		if command.request.Operation != "info" {
-			if _, err := fmt.Fprintf(stdout, "created %s on %s\nreference: %s\nenter with: skid enter --ref %s\n", value.Session.Name, value.Label, value.Session.Ref, value.Session.Ref); err != nil {
+			if _, err := fmt.Fprintf(stdout, "created %s\nenter with: skid enter %s --machine %s\n", value.Session.Name, value.Session.TerminalHandle, machineArgument(value.Label)); err != nil {
 				return 1
 			}
 		} else {
 			row := value.Session
 			current := row.Current(fleetclient.Peer{Label: value.Label, Machine: value.Machine})
-			fmt.Fprintln(stdout, fleetclient.GroupHeading(row.Group))
-			fmt.Fprintf(stdout, "session: %s\nnaming: %s\nselected pane: %s\nterminal on: %s\nmachine id: %s\n", row.Name, row.NameMode, row.ActivePaneID, value.Label, value.Machine)
+			label := row.Group.String()
+			if row.Group.IsUnassigned() {
+				label = "unassigned"
+			}
+			fmt.Fprintf(stdout, "session: %s\ngroup: %s\n", row.Name, label)
 			if current.Kind == "remote" {
 				fmt.Fprintf(stdout, "running on: %s\n", current.Label)
 			}
@@ -577,15 +640,12 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 				if current.Agent == nil {
 					fmt.Fprintln(stdout, "agent: not detected")
 				} else {
-					profile := current.Agent.Label
+					profile := current.Agent.Profile
 					if profile == "" {
 						profile = "profile unknown"
 					}
 					fmt.Fprintf(stdout, "provider: %s\nprofile: %s\n", current.Agent.Provider, profile)
 				}
-			}
-			if row.Conversation != nil {
-				fmt.Fprintf(stdout, "recorded native conversation: %s; may differ from terminal\n", row.Conversation.ConversationID)
 			}
 			// info resolves a complete inventory, so its status is fresh; the cli
 			// keeps no notification store, so it is never ready.
@@ -597,7 +657,7 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 			if row.LaunchProfile != "" {
 				fmt.Fprintf(stdout, "started with: %s\n", row.LaunchProfile)
 			}
-			if _, err := fmt.Fprintf(stdout, "observed: %s\nreference: %s\n", value.ObservedAt, row.Ref); err != nil {
+			if _, err := fmt.Fprintf(stdout, "observed: %s\n", value.ObservedAt); err != nil {
 				return 1
 			}
 			if diagnostics := value.Diagnostics; diagnostics != nil {
@@ -644,18 +704,25 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	case "read":
 		value := result.Value.(fleetclient.ReadResult)
-		fmt.Fprintf(stderr, "source: %s; scope: %s; truncated: %t\n", value.Source, value.Scope, value.Truncated)
+		fmt.Fprintf(stderr, "target: %s; source: %s; scope: %s; truncated: %t", targetText(command.request, command.machines), value.Source, value.Scope, value.Truncated)
+		if value.OutputState != "" {
+			fmt.Fprintf(stderr, "; output: %s", value.OutputState)
+		}
+		fmt.Fprintln(stderr)
 		text := value.Text
 		if _, err := io.WriteString(stdout, text); err != nil {
 			return 1
 		}
 	case "close":
+		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
 		if value, ok := result.Value.(fleetclient.TerminalCloseResult); ok {
 			fmt.Fprintln(stdout, "terminal "+value.Terminal+"; work shared elsewhere or running remotely may continue.")
 		} else {
-			fmt.Fprintln(stdout, fleetclient.CloseText(result.Value.(fleetclient.CloseResult)))
+			value := result.Value.(fleetclient.CloseResult)
+			fmt.Fprintf(stdout, "interruption: %s; terminal: %s; work shared elsewhere or running remotely may continue.\n", value.Interrupt, value.Terminal)
 		}
 	case "group":
+		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
 		text := "group assigned\n"
 		if command.request.Group.IsUnassigned() {
 			text = "group cleared\n"
@@ -665,30 +732,113 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		}
 	case "wait":
 		value := result.Value.(fleetclient.WaitResult)
+		request := fleetclient.Request{Ref: value.Target}
+		fmt.Fprintf(stdout, "target: %s\nwait: %s", targetText(request, command.machines), value.Outcome)
 		switch value.Outcome {
 		case "matched":
 			if value.TerminalStatus != nil {
 				// A terminal match proves exactly the requested state's dimensions.
-				fmt.Fprintln(stdout, "observed "+command.request.State+" (inferred).")
+				fmt.Fprintf(stdout, "; observed %s (inferred); task completion unconfirmed.\n", command.request.State)
 			} else {
-				fmt.Fprintln(stdout, "observed: "+fleetclient.StatusText(value.Observation.Status))
+				fmt.Fprintf(stdout, "; state: %s; source: %s; task completion unconfirmed.\n", fleetclient.StatusText(value.Observation.Status), value.Observation.Status.Source)
 			}
 		case "timeout":
-			fmt.Fprintln(stdout, "wait timed out.")
+			fmt.Fprintln(stdout, "; observation ended; no stop was sent.")
 		case "target_changed":
-			fmt.Fprintln(stdout, "the terminal changed; wait ended.")
+			fmt.Fprintln(stdout, "; target changed; observation ended.")
+		default:
+			fmt.Fprintln(stdout)
+		}
+		if status := value.TerminalStatus; status != nil {
+			fmt.Fprintf(stdout, "activity: %s; interaction: %s; notice: %s; source: %s\n", status.Activity, status.Interaction, status.Notice, status.Source)
+		} else if value.Outcome != "matched" && value.Observation != nil {
+			fmt.Fprintf(stdout, "last state: %s; source: %s\n", fleetclient.StatusText(value.Observation.Status), value.Observation.Status.Source)
 		}
 	case "send":
+		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
 		if value, native := result.Value.(fleetclient.SendResult); native {
-			fmt.Fprintf(stdout, "%s %s: message accepted.\n", value.Input, value.Delivery)
+			fmt.Fprintf(stdout, "native %s %s: %s; task completion unconfirmed.\n", value.Input, value.Delivery, value.Outcome)
 		} else {
-			fmt.Fprintln(stdout, fleetclient.WriteText("send", result.Value.(fleetclient.WriteResult)))
+			value := result.Value.(fleetclient.WriteResult)
+			fmt.Fprintf(stdout, "terminal input: %s; provider acceptance unconfirmed.\n", value.Outcome)
+			if value.Outcome == "unknown" {
+				fmt.Fprintln(stderr, "inspect the terminal before further input; never replay an uncertain write")
+			}
 		}
 	default:
-		fmt.Fprintln(stdout, fleetclient.WriteText(command.request.Operation, result.Value.(fleetclient.WriteResult)))
+		value := result.Value.(fleetclient.WriteResult)
+		fmt.Fprintln(stdout, "target: "+targetText(command.request, command.machines))
+		fmt.Fprintf(stdout, "%s %s: %s; %s\n", value.Method, command.request.Operation, value.Outcome, fleetclient.WriteText(command.request.Operation, value))
 	}
 
+	if _, err := output.Write(human.Bytes()); err != nil {
+		return 1
+	}
 	return result.ExitCode(command.request.Operation)
+}
+
+func targetText(request fleetclient.Request, machines []fleetclient.Machine) string {
+	handle, label := request.Handle, request.Machine
+	if request.Ref != "" {
+		ref, err := fleetclient.DecodeReference(request.Ref)
+		if err == nil {
+			handle, label = ref.Handle(), ""
+			for _, machine := range machines {
+				if machine.Handle == ref.Machine {
+					label = machine.Label
+					break
+				}
+			}
+		}
+	}
+	for _, machine := range machines {
+		if strings.EqualFold(machine.Label, label) {
+			label = machine.Label
+			break
+		}
+	}
+	if handle == "" && request.ConversationID != "" {
+		handle = "native conversation"
+	}
+	if label != "" {
+		if handle == "" {
+			return "on " + label
+		}
+		return handle + " on " + label
+	}
+	return handle
+}
+
+func machineArgument(label string) string {
+	return "'" + strings.ReplaceAll(label, "'", "'\\''") + "'"
+}
+
+func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetclient.Request, machines []fleetclient.Machine) {
+	if failure.Target != "" {
+		request.Ref, request.Handle, request.Machine = failure.Target, "", ""
+	}
+	native := request.ConversationID != "" || strings.HasPrefix(request.Handle, "c-")
+	if request.Ref != "" {
+		ref, _ := fleetclient.DecodeReference(request.Ref)
+		native = native || ref.Conversation != nil
+	}
+	target := strings.TrimSpace(request.Operation + " " + targetText(request, machines))
+	fmt.Fprintf(writer, "%s: %s (%s)\n", target, failure.Code, failure.Dispatch)
+	message := fleetclient.ErrorMessage(failure, request, native)
+	if message != failure.Code+" ("+failure.Dispatch+")" {
+		fmt.Fprintln(writer, message)
+	}
+	switch failure.Code {
+	case "handle_ambiguous":
+		fmt.Fprintln(writer, "use --machine HOST to choose the host")
+	case "inventory_incomplete":
+		fmt.Fprintln(writer, "a peer is unavailable; use --machine HOST to limit discovery")
+	case "configuration_invalid":
+		fmt.Fprintln(writer, "install the private client configuration or use --config PATH")
+	}
+	if failure.Dispatch == "unknown" {
+		fmt.Fprintln(writer, "inspect before any further write; never replay an uncertain write")
+	}
 }
 
 func settleVisit(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, store *fleetclient.NotificationStore) error {

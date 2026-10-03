@@ -6,9 +6,9 @@ capabilities. [terminal attention](reply-notifications.md) owns notices and visi
 owns naming, live selectors and name-independent attachment/closure. historical qualification below applies only to its
 recorded releases; retired command names are not compatibility aliases.
 
-current jarvis workers use nine tools through the installed skid cli: list, info,
-start, read, send, text, keys, stop and close. jarvis deployment supplies its
-private skid client config. cognition retains its existing shared codex process;
+jarvis worker tools use the same discovery and controls as skid-launched agents:
+list, info, start, read, send, text, keys, wait, stop and close. jarvis deployment
+supplies its private skid client config. cognition retains its existing shared codex process;
 its availability is separate from worker control and herdr retirement. older
 jarvis routing, rollout and acceptance below remain historical. see the current
 [deployment boundary](dev-server-handoff.md#owned-installation-and-runtime).
@@ -26,6 +26,16 @@ filters, and group-aware creation/return. source is implemented; [groups/shells 
 remains open. the shipped a1–a9 evidence below does
 not prove that amendment.
 its detailed contracts supersede only the affected collection/create surfaces.
+
+2026-10-02 accepted orchestration amendment: [the orchestration plan](jarvis-orchestration.md)
+adds optional launch model/effort and a literal initial prompt, with separate
+creation/input evidence. ordinary command output uses short targets and concise
+facts; full `--json` retains transport evidence and exact refs. native `inspect`
+also accepts a conversation handle. jarvis projects concise model results and
+captures full refs in its existing action state before deferred effects/waits.
+agents choose reuse, steering and waiting; no workflow policy or reply protocol
+is introduced. [current qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance)
+uses isolated source builds; installed paired fleet qualification remains `NOT_RUN`.
 
 2026-09-15 accepted pr 2 amendment: [shells.md](shells.md) adds standalone
 terminal creation and source-session create/attach. it owns the hard-cut launch
@@ -60,9 +70,9 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | command | behavior |
 | --- | --- |
 | `skid` | open tui; without a tty, print usage and exit 2 |
-| `skid list [--machine arch] [--group label \| --unassigned]` | grouped human view or peer-oriented json, retaining unavailable peers and shell-only sessions |
-| `skid info t-0123456789abcdef [--explain]` | full metadata, status and fresh reference for this session; `--explain` adds one inspect sample's status evidence |
-| `skid inspect --ref VALUE` | captured conversation and optional turn, native inspection outcome, and optional fresh conversation-only reference; preserve captured identity on native failure |
+| `skid list [--machine arch] [--group label \| --unassigned]` | compact session table with machine, handles, provider/profile, status, group and cwd; retain empty/unavailable peers and shell-only sessions |
+| `skid info t-0123456789abcdef [--explain]` | short target, readable metadata and sampled status; `--explain` adds one inspect sample's status evidence; json includes the fresh exact ref |
+| `skid inspect c-0123456789abcdef [--machine arch]` / `skid inspect --ref VALUE` | captured native target and current status/work, retaining captured identity on native failure; json includes captured identity, inspection and optional fresh conversation-only reference |
 | `skid enter t-0123456789abcdef` | attach; explicit detach returns to the caller |
 | `skid read t-0123456789abcdef [--max-bytes N]` | bounded rendered terminal output; c-handles retain explicit native latest/history reads |
 | `skid send t-0123456789abcdef "review the patch"` | guarded terminal paste/submit; `--stdin` accepts literal text; native input/queue flags require an explicit native target |
@@ -71,9 +81,9 @@ reuse the existing peer schema, private-file checks, and direct authenticated cl
 | `skid wait t-0123456789abcdef [--state idle\|working\|needs-input] [--timeout 60s]` | bounded inferred terminal sampling; c-handles retain native waits and their idle/blocked/done/failed/stopped states |
 | `skid stop t-0123456789abcdef` | one interruption key on the captured pane; retain terminal; c-handles retain exact native interruption |
 | `skid close t-0123456789abcdef [--terminal-only]` | interruption attempt and independent exact session closure; terminal-only skips input |
-| `skid start [NAME] --machine arch --profile work [--cwd '~'] [--group label]` | ordinary creation with optional initial membership; cwd defaults to remote home; no initial prompt or readiness wait |
-| `skid start [NAME] --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation through the same creation operation; mutually exclusive with `--profile` |
-| `skid shell t-0123456789abcdef` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new reference without attaching |
+| `skid start [NAME] --machine arch --profile work [--cwd '~'] [--group label] [--model MODEL] [--effort EFFORT] [--stdin]` | create once; optional literal prompt waits for bounded initial admission; report creation and input separately; omitted options retain native account defaults |
+| `skid start [NAME] --machine arch --terminal [--cwd '~'] [--group label]` | standalone terminal creation; reject `--profile`, model/effort and initial prompt |
+| `skid shell t-0123456789abcdef` / `skid shell --ref VALUE` | create an independent terminal from the source's host/current cwd/group; return the new short target and attachment command without attaching; json retains its ref |
 | `skid group t-0123456789abcdef --set label` / `--clear` | set/change/clear membership on the exact session lifetime; same handle/machine/ref selectors; no agent required |
 
 existing targets use a handle (optionally `--machine LABEL`) or `--ref VALUE`;
@@ -85,10 +95,15 @@ independently of terminal lifetime.
 `--json` works on every noninteractive command. support the shown flag placement
 and `--` for literal operands; publish complete usage in `skid --help`.
 start requires machine and either an advertised profile or `--terminal`; name is optional.
+model/effort flags are start-only. values stay literal, without substitution or
+shell interpolation. [the launch contract](jarvis-orchestration.md#launch-contract)
+owns their validation, provider lowering, prompt admission and compound receipt.
 commands never infer a host
 from the caller's location. stdin text is exclusive with positional text, bounded
 at the existing 32 kib limit; preserve newlines. normal human reads put text on
-stdout and source/scope/truncation on stderr. no command logs prompt/output bytes.
+stdout and short target/source/scope/truncation/output availability on stderr.
+initial prompts also use `--stdin`; an empty, invalid utf-8 or nul-bearing prompt
+fails before creation. no command logs prompt/output bytes.
 
 ## selection, identity, and results
 
@@ -96,6 +111,10 @@ stdout and source/scope/truncation on stderr. no command logs prompt/output byte
    or the whole configured fleet when unscoped. group filters never narrow lookup.
    deduplicate full conversation tuples before matching. wrong-kind and old name
    selectors fail before dispatch. commands capture one exact reference and retain it.
+   a terminal handle remains stable across rename and active-pane changes; a new
+   call captures the current pane. a native handle identifies the conversation,
+   not a turn. deferred effects/approvals/waits retain the captured full ref and
+   never resolve the handle again. no handle registry exists.
 2. exact references route by machine handle and never fall back to names or a fresh
    handle. all mutations remain one attempt. native reads and waits retain the
    captured conversation independently of terminal rename, closure or rebinding.
@@ -112,15 +131,21 @@ row = {name, nameMode, terminalHandle, conversationHandle?, ref, activePaneId,
 peer = {label, machine, ok, observedAt?, profiles?, sessions?: [row], error?}
 inventory = {partial: boolean, peers: [peer]}
 success = {ok: true, result: ...}
-failure = {ok: false, error: {code, dispatch: not_sent | unknown}}
+failure = {ok: false, error: {code, dispatch: not_sent | unknown, target?: ref}}
 ```
 
 reuse the existing field types/enums and strict decoders. successful peers have
 observedAt/profiles/sessions; failed peers have error. `list` returns inventory;
-`info` and `start` return `{label, machine, observedAt, session: row}`; with
+`info` and `shell` return `{label, machine, observedAt, session: row}`; with
 `info --explain`, `session.terminalStatus` is the inspect sample's status,
 `diagnostics` sits beside `session` and `observedAt` is the client time the
 inspect response arrived.
+`start` returns `{label,machine,creation,prompt,target?,handle?,terminal?,failure?}`;
+`terminal` is the complete observed session when available. creation is
+`not_sent`, `created` or `unknown`; prompt is `not_requested`, `not_sent`, `written`
+or `unknown`. a valid partial receipt retains `ok: true` with nonzero exit status.
+known captured targets survive later metadata/readiness/input failure. missing
+targets remain missing; unknown creation never causes automatic relaunch.
 other results retain the current agent-control schema; terminal-only `close`
 returns `{terminal: closed}` only after confirmed deletion.
 `group` acknowledges `{group: string}`, with empty string for clear, only after
@@ -134,6 +159,17 @@ refs. preserve host stale-target codes. selector failures have `dispatch: not_se
 human/json errors retain the failure code; no name-candidate list remains.
 apply the existing 1 mib inventory limit to the final projected envelope; reject
 overflow, never silently omit rows.
+
+ordinary output prints short handles and configured machine labels. list retains
+every scoped peer, explicitly distinguishing no matching sessions from unavailable
+inventory. info/inspect omit opaque refs, machine uuids, pane/process/native ids
+and account paths; they retain useful directory, profile, state and observation
+facts. `info --explain` owns detector diagnostics. creation prints a short target
+when captured, separate creation/prompt outcomes, failure evidence and an attachment
+command using handle/machine. read keeps its text-only stdout contract. send/text/keys,
+wait, stop/close and failures identify their selected short target and preserve
+written/accepted/unknown or separate interruption/closure outcomes. no prompt is
+echoed. full ids/refs remain in `--json`; no second output mode or aliases exist.
 
 names are absent from the reference, so rename does not invalidate it. `info`
 reads current metadata for the exact session lifetime. terminal-only close uses
@@ -153,7 +189,10 @@ separately, then reason copy, rules (`id (region)`, or `none`), capture
 `bottom`, `top, bottom` or `none`; or `not collected`) and per-stage timing
 (`resolve N ms`, or `resolve not collected`). reason copy for `status unknown`
 and `status unavailable` ends with `; open the terminal to inspect`.
-start does not claim readiness. a captured pane rejects selection changes; an old
+start without a prompt does not claim readiness. with a prompt, its receipt only
+confirms written bytes when the guarded initial send succeeds, never provider
+acceptance or completion; trust/setup dialogs are not answered automatically.
+a captured pane rejects selection changes; an old
 session lifetime cannot bind to a recreated session.
 
 exit 0: complete result with the requested effect confirmed to the returned
@@ -265,9 +304,9 @@ preserve existing write gating, uncertainty, budgets,
 kernel, cognition, and immutable action-history rendering. no new authority model.
 
 `skid --help` keeps the human command summary first and appends an automation
-guide: when to use skid, a discover/start/inspect/send/read example, exact session
-and agent references, startup dialogs, json and exit semantics, uncertain delivery,
-stop/close effects, and work products. native subagents and workflows
+guide: when to use skid, independent discover/start/inspect/send/read examples,
+short handles and captured refs, startup dialogs, json and exit semantics,
+uncertain delivery, stop/close effects, and work products. native subagents and workflows
 remain the agent's choice.
 dev-server keeps only a brief usage hint pointing to `skid --help` in its existing
 `assets/agent-instructions.md`, installed through `ai_install_instructions` for

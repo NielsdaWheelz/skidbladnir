@@ -154,9 +154,12 @@ func ValidateProfiles(profiles []Profile) ([]Profile, error) {
 			allSignatures = append(allSignatures, providerSignature{provider: profile.Provider, signature: signature})
 		}
 
-		for _, argument := range profile.Arguments {
+		for index, argument := range profile.Arguments {
 			if !utf8.ValidString(argument) || strings.ContainsRune(argument, 0) {
 				return nil, fmt.Errorf("profile %s has an invalid argument", profile.Key)
+			}
+			if profileLaunchOverride(profile, index) {
+				return nil, fmt.Errorf("profile %s arguments must not set model or effort", profile.Key)
 			}
 			if profile.Provider == ProviderClaude && claudeNameArgument(argument) {
 				return nil, fmt.Errorf("profile %s arguments must not set Claude session names", profile.Key)
@@ -246,6 +249,37 @@ func safeProfileLabel(label string) bool {
 
 func claudeNameArgument(argument string) bool {
 	return argument == "-n" || argument == "--name" || strings.HasPrefix(argument, "--name=")
+}
+
+func profileLaunchOverride(profile Profile, index int) bool {
+	argument := profile.Arguments[index]
+	if argument == "--model" || strings.HasPrefix(argument, "--model=") || strings.HasPrefix(argument, "-m") ||
+		argument == "--effort" || strings.HasPrefix(argument, "--effort=") {
+		return true
+	}
+	if profile.Provider != ProviderCodex {
+		return false
+	}
+	var assignment string
+	switch {
+	case argument == "--config" || argument == "-c":
+		if index+1 == len(profile.Arguments) {
+			return false
+		}
+		assignment = profile.Arguments[index+1]
+	case strings.HasPrefix(argument, "--config="):
+		assignment = strings.TrimPrefix(argument, "--config=")
+	case strings.HasPrefix(argument, "-c"):
+		assignment = strings.TrimPrefix(strings.TrimPrefix(argument, "-c"), "=")
+	default:
+		return false
+	}
+	key, _, found := strings.Cut(assignment, "=")
+	key = strings.TrimSpace(key)
+	if len(key) >= 2 && (key[0] == '"' && key[len(key)-1] == '"' || key[0] == '\'' && key[len(key)-1] == '\'') {
+		key = key[1 : len(key)-1]
+	}
+	return found && (key == "model" || key == "model_reasoning_effort")
 }
 
 func hasTerminalControl(value string) bool {

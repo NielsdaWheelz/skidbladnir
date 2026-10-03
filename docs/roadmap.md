@@ -16,6 +16,36 @@ macbook, devbox and arch with the admitted v0.13.0 generation.
 [fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
 is a separate follow-up, not a first-version gate.
 
+## jarvis orchestration — implemented; cutover pending
+
+2026-10-02: [the extracted spec, plan and adversarial review](jarvis-orchestration.md)
+records jarvis v2's raw launch options, optional initial prompt and observation
+requirements. both providers and reusable worker sessions are in scope. the owner
+keeps reuse, steering and waiting as agent decisions; no host-enforced one-job
+rule is accepted. ordinary conversation interpreted by jarvis is sufficient;
+there is no reply protocol or exact-submission attribution guarantee. model/effort
+selection uses explicit overrides then native account defaults. the same pr also
+optimizes discovery, targeting and control for agent use: short model targets,
+compact default cli/tool results and full refs retained by the host for deferred
+effects/waits. no alias registry is added. the owner authorized implementation and
+temporary integration/live qualification. the [audit findings](jarvis-orchestration.md#adversarial-review)
+are corrected: optional uncertainty evidence, staged-receipt recovery, native
+consent grounding, encoded prompt admission, strict route/reason/launch contracts
+and positive submillisecond waits. current-source darwin stock-provider launches,
+real native gate cognition and 39 postgres/process-crash cases pass. both providers
+pass linux live launch/input/read/wait/control; eleven service/cli/postgres checks
+and actual cognitive wait integration pass. installed paired fleet, external
+Discord delivery and production activation remain separate.
+open qualification:
+[partial launch evidence](issues/jarvis-launch-receipts.md),
+[readiness](issues/jarvis-launch-readiness.md),
+[jarvis cli compatibility](issues/jarvis-cli-contract.md) and
+[option ownership/provider behavior](issues/jarvis-launch-options.md).
+jarvis owns durable asynchronous observations and decides when to notify the
+owner. after the original owner turn closes, worker events confer read/integrate/
+notify authority only; further writes require new current owner authority.
+skid gains no watcher service.
+
 ## session views and needs input
 
 2026-10-02: source implements [session views](session-views.md) in the isolated
@@ -63,7 +93,12 @@ within its recorded limits, passes capture, recognition, classification and cost
 on darwin and linux. composition, controls (guarded send and wait), the
 gateway→cli/desktop product and attention pass on darwin only; on linux
 composition covers the managed create path and inspect, and the rest is
-`NOT_RUN`. the phone and a darwin live-provider smoke passed at cutover. open:
+`NOT_RUN` in that qualification. the 2026-10-02
+[orchestration qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance)
+adds current-source arch gateway/public-cli launch/input/read/wait/refusal/stop/close
+for stock codex 0.160.0 and claude 2.1.288. it does not close the desktop/attention,
+all-family or installed-artifact gaps. the phone and a darwin live-provider smoke
+passed at cutover. open:
 [remaining phone rows](issues/terminal-observation-phone-acceptance.md),
 [linux live provider smoke](issues/terminal-observation-provider-smoke.md),
 required families `NOT_RUN` for [codex on darwin](issues/codex-observation-darwin-coverage.md),

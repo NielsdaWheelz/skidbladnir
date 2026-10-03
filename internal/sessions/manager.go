@@ -231,7 +231,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	commandArgs := []string{"-d", "-P", "-F", "#{session_id}", "-s", name}
 	launch := ""
 	if input.Kind == LaunchAgent {
-		nativeLaunch := agentruntime.NewLaunch(profile)
+		nativeLaunch := agentruntime.NewLaunch(profile, input.Model, input.Effort)
 		if profile.Provider == agentruntime.ProviderCodex {
 			nativeLaunch.Arguments = append(nativeLaunch.Arguments, "--remote", "unix://"+agentruntime.CodexEndpoint(profile), "--cd", cwd.String())
 		}
@@ -323,9 +323,13 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 		return ObservedSession{}, err
 	}
 	observedAt := time.Now().UTC()
+	// Lifetime and pane are now captured by the existing required inspection
+	// and server validation. Later projection failure must retain this target.
+	result = ObservedSession{ObservedAt: observedAt, Session: session.session}
+	result.Session.ActivePaneID = session.paneID
 	projected := manager.enrichSession(ctx, session)
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
-		return ObservedSession{}, err
+		return result, err
 	}
 	return ObservedSession{ObservedAt: observedAt, Session: projected}, nil
 }

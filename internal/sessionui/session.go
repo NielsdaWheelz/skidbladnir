@@ -273,6 +273,16 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		if m.refreshing {
 			m.refreshAfterAction = true
 		}
+		if message.operation == "start" && message.result.OK {
+			created := message.result.Value.(fleetclient.StartResult)
+			if created.Failure != nil {
+				failure := *created.Failure
+				failure.Target = created.Target
+				message.result = fleetclient.Result{Error: &failure}
+			} else {
+				message.result.Value = *created.Terminal
+			}
+		}
 		if !message.result.OK {
 			failureText := fleetclient.ErrorMessage(*message.result.Error, m.pending, message.operation == "read")
 			failure := message.result.Error

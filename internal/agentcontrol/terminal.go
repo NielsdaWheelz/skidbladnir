@@ -174,13 +174,22 @@ func (service *Service) TerminalRead(parent context.Context, target sessions.Ter
 }
 
 // TerminalSend pastes only into a fresh local provider's empty ordinary
-// composer: activity working or idle, interaction none, notice none. It
+// composer: activity working or idle, interaction none. Initial sends also
+// require the requested provider/profile, idle activity and no notice. It
 // resolves target, observes it once, and refuses before writing: a request
 // interaction is a dialog, a composer holding input a draft, anything else
 // unknown. An unavailable observation is ErrTerminalUnavailable.
-func (service *Service) TerminalSend(parent context.Context, target sessions.TerminalTarget, text string) (WriteResult, error) {
+func (service *Service) TerminalSend(parent context.Context, target sessions.TerminalTarget, text string, initialProfile agentruntime.ProfileKey) (WriteResult, error) {
 	if !validText(text) {
 		return WriteResult{}, ErrInvalidInput
+	}
+	var profile agentruntime.Profile
+	if initialProfile != "" {
+		var found bool
+		profile, found = service.sessions.Profile(initialProfile)
+		if !found {
+			return WriteResult{}, ErrInvalidInput
+		}
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
@@ -202,6 +211,9 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	case (status.Activity != sessions.ActivityWorking && status.Activity != sessions.ActivityIdle) ||
 		status.Interaction != sessions.InteractionNone || composerState != composerEmpty:
 		return WriteResult{}, &TerminalInputBlockedError{Reason: "unknown"}
+	case initialProfile != "" && (session.Agent == nil || session.Agent.Provider != profile.Provider || session.Agent.Profile != initialProfile ||
+		status.Activity != sessions.ActivityIdle || status.Notice != sessions.NoticeNone):
+		return WriteResult{}, &TerminalInputBlockedError{Reason: "initial_not_ready"}
 	}
 	// Only a classified screen has an empty composer, so session.Agent is the
 	// recognized local provider whose exact foreground the paste requires.

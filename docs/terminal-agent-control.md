@@ -11,8 +11,11 @@ source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualifica
 records the full terminal checks and composition limits on the earlier
 `{state, source}` source, then the observation cutover: capture, recognition,
 classification and cost on darwin and linux, its send-admission and wait changes
-on darwin only ([linux](issues/terminal-observation-linux-coverage.md) and the
-physical phone are `NOT_RUN`). this owns the hard cutover of ordinary terminal
+on darwin only at that qualification. the 2026-10-02
+[orchestration qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance)
+adds current-artifact linux launch/input/read/wait/refusal/stop/close through a real
+isolated gateway and public cli. remaining [linux rows](issues/terminal-observation-linux-coverage.md)
+and the physical phone remain `NOT_RUN`. this owns the hard cutover of ordinary terminal
 orchestration. it supersedes conflicting session-target behavior in
 [native interaction](native-agent-observation.md), [agent control](agent-control.md),
 and [client controls](agent-control-ux.md) at implementation cutover. retain
@@ -229,7 +232,7 @@ cancellation still wins. no retry finishes a partial operation.
 | --- | --- | --- |
 | `POST /v1/sessions/{id}/terminal/inspect` | `explain?` | `{terminalStatus, diagnostics?}` |
 | `POST /v1/sessions/{id}/terminal/read` | `maxBytes?` | `{text,source:"terminal",scope:visible|terminal_history,truncated}` |
-| `POST /v1/sessions/{id}/terminal/send` | `text` | write receipt |
+| `POST /v1/sessions/{id}/terminal/send` | `text`, `initialProfile?` | write receipt |
 | `POST /v1/sessions/{id}/terminal/text` | `text` | write receipt |
 | `POST /v1/sessions/{id}/terminal/keys` | `keys` | write receipt |
 | `POST /v1/sessions/{id}/terminal/stop` | none | write receipt |
@@ -271,6 +274,15 @@ otherwise bounded retained terminal tail. text is nonempty valid utf-8, <=32 kib
 without nul. keep the existing 1–16 logical-key vocabulary. content stays out of
 logs, saved state and evidence. capture/parse never executes captured text.
 
+2026-10-02 launch composition: optional `initialProfile` is a nonempty configured
+profile key, accepted only by send. it requires a fresh matching provider/profile,
+idle activity, no interaction or notice, empty composer and the same sampled
+foreground at input. ordinary send retains working-state steering. cli `start
+--stdin` owns the original 15-second create/readiness/input budget and performs
+one input attempt; [launch evidence](jarvis-orchestration.md#launch-evidence)
+retains the captured target and independent phase outcomes. null/empty options
+reject. this remains terminal delivery, with no atomic provider-admission claim.
+
 ordinary terminal selectors/ref route inspect/read/send/text/keys/wait/stop/close
 to these terminal operations. remove `--terminal` from read/stop; retain
 `start --terminal` and its existing shell-creation semantics.
@@ -292,8 +304,11 @@ reject old mixed references; do not add another codec or compatibility reader.
 [naming](automatic-session-names.md) owns selector grammar/typed handles; its
 terminal selectors must not implicitly become conversation selectors. this plan
 supersedes its command routing table: terminal handles select info/enter/read/send/
-text/keys/wait/stop/close/shell/group; conversation handles and direct native ids
-select native read/send/wait/stop only. conversation handles explicitly select
+text/keys/wait/stop/close/shell/group; conversation handles select native
+inspect/read/send/wait/stop, while direct native ids select read/send/wait/stop.
+handle-based inspect is specified
+in [jarvis targeting](jarvis-orchestration.md#agent-use-and-targeting) and
+[native interaction](native-agent-observation.md). conversation handles explicitly select
 native identity, never whichever terminal happens to contain it. terminal inspection
 stays an internal client operation plus the declared api, surfaced only by
 `skid info HANDLE --explain` ([output](agent-control-ux.md#selection-identity-and-results));

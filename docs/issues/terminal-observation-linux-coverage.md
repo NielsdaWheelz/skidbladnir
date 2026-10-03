@@ -1,7 +1,7 @@
 # terminal observation has linux qualification gaps
 
 problem: linux qualification covers fewer families and acceptance rows than
-darwin, and with other versions. the installed linux pairing is codex TUI
+darwin, and with other versions. the recorded qualification baseline is codex TUI
 0.159.2 against daemon 0.159.3 and claude 2.1.284, on devbox (tmux 3.4) and arch
 (tmux 3.7c). every required row of the
 [codex](../terminal-observation-codex.md#1-frozen-capability-table) and
@@ -38,6 +38,14 @@ evidence: the
 records what ran on both hosts: capture, authored corpora, recognition,
 admission, the managed create path, enrichment cost, and the codex and claude
 families the capability tables mark linux.
+
+2026-10-02: narrow [orchestration qualification](../jarvis-orchestration.md#implementation-sequence-and-acceptance)
+on arch observes stock codex TUI 0.160.0 and claude 2.1.288. ten journeys through
+current-artifact isolated gateway/public-cli cover omitted and explicit launch,
+literal initial input, read, idle wait, draft refusal, stop and both closure variants.
+this qualifies those source controls, not every family, desktop/attention or the
+paired installed release. daemon preexistence/version was not established by that
+check; provider-managed daemons were retained.
 
 resolved when: each required family runs live on linux with the installed
 versions, or the darwin and linux versions are aligned and a version-difference
