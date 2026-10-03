@@ -130,7 +130,7 @@ an unknown outcome stays visible. reuse existing honest empty copy.
 | selected row | spacebar opens info; `s` sends one interrupt on every fresh terminal; `x` sends one interrupt, then independently closes the entire session; `T` terminal-here retains its remote guard; info remains readable when unavailable |
 | info | `r` edits name; `g` edits group; arrows/j/k and page keys scroll; escape or `q` returns to the table |
 | name editor | enter saves; escape cancels or dismisses to the same info page; `ctrl-a` offers `use automatic title` in manual mode |
-| group editor | [group entry](group-entry.md#desktop-interaction) owns search/select and the separate save focus stop; escape cancels or dismisses to the same info page |
+| group editor | [directory and group entry](directory-group-entry.md#terminal-interaction) owns field keys and selection; [group entry](group-entry.md) owns candidates and literal save; escape returns to the same info page |
 | modal page | owns input while the row 1 strip (without chevrons) and the rule stay visible; forms keep field/paste/validation keys; details scroll; escape closes or cancels, `q` closes non-text pages; no global navigation mnemonics except `ctrl-c`, which quits, discarding drafts |
 | operation in flight | every key, `ctrl-c` included, is refused with the in-flight notice; nothing quits |
 | attached terminal | existing fullscreen tty ownership and key handling; `ctrl-] d` detaches; `ctrl-c` reaches the provider; no new prefix commands |
@@ -165,7 +165,7 @@ retains it with a conflict notice and a fresh expectation for deliberate resubmi
 `n` creates a terminal at home on the target machine (the machine filter,
 otherwise the configured default; never the first reachable peer) in the selected
 named group. `N` opens machine/launch/name/cwd/group followed by an explicit
-`create` action, under [group entry](group-entry.md#desktop-interaction). its
+`create` action, under [directory and group entry](directory-group-entry.md#terminal-interaction). its
 directory field starts empty, visibly defaulting to home: typing ordinary words
 searches that machine's visited directories after a 150 ms pause, without a `z`
 prefix, enter, or a separate page. `/…` and `~…` stay literal path drafts;
@@ -173,7 +173,8 @@ creation still admits only absolute paths and exact `~`/`~/…` expansion.
 the first ranked match appears beneath the unchanged query, with its full path
 and position. left/right cycles the matches with wraparound. tab or enter accepts
 the selected path and advances; shift-tab goes back without accepting. ctrl-u
-clears the field to home. empty results, pending search and failures cannot be
+clears the field to home. only exact empty text defaults to home; whitespace-only
+input and leading-whitespace paths remain invalid. empty results, pending search and failures cannot be
 accepted or submitted as a cwd. the create action returns to directory if a
 query has not been accepted, including one bypassed with shift-tab.
 machine changes restore the empty home default;

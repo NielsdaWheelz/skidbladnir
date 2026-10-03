@@ -573,10 +573,15 @@ internal data class ForgeForm(
     )
 
     fun submission(): ForgeDraft? {
-        if (machineHandle == null || launch == null || cwd.isBlank()) return null
+        if (machineHandle == null || launch == null) return null
+        val directory = when (val input = classifyWorkingDirectory(cwd)) {
+            WorkingDirectoryInput.Home -> "~"
+            is WorkingDirectoryInput.Literal -> input.path.encoded
+            is WorkingDirectoryInput.Query, WorkingDirectoryInput.Invalid -> return null
+        }
         val chosen = group as? GroupDraft.Chosen ?: return null
         val label = if (chosen.text.isEmpty()) null else GroupLabel.fromDraft(chosen.text) ?: return null
-        return ForgeDraft(machineHandle, cwd, launch, optionalTmuxName, objective, label)
+        return ForgeDraft(machineHandle, directory, launch, optionalTmuxName, objective, label)
     }
 }
 

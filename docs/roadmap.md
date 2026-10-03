@@ -33,6 +33,15 @@ with that evidence.
 
 ## searchable group entry — source implemented
 
+2026-10-02: [directory and group entry](directory-group-entry.md) supersedes the
+separate input mechanics with shared native fields, inline phone directory
+search after 150 ms and retained secondary Home browsing. exact drafts and
+explicit acceptance remain separate from final creation/save.
+[qualification](directory-group-entry.md#qualification) records terminal/https,
+real darwin zoxide/gateway/tmux and physical-phone keyboard/touch/2× boundaries.
+temporary tests and probe packages are removed; full `scripts/check verify`
+passes. release and installed-fleet deployment remain separate.
+
 2026-10-02: [the accepted spec and plan](group-entry.md) covers local search/select
 in desktop and phone creation/editing, plus explicit desktop create/save actions
 after the group field. [qualification](group-entry.md#qualification) records
@@ -179,7 +188,7 @@ states the evidence and its limits; prior-conversation resumption is not claimed
 | inferred terminal status, exact terminal controls and device-local attention; separately explicit native history/control | [terminal observation](terminal-observation.md), [terminal control](terminal-agent-control.md), [terminal attention](reply-notifications.md), [native interaction](native-agent-observation.md) |
 | session labels, client grouping/filtering and dashboard restoration | [groups](groups.md), [dashboard continuity](dashboard-return-continuity.md) |
 | standalone terminal and new terminal here | [terminal creation](shells.md) |
-| persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md) |
+| persistent terminal shell, current provider/home, direct remote context, zoxide directory search, desktop `n`/`N` and mobile forge | [terminal continuity](terminal-continuity.md), [directory/group entry](directory-group-entry.md) |
 | desktop browser (needs-input, all and group views) and fullscreen attachment return | [desktop browser](desktop-browser.md) |
 | phone fleet connect/reconnect, encrypted pairings and quarantine | [fleet distribution](public-fleet-distribution.md), [architecture §6](architecture.md#6-android-surface) |
 | phone dashboard, session card, directory chooser and machine pressure | [refresh](dashboard-pull-to-refresh.md), [session card](session-card.md), [chooser](working-directory-chooser.md), [pressure](machine-pressure-rail.md) |

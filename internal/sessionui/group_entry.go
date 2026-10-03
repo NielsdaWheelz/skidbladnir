@@ -86,7 +86,7 @@ func (m *model) groupChoices(draft string) []groupChoice {
 
 // groupSelection stores only a highlight's identity. Drafts and choices stay
 // with their existing owners, so observation cannot replace a user's text.
-type groupSelection struct{ choice *groupChoice }
+type groupSelection struct{ fieldSelection[groupChoice] }
 
 func (selection *groupSelection) reset(draft string, choices []groupChoice) {
 	selection.choice = nil
@@ -113,30 +113,9 @@ func (selection *groupSelection) prefill(draft string, choices []groupChoice) {
 	}
 }
 
-func (selection *groupSelection) retain(choices []groupChoice) {
-	if selection.choice != nil && !slices.Contains(choices, *selection.choice) {
-		selection.choice = nil
-	}
-}
-
-func (selection *groupSelection) cycle(choices []groupChoice, previous bool) {
-	index := -1
-	if selection.choice != nil {
-		index = slices.Index(choices, *selection.choice)
-	}
-	step := 1
-	if previous {
-		step = -1
-		if index < 0 {
-			index = 0
-		}
-	}
-	selection.choice = &choices[(index+step+len(choices))%len(choices)]
-}
-
-func (selection *groupSelection) accept(draft string) (string, error) {
-	if selection.choice != nil {
-		return selection.choice.label.String(), nil
+func (selection *groupSelection) accept(draft string, choices []groupChoice) (string, error) {
+	if choice, _, selected := selection.current(choices); selected {
+		return choice.label.String(), nil
 	}
 	label, err := group.ParseDraft(draft)
 	return label.String(), err

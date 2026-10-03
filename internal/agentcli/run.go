@@ -69,7 +69,9 @@ browser (80x24 minimum)
   u opens profile usage; arrows/j/k scroll; q/escape returns
   info: r edits name; g edits group; escape returns to the table
   name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
-  group: left/right chooses; enter uses and continues to create/save
+  directory/group: left/right chooses; tab/enter uses and continues
+  directory: type search words (150 ms), ~, ~/path or /path; blank means home
+  shift-tab returns without accepting; ctrl-u clears to home/unassigned
   create/save: enter submits; group editor ctrl-s saves the typed draft
   shift+t creates and enters a shell on the selected session's machine,
   in its current directory and group; the original session keeps running

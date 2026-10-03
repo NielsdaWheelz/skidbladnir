@@ -3,7 +3,6 @@ package dev.niels.skidbladnir
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,11 +13,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -29,12 +28,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,19 +40,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 internal class ForgeSheetActions(
     val dismiss: () -> Unit,
     val updateDraft: ((ForgeForm) -> ForgeForm) -> Unit,
     val submit: () -> Unit,
-    val openWorkingDirectoryPicker: () -> Unit,
-    val openExactWorkingDirectoryPicker: () -> Unit,
+    val focusWorkingDirectory: () -> Unit,
+    val chooseWorkingDirectory: (WorkingDirectoryPath) -> Boolean,
+    val browseWorkingDirectoryHome: () -> Unit,
     val workingDirectory: WorkingDirectoryPickerActions,
 )
 
@@ -71,6 +73,7 @@ internal fun ForgeSheet(
     val pickerVisible = state.surface is ForgeSurface.DirectoryPicker
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var lit by remember { mutableStateOf(false) }
+    var focusDirectoryOnReturn by remember { mutableStateOf(false) }
     val containerColor by animateColorAsState(
         targetValue = if (lit) ForgeGlow else DeepSurface,
         animationSpec = NidavellirMotion.ForgeWarmIn,
@@ -90,12 +93,17 @@ internal fun ForgeSheet(
         ),
     ) {
         when (val surface = state.surface) {
-            ForgeSurface.Form -> ForgeFormContent(state, machines, actions)
+            ForgeSurface.Form -> ForgeFormContent(state, machines, actions, focusDirectoryOnReturn) {
+                focusDirectoryOnReturn = false
+            }
             is ForgeSurface.DirectoryPicker -> {
-                ModalBackHandler(onBack = actions.workingDirectory.back)
                 WorkingDirectoryPickerScreen(
                     picker = surface.picker,
                     actions = actions.workingDirectory,
+                    enabled = machines.singleOrNull {
+                        it.machine.handle == surface.picker.machine.handle
+                    }?.canForge == true,
+                    onReturnToField = { focusDirectoryOnReturn = true },
                     modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                 )
             }
@@ -120,12 +128,27 @@ internal fun ModalBackHandler(onBack: () -> Unit) {
     }
 }
 
+private enum class ForgeEntryField { Directory, Group }
+
 @Composable
 private fun ForgeFormContent(
     state: ForgeState,
     machines: List<MachineState>,
     actions: ForgeSheetActions,
+    requestDirectoryFocus: Boolean,
+    onDirectoryFocused: () -> Unit,
 ) {
+    var expandedField by remember { mutableStateOf<ForgeEntryField?>(null) }
+    val directoryFocus = remember { FocusRequester() }
+    val groupFocus = remember { FocusRequester() }
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(requestDirectoryFocus) {
+        if (requestDirectoryFocus) {
+            directoryFocus.requestFocus()
+            onDirectoryFocused()
+        }
+    }
     val selected = state.form.machineHandle?.let { handle ->
         machines.singleOrNull { it.machine.handle == handle }
     }
@@ -143,128 +166,140 @@ private fun ForgeFormContent(
         BoxWithConstraints(Modifier.weight(1f, fill = false)) {
             val maxSuggestionsHeight = maxHeight / 3
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                Text(
+                    "Create dwarf",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = NidavellirType.Display,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Canvas(Modifier.fillMaxWidth().height(12.dp)) {
+                    drawFretBand(Gold.copy(alpha = 0.40f))
+                }
+                Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        "Create dwarf",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = NidavellirType.Display,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Canvas(Modifier.fillMaxWidth().height(12.dp)) {
-                        drawFretBand(Gold.copy(alpha = 0.40f))
+                    machines.forEach { machine ->
+                        FilterChip(
+                            selected = machine.machine.handle == state.form.machineHandle,
+                            onClick = {
+                                actions.updateDraft { it.copy(machineHandle = machine.machine.handle) }
+                            },
+                            enabled = !state.pending && machine.canMutate,
+                            label = {
+                                Text(
+                                    bidiIsolate(forgeMachineChoiceLabel(machine)),
+                                    fontFamily = NidavellirType.Data,
+                                )
+                            },
+                            shape = NidavellirShapes.Chip,
+                            modifier = Modifier.semantics {
+                                contentDescription = forgeMachineChoiceLabel(machine)
+                            },
+                        )
                     }
-                    Text("Machine", color = Muted, style = MaterialTheme.typography.labelLarge)
+                }
+                if (selected == null) {
+                    Text(
+                        "Choose a machine to choose a working directory and launch.",
+                        color = Muted,
+                    )
+                } else {
+                    Text(
+                        "Launch on ${bidiIsolate(selected.machine.label.text)}",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        machines.forEach { machine ->
+                        inventory?.profiles.orEmpty().forEach { profile ->
                             FilterChip(
-                                selected = machine.machine.handle == state.form.machineHandle,
-                                onClick = {
-                                    actions.updateDraft { it.copy(machineHandle = machine.machine.handle) }
-                                },
-                                enabled = !state.pending && machine.canMutate,
-                                label = {
-                                    Text(
-                                        bidiIsolate(forgeMachineChoiceLabel(machine)),
-                                        fontFamily = NidavellirType.Data,
-                                    )
-                                },
-                                shape = NidavellirShapes.Chip,
-                                modifier = Modifier.semantics {
-                                    contentDescription = forgeMachineChoiceLabel(machine)
-                                },
-                            )
-                        }
-                    }
-                    if (selected == null) {
-                        Text(
-                            "Choose a machine to choose a working directory and launch.",
-                            color = Muted,
-                        )
-                    } else {
-                        Text(
-                            "Launch on ${bidiIsolate(selected.machine.label.text)}",
-                            color = Muted,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            inventory?.profiles.orEmpty().forEach { profile ->
-                                FilterChip(
-                                    selected = state.form.launch == LaunchChoice.Agent(profile.key),
-                                    onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Agent(profile.key)) } },
-                                    enabled = fieldsEnabled,
-                                    label = { Text(profile.label, fontFamily = NidavellirType.Data) },
-                                    shape = NidavellirShapes.Chip,
-                                )
-                            }
-                            FilterChip(
-                                selected = state.form.launch == LaunchChoice.Terminal,
-                                onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Terminal) } },
+                                selected = state.form.launch == LaunchChoice.Agent(profile.key),
+                                onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Agent(profile.key)) } },
                                 enabled = fieldsEnabled,
-                                label = { Text("Terminal", fontFamily = NidavellirType.Data) },
+                                label = { Text(profile.label, fontFamily = NidavellirType.Data) },
                                 shape = NidavellirShapes.Chip,
                             )
                         }
-                        ForgeWorkingDirectorySelection(
-                            state = state,
-                            machine = selected.machine,
+                        FilterChip(
+                            selected = state.form.launch == LaunchChoice.Terminal,
+                            onClick = { actions.updateDraft { it.copy(launch = LaunchChoice.Terminal) } },
                             enabled = fieldsEnabled,
-                            onChoose = actions.openWorkingDirectoryPicker,
-                            onRepair = actions.openExactWorkingDirectoryPicker,
+                            label = { Text("Terminal", fontFamily = NidavellirType.Data) },
+                            shape = NidavellirShapes.Chip,
                         )
-                        forgeUnavailableCopy(selected)?.let { notice ->
-                            Text(
-                                bidiIsolate(notice.message),
-                                color = noticeToneColor(notice.tone),
-                                modifier = Modifier.semantics {
-                                    contentDescription = notice.message
-                                },
-                            )
-                        }
                     }
-                    OutlinedTextField(
-                        value = state.form.optionalTmuxName,
-                        onValueChange = { value ->
-                            actions.updateDraft { it.copy(optionalTmuxName = value) }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = fieldsEnabled,
-                        label = { Text("session name (optional)") },
-                        supportingText = { Text("leave blank to follow the terminal title.") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            autoCorrectEnabled = false,
-                        ),
-                    )
-                    OutlinedTextField(
-                        value = state.form.objective,
-                        onValueChange = { value -> actions.updateDraft { it.copy(objective = value) } },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = fieldsEnabled,
-                        label = { Text("Objective (optional)") },
-                        minLines = 2,
-                        maxLines = 4,
-                    )
+                    forgeUnavailableCopy(selected)?.let { notice ->
+                        Text(
+                            bidiIsolate(notice.message),
+                            color = noticeToneColor(notice.tone),
+                            modifier = Modifier.semantics {
+                                contentDescription = notice.message
+                            },
+                        )
+                    }
                 }
+                OutlinedTextField(
+                    value = state.form.optionalTmuxName,
+                    onValueChange = { value ->
+                        actions.updateDraft { it.copy(optionalTmuxName = value) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = fieldsEnabled,
+                    label = { Text("session name (optional)") },
+                    supportingText = { Text("leave blank to follow the terminal title.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                    ),
+                )
+                OutlinedTextField(
+                    value = state.form.objective,
+                    onValueChange = { value -> actions.updateDraft { it.copy(objective = value) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = fieldsEnabled,
+                    label = { Text("Objective (optional)") },
+                    minLines = 2,
+                    maxLines = 4,
+                )
+                DirectoryField(
+                    state = state,
+                    machine = selected,
+                    enabled = fieldsEnabled,
+                    expanded = expandedField == ForgeEntryField.Directory,
+                    onExpandedChange = { expanded ->
+                        if (expanded) expandedField = ForgeEntryField.Directory
+                        else if (expandedField == ForgeEntryField.Directory) expandedField = null
+                    },
+                    maxSuggestionsHeight = maxSuggestionsHeight,
+                    actions = actions,
+                    modifier = Modifier.focusRequester(directoryFocus),
+                    onNext = { groupFocus.requestFocus() },
+                    onBrowse = {
+                        focus.clearFocus()
+                        keyboard?.hide()
+                        actions.browseWorkingDirectoryHome()
+                    },
+                )
                 GroupField(
                     draft = state.form.group,
                     labels = observedGroups(machines),
-                    enabled = !state.pending && (selected == null || selected.canMutate),
+                    enabled = !state.pending,
+                    expanded = expandedField == ForgeEntryField.Group,
+                    onExpandedChange = { expanded ->
+                        if (expanded) expandedField = ForgeEntryField.Group
+                        else if (expandedField == ForgeEntryField.Group) expandedField = null
+                    },
                     maxSuggestionsHeight = maxSuggestionsHeight,
                     onChange = { text -> actions.updateDraft { it.copy(group = GroupDraft.Chosen(text)) } },
+                    modifier = Modifier.focusRequester(groupFocus),
                 )
                 when (val failure = state.failure) {
                     ForgeFailure.None -> Unit
@@ -296,52 +331,75 @@ private fun ForgeFormContent(
 }
 
 @Composable
-private fun ForgeWorkingDirectorySelection(
+private fun DirectoryField(
     state: ForgeState,
-    machine: PairedMachine,
+    machine: MachineState?,
     enabled: Boolean,
-    onChoose: () -> Unit,
-    onRepair: () -> Unit,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    maxSuggestionsHeight: Dp,
+    actions: ForgeSheetActions,
+    modifier: Modifier,
+    onNext: () -> Unit,
+    onBrowse: () -> Unit,
 ) {
-    if (state.form.cwd.isEmpty()) {
-        OutlinedButton(
-            onClick = onChoose,
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .minimumInteractiveComponentSize(),
-            shape = NidavellirShapes.Chip,
-        ) {
-            Text("Choose a working directory")
-        }
-        return
-    }
-
-    Surface(
-        color = RaisedSurface,
-        border = BorderStroke(1.dp, Gold.copy(alpha = 0.40f)),
-        shape = NidavellirShapes.Card,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(
-                "Working directory on ${bidiIsolate(machine.label.text)}",
-                color = Muted,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.semantics {
-                    contentDescription = "Working directory on ${machine.label.text}"
-                },
-            )
-            WorkingDirectoryPathLine(
-                path = state.form.cwd,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            TextButton(
-                onClick = if (state.failure.isWorkingDirectoryRejection()) onRepair else onChoose,
-                enabled = enabled,
-                modifier = Modifier.heightIn(min = 48.dp).minimumInteractiveComponentSize(),
-            ) {
-                Text("Change")
+    val input = classifyWorkingDirectory(state.form.cwd)
+    val paths = workingDirectoryChoices(state, machine)
+    SuggestionField(
+        text = state.form.cwd,
+        label = machine?.let { "directory on ${bidiIsolate(it.machine.label.text)}" }
+            ?: "directory",
+        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = NidavellirType.Data,
+            textDirection = TextDirection.Ltr),
+        enabled = enabled,
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        onChange = { text -> actions.updateDraft { it.copy(cwd = text) } },
+        literal = when (input) {
+            WorkingDirectoryInput.Home -> "~"
+            is WorkingDirectoryInput.Literal -> input.path.encoded
+            WorkingDirectoryInput.Invalid, is WorkingDirectoryInput.Query -> null
+        },
+        onAccept = { actions.chooseWorkingDirectory(requireNotNull(WorkingDirectoryPath.parse(it))) },
+        onNext = onNext,
+        onFocus = actions.focusWorkingDirectory,
+        maxSuggestionsHeight = maxSuggestionsHeight,
+        message = when (input) {
+            WorkingDirectoryInput.Home -> "home (~)"
+            is WorkingDirectoryInput.Literal -> null
+            is WorkingDirectoryInput.Query -> "choose a matching directory"
+            WorkingDirectoryInput.Invalid -> "use ~, ~/… or an absolute path, or 1–8 search words."
+        },
+        invalid = input == WorkingDirectoryInput.Invalid,
+        modifier = modifier,
+    ) { choose ->
+        if (input is WorkingDirectoryInput.Query) {
+            val status = when (val search = state.directorySearch) {
+                DirectorySearchState.Idle -> "type to search visited directories"
+                is DirectorySearchState.Loading -> "searching…"
+                is DirectorySearchState.Failed -> gatewayFailureMessage(search.failure)
+                is DirectorySearchState.Ready -> when {
+                    search.result.directories.isEmpty() -> "no matching directories"
+                    search.result.omitted -> "some directories are not shown"
+                    else -> null
+                }
             }
+            status?.let { item(key = "status") { Text(it, color = Muted) } }
+        }
+        // Saveable viewport keys contain no paths; acceptance uses the exact domain value.
+        itemsIndexed(paths, key = { ordinal, _ -> "path:$ordinal" }) { _, path ->
+            val description = if (path.encoded == "~") "home (~)" else path.encoded
+            val spoken = "$description on ${machine?.machine?.label?.text}. select working directory."
+            if (path.encoded == "~") {
+                SuggestionTextChoice(description, spoken, { choose(path.encoded) })
+            } else {
+                SuggestionChoice(spoken, { choose(path.encoded) }) {
+                    WorkingDirectoryPathLine(path.encoded, Modifier.fillMaxWidth(), contentDescription = null)
+                }
+            }
+        }
+        item(key = "browse") {
+            SuggestionTextChoice("browse home", "browse home on ${machine?.machine?.label?.text}", onBrowse)
         }
     }
 }

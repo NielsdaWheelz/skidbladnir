@@ -1,25 +1,14 @@
 package dev.niels.skidbladnir
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,63 +16,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-@Composable
-internal fun GroupTextAction(
-    label: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    description: String = label,
-    color: Color = Gold,
-) {
-    Surface(color = Color.Transparent, shape = NidavellirShapes.Chip,
-        modifier = modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = AngularIndication(NidavellirShapes.Chip),
-            enabled = enabled, role = Role.Button, onClick = onClick,
-        ).semantics { contentDescription = description }) {
-        Box(Modifier.minimumInteractiveComponentSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-            Text(label, color = if (enabled) color else Muted, fontFamily = NidavellirType.Data,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun GroupField(
     draft: GroupDraft,
     labels: List<GroupLabel>,
     enabled: Boolean,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     maxSuggestionsHeight: Dp,
     onChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val text = when (draft) {
         GroupDraft.Unresolved -> ""
@@ -92,96 +46,47 @@ internal fun GroupField(
     val canonical = GroupLabel.fromDraft(text)
     val invalid = text.isNotEmpty() && canonical == null
     val candidates = groupCandidates(text, labels)
-    var expanded by remember { mutableStateOf(false) }
-    val suggestions = remember { LazyListState() }
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    val imeVisible = WindowInsets.isImeVisible
-    LaunchedEffect(text, expanded) {
-        if (expanded) suggestions.scrollToItem(0)
-    }
-    if (expanded && enabled) {
-        ModalBackHandler {
-            if (imeVisible) {
-                focus.clearFocus()
-                keyboard?.hide()
-            } else {
-                expanded = false
-                focus.clearFocus()
+    SuggestionField(
+        text = text,
+        label = "group",
+        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = NidavellirType.Data,
+            textDirection = TextDirection.Content),
+        enabled = enabled,
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        onChange = onChange,
+        literal = if (draft is GroupDraft.Chosen && !invalid) canonical?.text.orEmpty() else null,
+        onAccept = { onChange(it); true },
+        onNext = {},
+        onFocus = {},
+        maxSuggestionsHeight = maxSuggestionsHeight,
+        message = when {
+            invalid -> GROUP_INVALID
+            draft == GroupDraft.Unresolved -> "choose a group for this new session"
+            else -> null
+        },
+        invalid = invalid,
+        modifier = modifier,
+    ) { choose ->
+        if (text.isEmpty()) {
+            item(key = "unassigned") { SuggestionTextChoice("unassigned", "unassigned", { choose("") }) }
+        }
+        item(key = "heading") { Text("observed groups", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
+        if (candidates.observed.isEmpty()) {
+            item(key = "empty") { Text("no observed matches", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
+        }
+        // Saveable viewport keys contain no labels; acceptance uses the exact domain value.
+        itemsIndexed(candidates.observed, key = { ordinal, _ -> "observed:$ordinal" }) { _, label ->
+            val description = if (label.text == "unassigned") "group: unassigned" else label.text
+            SuggestionTextChoice(bidiIsolate(description), description, { choose(label.text) })
+        }
+        candidates.literal?.let { label ->
+            item(key = "literal") {
+                SuggestionTextChoice("use label: ${bidiIsolate(label.text)}", "use label: ${label.text}", { choose(label.text) })
             }
         }
-    }
-    val choose: (String) -> Unit = { chosen ->
-        onChange(chosen)
-        expanded = false
-        focus.clearFocus()
-        keyboard?.hide()
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (draft == GroupDraft.Unresolved) Text("choose a group for this new session", color = Gold)
-        OutlinedTextField(
-            value = text,
-            onValueChange = {
-                onChange(it)
-                expanded = true
-            },
-            enabled = enabled,
-            singleLine = true,
-            label = { Text("group") },
-            isError = invalid,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Next,
-            ),
-            keyboardActions = KeyboardActions(onNext = {
-                if (!invalid && draft is GroupDraft.Chosen) choose(canonical?.text.orEmpty())
-            }),
-            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) expanded = true },
-        )
-        if (invalid) Text(GROUP_INVALID, color = Ember)
-        GroupTextAction("observed groups", enabled, { expanded = true })
-        if (expanded && enabled) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
-                    .heightIn(max = maxSuggestionsHeight.coerceAtMost(240.dp)),
-                state = suggestions,
-            ) {
-                if (text.isEmpty()) {
-                    item { GroupTextAction("unassigned", enabled, { choose("") }, Modifier.fillMaxWidth()) }
-                }
-                if (candidates.observed.isEmpty()) {
-                    item { Text("no observed matches", color = Muted, modifier = Modifier.padding(horizontal = 12.dp)) }
-                }
-                items(candidates.observed, key = { it.text }) { label ->
-                    val description = if (label.text == "unassigned") "group: unassigned" else label.text
-                    TextButton(
-                        onClick = { choose(label.text) },
-                        shape = NidavellirShapes.Chip,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                            .minimumInteractiveComponentSize().semantics { contentDescription = description },
-                    ) {
-                        Text(bidiIsolate(description), color = Bone, fontFamily = NidavellirType.Data)
-                    }
-                }
-                candidates.literal?.let { label ->
-                    item {
-                        TextButton(
-                            onClick = { choose(label.text) },
-                            shape = NidavellirShapes.Chip,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                .minimumInteractiveComponentSize().semantics {
-                                    contentDescription = "use label: ${label.text}"
-                                },
-                        ) {
-                            Text("use label: ${bidiIsolate(label.text)}", color = Gold, fontFamily = NidavellirType.Data)
-                        }
-                    }
-                }
-                if (text.isNotEmpty()) {
-                    item { GroupTextAction("unassigned", enabled, { choose("") }, Modifier.fillMaxWidth()) }
-                }
-            }
+        if (text.isNotEmpty()) {
+            item(key = "unassigned") { SuggestionTextChoice("unassigned", "unassigned", { choose("") }) }
         }
     }
 }
@@ -197,6 +102,7 @@ internal fun GroupSheet(
     onSubmit: () -> Unit,
 ) {
     val sending = editor.phase == GroupPhase.Sending
+    var expanded by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -214,22 +120,18 @@ internal fun GroupSheet(
             BoxWithConstraints(Modifier.weight(1f, fill = false)) {
                 val maxSuggestionsHeight = maxHeight / 3
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("change group", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
-                        Text("${editor.target.session.tmuxName} on ${machine.machine.label.text}", fontFamily = NidavellirType.Data)
-                        Text("current: ${editor.target.session.group?.text ?: "unassigned"}", color = Muted)
-                    }
+                    Text("change group", style = MaterialTheme.typography.headlineSmall, fontFamily = NidavellirType.Display)
+                    Text("${editor.target.session.tmuxName} on ${machine.machine.label.text}", fontFamily = NidavellirType.Data)
+                    Text("current: ${editor.target.session.group?.text ?: "unassigned"}", color = Muted)
                     GroupField(
                         draft = GroupDraft.Chosen(editor.draft),
                         labels = labels,
                         enabled = editor.phase == GroupPhase.Editing,
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
                         maxSuggestionsHeight = maxSuggestionsHeight,
                         onChange = onChange,
                     )

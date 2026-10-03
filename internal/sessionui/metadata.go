@@ -77,7 +77,7 @@ func (m *model) editMetadata(key tea.KeyPressMsg) tea.Cmd {
 		switch key.String() {
 		case "tab", "enter":
 			if !editor.saveFocused {
-				draft, err := editor.selection.accept(editor.draft)
+				draft, err := editor.selection.accept(editor.draft, m.groupChoices(editor.draft))
 				if err != nil {
 					m.fail(group.ErrInvalid.Error())
 					return nil

@@ -36,6 +36,8 @@ profile reads; source is qualified and installed acceptance is pending.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
+[directory and group entry](directory-group-entry.md) owns the shared field
+interaction, visible-draft admission and inline mobile directory search.
 [design language](design-language.md) owns visual values; [codebase rules](rules/index.md)
 own implementation conventions. a platform fact that contradicts a premise
 reopens the responsible contract.
@@ -436,14 +438,19 @@ follow that specification.
 The Forge first requires a machine and then offers terminal and that machine's
 declared agent profiles. Terminal remains available with zero profiles.
 phone standalone creation requires an explicit machine; source creation retains
-its exact source host. desktop machine scope may preselect its create target. A fresh machine replaces the primary cwd editor with one
-full-height, machine-bound chooser: Home, distinct current tmux cwd values,
-one-level-at-a-time Home browsing with local folder filtering, ranked zoxide
-search, and a secondary exact-path page. Folder entry and explicit `Use` remain distinct; selection
-only fills the Forge draft. Listing is bounded, read-only, on demand, and
+its exact source host. desktop machine scope may preselect its create target.
+directory and group use the same native field mechanics within each client:
+typing supplies choices, acceptance fills the visible draft, and a separate
+create/save action submits it. directory search waits 150 ms; group filtering
+uses retained inventory immediately. exact empty cwd means home; nonempty
+queries must resolve to a literal before creation. mobile offers home and fresh
+local active cwd choices for empty input, plus secondary one-level Home browsing.
+Folder entry and explicit `Use` remain distinct. Listing is bounded, read-only, on demand, and
 non-persistent. It never invokes tmux, a shell, an agent, a crawler, a watcher,
 or another gateway. [`working-directory-chooser.md`](working-directory-chooser.md)
-owns the exact state, content, symlink, bound, and red/green contracts.
+owns secondary browse state, content, symlinks and bounds;
+[directory and group entry](directory-group-entry.md) owns primary interaction
+and qualification.
 
 Changing machine closes the chooser, invalidates its requests, clears
 cwd/agent-profile choice, retains a terminal choice, and preserves tmux
@@ -906,8 +913,10 @@ enum values are defects, with no protocol branch or compatibility state.
   raw labels/tokens, inventory, attachment or credentials and is never stored in
   preferences, files, tmux or gateways. unsupported versions start all/top.
   pairings, text size and independent v2 attention remain unchanged. forge keeps
-  invalid drafts; exact cwd entry remains on its focused uri-keyboard page with
-  autocorrect/smart punctuation off and ime done selecting without creation.
+  invalid drafts; directory/group entry uses one active inline field with bounded
+  live choices, disabled autocorrect/capitalization and explicit acceptance.
+  ime next accepts the visible literal/default without creation; browse returns
+  to the primary directory field.
   picker state, inventory and drafts remain process-memory only.
 - terminal renderer: Vendored pinned xterm.js in a locked WebView
   (`WebViewAssetLoader`, CSP `default-src 'none'` + bundle, no JS bridge, no
@@ -1055,6 +1064,13 @@ acceptance, superseding affected collection/pressure clauses in §§2, 4 and 6.
 source implements this design; observation, attention persistence/visits and
 exact control identities retain their existing owners. no crash/exit notification or
 notice-acknowledgement lifecycle is added.
+
+2026-10-02 source implemented: [directory and group entry](directory-group-entry.md)
+unifies selection and presentation within each native client, replaces mobile's
+primary picker pages with inline search, and retains secondary Home browsing.
+its specification owns value admission, focus, request lifetimes, implementation
+paths and acceptance. gateway protocol, polling, persistence, release and
+deployment retain their existing owners.
 
 2026-10-02 source implemented: [searchable group entry](group-entry.md) adds local
 observed-label matching to desktop and phone creation/editing, with explicit
