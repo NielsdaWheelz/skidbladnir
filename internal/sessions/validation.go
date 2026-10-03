@@ -104,9 +104,12 @@ func (manager *Manager) validateCreate(input CreateInput) (workdir.WorkingDirect
 		if !found {
 			return workdir.WorkingDirectory{}, agentruntime.Profile{}, newSessionError(ErrorProfileUnknown, "Choose an available profile.")
 		}
+		if err := agentruntime.ValidateLaunchOptions(input.Model, input.Effort); err != nil {
+			return workdir.WorkingDirectory{}, agentruntime.Profile{}, err
+		}
 	case LaunchTerminal:
-		if input.Profile != "" {
-			panic("terminal launch carries a profile") // justify-defect: creation ingress forbids a terminal profile.
+		if input.Profile != "" || input.Model != "" || input.Effort != "" {
+			panic("terminal launch carries agent options") // justify-defect: creation ingress forbids terminal agent options.
 		}
 	default:
 		panic("unknown launch kind") // justify-defect: creation ingress admits the closed launch union.

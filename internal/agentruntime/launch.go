@@ -5,10 +5,25 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 const MaxLaunchBytes = 16 * 1024
+
+var ErrLaunchOptionsInvalid = errors.New("model and effort must each be at most 256 utf-8 bytes without whitespace or controls")
+
+// Empty values are omitted options; wire ingress rejects explicit empty fields.
+func ValidateLaunchOptions(model, effort string) error {
+	for _, value := range [...]string{model, effort} {
+		if len(value) > 256 || !utf8.ValidString(value) || strings.IndexFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+			return ErrLaunchOptionsInvalid
+		}
+	}
+	return nil
+}
 
 // Launch is the one foreground action requested of a newly created shell.
 type Launch struct {
@@ -17,9 +32,24 @@ type Launch struct {
 	Environment []EnvironmentVariable `json:"environment"`
 }
 
-func NewLaunch(profile Profile) Launch {
+func NewLaunch(profile Profile, model, effort string) Launch {
 	arguments := make([]string, len(profile.Arguments))
 	copy(arguments, profile.Arguments)
+	if model != "" {
+		arguments = append(arguments, "--model="+model)
+	}
+	if effort != "" {
+		switch profile.Provider {
+		case ProviderCodex:
+			// Validation excludes Go-only control escapes, so Quote is a TOML
+			// basic string and preserves the literal provider value.
+			arguments = append(arguments, "--config", "model_reasoning_effort="+strconv.Quote(effort))
+		case ProviderClaude:
+			arguments = append(arguments, "--effort="+effort)
+		default:
+			panic("unknown launch provider") // justify-defect: validated profiles have one closed provider.
+		}
+	}
 	return Launch{Command: profile.Command, Arguments: arguments, Environment: profile.Environment}
 }
 

@@ -457,12 +457,12 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 	}
 	switch input.Kind {
 	case sessions.LaunchAgent:
-		if !input.Profile.present {
+		if !input.Profile.present || input.Model.present && input.Model.value == "" || input.Effort.present && input.Effort.value == "" {
 			writeError(writer, errorInvalidRequest)
 			return
 		}
 	case sessions.LaunchTerminal:
-		if input.Profile.present {
+		if input.Profile.present || input.Model.present || input.Effort.present {
 			writeError(writer, errorInvalidRequest)
 			return
 		}
@@ -495,6 +495,8 @@ func (gateway *Gateway) createSession(writer http.ResponseWriter, request *http.
 		Kind:             input.Kind,
 		CWD:              input.CWD.value,
 		Profile:          input.Profile.value,
+		Model:            input.Model.value,
+		Effort:           input.Effort.value,
 		OptionalTmuxName: optionalTmuxName,
 		Objective:        objective,
 		Group:            label,
@@ -541,6 +543,7 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 	if errors.Is(err, sessions.ErrCreateDispatchUnknown) {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
+		failure.Target = capturedCreationTarget(created)
 		writeError(writer, failure)
 		return
 	}
@@ -562,11 +565,21 @@ func (gateway *Gateway) completeCreation(ctx context.Context, writer http.Respon
 	if err != nil {
 		failure := errorInternal
 		failure.Dispatch = "unknown"
+		failure.Target = capturedCreationTarget(created)
 		writeError(writer, failure)
 		return
 	}
 	gateway.log(event)
 	writeJSON(writer, http.StatusCreated, response)
+}
+
+func capturedCreationTarget(created sessions.ObservedSession) *createdTargetDTO {
+	// Manager only retains a partial observation once it has validated the
+	// complete target. Projection errors retain the same original capture.
+	if created.Session.TmuxID == "" || created.Session.IdentityToken == "" || created.Session.ActivePaneID == "" {
+		return nil
+	}
+	return &createdTargetDTO{TmuxID: created.Session.TmuxID, IdentityToken: created.Session.IdentityToken, PaneID: created.Session.ActivePaneID}
 }
 
 func (gateway *Gateway) killSession(writer http.ResponseWriter, request *http.Request) {
@@ -736,6 +749,9 @@ func writeSessionError(writer http.ResponseWriter, err error) {
 }
 
 func sessionFailure(err error) apiError {
+	if errors.Is(err, agentruntime.ErrLaunchOptionsInvalid) {
+		return errorInvalidRequest
+	}
 	var sessionError *sessions.Error
 	if !errors.As(err, &sessionError) {
 		return errorInternal

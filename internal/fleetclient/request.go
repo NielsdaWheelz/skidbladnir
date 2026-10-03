@@ -32,6 +32,8 @@ type Request struct {
 	Ref            string
 	Kind           LaunchKind
 	Profile        string
+	Model          string
+	Effort         string
 	CWD            string
 	Text           string
 	Keys           []string
@@ -89,6 +91,14 @@ func (ref Reference) Encode() string {
 	return base64.RawURLEncoding.EncodeToString(encoded)
 }
 
+// Handle names the live selector for this captured target, not its pane or turn.
+func (ref Reference) Handle() string {
+	if ref.Conversation != nil {
+		return conversationHandle(ref.Machine, ref.Conversation.Binding.Conversation)
+	}
+	return terminalHandle(ref)
+}
+
 // SessionEqual compares session lifetime, independently of pane selection and name.
 func (ref Reference) SessionEqual(other Reference) bool {
 	return ref.TmuxID != "" && ref.Machine == other.Machine && ref.TmuxID == other.TmuxID && ref.IdentityToken == other.IdentityToken
@@ -111,10 +121,10 @@ func (request Request) Valid() bool {
 	if request.Operation != "read" && request.MaxBytes != 0 {
 		return false
 	}
-	if request.Operation != "send" && request.Operation != "text" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
+	if request.Operation != "send" && request.Operation != "text" && request.Operation != "start" && request.Text != "" || request.Operation != "keys" && len(request.Keys) != 0 {
 		return false
 	}
-	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" && request.ConversationID == "" || request.CWD != "") {
+	if request.Operation != "start" && (request.Kind != "" || request.Profile != "" && request.ConversationID == "" || request.CWD != "" || request.Model != "" || request.Effort != "") {
 		return false
 	}
 	switch request.Operation {
@@ -122,7 +132,8 @@ func (request Request) Valid() bool {
 		return request.Name == "" && request.Handle == "" && request.Ref == "" && request.ConversationID == ""
 	case "start":
 		return request.Machine != "" && request.Handle == "" && request.Ref == "" && request.ConversationID == "" &&
-			(request.Kind == LaunchAgent && request.Profile != "" || request.Kind == LaunchTerminal && request.Profile == "")
+			(request.Kind == LaunchAgent && request.Profile != "" && agentruntime.ValidateLaunchOptions(request.Model, request.Effort) == nil && (request.Text == "" || validInputText(request.Text)) ||
+				request.Kind == LaunchTerminal && request.Profile == "" && request.Model == "" && request.Effort == "" && request.Text == "")
 	case "info", "enter", "read", "send", "keys", "text", "stop", "close", "wait", "group", "rename", "shell", "inspect":
 	default:
 		return false

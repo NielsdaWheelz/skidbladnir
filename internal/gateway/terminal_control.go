@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
+	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
@@ -23,12 +24,13 @@ var (
 )
 
 type terminalRequest struct {
-	IdentityToken stringField `json:"identityToken"`
-	PaneID        stringField `json:"paneId"`
-	Text          stringField `json:"text"`
-	Keys          *[]string   `json:"keys"`
-	MaxBytes      *int        `json:"maxBytes"`
-	Explain       *bool       `json:"explain"`
+	IdentityToken  stringField `json:"identityToken"`
+	PaneID         stringField `json:"paneId"`
+	Text           stringField `json:"text"`
+	InitialProfile stringField `json:"initialProfile"`
+	Keys           *[]string   `json:"keys"`
+	MaxBytes       *int        `json:"maxBytes"`
+	Explain        *bool       `json:"explain"`
 }
 
 func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
@@ -53,6 +55,14 @@ func (input *terminalRequest) UnmarshalJSON(encoded []byte) error {
 func (input terminalRequest) valid(operation string) bool {
 	if input.IdentityToken.value == "" || len(input.PaneID.value) < 2 || input.PaneID.value[0] != '%' || strings.IndexFunc(input.PaneID.value[1:], func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 		return false
+	}
+	if input.InitialProfile.present {
+		if operation != "send" {
+			return false
+		}
+		if _, err := agentruntime.ParseProfileKey(input.InitialProfile.value); err != nil {
+			return false
+		}
 	}
 	switch operation {
 	case "inspect":
@@ -140,7 +150,7 @@ func (gateway *Gateway) terminalOperation(writer http.ResponseWriter, request *h
 			return
 		}
 	case "send":
-		result, err = gateway.agents.TerminalSend(ctx, target, input.Text.value)
+		result, err = gateway.agents.TerminalSend(ctx, target, input.Text.value, agentruntime.ProfileKey(input.InitialProfile.value))
 	case "text":
 		result, err = gateway.agents.Text(ctx, target, input.Text.value)
 	case "keys":
@@ -265,6 +275,8 @@ func terminalFailure(err error) apiError {
 				failure.Message = "terminal contains a draft. open it before sending."
 			case "dialog":
 				failure.Message = "respond to the dialog in the terminal."
+			case "initial_not_ready":
+				failure.Message = "the requested agent is not ready for its initial prompt. inspect the terminal before sending."
 			}
 		}
 	case errors.Is(err, sessions.ErrTerminalUnavailable), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

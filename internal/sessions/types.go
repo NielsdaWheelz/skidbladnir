@@ -29,6 +29,8 @@ type CreateInput struct {
 	Kind             LaunchKind
 	CWD              string
 	Profile          string
+	Model            string
+	Effort           string
 	preparedName     string
 	OptionalTmuxName string
 	Objective        string

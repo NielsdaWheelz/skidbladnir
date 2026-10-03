@@ -33,6 +33,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [profile usage](profile-usage.md) owns desktop quota disclosure and its separate
 profile reads; source is qualified and installed acceptance is pending.
+[jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
+optional initial input, compound start evidence and compact agent controls.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
@@ -457,7 +459,8 @@ cwd/agent-profile choice, retains a terminal choice, and preserves tmux
 name/objective and the group draft. submission
 names the target and sends
 `POST /v1/sessions` with required `kind:"agent"` and `profile`, or
-`kind:"terminal"` and no profile; both carry
+`kind:"terminal"` and no profile; agent creation also accepts optional literal
+`model`/`effort` overrides, with native defaults on omission. both carry
 `{cwd, optionalTmuxName?, objective?, group?}` to only that machine:
 
 1. Cwd: input and normalized absolute path are each 1–4,096 UTF-8 bytes; C0/C1,
@@ -492,7 +495,9 @@ names the target and sends
    supplied name is manual skid intent only. neither provider receives a name; configured
    Claude arguments containing `-n` or `--name` are invalid host config. A later queue failure
    leaves the newly visible session for inventory/recovery; it never performs
-   an unproven cleanup kill. No prompt is sent; the opaque agent's own
+   an unproven cleanup kill. gateway creation sends no prompt; cli `start --stdin`
+   composes bounded readiness and one guarded initial input under the original
+   start deadline, retaining separate creation/input evidence. the opaque agent's own
    remaining permission, trust, and setup flows appear in the terminal under
    the explicit launch policy above.
 
@@ -610,8 +615,10 @@ is `~/.config/skidbladnir/client.json`. typed terminal/conversation handles sele
 once across complete scoped inventory; `--machine` narrows that scope and `--ref`
 preserves exact captured identity for saved automation. names are creation input
 only. cli and tui consume one fleetclient projection. jarvis consumes the current
-cli using its own private peer configuration and existing write policy. skid does
-not provision jarvis credentials. `inspect --ref` projects the captured
+cli using its own private peer configuration and existing write policy. ordinary
+output uses short handles and readable machine labels; full `--json` retains
+captured refs and transport facts. skid does not provision jarvis credentials.
+`inspect c-HANDLE --machine HOST` captures a native target; `inspect --ref` projects the captured
 conversation separately from its current native observation; only a later
 explicitly authorized action may choose the separate `observedRef`. terminal
 reassociation or deletion does not retarget captured conversation inspection.
@@ -774,7 +781,7 @@ history item is `current`.
 | `POST /v1/directory-listings` | Strict `{directory}` with a canonical Home token; returns the bound machine, current token, optional parent, ordered immediate directory children, and omission bit; no files, metadata, partial result, cache, or fallback |
 | `POST /v1/directory-searches` | strict `{terms:string[]}`; bounded ranked zoxide directories and `omitted`, with no persistence or creation |
 | `GET /v1/terminal-contexts/{connectionId}` | kernel-validated live remote tty sample `{observedAt,cwd?,agent?,connection?}`; agent is descriptive only, nested connection excludes cwd/agent |
-| `POST /v1/sessions` | required `kind:"agent"` with `profile`, or `kind:"terminal"` without profile; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the existing strict session DTO; creation errors include `code,message,dispatch` and dispatch evidence for uncertain terminal creation |
+| `POST /v1/sessions` | required `kind:"agent"` with `profile` and optional `model,effort`, or `kind:"terminal"` without agent options; common `{cwd, optionalTmuxName?, objective?, group?}`. success `201 {observedAt,session}` uses the strict session DTO; errors carry `code,message,dispatch` plus optional `target:{tmuxId,identityToken,paneId}` only after complete validated capture |
 | `POST /v1/sessions/{tmuxId}/shell` | exact `{identityToken}`; same creation response/error shape; host-sampled cwd/group and session-lifetime gate; no agent predicate |
 | `PUT /v1/sessions/{tmuxId}/group` | exact `{identityToken,group}`; nonempty canonical label assigns, empty clears; session-lifetime predicate without name/agent; bodyless `204` |
 | `PATCH /v1/sessions/{tmuxId}` | `{identityToken,expectedNaming,naming}`; closed automatic/manual unions under the [naming contract](automatic-session-names.md), bodyless `204`, then inventory confirmation |
@@ -1053,6 +1060,23 @@ profile read, scheduled by the existing browser tick. it adds no lifecycle store
 hook, screen fallback, provider owner, phone surface or quota enforcement.
 source qualification passed; managed installation and installed acceptance remain pending.
 
+2026-10-02 accepted design: [jarvis orchestration](jarvis-orchestration.md)
+adds literal model/effort launch overrides, native-default precedence, optional
+stdin initial input, bounded idle/profile/composer admission and compound start
+receipts. discovery and controls use compact ordinary output and existing typed
+handles; captured refs remain in structured host output. native-handle inspect
+reuses current native resolution. the spec owns wire shapes, bounds and acceptance.
+jarvis owns durable asynchronous waits, target capture and notification judgment;
+skid retains synchronous observation and gains no watcher, task/reply protocol,
+new targeting registry, provider association or durable receipt store.
+after the original owner turn closes, worker events permit reading, integration
+and notification only; broader write/continuation authority remains separate.
+the owner authorized implementation and temporary integration/live qualification.
+the spec records corrected audit findings and exercised boundaries. current-source
+darwin/linux providers, native cognition, postgres crash/recovery and service
+observation checks pass; exact fleet installation, external Discord delivery and
+production activation remain separate, unqualified cutover work.
+
 2026-10-02 accepted design: [session views and needs input](session-views.md)
 replaces phone machine/group/needs-input controls and the desktop agents view
 with exclusive needs-input/all/group views. needs input includes ready, explicit
@@ -1097,8 +1121,11 @@ is authorized. the plan owns acceptance and narrow changes to §4 and feature
 contracts. source implements it, and its
 [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification)
 passes on darwin, and on linux for capture, recognition, classification and cost,
-within recorded limits; physical-phone acceptance, linux controls and the
-remaining `NOT_RUN` families stay open ([roadmap](roadmap.md)). nothing is
+within recorded limits. current-artifact linux gateway/public-cli launch, input,
+read, wait, refusal, stop and close also pass the narrow
+[orchestration qualification](jarvis-orchestration.md#implementation-sequence-and-acceptance).
+physical-phone acceptance and remaining linux product/family rows stay open
+([roadmap](roadmap.md)). nothing is
 deployed.
 
 agent control, groups, terminal creation and the organized desktop browser are

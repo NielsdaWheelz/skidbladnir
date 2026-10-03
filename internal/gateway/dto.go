@@ -23,11 +23,18 @@ import (
 )
 
 type apiError struct {
-	Dispatch string `json:"dispatch,omitempty"`
-	Code     string `json:"code"`
-	Message  string `json:"message"`
-	Status   int    `json:"-"`
+	Target   *createdTargetDTO `json:"target,omitempty"`
+	Dispatch string            `json:"dispatch,omitempty"`
+	Code     string            `json:"code"`
+	Message  string            `json:"message"`
+	Status   int               `json:"-"`
 	logCode  logging.ErrorCode
+}
+
+type createdTargetDTO struct {
+	TmuxID        string `json:"tmuxId"`
+	IdentityToken string `json:"identityToken"`
+	PaneID        string `json:"paneId"`
 }
 
 var (
@@ -186,6 +193,8 @@ type createSessionRequest struct {
 	Kind             sessions.LaunchKind `json:"kind"`
 	CWD              stringField         `json:"cwd"`
 	Profile          stringField         `json:"profile"`
+	Model            stringField         `json:"model"`
+	Effort           stringField         `json:"effort"`
 	OptionalTmuxName stringField         `json:"optionalTmuxName"`
 	Objective        stringField         `json:"objective"`
 	Group            stringField         `json:"group"`

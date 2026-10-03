@@ -139,6 +139,18 @@ type ObservedSession struct {
 	Diagnostics *agentcontrol.Diagnostics `json:"diagnostics,omitempty"`
 }
 
+// StartResult keeps creation and optional terminal input as independent facts.
+type StartResult struct {
+	Label    string           `json:"label"`
+	Machine  string           `json:"machine"`
+	Creation string           `json:"creation"`
+	Prompt   string           `json:"prompt"`
+	Target   string           `json:"target,omitempty"`
+	Handle   string           `json:"handle,omitempty"`
+	Terminal *ObservedSession `json:"terminal,omitempty"`
+	Failure  *Failure         `json:"failure,omitempty"`
+}
+
 // InspectedReference separates captured action identity from current observation.
 type InspectedReference struct {
 	Label   string `json:"label"`
@@ -458,11 +470,16 @@ func validConnection(connection Connection) bool {
 
 // Creation and membership errors carry required dispatch evidence. Malformed
 // evidence never becomes a definite rejection through control-route inference.
-func decodeMutationFailure(operation string, encoded []byte, status int) *Failure {
+func decodeMutationFailure(operation string, encoded []byte, status int, machine string) *Failure {
 	var value struct {
 		Code     string `json:"code"`
 		Message  string `json:"message"`
 		Dispatch string `json:"dispatch"`
+		Target   *struct {
+			TmuxID        string `json:"tmuxId"`
+			IdentityToken string `json:"identityToken"`
+			PaneID        string `json:"paneId"`
+		} `json:"target,omitempty"`
 	}
 	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value.Dispatch != "not_sent" && value.Dispatch != "unknown" {
 		return nil
@@ -520,7 +537,17 @@ func decodeMutationFailure(operation string, encoded []byte, status int) *Failur
 	if status != wantStatus || value.Message != wantMessage || value.Code != "InternalError" && value.Code != "AgentUnavailable" && value.Code != "AgentTargetStale" && value.Dispatch != "not_sent" {
 		return nil
 	}
-	return &Failure{Code: value.Code, Dispatch: value.Dispatch}
+	if value.Target != nil && (operation != "start" && operation != "shell" || value.Code != "InternalError" || value.Dispatch != "unknown" || !tmuxAddress(value.Target.TmuxID, '$') || value.Target.IdentityToken == "" || !tmuxAddress(value.Target.PaneID, '%')) {
+		return nil
+	}
+	failure := &Failure{Code: value.Code, Dispatch: value.Dispatch}
+	if value.Target != nil {
+		failure.Target = (Reference{Machine: machine, TmuxID: value.Target.TmuxID, IdentityToken: value.Target.IdentityToken, PaneID: value.Target.PaneID}).Encode()
+		if _, err := DecodeReference(failure.Target); err != nil {
+			return nil
+		}
+	}
+	return failure
 }
 
 type SendResult struct {
