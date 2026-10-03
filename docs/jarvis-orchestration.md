@@ -566,7 +566,9 @@ then activate/resume separately. jarvis v7 treats finalized v1–v6 worker recor
 as opaque; unfinished retired rows block activation. no new table/schema migration.
 reuse jarvis's existing operations runbook.
 
-paired code/config/artifact rollback is straightforward BEFORE new receipts.
+paired code/config/artifact rollback before new receipts uses stopped checks.
+jarvis's [selected-only release retention](https://github.com/NielsdaWheelz/jarvis/blob/5d2e324f80acd4b207509bb1825e69f2df9c4b8d/docs/decisions/0053-retain-only-the-selected-release.md)
+requires rebuilding a discarded release from its exact commit before rollback.
 after v7 writes canonical receipts, older readers are unqualified: pause, retain
 data and forward-repair. whole-state restore requires demonstrated consistency
 with new data and external effects; code rollback alone is not data rollback.
