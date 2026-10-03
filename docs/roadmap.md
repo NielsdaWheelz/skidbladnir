@@ -11,8 +11,8 @@ this index records present scope and open work, not a release diary.
 quota summary and expandable per-profile disclosure. codex uses existing account
 daemon reads; claude exports structured statusline quota reports. usage remains
 independent of inventory, terminal status and account admission.
-[source qualification](profile-usage.md#acceptance) passed; three-host
-[installed acceptance](issues/profile-usage.md) remains pending.
+[source and installed qualification](profile-usage.md#acceptance) passed on
+macbook, devbox and arch with the admitted v0.13.0 generation.
 [fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
 is a separate follow-up, not a first-version gate.
 
