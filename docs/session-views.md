@@ -143,9 +143,9 @@ label order, then unassigned when observed. retain the selected group even when
 empty or unresolved after restoration. group choices come from complete retained
 inventory in scope, not needs-input results. use typed identities, never tab
 indices or displayed label text. exact label equality remains. draw named-group
-tab labels in double quotes and system labels unquoted, so named `all`,
-`needs input` and `unassigned` remain distinguishable. quotes are presentation,
-not part of the label; truncate inside them. headings/details keep bare labels.
+tabs, headings and details with bare labels; truncate long tab labels directly.
+named `all`, `needs input` and `unassigned` can read like the built-in views,
+but their typed identities remain distinct.
 speech identifies named group tabs as groups and retains their complete labels.
 
 fresh launch remains `all`, all machines, at the top. initial selection and first
@@ -361,9 +361,8 @@ content-free and credential-free. recording the plan supplies no runtime pass.
   begins on the next line and wraps. this costs a status line even at default
   text size; all/group status geometry remains unchanged.
 - horizontal scrolling hides some groups. longer tui fixed copy hides other
-  tabs sooner; quoted named-group tabs cost two additional characters to avoid
-  ambiguity with system views. no tab search, counts, badges or per-view history
-  is added.
+  tabs sooner; bare named-group tabs can read like system views. no tab search,
+  counts, badges or per-view history is added.
 - desktop `f` becomes direct view selection and `a` is retired; existing filter
   toggle and jump-to-first-agent muscle memory changes.
 - pressure moves into a disclosure and reconnect becomes one step further from

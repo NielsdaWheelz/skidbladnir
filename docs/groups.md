@@ -342,7 +342,7 @@ headings are presentation only. `info` includes membership with its other facts.
 
 phone selects one needs-input/all/group view across the accepted fleet; desktop
 retains a separate machine scope. [session views](session-views.md) owns that
-exclusive navigation and its quoted named-group tabs. selected empty groups
+exclusive navigation and its bare named-group tabs. selected empty groups
 remain selected; other empty labels need not remain suggestions. no collapsed
 group state exists.
 

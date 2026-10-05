@@ -554,13 +554,11 @@ internal fun DashboardViewStrip(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 val color = if (selected) Gold else Bone
-                                if (named) Text("\"", color = color, fontFamily = NidavellirType.Data)
                                 Text(
                                     label, color = color, fontFamily = NidavellirType.Data,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false),
                                 )
-                                if (named) Text("\"", color = color, fontFamily = NidavellirType.Data)
                             }
                         }
                     }

@@ -106,8 +106,8 @@ quiet idle, plain working/unknown, menus alone, remote agents and stale rows
 stay outside it. all/groups retain those rows for inspection. readiness is
 device-local and inferred; no state proves successful task completion.
 
-named tabs are double-quoted; headings/details and the queue's group column
-keep bare labels. unassigned rows have a blank group column. current hidden
+named tabs, headings/details and the queue's group column use bare labels.
+unassigned rows have a blank group column. current hidden
 menu notices appear in queue status/detail so inclusion has a visible reason.
 
 session actions require a selected row and target exactly the session named by
@@ -202,9 +202,8 @@ input-reader cancellation/joining, geometry, and session preservation.
 row 1 is the reversed ` skid ` wordmark, the view strip and, only when a machine
 filter narrows the scope, `machine: <label>` (at most 24 cells) at the right
 edge; its absence means all machines. one blank row follows. the strip reads
-`needs input`, `all`, then each named group in double quotes or the unquoted
-`unassigned` view. quotes distinguish group labels from skid's selector words;
-truncate long labels inside the quotes.
+`needs input`, `all`, then each named group with its bare label, followed by the
+`unassigned` view. truncate long labels directly.
 the current tab is bold,
 between gold `‹ ›` at the table while no operation is in flight; nothing in the
 strip is faint. skid's words never truncate; `needs input`, `all` and the current tab
@@ -372,8 +371,8 @@ accepted costs:
   `ctrl-] d` quits skid.
 - long labels: at 80 columns they share one cap, so prefix twins (`infra-…`)
   can read alike until one is current; excess tabs hide behind counted markers.
-  quotes distinguish label boundaries and skid's words, but consume two cells
-  per named tab; the longer needs-input label also leaves less room. every group view
+  bare labels can read like skid's selector words; the longer needs-input label
+  also leaves less room. every group view
   reserves room for the widest label whole, so with a machine filter at 80
   columns one label of 24 cells can leave a short current label alone between
   markers. labels differing only in invisible characters can still read alike
