@@ -108,7 +108,7 @@ type tab struct{ fixed, label string }
 func strip(tabs []tab, current, room int, stepping bool) string {
 	cells := func(t tab, limit int) int {
 		if t.label != "" {
-			return 2 + min(ansi.StringWidth(t.label), limit)
+			return min(ansi.StringWidth(t.label), limit)
 		}
 		return ansi.StringWidth(t.fixed)
 	}
@@ -173,7 +173,7 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 		}
 		text := t.fixed
 		if t.label != "" {
-			text = `"` + ansi.Truncate(t.label, size, "…") + `"`
+			text = ansi.Truncate(t.label, size, "…")
 		}
 		switch {
 		case index == current && stepping:
