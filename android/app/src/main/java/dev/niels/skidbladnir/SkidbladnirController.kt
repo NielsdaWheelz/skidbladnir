@@ -778,7 +778,7 @@ internal class SkidbladnirController(
         )
     }
 
-    fun restoreDashboardOnce(keys: List<DashboardItemKey>) {
+    fun restoreDashboardOnce(keys: List<DashboardItemKey>, noticeCount: Int) {
         if (!dashboardEntry.restorationPending) return
         if (dashboardRestorationReady(
             view = dashboardEntry.view,
@@ -786,7 +786,7 @@ internal class SkidbladnirController(
             livePollers = polling.keys,
             foreground = foreground,
             needsInputSettled = needsInputSettled(),
-        )) dashboardEntry.restoreOnce(keys)
+        )) dashboardEntry.restoreOnce(keys, noticeCount)
     }
 
     private fun unrefreshableNotice(): String {

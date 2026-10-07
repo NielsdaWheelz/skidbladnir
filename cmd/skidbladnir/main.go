@@ -351,10 +351,12 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		return fmt.Errorf("initialize working directories: %w", err)
 	}
 	manager, err := sessions.New(sessions.Config{
-		TmuxPath:      host.TmuxPath,
-		Workdir:       workingDirectories,
-		CataloguePath: cataloguePath,
-		Profiles:      host.Profiles,
+		Machine:        handle,
+		CheckpointPath: filepath.Join(home, ".local", "state", "skidbladnir", "workspace.json"),
+		TmuxPath:       host.TmuxPath,
+		Workdir:        workingDirectories,
+		CataloguePath:  cataloguePath,
+		Profiles:       host.Profiles,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize tmux sessions: %w", err)
@@ -378,10 +380,7 @@ func serveGateway(listen, bearerPath, machineHandlePath, hostConfigPath, catalog
 		Machine:  handle,
 		Platform: descriptor,
 	})
-	if err := gateway.ListenAndServe(ctx, listen, handler); err != nil && !errors.Is(err, context.Canceled) {
-		return err
-	}
-	return nil
+	return gateway.ListenAndServe(ctx, listen, handler)
 }
 
 func loadRuntimeHostConfig(ctx context.Context, path string, runtime platform.Kind) (hostconfig.Config, error) {

@@ -5,6 +5,19 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## tmux workspace recovery — source implemented; reboot checks deferred
+
+2026-10-07: [the spec and implementation plan](session-recovery.md) covers
+30-second checkpoints and automatic reconstruction after reboot or tmux loss.
+all exposed sessions return as fresh shells with saved names, groups, windows,
+panes and local directories. a populated replacement server or failed restore
+gets a passive failure notice; repair and conversation resume remain manual.
+dev-server must retire resurrect/continuum before skid becomes the recovery owner.
+[qualification](session-recovery.md#qualification) covers isolated native
+darwin/linux, gateway/desktop and physical-phone boundaries. actual linux and mac
+reboots are owner-deferred; [remaining acceptance](issues/session-recovery-reboot.md)
+records the check. release and production-fleet cutover remain separate.
+
 ## desktop profile usage
 
 2026-10-02: [the accepted spec and plan](profile-usage.md) adds a compact main-tui

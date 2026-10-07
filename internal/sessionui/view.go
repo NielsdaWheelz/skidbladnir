@@ -255,9 +255,16 @@ func (m *model) noticeLines(width int) []string {
 			suffix := " unavailable (" + singleLine(peer.Error.Code) + "); showing its last observation"
 			lines = append(lines, ansi.Truncate(ansi.Truncate(singleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
 		}
-	}
-	if limit := max(1, m.height-16); len(lines) > limit {
-		lines = append(lines[:limit-1], "…")
+		text, failure := fleetclient.RecoveryNotice(peer)
+		if text != "" {
+			style := muted
+			if failure {
+				style = ember
+			}
+			for _, line := range wrapped(text, width) {
+				lines = append(lines, style.Styled(line))
+			}
+		}
 	}
 	return lines
 }

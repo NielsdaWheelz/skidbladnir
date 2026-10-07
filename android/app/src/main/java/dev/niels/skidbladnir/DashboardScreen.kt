@@ -5,6 +5,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -45,8 +48,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -61,6 +64,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -221,7 +226,7 @@ internal fun DashboardDwarfCollection(
     entry: DashboardEntryState,
     items: List<DashboardItem>,
     onVerify: () -> Unit,
-    onRestore: (List<DashboardItemKey>) -> Unit,
+    onRestore: (List<DashboardItemKey>, Int) -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
     onStop: (SessionTarget) -> Unit,
@@ -231,11 +236,17 @@ internal fun DashboardDwarfCollection(
     val machines = state.machines
     val needsInputView = entry.view == DashboardViewSelection.NeedsInput
     val keys = items.map(DashboardItem::key)
+    val recoveryNotices = machines.mapNotNull { machine ->
+        workspaceRecoveryNotice(machine)?.let { machine.machine.handle to it }
+    }
     val restorationOutcomes = machines.map { machine ->
         Triple(machine.machine.handle, machine.access, machine.inventory)
     }
-    LaunchedEffect(entry.restorationPending, entry.view.key, restorationOutcomes, state.needsInputSettled, keys) {
-        if (entry.restorationPending) onRestore(keys)
+    LaunchedEffect(
+        entry.restorationPending, entry.view.key, restorationOutcomes,
+        state.needsInputSettled, keys, recoveryNotices.size,
+    ) {
+        if (entry.restorationPending) onRestore(keys, recoveryNotices.size)
     }
     if (entry.restorationPending || needsInputView && items.isEmpty() && !state.needsInputSettled) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -245,13 +256,15 @@ internal fun DashboardDwarfCollection(
     }
     val motionEnabled = rememberMotionEnabled()
     if (machines.any { it.access == MachineAccess.Ready }) {
-        PullableDwarfCollection(state = state, motionEnabled = motionEnabled, onVerify = onVerify) {
+        PullableDwarfCollection(state = state, motionEnabled = motionEnabled, onVerify = onVerify) { onRecoveryGesture ->
             DashboardDwarfGrid(
                 state,
                 items,
+                recoveryNotices,
                 needsInputView,
                 entry.gridState,
                 motionEnabled,
+                onRecoveryGesture,
                 onOpen,
                 onClose,
                 onStop,
@@ -263,9 +276,11 @@ internal fun DashboardDwarfCollection(
         DashboardDwarfGrid(
             state,
             items,
+            recoveryNotices,
             needsInputView,
             entry.gridState,
             motionEnabled,
+            {},
             onOpen,
             onClose,
             onStop,
@@ -281,26 +296,34 @@ private fun PullableDwarfCollection(
     state: SkidbladnirUiState.Dashboard,
     motionEnabled: Boolean,
     onVerify: () -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable (onRecoveryGesture: () -> Unit) -> Unit,
 ) {
     val pullState = rememberPullToRefreshState()
-    PullToRefreshBox(
-        isRefreshing = state.refreshing,
-        onRefresh = {
-            if (!state.refreshing) onVerify()
-        },
-        modifier = Modifier.fillMaxSize(),
-        state = pullState,
-        indicator = {
-            DwarfCollectionPullIndicator(
-                state = pullState,
+    var pullEnabled by remember { mutableStateOf(true) }
+    Box(
+        modifier = Modifier.fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    // reset only at the next down, so a notice's release/fling stays excluded.
+                    pullEnabled = true
+                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                }
+            }
+            .pullToRefresh(
                 isRefreshing = state.refreshing,
-                motionEnabled = motionEnabled,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-        },
+                state = pullState,
+                enabled = pullEnabled,
+                onRefresh = { if (pullEnabled && !state.refreshing) onVerify() },
+            ),
     ) {
-        content()
+        content { pullEnabled = false }
+        DwarfCollectionPullIndicator(
+            state = pullState,
+            isRefreshing = state.refreshing,
+            motionEnabled = motionEnabled,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 
@@ -354,9 +377,11 @@ private fun DwarfCollectionPullIndicator(
 private fun DashboardDwarfGrid(
     state: SkidbladnirUiState.Dashboard,
     items: List<DashboardItem>,
+    recoveryNotices: List<Pair<MachineHandle, MachineNotice>>,
     needsInputView: Boolean,
     gridState: LazyGridState,
     motionEnabled: Boolean,
+    onRecoveryGesture: () -> Unit,
     onOpen: (SessionTarget) -> Unit,
     onClose: (SessionTarget) -> Unit,
     onStop: (SessionTarget) -> Unit,
@@ -386,6 +411,24 @@ private fun DashboardDwarfGrid(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            items(
+                items = recoveryNotices,
+                key = { "recovery:${it.first.encoded}" },
+                span = { GridItemSpan(maxLineSpan) },
+            ) { (_, notice) ->
+                MachineNoticeText(
+                    notice,
+                    Modifier.fillMaxWidth()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                onRecoveryGesture()
+                                waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                            }
+                        }
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
             if (items.isEmpty()) {
                 item(
                     key = "dashboard-empty-state",
@@ -456,7 +499,7 @@ internal fun DashboardTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -469,9 +512,7 @@ internal fun DashboardTopBar(
                 "Dwarves",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
-                // The row is a fixed 64dp and now leads with the 24dp mark, so at a large
-                // font scale an unbounded title would wrap and clip against it. The summary
-                // line below has always bounded itself; this matches it.
+                // both header lines remain single-line summaries; the row grows with text scale.
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -586,6 +627,11 @@ private fun MachineStrip(
     modifier: Modifier = Modifier.padding(horizontal = 28.dp, vertical = 2.dp),
 ) {
     val notice = machineNotice(machine) ?: return
+    MachineNoticeText(notice, modifier)
+}
+
+@Composable
+private fun MachineNoticeText(notice: MachineNotice, modifier: Modifier) {
     Text(
         notice.message,
         color = noticeToneColor(notice.tone),

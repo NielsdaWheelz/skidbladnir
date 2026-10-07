@@ -35,6 +35,9 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 and its separate profile reads and qualification.
 [jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
 optional initial input, compound start evidence and compact agent controls.
+[workspace recovery](session-recovery.md) owns automatic reconstruction of lost
+tmux workspaces as fresh shells, its private recipe and passive recovery facts.
+source is implemented; actual reboot qualification remains deferred.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
 current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
@@ -56,10 +59,11 @@ target operations.
 
 ## 1. Philosophy
 
-- **tmux is the database and the process supervisor.** Session list, pane
-  facts, and user options are the durable session state. Gateway restart means
-  "list tmux again", never a recovery protocol. the only separate transient
-  metadata is a kernel-validated ssh/mosh connection registration. it records
+- **tmux is the database and the process supervisor.** live sessions, pane
+  facts and user options belong to tmux. a gateway restart re-lists a surviving
+  server. one private workspace recipe can reconstruct a confirmed lost server
+  as fresh shells; it never supplies inventory, execution or history. separate
+  transient metadata is a kernel-validated ssh/mosh connection registration. it records
   association, never session lifetime, status, or history.
 - **providers own execution and history.** skid observes foreground process
   presence separately from a captured native conversation, and offers bounded
@@ -101,7 +105,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. claude's managed statusline stores one replaceable quota-only report per explicit home. clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude's managed statusline stores one replaceable quota-only report per explicit home. clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -258,7 +262,8 @@ requests and current error/interruption notices. all/groups retain stable group
 and session order, including ordinary terminals and explicitly stale rows.
 [session views](session-views.md) owns membership, ordering, navigation and
 schema-4 restoration; [groups](groups.md) owns exact label identity/membership.
-failed-machine and notification-store notices remain outside every view.
+failed-machine, notification-store and fresh workspace-recovery notices remain
+outside every view. recovery adds no controls or saved client state.
 
 - One card anchors to the session's current window and that window's active
   pane. cwd, command, foreground process, and runtime registration come
@@ -397,6 +402,12 @@ required tmux snapshot is validated, then enriches optional process observations
 outside the session lock. that clock is sampled evidence, not an atomic provider
 snapshot; host clocks are never compared. phone pressure state and colour come
 from host-evaluated signals, never locally inferred thresholds.
+
+`GET /v1/sessions` requires one closed `recovery` fact: tracking, recovered or
+broken, with an optional canonical utc save time and a closed broken reason.
+[workspace recovery](session-recovery.md#api-and-authored-content) owns its exact
+schema and passive copy. failed recovery preserves ordinary live inventory;
+clients never use the saved recipe as inventory or revive old terminal authority.
 
 ### agent observation and identity hooks
 
@@ -677,6 +688,14 @@ history item is `current`.
   `HERDR_*`, and `SKIDBLADNIR_SHELL`. tmux/helper child environments also drop
   `HERDR_*`; pane exec boundaries repeat that removal because existing tmux
   servers have their own inherited environment.
+- `sessions.Manager` owns one private `~/.local/state/skidbladnir/workspace.json`
+  recipe and adjacent process-held writer lock. the gateway listens before
+  starting recovery, then observes immediately and every 30 seconds without
+  clients. structural mutations checkpoint under its existing mutation lock.
+  boot identity and kernel process-start identity prove loss; a missing socket
+  alone cannot. restoration durably claims one attempt before effects, requires
+  an absent or empty target, and verifies the complete native graph before
+  saving success. failure freezes the recipe; manual repair remains outside skid.
 - `internal/platform` is only the closed `Linux | Darwin` native adapter.
   Deployment supplies one strict JSON host config containing expected platform,
   an exact tmux path, an advisory `testedVersion`, an absolute
@@ -1142,6 +1161,18 @@ accepted and implemented. their detailed specifications own their limits.
 [the composition plan](groups-and-shells.md) leaves terminal embedding as a
 separate feasibility experiment; shipping it requires an accepted production
 contract and its own evidence.
+
+2026-10-07 source cutover: [workspace recovery](session-recovery.md) defines one
+host-local workspace checkpoint and automatic reconstruction after confirmed
+tmux server loss. it covers all exposed sessions, restores only into an absent
+or empty server, and leaves conversation resume and failed repair to the user.
+its acceptance owns the narrow durable-workspace exception to §§1/2/5, required
+inventory recovery fact and deployment recovery-owner cutover. existing shell
+startup is unchanged. there are no recovery controls, provider launches or
+history copies.
+isolated darwin/linux and physical-phone qualification is recorded in that spec;
+actual host reboots are deferred. release and installed-fleet activation remain
+separate. dev-server must retire the old recovery owner before activation.
 
 push, cross-device unread sync, provenance, copied provider history, durable
 receipts and replay remain excluded. any new capability requires an explicit

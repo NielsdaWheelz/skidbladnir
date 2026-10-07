@@ -73,6 +73,16 @@ service dependency. gateway stop must not kill tmux workers; preserve
 the historical linux `KillMode=process` arrangement. never reset tailscale
 serve or modify the default tmux server's environment.
 
+workspace recovery cutover: apply the host's managed tmux configuration before
+activating a gateway with [workspace recovery](session-recovery.md). gateway-only
+apply does not run dotfiles. dev-server removes owned resurrect/continuum links,
+native save/restore bindings and script options, then reloads the managed
+status-right/configuration without killing a populated or empty server. inert
+snapshots remain untouched. both server options `exit-empty` and `exit-unattached`
+are off. an already executing legacy restore needs a maintenance shutdown;
+configuration reload cannot revoke it. rollback must retain this owner cutover
+and the private workspace recipe, never reactivate the retired plugins.
+
 install both `~/.local/bin/skid` and `~/.local/bin/skidbladnir` as symlinks to
 `../share/skidbladnir/current/skidbladnir`. bare `skid` opens the desktop session
 browser; `skid --help` documents the same cli used by automation. these public

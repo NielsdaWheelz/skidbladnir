@@ -1,21 +1,25 @@
 package sessions
 
 import (
+	"errors"
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
+	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/workdir"
 )
 
 type Config struct {
-	TmuxPath      string
-	SocketName    string
-	Workdir       *workdir.Service
-	CataloguePath string
-	Profiles      []agentruntime.Profile
+	TmuxPath       string
+	SocketName     string
+	Workdir        *workdir.Service
+	CataloguePath  string
+	Profiles       []agentruntime.Profile
+	Machine        machine.Handle
+	CheckpointPath string
 }
 
 type LaunchKind string
@@ -124,6 +128,7 @@ type TerminalContext struct {
 type Inventory struct {
 	ObservedAt time.Time
 	Sessions   []Session
+	Recovery   Recovery
 }
 
 type ObservedSession struct {
@@ -139,6 +144,16 @@ func ValidProjectionInstant(value time.Time) bool {
 	}
 	_, err := value.UTC().MarshalJSON()
 	return err == nil
+}
+
+// ParseProjectionInstant admits exactly the writer's UTC RFC3339Nano spelling.
+// time.Parse alone normalizes offsets and noncanonical fractional seconds.
+func ParseProjectionInstant(raw string) (time.Time, error) {
+	value, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil || !ValidProjectionInstant(value) || raw != value.UTC().Format(time.RFC3339Nano) {
+		return time.Time{}, errors.New("invalid projection instant")
+	}
+	return value, nil
 }
 
 type ErrorCode string

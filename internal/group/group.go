@@ -2,6 +2,7 @@
 package group
 
 import (
+	"encoding/base64"
 	"errors"
 	"slices"
 	"strings"
@@ -14,6 +15,23 @@ var ErrInvalid = errors.New("use 1–64 nfc characters; only interior ordinary s
 
 // Label is canonical text; its zero value is unassigned.
 type Label struct{ text string }
+
+// DecodeMetadata preserves tmux's existing projection: invalid or absent local
+// group metadata means unassigned, never an inherited global membership.
+func DecodeMetadata(encoded string) Label {
+	if encoded == "" || len(encoded) > 342 {
+		return Label{}
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || base64.RawURLEncoding.EncodeToString(decoded) != encoded {
+		return Label{}
+	}
+	label, err := Parse(string(decoded))
+	if err != nil {
+		return Label{}
+	}
+	return label
+}
 
 func Parse(text string) (Label, error) {
 	if text == "" {
