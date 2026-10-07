@@ -119,8 +119,15 @@ type machineDTO struct {
 type sessionsResponseDTO struct {
 	Machine    machineDTO   `json:"machine"`
 	ObservedAt string       `json:"observedAt"`
+	Recovery   recoveryDTO  `json:"recovery"`
 	Profiles   []profileDTO `json:"profiles"`
 	Sessions   []sessionDTO `json:"sessions"`
+}
+
+type recoveryDTO struct {
+	State   sessions.RecoveryState  `json:"state"`
+	SavedAt string                  `json:"savedAt,omitempty"`
+	Reason  sessions.RecoveryReason `json:"reason,omitempty"`
 }
 
 type createSessionResponseDTO struct {
@@ -385,6 +392,13 @@ func mapSessionsResponse(
 	if err != nil {
 		return sessionsResponseDTO{}, errors.New("invalid inventory observation time")
 	}
+	if !inventory.Recovery.Valid() {
+		panic("inventory contains an invalid workspace recovery fact") // justify-defect: sessions.Manager owns the closed recovery union before returning inventory.
+	}
+	recovery := recoveryDTO{State: inventory.Recovery.State, Reason: inventory.Recovery.Reason}
+	if inventory.Recovery.SavedAt != nil {
+		recovery.SavedAt = inventory.Recovery.SavedAt.UTC().Format(time.RFC3339Nano)
+	}
 	profiles, err := mapProfiles(configuredProfiles)
 	if err != nil {
 		return sessionsResponseDTO{}, err
@@ -408,6 +422,7 @@ func mapSessionsResponse(
 	return sessionsResponseDTO{
 		Machine:    machine,
 		ObservedAt: encodedObservedAt,
+		Recovery:   recovery,
 		Profiles:   profiles,
 		Sessions:   cards,
 	}, nil

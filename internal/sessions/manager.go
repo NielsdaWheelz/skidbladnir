@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
 	"github.com/NielsdaWheelz/skidbladnir/internal/catalog"
+	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	processinfo "github.com/NielsdaWheelz/skidbladnir/internal/process"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalcontext"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
@@ -43,6 +45,7 @@ type Manager struct {
 	profiles      []agentruntime.Profile
 	profilesByKey map[agentruntime.ProfileKey]agentruntime.Profile
 	mutations     sync.RWMutex
+	recovery      workspaceRecovery
 }
 
 func New(config Config) (*Manager, error) {
@@ -55,6 +58,9 @@ func New(config Config) (*Manager, error) {
 	}
 	if config.Workdir == nil {
 		return nil, errors.New("working directory service is not configured")
+	}
+	if config.Machine.String() == "" || !filepath.IsAbs(config.CheckpointPath) || filepath.Clean(config.CheckpointPath) != config.CheckpointPath {
+		return nil, errors.New("workspace checkpoint configuration is invalid")
 	}
 	characters, err := catalog.Load(config.CataloguePath)
 	if err != nil {
@@ -74,6 +80,7 @@ func New(config Config) (*Manager, error) {
 		catalogue:     characters,
 		profiles:      profiles,
 		profilesByKey: profilesByKey,
+		recovery:      workspaceRecovery{path: config.CheckpointPath, machine: config.Machine, fact: Recovery{State: RecoveryTracking}},
 	}, nil
 }
 
@@ -95,12 +102,10 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 		return Inventory{}, err
 	}
 	if len(ids) == 0 {
-		// ListSessionIDs reports a host with no tmux server as empty, so this
-		// branch also covers "no server exists". It must stay ahead of
-		// ensureServerIdentity: that call sets a server option, which would
-		// start a tmux server on an idle host every poll. There is no snapshot
-		// to validate, so the poll time is the whole honest projection.
-		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}}, nil
+		// Listing maps absent and empty servers to an empty live inventory.
+		// Recovery distinguishes those states through its own observation;
+		// listing has no lifetime or server to initialize in this branch.
+		return Inventory{ObservedAt: time.Now().UTC(), Sessions: []Session{}, Recovery: manager.recovery.fact}, nil
 	}
 	server, err := manager.ensureServerIdentity(ctx)
 	if err != nil {
@@ -134,6 +139,7 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	// One clock for the whole projection, minted only once the snapshot and the
 	// server identity that produced it are both validated.
 	observedAt := time.Now().UTC()
+	recovery := manager.recovery.fact
 	manager.mutations.Unlock()
 	locked = false
 	sessions := make([]Session, 0, len(observations))
@@ -143,7 +149,7 @@ func (manager *Manager) List(ctx context.Context) (Inventory, error) {
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return Inventory{}, err
 	}
-	return Inventory{ObservedAt: observedAt, Sessions: sessions}, nil
+	return Inventory{ObservedAt: observedAt, Sessions: sessions, Recovery: recovery}, nil
 }
 
 func (manager *Manager) Create(ctx context.Context, input CreateInput) (ObservedSession, error) {
@@ -192,7 +198,7 @@ func (manager *Manager) CreateShell(ctx context.Context, input ShellInput) (Obse
 	if err != nil {
 		return ObservedSession{}, err
 	}
-	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: cwd, Group: decodeGroupMetadata(encoded)}, input.TmuxID, server)
+	return manager.create(ctx, CreateInput{Kind: LaunchTerminal, CWD: cwd, Group: group.DecodeMetadata(encoded)}, input.TmuxID, server)
 }
 
 func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID string, sourceServer tmuxclient.ServerIdentity) (result ObservedSession, resultErr error) {
@@ -331,6 +337,7 @@ func (manager *Manager) create(ctx context.Context, input CreateInput, sourceID 
 	if err := manager.requireServerIdentity(ctx, server); err != nil {
 		return result, err
 	}
+	manager.checkpointAfterMutation(ctx, server)
 	return ObservedSession{ObservedAt: observedAt, Session: projected}, nil
 }
 
@@ -352,6 +359,9 @@ func mapWorkingDirectoryError(err error) error {
 // Kill deletes only the captured session lifetime. Pane/process changes and
 // display names do not participate in authority. The tmux queue owns the guard.
 func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
+	manager.mutations.Lock()
+	defer manager.mutations.Unlock()
+
 	identity, _, err := manager.sessionLifetimeIdentity(ctx, input.TmuxID, input.IdentityToken)
 	if err != nil {
 		return err
@@ -366,6 +376,7 @@ func (manager *Manager) Kill(ctx context.Context, input KillInput) error {
 	if !killed {
 		return sessionIdentityMismatch()
 	}
+	manager.checkpointAfterMutation(ctx, identity)
 	return nil
 }
 
@@ -423,7 +434,7 @@ func (manager *Manager) enrichSession(ctx context.Context, inspected inspectedSe
 	session.panePID = inspected.panePID
 	// justify-ignore-error: unreadable optional membership is unassigned and never repaired.
 	if encoded, err := manager.sessionOption(ctx, session.TmuxID, tmuxclient.GroupOption); err == nil {
-		session.Group = decodeGroupMetadata(encoded)
+		session.Group = group.DecodeMetadata(encoded)
 	}
 	session.AttachedClients = inspected.attachedClients
 	// justify-ignore-error: optional pane metadata does not suppress an ordinary terminal.
@@ -760,11 +771,18 @@ func (manager *Manager) classifyMissingSession(ctx context.Context, id string, c
 }
 
 func (manager *Manager) ensureServerIdentity(ctx context.Context) (tmuxclient.ServerIdentity, error) {
+	observed, present, err := manager.tmux.InspectServer(ctx)
+	if err != nil {
+		return tmuxclient.ServerIdentity{}, err
+	}
+	if !present {
+		return tmuxclient.ServerIdentity{}, errors.New("tmux server is absent")
+	}
 	proposed, err := newServerEpoch()
 	if err != nil {
 		return tmuxclient.ServerIdentity{}, err
 	}
-	return manager.tmux.EnsureServerIdentity(ctx, proposed)
+	return manager.tmux.EnsureServerIdentity(ctx, observed.Identity, proposed)
 }
 
 func (manager *Manager) requireServerIdentity(ctx context.Context, expected tmuxclient.ServerIdentity) error {

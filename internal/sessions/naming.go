@@ -199,5 +199,6 @@ func (manager *Manager) Rename(ctx context.Context, input RenameInput) error {
 		}
 		return newSessionError(ErrorSessionNameChanged, "the session name changed. review and save again.")
 	}
+	manager.checkpointAfterMutation(ctx, server)
 	return nil
 }

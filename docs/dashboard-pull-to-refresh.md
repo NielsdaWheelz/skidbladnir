@@ -6,6 +6,12 @@ poller. source implements this cutover; qualification belongs to session views.
 request/completion fencing, collection geometry and inventory-only refresh
 remain governed here. earlier evidence retains its recorded source boundary.
 
+2026-10-07: [workspace recovery](session-recovery.md) places passive recovery
+notices in the grid. a drag beginning on those notices scrolls the collection
+but cannot refresh it. this narrow hit-region exclusion uses the native material
+pull modifier; material still owns thresholds, resistance, nested scroll and
+fling behavior. it introduces no second scroll or refresh owner.
+
 the [groups](groups.md) presentation contract does not narrow refresh targets.
 manual verification snapshots every live fleet inventory poller, including hosts
 with no previously observed membership in the selected group. view selection
@@ -61,8 +67,9 @@ are consumed unchanged.
 ## Goals and rules
 
 - Reclaim header space while preserving user agency and literal freshness.
-- Use Material 3 `PullToRefreshBox`; do not hand-roll pointer, threshold,
-  overscroll, nested-scroll, or fling behavior.
+- use material 3's native pull modifier and indicator. observe the first down
+  position only to exclude recovery notices; never consume the gesture or
+  implement threshold, overscroll, nested-scroll or fling behavior.
 - reuse the existing per-machine inventory lane, fleet routing, stale
   reduction, mutation fences, and `Dashboard.refreshing` derived state.
 - Keep the last snapshot, viewport, focus, dialog/draft state, and stable card
@@ -84,7 +91,8 @@ are consumed unchanged.
 1. A downward drag released below the platform threshold does nothing.
 2. A downward drag released after the collection has reached its top and
    accumulated the platform threshold overscroll requests one verification of
-   the captured live fleet targets. Drag-start position is not a second gesture rule.
+   the captured live fleet targets. a gesture beginning on a recovery notice
+   scrolls normally but does not request verification.
 3. The Compose pull owner dispatches no second gesture intent while the derived
    indicator is active. Programmatic callers still require their own
    post-intent read and coalesce through the same lane.
@@ -109,9 +117,10 @@ are consumed unchanged.
 
 ```text
 fixed DashboardTopBar (Dwarves + machine summary)
-fixed view strip / machines disclosure / notices / recovery
-`- live fleet target? PullToRefreshBox : inert collection container
+fixed view strip / machines disclosure / action and availability notices
+`- live fleet target? native pull modifier : inert collection container
    `- one always-present LazyVerticalGrid
+      |- full-span passive recovery notices, excluded from pull start
       |- full-span empty/reading state, or
       `- stable-keyed dwarf cards
 

@@ -34,7 +34,7 @@ func ValidateListenAddress(address string) error {
 	return nil
 }
 
-func ListenAndServe(ctx context.Context, address string, gateway *Gateway) error {
+func ListenAndServe(ctx context.Context, address string, gateway *Gateway) (result error) {
 	if err := ValidateListenAddress(address); err != nil {
 		return err
 	}
@@ -42,6 +42,21 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) error
 	if err != nil {
 		return fmt.Errorf("listen on gateway loopback: %w", err)
 	}
+	defer func() {
+		// justify-ignore-error: HTTP shutdown already closes the owned listener;
+		// net.ErrClosed confirms that release, while other close failures remain.
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			result = errors.Join(result, fmt.Errorf("close gateway listener: %w", err))
+		}
+	}()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopRecovery := gateway.sessions.StartRecovery(ctx)
+	defer func() {
+		if err := stopRecovery(); err != nil {
+			result = errors.Join(result, fmt.Errorf("close workspace recovery: %w", err))
+		}
+	}()
 	server := &http.Server{
 		Handler:           gateway,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
@@ -54,29 +69,31 @@ func ListenAndServe(ctx context.Context, address string, gateway *Gateway) error
 	go func() {
 		serveResult <- server.Serve(listener)
 	}()
+	var serveErr error
+	serveFinished := false
 	select {
-	case err := <-serveResult:
-		closeContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if closeErr := gateway.CloseLiveTerminals(closeContext); closeErr != nil {
-			return fmt.Errorf("close live terminals after HTTP server exit: %w", closeErr)
-		}
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return fmt.Errorf("serve gateway HTTP: %w", err)
+	case serveErr = <-serveResult:
+		serveFinished = true
 	case <-ctx.Done():
-		shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := gateway.CloseLiveTerminals(shutdownContext); err != nil {
-			return fmt.Errorf("close live terminals: %w", err)
-		}
-		if err := server.Shutdown(shutdownContext); err != nil {
-			return fmt.Errorf("shut down gateway HTTP: %w", err)
-		}
-		if err := <-serveResult; err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serve gateway HTTP: %w", err)
-		}
-		return nil
 	}
+	cancel()
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelShutdown()
+	if err := gateway.CloseLiveTerminals(shutdownContext); err != nil {
+		result = errors.Join(result, fmt.Errorf("close live terminals: %w", err))
+	}
+	if err := server.Shutdown(shutdownContext); err != nil {
+		result = errors.Join(result, fmt.Errorf("shut down gateway HTTP: %w", err))
+		if err := server.Close(); err != nil {
+			result = errors.Join(result, fmt.Errorf("close gateway HTTP: %w", err))
+		}
+	}
+	if !serveFinished {
+		serveErr = <-serveResult
+	}
+	// justify-ignore-error: ErrServerClosed is HTTP's confirmed normal shutdown.
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		result = errors.Join(result, fmt.Errorf("serve gateway HTTP: %w", serveErr))
+	}
+	return result
 }

@@ -101,7 +101,7 @@ func (client Client) CreateSession(ctx context.Context, directory, sourceID stri
 			if argument == ";" {
 				branch.WriteByte(';')
 			} else {
-				branch.WriteString("'" + strings.ReplaceAll(argument, "'", "'\\''") + "'")
+				branch.WriteString(commandToken(argument))
 			}
 		}
 		commandName = "-N" // A vanished source must never start a replacement server.
@@ -144,11 +144,7 @@ func (client Client) ListSessionIDs(ctx context.Context) ([]string, error) {
 	var stdout, stderr bytes.Buffer
 	command := client.commandWithStderr(ctx, &stdout, &stderr, "list-sessions", "-F", "#{session_id}")
 	if err := command.Run(); err != nil {
-		var exitError *exec.ExitError
-		message := strings.TrimSpace(stderr.String())
-		missingSocket := strings.HasPrefix(message, "error connecting to ") && strings.HasSuffix(message, "(No such file or directory)")
-		if errors.As(err, &exitError) && exitError.ExitCode() == 1 &&
-			(strings.HasPrefix(message, "no server running on ") || missingSocket) {
+		if missingServer(err, stderr.String()) {
 			return []string{}, nil
 		}
 		return nil, fmt.Errorf("tmux list sessions failed: %w", err)
@@ -173,39 +169,32 @@ func (client Client) HasSession(ctx context.Context, id string) (bool, error) {
 	return false, nil
 }
 
-func (client Client) EnsureServerIdentity(ctx context.Context, proposed string) (ServerIdentity, error) {
-	if !serverEpochPattern.MatchString(proposed) {
+func (client Client) EnsureServerIdentity(ctx context.Context, expected ServerIdentity, proposed string) (ServerIdentity, error) {
+	if !serverEpochPattern.MatchString(proposed) || !serverPIDPattern.MatchString(expected.PID) || !startTimePattern.MatchString(expected.StartTime) || expected.Epoch != "" && !serverEpochPattern.MatchString(expected.Epoch) {
 		return ServerIdentity{}, errors.New("proposed tmux server epoch is invalid")
 	}
-	epoch, err := client.readServerEpoch(ctx, true)
+	branch := commandText("display-message", "-p", "#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
+	if expected.Epoch == "" {
+		branch = commandText("set-option", "-soq", ServerEpochOption, proposed) + " ; " + branch
+	}
+	output, err := client.Output(ctx, "initialize-server-epoch", "-N", "if-shell", "-F", andFormatConditions(serverLifetimeConditions(expected)),
+		branch, "display-message -p -l '"+identityMismatchMarker+"'")
 	if err != nil {
 		return ServerIdentity{}, err
 	}
-	if epoch == "" {
-		setErr := client.Run(ctx, "initialize-server-epoch", "set-option", "-soq", ServerEpochOption, proposed)
-		epoch, err = client.readServerEpoch(ctx, false)
-		if err != nil {
-			if setErr != nil {
-				return ServerIdentity{}, fmt.Errorf("set tmux server epoch: %v; read canonical epoch: %w", setErr, err)
-			}
-			return ServerIdentity{}, err
-		}
+	fields := strings.Split(output, "|")
+	if len(fields) != 3 {
+		return ServerIdentity{}, errors.New("tmux server identity changed during initialization")
 	}
-	if !serverEpochPattern.MatchString(epoch) {
-		return ServerIdentity{}, errors.New("tmux server epoch is invalid")
-	}
-	identity, err := client.ServerIdentity(ctx)
-	if err != nil {
-		return ServerIdentity{}, err
-	}
-	if identity.Epoch != epoch {
+	identity := ServerIdentity{Epoch: fields[0], PID: fields[1], StartTime: fields[2]}
+	if !identity.valid() || identity.PID != expected.PID || identity.StartTime != expected.StartTime || expected.Epoch != "" && identity.Epoch != expected.Epoch {
 		return ServerIdentity{}, errors.New("tmux server identity changed during initialization")
 	}
 	return identity, nil
 }
 
 func (client Client) ServerIdentity(ctx context.Context) (ServerIdentity, error) {
-	output, err := client.Output(ctx, "read-server-identity", "display-message", "-p",
+	output, err := client.Output(ctx, "read-server-identity", "-N", "display-message", "-p",
 		"#{"+ServerEpochOption+"}|#{pid}|#{start_time}")
 	if err != nil {
 		return ServerIdentity{}, err
@@ -309,27 +298,33 @@ func characterAssignmentArguments(id, expected, character string, server ServerI
 	}, nil
 }
 
-func (client Client) readServerEpoch(ctx context.Context, allowAbsent bool) (string, error) {
-	epoch, err := client.Output(ctx, "read-server-epoch", "show-options", "-sqv", ServerEpochOption)
-	if err != nil {
-		return "", err
-	}
-	if epoch == "" && allowAbsent {
-		return "", nil
-	}
-	return epoch, nil
-}
-
 func formatLiteral(value string) string {
 	return "#{l:" + strings.NewReplacer("#", "##", ",", "#,", "}", "#}").Replace(value) + "}"
 }
 
+func commandText(command string, arguments ...string) string {
+	var result strings.Builder
+	result.WriteString(command)
+	for _, argument := range arguments {
+		result.WriteByte(' ')
+		result.WriteString(commandToken(argument))
+	}
+	return result.String()
+}
+
+func commandToken(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
 func sessionLifetimeConditions(id string, server ServerIdentity) []string {
+	return append(serverLifetimeConditions(server), "#{==:#{session_id},"+formatLiteral(id)+"}")
+}
+
+func serverLifetimeConditions(server ServerIdentity) []string {
 	return []string{
 		"#{==:#{" + ServerEpochOption + "}," + formatLiteral(server.Epoch) + "}",
 		"#{==:#{pid}," + formatLiteral(server.PID) + "}",
 		"#{==:#{start_time}," + formatLiteral(server.StartTime) + "}",
-		"#{==:#{session_id}," + formatLiteral(id) + "}",
 	}
 }
 

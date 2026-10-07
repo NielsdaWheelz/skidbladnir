@@ -319,14 +319,42 @@ internal fun decodeTerminalContext(encoded: String): TerminalContext = decodePro
 internal data class SessionsResponse(
     val machine: MachineSummary,
     val observedAt: Instant,
+    val recovery: WorkspaceRecovery,
     val profiles: List<ProfileChoice>,
     val sessions: List<TmuxSession>,
+)
+
+internal sealed interface WorkspaceRecovery {
+    data class Tracking(val savedAt: Instant?) : WorkspaceRecovery
+    data class Recovered(val savedAt: Instant) : WorkspaceRecovery
+    data class Broken(val reason: WorkspaceRecoveryReason, val savedAt: Instant?) : WorkspaceRecovery
+}
+
+@Serializable internal enum class WorkspaceRecoveryReason {
+    @kotlinx.serialization.SerialName("checkpoint_invalid") CheckpointInvalid,
+    @kotlinx.serialization.SerialName("checkpoint_failed") CheckpointFailed,
+    @kotlinx.serialization.SerialName("server_unreachable") ServerUnreachable,
+    @kotlinx.serialization.SerialName("server_not_empty") ServerNotEmpty,
+    @kotlinx.serialization.SerialName("restore_failed") RestoreFailed,
+}
+
+@Serializable private enum class WireWorkspaceRecoveryState {
+    @kotlinx.serialization.SerialName("tracking") Tracking,
+    @kotlinx.serialization.SerialName("recovered") Recovered,
+    @kotlinx.serialization.SerialName("broken") Broken,
+}
+
+@Serializable private data class WireWorkspaceRecovery(
+    val state: WireWorkspaceRecoveryState,
+    @Serializable(with = IsoInstantSerializer::class) val savedAt: Instant? = null,
+    val reason: WorkspaceRecoveryReason? = null,
 )
 
 @Serializable
 private data class WireSessionsResponse(
     val machine: WireMachineSummary,
     @Serializable(with = IsoInstantSerializer::class) val observedAt: Instant,
+    val recovery: WireWorkspaceRecovery,
     val profiles: List<WireProfileChoice>,
     val sessions: List<WireTmuxSession>,
 )
@@ -630,6 +658,7 @@ private fun SessionNaming.toWire(): WireSessionNaming = when (this) {
 
 internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeProtocol {
     val element = strictJsonObject(encoded)
+    element.requiredObject("recovery").requireAbsentOrNonNull(setOf("savedAt", "reason"))
     element.getValue("sessions").jsonArray.forEach { encodedSession ->
         (encodedSession as? JsonObject ?: throw SerializationException("session is not an object"))
             .requireSessionOptionalFields()
@@ -640,6 +669,19 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     }
     val wire = productJson.decodeFromJsonElement<WireSessionsResponse>(element)
     val observedAt = acceptProjectionInstant(wire.observedAt)
+    val savedAt = wire.recovery.savedAt?.let(::acceptProjectionInstant)
+    val recovery = when (wire.recovery.state) {
+        WireWorkspaceRecoveryState.Tracking -> {
+            require(wire.recovery.reason == null)
+            WorkspaceRecovery.Tracking(savedAt)
+        }
+        WireWorkspaceRecoveryState.Recovered -> {
+            require(wire.recovery.reason == null)
+            WorkspaceRecovery.Recovered(requireNotNull(savedAt))
+        }
+        WireWorkspaceRecoveryState.Broken ->
+            WorkspaceRecovery.Broken(requireNotNull(wire.recovery.reason), savedAt)
+    }
     val handle = requireNotNull(MachineHandle.parse(wire.machine.handle))
     val profiles = wire.profiles.map { profile ->
         require(profile.label.isNotEmpty())
@@ -665,6 +707,7 @@ internal fun decodeSessionsResponse(encoded: String): SessionsResponse = decodeP
     SessionsResponse(
         MachineSummary(handle, acceptMachinePlatform(wire.machine.platform)),
         observedAt,
+        recovery,
         profiles,
         sessions,
     )
@@ -805,7 +848,7 @@ internal data class MachineNotice(val message: String, val tone: NoticeTone)
 internal data class SessionAvailabilityContent(val label: String, val tone: NoticeTone)
 
 /**
- * Single owner of how loud a machine state is. Trust events are the only failures: a broken bearer
+ * Single owner of the availability tone. Trust events are its only failures: a broken bearer
  * or a changed identity means we no longer know who we are talking to. Everything else is absent or
  * ageing knowledge, and architecture.md treats one host being out as normal federated operation, so
  * an outage withdraws the alarm colour while its message still names it literally.
@@ -839,7 +882,7 @@ internal fun sessionAvailabilityContent(machine: MachineState): SessionAvailabil
 }
 
 /**
- * Single owner of machine-state prose and its severity: one `when` over [MachineAvailability] yields
+ * Single owner of availability/pressure prose and severity: one `when` over [MachineAvailability] yields
  * both, so a message and a tone read at different granularities stop being representable.
  */
 internal fun machineNotice(machine: MachineState): MachineNotice? {
@@ -867,6 +910,34 @@ internal fun machineNotice(machine: MachineState): MachineNotice? {
             is PressureState.Unavailable ->
                 MachineNotice("$label: pressure unavailable. Sessions remain current.", tone)
             PressureState.Reading, is PressureState.Fresh -> null
+        }
+    }
+}
+
+internal fun workspaceRecoveryNotice(machine: MachineState): MachineNotice? {
+    if (machine.access != MachineAccess.Ready) return null
+    val recovery = (machine.inventory as? InventoryState.Fresh)?.snapshot?.inventory?.recovery ?: return null
+    val label = machine.machine.label.text
+    return when (recovery) {
+        is WorkspaceRecovery.Tracking -> null
+        is WorkspaceRecovery.Recovered -> MachineNotice(
+            "$label: terminals restored as shells. resume conversations using the same provider account.",
+            NoticeTone.Degraded,
+        )
+        is WorkspaceRecovery.Broken -> {
+            val reason = when (recovery.reason) {
+                WorkspaceRecoveryReason.CheckpointInvalid -> "saved workspace is invalid or unreadable"
+                WorkspaceRecoveryReason.CheckpointFailed -> "workspace could not be saved"
+                WorkspaceRecoveryReason.ServerUnreachable -> "the previous tmux server may still be running"
+                WorkspaceRecoveryReason.ServerNotEmpty -> "tmux already has sessions"
+                WorkspaceRecoveryReason.RestoreFailed -> "workspace could not be restored"
+            }
+            MachineNotice(
+                "$label: workspace recovery stopped: $reason. " +
+                    "last saved: ${recovery.savedAt?.let(::formatWireInstant) ?: "unknown"}. " +
+                    "current workspace changes are not being saved.",
+                NoticeTone.Failure,
+            )
         }
     }
 }

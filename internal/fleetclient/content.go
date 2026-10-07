@@ -1,5 +1,44 @@
 package fleetclient
 
+import "time"
+
+// RecoveryNotice only projects fresh inventory; retained rows make no recovery claim.
+func RecoveryNotice(peer Peer) (text string, failure bool) {
+	if !peer.OK || peer.Recovery == nil {
+		return "", false
+	}
+	r := peer.Recovery
+	switch r.state {
+	case recoveryTracking:
+		return "", false
+	case recoveryRecovered:
+		return peer.Label + ": terminals restored as shells. resume conversations using the same provider account.", false
+	case recoveryBroken:
+		savedAt := "unknown"
+		if r.savedAt != nil {
+			savedAt = r.savedAt.Format(time.RFC3339Nano)
+		}
+		var reason string
+		switch r.reason {
+		case recoveryCheckpointInvalid:
+			reason = "saved workspace is invalid or unreadable"
+		case recoveryCheckpointFailed:
+			reason = "workspace could not be saved"
+		case recoveryServerUnreachable:
+			reason = "the previous tmux server may still be running"
+		case recoveryServerNotEmpty:
+			reason = "tmux already has sessions"
+		case recoveryRestoreFailed:
+			reason = "workspace could not be restored"
+		default:
+			panic("invalid recovery reason") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
+		}
+		return peer.Label + ": workspace recovery stopped: " + reason + ". last saved: " + savedAt + ". current workspace changes are not being saved.", true
+	default:
+		panic("invalid recovery state") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
+	}
+}
+
 // ErrorMessage is shared by command output and the desktop browser.
 func ErrorMessage(failure Failure, request Request, native bool) string {
 	if (request.Operation == "start" || request.Operation == "shell") && failure.Target != "" {

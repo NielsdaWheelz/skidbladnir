@@ -116,12 +116,13 @@ internal class DashboardEntryState {
         ownedGridState = LazyGridState()
     }
 
-    fun restoreOnce(keys: List<DashboardItemKey>) {
+    fun restoreOnce(keys: List<DashboardItemKey>, noticeCount: Int) {
         val restored = pendingSnapshot ?: return
         if (keys.isNotEmpty()) {
             val resolvedIndex = restored.viewport.anchor?.let(keys::indexOf)
                 ?.takeIf { it >= 0 }
-                ?: restored.viewport.fallbackIndex.coerceAtMost(keys.lastIndex)
+                ?.plus(noticeCount)
+                ?: restored.viewport.fallbackIndex.coerceAtMost(noticeCount + keys.lastIndex)
             gridState.requestScrollToItem(resolvedIndex, restored.viewport.offsetPx)
         }
         pendingSnapshot = null

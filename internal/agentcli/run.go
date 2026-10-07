@@ -572,6 +572,11 @@ func render(command command, result fleetclient.Result, stdout, stderr io.Writer
 		if table.Flush() != nil {
 			return 1
 		}
+		for _, peer := range list.Peers {
+			if text, _ := fleetclient.RecoveryNotice(peer); text != "" {
+				fmt.Fprintln(stdout, text)
+			}
+		}
 	case "start":
 		value := result.Value.(fleetclient.StartResult)
 		if value.Handle != "" {

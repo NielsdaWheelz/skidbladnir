@@ -96,6 +96,87 @@ type Profile struct {
 	Provider     string `json:"provider"`
 	HistoryScope string `json:"historyScope,omitempty"`
 }
+
+type recoveryState string
+type recoveryReason string
+
+const (
+	recoveryTracking  recoveryState = "tracking"
+	recoveryRecovered recoveryState = "recovered"
+	recoveryBroken    recoveryState = "broken"
+
+	recoveryCheckpointInvalid recoveryReason = "checkpoint_invalid"
+	recoveryCheckpointFailed  recoveryReason = "checkpoint_failed"
+	recoveryServerUnreachable recoveryReason = "server_unreachable"
+	recoveryServerNotEmpty    recoveryReason = "server_not_empty"
+	recoveryRestoreFailed     recoveryReason = "restore_failed"
+)
+
+// Recovery is one strictly admitted host fact. Clients never persist it.
+type Recovery struct {
+	state   recoveryState
+	savedAt *time.Time
+	reason  recoveryReason
+}
+
+func (r *Recovery) UnmarshalJSON(encoded []byte) error {
+	var value *struct {
+		State   recoveryState   `json:"state"`
+		SavedAt *string         `json:"savedAt,omitempty"`
+		Reason  *recoveryReason `json:"reason,omitempty"`
+	}
+	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &value) != nil || value == nil {
+		return errors.New("invalid recovery response")
+	}
+	var savedAt *time.Time
+	if value.SavedAt != nil {
+		instant, err := sessions.ParseProjectionInstant(*value.SavedAt)
+		if err != nil {
+			return errors.New("invalid recovery response")
+		}
+		savedAt = &instant
+	}
+	switch value.State {
+	case recoveryTracking:
+		if value.Reason != nil {
+			return errors.New("invalid recovery response")
+		}
+	case recoveryRecovered:
+		if value.SavedAt == nil || value.Reason != nil {
+			return errors.New("invalid recovery response")
+		}
+	case recoveryBroken:
+		if value.Reason == nil {
+			return errors.New("invalid recovery response")
+		}
+		switch *value.Reason {
+		case recoveryCheckpointInvalid, recoveryCheckpointFailed, recoveryServerUnreachable, recoveryServerNotEmpty, recoveryRestoreFailed:
+		default:
+			return errors.New("invalid recovery response")
+		}
+	default:
+		return errors.New("invalid recovery response")
+	}
+	*r = Recovery{state: value.State, savedAt: savedAt}
+	if value.Reason != nil {
+		r.reason = *value.Reason
+	}
+	return nil
+}
+
+func (r Recovery) MarshalJSON() ([]byte, error) {
+	switch r.state {
+	case recoveryTracking, recoveryRecovered, recoveryBroken:
+	default:
+		panic("invalid recovery state") // justify-defect: Recovery fields are private and admitted by UnmarshalJSON.
+	}
+	return json.Marshal(struct {
+		State   recoveryState  `json:"state"`
+		SavedAt *time.Time     `json:"savedAt,omitempty"`
+		Reason  recoveryReason `json:"reason,omitempty"`
+	}{r.state, r.savedAt, r.reason})
+}
+
 type Peer struct {
 	Label      string    `json:"label"`
 	Machine    string    `json:"machine"`
@@ -103,6 +184,7 @@ type Peer struct {
 	ObservedAt string    `json:"observedAt,omitempty"`
 	Profiles   []Profile `json:"profiles,omitempty"`
 	Sessions   []Session `json:"sessions,omitempty"`
+	Recovery   *Recovery `json:"recovery,omitempty"`
 	Error      *Failure  `json:"error,omitempty"`
 }
 
@@ -123,7 +205,8 @@ func (p Peer) MarshalJSON() ([]byte, error) {
 		ObservedAt string    `json:"observedAt"`
 		Profiles   []Profile `json:"profiles"`
 		Sessions   []Session `json:"sessions"`
-	}{p.Label, p.Machine, true, p.ObservedAt, p.Profiles, p.Sessions})
+		Recovery   *Recovery `json:"recovery"`
+	}{p.Label, p.Machine, true, p.ObservedAt, p.Profiles, p.Sessions, p.Recovery})
 }
 
 type Inventory struct {
@@ -230,6 +313,7 @@ type hostInventory struct {
 	ObservedAt string        `json:"observedAt"`
 	Profiles   []Profile     `json:"profiles"`
 	Sessions   []hostSession `json:"sessions"`
+	Recovery   *Recovery     `json:"recovery"`
 }
 type hostObservedSession struct {
 	ObservedAt string      `json:"observedAt"`
@@ -292,7 +376,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 		return DirectorySearchResult{Directories: value.Directories, Omitted: *value.Omitted}, true
 	case "list":
 		var value *hostInventory
-		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Machine.Handle != target.Machine || !slices.Contains([]string{"Linux", "Darwin"}, value.Machine.Platform) || value.Profiles == nil || value.Sessions == nil {
+		if strictjson.Decode(encoded, &value) != nil || value == nil || value.Machine.Handle != target.Machine || !slices.Contains([]string{"Linux", "Darwin"}, value.Machine.Platform) || value.Profiles == nil || value.Sessions == nil || value.Recovery == nil {
 			return nil, false
 		}
 		if _, err := time.Parse(time.RFC3339Nano, value.ObservedAt); err != nil {
@@ -303,7 +387,7 @@ func decodeResponse(operation string, encoded []byte, target peer) (any, bool) {
 				return nil, false
 			}
 		}
-		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: value.Profiles, Sessions: make([]Session, 0, len(value.Sessions))}
+		observed := Peer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: value.ObservedAt, Profiles: value.Profiles, Sessions: make([]Session, 0, len(value.Sessions)), Recovery: value.Recovery}
 		for _, s := range value.Sessions {
 			if !validSession(s) {
 				return nil, false
