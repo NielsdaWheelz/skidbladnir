@@ -14,6 +14,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const usageMachineLabel = "devbox"
+
 type usageProfile struct {
 	profile                fleetclient.ProfileUsage
 	observedAt, receivedAt time.Time
@@ -36,13 +38,9 @@ func (m *model) usageScope() (string, bool) {
 		return "", false
 	}
 	switch m.page {
-	case "usage":
-		return m.machine, true
-	case "":
-		if m.machine != "" {
-			return m.machine, true
-		}
-		return m.client.DefaultMachine().Label, true
+	case "", "usage":
+		_, configured := m.client.MachineByLabel(usageMachineLabel)
+		return usageMachineLabel, configured
 	default:
 		return "", false
 	}
@@ -158,7 +156,7 @@ func (m *model) reconcileUsageProfiles(received fleetclient.Peer) bool {
 		}
 		peer.profiles = profiles
 		scope, visible := m.usageScope()
-		if known && visible && (scope == "" || scope == peer.machine.Label) {
+		if known && visible && scope == peer.machine.Label {
 			m.cancelUsage()
 			m.usageNext = time.Time{}
 			return true
@@ -204,7 +202,7 @@ func usageWindowText(window *agentcontrol.UsageWindow, observedAt time.Time, ela
 		}
 		reset = "resets " + window.ResetsAt.UTC().Format("2006-01-02 15:04:05") + " utc · in " + remaining.Round(time.Second).String()
 	}
-	return strconv.FormatFloat(math.Floor(window.UsedPercent), 'f', 0, 64) + "%", reset
+	return strconv.FormatFloat(math.Floor(max(0, 100-window.UsedPercent)), 'f', 0, 64) + "%", reset
 }
 
 func (m *model) usageSummary() []string {
@@ -213,75 +211,67 @@ func (m *model) usageSummary() []string {
 	}
 	machine, visible := m.usageScope()
 	if !visible {
+		if machine == usageMachineLabel {
+			return []string{"remaining unavailable"}
+		}
 		return nil
 	}
 	width := m.width - 2
-	legend := " · — unknown  ~ stale  * last reported"
-	defaultMark := ""
-	if m.machine == "" {
-		defaultMark = " (default)"
-	}
-	heading := "5h/7d used (%) · "
-	label := ansi.Truncate(singleLine(machine), max(1, width-ansi.StringWidth(heading)-ansi.StringWidth(legend)-len(defaultMark)), "…")
-	title := heading + label + defaultMark + faint.Styled(legend)
-	lines := []string{title}
+	heading := "remaining · "
 	for _, peer := range m.usagePeers {
 		if peer.machine.Label != machine {
 			continue
 		}
 		if peer.profiles == nil {
-			state := "checking profile usage"
+			state := "checking"
 			if peer.failure != nil {
-				state = "profile usage unavailable"
+				state = "unavailable"
 			}
-			return append(lines, state)
+			return []string{heading + state}
 		}
 		if len(peer.profiles) == 0 {
-			return append(lines, "no agent profiles")
+			return []string{heading + "no agent profiles"}
 		}
-		line := ""
+		codex, claude := []string{}, []string{}
 		now := time.Now()
 		for _, profile := range peer.profiles {
 			text := usagePresentation(profile, peer.failure != nil, now)
-			name := profile.profile.Key
-			if profile.profile.Source == "statusline" {
-				name += "*"
+			if profile.profile.Provider == "Codex" {
+				codex = append(codex, profile.profile.Key+" "+text.sevenDay)
+			} else {
+				claude = append(claude, profile.profile.Key+": 5h "+text.fiveHour+" · 7d "+text.sevenDay)
 			}
-			marker := ""
-			if text.stale {
-				marker = "~"
-			}
-			item := name + " " + marker + strings.TrimSuffix(text.fiveHour, "%") + "/" + strings.TrimSuffix(text.sevenDay, "%")
-			if line != "" && ansi.StringWidth(line)+2+ansi.StringWidth(item) > width {
-				lines, line = append(lines, line), ""
-			}
-			if line != "" {
-				line += "  "
-			}
-			item = ansi.Truncate(item, width, "…")
-			if text.stale {
-				item = faint.Styled(item)
-			}
-			line += item
 		}
-		return append(lines, line)
+		lines := []string{}
+		if len(codex) > 0 {
+			lines = append(lines, heading+"codex 7d: "+strings.Join(codex, " · "))
+		}
+		for _, item := range claude {
+			prefix := strings.Repeat(" ", ansi.StringWidth(heading))
+			if len(lines) == 0 {
+				prefix = heading
+			}
+			lines = append(lines, prefix+item)
+		}
+		for index, line := range lines {
+			lines[index] = ansi.Truncate(line, width, "…")
+		}
+		return lines
 	}
-	panic("usage summary has no configured machine") // justify-defect: the scope names the validated default or a picker entry.
+	panic("usage summary has no configured machine") // justify-defect: visible usage scope and retained peers select the same configured devbox.
 }
 
 func (m *model) usageLines() []string {
+	if _, configured := m.client.MachineByLabel(usageMachineLabel); !configured {
+		return []string{usageMachineLabel + " is not configured"}
+	}
 	lines := []string{}
 	now, width := time.Now(), m.width-2
 	for _, peer := range m.usagePeers {
-		if m.machine != "" && peer.machine.Label != m.machine {
+		if peer.machine.Label != usageMachineLabel {
 			continue
 		}
-		defaultMark := ""
-		if peer.machine.Handle == m.client.DefaultMachine().Handle {
-			defaultMark = " (default)"
-		}
-		label := ansi.Truncate(singleLine(peer.machine.Label), max(1, width-len(defaultMark)), "…") + defaultMark
-		lines = append(lines, bold.Styled(label))
+		lines = append(lines, bold.Styled(peer.machine.Label))
 		if peer.failure != nil {
 			lines = append(lines, wrapped("unavailable ("+singleLine(peer.failure.Code)+"); showing last reports", width)...)
 		}
@@ -299,17 +289,22 @@ func (m *model) usageLines() []string {
 		}
 		for _, profile := range peer.profiles {
 			text := usagePresentation(profile, peer.failure != nil, now)
-			used := fmt.Sprintf("%s  5h used %s  7d used %s", profile.profile.Key, text.fiveHour, text.sevenDay)
-			if text.stale {
-				used += " · stale"
+			remaining := fmt.Sprintf("%s  7d remaining %s", profile.profile.Key, text.sevenDay)
+			resets := "7d " + text.sevenReset
+			if profile.profile.Provider == "Claude" || profile.profile.Report != nil && profile.profile.Report.FiveHour != nil {
+				remaining = fmt.Sprintf("%s  5h remaining %s  7d remaining %s", profile.profile.Key, text.fiveHour, text.sevenDay)
+				resets = "5h " + text.fiveReset + "  ·  " + resets
 			}
-			lines = append(lines, wrapped(used, width)...)
+			if text.stale {
+				remaining += " · stale"
+			}
+			lines = append(lines, wrapped(remaining, width)...)
 			source := text.source + " · " + text.age
 			if peer.failure != nil || profile.profile.ReadState == "unavailable" {
 				source += " · unavailable"
 			}
 			lines = append(lines, wrapped(source, width)...)
-			lines = append(lines, wrapped("5h "+text.fiveReset+"  ·  7d "+text.sevenReset, width)...)
+			lines = append(lines, wrapped(resets, width)...)
 		}
 		lines = append(lines, "")
 	}
@@ -319,7 +314,7 @@ func (m *model) usageLines() []string {
 func (m *model) usageBody(height int) []string {
 	lines := m.usageLines()
 	offset := min(m.offset, max(0, len(lines)-(height-2)))
-	return append([]string{bold.Styled("usage · 5h/7d used"), ""}, lines[offset:min(len(lines), offset+max(0, height-2))]...)
+	return append([]string{bold.Styled("usage · remaining"), ""}, lines[offset:min(len(lines), offset+max(0, height-2))]...)
 }
 
 func (m *model) usageKey(key string) {

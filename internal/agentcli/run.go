@@ -73,7 +73,7 @@ browser (80x24 minimum)
   f selects needs input (ready, response requests, error/interruption notices)
   m chooses machine; n opens terminal; N opens options
   enter attaches; space opens info
-  u opens profile usage; arrows/j/k scroll; q/escape returns
+  u opens devbox profile usage; arrows/j/k scroll; q/escape returns
   info: r edits name; g edits group; escape returns to the table
   name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
   directory/group: left/right chooses; tab/enter uses and continues
