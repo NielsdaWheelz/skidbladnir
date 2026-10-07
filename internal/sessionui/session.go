@@ -109,7 +109,9 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 	usagePeers := []usagePeer{}
 	for _, machine := range client.Machines() {
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
-		usagePeers = append(usagePeers, usagePeer{machine: machine})
+		if machine.Label == usageMachineLabel {
+			usagePeers = append(usagePeers, usagePeer{machine: machine})
+		}
 	}
 	store, storeErr := fleetclient.DefaultNotificationStore()
 	return &model{notificationStore: store, notificationFailed: storeErr != nil, ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
@@ -172,14 +174,13 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 	previousScope, wasVisible := m.usageScope()
 	previousPage := m.page
-	previousMachine := m.machine
 	defer func() {
 		scope, visible := m.usageScope()
 		if previousPage != m.page || previousScope != scope || wasVisible != visible {
 			m.cancelUsage()
-			// Disclosure and machine changes read immediately. A hidden form or
+			// disclosure changes read immediately. a hidden form or
 			// fullscreen visit retires work while preserving the attempt cadence.
-			if previousMachine != m.machine || previousPage == "usage" || m.page == "usage" {
+			if previousPage == "usage" || m.page == "usage" {
 				m.usageNext = time.Time{}
 			}
 			command = tea.Batch(command, m.refreshUsage(time.Now(), false))

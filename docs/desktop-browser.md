@@ -246,7 +246,8 @@ fell from 24 to 12 cells). the outage form is accepted with that cost, an
 exception to [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
 fit rule; the 8-cell `checking` widens nothing.
 
-below the table, top to bottom: scoped notices; the rule, with the target set into
+below the table, top to bottom: scoped notices; the fixed-devbox remaining-quota
+summary under [profile usage](profile-usage.md); the rule, with the target set into
 it and, only when the table scrolls, the faint cursor position (`i of n`) at its
 end; the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the
@@ -264,7 +265,7 @@ target instead. observed text is sanitized for display: controls, format
 characters such as bidi overrides, and line separators become spaces.
 
 hints list actions, not navigation: the selected session's remaining verbs, then
-`f needs input  m machine  n terminal on <host>  N options  q quit`. each
+`f needs input  m machine  n terminal on <host>  N options  u usage  q quit`. each
 set of hints stays on one line when it fits and otherwise wraps by whole hints; the
 key is bold, the label plain. the global keys fit one 80-column line for host
 labels up to 9 cells; a longer label wraps them and costs one table row. the

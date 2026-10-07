@@ -16,6 +16,11 @@ macbook, devbox and arch with the admitted v0.13.0 generation.
 [fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
 is a separate follow-up, not a first-version gate.
 
+2026-10-07: the [source revision](profile-usage.md#acceptance) centralizes desktop
+quota reads on devbox and puts remaining percentages in the footer. dev-server
+enables claude publication only on devbox. isolated source/installer checks pass;
+[installed cutover](issues/devbox-usage-cutover.md) remains pending.
+
 ## jarvis orchestration — implemented; cutover pending
 
 2026-10-02: [the extracted spec, plan and adversarial review](jarvis-orchestration.md)

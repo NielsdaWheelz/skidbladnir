@@ -38,8 +38,7 @@ func (m *model) View() tea.View {
 		content = strings.Join(lines[:min(len(lines), max(1, m.height))], "\n")
 	} else {
 		footer := m.footerLines()
-		lines := append([]string{m.header()}, m.usageSummary()...)
-		lines = append(lines, "")
+		lines := []string{m.header(), ""}
 		lines = append(lines, m.bodyLines(m.height-len(lines)-len(footer))...)
 		for len(lines) < m.height-len(footer) {
 			lines = append(lines, "")
@@ -190,11 +189,12 @@ func strip(tabs []tab, current, room int, stepping bool) string {
 	return line
 }
 
-// footerLines holds notices, the rule naming the session the keys act on, that
-// session's facts, and the keys.
+// footerLines holds notices, quota context, the rule naming the session the keys
+// act on, that session's facts, and the keys.
 func (m *model) footerLines() []string {
 	width := m.width - 2
 	notices := m.noticeLines(width)
+	usage := m.usageSummary()
 	keys := keyLines(width, m.hints()...)
 	legend, detail, end := "", []string{}, ""
 	switch m.page {
@@ -205,7 +205,7 @@ func (m *model) footerLines() []string {
 		} else if row := m.selectedRow(); row != nil {
 			legend = target(row.session.Name, row.label, width)
 			detail = m.rowDetailLines(*row, width)
-			if m.tableLength() > m.height-3-len(m.usageSummary())-len(notices)-len(detail)-len(keys) {
+			if m.tableLength() > m.height-3-len(usage)-len(notices)-len(detail)-len(keys) {
 				position = fmt.Sprintf("%d of %d", m.cursor+1, len(m.rows))
 			}
 		}
@@ -221,7 +221,8 @@ func (m *model) footerLines() []string {
 	case "usage":
 		legend = "profile usage · read only"
 	}
-	lines := append(notices, rule(legend, end, width))
+	lines := append(notices, usage...)
+	lines = append(lines, rule(legend, end, width))
 	lines = append(lines, detail...)
 	return append(lines, keys...)
 }
@@ -700,7 +701,7 @@ func (m *model) fitViewports() {
 	if m.width < 80 || m.height < 24 || m.page != "" || m.cursor < 0 {
 		return
 	}
-	height := m.height - 2 - len(m.usageSummary()) - len(m.footerLines())
+	height := m.height - 2 - len(m.footerLines())
 	// anchor is the cursor's group heading when its row opens a group.
 	line, anchor := 0, 0
 	for index := range m.rows {

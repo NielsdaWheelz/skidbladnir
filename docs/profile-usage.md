@@ -1,10 +1,12 @@
 # profile usage in the desktop browser
 
-accepted 2026-10-02; implemented and qualified on macbook, devbox and arch.
-show each configured profile's
-5-hour and 7-day quota usage in the main tui, with an expandable disclosure for
-reset times, source and report age. codex uses its existing account daemon;
-claude uses the structured input to its managed statusline.
+accepted 2026-10-02; sourcing and presentation revised 2026-10-07.
+show devbox's configured profiles' remaining quota in the desktop footer:
+weekly for codex, 5-hour and weekly for claude. the usage page discloses reset
+times, source and report age. codex uses its existing account daemon;
+claude uses the structured input to its managed statusline. the 2026-10-02
+installed qualification below applies to the original v0.13.0 presentation;
+the devbox/footer revision has separate source qualification and pending cutover.
 
 this document owns the capability and implementation plan.
 [architecture](architecture.md) owns shared invariants;
@@ -16,10 +18,13 @@ qualification below distinguishes source, candidate-host and installed evidence.
 
 ## scope and invariants
 
-usage belongs to a configured provider home on one machine. include declared
-profiles with no active sessions. matching profile keys/labels across machines
-do not prove the same authenticated account. keep the sampling machine visible;
-never sum, deduplicate or average their readings.
+usage belongs to a configured provider home on devbox. include declared profiles
+with no active sessions. every desktop reads the explicitly configured `devbox`
+peer, independently of session selection, view, machine filter and terminal
+creation default. show the sampling machine on the usage page, not in the footer.
+matching profile keys/labels elsewhere do not prove the same authenticated account.
+never sum, deduplicate, average, forward or substitute another host's readings.
+an unconfigured devbox shows unavailable usage and sends no quota request.
 
 quota observations do not determine terminal status, ready attention, completion,
 launch admission or whether another turn can run. percentages alone cannot prove
@@ -64,7 +69,10 @@ ordinary display, export only each window's `used_percentage` and optional
 session id, cwd, model, prompt, transcript path or credentials.
 
 publish one replaceable `skidbladnir-usage.json` in the existing absolute
-`CLAUDE_CONFIG_DIR`; without that explicit home, publish nothing. the gateway
+`CLAUDE_CONFIG_DIR` only when the managed script receives `--publish-skid-usage`.
+dev-server enables this argument in devbox's account statusline settings and
+omits it on workstations. without the argument or explicit home, publish nothing;
+ordinary statusline display continues on every host. the devbox gateway
 reads the fixed path under its configured `claude-work` home. the file contains
 one flat json object with `schemaVersion: 1`, `reportedAt`, and optional
 `fiveHour`/`sevenDay` fields in the normalized shape below. it is a latest
@@ -136,8 +144,9 @@ or replace source times with receipt time. a report dated after
 the gateway sample has uncertain recency and is unavailable.
 
 stale means report age at least 120 seconds or a failed latest read. even a
-recent claude report may contain older backend data. retain stale values dimmed
-until their known reset. at `now >= resetsAt`, show unknown and
+recent claude report may contain older backend data. retain stale values at normal
+readable weight until their known reset; disclose age and staleness on the usage
+page. at `now >= resetsAt`, show unknown and
 `awaiting report after reset`, never inferred zero or renewed capacity.
 an absent reset reads `reset unknown` and permits no predicted reset.
 
@@ -151,53 +160,57 @@ a queue. this read lane does not use
 the pending-mutation slot or await inventory completion. slow usage cannot delay
 list results, keyboard handling, attachment or controls.
 
-the table reads its filtered/default machine; the usage page reads its
-filtered/all-machine scope. opening/closing usage or changing the machine scope
-recomputes this set, retires/cancels its old batch and marks the needed hosts due
-immediately. read only machines needed by the visible disclosure.
+the table and usage page read devbox only. opening/closing usage retires/cancels
+its batch and marks devbox due immediately. forms hide usage and retire its work;
+returning to the table preserves the attempt cadence. machine/view/session changes
+never retarget the quota read. read no other host for usage disclosure.
 
 capture each batch's scope/identity and a monotonically increasing read
 generation. only the current generation may admit results or clear the in-flight
 slot; returning to an earlier scope cannot revive an old completion. retire and
 cancel the batch before fullscreen attachment, stop scheduling while attached,
 and read when due on return. cancel with the browser. retain last reports in
-memory by machine handle and profile descriptor. failures may retain that report as
+memory by devbox's machine handle and profile descriptor. failures may retain that report as
 stale; successful reads replace it completely, including absent windows. clear
 reports when machine identity or profile descriptors change. only claude's latest
 report is stored on disk.
 
-keep the view strip on row 1. directly beneath it, reserve a compact summary
-labelled `5h/7d used` and the sampling machine. use the explicit desktop machine
-filter, otherwise the configured default machine labelled `default`; never the
-first reachable host. session selection, group and needs-input filtering do not
-change usage scope or hide profiles.
-
-show declared profile keys in configured order. display whole percentages rounded
-down, with the unit once in the summary heading `5h/7d used (%)` and one `~`
-for a stale profile item. use `—` for unknown and `*` for claude last-reported
-values; teach the markers in the summary. the full page retains each value's
-percent sign. use quiet typography, not ready-green or an
-account-readiness badge. at 80 columns, the legend and four compact
-`profile 5h/7d` items use two rows with ordinary values; wrap only between whole
-items when needed. truncate long host labels by existing display rules. zero
-profiles reads `no agent profiles`; failures keep profile names and details.
+keep the view strip on row 1. put the summary at the beginning of the bottom
+block, after notices and before the selected-session rule, facts and keys.
+show declared profile keys in configured order, with a `remaining · codex 7d:`
+row and an aligned `claude-work: 5h … · 7d …` row. compute
+`floor(max(0, 100 - usedPercent))` from the unrounded provider value and show a
+percent sign on every known number; source and wire values stay unchanged.
+use `—` for unknown. the summary has no machine label, legend, source/freshness
+markers or age-dependent dimming. use quiet readable typography, not ready-green
+or an account-readiness badge. the four configured profiles fit two rows at
+80 columns. zero profiles reads `no agent profiles`; failures keep profile names
+and retained values until reset, or unknown when no report exists.
 
 add `u usage` to table hints and `--help`. `u` opens a read-only page in the
-existing frame without changing session/view selection. its rows follow the
-desktop machine scope: one filtered machine, otherwise all configured peers,
-grouped by machine and retaining outages. include unused profiles, both `used`
-columns, source, report age, reset time/countdown and `no report`/`unavailable`.
+existing frame without changing session/view selection. its source is devbox
+regardless of the desktop machine filter. include unused profiles, remaining
+percentages, source, report age, reset time/countdown and `no report`/`unavailable`.
+claude shows both windows; codex shows weekly, plus a short window only when
+one was actually reported. omit absent codex short-window/reset entries.
 up/down or j/k scroll; q/escape returns to the previous table selection/scroll,
 subject to ordinary inventory reconciliation. the page has no session-action
 keys or captured session target. forms/attachment show no usage strip.
 
 ctrl-r on the table requests inventory and usage independently; on the usage
 page it requests usage only. automatic inventory reconciliation continues there.
-coalescing never relabels an old report as newly fetched. all values, legends,
+coalescing never relabels an old report as newly fetched. all values,
 outages and return controls remain usable at 80×24/no color. usage failure never
 changes session action admission.
 
 ## implementation plan
+
+2026-10-07 revision: `internal/sessionui` owns fixed devbox selection and the
+remaining-quota footer/details; `internal/agentcli` names that source in help.
+dev-server's existing ai-tools installer owns the statusline publication argument,
+enabled only by devbox's ansible task. acquisition, transport, account homes,
+provider execution and refresh ownership stay with their existing modules.
+no service, host forwarding or inactive-claude getter is added.
 
 2026-10-02: implementation is requested as one focused feature across these
 owners, with temporary integration/live tests and adversarial review. installed
@@ -234,17 +247,29 @@ separate operations.
 | boundary | required evidence |
 | --- | --- |
 | codex | actual helper→account-daemon read, correct home/default pool/durations, optional fields; no owner start/restart, thread, inference, terminal operation or retargeting |
-| claude producer | synthetic input exports quotas only and preserves display; absence/reset replaces prior fields; default home does not publish; failed/cancelled writes preserve a complete previous file and remove owned temporary files |
+| claude producer | devbox installer enables publication, workstation installer omits it; synthetic input exports quotas only and preserves display; absent flag/default home does not publish; absence/reset replaces prior fields; failed/cancelled writes preserve a complete previous file and remove owned temporary files |
 | report semantics | cached callbacks/conflicting same-home writers remain last-reported observations; restart preserves report age; reports contain no account identifiers or terminal content; logs/evidence contain no actual quota values |
 | gateway/client | zero profiles/sessions, one failed or slow profile, unsupported helper/version, host outage/machine mismatch; omissions clear old values; no caller paths or inventory/status dependency |
-| timing/lifetime | 60-second scheduling, one current batch, manual coalescing, independent inventory completion, per-host receipt/monotonic elapsed age, 120-second stale boundary, exact reset expiry, table/page and a→b→a scope changes, attach/return and cancellation without late admission or slot clearing |
-| actual tui | 80×24/no color summary and full page, all profiles and machine/default/source/stale labels, resets, scroll/return, stable group/view/session scope and unaffected controls under usage failure |
+| timing/lifetime | 60-second scheduling, one current batch, manual coalescing, independent inventory completion, host receipt/monotonic elapsed age, 120-second stale boundary, exact reset expiry, fixed devbox source through table/page and machine/view/session changes, attach/return and cancellation without late admission or slot clearing |
+| actual tui | 80×24/color and no-color remaining footer and full page, conservative rounding/zero clamp, all profiles, codex weekly-only summary, readable stale values, devbox/source/age/resets in details, correct selected-row viewport, scroll/return and unaffected controls under usage failure |
 | installed composition | qualified helper, gateway/browser and managed producer on intended hosts; real codex/claude data visible through gateway→browser, with inactive claude honestly stale/unknown |
 
 use dummy quota values where possible and actual owning code paths. live evidence
 records shape/outcomes/absence of effects, not actual usage percentages. tmux
 requires explicit current-turn approval and exact isolated `-L` resources;
 phone/adb work is outside scope. engineering checks do not establish behavior.
+
+2026-10-07 revision qualification: temporary source checks fail against the prior
+remaining/source/footer behavior and pass against this revision with the race
+detector. they cover conservative remaining percentages and zero clamping,
+missing/reset windows, fixed devbox scope through machine filters and the usage
+page, no substituted source when devbox is unconfigured, readable stale claude
+values, 80×24 color/no-color layout, selected-row viewport and source/age/reset
+disclosure. dev-server's isolated installer/callback checks prove publication
+enabled on devbox and disabled on workstations, unchanged native display,
+account isolation, preserved settings and repeat-install convergence.
+temporary tests are removed before commit. installed cutover and actual native
+callback acceptance remain [pending](issues/devbox-usage-cutover.md).
 
 2026-10-02 implementation qualification: temporary source checks demonstrated
 behavioural red before green, including quota-only atomic publication, cached

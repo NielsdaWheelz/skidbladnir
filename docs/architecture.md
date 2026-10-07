@@ -31,8 +31,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
-[profile usage](profile-usage.md) owns desktop quota disclosure and its separate
-profile reads; source is qualified and installed acceptance is pending.
+[profile usage](profile-usage.md) owns desktop quota disclosure, source selection
+and its separate profile reads and qualification.
 [jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
 optional initial input, compound start evidence and compact agent controls.
 [terminal continuity](terminal-continuity.md) owns persistent shell startup,
@@ -430,7 +430,9 @@ product meaning.
 
 [profile usage](profile-usage.md) owns independent read-only desktop quota
 observations from codex's existing account daemon and claude's managed statusline
-input. one replaceable quota-only claude report belongs to each configured home;
+input. desktops read devbox regardless of session/view/machine selection and
+show remaining quota in the bottom block. dev-server enables claude's quota
+publication only on devbox; one replaceable report belongs to each explicit home;
 a separate machine-bound route reads profiles without session-status enrichment
 or an identity-hook extension. source age, expiry, refresh and presentation
 follow that specification.
@@ -1050,6 +1052,13 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-07 accepted revision: desktop [profile usage](profile-usage.md) reads
+devbox only and shows remaining quota in the footer, with codex weekly-only
+summary and source/age/reset disclosure in the usage page. dev-server enables
+the existing claude publisher only on devbox. no provider execution moves,
+cross-host forwarding, new service or inactive-account getter is accepted.
+source checks qualify this revision; installed cutover remains pending.
 
 2026-10-02 accepted design: [desktop profile usage](profile-usage.md) adds a
 compact main-browser summary and expandable profile disclosure. codex reads its

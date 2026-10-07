@@ -1,12 +1,14 @@
 # fresh claude usage without a running session
 
 problem: the accepted [profile usage design](../profile-usage.md) obtains claude
-quota fields from statusline input. it cannot fetch current account-wide quota
+quota fields from devbox's statusline input. it cannot fetch current account-wide quota
 usage when no session is producing reports, and an idle callback can repeat
 cached data.
 
 impact: inactive claude profiles show last-reported, stale or unknown usage.
 this is an explicit first-version limit, not a blocker for its implementation.
+centralizing reporting on devbox does not change that acquisition limit; activity
+on macbook or arch does not produce or forward a devbox report.
 
 evidence: 2026-10-02 official statusline documentation supplies 5h/7d fields
 after the first api response on supported subscriptions. the
