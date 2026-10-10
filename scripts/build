@@ -84,6 +84,10 @@ case "$target" in
       printf 'Release output path must not already exist\n' >&2
       exit 1
     }
+    [[ "${SKIDBLADNIR_MAC_SIGNING_IDENTITY:-}" =~ ^[0-9A-Fa-f]{40}$ ]] || {
+      printf 'release assets require the pinned persistent mac signing identity\n' >&2
+      exit 1
+    }
     mkdir -m 0700 "$output_dir"
     require_android_signing
     android_gradle \

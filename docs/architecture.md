@@ -2,14 +2,17 @@
 
 tmux owns terminal sessions and pane processes. providers own execution and history.
 each gateway controls one host; clients compose gateways directly. there is no
-application database or coordinator.
+application database or execution coordinator. a notification-only observer
+on devbox reads the three independent gateways; it owns no execution authority.
 
 [terminal observation](terminal-observation.md) owns status facts, the observed
 screen regions and their limits, classification, guarded-send admission and the
 terminal wait states; [terminal control](terminal-agent-control.md) owns terminal
 targets, capture mechanics, rendered reads, exact terminal effects and wait's
-polling loop. [terminal attention](reply-notifications.md) owns device-local
-ready notices and terminal visits. [native interaction](native-agent-observation.md)
+polling loop. [terminal attention](reply-notifications.md) owns the existing
+transition predicates. [native notifications](native-notifications.md) supersedes
+its device-local reducer and visit clauses: devbox owns readiness, each device
+owns acknowledgement and native presentation. [native interaction](native-agent-observation.md)
 owns explicit conversation targets and provider capabilities; native failure
 never selects terminal operations. stop retains the terminal; close reports
 interruption and terminal closure separately.
@@ -33,6 +36,10 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [profile usage](profile-usage.md) owns desktop quota disclosure, source selection
 and its separate profile reads and qualification.
+[native notifications](native-notifications.md) owns needs-input alerts,
+background observation and device acknowledgement. source is implemented;
+[qualification](native-notifications-qualification.md) records verified boundaries
+and remaining release, sleep and deployment work.
 [jarvis orchestration](jarvis-orchestration.md) owns literal launch overrides,
 optional initial input, compound start evidence and compact agent controls.
 [workspace recovery](session-recovery.md) owns automatic reconstruction of lost
@@ -99,13 +106,13 @@ machine does not block or authorize action against another.
 | Product | Skíðblaðnir; ASCII namespace `skidbladnir`; public source/release, one user on one tailnet, three hosts |
 | Phone | Android 16/API 36; historical device evidence uses Galaxy S22+ `SM-S906W` |
 | Hosts | Devbox and Arch: Linux/systemd user service. MacBook: Darwin/LaunchAgent. Exact tmux and command paths come from deployment-owned strict host config |
-| Topology | Android talks directly to three independent loopback gateways; there is no coordinator or gateway-to-gateway link |
-| Network | One pinned Tailscale Serve TLS `:8443` origin per machine; Funnel/public ingress forbidden |
+| Topology | clients and the notification-only devbox observer read independent gateways directly; no execution coordinator or gateway-to-gateway link |
+| Network | pinned Tailscale Serve TLS `:8443` per machine; devbox adds `/v1/notifications` and private ntfy `:8444`; Funnel/public ingress forbidden |
 | Machine identity | One random immutable `mh-` + 32-lowercase-hex installation handle per gateway; label, origin, bearer, and platform are not identity |
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude's managed statusline stores one replaceable quota-only report per explicit home. clients persist content-free device-local terminal notification records. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude's managed statusline stores one replaceable quota-only report per explicit home. devbox persists content-free transition summaries and one private push subscription; device owners persist local notification acknowledgement/handling. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -1078,6 +1085,19 @@ summary and source/age/reset disclosure in the usage page. dev-server enables
 the existing claude publisher only on devbox. no provider execution moves,
 cross-host forwarding, new service or inactive-account getter is accepted.
 source checks qualify this revision; installed cutover remains pending.
+
+2026-10-02 accepted design: [native needs-input notifications](native-notifications.md)
+adds a devbox observer client, a private ntfy/unifiedpush android transport and a
+mac native app with authenticated revision hints. it observes the independent
+gateways at their existing cadence and retains only content-free transition
+summaries; execution/history, terminal authority and direct controls retain their
+owners. this narrowly extends topology/state with notification-only observation
+and current-state endpoints, and platform packaging with the mac app and private
+ntfy origin. each device owns ready acknowledgement and alert handling; no shared
+unread, execution coordinator or historical replay. the spec supersedes affected
+device-local readiness/visit clauses, defines schemas, disjoint implementation
+paths and temporary end-to-end/live acceptance. source is implemented; [qualification](native-notifications-qualification.md)
+records tested boundaries. release and fleet deployment remain separate actions.
 
 2026-10-02 accepted design: [desktop profile usage](profile-usage.md) adds a
 compact main-browser summary and expandable profile disclosure. codex reads its

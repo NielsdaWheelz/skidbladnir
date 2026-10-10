@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/auth"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/logging"
 	"github.com/NielsdaWheelz/skidbladnir/internal/platform"
@@ -38,9 +39,9 @@ type createdTargetDTO struct {
 }
 
 var (
-	errorUnauthenticated             = apiError{Code: "Unauthenticated", Message: "Authentication required.", Status: http.StatusUnauthorized, logCode: logging.ErrorUnauthenticated}
-	errorInvalidRequest              = apiError{Code: "InvalidRequest", Message: "The request is not valid.", Status: http.StatusBadRequest, logCode: logging.ErrorInvalidRequest}
-	errorRequestTooLarge             = apiError{Code: "RequestTooLarge", Message: "The request is too large.", Status: http.StatusRequestEntityTooLarge, logCode: logging.ErrorRequestTooLarge}
+	errorUnauthenticated             = admissionError(auth.AdmissionUnauthenticated, logging.ErrorUnauthenticated)
+	errorInvalidRequest              = admissionError(auth.AdmissionInvalid, logging.ErrorInvalidRequest)
+	errorRequestTooLarge             = admissionError(auth.AdmissionTooLarge, logging.ErrorRequestTooLarge)
 	errorWorkingDirectoryInvalid     = apiError{Code: "WorkingDirectoryInvalid", Message: "Choose a valid working directory.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryInvalid}
 	errorWorkingDirectoryUnavailable = apiError{Code: "WorkingDirectoryUnavailable", Message: "That directory does not exist or cannot be opened.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorWorkingDirectoryUnavailable}
 	errorDirectoryListingUnavailable = apiError{Code: "DirectoryListingUnavailable", Message: "This directory cannot be browsed. Enter the path instead.", Status: http.StatusUnprocessableEntity, logCode: logging.ErrorDirectoryListingUnavailable}
@@ -57,9 +58,14 @@ var (
 	errorSessionNotFound             = apiError{Code: "SessionNotFound", Message: "That session no longer exists.", Status: http.StatusNotFound, logCode: logging.ErrorSessionNotFound}
 	errorSessionIdentityMismatch     = apiError{Code: "SessionIdentityMismatch", Message: "The session changed. Refresh and try again.", Status: http.StatusConflict, logCode: logging.ErrorSessionIdentityMismatch}
 	errorPairingInviteRejected       = apiError{Code: "PairingInviteRejected", Message: "This fleet invite is invalid, expired, or already used.", Status: http.StatusUnauthorized, logCode: logging.ErrorPairingInviteRejected}
-	errorMachineIdentityMismatch     = apiError{Code: "MachineIdentityMismatch", Message: "The machine identity changed. Fleet reset is required.", Status: http.StatusConflict, logCode: logging.ErrorMachineIdentityMismatch}
-	errorInternal                    = apiError{Code: "InternalError", Message: "Skíðblaðnir could not complete the request.", Status: http.StatusInternalServerError, logCode: logging.ErrorInternal}
+	errorMachineIdentityMismatch     = admissionError(auth.AdmissionMachineMismatch, logging.ErrorMachineIdentityMismatch)
+	errorInternal                    = admissionError(auth.AdmissionUnavailable, logging.ErrorInternal)
 )
+
+func admissionError(code auth.AdmissionCode, logCode logging.ErrorCode) apiError {
+	status, message := code.Response()
+	return apiError{Code: string(code), Message: message, Status: status, logCode: logCode}
+}
 
 type profileDTO struct {
 	HistoryScope string `json:"historyScope,omitempty"`

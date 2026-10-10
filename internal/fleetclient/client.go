@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 	"github.com/coder/websocket"
@@ -51,6 +52,7 @@ type Client struct {
 	peers          []peer
 	defaultMachine string
 	http           *http.Client
+	notifications  *attention.Config
 }
 
 // InspectReference retains the locally admitted target even when native inspection
@@ -293,6 +295,19 @@ func (client *Client) SearchDirectories(ctx context.Context, label string, terms
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	return client.call(ctx, target, "directory_search", "/v1/directory-searches", body)
+}
+
+// InventoryMachine reads one gateway directly, without fleet context enrichment.
+func (client *Client) InventoryMachine(ctx context.Context, handle string) (Peer, error) {
+	target, found := client.peerByMachine(handle)
+	if !found {
+		return Peer{}, attention.ErrUnavailable
+	}
+	result := client.call(ctx, target, "list", "/v1/sessions", nil)
+	if !result.OK {
+		return Peer{}, attention.ErrUnavailable
+	}
+	return result.Value.(Peer), nil
 }
 
 func (client *Client) list(ctx context.Context, label string) Result {

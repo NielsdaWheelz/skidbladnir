@@ -62,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -78,14 +79,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
+internal fun notificationHealthMessage(health: NotificationHealth): String = when (health) {
+    NotificationHealth.Ready -> "allow notifications for needs input."
+    NotificationHealth.SetupRequired, NotificationHealth.ResetRequired -> "notification setup required."
+    NotificationHealth.PermissionBlocked -> "notifications are blocked in system settings."
+    NotificationHealth.DistributorMissing -> "install ntfy to receive notifications."
+    NotificationHealth.DeliveryUnavailable -> "notification delivery unavailable."
+}
+
 @Composable
 internal fun DashboardScreen(
     state: SkidbladnirUiState.Dashboard,
     entry: DashboardEntryState,
     controller: SkidbladnirController,
     onOpenTerminal: (SessionTarget) -> Unit,
+    onNotificationSetup: () -> Unit,
 ) {
-    DashboardMain(state, entry, controller, controller::verifyVisibleInventory, onOpenTerminal)
+    DashboardMain(state, entry, controller, controller::verifyVisibleInventory, onOpenTerminal, onNotificationSetup)
 
     state.forge?.let { forge ->
         ForgeSheet(
@@ -141,7 +151,10 @@ internal fun DashboardMain(
     controller: SkidbladnirController,
     onVerify: () -> Unit,
     onOpenTerminal: (SessionTarget) -> Unit,
+    onNotificationSetup: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val openNotificationSettings = { context.startActivity(context.notificationOwner().settingsIntent()) }
     var machineSelection by remember { mutableStateOf<DashboardMachineSelection?>(null) }
     val machines = state.machines
     val items = dashboardItems(machines, entry.view)
@@ -159,9 +172,15 @@ internal fun DashboardMain(
                     MachineStrip(machine)
                 }
             }
-            if (state.notificationsUnavailable) {
-                NoticePanel(tone = NoticeTone.Degraded, body = "notifications unavailable")
-            }
+            if (controller.notificationHealth != NotificationHealth.Ready) NoticePanel(
+                tone = NoticeTone.Degraded, body = notificationHealthMessage(controller.notificationHealth),
+                actions = {
+                    Column {
+                        TextButton(onClick = onNotificationSetup) { Text("set up notifications") }
+                        TextButton(onClick = openNotificationSettings) { Text("open notification settings") }
+                    }
+                },
+            ) else TextButton(onClick = openNotificationSettings) { Text("open notification settings") }
 
             state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
 

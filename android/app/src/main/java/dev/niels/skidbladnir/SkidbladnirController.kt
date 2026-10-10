@@ -7,7 +7,6 @@ import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import java.io.IOException
 import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -17,7 +16,11 @@ import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 private val MACHINE_POLL_CADENCE: Duration = Duration.ofSeconds(5)
 
@@ -343,16 +346,12 @@ private fun machineAccessMessage(machine: MachineState): String = when (machine.
         "${machine.machine.label.text}: machine identity changed. Fleet reset is required."
 }
 
-private enum class NotificationAdmission { Available, Unavailable }
-
 private data class PollRuntime(
     val inventory: CoalescingPollLane = CoalescingPollLane(),
     val pressure: CoalescingPollLane = CoalescingPollLane(),
     val inventoryOperation: InventoryOperationLane,
     var inventoryFuture: ScheduledFuture<*>? = null,
     var pressureFuture: ScheduledFuture<*>? = null,
-    var notificationAdmission: NotificationAdmission? = null,
-    @Volatile var notificationPendingSequence: Long? = null,
 )
 
 private data class CreatedTerminalAdmission(
@@ -439,9 +438,14 @@ internal class SkidbladnirController(
     }
     private val store = MachineStore(context.applicationContext)
     private val textSizeStore = TerminalTextSizeStore(context)
-    private val notificationStore = NotificationStore(context)
-    private var notificationSnapshot: NotificationSnapshot? = null
+    internal val notifications = context.notificationOwner()
+    private val notificationObservation = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var notificationSnapshot = notifications.view.value
     private var notificationsUnavailable = false
+    internal var notificationHealth by mutableStateOf(NotificationHealth.SetupRequired)
+        private set
+    private var notificationVisitToken: NotificationVisitToken? = null
+    private var pendingNotificationReference: String? = null
     @Volatile private var notificationVisit: NotificationKey? = null
     private val credentials = ConcurrentHashMap<MachineHandle, MachineCredential>()
     private val machineStates = linkedMapOf<MachineHandle, MachineState>()
@@ -466,15 +470,23 @@ internal class SkidbladnirController(
     private var pendingFleetScan: String? = null
     private var pendingFleetPersistence: PendingFleetPersistence? = null
 
+    init {
+        notificationObservation.launch {
+            notifications.view.collect { snapshot ->
+                notificationSnapshot = snapshot
+                notificationHealth = snapshot.health
+                notificationsUnavailable = snapshot.health == NotificationHealth.DeliveryUnavailable || snapshot.health == NotificationHealth.ResetRequired
+                publishNotifications()
+            }
+        }
+    }
+
     fun start() {
         if (foreground) return
         foreground = true
         ++generation
         val activeGeneration = generation
-        notificationStore.read(
-            { if (isActiveGeneration(activeGeneration)) acceptNotificationSnapshot(it) },
-            { if (isActiveGeneration(activeGeneration)) notificationStoreUnavailable() },
-        )
+        notifications.refresh()
         val connectState = state as? SkidbladnirUiState.FleetConnect
         val interruptedPersistence = pendingFleetPersistence?.takeIf {
             connectState?.phase == FleetConnectPhase.Connecting && connectState.mode == it.mode
@@ -519,11 +531,7 @@ internal class SkidbladnirController(
                     machineStates[entry.machine.machine.handle] = entry.machine
                 }
                 dashboardEntry.acceptFleet(machineStates.keys.toSet())
-                notificationStore.retainMachines(
-                    machineStates.keys.toSet(),
-                    { if (isActiveGeneration(activeGeneration)) acceptNotificationSnapshot(it) },
-                    { if (isActiveGeneration(activeGeneration)) notificationStoreUnavailable() },
-                )
+                notifications.fleetChanged()
                 val interruptedDisposition = interruptedPersistence?.let {
                     resumedFleetPersistenceDisposition(it.mode, it.credentials, stored)
                 }
@@ -610,7 +618,7 @@ internal class SkidbladnirController(
         pendingFleetScan = null
         pendingFleetPersistence = null
         textSizeStore.close()
-        notificationStore.close()
+        notificationObservation.cancel()
         scheduler.shutdownNow()
         credentialOperations.shutdownNow()
         network.shutdownNow()
@@ -695,7 +703,10 @@ internal class SkidbladnirController(
                         if (active.mode != mode || active.phase != FleetConnectPhase.Connecting) return@post
                         pendingFleetPersistence = null
                         when (disposition) {
-                            FleetPersistenceDisposition.Connected -> acceptConnectedFleet(connected, activeGeneration)
+                            FleetPersistenceDisposition.Connected -> {
+                                notifications.scope.launch { notifications.configure(invite.notifications) }
+                                acceptConnectedFleet(connected, activeGeneration)
+                            }
                             FleetPersistenceDisposition.RetryWithFreshInvite ->
                                 state = active.copy(phase = FleetConnectPhase.Failed)
                             FleetPersistenceDisposition.ResetRequired ->
@@ -757,10 +768,12 @@ internal class SkidbladnirController(
             startPolling(credential.machine.handle, activeGeneration)
         }
         dashboardEntry.acceptFleet(machineStates.keys.toSet())
+        notifications.fleetChanged()
         publishDashboard()
     }
 
     fun verifyVisibleInventory() {
+        notifications.refresh()
         val current = state as? SkidbladnirUiState.Dashboard ?: return
         val activeGeneration = generation
         // Only machines that still own live polling work can be refreshed; a machine whose access
@@ -1060,11 +1073,6 @@ internal class SkidbladnirController(
         runtime.inventoryOperation.submitMutation(
             onReserved = { fence -> requireInventoryRefresh(credential.machine.handle, fence) },
         ) { mutationFence ->
-            val expected = try { runBlocking { notificationStore.read() } } catch (_: IOException) {
-                // justify-ignore-error: attention storage cannot block terminal creation.
-                null
-            }
-            val visiting = notificationVisit
             when (val result = client.createSession(credential, draft)) {
                 is GatewayResult.Success -> main.post {
                     if (!isCredentialActive(activeGeneration, credential)) return@post
@@ -1081,10 +1089,8 @@ internal class SkidbladnirController(
                             machineStates[credential.machine.handle]?.access == MachineAccess.Ready &&
                             form?.pending == true && form.form === forge.form
                     }
-                    observeSessionNotifications(credential.machine.handle, result.value, expected, visiting, valid) {
-                        awaitInventory(credential.machine.handle, activeGeneration)
-                        if (valid()) enterCreatedTerminal(SessionTarget(credential.machine.handle, result.value), mutationFence)
-                    }
+                    awaitInventory(credential.machine.handle, activeGeneration)
+                    if (valid()) enterCreatedTerminal(SessionTarget(credential.machine.handle, result.value), mutationFence)
                 }
                 is GatewayResult.Failure -> main.post {
                     if (!isCredentialActive(activeGeneration, credential)) return@post
@@ -1163,11 +1169,6 @@ internal class SkidbladnirController(
         runtime.inventoryOperation.submitMutation(
             onReserved = { fence -> requireInventoryRefresh(handle, fence) },
         ) { fence ->
-            val expected = try { runBlocking { notificationStore.read() } } catch (_: IOException) {
-                // justify-ignore-error: attention storage cannot block terminal creation.
-                null
-            }
-            val visiting = notificationVisit
             val result = client.createShell(credential, source.target)
             main.post {
                 if (!isCredentialActive(activeGeneration, credential) || polling[handle] !== runtime) return@post
@@ -1186,10 +1187,8 @@ internal class SkidbladnirController(
                                 machineStates[handle]?.access == MachineAccess.Ready && terminal?.attempt == source.attempt &&
                                 terminal.shellPending
                         }
-                        observeSessionNotifications(handle, result.value, expected, visiting, valid) {
-                            awaitInventory(handle, activeGeneration)
-                            if (valid()) enterCreatedTerminal(SessionTarget(handle, result.value), fence)
-                        }
+                        awaitInventory(handle, activeGeneration)
+                        if (valid()) enterCreatedTerminal(SessionTarget(handle, result.value), fence)
                     }
                     is GatewayResult.Failure -> {
                         awaitInventory(handle, activeGeneration)
@@ -1279,6 +1278,45 @@ internal class SkidbladnirController(
         val machine = machineStates[target.machineHandle] ?: return
         if (!machine.canMutate) return
         enterTerminal(machine, target)
+    }
+
+    fun openNotificationReference(ref: String) {
+        if (state == SkidbladnirUiState.Booting || !foreground) {
+            pendingNotificationReference = ref
+            return
+        }
+        val key = notificationReference(ref)
+        val handle = checkNotNull(MachineHandle.parse(key.machine))
+        val credential = credentials[handle]
+        val runtime = polling[handle]
+        if (credential == null || runtime == null) {
+            publishDashboard(notice = "that session's machine is unavailable.")
+            return
+        }
+        val activeGeneration = generation
+        val attempt = nextTerminalAttempt
+        runtime.inventoryOperation.submitRead {
+            val result = client.listSessions(credential)
+            main.post {
+                if (!isCredentialActive(activeGeneration, credential) || nextTerminalAttempt != attempt) return@post
+                when (result) {
+                    is GatewayResult.Failure -> {
+                        acceptAccessFailure(handle, result.failure)
+                        publishDashboard(notice = machineError(credential.machine, result.failure))
+                    }
+                    is GatewayResult.Success -> {
+                        if (!acceptMachineIdentity(credential, result.value)) return@post
+                        val session = result.value.sessions.singleOrNull { it.tmuxId == key.tmuxId && it.identityToken == key.identityToken }
+                        if (session == null) {
+                            publishDashboard(notice = "that session lifetime is no longer available.")
+                            return@post
+                        }
+                        updateMachine(handle) { it.copy(inventory = InventoryState.Fresh(InventorySnapshot(result.value, SystemClock.elapsedRealtime()))) }
+                        enterTerminal(machineStates.getValue(handle), SessionTarget(handle, session))
+                    }
+                }
+            }
+        }
     }
 
     private fun enterTerminal(machine: MachineState, target: SessionTarget) {
@@ -1389,6 +1427,8 @@ internal class SkidbladnirController(
         val attempt = current.attempt
         val owner = Any()
         terminalOwner = owner
+        notificationVisitToken = notifications.captureVisit(current.target)
+        notifications.beginVisit(checkNotNull(notificationVisitToken))
         val connection = TerminalConnection(
             client,
             credential,
@@ -1614,11 +1654,6 @@ internal class SkidbladnirController(
         readTextSize(attempt)
         val activeGeneration = generation
         runtime.inventoryOperation.submitRead {
-            val expected = try { runBlocking { notificationStore.read() } } catch (_: IOException) {
-                // justify-ignore-error: attention storage cannot block terminal reconnection.
-                null
-            }
-            val visiting = notificationVisit
             val result = client.listSessions(credential)
             main.post {
                 val terminal = state as? SkidbladnirUiState.Terminal ?: return@post
@@ -1650,8 +1685,7 @@ internal class SkidbladnirController(
                                 state = active.copy(target = observed?.let { active.target.copy(session = it) } ?: active.target, connection = connection)
                             }
                         }
-                        if (observed == null) complete()
-                        else observeSessionNotifications(handle, observed, expected, visiting, valid, complete)
+                        complete()
                     }
                 }
             }
@@ -1900,17 +1934,7 @@ internal class SkidbladnirController(
             return
         }
         try {
-            // A serialized read joins earlier visit writes before this request is dispatched.
-            val expected = try { runBlocking { notificationStore.read() } } catch (_: IOException) {
-                // justify-ignore-error: notification failure is secondary; inventory and terminal remain usable.
-                main.post {
-                    if (isCredentialActive(activeGeneration, credential) && polling[credential.machine.handle] === runtime) notificationStoreUnavailable()
-                }
-                null
-            }
-            val visiting = notificationVisit
-            val terminalAttempt = nextTerminalAttempt
-            val owner = terminalOwner
+            notifications.refresh()
             val result = client.listSessions(credential)
             val remoteContexts = if (result is GatewayResult.Success) resolveRemoteContexts(result.value) else emptyMap()
             val receivedAt = SystemClock.elapsedRealtime()
@@ -1921,7 +1945,6 @@ internal class SkidbladnirController(
                 }
                 val handle = credential.machine.handle
                 fun finishRead() {
-                    if (runtime.notificationPendingSequence == completedReadSequence) runtime.notificationPendingSequence = null
                     if (isCredentialActive(activeGeneration, credential) && polling[handle] === runtime) {
                         awaitedInventoryReads.readLanded(handle, completedReadSequence)
                         publishDashboardIfVisible()
@@ -1950,60 +1973,21 @@ internal class SkidbladnirController(
                     finishRead()
                     return@post
                 }
-                runtime.notificationPendingSequence = completedReadSequence
-                val valid = {
-                    isCredentialActive(activeGeneration, credential) && polling[handle] === runtime &&
-                        runtime.notificationPendingSequence == completedReadSequence &&
-                        nextTerminalAttempt == terminalAttempt && terminalOwner === owner && notificationVisit == visiting
-                }
-                // Retain the preceding admitted inventory while its successor joins the attention store.
-                // Both the dashboard and terminal receive the successor's facts and ready projection together.
-                fun admitInventory(admission: NotificationAdmission) {
-                    runtime.notificationAdmission = admission
-                    runtime.notificationPendingSequence = null
-                    updateMachine(handle) {
-                        it.copy(
-                            access = MachineAccess.Ready,
-                            inventory = InventoryState.Fresh(InventorySnapshot(inventory, receivedAt)),
-                            remoteContexts = remoteContexts,
-                        )
-                    }
-                    pendingMetadataFences[handle]?.let { fence ->
-                        if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
-                    }
-                    publishNotifications()
-                    advanceTerminalRename(handle)
-                    advanceGroupEditor(handle)
-                    dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
-                    advanceCreatedTerminalAdmission(handle, completedMutationFence)
-                }
-                if (expected == null) {
-                    if (valid()) {
-                        notificationsUnavailable = true
-                        admitInventory(NotificationAdmission.Unavailable)
-                    }
-                    finishRead()
-                } else {
-                    notificationStore.observe(
-                        handle, inventory.sessions, expected,
-                        visiting = visiting,
-                        valid = valid,
-                        onReady = { snapshot ->
-                            if (valid()) {
-                                notificationSnapshot = snapshot
-                                notificationsUnavailable = false
-                                admitInventory(NotificationAdmission.Available)
-                            }
-                            finishRead()
-                        }, onUnavailable = {
-                            if (valid()) {
-                                notificationsUnavailable = true
-                                admitInventory(NotificationAdmission.Unavailable)
-                            }
-                            finishRead()
-                        },
+                updateMachine(handle) {
+                    it.copy(
+                        access = MachineAccess.Ready,
+                        inventory = InventoryState.Fresh(InventorySnapshot(inventory, receivedAt)),
+                        remoteContexts = remoteContexts,
                     )
                 }
+                pendingMetadataFences[handle]?.let { fence ->
+                    if (completedMutationFence >= fence) pendingMetadataFences.remove(handle)
+                }
+                advanceTerminalRename(handle)
+                advanceGroupEditor(handle)
+                dashboardEntry.resolveGroup(observedGroups(sortedMachineStates()))
+                advanceCreatedTerminalAdmission(handle, completedMutationFence)
+                finishRead()
             }
         } catch (_: InterruptedException) {
             // justify-ignore-error: shutdown interrupts worker reads; preserve cancellation and release the read lane.
@@ -2019,54 +2003,14 @@ internal class SkidbladnirController(
         }
     }
 
-    private fun acceptNotificationSnapshot(snapshot: NotificationSnapshot) {
-        notificationSnapshot = snapshot
-        notificationsUnavailable = false
-        publishNotifications()
-    }
-
-    /** Action observations commit before their terminal can acknowledge output. */
-    private fun observeSessionNotifications(
-        machine: MachineHandle, session: TmuxSession, expected: NotificationSnapshot?, visiting: NotificationKey?,
-        valid: () -> Boolean, onCompleted: () -> Unit,
-    ) {
-        if (valid()) {
-            polling[machine]?.let { runtime ->
-                runtime.notificationAdmission = null
-                runtime.notificationPendingSequence = null
-            }
-            publishNotifications()
-        }
-        if (expected == null) {
-            if (valid()) notificationStoreUnavailable()
-            onCompleted()
-            return
-        }
-        notificationStore.observeSession(machine, session, expected, visiting, valid,
-            onReady = { snapshot ->
-                if (valid()) acceptNotificationSnapshot(snapshot)
-                onCompleted()
-            }, onUnavailable = {
-                if (valid()) notificationStoreUnavailable()
-                onCompleted()
-            },
-        )
-    }
-
-    private fun notificationStoreUnavailable() {
-        notificationsUnavailable = true
-        publishNotifications()
-    }
-
     private fun projectNotifications(machine: MachineState): Map<NotificationKey, NotificationPresentation> {
         val handle = machine.machine.handle
-        val admission = polling[handle]?.notificationAdmission
-        val unavailable = notificationsUnavailable || admission == NotificationAdmission.Unavailable
+        val unavailable = notificationsUnavailable
         return machine.inventory.lastSnapshot()?.inventory?.sessions.orEmpty().associate { session ->
             val key = NotificationKey(SessionTarget(handle, session))
             key to NotificationPresentation(
-                ready = !unavailable && machine.canMutate && admission == NotificationAdmission.Available &&
-                    notificationVisit != key && notificationSnapshot?.presentsReady(key, session) == true,
+                ready = !unavailable && machine.canMutate &&
+                    notificationSnapshot.presentsReady(key, session),
                 unavailable = session.agent != null && unavailable,
             )
         }
@@ -2080,19 +2024,9 @@ internal class SkidbladnirController(
     fun terminalOutputPresented(attempt: Int, page: TerminalPage) {
         val terminal = state as? SkidbladnirUiState.Terminal ?: return
         if (!foreground || terminal.attempt != attempt || terminalPage !== page || terminalOwner == null || notificationVisit != null) return
-        val key = NotificationKey(terminal.target)
-        val activeGeneration = generation
-        val owner = terminalOwner
-        notificationVisit = key
-        val valid = {
-            isActiveGeneration(activeGeneration) && notificationVisit == key && terminalOwner === owner &&
-                terminalPage === page && (state as? SkidbladnirUiState.Terminal)?.attempt == attempt
-        }
-        notificationStore.presented(
-            key,
-            { if (valid()) acceptNotificationSnapshot(it) },
-            { if (valid()) notificationStoreUnavailable() },
-        )
+        val token = notificationVisitToken ?: return
+        notificationVisit = token.key
+        notifications.outputPresented(token)
         publishNotifications()
     }
 
@@ -2254,18 +2188,10 @@ internal class SkidbladnirController(
     }
 
     private fun markInventoryFailed(handle: MachineHandle, failure: GatewayFailure) {
-        polling[handle]?.let { runtime ->
-            runtime.notificationAdmission = null
-            runtime.notificationPendingSequence = null
-        }
         updateMachine(handle) { it.inventoryFailed(failure) }
     }
 
     private fun requireInventoryRefresh(handle: MachineHandle, fence: Long) {
-        polling[handle]?.let { runtime ->
-            runtime.notificationAdmission = null
-            runtime.notificationPendingSequence = null
-        }
         updateMachine(handle) { machine ->
             when (val inventory = machine.inventory) {
                 is InventoryState.Fresh ->
@@ -2346,16 +2272,15 @@ internal class SkidbladnirController(
         } else state = terminal.copy(machines = sortedMachineStates())
     }
 
-    private fun dashboardNotificationsUnavailable(): Boolean = notificationsUnavailable ||
-        polling.values.any { it.notificationAdmission == NotificationAdmission.Unavailable }
+    private fun dashboardNotificationsUnavailable(): Boolean = notificationsUnavailable
 
-    /** Fresh inventory settles its ready rows only after that read's attention result is admitted. */
+    /** Direct inventory and producer readiness are independent; an unavailable producer does not block navigation. */
     private fun needsInputSettled(): Boolean = machineStates.values.all { machine ->
         when (machine.access) {
             MachineAccess.AuthRequired, MachineAccess.IdentityChanged -> true
             MachineAccess.Ready -> when (machine.inventory) {
                 InventoryState.Reading -> false
-                is InventoryState.Fresh -> polling[machine.machine.handle]?.notificationAdmission != null
+                is InventoryState.Fresh -> true
                 is InventoryState.Superseded, is InventoryState.Stale, is InventoryState.Unreachable -> true
             }
         }
@@ -2388,6 +2313,10 @@ internal class SkidbladnirController(
             forgeRecovery = carry.recovery,
             close = null,
         )
+        pendingNotificationReference?.let { ref ->
+            pendingNotificationReference = null
+            openNotificationReference(ref)
+        }
     }
 
     private fun sortedMachineStates(): List<MachineState> = machineStates.values.sortedBy {
@@ -2403,39 +2332,9 @@ internal class SkidbladnirController(
         val page = terminalPage
         terminalConnection = null
         terminalPage = null
-        if (visited != null) {
-            val handle = checkNotNull(MachineHandle.parse(visited.machine))
-            polling[handle]?.let { runtime ->
-                runtime.notificationAdmission = null
-                runtime.notificationPendingSequence = null
-            }
-            updateMachine(handle) { it }
-            val activeGeneration = generation
-            val terminalAttempt = nextTerminalAttempt
-            val valid = {
-                isActiveGeneration(activeGeneration) && nextTerminalAttempt == terminalAttempt &&
-                    terminalOwner == null && notificationVisit == null
-            }
-            fun refreshAfterVisit() {
-                if (state is SkidbladnirUiState.Dashboard) verifyVisibleInventory()
-                else awaitInventory(handle, activeGeneration)
-            }
-            notificationStore.endVisit(
-                visited,
-                { snapshot ->
-                    if (valid()) {
-                        acceptNotificationSnapshot(snapshot)
-                        refreshAfterVisit()
-                    }
-                },
-                {
-                    if (valid()) {
-                        notificationStoreUnavailable()
-                        refreshAfterVisit()
-                    }
-                },
-            )
-        }
+        notifications.endVisit(notificationVisitToken)
+        notificationVisitToken = null
+        if (visited != null) updateMachine(checkNotNull(MachineHandle.parse(visited.machine))) { it }
         page?.resetInputState()
         connection?.detach()
     }

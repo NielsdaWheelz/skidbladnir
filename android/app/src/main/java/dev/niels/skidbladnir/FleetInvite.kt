@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
-private const val FLEET_INVITE_KIND = "skidbladnir.fleet-invite.v1"
+private const val FLEET_INVITE_KIND = "skidbladnir.fleet-invite.v2"
 private const val MAXIMUM_FLEET_INVITE_BYTES = 4_096
 internal val FLEET_LABELS = listOf("Arch", "Devbox", "MacBook")
 
@@ -31,7 +31,7 @@ internal data class FleetInviteMachine(
     val pairingInviteToken: PairingInviteToken,
 )
 
-internal data class FleetInvite(val machines: List<FleetInviteMachine>)
+internal data class FleetInvite(val machines: List<FleetInviteMachine>, val notifications: NotificationConfig)
 
 internal fun redeemFleetInvite(
     invite: FleetInvite,
@@ -69,6 +69,7 @@ internal fun acceptPairingResults(
 private data class WireFleetInvite(
     val kind: String,
     val machines: List<WireFleetInviteMachine>,
+    val notifications: NotificationConfig,
 )
 
 @Serializable
@@ -83,7 +84,8 @@ internal fun parseFleetInvite(encoded: String): FleetInvite? {
     if (encoded.toByteArray(StandardCharsets.UTF_8).size !in 1..MAXIMUM_FLEET_INVITE_BYTES) return null
     return try {
         val element = strictJsonObject(encoded)
-        if (element.keys != setOf("kind", "machines") || element.values.any { it is JsonNull }) return null
+        if (element.keys != setOf("kind", "machines", "notifications") || element.values.any { it is JsonNull }) return null
+        element.requiredObject("notifications").requireExactKeys(setOf("observerMachine", "ntfyOrigin"))
         val machineElements = element.getValue("machines").jsonArray
         if (machineElements.size != FLEET_LABELS.size) return null
         if (machineElements.any { machine ->
@@ -110,7 +112,9 @@ internal fun parseFleetInvite(encoded: String): FleetInvite? {
         if (machines.map { it.machine.handle }.distinct().size != machines.size) return null
         if (machines.map { it.machine.origin }.distinct().size != machines.size) return null
         if (machines.map { it.pairingInviteToken }.distinct().size != machines.size) return null
-        FleetInvite(machines)
+        val observer = machines.singleOrNull { it.machine.handle.encoded == wire.notifications.observerMachine } ?: return null
+        if (java.net.URI(observer.machine.origin.encoded).host != java.net.URI(wire.notifications.ntfyOrigin).host) return null
+        FleetInvite(machines, wire.notifications)
     } catch (_: SerializationException) {
         // justify-ignore-error: scanner text is untrusted and every malformed JSON form has the
         // single frozen whole-fleet rejection outcome; the payload and decoder cause stay private.

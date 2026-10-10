@@ -44,6 +44,7 @@ case "$gate" in
     run gofmt bash -c 'files=$(gofmt -l -- .); test -z "$files" || { printf "%s\n" "$files" >&2; exit 1; }'
     shell_scripts=(
       scripts/build scripts/build-host-archive scripts/build-host-binary
+      scripts/build-mac-app scripts/build-mac-icon
       scripts/check scripts/check-android-signing scripts/check-go-toolchain
       scripts/check-release scripts/check-release-source scripts/check-release-repository scripts/fleet
       scripts/install-android scripts/release scripts/render-release-notes

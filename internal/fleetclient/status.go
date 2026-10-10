@@ -1,6 +1,9 @@
 package fleetclient
 
-import "github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+import (
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
+)
 
 // Tone is a status label's colour role, named for the palette it selects.
 // Renderers own the palette; colour and behaviour never key on printed copy.
@@ -66,21 +69,21 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 	case !local:
 		label = "terminal"
 	case status.Interaction == sessions.InteractionPermission:
-		label, tone, overlay = "needs permission", ToneEmber, true
+		label, tone, overlay = attention.RequestText(sessions.InteractionPermission), ToneEmber, true
 	case status.Interaction == sessions.InteractionQuestion:
-		label, tone, overlay = "needs answer", ToneEmber, true
+		label, tone, overlay = attention.RequestText(sessions.InteractionQuestion), ToneEmber, true
 	case status.Interaction == sessions.InteractionSetup:
-		label, tone, overlay = "needs setup", ToneEmber, true
+		label, tone, overlay = attention.RequestText(sessions.InteractionSetup), ToneEmber, true
 	case status.Interaction == sessions.InteractionConfirmation:
-		label, tone, overlay = "needs review", ToneEmber, true
+		label, tone, overlay = attention.RequestText(sessions.InteractionConfirmation), ToneEmber, true
 	case status.Interaction == sessions.InteractionInput:
-		label, tone, overlay = "needs input", ToneEmber, true
+		label, tone, overlay = attention.RequestText(sessions.InteractionInput), ToneEmber, true
 	case status.Interaction == sessions.InteractionMenu:
 		label, overlay = "menu open", true
 	case status.Notice == sessions.NoticeInterrupted:
-		label, overlay = "interruption shown", true
+		label, overlay = attention.NoticeText(sessions.NoticeInterrupted), true
 	case status.Notice == sessions.NoticeError:
-		label, tone, overlay = "error shown", ToneEmber, true
+		label, tone, overlay = attention.NoticeText(sessions.NoticeError), ToneEmber, true
 	case status.Activity == sessions.ActivityStarting:
 		label, tone = "starting", ToneFrost
 	case status.Activity == sessions.ActivityWorking:
@@ -100,9 +103,9 @@ func ProjectStatus(session Session, fresh, ready bool) StatusView {
 	if queue == QueueAction && status.Interaction == sessions.InteractionMenu {
 		switch status.Notice {
 		case sessions.NoticeError:
-			queueDetail = "error shown"
+			queueDetail = attention.NoticeText(sessions.NoticeError)
 		case sessions.NoticeInterrupted:
-			queueDetail = "interruption shown"
+			queueDetail = attention.NoticeText(sessions.NoticeInterrupted)
 		}
 	}
 	if overlay && status.Activity == sessions.ActivityWorking {

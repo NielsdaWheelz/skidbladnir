@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 	"github.com/charmbracelet/x/ansi"
@@ -63,7 +64,7 @@ func (m *model) View() tea.View {
 func (m *model) header() string {
 	machine, room := "", m.width-2-7
 	if m.machine != "" {
-		machine = ansi.Truncate("machine: "+singleLine(m.machine), 24, "…")
+		machine = ansi.Truncate("machine: "+attention.SingleLine(m.machine), 24, "…")
 		room -= ansi.StringWidth(machine) + 2
 	}
 	tabs, current := []tab{}, 0
@@ -77,7 +78,7 @@ func (m *model) header() string {
 			if view.label.IsUnassigned() {
 				tabs = append(tabs, tab{fixed: "unassigned"})
 			} else {
-				tabs = append(tabs, tab{label: singleLine(view.label.String())})
+				tabs = append(tabs, tab{label: attention.SingleLine(view.label.String())})
 			}
 		default:
 			panic("invalid selected view") // justify-defect: viewOptions emits only the closed view kinds.
@@ -217,7 +218,7 @@ func (m *model) footerLines() []string {
 	case "details", "group-edit", "name-edit":
 		legend = target(m.pageRow.session.Name, m.pageRow.label, width)
 	case "create":
-		legend = "new session on " + ansi.Truncate(singleLine(m.form[0]), width/2, "…")
+		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[0]), width/2, "…")
 	case "usage":
 		legend = "profile usage · read only"
 	}
@@ -252,8 +253,8 @@ func (m *model) noticeLines(width int) []string {
 	// A peer without an error is unobserved or being checked, not unavailable.
 	for _, peer := range m.scopedPeers() {
 		if !peer.OK && peer.Error != nil {
-			suffix := " unavailable (" + singleLine(peer.Error.Code) + "); showing its last observation"
-			lines = append(lines, ansi.Truncate(ansi.Truncate(singleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
+			suffix := " unavailable (" + attention.SingleLine(peer.Error.Code) + "); showing its last observation"
+			lines = append(lines, ansi.Truncate(ansi.Truncate(attention.SingleLine(peer.Label), max(1, width-ansi.StringWidth(suffix)), "…")+suffix, width, "…"))
 		}
 		text, failure := fleetclient.RecoveryNotice(peer)
 		if text != "" {
@@ -337,7 +338,7 @@ func (m *model) hints() [][]hint {
 	}
 	// The strip's chevrons and --help teach ←→, so the global keys keep one 80-column line
 	// for host labels up to 9 cells.
-	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + singleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
+	return [][]hint{session, {{"f", "needs input"}, {"m", "machine"}, {"n", "terminal on " + attention.SingleLine(target)}, {"N", "options"}, {"u", "usage"}, {"q", "quit"}}}
 }
 
 // keyLines keeps each group on one line when it fits, otherwise wraps it by
@@ -388,7 +389,7 @@ func rule(legend, end string, width int) string {
 
 func target(name, machine string, width int) string {
 	half := max(1, (width-10)/2)
-	return bold.Styled(ansi.Truncate(singleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(singleLine(machine), half, "…")
+	return bold.Styled(ansi.Truncate(attention.SingleLine(name), half, "…")) + faint.Styled(" on ") + ansi.Truncate(attention.SingleLine(machine), half, "…")
 }
 
 func (m *model) rowDetailLines(row listedRow, width int) []string {
@@ -415,11 +416,11 @@ func (m *model) rowDetailLines(row listedRow, width int) []string {
 	case "remoteUnknown":
 		where = "remote context unknown"
 	}
-	status := singleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
-	directory := ansi.Truncate(singleLine(where), width, "…")
+	status := attention.SingleLine(fmt.Sprintf("%s  ·  %d attached", facts, row.session.AttachedClients))
+	directory := ansi.Truncate(attention.SingleLine(where), width, "…")
 	if row.available && row.session.Connection == nil {
 		action := bold.Styled("shift+t") + " new shell here"
-		directory = tail(singleLine(where), width-ansi.StringWidth(action)-2)
+		directory = tail(attention.SingleLine(where), width-ansi.StringWidth(action)-2)
 		directory += strings.Repeat(" ", width-ansi.StringWidth(directory)-ansi.StringWidth(action)) + action
 	}
 	return []string{faint.Styled(ansi.Truncate(status, width, "…")), directory}
@@ -438,12 +439,12 @@ func (m *model) bodyLines(height int) []string {
 			lines = append(lines, danger.Styled(line))
 		}
 		ref, _ := fleetclient.DecodeReference(m.pending.Ref)
-		lines = append(lines, wrapped("selected pane "+ref.PaneID+" · terminal host "+singleLine(m.pendingLabel), width)...)
+		lines = append(lines, wrapped("selected pane "+ref.PaneID+" · terminal host "+attention.SingleLine(m.pendingLabel), width)...)
 		return window(append(lines, wrapped(effect, width)...), 0, 0, height)
 	case "machine-picker":
 		lines := []string{bold.Styled("machine"), ""}
 		for index, option := range m.pickerOptions() {
-			text := ansi.Truncate(singleLine(option), width-2, "…")
+			text := ansi.Truncate(attention.SingleLine(option), width-2, "…")
 			if index == m.picker {
 				text = here.Styled("▌") + " " + bold.Styled(text)
 			} else {
@@ -629,12 +630,12 @@ func field(label, value string, focused, choice bool, labelWidth, width int) []s
 	indent := strings.Repeat(" ", labelWidth+4)
 	valueWidth := max(1, width-labelWidth-4-4)
 	if focused && choice {
-		return []string{gutter + name + "  " + faint.Styled("‹ ") + bold.Styled(ansi.Truncate(singleLine(value), valueWidth, "…")) + faint.Styled(" ›")}
+		return []string{gutter + name + "  " + faint.Styled("‹ ") + bold.Styled(ansi.Truncate(attention.SingleLine(value), valueWidth, "…")) + faint.Styled(" ›")}
 	}
 	if value == "" && !focused {
 		return []string{gutter + name + "  " + faint.Styled("—")}
 	}
-	parts := strings.Split(ansi.Hardwrap(singleLine(value), valueWidth, true), "\n")
+	parts := strings.Split(ansi.Hardwrap(attention.SingleLine(value), valueWidth, true), "\n")
 	if focused {
 		parts[len(parts)-1] += wordmark.Styled(" ")
 	}
@@ -731,15 +732,15 @@ func (m *model) fitViewports() {
 func (m *model) tableLines(width int) []string {
 	name, status, agent, label, machine := 4, 0, 0, 0, 0
 	for _, row := range m.rows {
-		name = max(name, ansi.StringWidth(singleLine(row.session.Name)))
+		name = max(name, ansi.StringWidth(attention.SingleLine(row.session.Name)))
 		printed, _ := m.tableStatus(row)
 		status = max(status, ansi.StringWidth(printed))
 		agent = max(agent, ansi.StringWidth(m.agentText(row)))
 		if m.view.kind == viewNeedsInput {
-			label = max(label, ansi.StringWidth(singleLine(row.session.Group.String())))
+			label = max(label, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
 		}
 		if m.machine == "" {
-			machine = max(machine, ansi.StringWidth(singleLine(row.label)))
+			machine = max(machine, ansi.StringWidth(attention.SingleLine(row.label)))
 		}
 	}
 	name, agent, label, machine = min(name, 24), min(agent, 20), min(label, 16), min(machine, 12)
@@ -772,7 +773,7 @@ func (m *model) tableLines(width int) []string {
 	lines := []string{}
 	for index, row := range m.rows {
 		if m.opensGroup(index) {
-			lines = append(lines, faint.Styled(ansi.Truncate(singleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
+			lines = append(lines, faint.Styled(ansi.Truncate(attention.SingleLine(fleetclient.GroupHeading(row.session.Group)), width, "…")))
 		}
 		// the projected tone keys colour; unavailable rows recede.
 		gutter, nameStyle := "  ", plain
@@ -787,7 +788,7 @@ func (m *model) tableLines(width int) []string {
 		for _, column := range []struct {
 			text  string
 			width int
-		}{{m.agentText(row), agent}, {singleLine(row.session.Group.String()), label}, {singleLine(row.label), machine}} {
+		}{{m.agentText(row), agent}, {attention.SingleLine(row.session.Group.String()), label}, {attention.SingleLine(row.label), machine}} {
 			if column.width > 0 {
 				facts = append(facts, cell(column.text, column.width))
 			}
@@ -858,9 +859,9 @@ func (m *model) agentText(row listedRow) string {
 	case agent == nil:
 		return ""
 	case agent.Label == "":
-		return singleLine(agent.Provider + " · profile unknown")
+		return attention.SingleLine(agent.Provider + " · profile unknown")
 	}
-	return singleLine(agent.Label)
+	return attention.SingleLine(agent.Label)
 }
 
 // whereText is the directory where the work runs; remote work reads host:path.
@@ -868,12 +869,12 @@ func (m *model) whereText(row listedRow, width int) string {
 	current := m.current(&row)
 	switch current.Kind {
 	case "remote":
-		host := ansi.Truncate(singleLine(current.Label), width/3, "…") + ":"
-		return host + tail(singleLine(current.CWD), width-ansi.StringWidth(host))
+		host := ansi.Truncate(attention.SingleLine(current.Label), width/3, "…") + ":"
+		return host + tail(attention.SingleLine(current.CWD), width-ansi.StringWidth(host))
 	case "remoteUnknown":
 		return ansi.Truncate("remote context unknown", width, "…")
 	}
-	return tail(singleLine(current.CWD), width)
+	return tail(attention.SingleLine(current.CWD), width)
 }
 
 // tail keeps the end of a path, where directories differ.
@@ -890,7 +891,7 @@ func tail(text string, width int) string {
 }
 
 func capturedHeading(name, machine string, width int) string {
-	return ansi.Truncate(singleLine(name), (width-4)/2, "…") + " on " + ansi.Truncate(singleLine(machine), (width-4)/2, "…")
+	return ansi.Truncate(attention.SingleLine(name), (width-4)/2, "…") + " on " + ansi.Truncate(attention.SingleLine(machine), (width-4)/2, "…")
 }
 
 func groupDraftDisplay(draft string) string {
@@ -903,12 +904,12 @@ func groupDraftDisplay(draft string) string {
 func wrapped(text string, width int) []string {
 	lines := strings.Split(text, "\n")
 	for index, line := range lines {
-		lines[index] = ansi.Wrap(singleLine(line), max(1, width), "")
+		lines[index] = ansi.Wrap(attention.SingleLine(line), max(1, width), "")
 	}
 	return strings.Split(strings.Join(lines, "\n"), "\n")
 }
 
 func cell(text string, width int) string {
-	text = ansi.Truncate(singleLine(text), width, "…")
+	text = ansi.Truncate(attention.SingleLine(text), width, "…")
 	return text + strings.Repeat(" ", max(0, width-ansi.StringWidth(text)))
 }

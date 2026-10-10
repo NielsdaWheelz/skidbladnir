@@ -26,6 +26,7 @@ render_notes() {
   local manifest="$release_dir/SHA256SUMS"
   local signer_file="$release_dir/android-signing-cert.sha256"
   local signer
+  local mac_signer
   local signer_asset_digest
   local apk_digest
   local darwin_digest
@@ -37,6 +38,8 @@ render_notes() {
   [[ "$(wc -l <"$signer_file" | tr -d ' ')" == 1 ]] || return 1
   signer="$(sed -n '1p' "$signer_file")"
   [[ "$signer" =~ ^[0-9a-f]{64}$ ]] || return 1
+  mac_signer="$(cat "$repo_dir/macos/app-signing-cert.sha256")" || return 1
+  [[ "$mac_signer" =~ ^[0-9a-f]{64}$ ]] || return 1
   signer_asset_digest="$(manifest_digest "$manifest" android-signing-cert.sha256)" || return 1
   apk_digest="$(manifest_digest "$manifest" skidbladnir-android.apk)" || return 1
   darwin_digest="$(manifest_digest "$manifest" skidbladnir-darwin-arm64.tar.gz)" || return 1
@@ -49,14 +52,17 @@ render_notes() {
   printf '%s\n' "# Skíðblaðnir $tag" "" \
     "- Source: \`$sha\`" \
     "- Verify run: \`$run_id\`" \
-    "- Android signer SHA-256: \`$signer\`" "" \
+    "- Android signer SHA-256: \`$signer\`" \
+    "- mac app signer SHA-256: \`$mac_signer\`" "" \
     "## Install" "" \
     '1. In a separate post-publication pin-control checkout, confirm its' \
     '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
     '   Pin the same tag, source, and two host-bundle' \
-    '   digests in `dev-server`, then apply Devbox, Arch, and MacBook.' \
+    '   digests in `dev-server`, then apply devbox, arch, and macbook.' \
+    '   the darwin bundle includes the signed `Skid.app`; dev-server owns its login launch.' \
     '2. From that pin-control checkout on the MacBook, run' \
     '   `scripts/fleet provision-clients` to configure the desktop client on all three hosts, then' \
+    '   reapply devbox to activate the observer after provisioning, then run' \
     '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
     '3. On the phone, download `skidbladnir-android.apk` from this release and' \
     '   approve installation from the browser when Android asks. Or, with USB debugging' \
@@ -64,14 +70,28 @@ render_notes() {
     '   The script installs in place without prompts and preserves app data and existing pairings.' \
     '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
-    '5. For first enrollment, open Skíðblaðnir and tap **Connect**.' \
+    '5. for first enrollment, open skid and tap **Connect**.' \
     '   On a computer configured for `skid`, run `scripts/fleet invite`,' \
-    '   then scan the fresh QR within five minutes. It works once.' "" \
+    '   then scan the fresh qr within five minutes. it works once.' \
+    '6. configure the qualified ntfy android distributor with the private devbox `:8444`' \
+    '   origin and its read-only phone account. keep ntfy and tailscale running in' \
+    '   the background. allow skid notifications; open `Skid.app` for mac setup.' \
+    '   retrieve phone credentials locally from the private dev-server configuration;' \
+    '   never share the publisher token.' "" \
     '## Update order' "" \
     'Apply and verify all three hosts first; update the phone second. Mixed' \
     'versions and ordinary APK downgrade are not supported. Same-version reinstall' \
-    'is supported. Updates retain pairing; use **Reconnect fleet** and a fresh' \
-    '`scripts/fleet invite` only when reconnection is wanted.' "" \
+    'is supported. this cutover retains pairings but needs one **Reconnect fleet**' \
+    'with a fresh `scripts/fleet invite` v2 qr for notification configuration.' \
+    'attention resets once; no old attention state is migrated. devbox owns readiness.' \
+    'respect platform focus/do-not-disturb; all alert reasons use default sound.' "" \
+    '## rollback' "" \
+    'follow the complete previous-release procedure in dev-server: stop notification' \
+    'owners, restore the saved fleet client and admitted previous runtime/unit pair,' \
+    'remove only owned notification serve handlers, and use the qualified android' \
+    'platform rollback. ordinary apk downgrade is not a recovery mechanism.' \
+    'activation of notification services follows gateway activation; a failure can' \
+    'leave the new gateway active. repair by reapplying or restore the verified pair.' "" \
     '## Assets' "" \
     '| Asset | SHA-256 |' \
     '|---|---|' \

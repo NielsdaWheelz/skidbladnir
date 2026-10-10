@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ $# -eq 4 ]] || {
+  printf 'usage: %s SOURCE_DIRECTORY TAG SOURCE_SHA OUTPUT_APP\n' "$0" >&2
+  exit 64
+}
+source_dir="$(cd "$1" && pwd -P)"
+tag="$2"
+sha="$3"
+app="$4"
+identity="${SKIDBLADNIR_MAC_SIGNING_IDENTITY:-}"
+[[ "$(uname -s)/$(uname -m)" == Darwin/arm64 &&
+  "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ &&
+  "$sha" =~ ^[0-9a-f]{40}$ && "$sha" == "$(git -C "$source_dir" rev-parse HEAD)" &&
+  "$app" == /* && ! -e "$app" && -d "$(dirname "$app")" ]] || {
+  printf 'mac app requires a native builder, exact source identity and a new absolute output\n' >&2
+  exit 1
+}
+[[ "$identity" =~ ^[0-9A-Fa-f]{40}$ ]] || {
+  printf 'set SKIDBLADNIR_MAC_SIGNING_IDENTITY to the persistent signing certificate sha1\n' >&2
+  exit 1
+}
+pin="$(cat "$source_dir/macos/app-signing-cert.sha256")"
+[[ "$pin" =~ ^[0-9a-f]{64}$ ]] || {
+  printf 'mac signing certificate pin is unavailable\n' >&2
+  exit 1
+}
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+cd "$source_dir"
+GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+  go build -buildvcs=false -mod=readonly -trimpath \
+    -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
+    -o "$app/Contents/MacOS/skid-notifications" ./cmd/skid-notifications
+install -m 0644 macos/Info.plist "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${tag#v}" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${tag#v}" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :SkidSourceSHA string $sha" "$app/Contents/Info.plist"
+"$source_dir/scripts/build-mac-icon" "$source_dir" "$app/Contents/Resources/skid.icns"
+find "$app" -type d -exec chmod 0755 {} +
+chmod 0755 "$app/Contents/MacOS/skid-notifications"
+chmod 0644 "$app/Contents/Info.plist" "$app/Contents/Resources/skid.icns"
+codesign --force --sign "$identity" --timestamp=none --options runtime \
+  --entitlements "$source_dir/macos/entitlements.plist" "$app"
+chmod 0755 "$app/Contents/_CodeSignature"
+chmod 0644 "$app/Contents/_CodeSignature/CodeResources"
+codesign --verify --strict "$app"
+certificates="$(mktemp -d /tmp/skidbladnir-mac-signer.XXXXXX)"
+trap 'rm -R -- "$certificates"' EXIT HUP INT TERM
+codesign --display --extract-certificates="$certificates/leaf" "$app" >/dev/null 2>&1
+[[ "$(shasum -a 256 "$certificates/leaf0" | awk '{print $1}')" == "$pin" ]] || {
+  printf 'mac app signer differs from the repository certificate pin\n' >&2
+  exit 1
+}

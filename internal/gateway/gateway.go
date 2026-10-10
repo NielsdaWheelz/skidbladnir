@@ -291,18 +291,16 @@ func writeDirectoryListing(writer http.ResponseWriter, listing directoryListingR
 }
 
 func (gateway *Gateway) bindMachine(writer http.ResponseWriter, request *http.Request) bool {
-	values := request.Header.Values(machineHeader)
-	if len(values) > 1 || (len(values) == 1 && strings.ContainsRune(values[0], ',')) {
+	switch auth.BindMachine(request, gateway.machine.String()) {
+	case "":
+	case auth.AdmissionInvalid:
 		writeError(writer, errorInvalidRequest)
 		return false
-	}
-	if len(values) == 0 {
+	case auth.AdmissionMachineMismatch:
 		writeError(writer, errorMachineIdentityMismatch)
 		return false
-	}
-	if values[0] != gateway.machine.String() {
-		writeError(writer, errorMachineIdentityMismatch)
-		return false
+	default:
+		panic("unhandled machine admission") // justify-defect: auth closes this result set.
 	}
 	return true
 }
@@ -318,26 +316,26 @@ func (gateway *Gateway) serveHealth(writer http.ResponseWriter, request *http.Re
 }
 
 func (gateway *Gateway) authenticate(writer http.ResponseWriter, request *http.Request, route logging.Route) (auth.Credential, bool) {
-	var zero auth.Credential
-	values := request.Header.Values("Authorization")
-	if len(values) > 1 || len(values) == 1 && strings.ContainsRune(values[0], ',') {
+	credential, code := auth.Authenticate(gateway.bearer, request)
+	switch code {
+	case "":
+	case auth.AdmissionInvalid:
 		writeError(writer, errorInvalidRequest)
-		return zero, false
-	}
-	credential, err := gateway.bearer.Read()
-	if err != nil {
+		return auth.Credential{}, false
+	case auth.AdmissionUnavailable:
 		writeError(writer, errorInternal)
-		return zero, false
-	}
-	if len(values) != 1 || !credential.Verify(values[0]) {
+		return auth.Credential{}, false
+	case auth.AdmissionUnauthenticated:
 		writer.Header().Set("WWW-Authenticate", "Bearer")
 		writeError(writer, errorUnauthenticated)
-		event, eventErr := logging.NewAuthenticationRejected(route)
-		if eventErr != nil {
+		event, err := logging.NewAuthenticationRejected(route)
+		if err != nil {
 			panic("invalid authentication-rejected log event") // justify-defect: requestRoute closes route names.
 		}
 		gateway.log(event)
-		return zero, false
+		return auth.Credential{}, false
+	default:
+		panic("unhandled authentication admission") // justify-defect: auth closes this result set.
 	}
 	return credential, true
 }
