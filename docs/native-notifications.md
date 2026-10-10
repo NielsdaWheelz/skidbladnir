@@ -1,7 +1,9 @@
 # native needs-input notifications
 
-accepted design, 2026-10-02. implementation is authorized and in progress in the
-isolated notification branch. [qualification](native-notifications-qualification.md)
+accepted design, 2026-10-02. source is implemented and merged into main
+([skid #66](https://github.com/NielsdaWheelz/skidbladnir/pull/66),
+[dev-server #163](https://github.com/NielsdaWheelz/dev-server/pull/163)).
+[qualification](native-notifications-qualification.md)
 records current evidence; release and fleet deployment need separate approval.
 
 this owns background observation, native alerts and the coordinated attention
@@ -9,7 +11,7 @@ cutover. [terminal observation](terminal-observation.md) owns detection;
 [terminal attention](reply-notifications.md) supplies the existing transition
 predicates; [session views](session-views.md) owns the surrounding queue;
 [architecture](architecture.md) owns capability scope. this plan supersedes
-device-local readiness observation and affected visit clauses when implemented;
+device-local readiness observation and affected visit clauses;
 historical qualification does not qualify the new system.
 
 ## target behaviour

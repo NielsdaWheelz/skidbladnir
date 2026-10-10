@@ -259,8 +259,11 @@ tmux servers, both phone qa packages and three private mac app homes/jobs.
 production routes/pairings, the original phone packages, audio/dnd/power and
 signing search list are unchanged. temporary harnesses and compiled artifacts
 are retired; the surviving stopped historical bundle is preserved separately.
-[ancillary qa cleanup](issues/native-notifications-qa-cleanup.md) records the
-remaining distributor/control-plane entries. no new delivery test is required.
+phone distributor cleanup removed five orphaned test subscriptions and the exact
+qa saved user; the other saved users and original skid apk are unchanged.
+authenticated admin search confirms all three retired qa node names are already
+absent; no other devices changed. private phone cleanup context is deleted;
+content-free receipts remain. no new delivery test is required.
 
 - one actual mac-asleep/locked-phone delivery smoke check remains required;
   the user previously deferred its physical sleep step.
@@ -274,9 +277,10 @@ remaining distributor/control-plane entries. no new delivery test is required.
 - exact current coordinated signed release and complete
   previous-release rollback are `NOT_RUN`; fold the current mac bundle's
   permission/delivery/click into this final verification.
-- finish the recorded ancillary qa cleanup. engineering success qualifies
-  neither unperformed devices nor release behaviour. release/deployment require
-  separate authorization; no complete acceptance claim follows from this record.
+
+engineering success qualifies neither unperformed devices nor release behaviour.
+release/deployment require separate authorization; no complete acceptance claim
+follows from this record.
 
 permanent fleet deployment remains pending separate authorization; it is distinct
 from the retained release/rollback verification.
