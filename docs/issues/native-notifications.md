@@ -1,7 +1,7 @@
 # native notifications implementation and qualification
 
-problem: the accepted notification cutover is implemented in the isolated
-branch, but required physical and coordinated-release acceptance is incomplete.
+problem: the accepted notification cutover is implemented and merged into main,
+but required physical and coordinated-release acceptance is incomplete.
 it is not deployed to the normal fleet.
 
 impact: source and component checks do not yet establish every promised
@@ -22,8 +22,9 @@ and clean-release acceptance remain pending.
 production routes and the original phone apk remain unchanged. six qa services,
 isolated tmux servers, both phone qa packages, three private mac app homes and
 temporary harnesses/artifacts are removed. the surviving historical bundle and
-signer are preserved. [ancillary qa cleanup](native-notifications-qa-cleanup.md)
-records the remaining distributor/control-plane entries.
+signer are preserved. phone distributor cleanup is complete.
+authenticated admin search confirms all three retired qa node names are already
+absent; no other devices changed.
 
 remaining:
 
