@@ -305,7 +305,7 @@ private_serve_origin() {
     ([((.Web // {}) | to_entries[]) | select(.key | endswith(":8443"))] as $owned |
       ($owned | length == 1) and
       ($owned[0].key == $key) and
-      ($owned[0].value.Handlers == {"/v1":{"Proxy":"http://127.0.0.1:7341/v1"}}) and
+      ($owned[0].value.Handlers["/v1"] == {"Proxy":"http://127.0.0.1:7341/v1"}) and
       (((.AllowFunnel // {})[$key] // false) == false) and
       ([((.AllowFunnel // {}) | to_entries[]) |
         select((.key | endswith(":8443")) and .value == true)] | length == 0))
