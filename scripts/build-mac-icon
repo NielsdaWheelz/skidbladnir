@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ $# -eq 2 && "$(uname -s)" == Darwin ]] || {
+  printf 'usage: %s SOURCE_DIRECTORY OUTPUT_ICNS (darwin)\n' "$0" >&2
+  exit 64
+}
+source_dir="$(cd "$1" && pwd -P)"
+output="$2"
+[[ "$output" == /* && ! -e "$output" && -d "$(dirname "$output")" ]] || exit 1
+staging="$(mktemp -d /tmp/skidbladnir-icon.XXXXXX)"
+trap 'rm -R -- "$staging"' EXIT HUP INT TERM
+mkdir "$staging/skid.iconset"
+clang -fobjc-arc -framework AppKit "$source_dir/macos/render-icon.m" -o "$staging/render-icon"
+"$staging/render-icon" \
+  "$source_dir/android/app/src/main/res/drawable/ic_launcher_background.xml" \
+  "$source_dir/android/app/src/main/res/drawable/ic_launcher_foreground.xml" \
+  "$staging/skid.iconset"
+iconutil --convert icns --output "$output" "$staging/skid.iconset"
+chmod 0644 "$output"

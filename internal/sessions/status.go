@@ -75,6 +75,17 @@ func (reason StatusReason) Failed() bool {
 	}
 }
 
+// Valid admits exactly the closed interaction set.
+func (interaction Interaction) Valid() bool {
+	switch interaction {
+	case InteractionNone, InteractionPermission, InteractionQuestion, InteractionConfirmation,
+		InteractionSetup, InteractionInput, InteractionMenu, InteractionUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Request reports an interaction that asks the human for a response, the one
 // owner of the request set; a menu is navigation, not a request.
 func (interaction Interaction) Request() bool {
@@ -96,10 +107,7 @@ func (status TerminalStatus) Valid() bool {
 	default:
 		return false
 	}
-	switch status.Interaction {
-	case InteractionNone, InteractionPermission, InteractionQuestion, InteractionConfirmation,
-		InteractionSetup, InteractionInput, InteractionMenu, InteractionUnknown:
-	default:
+	if !status.Interaction.Valid() {
 		return false
 	}
 	switch status.Notice {

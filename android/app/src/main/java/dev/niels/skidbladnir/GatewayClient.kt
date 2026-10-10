@@ -325,7 +325,7 @@ internal class GatewayClient {
      * A gateway that answers this origin with another installation's identity fails with
      * `409 MachineIdentityMismatch` before it discloses anything.
      */
-    private fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder {
+    internal fun authorizedRequest(credential: MachineCredential, segments: List<String>): Request.Builder {
         val url = credential.machine.origin.encoded.toHttpUrl().newBuilder()
             .apply { segments.forEach(::addPathSegment) }
             .build()
@@ -371,6 +371,7 @@ internal fun <Value> decodeGatewayResponse(
     expectedStatus: Int,
     decode: (String) -> Value,
     decodeFailure: (Int, String) -> GatewayFailure = ::decodeGatewayHttpFailure,
+    maximumBodyBytes: Int = MAXIMUM_HTTP_BODY_BYTES,
 ): GatewayResult<Value> {
     if (response.code in setOf(502, 503, 504)) return GatewayResult.Failure(GatewayFailure.Transport)
     val bodylessSuccess = response.code == expectedStatus && expectedStatus == 204
@@ -384,8 +385,8 @@ internal fun <Value> decodeGatewayResponse(
     // OkHttp presents this ResponseBody after transparent content decompression. Reading one byte
     // beyond the owned 64 KiB protocol bound distinguishes an exact-limit body without buffering
     // an attacker-controlled response through ResponseBody.string().
-    val bytes = body?.byteStream()?.readNBytes(MAXIMUM_HTTP_BODY_BYTES + 1) ?: ByteArray(0)
-    if (bytes.size > MAXIMUM_HTTP_BODY_BYTES) return GatewayResult.Failure(GatewayFailure.Transport)
+    val bytes = body?.byteStream()?.readNBytes(maximumBodyBytes + 1) ?: ByteArray(0)
+    if (bytes.size > maximumBodyBytes) return GatewayResult.Failure(GatewayFailure.Transport)
     if (bodylessSuccess && bytes.isNotEmpty()) return GatewayResult.Failure(GatewayFailure.Transport)
     val encoded = decodeStrictUtf8(bytes)
     if (bodylessSuccess) {

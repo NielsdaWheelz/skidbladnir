@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/group"
 )
@@ -176,7 +177,7 @@ func (m *model) editForm(key tea.KeyPressMsg) tea.Cmd {
 			if m.field == 3 || m.field == 4 {
 				m.form[m.field] += key.Text
 			} else {
-				m.form[m.field] += singleLine(key.Text)
+				m.form[m.field] += attention.SingleLine(key.Text)
 			}
 		}
 	}

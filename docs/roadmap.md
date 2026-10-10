@@ -18,6 +18,17 @@ darwin/linux, gateway/desktop and physical-phone boundaries. actual linux and ma
 reboots are owner-deferred; [remaining acceptance](issues/session-recovery-reboot.md)
 records the check. release and production-fleet cutover remain separate.
 
+## native notifications — source implemented; release and deployment pending
+
+2026-10-02: [the spec and plan](native-notifications.md) defines equal native
+alerts on macbook/android, exact-session clicks, device-local acknowledgement
+and current-only catchup. devbox owns retained readiness observations; android
+uses private encrypted ntfy/unifiedpush hints and mac an authenticated revision
+stream. source is implemented.
+[qualification](native-notifications-qualification.md) separates source checks
+from required native-device acceptance. [remaining work](issues/native-notifications.md)
+is open; release and fleet deployment remain separate.
+
 ## desktop profile usage
 
 2026-10-02: [the accepted spec and plan](profile-usage.md) adds a compact main-tui

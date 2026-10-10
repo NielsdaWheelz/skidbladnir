@@ -128,7 +128,18 @@ active_runtime_is_current() {
   local share="$HOME/.local/share/skidbladnir"
   local relative generation name mode digest expected active
   local -a files=(
-    skidbladnir characters.json release.json host-config.json
+    skidbladnir characters.json release.json
+  )
+  if [[ "$(uname -s)" == Darwin ]]; then
+    files+=(
+      Skid.app/Contents/Info.plist
+      Skid.app/Contents/MacOS/skid-notifications
+      Skid.app/Contents/Resources/skid.icns
+      Skid.app/Contents/_CodeSignature/CodeResources
+    )
+  fi
+  files+=(
+    host-config.json
     providers/native-control providers/provider-command providers/shell-init
     providers/terminal-context-init
     providers/claude-agent-identity/.claude-plugin/plugin.json
@@ -145,7 +156,7 @@ active_runtime_is_current() {
   for name in "${files[@]}"; do
     [[ -f "$generation/$name" && ! -L "$generation/$name" ]] || return 1
     case "$name" in
-    skidbladnir | providers/native-control | providers/provider-command | providers/claude-agent-identity/bin/agent-hook) mode=755 ;;
+    skidbladnir | Skid.app/Contents/MacOS/skid-notifications | providers/native-control | providers/provider-command | providers/claude-agent-identity/bin/agent-hook) mode=755 ;;
     host-config.json) mode=600 ;;
     *) mode=644 ;;
     esac
@@ -419,6 +430,10 @@ install_client_config() (
   trap 'rm -f -- "$temporary"' EXIT
   cat >"$temporary" || return
   chmod 0600 "$temporary" || return
+  if [[ -f "$config/client.json" && ! -e "$config/client.before-notifications.json" ]]; then
+    cp -p -- "$config/client.json" "$config/client.before-notifications.json" || return
+    chmod 0600 "$config/client.before-notifications.json" || return
+  fi
   mv -f -- "$temporary" "$config/client.json"
 )
 
@@ -431,7 +446,10 @@ provision_clients() (
     client_peer Darwin macbook || exit 1
     remote_host client-peer devbox || exit 1
     remote_host client-peer arch || exit 1
-  } | jq -s '{peers:.}' >"$temporary" || return
+  } | jq -s '{peers:.,notifications:{
+      observerMachine:(.[] | select(.label == "devbox").machine),
+      ntfyOrigin:(.[] | select(.label == "devbox").origin | rtrimstr("/") | sub(":8443$";":8444"))
+    }}' >"$temporary" || return
   jq -e '
     (.peers | map(.label)) == ["macbook", "devbox", "arch"] and
     all(.peers[];
@@ -452,6 +470,7 @@ provision_clients() (
       fleet_ssh "$label" "$command" || return
   done
   printf 'private peer configuration installed on macbook, devbox, and arch\n'
+  printf 'reapply dev-server on devbox and macbook to start notifications with this configuration\n'
 )
 
 host_main() {
@@ -572,11 +591,19 @@ invite() (
   set +x
   local config_file="$HOME/.config/skidbladnir/client.json"
   local config peers label origin handle bearer display_label platform response
-  local machines='[]' payload bytes
+  local machines='[]' payload bytes notifications
   [[ -f "$config_file" && ! -L "$config_file" && "$(file_mode "$config_file")" == 600 ]] ||
     die 'invite requires ~/.config/skidbladnir/client.json with mode 0600, as used by skid'
   config="$(cat "$config_file")" || return
   json_is_single_and_duplicate_free "$config" 2>/dev/null || die 'client configuration is invalid'
+  notifications="$(printf '%s' "$config" | jq -ce '
+    . as $config | .notifications |
+    if type == "object" and keys == ["ntfyOrigin","observerMachine"] and
+      .observerMachine == ($config.peers[] | select(.label == "devbox").machine) and
+      .ntfyOrigin == ($config.peers[] | select(.label == "devbox").origin |
+        rtrimstr("/") | sub(":8443$";":8444"))
+    then . else error("notification configuration required") end
+  ' 2>/dev/null)" || die 'notification setup required; provision the notification-enabled client configuration before inviting'
   peers="$(printf '%s' "$config" | jq -er '
     .peers | map(select(.label | ascii_downcase | IN("arch", "devbox", "macbook"))) |
     map(.label |= ascii_downcase | .origin |= (ascii_downcase | rtrimstr("/") + "/")) |
@@ -627,7 +654,7 @@ invite() (
           pairingInviteToken:.[1].pairingInviteToken}]
       ')" || return
   done <<<"$peers"
-  payload="$(printf '%s' "$machines" | jq -c '{kind:"skidbladnir.fleet-invite.v1", machines:.}')" || return
+  payload="$(printf '%s' "$machines" | jq -c --argjson notifications "$notifications" '{kind:"skidbladnir.fleet-invite.v2", machines:.,notifications:$notifications}')" || return
   printf '%s' "$payload" | jq -e '
     (.machines | map(.machineHandle) | unique | length) == 3 and
     (.machines | map(.pairingInviteToken) | unique | length) == 3

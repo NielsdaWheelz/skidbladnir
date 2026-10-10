@@ -102,16 +102,106 @@ find_apkanalyzer() {
 }
 
 verify_archive_metadata() {
-  python3 - "$1" <<'PY'
+  python3 - "$1" "$2" <<'PY'
 import pathlib
 import sys
 import tarfile
 
+expected = {"skidbladnir": (False, 0o755), "characters.json": (False, 0o644),
+            "release.json": (False, 0o644)}
+if sys.argv[2] == "darwin-arm64":
+    for name in ("Skid.app", "Skid.app/Contents", "Skid.app/Contents/MacOS",
+                 "Skid.app/Contents/Resources", "Skid.app/Contents/_CodeSignature"):
+        expected[name] = (True, 0o755)
+    for name in ("Info.plist", "Resources/skid.icns", "_CodeSignature/CodeResources"):
+        expected["Skid.app/Contents/" + name] = (False, 0o644)
+    expected["Skid.app/Contents/MacOS/skid-notifications"] = (False, 0o755)
+seen = set()
 with tarfile.open(sys.argv[1], "r:gz") as archive:
     for member in archive:
+        name = member.name.rstrip("/")
+        if name not in expected or name in seen:
+            sys.exit("release archive has unexpected or duplicate members")
+        seen.add(name)
+        directory, mode = expected[name]
+        if (not (member.isdir() if directory else member.isfile()) or
+                member.mode != mode):
+            sys.exit("release archive member type or mode differs")
         if any(key.startswith(("LIBARCHIVE.xattr.", "SCHILY.xattr.")) for key in member.pax_headers):
             sys.exit(f"{pathlib.Path(sys.argv[1]).name} contains forbidden extended-attribute metadata")
+if seen != set(expected):
+    sys.exit("release archive is missing required members")
 PY
+}
+
+verify_go_identity() {
+  local binary="$1" goos="$2" goarch="$3" build_info
+  build_info="$(GOTOOLCHAIN=local go version -m "$binary")" || return 1
+  grep -Fqx $'\tbuild\tGOOS='"$goos" <<<"$build_info" &&
+    grep -Fqx $'\tbuild\tGOARCH='"$goarch" <<<"$build_info" &&
+    ! grep -Fq $'\tbuild\tvcs=' <<<"$build_info"
+}
+
+verify_mac_app() {
+  local app="$1" tag="$2" sha="$3" stage="$4" pin observed expected
+  [[ "$(uname -s)" == Darwin ]] || {
+    printf 'NOT_RUN: native macOS is required to verify the signed app\n' >&2
+    return 2
+  }
+  pin="$(cat "$source_dir/macos/app-signing-cert.sha256")"
+  [[ "$pin" =~ ^[0-9a-f]{64}$ && "$(wc -l <"$source_dir/macos/app-signing-cert.sha256" | tr -d ' ')" == 1 ]] || return 1
+  cmp -s "$source_dir/macos/app-signing-cert.sha256" "$repo_dir/macos/app-signing-cert.sha256" || return 1
+  codesign --verify --strict "$app" >/dev/null 2>&1 || return 1
+  codesign --display --extract-certificates="$stage/mac-cert" "$app" >/dev/null 2>&1 || return 1
+  [[ -f "$stage/mac-cert0" ]] || return 1
+  observed="$("${digest_command[@]}" "$stage/mac-cert0" | awk '{print $1}')"
+  [[ "$observed" == "$pin" ]] || return 1
+  python3 - "$app/Contents/Info.plist" "$tag" "$sha" "$source_dir" "$reproduce" <<'PY' || return 1
+import pathlib, plistlib, sys
+with open(sys.argv[1], "rb") as stream:
+    value = plistlib.load(stream)
+if any(value.get(key) != expected for key, expected in {
+        "CFBundleIdentifier": "dev.niels.skidbladnir",
+        "CFBundleExecutable": "skid-notifications",
+        "CFBundleIconFile": "skid", "CFBundleShortVersionString": sys.argv[2][1:],
+        "CFBundleVersion": sys.argv[2][1:], "SkidSourceSHA": sys.argv[3]}.items()):
+    raise SystemExit("signed mac app identity differs from release")
+if sys.argv[5]:
+    expected = plistlib.loads(pathlib.Path(sys.argv[4], "macos/Info.plist").read_bytes())
+    expected.update(CFBundleShortVersionString=sys.argv[2][1:],
+                    CFBundleVersion=sys.argv[2][1:], SkidSourceSHA=sys.argv[3])
+    if value != expected:
+        raise SystemExit("signed mac app metadata differs from release source")
+PY
+  verify_go_identity "$app/Contents/MacOS/skid-notifications" darwin arm64 || return 1
+  [[ "$("$app/Contents/MacOS/skid-notifications" version)" == "$tag $sha" ]] || return 1
+  if [[ -n "$reproduce" ]]; then
+    codesign --display --entitlements "$stage/observed-entitlements.plist" --xml "$app" >/dev/null 2>&1 || return 1
+    python3 - "$source_dir/macos/entitlements.plist" "$stage/observed-entitlements.plist" <<'PY' || return 1
+import plistlib, sys
+with open(sys.argv[1], "rb") as stream:
+    expected = plistlib.load(stream)
+with open(sys.argv[2], "rb") as stream:
+    observed = plistlib.load(stream)
+if observed != expected:
+    raise SystemExit("signed mac app entitlements differ from release source")
+PY
+    "$repo_dir/scripts/build-mac-icon" "$source_dir" "$stage/expected-skid.icns" || return 1
+    cmp -s "$stage/expected-skid.icns" "$app/Contents/Resources/skid.icns" || return 1
+    expected="$stage/expected-notifications"
+    (cd "$source_dir" && GOTOOLCHAIN=local GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+      go build -buildvcs=false -mod=readonly -trimpath \
+        -ldflags "-s -w -X main.releaseVersion=$tag -X main.releaseSHA=$sha" \
+        -o "$expected" ./cmd/skid-notifications) || return 1
+    cp "$app/Contents/MacOS/skid-notifications" "$stage/observed-notifications" || return 1
+    # Apple signing normalizes __LINKEDIT allocation. Match that metadata on
+    # private audit copies before stripping; the verified release is untouched.
+    codesign --force --sign - --timestamp=none --options 0 \
+      --identifier dev.niels.skidbladnir.reproduction \
+      "$expected" "$stage/observed-notifications" || return 1
+    codesign --remove-signature "$expected" "$stage/observed-notifications" || return 1
+    cmp -s "$expected" "$stage/observed-notifications" || return 1
+  fi
 }
 
 verify_archive() (
@@ -122,22 +212,16 @@ verify_archive() (
   local platform="$4"
   local goos="$5"
   local goarch="$6"
-  local entries
   local staging_dir
-  local build_info
   local expected_binary
-  verify_archive_metadata "$archive"
-  entries="$(tar -tzf "$archive")"
-  [[ "$entries" == $'skidbladnir\ncharacters.json\nrelease.json' ]] || {
-    printf '%s has an unexpected member set\n' "$(basename "$archive")" >&2
-    return 1
-  }
+  verify_archive_metadata "$archive" "$platform" || return 1
   staging_dir="$(mktemp -d /tmp/skidbladnir-archive-check.XXXXXX)"
   case "$staging_dir" in
     /tmp/skidbladnir-archive-check.* | /private/tmp/skidbladnir-archive-check.*) ;;
     *) printf 'Unexpected archive-check staging directory\n' >&2; return 1 ;;
   esac
-  trap 'rm -R -- "$staging_dir"' EXIT HUP INT TERM
+  # shellcheck disable=SC2064 # bind the path before function scope unwinds.
+  trap "rm -R -- $(printf '%q' "$staging_dir")" EXIT HUP INT TERM
   extract_release_archive "$archive" "$staging_dir"
   [[ -f "$staging_dir/skidbladnir" && ! -L "$staging_dir/skidbladnir" &&
     "$(file_mode "$staging_dir/skidbladnir")" == 755 ]] || {
@@ -171,21 +255,9 @@ verify_archive() (
       return 1
     }
   fi
-  build_info="$(GOTOOLCHAIN=local go version -m "$staging_dir/skidbladnir")" || {
-    printf '%s binary has no readable Go build identity\n' "$(basename "$archive")" >&2
-    return 1
-  }
-  grep -Fqx $'\tbuild\tGOOS='"$goos" <<<"$build_info" || {
-    printf '%s binary GOOS does not match %s\n' "$(basename "$archive")" "$goos" >&2
-    return 1
-  }
-  grep -Fqx $'\tbuild\tGOARCH='"$goarch" <<<"$build_info" || {
-    printf '%s binary GOARCH does not match %s\n' "$(basename "$archive")" "$goarch" >&2
-    return 1
-  }
-  if grep -Fq $'\tbuild\tvcs=' <<<"$build_info"; then
-    printf '%s binary contains checkout-dependent VCS metadata\n' "$(basename "$archive")" >&2
-    return 1
+  verify_go_identity "$staging_dir/skidbladnir" "$goos" "$goarch" || return 1
+  if [[ "$goos" == darwin ]]; then
+    verify_mac_app "$staging_dir/Skid.app" "$tag" "$sha" "$staging_dir"
   fi
 )
 

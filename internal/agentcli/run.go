@@ -42,6 +42,9 @@ skid start [NAME] --machine HOST --profile PROFILE [--cwd '~'] [--group LABEL] [
 skid start [NAME] --machine HOST --terminal [--cwd '~'] [--group LABEL]
 skid shell HANDLE                         new terminal here
 skid group HANDLE (--set LABEL | --clear)
+skid notifications observer --config FILE  devbox background observation
+skid notifications setup                  open macos notification setup
+skid notifications reset                  reset linux notification memory
 
 existing targets: HANDLE [--machine HOST] or --ref VALUE
 terminal handles: t- plus 16 lowercase hex characters
@@ -356,6 +359,9 @@ func parse(args []string) (command, error) {
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if len(args) > 0 && args[0] == "notifications" {
+		return runNotifications(ctx, args[1:], stdout, stderr)
+	}
 	parsed, err := parse(args)
 	if err != nil {
 		// Find --json even when an earlier invalid option stopped parsing.
@@ -428,41 +434,18 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		io.WriteString(stderr, "ctrl-] then d detaches; navigation and terminal size are shared\n")
 		info := parsed.request
 		info.Operation = "info"
-		store, storeErr := fleetclient.DefaultNotificationStore()
-		var expected fleetclient.NotificationSnapshot
-		if storeErr == nil {
-			expected, storeErr = store.Read()
-		}
 		observed := client.Execute(ctx, info)
 		if !observed.OK {
-			if storeErr != nil {
-				fmt.Fprintln(stderr, "notifications unavailable")
-			}
 			return render(parsed, observed, stdout, stderr)
 		}
-		row := observed.Value.(fleetclient.ObservedSession).Session
-		request := fleetclient.Request{Operation: "enter", Ref: row.Ref}
-
-		if storeErr == nil {
-			_, storeErr = store.ObserveSession(row, client.Machines(), expected)
-		}
-		if storeErr != nil {
-			fmt.Fprintln(stderr, "notifications unavailable")
-		}
-		presented := false
-		notificationReported := storeErr != nil
-		terminalErr := terminalclient.Run(ctx, client, request, stdin.(*os.File), stdout.(*os.File), store, func(snapshot fleetclient.NotificationSnapshot, err error) {
-			presented = true
+		session := observed.Value.(fleetclient.ObservedSession).Session
+		notificationReported := false
+		terminalErr := terminalclient.Run(ctx, client, session, stdin.(*os.File), stdout.(*os.File), func(_ terminalclient.NotificationView, err error) {
 			if err != nil && !notificationReported {
 				notificationReported = true
 				fmt.Fprintln(stderr, "notifications unavailable")
 			}
 		})
-		if presented {
-			if err := settleVisit(ctx, client, request, store); err != nil && !notificationReported {
-				fmt.Fprintln(stderr, "notifications unavailable")
-			}
-		}
 		if terminalErr != nil {
 			fmt.Fprintln(stderr, terminalErr)
 			return 1
@@ -844,27 +827,4 @@ func reportFailure(writer io.Writer, failure fleetclient.Failure, request fleetc
 	if failure.Dispatch == "unknown" {
 		fmt.Fprintln(writer, "inspect before any further write; never replay an uncertain write")
 	}
-}
-
-func settleVisit(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, store *fleetclient.NotificationStore) error {
-	if store == nil {
-		return nil
-	}
-	expected, err := store.Read()
-	if err != nil {
-		return err
-	}
-	request.Operation = "info"
-	observed := client.Execute(ctx, request)
-	if !observed.OK {
-		return nil
-	}
-	value := observed.Value.(fleetclient.ObservedSession)
-	ref, _ := fleetclient.DecodeReference(value.Session.Ref)
-	captured, _ := fleetclient.DecodeReference(request.Ref)
-	if ref != captured {
-		return nil
-	}
-	_, err = store.ObserveSession(value.Session, client.Machines(), expected)
-	return err
 }

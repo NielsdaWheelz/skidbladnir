@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/machine"
 	"github.com/NielsdaWheelz/skidbladnir/internal/strictjson"
 )
@@ -40,10 +41,11 @@ func Open(path string) (*Client, error) {
 		return nil, errConfiguration
 	}
 	var config *struct {
-		Peers          []peer `json:"peers"`
-		DefaultMachine string `json:"defaultMachine"`
+		Peers          []peer            `json:"peers"`
+		DefaultMachine string            `json:"defaultMachine"`
+		Notifications  *attention.Config `json:"notifications,omitempty"`
 	}
-	if strictjson.Decode(encoded, &config) != nil || config == nil || len(config.Peers) == 0 {
+	if !nonNullJSON(encoded) || strictjson.Decode(encoded, &config) != nil || config == nil || len(config.Peers) == 0 {
 		return nil, errConfiguration
 	}
 	labels, origins, handles := map[string]bool{}, map[string]bool{}, map[string]bool{}
@@ -73,12 +75,27 @@ func Open(path string) (*Client, error) {
 	if !handles[config.DefaultMachine] {
 		return nil, errConfiguration
 	}
+	if config.Notifications != nil {
+		if !config.Notifications.Valid() || !handles[config.Notifications.ObserverMachine] {
+			return nil, errConfiguration
+		}
+		for _, target := range config.Peers {
+			if target.Machine != config.Notifications.ObserverMachine {
+				continue
+			}
+			origin, _ := url.Parse(target.Origin)
+			if config.Notifications.NtfyOrigin != "https://"+origin.Hostname()+":8444" {
+				return nil, errConfiguration
+			}
+		}
+	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DisableKeepAlives = true
 	transport.Proxy = nil
 	return &Client{
 		peers:          config.Peers,
 		defaultMachine: config.DefaultMachine,
+		notifications:  config.Notifications,
 		http:           &http.Client{Transport: transport, Timeout: Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}, nil
 }

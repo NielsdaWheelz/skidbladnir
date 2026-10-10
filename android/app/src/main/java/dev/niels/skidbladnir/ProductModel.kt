@@ -1038,6 +1038,19 @@ internal fun parseApiErrorCode(value: String): ApiErrorCode =
     ApiErrorCode.entries.singleOrNull { it.wireName == value } ?: throw SerializationException("unknown API error code")
 
 internal enum class SessionStatusTone { Working, Ready, Attention, Muted }
+internal fun terminalRequestText(request: TerminalInteraction): String = when (request) {
+    TerminalInteraction.Permission -> "needs permission"
+    TerminalInteraction.Question -> "needs answer"
+    TerminalInteraction.Setup -> "needs setup"
+    TerminalInteraction.Confirmation -> "needs review"
+    TerminalInteraction.Input -> "needs input"
+    TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> error("request copy requires a response request")
+}
+internal fun terminalNoticeText(notice: TerminalNotice): String = when (notice) {
+    TerminalNotice.Interrupted -> "interruption shown"
+    TerminalNotice.Error -> "error shown"
+    TerminalNotice.None -> error("notice copy requires a current notice")
+}
 internal enum class SessionQueueCategory { Ready, Action, Excluded }
 // `detail` tells one session's state from another's; `evidence` names how status was
 // known. The card shows only the first, since the qualifier is the same on every agent card.
@@ -1063,8 +1076,7 @@ internal fun sessionStatusContent(
         TerminalInteraction.None, TerminalInteraction.Menu, TerminalInteraction.Unknown -> false
     }
     val notice = when (status.notice) {
-        TerminalNotice.Interrupted -> "interruption shown"
-        TerminalNotice.Error -> "error shown"
+        TerminalNotice.Interrupted, TerminalNotice.Error -> terminalNoticeText(status.notice)
         TerminalNotice.None -> null
     }
     val ready = inferred && fresh && notification.ready && !notification.unavailable &&
@@ -1076,15 +1088,12 @@ internal fun sessionStatusContent(
         else -> SessionQueueCategory.Excluded
     }
     val requestMenuOrNotice = when (status.interaction) {
-        TerminalInteraction.Permission -> "needs permission" to SessionStatusTone.Attention
-        TerminalInteraction.Question -> "needs answer" to SessionStatusTone.Attention
-        TerminalInteraction.Setup -> "needs setup" to SessionStatusTone.Attention
-        TerminalInteraction.Confirmation -> "needs review" to SessionStatusTone.Attention
-        TerminalInteraction.Input -> "needs input" to SessionStatusTone.Attention
+        TerminalInteraction.Permission, TerminalInteraction.Question, TerminalInteraction.Setup,
+        TerminalInteraction.Confirmation, TerminalInteraction.Input -> terminalRequestText(status.interaction) to SessionStatusTone.Attention
         TerminalInteraction.Menu -> "menu open" to SessionStatusTone.Muted
         TerminalInteraction.None, TerminalInteraction.Unknown -> when (status.notice) {
-            TerminalNotice.Interrupted -> "interruption shown" to SessionStatusTone.Muted
-            TerminalNotice.Error -> "error shown" to SessionStatusTone.Attention
+            TerminalNotice.Interrupted -> terminalNoticeText(status.notice) to SessionStatusTone.Muted
+            TerminalNotice.Error -> terminalNoticeText(status.notice) to SessionStatusTone.Attention
             TerminalNotice.None -> null
         }
     }

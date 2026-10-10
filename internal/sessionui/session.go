@@ -3,14 +3,14 @@ package sessionui
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminalclient"
 )
@@ -25,15 +25,13 @@ type inventoryMsg struct {
 	machine         string
 	value           fleetclient.Inventory
 	failure         *fleetclient.Failure
-	expected        fleetclient.NotificationSnapshot
+	notifications   terminalclient.NotificationView
 	notificationErr error
 }
 type tickMsg struct{}
 type actionMsg struct {
-	operation       string
-	result          fleetclient.Result
-	expected        fleetclient.NotificationSnapshot
-	notificationErr error
+	operation string
+	result    fleetclient.Result
 }
 type searchMsg struct {
 	machine  string
@@ -42,7 +40,7 @@ type searchMsg struct {
 }
 type attachedMsg struct {
 	err             error
-	snapshot        fleetclient.NotificationSnapshot
+	snapshot        terminalclient.NotificationView
 	notificationErr error
 }
 type model struct {
@@ -80,8 +78,7 @@ type model struct {
 	searchDirectories    []string
 	directorySelection   fieldSelection[string]
 	blurred              bool
-	notificationStore    *fleetclient.NotificationStore
-	notificationSnapshot fleetclient.NotificationSnapshot
+	notificationSnapshot terminalclient.NotificationView
 	notificationFailed   bool
 	usagePeers           []usagePeer
 	usageNext            time.Time
@@ -113,8 +110,7 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 			usagePeers = append(usagePeers, usagePeer{machine: machine})
 		}
 	}
-	store, storeErr := fleetclient.DefaultNotificationStore()
-	return &model{notificationStore: store, notificationFailed: storeErr != nil, ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
+	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
 }
 func (m *model) Init() tea.Cmd {
 	return tea.Batch(m.fetch(), m.refreshUsage(time.Now(), false), tick())
@@ -123,13 +119,14 @@ func tick() tea.Cmd { return tea.Tick(5*time.Second, func(time.Time) tea.Msg { r
 func (m *model) fetch() tea.Cmd {
 	machine := m.machine
 	return func() tea.Msg {
-		var expected fleetclient.NotificationSnapshot
-		notificationErr := fleetclient.ErrNotificationsUnavailable
-		if m.notificationStore != nil {
-			expected, notificationErr = m.notificationStore.Read()
-		}
-		result := m.client.Execute(m.ctx, fleetclient.Request{Operation: "list", Machine: machine})
-		message := inventoryMsg{machine: machine, failure: result.Error, expected: expected, notificationErr: notificationErr}
+		var notifications terminalclient.NotificationView
+		var notificationErr error
+		var result fleetclient.Result
+		var reads sync.WaitGroup
+		reads.Go(func() { notifications, notificationErr = terminalclient.ReadNotifications(m.ctx, m.client) })
+		reads.Go(func() { result = m.client.Execute(m.ctx, fleetclient.Request{Operation: "list", Machine: machine}) })
+		reads.Wait()
+		message := inventoryMsg{machine: machine, failure: result.Error, notifications: notifications, notificationErr: notificationErr}
 		if result.OK {
 			message.value = result.Value.(fleetclient.Inventory)
 		}
@@ -160,12 +157,6 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 	m.busy = true
 	return func() tea.Msg {
 		message := actionMsg{operation: request.Operation}
-		if request.Operation == "start" || request.Operation == "shell" {
-			message.notificationErr = fleetclient.ErrNotificationsUnavailable
-			if m.notificationStore != nil {
-				message.expected, message.notificationErr = m.notificationStore.Read()
-			}
-		}
 		message.result = m.client.Execute(m.ctx, request)
 		return message
 	}
@@ -308,15 +299,6 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		switch message.operation {
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
-			if m.notificationStore == nil || message.notificationErr != nil {
-				m.notificationFailed = true
-			} else {
-				snapshot, err := m.notificationStore.ObserveSession(value.Session, m.client.Machines(), message.expected)
-				m.notificationFailed = err != nil
-				if err == nil {
-					m.notificationSnapshot = snapshot
-				}
-			}
 			// Confirmed creation reveals the new session in its group.
 			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
@@ -455,7 +437,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 				if m.field == 3 || m.field == 4 {
 					m.form[m.field] += message.Content
 				} else {
-					m.form[m.field] += singleLine(message.Content)
+					m.form[m.field] += attention.SingleLine(message.Content)
 				}
 				if m.field == 3 {
 					return m, m.searchDirectory()
@@ -742,30 +724,22 @@ func (m *model) selectedRow() *listedRow {
 	return &m.rows[m.cursor]
 }
 
-// singleLine replaces controls, invisible format characters such as bidi
-// overrides, and line/paragraph separators, so observed text cannot reorder or
-// break what the screen shows.
-func singleLine(text string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
-			return ' '
-		}
-		return r
-	}, text)
-}
-
 type attachment struct {
 	ctx             context.Context
 	client          *fleetclient.Client
 	request         fleetclient.Request
 	input, output   *os.File
-	store           *fleetclient.NotificationStore
-	snapshot        fleetclient.NotificationSnapshot
+	snapshot        terminalclient.NotificationView
 	notificationErr error
 }
 
 func (a *attachment) Run() error {
-	return terminalclient.Run(a.ctx, a.client, a.request, a.input, a.output, a.store, func(snapshot fleetclient.NotificationSnapshot, err error) {
+	observed := a.client.Execute(a.ctx, fleetclient.Request{Operation: "info", Ref: a.request.Ref})
+	if !observed.OK {
+		return errors.New(fleetclient.ErrorMessage(*observed.Error, a.request, false))
+	}
+	session := observed.Value.(fleetclient.ObservedSession).Session
+	return terminalclient.Run(a.ctx, a.client, session, a.input, a.output, func(snapshot terminalclient.NotificationView, err error) {
 		a.notificationErr = err
 		if err == nil {
 			a.snapshot = snapshot

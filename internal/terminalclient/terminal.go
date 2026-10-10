@@ -7,11 +7,14 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
+	"github.com/NielsdaWheelz/skidbladnir/internal/macnotifications"
 	"github.com/NielsdaWheelz/skidbladnir/internal/terminal"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
@@ -21,10 +24,16 @@ import (
 
 var errDimensions = errors.New("terminal size must be 20–1024 columns and 5–512 rows; detached, work continues")
 
-// Run owns one exact visit. changed receives only committed presentation/exit
-// snapshots or notification errors; those errors never interrupt terminal I/O.
-func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Request, input, output *os.File, notifications *fleetclient.NotificationStore, changed func(fleetclient.NotificationSnapshot, error)) (result error) {
-	ref, err := fleetclient.DecodeReference(request.Ref)
+// Run owns one exact terminal visit. Notification failures remain secondary.
+func Run(ctx context.Context, client *fleetclient.Client, session fleetclient.Session, input, output *os.File, changed func(NotificationView, error)) (result error) {
+	var notificationMu sync.Mutex
+	notify := func(view NotificationView, err error) {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		changed(view, err)
+	}
+	request := fleetclient.Request{Operation: "enter", Ref: session.Ref}
+	ref, err := fleetclient.DecodeReference(session.Ref)
 	if err != nil || ref.Conversation != nil {
 		return errors.New("enter requires an exact terminal reference")
 	}
@@ -44,6 +53,79 @@ func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Re
 	}
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
+	// Optional notification work must precede the websocket admission deadline.
+	view, notificationErr := ReadNotifications(ctx, client)
+	if notificationErr != nil {
+		notify(view, notificationErr)
+	}
+	foreground := fleetclient.NotificationForeground(session)
+	token := view.readyToken(key, foreground)
+	var visit *macnotifications.Visit
+	visitEnded := false
+	var store *fleetclient.NotificationStore
+	defer func() {
+		if visitEnded {
+			// The owner has confirmed retirement before this secondary refresh.
+			current, err := ReadNotifications(ctx, client)
+			notify(current, err)
+		}
+	}()
+	if runtime.GOOS == "darwin" {
+		args := macnotifications.RegisterArgs{Key: key, Foreground: foreground, LaunchNonce: os.Getenv("SKID_NOTIFICATION_LAUNCH")}
+		if token.Generation > 0 {
+			args.ReadyToken = &token
+		}
+		visit, err = macnotifications.Register(ctx, args)
+		if err != nil {
+			notify(NotificationView{}, err)
+		} else {
+			visitCtx, cancelVisit := context.WithCancel(ctx)
+			visitDone := make(chan struct{})
+			go func() {
+				defer close(visitDone)
+				for {
+					select {
+					case <-visitCtx.Done():
+						return
+					case <-visit.Disconnected():
+					}
+					notify(NotificationView{}, attention.ErrUnavailable)
+					for delay := time.Second; ; delay = min(2*delay, 30*time.Second) {
+						timer := time.NewTimer(delay)
+						select {
+						case <-visitCtx.Done():
+							timer.Stop()
+							return
+						case <-timer.C:
+						}
+						if visit.Reconnect(visitCtx) == nil {
+							break
+						}
+					}
+				}
+			}()
+			defer func() {
+				cancelVisit()
+				<-visitDone
+				endCtx, cancelEnd := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+				endErr := visit.End(endCtx)
+				cancelEnd()
+				if endErr != nil {
+					notify(NotificationView{}, endErr)
+				} else {
+					visitEnded = true
+				}
+				if err := visit.Close(); err != nil {
+					notify(NotificationView{}, err)
+				}
+			}()
+		}
+	} else {
+		store, err = fleetclient.DefaultNotificationStore()
+		if err != nil {
+			notify(NotificationView{}, err)
+		}
+	}
 	connection, failure := client.OpenTerminal(ctx, request)
 	if failure != nil {
 		return errors.New(failure.Code)
@@ -71,26 +153,22 @@ func Run(ctx context.Context, client *fleetclient.Client, request fleetclient.Re
 			result = errors.Join(result, errors.New("terminal restoration failed"))
 		}
 	}()
-	presented := false
-	defer func() {
-		if !presented {
-			return
-		}
-		if notifications == nil {
-			changed(fleetclient.NotificationSnapshot{}, fleetclient.ErrNotificationsUnavailable)
-			return
-		}
-		snapshot, err := notifications.EndVisit(key)
-		changed(snapshot, err)
-	}()
 	return stream(ctx, connection, input, output, columns, rows, resized, func() (int, int, error) { return term.GetSize(int(output.Fd())) }, func() {
-		presented = true
-		if notifications == nil {
-			changed(fleetclient.NotificationSnapshot{}, fleetclient.ErrNotificationsUnavailable)
+		if runtime.GOOS == "darwin" {
+			if visit == nil {
+				return
+			}
+			if err := visit.Presented(ctx, token); err != nil {
+				notify(NotificationView{}, err)
+			}
 			return
 		}
-		snapshot, err := notifications.Presented(key)
-		changed(snapshot, err)
+		if store == nil || token.Generation == 0 {
+			return
+		}
+		device, err := store.Presented(key, foreground, token)
+		view.Device = device
+		notify(view, err)
 	})
 }
 

@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentcontrol"
+	"github.com/NielsdaWheelz/skidbladnir/internal/attention"
 	"github.com/NielsdaWheelz/skidbladnir/internal/fleetclient"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -273,7 +274,7 @@ func (m *model) usageLines() []string {
 		}
 		lines = append(lines, bold.Styled(peer.machine.Label))
 		if peer.failure != nil {
-			lines = append(lines, wrapped("unavailable ("+singleLine(peer.failure.Code)+"); showing last reports", width)...)
+			lines = append(lines, wrapped("unavailable ("+attention.SingleLine(peer.failure.Code)+"); showing last reports", width)...)
 		}
 		if peer.profiles == nil {
 			state := "checking profile usage"
