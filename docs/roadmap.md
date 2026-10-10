@@ -5,7 +5,7 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## tmux workspace recovery — source implemented; reboot checks deferred
+## tmux workspace recovery — deployed; reboot checks deferred
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers
 30-second checkpoints and automatic reconstruction after reboot or tmux loss.
@@ -16,9 +16,11 @@ dev-server must retire resurrect/continuum before skid becomes the recovery owne
 [qualification](session-recovery.md#qualification) covers isolated native
 darwin/linux, gateway/desktop and physical-phone boundaries. actual linux and mac
 reboots are owner-deferred; [remaining acceptance](issues/session-recovery-reboot.md)
-records the check. release and production-fleet cutover remain separate.
+records the check. v0.14.0 is installed on all three hosts; each has a workspace
+checkpoint, and the retired plugins were absent before activation. installation
+does not qualify the deferred reboots.
 
-## native notifications — source implemented; release and deployment pending
+## native notifications — deployed; physical acceptance remains open
 
 2026-10-02: [the spec and plan](native-notifications.md) defines equal native
 alerts on macbook/android, exact-session clicks, device-local acknowledgement
@@ -27,7 +29,10 @@ uses private encrypted ntfy/unifiedpush hints and mac an authenticated revision
 stream. source is implemented.
 [qualification](native-notifications-qualification.md) separates source checks
 from required native-device acceptance. [remaining work](issues/native-notifications.md)
-is open; release and fleet deployment remain separate.
+is open. the 2026-10-09 v0.14.0 cutover installed the signed mac app, devbox
+observer/private ntfy services, notification-enabled desktop configs and android
+update. phone notification enrollment requires reconnecting with a fresh v2
+fleet qr and configuring the production ntfy distributor.
 
 ## desktop profile usage
 
@@ -42,8 +47,9 @@ is a separate follow-up, not a first-version gate.
 
 2026-10-07: the [source revision](profile-usage.md#acceptance) centralizes desktop
 quota reads on devbox and puts remaining percentages in the footer. dev-server
-enables claude publication only on devbox. isolated source/installer checks pass;
-[installed cutover](issues/devbox-usage-cutover.md) remains pending.
+enables claude publication only on devbox. isolated source/installer checks pass.
+v0.14.0 is installed fleet-wide and devbox publication is enabled; the natural
+callback and visible footer [acceptance](issues/devbox-usage-cutover.md) remain open.
 
 ## jarvis orchestration — implemented; cutover pending
 
@@ -265,9 +271,14 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.13.0` from
-`b2ea62aea57a87668835eefbcaebcffcf5761559`; it does not assert the
+source and artifact digests. it pins immutable `v0.14.0` from
+`111c91b4c97e70ee154dae3032d011533951f55e`; it does not assert the
 installed version of any host or phone.
+
+2026-10-09 deployment independently verifies v0.14.0 on macbook, devbox, arch
+and the attached android phone. all three hosts pass fleet verification;
+machine identities and bearer/peer credentials are preserved. published-release
+verification passes for the exact source and all five assets.
 
 `dev-server` owns machine-local installation, services and configuration.
 `scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.

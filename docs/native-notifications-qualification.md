@@ -1,8 +1,10 @@
 # native notification qualification
 
-2026-10-09, `feat/native-notifications`; source work is uncommitted. native
-boundaries are qualified only within the artifacts below. complete acceptance
-and normal-fleet deployment remain pending; this record changes no requirement in the [spec](native-notifications.md).
+initial 2026-10-09 qualification used uncommitted `feat/native-notifications`
+source. native boundaries are qualified only within the artifacts below. the
+later signed v0.14.0 fleet cutover is recorded here; complete physical/rollback
+acceptance remains open. this record changes no requirement in the
+[spec](native-notifications.md).
 
 useful qualification states the current result, tested source/artifact, concrete
 observation and remaining boundary. immutable private receipts and complete input
@@ -228,7 +230,7 @@ neutral-window launch warning or historical notice disappearance. the earlier
 mac watchdog-only shutdown stays unavailable; separate restoration `0220b40a`
 proves native zero/normal stop/protected cleanup without promoting that run.
 
-## installed release baseline
+## pre-cutover installed release baseline
 
 read-only stock metadata identifies macbook and devbox current generations as
 `v0.13.0`, source `b2ea62aea57a87668835eefbcaebcffcf5761559`. measured binaries are
@@ -241,6 +243,29 @@ matching previous-pair receipts; they are not admitted rollback targets.
 capture the current admitted baseline before candidate cutover. arch's installed
 baseline and actual coordinated rollback remain unverified. metadata inspection
 is preparation, not a rollback pass.
+
+## signed v0.14.0 fleet cutover
+
+2026-10-09: the owner authorized release and deployment to all three hosts and
+the attached android phone. immutable v0.14.0 uses exact source
+`111c91b4c97e70ee154dae3032d011533951f55e`, with successful hosted engineering
+verification. `scripts/check published-release` passes downloaded-source,
+five-asset, signer, version and committed-pin validation.
+
+managed installation and `scripts/fleet verify` pass on macbook, devbox and arch.
+the signed mac app/producer and devbox observer/ntfy services are healthy; each
+host has a workspace checkpoint. notification-enabled desktop configs retain
+machine identities, bearer/peer credentials and ownership, with exact old configs
+saved. devbox's three baseline session/provider identities are unchanged. macbook
+session references changed while the owner switched sessions, so its inventory
+comparison does not qualify preservation.
+
+android installation uses `adb install -r`; stock package metadata reports
+`0.14.0` / `14000` and unchanged first-install time. no app data reset, pairing
+injection, automatic launch or physical delivery check was performed. phone
+notification enrollment requires a fresh v2 reconnect-fleet qr and production
+ntfy distributor setup. this cutover does not qualify the deferred physical
+smoke, current-bundle delivery/click or complete previous-release rollback.
 
 ## remaining acceptance
 
@@ -274,13 +299,11 @@ content-free receipts remain. no new delivery test is required.
   [follow-up](issues/native-notifications-phone-sound.md); audio stays muted.
   channel high, default sound/vibration and no bypass are observed settings,
   not audible proof. existing policy/recovery witnesses retain their limits.
-- exact current coordinated signed release and complete
-  previous-release rollback are `NOT_RUN`; fold the current mac bundle's
-  permission/delivery/click into this final verification.
+- exact current coordinated signed release passes the cutover checks above;
+  complete previous-release rollback remains `NOT_RUN`. fold the current mac
+  bundle's permission/delivery/click into this final verification.
 
 engineering success qualifies neither unperformed devices nor release behaviour.
-release/deployment require separate authorization; no complete acceptance claim
-follows from this record.
-
-permanent fleet deployment remains pending separate authorization; it is distinct
-from the retained release/rollback verification.
+no complete acceptance claim follows from this record. permanent fleet deployment
+was separately authorized and completed; physical and rollback acceptance remain
+distinct.

@@ -26,13 +26,29 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.13.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.13.0).
+current published generation: [v0.14.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.14.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
 records isolated source checks, artifact verification, installed native lifecycles
 and owner-confirmed phone attachment. broader phone-native interaction retains
 its separate acceptance scope.
+
+2026-10-09 cutover: immutable v0.14.0, exact source
+`111c91b4c97e70ee154dae3032d011533951f55e`, passes published-release verification
+with all five downloaded assets. managed installation and fleet verification
+pass on macbook, devbox and arch. the attached phone is updated in place to
+`0.14.0` / `14000`, retaining its original install time. machine identities,
+bearers and desktop peer credentials are unchanged; each old client config is
+saved before notification provisioning. devbox's three baseline session/provider
+identities remain unchanged. the owner changed macbook sessions during rollout,
+so before/after macbook inventory is not a preservation witness.
+
+the signed mac app/producer and devbox observer/ntfy services are healthy.
+android notification enrollment needs a fresh v2 fleet qr through reconnect fleet
+and production ntfy setup; existing gateway pairings remain intact. current-bundle
+physical delivery/click, mac-asleep/locked-phone delivery and full prior-release
+rollback remain separate [acceptance](issues/native-notifications.md).
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
@@ -101,9 +117,9 @@ mapping; no provider-binary, tailscale, shared-home, or jarvis removal.
 `scripts/fleet provision-clients` distributes skid's private client config only
 to the macbook, devbox and arch users. jarvis uses the skid cli with its own
 private client config supplied by jarvis deployment; it is not a provisioning target.
-run this once after initial gateway setup, and again after
-rotating a host bearer. desktop setup is incomplete until every host has the
-mode-0600 three-peer config. `scripts/fleet verify` checks both public links and
+run this once after initial gateway setup, after rotating a host bearer, and for
+the v0.14.0 notification-config cutover. desktop setup is incomplete until every
+host has the mode-0600 three-peer config. `scripts/fleet verify` checks both public links and
 uses each installed `skid list --json` to exercise real config admission and
 complete fleet inventory, discarding its contents. this is a bounded read of
 live sessions; no session is created, attached, resized or closed. native desktop
