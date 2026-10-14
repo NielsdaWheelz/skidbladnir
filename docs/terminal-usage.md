@@ -1,9 +1,7 @@
 # terminal usage and consolidated profile disclosure
 
-accepted 2026-10-14; source implemented in isolated `codex/terminal-usage`
-worktrees for skid and dev-server. qualification below records the exercised
-boundaries; coordinated release/deployment remains separate. this document
-supersedes the claude acquisition,
+accepted 2026-10-14; source and installed v0.15.0 qualification below record the
+exercised boundaries. this document supersedes the claude acquisition,
 devbox-only sourcing and presentation clauses in [profile usage](profile-usage.md).
 that document retains codex's native acquisition, normalization and clock rules.
 [terminal observation](terminal-observation.md) retains status/control semantics;
@@ -280,7 +278,7 @@ read-only adversarial reviewers write neither tests nor production files.
 
 | owner | exclusive paths/responsibility |
 | --- | --- |
-| root integrator | `docs/terminal-usage.md`, `docs/profile-usage.md`, `docs/architecture.md`, `docs/roadmap.md`, `docs/desktop-browser.md`, `docs/terminal-observation.md`, `docs/terminal-agent-control.md`, `docs/issues/terminal-usage-cutover.md`; shared value in `internal/sessions/types.go` and `internal/sessions/usage.go`; compose `internal/agentcontrol/terminal.go`, native-only `usage.go`; session/native dto in `internal/gateway/dto.go`, `usage.go`; final integration/evidence |
+| root integrator | `docs/terminal-usage.md`, `docs/profile-usage.md`, `docs/architecture.md`, `docs/roadmap.md`, `docs/desktop-browser.md`, `docs/terminal-observation.md`, `docs/terminal-agent-control.md`; shared value in `internal/sessions/types.go` and `internal/sessions/usage.go`; compose `internal/agentcontrol/terminal.go`, native-only `usage.go`; session/native dto in `internal/gateway/dto.go`, `usage.go`; final integration/evidence |
 | classifier | `internal/agentcontrol/claude.go`, `detect.go`, optional focused extractor file, `frames_test.go`, `testdata/frames/`; exact grammar and unchanged status/composer/rules |
 | go client | `internal/fleetclient/response.go`, `client.go`, `usage.go`; strict shared transport, per-host receipt times, codex-only native decoding, explain clearing |
 | android protocol | `android/app/src/main/java/dev/niels/skidbladnir/ProductModel.kt`; strict inventory/create/shell acceptance; no phone display |
@@ -341,14 +339,14 @@ a pass. authored dummy data may be retained in fixtures; actual evidence contain
 only categories, typed outcomes, call counts and timings, never screen bytes,
 prompts, real percentages, homes, account data or credentials.
 
-## final state and open work
+## final state
 
 claude usage is ephemeral terminal evidence. codex remains a native account read.
 the desktop owns consolidated latest-received selection; gateways remain
 independent. no quota file, publisher, forwarding or new lifecycle owner remains.
 legacy qualification remains historical and does not satisfy this acceptance.
-[cutover work](issues/terminal-usage-cutover.md) owns the separate coordinated
-installed cutover. the old inactive-claude acquisition and devbox-publication
+the installed qualification below closes the coordinated cutover. the old
+inactive-claude acquisition and devbox-publication
 issues are retired by explicit supersession; inactivity stays an
 accepted unknown, not a request to add an account getter.
 
@@ -398,3 +396,45 @@ and pure replay remain. final `go test ./internal/agentcontrol` and
 `scripts/check verify` passed after retirement, including go vet/build and
 android lint/build. release, fleet activation
 and physical-device acceptance are `NOT_RUN` under this source-only implementation.
+
+## installed qualification
+
+2026-10-14: immutable [v0.15.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.15.0),
+source `f92cb454b2484a5a0ddf88f14d385ab6b16ccbe1`, passes signed artifact and
+published-release verification for all five assets. exact source passes
+[hosted engineering verification](https://github.com/NielsdaWheelz/skidbladnir/actions/runs/38636265945).
+merged dev-server `6339edc3a923e3f926e855e60a0f07c7814b2ede` owns activation;
+upstream and deployment pins agree. managed gateway installation and the scoped
+existing claude settings installer ran on macbook, devbox and arch.
+
+each installed cli and running gateway maps to the exact release/source;
+`scripts/fleet verify` passes all three hosts. the shared display-only formatter
+and both managed settings match on each host. authenticated native usage has only
+the three declared codex profiles and the strict new schema. ordinary inventory
+contains no claude usage windows on any host: accepted omission, not positive
+stock rendering or inactive-account coverage.
+
+each installed desktop passes table → usage → table → clean quit in an 80×40
+plain pty: four consolidated profile headings, three native source disclosures,
+one explicit claude unknown, codex remaining and claude used copy, and no legacy
+per-host usage page. the original v0.14.0 mac client exposed the legacy title and
+failed the target assertion before installation. quota pooling/filter/scroll
+semantics retain the separately recorded source qualification. probe review
+corrected viewport and undrained-exit oracles; authored controls reject legacy,
+malformed, duplicate and empty-source displays. all temporary probes are removed.
+
+all 14/3/0 original macbook/devbox/arch session lifetimes and observed provider
+bindings survive. sampled auth, gateway identity, host/client configuration and
+unrelated provider settings are unchanged. macbook gained one session; its mutable
+claude global state also changed, recorded separately rather than treated as a
+preservation witness. provider homes/history were not relocated or removed;
+this claim rests on the reviewed managed write allowlist, not history digests.
+macbook's managed retention setting converged to the existing 36500-day policy;
+unrelated settings remained intact. only the fixed obsolete skid quota files in
+configured claude homes were removed; no runtime cleanup path exists.
+
+the connected android device updates in place to `0.15.0` / `15000`; its installed
+apk digest matches the published pin and its original install time remains.
+normal paired inventory renders without an enrollment prompt or protocol error.
+phone quota presentation, new provider turns, reboot/recovery, native notification
+delivery and rollback are outside this rollout's exercised boundary.

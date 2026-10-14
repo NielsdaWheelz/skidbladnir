@@ -26,7 +26,7 @@ original github repository id: `1386409483`; reclaimed name:
 verified; neither remains a blocker. historical namespace handback is not an
 installation prerequisite.
 
-current published generation: [v0.14.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.14.0).
+current published generation: [v0.15.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.15.0).
 [`release-pin.json`](../release-pin.json) owns its source and artifact digests;
 [`deployment/native-control/helper.json`](../deployment/native-control/helper.json)
 names its native helper, which follows its repository unpinned. [current qualification](native-agent-qualification.md)
@@ -49,6 +49,13 @@ android notification enrollment needs a fresh v2 fleet qr through reconnect flee
 and production ntfy setup; existing gateway pairings remain intact. current-bundle
 physical delivery/click, mac-asleep/locked-phone delivery and full prior-release
 rollback remain separate [acceptance](issues/native-notifications.md).
+
+2026-10-14: v0.15.0 is installed on macbook, devbox, arch and the connected
+android phone through managed paths.
+[terminal usage installed qualification](terminal-usage.md#installed-qualification)
+owns exact artifact/service checks, session/config preservation and their limits.
+this in-place upgrade requires no credential rotation, client reprovisioning or
+phone re-enrollment; notification and reboot acceptance remain separate.
 
 historical restoration release: [v0.9.0](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.9.0),
 immutable and final, from `580e0992d1ee0d7334cefc6561e7f55a5836baf5`.
