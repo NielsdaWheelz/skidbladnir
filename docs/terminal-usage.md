@@ -354,15 +354,19 @@ accepted unknown, not a request to add an account getter.
 
 ## qualification
 
-2026-10-14 qualification: skid's `codex/terminal-usage` change was exercised on
-`8551cd3f9345429053c3d606d425746cc15ad3f9`; sibling dev-server worktree of the same
-branch name, based on `1e2fe9c4aa72fa1b0b72eba03783acfa04983fd4`. the implementation
-commit contains this record. source checks do not qualify an installed release.
+2026-10-14 qualification: skid implementation snapshot `6c9abc8` was exercised in
+a worktree based on `8551cd3f9345429053c3d606d425746cc15ad3f9`. sibling dev-server
+snapshot `9c67f11` was exercised in a worktree based on
+`1e2fe9c4aa72fa1b0b72eba03783acfa04983fd4`. source checks do not qualify an
+installed release.
 
 pr integration rebases this change onto `362ac1f`, preserving the intervening
 desktop-row and dashboard changes. quota mechanisms and the shared decoder
 changes are unchanged; only documentation ownership needed conflict resolution.
-the merged composition is checked by detector replay and engineering verification.
+the merged composition passes detector replay, engineering verification and a
+temporary pure-model 80×24 render check: both exact quota footer rows, overflowing
+grouped/remote/outage rows, selected-row visibility and colour/plain bounds, with
+negative absence/offscreen controls. that temporary probe is deleted.
 earlier live results retain their original source boundary; no new live or device
 pass is claimed by the rebase.
 
