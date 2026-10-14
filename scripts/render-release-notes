@@ -55,6 +55,7 @@ render_notes() {
     "- Android signer SHA-256: \`$signer\`" \
     "- mac app signer SHA-256: \`$mac_signer\`" "" \
     "## Install" "" \
+    'for a new installation, complete **first setup only** below before step 2 verification.' "" \
     '1. In a separate post-publication pin-control checkout, confirm its' \
     '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
     '   Pin the same tag, source, and two host-bundle' \
