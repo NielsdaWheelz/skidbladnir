@@ -605,13 +605,15 @@ deleted (§1.2), drawn in the operator's own terminal. the operator's theme supp
 the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
+[session rows](desktop-session-rows.md) owns the accepted replacement column
+content and width budgets; source and scoped darwin qualification are complete.
 
 | intensity | sgr | carries |
 | --- | --- | --- |
 | reverse | 7 | the `skid` wordmark; the form caret |
 | bold | 1 | the cursor row's name, the current view's label, keys, page titles, the rule's target |
 | plain | — | everything that must be read: names, status words, key labels, notices, the selected directory beside the new-shell action, the exclusive `needs input` view label |
-| faint | 2 | what may recede: group headings, agent, machine, table directories, the rule, the selected session's status facts, the names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
+| faint | 2 | what may recede: group headings/cells, provider/profile, remote qualifiers and unknown remote context, the rule, the selected session's status facts, the names of unavailable and checking rows, a checking row's `checking` cell, form chevrons |
 
 | accent | slot | its one meaning |
 | --- | --- | --- |

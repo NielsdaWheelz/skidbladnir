@@ -48,6 +48,9 @@ func (m *model) details(row *listedRow) [][2]string {
 	if a := current.Agent; a != nil {
 		profile := a.Label
 		if profile == "" {
+			profile = a.Profile
+		}
+		if profile == "" {
 			profile = "profile unknown"
 		}
 		facts = append(facts, [2]string{"provider", a.Provider}, [2]string{"profile", profile})
