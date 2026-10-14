@@ -49,8 +49,8 @@ dev-server must retire resurrect/continuum before skid becomes the recovery owne
 [qualification](session-recovery.md#qualification) covers isolated native
 darwin/linux, gateway/desktop and physical-phone boundaries. actual linux and mac
 reboots are owner-deferred; [remaining acceptance](issues/session-recovery-reboot.md)
-records the check. v0.14.0 is installed on all three hosts; each has a workspace
-checkpoint, and the retired plugins were absent before activation. installation
+records the check. the 2026-10-09 v0.14.0 activation left each host with a workspace
+checkpoint; retired plugins were absent before activation. installation
 does not qualify the deferred reboots.
 
 ## native notifications — deployed; physical acceptance remains open
@@ -67,7 +67,7 @@ observer/private ntfy services, notification-enabled desktop configs and android
 update. phone notification enrollment requires reconnecting with a fresh v2
 fleet qr and configuring the production ntfy distributor.
 
-## terminal usage — source cutover
+## terminal usage — deployed
 
 2026-10-14: [the accepted contract](terminal-usage.md) replaces claude's quota-file
 reader/publisher with literal used percentages from the existing terminal capture.
@@ -80,8 +80,9 @@ unsupported claude displays are accepted unknowns, not an account-getter follow-
 the contract supersedes the 2026-10-02 publication and 2026-10-07 devbox-only
 designs, retiring their inactive-source and callback issues. current source
 [qualification](terminal-usage.md#qualification) owns replacement acceptance;
-old installed results do not transfer. [coordinated deployment](issues/terminal-usage-cutover.md)
-remains separate from source implementation and qualification.
+old installed results do not transfer. [installed qualification](terminal-usage.md#installed-qualification)
+records the coordinated v0.15.0 rollout on all three hosts and android, exact
+artifacts/services, preserved original session bindings and bounded state evidence.
 
 ## jarvis orchestration — implemented; cutover pending
 
@@ -303,14 +304,15 @@ criterion. feature specs retain their detailed acceptance requirements.
 ## release and operations
 
 `release-pin.json` is the single committed owner of the published version,
-source and artifact digests. it pins immutable `v0.14.0` from
-`111c91b4c97e70ee154dae3032d011533951f55e`; it does not assert the
+source and artifact digests. it pins immutable `v0.15.0` from
+`f92cb454b2484a5a0ddf88f14d385ab6b16ccbe1`; it does not assert the
 installed version of any host or phone.
 
-2026-10-09 deployment independently verifies v0.14.0 on macbook, devbox, arch
-and the attached android phone. all three hosts pass fleet verification;
-machine identities and bearer/peer credentials are preserved. published-release
-verification passes for the exact source and all five assets.
+2026-10-14 [installed qualification](terminal-usage.md#installed-qualification)
+independently verifies v0.15.0 on macbook, devbox, arch and the attached android
+phone. all three hosts pass fleet verification; machine identities and
+bearer/peer credentials are preserved. published-release verification passes
+for the exact source and all five assets.
 
 `dev-server` owns machine-local installation, services and configuration.
 `scripts/fleet` owns `verify`, direct `invite`, and `provision-clients`.
