@@ -5,6 +5,25 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## compact dashboard chrome — prerequisite source integrated
+
+2026-10-14: [the spec and plan](dashboard-compact-chrome.md) replaces the header
+summary/direct administration with one overflow, compacts view-tab presentation
+within existing touch targets and retains one setup action on unhealthy notices.
+the roster branch integrates its frozen source prerequisite. chrome runtime/device
+acceptance remains a separate assignment; roster measurements credit no chrome savings.
+
+## compact dashboard roster — implemented; roster acceptance verified
+
+2026-10-14: [the spec and plan](dashboard-compact-roster.md) follows compact
+chrome with smaller crests, wrapping cards, a full-width context footer, compact
+all-view headings and flat selected groups. it defines disjoint code ownership,
+content rules and temporary red/green/device acceptance. recognition uses crest
+plus names; readability outranks fixed height.
+[qualification](dashboard-compact-roster.md#verification) records passing phone
+probes, owner-confirmed talkback/readability and engineering checks. unchanged
+[real-session card qualification](issues/session-card-hands-on.md) remains open.
+
 ## tmux workspace recovery — deployed; reboot checks deferred
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers

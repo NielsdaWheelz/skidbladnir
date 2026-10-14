@@ -21,10 +21,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-// The dwarf-seals acceptance instrument (docs/dwarf-seals.md): every
-// catalogue seal at the 48dp acceptance size, for the hands-on pairwise
-// distinguishability pass on the physical panel. Debug build only; reads the
-// canonical catalogue mounted from the repo's catalog/ directory.
+// The dwarf-seals gallery (docs/dwarf-seals.md): every catalogue seal at the
+// shared 36dp size for reviewing crest/name pairs on the physical panel.
+// Debug build only; reads the canonical catalogue mounted from catalog/.
 
 @Serializable
 private data class GalleryEntry(val key: String, val displayName: String)

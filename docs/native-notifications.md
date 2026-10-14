@@ -504,8 +504,10 @@ local signing does not provide public gatekeeper distribution.
 [apple signing contract](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
 [local certificates](https://developer.apple.com/library/archive/technotes/tn2206/).
 
-android reuses the dashboard notice panel with `set up notifications` and
-`open notification settings` actions. mac opens one small native notification
+under [compact dashboard](dashboard-compact-chrome.md), android’s unhealthy notice
+retains `set up notifications`; routine settings lives in the dashboard overflow.
+the setup dialog retains `open notification settings`. health, enrollment and
+transport are unchanged. mac opens one small native notification
 setup window only through `skid notifications setup`; app activation stays quiet.
 include current health, permission/settings
 action and instructions to keep tailscale/ntfy configured. successful fleet

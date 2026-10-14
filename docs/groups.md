@@ -481,15 +481,17 @@ reconciles inventory. no per-group history, disk state or terminal-composition s
 
 phone collection controls and machines/pressure disclosure belong to
 [session views](session-views.md#phone-presentation-and-machine-scope-removal).
-all/group projections retain nonempty full-span headings, including unassigned.
+under [compact roster](dashboard-compact-roster.md), `all` retains nonempty full-span headings, including
+unassigned; selected named/unassigned views omit the repeated heading.
 the queue is flat so group headings cannot disrupt ready-first ordering.
 
 each card offers `change group` as the first row of its overflow menu and its
 first TalkBack custom action ([session card](session-card.md#actions)), not as a
 visible card button. never shrink text/touch targets. card-body tap still opens
 terminal. the action neither attaches nor invokes the card tap. it is spoken in
-the card's context, which names session and host; the group heading names
-membership. editing is dashboard-only; terminal chrome gains no control.
+the card's context, which names session and host; the heading, selected group
+tab or needs-input group line names membership. editing is dashboard-only;
+terminal chrome gains no control.
 
 use controller-owned drafts and ordinary transient compose state, never
 `rememberSaveable` for labels, group editors, or forge membership fields.

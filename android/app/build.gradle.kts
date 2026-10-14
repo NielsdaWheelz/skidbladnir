@@ -108,7 +108,7 @@ android {
     }
 
     sourceSets.getByName("debug") {
-        // The debug-only seal gallery (48dp acceptance instrument) reads the
+        // The debug-only seal gallery shares the production renderer and reads the
         // canonical catalogue straight from the repo — no copied snapshot.
         assets.srcDir(rootProject.file("../catalog"))
     }

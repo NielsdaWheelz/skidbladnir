@@ -1122,7 +1122,8 @@ internal fun sessionStatusContent(
     } else session.activeCommand.takeIf { !inferred && session.connection == null }
     return SessionStatusContent(
         label,
-        label + (queueNotice?.let { "; $it" } ?: "") + (if (workContinues) "; work continues" else "") + (if (inferred) "; inferred from terminal" else "") +
+        label + (queueNotice?.let { "; $it" } ?: "") + (if (workContinues) "; work continues" else "") +
+            (if (inferred) "; inferred from terminal" else detail?.let { "; $it" } ?: "") +
             (secondary?.let { "; $it" } ?: ""),
         detail,
         if (inferred) "inferred from terminal" else null,

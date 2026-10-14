@@ -444,14 +444,14 @@ private fun TerminalSessionSheet(
             }
             Column(Modifier.padding(top = 12.dp)) {
                 // The card's lifetime verbs follow the session's own, through
-                // the card's rows (SessionActions.kt), so order, labels and
+                // the card's rows (ActionMenu.kt), so order, labels and
                 // tone cannot drift between the two surfaces.
-                SessionActionRows(
+                ActionRows(
                     listOf(
-                        SessionAction("rename", renameEnabled, destructive = false, controller::openRename),
-                        SessionAction("new terminal on $owner", shellEnabled, destructive = false,
+                        MenuAction("rename", renameEnabled, destructive = false, controller::openRename),
+                        MenuAction("new terminal on $owner", shellEnabled, destructive = false,
                             if (session.connection == null) controller::newTerminalHere else controller::openSourceTerminalForge),
-                        SessionAction(
+                        MenuAction(
                             if (textSize is TerminalTextSizeState.Ready) "text size · ${textSize.nominalSp}" else "text size",
                             sheetFree && textSize is TerminalTextSizeState.Ready && terminalPageLive(state.connection),
                             destructive = false,

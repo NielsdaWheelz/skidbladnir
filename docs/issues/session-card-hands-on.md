@@ -1,32 +1,23 @@
-# session card hands-on acceptance
+# remaining real-session card qualification
 
-problem: the compact [session card](../session-card.md), its overflow menu,
-the one-column phone grid and the restored full-height grid under the
-floating create seal have not been seen on the phone.
+problem: opening/cancelling both destructive confirmation journeys and an
+owner-operated terminal-return journey remain unobserved against real sessions
+on the phone. these existing control paths were unchanged by compact roster.
+status: `NOT_RUN`; this does not block the new roster’s completed layout checks.
 
-impact: the source was checked only by a temporary Robolectric render and
-semantics harness on 2026-10-02. renders do not establish touch feel, the
-menu's real popup placement near screen edges, TalkBack traversal and
-custom actions on a device, or how the seal overlaps a card mid-scroll.
+impact: source review and captured-callback probes preserve the same target,
+enablement and confirmation owners, but do not establish real-session attachment
+or confirmation presentation.
 
-evidence: `SessionCard.kt`, `SessionActions.kt` and `DashboardDwarfGrid` in
-`DashboardScreen.kt`. the old 84dp viewport exclusion below the grid (reported
-by the user on 2026-10-02 as an unwanted bottom strip) is now trailing content
-clearance, so cards use the space beside the seal.
+evidence: [roster verification](../dashboard-compact-roster.md#verification)
+records the on-phone old/new geometry, renders, native touch/fence checks, exact
+restoration and actual forge clearance. the owner confirmed talkback speech,
+body-to-overflow navigation and compact crest/name readability. the automatic
+native-event recorder was inconclusive during concurrent chrome tests; no pass
+is claimed for it.
 
-reproduction: install a build carrying this change and open the dashboard
-with several sessions across machines and groups.
-
-resolved when, on the phone, with current-turn device approval:
-
-- a common card is one compact row; `All` shows the machine and a machine
-  filter hides it;
-- the overflow opens beside its card, rows run change group, send interrupt,
-  a rule, then the two Ember closures; both closures confirm; a fenced
-  machine disables the overflow;
-- TalkBack reads one card sentence, offers the four custom actions, then the
-  overflow button;
-- at large text and in landscape nothing clips, and the last row's overflow
-  scrolls clear of the seal;
-- a status change from `working` to `needs permission · work continues` does
-  not move neighbouring cards (the detail ellipsizes instead).
+resolved when, with execution-turn phone approval: the owner opens each existing
+closure confirmation for an exact captured session and cancels it; confirms the
+session/host wording and unchanged menu order/fencing; then performs an ordinary
+terminal visit/return preserving its surviving semantic dashboard anchor. never
+infer attachment from an inert callback or execute a closure for this check.

@@ -116,7 +116,7 @@ are consumed unchanged.
 ## Structure and composition
 
 ```text
-fixed DashboardTopBar (Dwarves + machine summary)
+fixed DashboardTopBar (Dwarves + overflow)
 fixed view strip / machines disclosure / action and availability notices
 `- live fleet target? native pull modifier : inert collection container
    `- one always-present LazyVerticalGrid
@@ -131,6 +131,9 @@ pull -> verifyVisibleInventory()
      -> existing Fresh | Stale | Unreachable reduction and admission
      -> awaited read tickets empty -> indicator hides
 ```
+
+[compact chrome](dashboard-compact-chrome.md) owns header/tab presentation.
+pull behavior stays here.
 
 the same lazy grid renders empty and populated collections. fixed chrome does
 not move. a `MachineAccess.Ready` fleet target is the foreground ui invariant for

@@ -14,6 +14,13 @@ placement clauses in the linked specifications. [the roadmap](roadmap.md)
 tracks delivery; [qualification](#qualification) records the implemented source
 and its verified boundaries.
 
+2026-10-14: [compact dashboard chrome](dashboard-compact-chrome.md) owns the
+accepted replacement header, tab styling and overflow entry to machines;
+its frozen source is integrated as a roster prerequisite, with separate chrome
+acceptance. membership, navigation and restoration stay here.
+[compact roster](dashboard-compact-roster.md) separately owns the accepted card
+layout and heading/spacing below; source is implemented and qualification is linked there.
+
 [terminal observation](terminal-observation.md) retains status facts, copy,
 presentation precedence and the strict request predicate used by cli wait.
 [terminal attention](reply-notifications.md) retains ready memory, identities,
@@ -167,8 +174,9 @@ still require explicit group selection before creation.
 ## phone presentation and machine scope removal
 
 replace the machine chips, group-selector sheet trigger and needs-input toggle
-with one horizontally scrolling single-selection strip. keep the current theme,
-clear selection, 48dp targets and full spoken names/selected semantics. selectors
+with one horizontally scrolling single-selection strip. tab styling follows
+[compact chrome](dashboard-compact-chrome.md); retain clear selection, 48dp
+targets and full spoken names/selected semantics. selectors
 remain outside pull-to-refresh. labels stay on one line, with bounded visual
 ellipsis for labels wider than the available strip; speech retains the full
 label. reveal the selected tab after restoration or programmatic selection using
@@ -177,12 +185,13 @@ strip while the user scrolls. exact horizontal offset is not persisted.
 
 needs input uses the existing 300dp-minimum adaptive card grid, globally ordered
 by tier. group headings cannot precede ready-first order. in this view only, add one quiet
-`group: <label>` line after the card's where line, or `unassigned`; use the
+`group: <label>` line after the card's context footer, or `unassigned`; use the
 existing data typography, one visual line with ellipsis and the full group once
 in the existing body speech node. add no separate action or badge. this costs
 one card line in exchange for group context without interleaving priority tiers.
-all/group views retain their headings and existing card geometry. every phone
-card now shows its machine, including in a named group.
+the accepted [compact roster](dashboard-compact-roster.md) replaces card geometry
+and keeps headings only in `all`; named/unassigned views use their selected tab
+as scope. every phone card shows its machine, including in a named group.
 
 remove machine scope from `DashboardEntryState`, collection projection,
 restoration readiness, pull verification, forge gating/defaults and recovery
@@ -210,8 +219,9 @@ intermediate state. completion callbacks may settle a pull only for their curren
 credential generation and poll runtime; an old runtime still releases its own lane.
 this adds no poll or store and does not make failed hosts wait for recovery.
 
-replace the top-bar `reconnect fleet` button with `machines`, opening one small
-machine sheet. it lists the accepted machines with their existing pressure
+the dashboard overflow's `machines` item opens one small machine sheet under
+the [compact chrome](dashboard-compact-chrome.md) target. it lists the accepted
+machines with their existing pressure
 rails and exceptional access/pressure state, and includes `reconnect fleet`.
 the machine list scrolls within the available sheet height, including at large text.
 tapping a rail opens that machine's existing pressure details; details back
