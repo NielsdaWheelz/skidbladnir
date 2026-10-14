@@ -67,22 +67,21 @@ observer/private ntfy services, notification-enabled desktop configs and android
 update. phone notification enrollment requires reconnecting with a fresh v2
 fleet qr and configuring the production ntfy distributor.
 
-## desktop profile usage
+## terminal usage — source cutover
 
-2026-10-02: [the accepted spec and plan](profile-usage.md) adds a compact main-tui
-quota summary and expandable per-profile disclosure. codex uses existing account
-daemon reads; claude exports structured statusline quota reports. usage remains
-independent of inventory, terminal status and account admission.
-[source and installed qualification](profile-usage.md#acceptance) passed on
-macbook, devbox and arch with the admitted v0.13.0 generation.
-[fresh inactive-claude usage](issues/claude-inactive-profile-usage.md)
-is a separate follow-up, not a first-version gate.
+2026-10-14: [the accepted contract](terminal-usage.md) replaces claude's quota-file
+reader/publisher with literal used percentages from the existing terminal capture.
+codex retains [native account reads](profile-usage.md). both existing desktop lanes
+read all paired hosts; receipt order selects one whole observation per profile,
+with source/uncertainty in one details record. table filters do not affect quota.
+the owner guarantees the same account per profile across hosts. inactive or
+unsupported claude displays are accepted unknowns, not an account-getter follow-up.
 
-2026-10-07: the [source revision](profile-usage.md#acceptance) centralizes desktop
-quota reads on devbox and puts remaining percentages in the footer. dev-server
-enables claude publication only on devbox. isolated source/installer checks pass.
-v0.14.0 is installed fleet-wide and devbox publication is enabled; the natural
-callback and visible footer [acceptance](issues/devbox-usage-cutover.md) remain open.
+the contract supersedes the 2026-10-02 publication and 2026-10-07 devbox-only
+designs, retiring their inactive-source and callback issues. current source
+[qualification](terminal-usage.md#qualification) owns replacement acceptance;
+old installed results do not transfer. [coordinated deployment](issues/terminal-usage-cutover.md)
+remains separate from source implementation and qualification.
 
 ## jarvis orchestration — implemented; cutover pending
 

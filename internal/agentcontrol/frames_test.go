@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/NielsdaWheelz/skidbladnir/internal/agentruntime"
+	"github.com/NielsdaWheelz/skidbladnir/internal/sessions"
 	tmuxclient "github.com/NielsdaWheelz/skidbladnir/internal/tmux"
 )
 
@@ -36,6 +38,7 @@ func TestFrames(t *testing.T) {
 			Expect    struct {
 				Activity, Interaction, Notice, Composer, Reason string
 				Rules                                           []string
+				Usage                                           *sessions.TerminalUsage
 			} `json:"expect"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
@@ -50,6 +53,9 @@ func TestFrames(t *testing.T) {
 		want := []string{frame.Expect.Activity, frame.Expect.Interaction, frame.Expect.Notice, frame.Expect.Composer, frame.Expect.Reason}
 		if strings.Join(status, " ") != strings.Join(want, " ") {
 			t.Errorf("%s: status %v, want %v", frame.ID, status, want)
+		}
+		if !reflect.DeepEqual(got.usage, frame.Expect.Usage) {
+			t.Errorf("%s: terminal usage does not match authored expectation", frame.ID)
 		}
 		var rules []string
 		for _, rule := range got.rules {

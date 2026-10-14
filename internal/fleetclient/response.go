@@ -49,6 +49,7 @@ type ExecutionContext struct {
 }
 type Session struct {
 	TerminalStatus     sessions.TerminalStatus    `json:"terminalStatus"`
+	TerminalUsage      *sessions.TerminalUsage    `json:"terminalUsage,omitempty"`
 	ActivePaneID       string                     `json:"activePaneId"`
 	Name               string                     `json:"name"`
 	NameMode           string                     `json:"nameMode"`
@@ -182,6 +183,7 @@ type Peer struct {
 	Machine    string    `json:"machine"`
 	OK         bool      `json:"ok"`
 	ObservedAt string    `json:"observedAt,omitempty"`
+	ReceivedAt time.Time `json:"-"`
 	Profiles   []Profile `json:"profiles,omitempty"`
 	Sessions   []Session `json:"sessions,omitempty"`
 	Recovery   *Recovery `json:"recovery,omitempty"`
@@ -286,6 +288,7 @@ type hostAgent struct {
 }
 type hostSession struct {
 	TerminalStatus sessions.TerminalStatus `json:"terminalStatus"`
+	TerminalUsage  *sessions.TerminalUsage `json:"terminalUsage,omitempty"`
 	ActivePaneID   string                  `json:"activePaneId"`
 	TmuxID         string                  `json:"tmuxId"`
 	TmuxName       string                  `json:"tmuxName"`
@@ -322,7 +325,7 @@ type hostObservedSession struct {
 
 func (s hostSession) project(machine string) Session {
 	ref := Reference{Machine: machine, TmuxID: s.TmuxID, IdentityToken: s.IdentityToken, PaneID: s.ActivePaneID}
-	row := Session{TerminalStatus: s.TerminalStatus, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
+	row := Session{TerminalStatus: s.TerminalStatus, TerminalUsage: s.TerminalUsage, ActivePaneID: s.ActivePaneID, Group: s.Group.label, Name: s.TmuxName, NameMode: s.NameMode, TerminalHandle: terminalHandle(ref), CWD: s.CWD, ActiveCommand: s.ActiveCommand, LaunchProfile: s.LaunchProfile, AttachedClients: *s.AttachedClients, Connection: s.Connection, Conversation: s.Conversation}
 	if s.Agent != nil {
 		row.Agent = &Agent{Provider: s.Agent.Provider, Profile: s.Agent.Profile, ProviderSession: s.Agent.ProviderSession, PID: int64(s.Agent.PID), StartIdentity: s.Agent.StartIdentity}
 	}
@@ -541,6 +544,9 @@ func validSession(s hostSession) bool {
 		return false
 	}
 	a := s.Agent
+	if s.TerminalUsage != nil && (a == nil || a.Provider != "Claude" || s.Connection != nil || !s.TerminalUsage.ValidFor(s.TerminalStatus)) {
+		return false
+	}
 	return a == nil || slices.Contains([]string{"Codex", "Claude"}, a.Provider) && a.PID > 0 && a.PaneID == s.ActivePaneID && a.StartIdentity != ""
 
 }

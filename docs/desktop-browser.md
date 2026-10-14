@@ -5,10 +5,12 @@ row content, width rules and info's known-profile/missing-label wording.
 source and [scoped darwin qualification](issues/desktop-browser-runtime-acceptance.md#session-row-qualification)
 are complete; the broader historical gaps below remain open.
 
-[profile usage](profile-usage.md) owns the compact quota summary and read-only
-`u usage` disclosure, with independent profile reads on the existing tick.
+[terminal usage](terminal-usage.md) owns the compact quota summary and read-only
+`u usage` disclosure. both existing inventory/native lanes read all machines
+independently of table filters; one whole latest-received observation supplies
+each profile. `ctrl-r` refreshes both lanes from the table and usage page.
 that capability extends this document's api/state limit only for its accepted
-route, replaceable report and presentation.
+session field, native profile route and presentation.
 
 2026-10-02: [session views](session-views.md) owns the exclusive needs-input view,
 queue membership/order and navigation keys. source implements this cutover;
@@ -244,8 +246,8 @@ unavailable`); the longest ordinary fresh label is 18 cells, while the longest
 queue menu/notice label is 30 cells. the accepted row budget preserves them
 whole; `checking` requires eight cells.
 
-below the table, top to bottom: scoped notices; the fixed-devbox remaining-quota
-summary under [profile usage](profile-usage.md); the rule, with the target set into
+below the table, top to bottom: scoped notices; the consolidated codex remaining
+and claude used summary under [terminal usage](terminal-usage.md); the rule, with the target set into
 it and, only when the table scrolls, the faint cursor position (`i of n`) at its
 end; the selected session's facts on one line:
 `unavailable; ` or `checking; ` for a row of an unavailable or checking host, the

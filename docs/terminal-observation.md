@@ -23,6 +23,10 @@ is implemented separately; it changes client memory and visits without changing
 observation facts or the host protocol. [attention qualification](reply-notifications.md#qualification)
 records the new runtime evidence.
 
+[terminal usage](terminal-usage.md) owns optional claude quota evidence from this
+same captured sample. its narrow formatter grammar leaves status, composer,
+reasons, rules and control admission unchanged; unsupported quota text is omission.
+
 ## 1. requirements and limits
 
 the product answers two questions independently: **is work visible? does this

@@ -20,6 +20,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 
@@ -253,6 +254,18 @@ internal fun TmuxSession.naming(): SessionNaming = when (nameMode) {
     NameMode.Manual -> SessionNaming.Manual(tmuxName)
 }
 
+/** Literal displayed usage; the provider's data age and reset times are unknown. */
+@Serializable internal data class TerminalUsage(
+    val fiveHourUsedPercent: Int? = null,
+    val sevenDayUsedPercent: Int? = null,
+) {
+    init {
+        require(fiveHourUsedPercent != null || sevenDayUsedPercent != null)
+        require(fiveHourUsedPercent == null || fiveHourUsedPercent in 0..100)
+        require(sevenDayUsedPercent == null || sevenDayUsedPercent in 0..100)
+    }
+}
+
 /** An [agent] is always the local foreground: ingress rejects one beside a [connection]. */
 internal data class TmuxSession(
     val tmuxId: String,
@@ -270,6 +283,7 @@ internal data class TmuxSession(
     val agent: AgentRuntime? = null,
     val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
+    val terminalUsage: TerminalUsage? = null,
     val connection: RemoteConnection? = null,
 )
 
@@ -398,6 +412,7 @@ private data class WireTmuxSession(
     val agent: WireAgentRuntime? = null,
     val conversation: Conversation? = null,
     val terminalStatus: TerminalStatus,
+    val terminalUsage: TerminalUsage? = null,
     val connection: WireRemoteConnection? = null,
 )
 
@@ -1134,7 +1149,12 @@ internal fun sessionStatusContent(
 
 private fun JsonObject.requireSessionOptionalFields() {
     if ("group" in this) requiredString("group")
-    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection"))
+    requireAbsentOrNonNull(setOf("launchProfile", "objective", "group", "cwd", "activeCommand", "agent", "conversation", "connection", "terminalUsage"))
+    if ("terminalUsage" in this) {
+        val usage = requiredObject("terminalUsage")
+        usage.requireAbsentOrNonNull(setOf("fiveHourUsedPercent", "sevenDayUsedPercent"))
+        require(usage.values.all { it is JsonPrimitive && !it.isString })
+    }
     (this["agent"] as? JsonObject)?.let { agent ->
         agent.requireNativeValues()
         (agent["providerSession"] as? JsonObject)?.requireAbsentOrNonNull(setOf("id", "name"))
@@ -1170,6 +1190,7 @@ private fun acceptSession(session: WireTmuxSession): TmuxSession = TmuxSession(
     agent = session.agent?.let(::acceptAgentRuntime),
     conversation = session.conversation,
     terminalStatus = session.terminalStatus,
+    terminalUsage = session.terminalUsage,
     connection = session.connection?.let { RemoteConnection(it.transport, it.id) },
 ).also(::acceptSession)
 
@@ -1198,6 +1219,14 @@ private fun acceptSession(session: TmuxSession) {
     require(session.objective?.isNotEmpty() != false)
     require(session.character.key.isNotEmpty() && session.character.displayName.isNotEmpty())
     require(session.agent == null || session.connection == null)
+    if (session.terminalUsage != null) {
+        require(session.agent?.provider == AgentProvider.Claude && session.connection == null)
+        require(session.terminalStatus.source == TerminalStatusSource.Terminal)
+        require(session.terminalStatus.reason in setOf(
+            TerminalStatusReason.Recognized, TerminalStatusReason.Partial, TerminalStatusReason.LayoutUnknown,
+            TerminalStatusReason.EvidenceClipped, TerminalStatusReason.EvidenceConflict,
+        ))
+    }
 }
 
 private fun isProviderSessionId(value: String): Boolean =

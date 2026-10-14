@@ -22,7 +22,7 @@ func (err *TerminalInputBlockedError) Error() string         { return "terminal 
 func (err *TerminalInputBlockedError) Unwrap() error         { return ErrTerminalInputBlocked }
 func (err *TerminalInputBlockedError) DispatchState() string { return "not_sent" }
 
-// Enrich sets each session's TerminalStatus from one focused observation of
+// Enrich sets each session's terminal facts from one focused observation of
 // the identity List or creation captured, never resolving it again. Every
 // session is observed concurrently under one shared two-second deadline. It
 // returns the unavailable observations, each timed from Enrich's start, for
@@ -44,12 +44,12 @@ func (service *Service) Enrich(parent context.Context, observed []sessions.Sessi
 					defects[index] = fmt.Sprintf("%v\n\n%s", defect, debug.Stack())
 				}
 			}()
-			status, _, _, err := service.sample(ctx, observed[index])
+			read, _, err := service.sample(ctx, observed[index])
 			if errors.Is(err, sessions.ErrTerminalTargetChanged) {
 				// justify-ignore-error: inventory has no target to reject, so a lifetime or pane change during capture is a failed capture; explicit operations return it.
-				status = sessions.UnknownStatus(sessions.ReasonCaptureFailed)
+				read = detection{status: sessions.UnknownStatus(sessions.ReasonCaptureFailed)}
 			}
-			observed[index].TerminalStatus = status
+			observed[index].TerminalStatus, observed[index].TerminalUsage = read.status, read.usage
 			elapsed[index] = time.Since(startedAt)
 		})
 	}
@@ -74,14 +74,14 @@ func (service *Service) Enrich(parent context.Context, observed []sessions.Sessi
 // failed, whose error is then the deadline's doing. Its only error is
 // sessions.ErrTerminalTargetChanged: inventory reports it as capture_failed and
 // explicit operations return it.
-func (service *Service) sample(ctx context.Context, session sessions.Session) (sessions.TerminalStatus, composer, Diagnostics, error) {
+func (service *Service) sample(ctx context.Context, session sessions.Session) (detection, Diagnostics, error) {
 	switch {
 	case session.ForegroundFailed():
-		return sessions.UnknownStatus(sessions.ReasonProcessFailed), composerUnknown, Diagnostics{}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonProcessFailed)}, Diagnostics{}, nil
 	case session.Connection != nil:
-		return sessions.UnknownStatus(sessions.ReasonRemoteContext), composerUnknown, Diagnostics{}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonRemoteContext)}, Diagnostics{}, nil
 	case session.Agent == nil:
-		return sessions.UnknownStatus(sessions.ReasonProviderUnrecognized), composerUnknown, Diagnostics{}, nil
+		return detection{status: sessions.UnknownStatus(sessions.ReasonProviderUnrecognized)}, Diagnostics{}, nil
 	}
 	startedAt := time.Now()
 	observation, err := service.sessions.ObservePane(ctx, session)
@@ -98,11 +98,11 @@ func (service *Service) sample(ctx context.Context, session sessions.Session) (s
 		case errors.Is(err, sessions.ErrTerminalCaptureFailed):
 			reason = sessions.ReasonCaptureFailed
 		case errors.Is(err, sessions.ErrTerminalTargetChanged):
-			return sessions.TerminalStatus{}, composerUnknown, Diagnostics{}, err
+			return detection{}, Diagnostics{}, err
 		default:
 			panic("unknown terminal observation error") // justify-defect: ObservePane's errors are closed.
 		}
-		return sessions.UnknownStatus(reason), composerUnknown, diagnostics, nil
+		return detection{status: sessions.UnknownStatus(reason)}, diagnostics, nil
 	}
 	diagnostics.Capture = &CaptureDiagnostics{Width: observation.Width, Height: observation.Height, Alternate: observation.Alternate}
 	for _, region := range observation.Regions {
@@ -119,7 +119,7 @@ func (service *Service) sample(ctx context.Context, session sessions.Session) (s
 	detected := detect(session.Agent.Provider, observation)
 	diagnostics.ElapsedMs.Classify = milliseconds(time.Since(startedAt))
 	diagnostics.Rules = detected.rules
-	return detected.status, detected.composer, diagnostics, nil
+	return detected, diagnostics, nil
 }
 
 // milliseconds is a stage's elapsed time as the diagnostics wire carries it:
@@ -142,7 +142,7 @@ func (service *Service) TerminalInspect(parent context.Context, target sessions.
 		return sessions.TerminalStatus{}, Diagnostics{}, err
 	}
 	resolveElapsed := time.Since(startedAt)
-	status, _, diagnostics, err := service.sample(ctx, session)
+	read, diagnostics, err := service.sample(ctx, session)
 	if err != nil {
 		return sessions.TerminalStatus{}, Diagnostics{}, err
 	}
@@ -150,7 +150,7 @@ func (service *Service) TerminalInspect(parent context.Context, target sessions.
 	if !diagnostics.Valid() {
 		panic("terminal inspection produced invalid diagnostics") // justify-defect: grammars name content-free rule ids, tmux reports positive dimensions and stages are clamped.
 	}
-	return status, diagnostics, nil
+	return read.status, diagnostics, nil
 }
 
 func (service *Service) TerminalRead(parent context.Context, target sessions.TerminalTarget, maxBytes int) (ReadResult, error) {
@@ -197,10 +197,11 @@ func (service *Service) TerminalSend(parent context.Context, target sessions.Ter
 	if err != nil {
 		return WriteResult{}, err
 	}
-	status, composerState, _, err := service.sample(ctx, session)
+	read, _, err := service.sample(ctx, session)
 	if err != nil {
 		return WriteResult{}, err
 	}
+	status, composerState := read.status, read.composer
 	switch {
 	case status.Source == sessions.SourceUnavailable:
 		return WriteResult{}, sessions.ErrTerminalUnavailable

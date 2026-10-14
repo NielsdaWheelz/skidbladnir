@@ -106,9 +106,7 @@ func newModel(ctx context.Context, client *fleetclient.Client, input, output *os
 	usagePeers := []usagePeer{}
 	for _, machine := range client.Machines() {
 		peers = append(peers, fleetclient.Peer{Label: machine.Label, Machine: machine.Handle})
-		if machine.Label == usageMachineLabel {
-			usagePeers = append(usagePeers, usagePeer{machine: machine})
-		}
+		usagePeers = append(usagePeers, usagePeer{machine: machine})
 	}
 	return &model{ctx: ctx, client: client, input: input, output: output, peers: peers, usagePeers: usagePeers, cursor: -1, width: 100, height: 30, refreshing: true}
 }
@@ -124,7 +122,7 @@ func (m *model) fetch() tea.Cmd {
 		var result fleetclient.Result
 		var reads sync.WaitGroup
 		reads.Go(func() { notifications, notificationErr = terminalclient.ReadNotifications(m.ctx, m.client) })
-		reads.Go(func() { result = m.client.Execute(m.ctx, fleetclient.Request{Operation: "list", Machine: machine}) })
+		reads.Go(func() { result = m.client.Execute(m.ctx, fleetclient.Request{Operation: "list"}) })
 		reads.Wait()
 		message := inventoryMsg{machine: machine, failure: result.Error, notifications: notifications, notificationErr: notificationErr}
 		if result.OK {
@@ -163,11 +161,10 @@ func (m *model) execute(request fleetclient.Request) tea.Cmd {
 }
 
 func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
-	previousScope, wasVisible := m.usageScope()
+	wasVisible := m.usageVisible()
 	previousPage := m.page
 	defer func() {
-		scope, visible := m.usageScope()
-		if previousPage != m.page || previousScope != scope || wasVisible != visible {
+		if previousPage != m.page || wasVisible != m.usageVisible() {
 			m.cancelUsage()
 			// disclosure changes read immediately. a hidden form or
 			// fullscreen visit retires work while preserving the attempt cadence.
@@ -202,10 +199,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		m.scopeReady = true
 		if message.failure != nil {
 			for index := range m.peers {
-				if m.machine == "" || m.peers[index].Label == m.machine {
-					m.peers[index].OK = false
-					m.peers[index].Error = message.failure
-				}
+				m.peers[index].OK = false
+				m.peers[index].Error = message.failure
 			}
 		} else {
 			for _, received := range message.value.Peers {
@@ -219,7 +214,8 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 					}
 					// A failed host keeps its last sessions with the time that observed them.
 					if !received.OK {
-						received.Sessions, received.ObservedAt = previous.Sessions, previous.ObservedAt
+						received.Profiles, received.Sessions = previous.Profiles, previous.Sessions
+						received.ObservedAt, received.ReceivedAt = previous.ObservedAt, previous.ReceivedAt
 					}
 					m.peers[index] = received
 					found = true
@@ -299,6 +295,9 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 		switch message.operation {
 		case "start", "shell":
 			value := message.result.Value.(fleetclient.ObservedSession)
+			// Creation is a separate sample; only inventory supplies quota receipt
+			// context. Do not attach new figures to this peer's earlier receipt.
+			value.Session.TerminalUsage = nil
 			// Confirmed creation reveals the new session in its group.
 			m.page = ""
 			if m.machine != "" && m.machine != value.Label {
@@ -472,10 +471,7 @@ func (m *model) Update(message tea.Msg) (updated tea.Model, command tea.Cmd) {
 			}
 		}
 		if key == "ctrl+r" {
-			if m.page == "usage" {
-				return m, m.refreshUsage(time.Now(), true)
-			}
-			if m.page == "" {
+			if m.page == "" || m.page == "usage" {
 				return m, tea.Batch(m.refresh(), m.refreshUsage(time.Now(), true))
 			}
 			return m, m.refresh()
