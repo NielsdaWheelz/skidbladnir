@@ -97,7 +97,7 @@ facts, in order:
   `recorded native conversation; may differ from terminal`;
   `notifications unavailable`.
 
-actions are the card menu's rows (`ActionRows` in `ActionMenu.kt`):
+actions are the shared menu rows (`ActionRows` in `ActionMenu.kt`):
 body-face `labelLarge`, at least 48 dp, wrapping rather than truncating; Bone,
 Ember when destructive, 38% when disabled, with a hairline rule before the
 destructive run. they speak their visible labels.

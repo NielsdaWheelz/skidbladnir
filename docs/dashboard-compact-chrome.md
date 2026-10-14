@@ -1,7 +1,6 @@
 # compact dashboard chrome
 
-accepted 2026-10-14; specification only, implementation pending. all new
-runtime/device acceptance is `NOT_RUN`.
+accepted and implemented 2026-10-14. executed qualification is recorded below.
 
 ## scope and outcome
 
@@ -17,7 +16,8 @@ final order: header; view strip; existing body composition. all notices retain
 their current owners/positions, including workspace-recovery notices inside
 the grid with their pull exclusion. forge remains overlaid.
 healthy chrome targets `48dp + 48dp`, before system insets and the existing
-`12dp` collection gutter. the estimated saving is `64dp`; measure it on device.
+`12dp` collection gutter. the estimated saving is `64dp`; qualification below
+records the measured footprint.
 large text and actual notices may increase height.
 
 ## target behavior and content
@@ -210,7 +210,37 @@ fixture uses only its own isolated `-L` socket. preserve installed pairings,
 notification memory and user work. evidence contains only dummy labels,
 geometry and outcomes, never terminal bytes or credentials. unavailable checks
 are `NOT_RUN`, never passes; record remaining qualification in `docs/issues/`
-if implementation finishes with unresolved acceptance. no runtime claim here.
+if implementation finishes with unresolved acceptance.
+
+## qualification
+
+2026-10-14, from the chrome prerequisite worktree (`016acd0`), with independent
+adversarial review:
+
+- **red:** unchanged actual dashboard failed on its `64dp` header, missing
+  overflow and duplicate settings action; the installed original also failed
+  the overflow check before navigation.
+- **screen boundary:** all three temporary probes passed. actual dashboard,
+  entry state and session-card rendering covered typed/long/unresolved groups,
+  selection/reveal, polling versus manual strip browsing, semantic anchor/offset,
+  menu order/back/outside dismissal, single settings dispatch and live action
+  fencing. synthetic renders confirmed the `32dp` field, colors and typography.
+- **physical api 36 phone:** enrolled healthy chrome measured `48dp + 48dp`.
+  `320dp`/`360dp` at `1×`/`2×` text and `780dp` landscape at `2×` passed;
+  lower-edge pointer taps confirmed real touch coverage. native selection was
+  checked on the semantic owner, separately from description-node geometry.
+- **native journeys:** machines/details/back/dismiss, reconnect entry/cancel
+  without submission, and actual channel settings/return passed with `all`
+  selection and grid geometry retained. exact semantic anchor/offset was proved
+  at the screen boundary; the owner also confirmed ordinary terminal return
+  retained the same view and scroll position.
+- **retirement:** temporary tests/activity, runner, suffix and dependencies were
+  removed; `scripts/check verify android` passed afterward. the original phone
+  apk and display settings were restored; disposable test apps were removed.
+
+the `96dp` footprint is measured; the total `64dp` saving remains an estimate.
+agents issued no tmux commands and changed no enrollment. no behavioral
+harness was retained and no production release was made.
 
 ## exclusions, costs and references
 

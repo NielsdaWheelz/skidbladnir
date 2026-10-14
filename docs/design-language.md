@@ -584,9 +584,8 @@ the implemented component contracts are [terminal theme](terminal-theme.md),
 [destructive and notice chrome](destructive-chrome.md),
 [launcher mark](launcher-mark.md), [hlíðskjálf mark](hlidskjalf-mark.md),
 [terminal chrome](terminal-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
-the accepted [compact dashboard chrome](dashboard-compact-chrome.md) target owns
-header/tab presentation and menu reuse; its source is integrated as a roster
-prerequisite, with separate chrome acceptance.
+[compact dashboard chrome](dashboard-compact-chrome.md) owns header/tab
+presentation and menu reuse.
 [compact roster](dashboard-compact-roster.md) owns the accepted card, heading and
 vertical-spacing contract and qualification.
 this document owns their common visual values. historical delivery recipes in

@@ -15,9 +15,8 @@ tracks delivery; [qualification](#qualification) records the implemented source
 and its verified boundaries.
 
 2026-10-14: [compact dashboard chrome](dashboard-compact-chrome.md) owns the
-accepted replacement header, tab styling and overflow entry to machines;
-its frozen source is integrated as a roster prerequisite, with separate chrome
-acceptance. membership, navigation and restoration stay here.
+replacement header, tab styling and overflow entry to machines.
+membership, navigation and restoration stay here.
 [compact roster](dashboard-compact-roster.md) separately owns the accepted card
 layout and heading/spacing below; source is implemented and qualification is linked there.
 
@@ -220,7 +219,7 @@ credential generation and poll runtime; an old runtime still releases its own la
 this adds no poll or store and does not make failed hosts wait for recovery.
 
 the dashboard overflow's `machines` item opens one small machine sheet under
-the [compact chrome](dashboard-compact-chrome.md) target. it lists the accepted
+the [compact chrome](dashboard-compact-chrome.md) contract. it lists the accepted
 machines with their existing pressure
 rails and exceptional access/pressure state, and includes `reconnect fleet`.
 the machine list scrolls within the available sheet height, including at large text.

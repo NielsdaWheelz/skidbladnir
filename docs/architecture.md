@@ -50,9 +50,9 @@ current local/remote execution context, directory search, and the new desktop
 creation shortcut; it supersedes the earlier launch and chooser details there.
 [directory and group entry](directory-group-entry.md) owns the shared field
 interaction, visible-draft admission and inline mobile directory search.
-[compact dashboard chrome](dashboard-compact-chrome.md) owns the accepted
-header, view-tab presentation and notification-action placement; its frozen source
-is integrated as a roster prerequisite. chrome runtime acceptance is separate.
+[compact dashboard chrome](dashboard-compact-chrome.md) owns the header,
+view-tab presentation and notification-action placement, with qualification
+recorded there.
 [compact dashboard roster](dashboard-compact-roster.md) owns the accepted card
 layout, group-heading policy and vertical spacing; source is implemented and
 [qualification](dashboard-compact-roster.md#verification) records its evidence.
@@ -394,8 +394,8 @@ storage failure. machine updates derive notification presentation from the same
 facts/outcome; pressure publication never exposes an interim collection.
 
 pressure stays machine-local under [machine pressure](machine-pressure-rail.md).
-the dashboard overflow's `machines` item, under the accepted
-[compact chrome](dashboard-compact-chrome.md) target, opens one transient modal
+the dashboard overflow's `machines` item, under
+[compact chrome](dashboard-compact-chrome.md), opens one transient modal
 disclosure containing
 every accepted machine's existing rail/access state and reconnect. rail selection
 shows its existing pressure details in that same modal; back returns to machines,

@@ -5,13 +5,15 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
-## compact dashboard chrome — prerequisite source integrated
+## compact dashboard chrome — implemented and qualified
 
 2026-10-14: [the spec and plan](dashboard-compact-chrome.md) replaces the header
 summary/direct administration with one overflow, compacts view-tab presentation
 within existing touch targets and retains one setup action on unhealthy notices.
-the roster branch integrates its frozen source prerequisite. chrome runtime/device
-acceptance remains a separate assignment; roster measurements credit no chrome savings.
+the shared menu and compact tabs are implemented. temporary screen/native
+checks, physical phone geometry/text-scale checks and owner terminal-return
+observation passed; tests were retired and android engineering checks passed.
+the spec records qualification and limits. no production release was made.
 
 ## compact dashboard roster — implemented; roster acceptance verified
 

@@ -3,7 +3,9 @@
 problem: opening/cancelling both destructive confirmation journeys and an
 owner-operated terminal-return journey remain unobserved against real sessions
 on the phone. these existing control paths were unchanged by compact roster.
-status: `NOT_RUN`; this does not block the new roster’s completed layout checks.
+status: `NOT_RUN` against compact roster; this does not block its completed layout
+checks. [chrome qualification](../dashboard-compact-chrome.md#qualification)
+separately records owner terminal-return observation before the roster cutover.
 
 impact: source review and captured-callback probes preserve the same target,
 enablement and confirmation owners, but do not establish real-session attachment
