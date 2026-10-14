@@ -75,6 +75,7 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
@@ -162,8 +163,8 @@ internal fun DashboardMain(
     Box(modifier = Modifier.fillMaxSize().background(Ink).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DashboardTopBar(
-                summary = dashboardSummary(items.count { it is DashboardItem.Session }, machines.size),
                 onMachines = { machineSelection = DashboardMachineSelection.Machines },
+                onNotificationSettings = openNotificationSettings,
             )
 
             DashboardViewStrip(machines, entry.view, entry::selectView)
@@ -175,12 +176,9 @@ internal fun DashboardMain(
             if (controller.notificationHealth != NotificationHealth.Ready) NoticePanel(
                 tone = NoticeTone.Degraded, body = notificationHealthMessage(controller.notificationHealth),
                 actions = {
-                    Column {
-                        TextButton(onClick = onNotificationSetup) { Text("set up notifications") }
-                        TextButton(onClick = openNotificationSettings) { Text("open notification settings") }
-                    }
+                    TextButton(onClick = onNotificationSetup) { Text("set up notifications") }
                 },
-            ) else TextButton(onClick = openNotificationSettings) { Text("open notification settings") }
+            )
 
             state.notice?.let { NoticePanel(tone = NoticeTone.Failure, body = it) }
 
@@ -512,13 +510,13 @@ private fun DashboardDwarfGrid(
 
 @Composable
 internal fun DashboardTopBar(
-    summary: String,
     onMachines: () -> Unit,
+    onNotificationSettings: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -526,27 +524,22 @@ internal fun DashboardTopBar(
         // The Hlíðskjálf mark on the surface it names (design-language.md §8):
         // Gold, decorative, and silent — "Dwarves" beside it carries the label.
         HlidskjalfMark(color = Gold, markSize = 24.dp)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Dwarves",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                // both header lines remain single-line summaries; the row grows with text scale.
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                summary,
-                color = Muted,
-                style = MaterialTheme.typography.labelMedium,
-                fontFamily = NidavellirType.Data,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        TextButton(onClick = onMachines) {
-            Text("machines", maxLines = 1)
-        }
+        Text(
+            "Dwarves",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        ActionMenuButton(
+            spokenName = "dashboard options",
+            actions = listOf(
+                MenuAction("machines", enabled = true, destructive = false, onMachines),
+                MenuAction("notification settings", enabled = true, destructive = false, onNotificationSettings),
+            ),
+            markCenterY = 24.dp,
+        )
     }
 }
 
@@ -592,10 +585,7 @@ internal fun DashboardViewStrip(
                         val selected = choice.key == view.key
                         val named = choice is DashboardViewSelection.Named
                         val label = choice.displayLabel()
-                        Surface(
-                            color = if (selected) RaisedSurface else Color.Transparent,
-                            shape = NidavellirShapes.Chip,
-                            border = BorderStroke(1.dp, if (selected) Gold else Muted.copy(alpha = 0.4f)),
+                        Box(
                             modifier = Modifier
                                 .widthIn(min = 48.dp, max = maximumWidth)
                                 .heightIn(min = 48.dp)
@@ -608,16 +598,21 @@ internal fun DashboardViewStrip(
                                     onClick = { onSelect(choice) },
                                 )
                                 .semantics { contentDescription = if (named) "group: $label" else label },
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clearAndSetSemantics {},
-                                verticalAlignment = Alignment.CenterVertically,
+                            Surface(
+                                color = if (selected) RaisedSurface else Color.Transparent,
+                                shape = NidavellirShapes.Chip,
+                                border = if (selected) BorderStroke(1.dp, Gold) else null,
+                                modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 32.dp)
+                                    .clearAndSetSemantics {},
                             ) {
-                                val color = if (selected) Gold else Bone
                                 Text(
-                                    label, color = color, fontFamily = NidavellirType.Data,
+                                    label, color = if (selected) Gold else Bone,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    textAlign = TextAlign.Center,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                 )
                             }
                         }
@@ -809,10 +804,6 @@ internal fun forgeRecoveryMessage(
             "$label refreshed. Review its sessions before resuming this draft."
     }
 }
-
-internal fun dashboardSummary(sessionCount: Int, machineCount: Int): String =
-    "$sessionCount tmux ${if (sessionCount == 1) "session" else "sessions"} across " +
-        "$machineCount ${if (machineCount == 1) "machine" else "machines"}"
 
 // Its own prose again, and its own concatenation — but not its own tone. The strip and this
 // empty state can be on screen together naming the same machine, so a bearer failure that the

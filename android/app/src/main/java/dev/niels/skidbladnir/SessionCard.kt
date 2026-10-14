@@ -79,7 +79,7 @@ internal fun SessionCard(
     val status = sessionStatusContent(session, machine.canMutate, notification, showQueueReason = needsInputView)
     val tone = sessionStatusColor(status.tone)
     val availability = sessionAvailabilityContent(machine)
-    val actions = listOf(SessionAction("change group", machine.canMutate, destructive = false, onGroup)) +
+    val actions = listOf(MenuAction("change group", machine.canMutate, destructive = false, onGroup)) +
         terminalLifetimeActions(machine.canMutate && !terminalControlPending, onStop, onTerminalClose, onClose)
     // A plain pane has no runtime to name: its status line already reads `terminal`.
     val profile = when (context) {
@@ -132,7 +132,7 @@ internal fun SessionCard(
                     )
                     .clearAndSetSemantics {
                         contentDescription = spoken
-                        customActions = actions.filter(SessionAction::enabled).map { action ->
+                        customActions = actions.filter(MenuAction::enabled).map { action ->
                             CustomAccessibilityAction(action.label) {
                                 action.perform()
                                 true
@@ -244,7 +244,7 @@ internal fun SessionCard(
                     if (needsInputView) CardFact(session.group?.let { "group: ${it.text}" } ?: "unassigned", Muted)
                 }
             }
-            SessionActionsButton(
+            ActionMenuButton(
                 spokenName = "session actions for ${session.tmuxName} on $terminalMachine",
                 actions = actions,
                 modifier = Modifier.align(Alignment.TopEnd),

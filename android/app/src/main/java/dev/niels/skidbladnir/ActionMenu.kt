@@ -27,11 +27,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// One verb on one session (docs/session-card.md "Actions"). A surface lists its
-// verbs once and every presentation reads that list: the overflow menu below
-// and the card's TalkBack actions, so order, label, enablement and tone cannot
-// drift between what is seen and what is spoken.
-internal class SessionAction(
+// A surface lists its actions once. Menus and the session card's TalkBack
+// actions read that list, so order, label, enablement and tone cannot drift
+// between what is seen and what is spoken.
+internal class MenuAction(
     val label: String,
     val enabled: Boolean,
     val destructive: Boolean,
@@ -46,27 +45,27 @@ internal fun terminalLifetimeActions(
     onStop: () -> Unit,
     onTerminalClose: () -> Unit,
     onClose: () -> Unit,
-): List<SessionAction> = listOf(
-    SessionAction(TERMINAL_STOP_ACTION, enabled, destructive = false, onStop),
-    SessionAction(TERMINAL_ONLY_CLOSE_ACTION, enabled, destructive = true, onTerminalClose),
-    SessionAction(TERMINAL_CLOSE_ACTION, enabled, destructive = true, onClose),
+): List<MenuAction> = listOf(
+    MenuAction(TERMINAL_STOP_ACTION, enabled, destructive = false, onStop),
+    MenuAction(TERMINAL_ONLY_CLOSE_ACTION, enabled, destructive = true, onTerminalClose),
+    MenuAction(TERMINAL_CLOSE_ACTION, enabled, destructive = true, onClose),
 )
 
 // The overflow: a 48dp target carrying a drawn mark, and the menu it anchors.
 // Enablement is derived, never passed: the trigger is live while any verb is.
 // An open menu follows its list as it recomposes, so a fence that lands while
 // it is open disables items in place rather than closing or retargeting them.
-// `markCenterY` sets the mark on the first line of the text it serves; the
-// target stays a full 48dp square from the anchor's top.
+// `markCenterY` aligns the mark to its caller's content; the target stays
+// a full 48dp square from the anchor's top.
 @Composable
-internal fun SessionActionsButton(
+internal fun ActionMenuButton(
     spokenName: String,
-    actions: List<SessionAction>,
+    actions: List<MenuAction>,
     markCenterY: Dp,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val enabled = actions.any(SessionAction::enabled)
+    val enabled = actions.any(MenuAction::enabled)
     Box(modifier) {
         Box(
             modifier = Modifier
@@ -105,29 +104,29 @@ internal fun SessionActionsButton(
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
         ) {
-            SessionActionRows(actions) { expanded = false }
+            ActionRows(actions) { expanded = false }
         }
     }
 }
 
-// The rows of one action list, for the card's menu and the terminal's session
-// sheet alike. Each row dismisses its surface before acting.
+// The rows of one action list, shared by menus and the terminal's session
+// sheet. Each row dismisses its surface before acting.
 @Composable
-internal fun SessionActionRows(actions: List<SessionAction>, dismiss: () -> Unit) {
+internal fun ActionRows(actions: List<MenuAction>, dismiss: () -> Unit) {
     actions.forEachIndexed { index, action ->
         // The destructive run opens with a rule: the closures are a
         // different kind of verb, and colour must not be their only cue.
         if (action.destructive && actions.getOrNull(index - 1)?.destructive == false) {
             HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Bone.copy(alpha = 0.12f))
         }
-        SessionActionItem(action, dismiss)
+        ActionItem(action, dismiss)
     }
 }
 
 // M3's DropdownMenuItem hardcodes a circular ripple (§12 forbids it), so the
 // row is built here with the angular flash. Controls speak the body face (§9).
 @Composable
-private fun SessionActionItem(action: SessionAction, dismiss: () -> Unit) {
+private fun ActionItem(action: MenuAction, dismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()

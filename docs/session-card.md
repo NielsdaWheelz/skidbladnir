@@ -132,8 +132,8 @@ scrolling, and the clearance lets the last row's overflow scroll clear of it.
 
 ## actions
 
-the card's verbs are one ordered list of `SessionAction`s
-(`SessionActions.kt`), and both presentations read it:
+the card's verbs are one ordered list of `MenuAction`s
+(`ActionMenu.kt`), and both presentations read it:
 
 | order | label | enabled when | tone | then |
 | --- | --- | --- | --- | --- |
@@ -144,7 +144,7 @@ the card's verbs are one ordered list of `SessionAction`s
 
 `terminalLifetimeActions` owns rows 2–4, their order and tones; the card and
 the terminal's [session sheet](terminal-chrome.md#session-sheet) both render
-them from it through `SessionActionRows`. the dashboard alone adds row 1.
+them from it through `ActionRows`. the dashboard alone adds row 1.
 
 - **overflow**: a 48dp target at the card's top end carrying a drawn mark of
   three 3dp studs (squares: §6 has no circles), centred on the tmux name's first
@@ -179,7 +179,7 @@ the card is two accessibility nodes.
    `Remote context unknown. Terminal on {Y}.` the status accessibility label
    already carries `work continues`, the inference qualifier and
    `notifications unavailable`. its custom actions are the enabled
-   `SessionAction`s, with bare labels in list order.
+   `MenuAction`s, with bare labels in list order.
 2. **overflow**: role button, named as above.
 
 ## verification
