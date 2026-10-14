@@ -10,7 +10,6 @@ import (
 
 type profileUsageDTO struct {
 	profileDTO
-	Source    string                    `json:"source"`
 	ReadState string                    `json:"readState"`
 	Report    *agentcontrol.UsageReport `json:"report,omitempty"`
 }
@@ -37,7 +36,7 @@ func (gateway *Gateway) readProfileUsage(writer http.ResponseWriter, request *ht
 	mapped := make([]profileUsageDTO, len(profiles))
 	for index, profile := range profiles {
 		usage := observed.Profiles[index]
-		mapped[index] = profileUsageDTO{profileDTO: profile, Source: usage.Source, ReadState: usage.ReadState, Report: usage.Report}
+		mapped[index] = profileUsageDTO{profileDTO: profile, ReadState: usage.ReadState, Report: usage.Report}
 	}
 	stamp, err := formatProjectionInstant(observed.ObservedAt)
 	if err != nil {

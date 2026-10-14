@@ -4,6 +4,7 @@ replays it. grammar: docs/terminal-observation-claude.md. frames marked _source 
 was not observed live.
 header: === <id> w=<W> h=<H> alt=<0|1> <renderer> [bclip=<row>] [tclip=<row>] expect=<activity>/<interaction>/<notice>
         <composer> reason=<reason> rules=<id>[@top|@compound],...|none (decision order; regions default to bottom).
+        optional usage5h=<integer> usage7d=<integer>; omitted windows are absent, including both when no usage is read.
 bclip drops the bottom region's rows above <row>; tclip drops the top region's rows from <row>; both mark it clipped.
 rows: NN|<text> (NNN| from row 100). tags: «f» fg 153,153,153  «f2» fg 215,119,87  «d» dim  «i» reverse  «b» bold
 «it» italic  «w» fg 256-colour 220  «g» bg 55,55,55  «/» reset  «/f» default fg  «/g» default bg  «o»/«/o» OSC 8 open/close.
@@ -1935,3 +1936,281 @@ X{n} repeats X; ⍽ is NBSP; ⟩ pads so the rest of the row ends at column w-2.
 09|❯⍽«i» «/»
 10|«f»─{80}«/f»
 11|  «f»⏸ manual mode on · ? for shortcuts · ← for agents«/f»
+
+
+=== U01_classic_quota_both w=80 h=10 alt=0 classic expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U02_full_quota_five_zero w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=0
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 0% │ 5h 0%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U03_full_quota_seven_hundred w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=100
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 101% │ 7d 100%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U04_full_quota_working w=80 h=10 alt=1 full expect=working/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.spinner,claude.composer.empty usage5h=12 usage7d=34
+02|«f2»✶«/f» «f2»Doing dummy work…«/f»
+04|«f»─{80}«/f»
+05|«f»❯⍽«/f»«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U05_full_quota_no_color w=80 h=10 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.composer,claude.composer.empty usage5h=12 usage7d=34
+02|⏺ Dummy reply.
+04|─{80}
+05|❯⍽«i» «/»
+06|─{80}
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U06_full_quota_unknown_context w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage7d=7
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx -- │ 7d 7%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U07_quota_in_draft w=80 h=10 alt=1 full expect=idle/none/none draft reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.draft
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»unrelated status«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U08_quota_in_transcript w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»unrelated status«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U09_quota_not_above_mode w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  unrelated status
+09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U10_duplicate_quota_same w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U11_duplicate_quota_conflict w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  dummy │ model │ ctx 2% │ 5h 13% · 7d 34%
+09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U12_quota_wrong_separator w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% | 7d 34%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U13_quota_reversed_windows w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 7d 34% · 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U14_quota_duplicate_window w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U15_quota_leading_zero w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 012%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U16_quota_decimal w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12.0%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U17_quota_out_of_range w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 101%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U18_quota_negative w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h -1%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U19_quota_context_noncanonical w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 02% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U20_quota_trailing_text w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34% extra«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U21_quota_unicode_number w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h ١٢%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U22_quota_suffix_wrapped w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% ·«/f»
+08|  7d 34%
+09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U23_quota_prefix_wrapped w=80 h=12 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»prefix metadata«/f»
+08|  rest of model │ ctx 2% │ 5h 12%
+09|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U24_quota_conservative_edge w=31 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{31}«/f»
+05|❯⍽«i» «/»
+06|«f»─{31}«/f»
+07|  «f2»d │ model │ ctx 2% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U25_quota_conservative_spare w=32 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12
+02|⏺ Dummy reply.
+04|«f»─{32}«/f»
+05|❯⍽«i» «/»
+06|«f»─{32}«/f»
+07|  «f2»d │ model │ ctx 2% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U26_quota_last_cell w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dddddddddddddddddddddddddddddddddddddddddddddddddddddddd │ m │ ctx 2% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U27_quota_unicode_bound w=45 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty
+02|⏺ Dummy reply.
+04|«f»─{45}«/f»
+05|❯⍽«i» «/»
+06|«f»─{45}«/f»
+07|  «f2»dummy👩‍💻 │ model │ ctx 2% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U28_quota_unicode_wide w=80 h=10 alt=1 full expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy👩‍💻 │ model │ ctx 2% │ 5h 12%«/f»
+08|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U29_quota_anchor_clipped w=80 h=80 alt=1 full bclip=77 expect=unknown/unknown/none unknown reason=evidence_clipped rules=claude.region.clipped
+73|«f»─{80}«/f»
+74|❯⍽«i» «/»
+75|«f»─{80}«/f»
+76|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+77|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U30_quota_unrelated_top_clipped w=80 h=80 alt=1 full tclip=1 expect=idle/none/none empty reason=recognized rules=claude.layout.composer,claude.activity.idle,claude.composer.empty usage5h=12 usage7d=34
+00|Dummy header.
+72|⏺ Dummy reply.
+74|«f»─{80}«/f»
+75|❯⍽«i» «/»
+76|«f»─{80}«/f»
+77|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+78|  «f»⏵⏵ bypass permissions on«/f»
+
+=== U31_quota_void_footer w=80 h=10 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»dummy │ model │ ctx 2% │ 5h 12% · 7d 34%«/f»
+08|  unknown footer
+
+=== U32_quota_screen_reader w=80 h=8 alt=1 full expect=unknown/none/none empty reason=partial rules=claude.layout.sr,claude.composer.empty
+02|claude: Dummy reply.
+05|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+06|bypass permissions on
+07|$⍽
+
+=== U33_quota_help_grid w=80 h=12 alt=1 full expect=unknown/menu/none blocked reason=partial rules=claude.layout.composer,claude.menu.help,claude.composer.blocked
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»! for shell mode   # for history«/f»
+08|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+09|  / for commands
+
+=== U34_quota_limit_wait w=80 h=12 alt=1 full expect=unknown/unknown/none unknown reason=layout_unknown rules=claude.layout.composer,claude.limit.wait usage5h=12 usage7d=34
+02|⏺ Dummy reply.
+04|«f»─{80}«/f»
+05|❯⍽«i» «/»
+06|«f»─{80}«/f»
+07|  «f2»⚠ Usage limit reached«/f»
+08|  dummy │ model │ ctx 2% │ 5h 12% · 7d 34%
+09|  «f»⏵⏵ bypass permissions on«/f»

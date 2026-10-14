@@ -13,7 +13,6 @@ import (
 
 type ProfileUsage struct {
 	Profile
-	Source    string                    `json:"source"`
 	ReadState string                    `json:"readState"`
 	Report    *agentcontrol.UsageReport `json:"report,omitempty"`
 }
@@ -72,7 +71,6 @@ func decodeProfileUsage(encoded []byte, target peer) (any, bool) {
 			Label        string                    `json:"label"`
 			Provider     string                    `json:"provider"`
 			HistoryScope string                    `json:"historyScope,omitempty"`
-			Source       string                    `json:"source"`
 			ReadState    string                    `json:"readState"`
 			Report       *agentcontrol.UsageReport `json:"report,omitempty"`
 		} `json:"profiles"`
@@ -86,13 +84,13 @@ func decodeProfileUsage(encoded []byte, target peer) (any, bool) {
 	}
 	profiles := make([]ProfileUsage, len(wire.Profiles))
 	for index, profile := range wire.Profiles {
-		if profile.Key == "" || profile.Label == "" || !slices.Contains([]string{"Codex", "Claude"}, profile.Provider) || profile.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(profile.Provider), ProfileKey: agentruntime.ProfileKey(profile.Key), HistoryScope: profile.HistoryScope, ConversationID: "validation"}).Valid() {
+		if profile.Key == "" || profile.Label == "" || profile.Provider != "Codex" || profile.HistoryScope != "" && !(agentruntime.Conversation{Provider: agentruntime.Provider(profile.Provider), ProfileKey: agentruntime.ProfileKey(profile.Key), HistoryScope: profile.HistoryScope, ConversationID: "validation"}).Valid() {
 			return nil, false
 		}
-		if profile.Provider == "Codex" && profile.Source != "native" || profile.Provider == "Claude" && profile.Source != "statusline" || profile.ReadState != "ok" && profile.ReadState != "unavailable" || profile.ReadState == "unavailable" && profile.Report != nil || profile.Report != nil && profile.Report.ReportedAt.After(stamp) {
+		if profile.ReadState != "ok" && profile.ReadState != "unavailable" || profile.ReadState == "unavailable" && profile.Report != nil || profile.Report != nil && profile.Report.ReportedAt.After(stamp) {
 			return nil, false
 		}
-		profiles[index] = ProfileUsage{Profile: Profile{Key: profile.Key, Label: profile.Label, Provider: profile.Provider, HistoryScope: profile.HistoryScope}, Source: profile.Source, ReadState: profile.ReadState, Report: profile.Report}
+		profiles[index] = ProfileUsage{Profile: Profile{Key: profile.Key, Label: profile.Label, Provider: profile.Provider, HistoryScope: profile.HistoryScope}, ReadState: profile.ReadState, Report: profile.Report}
 	}
 	return ProfileUsagePeer{Label: target.Label, Machine: target.Machine, OK: true, ObservedAt: stamp.UTC(), Profiles: profiles}, true
 }

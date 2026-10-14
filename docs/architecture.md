@@ -36,8 +36,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
 [desktop session rows](desktop-session-rows.md) owns the accepted row simplification;
 source is implemented; scoped darwin acceptance passes. model/effort is deferred.
-[profile usage](profile-usage.md) owns desktop quota disclosure, source selection
-and its separate profile reads and qualification.
+[terminal usage](terminal-usage.md) owns desktop quota disclosure, source selection
+and qualification; [native usage](profile-usage.md) owns codex report acquisition.
 [native notifications](native-notifications.md) owns needs-input alerts,
 background observation and device acknowledgement. source is implemented;
 [qualification](native-notifications-qualification.md) records verified boundaries
@@ -121,7 +121,7 @@ machine does not block or authorize action against another.
 | Auth | One independently minted bearer per gateway, shared by the trusted clients; a five-minute one-use pairing token discloses it once. Ordinary `/v1` requests require the bearer and pinned machine handle |
 | Profiles | Host config permits an empty array or the complete ordered `personal \| work \| work2 \| claude-work` table, with required `Codex \| Claude` provider and one provider-home discriminator for each row. Terminal is a launch choice, not a profile/provider. Callers never supply commands, account homes, or permission flags |
 | agent control | foreground process identity and separate explicit native conversation; inferred terminal status and controls; separately explicit native output/control under [agent control](agent-control.md); identity-only hooks, no lifecycle database or execution supervisor |
-| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude's managed statusline stores one replaceable quota-only report per explicit home. devbox persists content-free transition summaries and one private push subscription; device owners persist local notification acknowledgement/handling. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
+| State | tmux owns terminal runtime; providers own execution/history/queues; tmux retains existing codex conversation associations; no association writer remains. one host-local workspace recipe reconstructs lost terminals as fresh shells. claude quota is ephemeral evidence in current inventory; native codex reports remain desktop-local observations. devbox persists content-free transition summaries and one private push subscription; device owners persist local notification acknowledgement/handling. Android also persists pairings, text size and its task-scoped dashboard return capsule; inventory stays in memory |
 | groups | one optional canonical label per tmux session in session-local `@skid_space_b64`; clients group equal labels across hosts; exclusive needs-input/all/group views, with separate desktop machine scope; no group registry or lifecycle |
 | session names | actual tmux `session_name` everywhere; supplied names are manual, omitted names follow the active pane title through existing inventory; one reserved session-local `@skid_auto_name_b64` ownership marker |
 | terminal creation | standalone or from an exact source session; host-sampled cwd/group, independent tmux session, configured login shell, existing attachment; detailed contract in [shells.md](shells.md) |
@@ -298,6 +298,8 @@ outside every view. recovery adds no controls or saved client state.
   (`@skid_space_b64`), pane cwd and active command when tmux exposes them,
   attached-client count. `agent` is optional; when present its provider, pid,
   pane/start identity are required. ordinary `terminalStatus` is inferred;
+  optional `terminalUsage` carries only recognized local claude display percentages
+  under [terminal usage](terminal-usage.md), from the same guarded capture;
   `conversation` is identity metadata only. no flat activity remains.
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
@@ -459,14 +461,14 @@ product meaning.
 
 ### profile usage
 
-[profile usage](profile-usage.md) owns independent read-only desktop quota
-observations from codex's existing account daemon and claude's managed statusline
-input. desktops read devbox regardless of session/view/machine selection and
-show remaining quota in the bottom block. dev-server enables claude's quota
-publication only on devbox; one replaceable report belongs to each explicit home;
-a separate machine-bound route reads profiles without session-status enrichment
-or an identity-hook extension. source age, expiry, refresh and presentation
-follow that specification.
+[terminal usage](terminal-usage.md) owns consolidated read-only desktop quota
+observations. existing inventory captures carry optional literal claude used
+percentages; the independent [native route](profile-usage.md) reads codex only.
+both existing lanes read all paired hosts independently of table filters. the
+desktop selects one whole eligible observation per profile by client-local
+receipt, under the owner's same-account-across-hosts guarantee. details disclose
+the selected machine and evidence age; usage never supplies admission/readiness.
+there is no quota file, publisher, extra capture, hook extension or new poller.
 
 ### Start (The Forge)
 
@@ -836,7 +838,7 @@ history item is `current`.
 | `POST /v1/conversations/{operation}` | native `inspect`, `read`, `send`, `stop`, `results`; exact configured Conversation independent of terminal lifetime |
 | `POST /v1/sessions/{tmuxId}/terminal/{operation}` | exact `{identityToken,paneId}` plus operation fields; inferred `inspect`, rendered `read`, guarded `send`, deliberate `text`/`keys`, interrupt `stop`, separate-effects `close`; [terminal contract](terminal-agent-control.md#4-api-and-client-commands) |
 | `GET /v1/pressure` | `{unsupported,current,history}` with the complete platform capability partition from §4 |
-| `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` quota observation; configured descriptors plus source, read state and optional normalized report, governed by [profile usage](profile-usage.md) |
+| `GET /v1/profile-usage` | independent authenticated `{machine:{handle,platform},observedAt,profiles}` codex-only quota observation; configured descriptors, read state and optional normalized native report, governed by [profile usage](profile-usage.md) |
 
 errors use `{code,message}` and the existing optional `dispatch` for operations
 that distinguish `not_sent` from `unknown`. the groups route requires that
@@ -1097,12 +1099,17 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
-2026-10-07 accepted revision: desktop [profile usage](profile-usage.md) reads
-devbox only and shows remaining quota in the footer, with codex weekly-only
-summary and source/age/reset disclosure in the usage page. dev-server enables
-the existing claude publisher only on devbox. no provider execution moves,
-cross-host forwarding, new service or inactive-account getter is accepted.
-source checks qualify this revision; installed cutover remains pending.
+2026-10-14 accepted cutover: [terminal usage](terminal-usage.md) replaces claude's
+quota-file path with optional evidence from the existing exact terminal capture.
+the desktop consolidates both providers across all hosts using original local
+receipts; details identify one selected source per profile. claude shows literal
+used percentages; codex retains conservative remaining/native reset semantics.
+the strict shared session schema changes with host, go and android consumers;
+the native quota route becomes codex-only and the managed formatter stops
+publishing. no new state owner, poller, provider getter, compatibility or fallback
+is accepted. this supersedes the 2026-10-07 devbox-only design and the 2026-10-02
+claude publication clauses. qualification and separate deployment work follow
+the accepted specification.
 
 2026-10-02 accepted design: [native needs-input notifications](native-notifications.md)
 adds a devbox observer client, a private ntfy/unifiedpush android transport and a
@@ -1117,14 +1124,10 @@ device-local readiness/visit clauses, defines schemas, disjoint implementation
 paths and temporary end-to-end/live acceptance. source is implemented; [qualification](native-notifications-qualification.md)
 records tested boundaries. release and fleet deployment remain separate actions.
 
-2026-10-02 accepted design: [desktop profile usage](profile-usage.md) adds a
-compact main-browser summary and expandable profile disclosure. codex reads its
-existing account daemon; claude's managed statusline publishes one atomic,
-quota-only latest report in its configured home. this narrowly extends the
-state contract with that replaceable observation and the api with an independent
-profile read, scheduled by the existing browser tick. it adds no lifecycle store,
-hook, screen fallback, provider owner, phone surface or quota enforcement.
-source qualification passed; managed installation and installed acceptance remain pending.
+2026-10-02 accepted native mechanism: [codex profile usage](profile-usage.md)
+reads existing account daemons through a machine-bound route and the browser's
+existing tick. the 2026-10-14 cutover retains that mechanism and replaces the
+original claude acquisition and presentation contract.
 
 2026-10-02 accepted design: [jarvis orchestration](jarvis-orchestration.md)
 adds literal model/effort launch overrides, native-default precedence, optional

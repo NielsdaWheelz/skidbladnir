@@ -163,6 +163,7 @@ func (client *Client) Execute(ctx context.Context, request Request) Result {
 				value := inspected.Value.(TerminalInspectResult)
 				observed.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 				observed.Session.TerminalStatus, observed.Diagnostics = value.TerminalStatus, value.Diagnostics
+				observed.Session.TerminalUsage = nil
 			}
 			result = success(observed)
 			break
@@ -610,7 +611,11 @@ func (client *Client) call(ctx context.Context, target peer, operation, path str
 	if !ok {
 		return Failed("protocol_error", dispatch)
 	}
-	if operation == "profile_usage" {
+	if operation == "list" {
+		observed := value.(Peer)
+		observed.ReceivedAt = receivedAt
+		value = observed
+	} else if operation == "profile_usage" {
 		observed := value.(ProfileUsagePeer)
 		observed.ReceivedAt = receivedAt
 		value = observed

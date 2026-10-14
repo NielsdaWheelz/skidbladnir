@@ -3,7 +3,7 @@
 each row as ObservePane does (`capture-pane -p -e`, one row per command), split the rows into ObservePane's
 regions, apply the frame's declared byte-cap drops, and store the frame's expectation beside it.
 
-Run from this directory: `python3 capture.py`. It uses only the tmux socket `skid-frames` with `-f /dev/null`,
+Run from this directory: `python3 capture.py`. It uses a fresh random tmux socket with `-f /dev/null`,
 creates and kills its own server, and needs tmux 3.4 or newer. Expectations live in the authored headers:
 codex `expect=<activity>/<interaction>/<notice>/<composer> reason=<reason> rules=<id@region>,...|none`, claude
 `expect=<activity>/<interaction>/<notice> <composer> reason=<reason> rules=...`.
@@ -14,16 +14,18 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 
 sys.dont_write_bytecode = True
 from paint import frames  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SOCKET = 'skid-frames-' + uuid.uuid4().hex
 ENVIRONMENT = {key: value for key, value in os.environ.items() if key not in ('TMUX', 'TMUX_PANE', 'TMUX_TMPDIR')}
 
 
 def tmux(*args):
-    return subprocess.run(['tmux', '-L', 'skid-frames', '-f', '/dev/null', *args],
+    return subprocess.run(['tmux', '-L', SOCKET, '-f', '/dev/null', *args],
                           capture_output=True, text=True, env=ENVIRONMENT, check=True).stdout
 
 
@@ -36,8 +38,15 @@ def expectation(header):
     else:
         composer = fields['expect'].split('/')[3]
     rules = [] if fields['rules'] == 'none' else fields['rules'].split(',')
-    return {'activity': activity, 'interaction': interaction, 'notice': notice, 'composer': composer,
-            'reason': fields['reason'], 'rules': rules}
+    expected = {'activity': activity, 'interaction': interaction, 'notice': notice, 'composer': composer,
+                'reason': fields['reason'], 'rules': rules}
+    usage = {}
+    for key, window in (('usage5h', 'fiveHourUsedPercent'), ('usage7d', 'sevenDayUsedPercent')):
+        if key in fields:
+            usage[window] = int(fields[key])
+    if usage:
+        expected['usage'] = usage
+    return expected
 
 
 def regions(frame, rows):
@@ -82,6 +91,8 @@ def main():
                     'height': frame['height'], 'alternate': size[1] == '1', 'regions': regions(frame, rows),
                     'expect': expectation(frame['header']),
                 })
+                if len(observations) % 50 == 0:
+                    print(f'{len(observations)} authored frames captured', flush=True)
     finally:
         tmux('kill-server')
     with open(os.path.join(HERE, 'observations.jsonl'), 'w', encoding='utf-8') as out:

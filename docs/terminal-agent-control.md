@@ -6,6 +6,11 @@ guarded-send admission and the terminal wait states. this document keeps
 terminal targets, the tmux capture mechanics, effects, routes, wait's polling
 loop and the observation sample's composition.
 
+[terminal usage](terminal-usage.md) adds optional claude quota to ordinary
+inventory/create/shell samples without another capture. explicit inspect keeps
+its existing schema; `info --explain` clears the earlier inventory quota when
+replacing status/time. send, wait, stop and close retain their contracts.
+
 status: orchestration implemented; the observation cutover is implemented in
 source ([roadmap](roadmap.md)). [qualification](terminal-agent-control-qualification.md)
 records the full terminal checks and composition limits on the earlier

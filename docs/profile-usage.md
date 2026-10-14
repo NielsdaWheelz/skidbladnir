@@ -1,346 +1,91 @@
-# profile usage in the desktop browser
+# native codex profile usage
 
-accepted 2026-10-02; sourcing and presentation revised 2026-10-07.
-show devbox's configured profiles' remaining quota in the desktop footer:
-weekly for codex, 5-hour and weekly for claude. the usage page discloses reset
-times, source and report age. codex uses its existing account daemon;
-claude uses the structured input to its managed statusline. the 2026-10-02
-installed qualification below applies to the original v0.13.0 presentation;
-the devbox/footer revision has separate source qualification and pending cutover.
+[terminal usage](terminal-usage.md) owns all-host collection, consolidated desktop
+selection, claude terminal evidence and presentation. this document owns codex's
+native acquisition, normalization and report clocks. the 2026-10-14 cutover
+supersedes the earlier claude publisher and devbox-only contracts.
 
-this document owns the capability and implementation plan.
-[architecture](architecture.md) owns shared invariants;
-[desktop browser](desktop-browser.md) owns the surrounding frame and actions.
-session views remain an independent navigation change.
-the [inactive-claude follow-up](issues/claude-inactive-profile-usage.md)
-tracks the remaining first-version limit.
-qualification below distinguishes source, candidate-host and installed evidence.
+## acquisition and normalization
 
-## scope and invariants
+the existing `llm-calling` native helper's profile-scoped `usage` operation uses
+skid's validated environment and `agentruntime.CodexEndpoint`. it initializes a
+connection to the already-running account daemon and calls
+`account/rateLimits/read`. no caller supplies a home, socket or conversation target.
 
-usage belongs to a configured provider home on devbox. include declared profiles
-with no active sessions. every desktop reads the explicitly configured `devbox`
-peer, independently of session selection, view, machine filter and terminal
-creation default. show the sampling machine on the usage page, not in the footer.
-matching profile keys/labels elsewhere do not prove the same authenticated account.
-never sum, deduplicate, average, forward or substitute another host's readings.
-an unconfigured devbox shows unavailable usage and sends no quota request.
-
-quota observations do not determine terminal status, ready attention, completion,
-launch admission or whether another turn can run. percentages alone cannot prove
-exhaustion or recovery; credits, spend controls and model-specific pools may
-affect provider admission independently.
-
-scope is the desktop browser and the provider's default short/weekly quotas.
-phone presentation, a public `skid usage` command, other quota pools/credits,
-enforcement, notifications and automatic profile switching are excluded. no
-screen fallback, `/usage` keystrokes, private account-http client, experimental
-claude getter, hook extension, transcript parsing, watcher, provider fork or new
-background service.
-
-## acquisition
-
-### codex
-
-extend the existing `llm-calling` native helper with one profile-scoped `usage`
-operation. reuse skid's validated profile environment and
-`agentruntime.CodexEndpoint`; no caller home/socket or conversation/turn target.
-
-initialize a connection to the already-running account daemon and call
-`account/rateLimits/read`. consume its required `rateLimits` default snapshot;
-do not pick the first map entry or substitute another quota pool. within that
-snapshot, `windowDurationMins == 300` identifies 5h and `10080` identifies 7d.
-primary/secondary position alone is insufficient. omit unknown-duration windows;
-duplicate recognized durations are incompatible. normalize `usedPercent` and
-optional `resetsAt`; other durations are outside scope.
+consume the required `rateLimits` default snapshot; never substitute the first
+map entry or another quota pool. within that snapshot, `windowDurationMins == 300`
+identifies 5h and `10080` identifies 7d. primary/secondary position alone is
+insufficient. omit unknown durations; duplicate recognized durations are
+incompatible. normalize `usedPercent` and optional `resetsAt`.
 
 the read creates no thread or inference turn. it never starts/restarts a daemon,
 replaces an owner, answers another client's requests, logs in or forces token
-refresh. native authentication remains provider-owned. missing owners and
+refresh. provider-owned authentication remains unchanged. missing owners and
 unsupported methods/fields make only that profile unavailable. no notification
-subscription is needed.
+subscription, helper change or extra service is part of the terminal cutover.
 
-### claude
+## route and report
 
-extend `dev-server/assets/claude/statusline.sh`, which already reads the documented
-`rate_limits.five_hour` and `rate_limits.seven_day` fields. before formatting its
-ordinary display, export only each window's `used_percentage` and optional
-`resets_at`, preserving numeric precision. never save the whole stdin payload,
-session id, cwd, model, prompt, transcript path or credentials.
-
-publish one replaceable `skidbladnir-usage.json` in the existing absolute
-`CLAUDE_CONFIG_DIR` only when the managed script receives `--publish-skid-usage`.
-dev-server enables this argument in devbox's account statusline settings and
-omits it on workstations. without the argument or explicit home, publish nothing;
-ordinary statusline display continues on every host. the devbox gateway
-reads the fixed path under its configured `claude-work` home. the file contains
-one flat json object with `schemaVersion: 1`, `reportedAt`, and optional
-`fiveHour`/`sevenDay` fields in the normalized shape below. it is a latest
-observation, not history or an account registry, and may survive restart with
-its original age.
-
-use a mode-0600 sibling temporary file and atomic replacement; clean the owned
-temporary file on failure/cancellation. export failure must not alter or break
-the statusline or print provider input. replace the whole report, including
-omissions; never merge absent fields with an earlier report. omit expired windows.
-an overridden statusline or an unsupported account yields no usable quota report.
-
-`reportedAt` is the host time when the callback receives these fields, not proof
-of a backend fetch. callbacks can repeat cached data. same-home writers use
-last-completed-publication semantics; an older provider snapshot may replace a
-newer one. label this source `last reported`. no producer lock, per-session store
-or process-lifetime registration. idle/absent claude may have only a stale report
-or none; the experimental getter remains a separate follow-up.
-
-## gateway, data and clocks
-
-add authenticated, machine-bound `GET /v1/profile-usage`, with no body or query.
-it invokes no tmux and is independent of inventories, terminal observation and
-conversation routes. return `{machine, observedAt, profiles}`, including every
-configured profile even with zero sessions; an empty declared table stays empty.
-reuse existing machine/profile descriptors. each profile additionally carries:
+authenticated, machine-bound `GET /v1/profile-usage` accepts no body or query.
+it invokes no tmux and returns only configured codex profiles, in configured
+order, including unused profiles. zero codex profiles returns `[]`. native origin
+follows from this capability; there is no `source` member or claude variant.
 
 ```text
-source: native | statusline
-readState: ok | unavailable
-report?: {
-  reportedAt: utc instant,
-  fiveHour?: {usedPercent: number, resetsAt?: utc instant},
-  sevenDay?: {usedPercent: number, resetsAt?: utc instant}
-}
+{machine:{handle,platform}, observedAt, profiles:[{
+  key, label, provider:"Codex", historyScope?,
+  readState:"ok"|"unavailable",
+  report?:{
+    reportedAt,
+    fiveHour?:{usedPercent,resetsAt?},
+    sevenDay?:{usedPercent,resetsAt?}
+  }
+}]}
 ```
 
-`ok` without a report is successful absence, such as no claude publication.
-a report without windows means no displayable quotas were supplied.
-`unavailable` carries no new report. expected read failures affect only that
-profile. auth/machine/request errors and owned-data defects retain their existing
-policies; no permissive reader or compatibility recovery.
+`ok` without a report or with no windows is successful absence. `unavailable`
+carries no new report. ordinary failures affect only their profile;
+auth/machine/request errors and owned-data defects retain existing policies.
+the strict go consumer and host change together; legacy native replies are
+rejected. the shared session schema changes with android under terminal usage.
 
-the helper normalizes codex; `agentcontrol` reads claude and composes usage;
-the gateway maps the wire record; `fleetclient` decodes it once; `sessionui`
-presents that owned value. add no quota facts to sessions, terminal status,
-conversation bindings or tmux options. existing `historyScope` identifies a
-home, not an authenticated account.
+percentages are finite and nonnegative. preserve precision and valid values
+above 100; never infer admission. optional facts are omitted, never null or zero
+substitutes. reset seconds become explicit utc. the existing five-second host
+deadline covers concurrent profile reads, preserving completed results and
+marking timed-out reads unavailable. the native response remains bounded at
+64 kib. the gateway owns cancellation/completion, with no recurring task or cache.
 
-percentages are finite and nonnegative. preserve valid codex values above 100
-rather than clamp or infer admission. optional facts are omitted, never null or
-zero substitutes. convert reset seconds to explicit utc. read one snapshot
-version; incompatible versions are unavailable. bound the file at 4 kib and the
-response at the existing 64 kib control-response limit.
+## clocks and display lifetime
 
-each host request has a shared five-second deadline. read the closed profiles
-concurrently, retain completed results and mark timed-out profiles unavailable.
-the gateway owns cancellation/completion, with no recurring task or codex cache.
-logs/evidence retain timing, shape and typed outcomes, never quota values,
-account identifiers, homes or raw provider payloads.
+take `observedAt` after collection. native `reportedAt` is when the read
+completed. derive initial age from `observedAt - reportedAt` and reset intervals
+from `resetsAt - observedAt` within that host. advance both with client-local
+monotonic elapsed time, anchored at each bounded response's receipt before fleet
+aggregation. never compare host clocks with desktop wall time or other hosts.
+a report dated after the gateway sample is unavailable.
 
-take `observedAt` after collection. native `reportedAt` is when its read completed;
-claude retains its producer timestamp. derive initial age from
-`observedAt - reportedAt` within that host response and each reset interval from
-`resetsAt - observedAt`. after receipt, advance with browser monotonic elapsed
-time, anchored at each host response's receipt before fleet aggregation. never
-compare remote timestamps with the desktop wall clock or another host's clock,
-or replace source times with receipt time. a report dated after
-the gateway sample has uncertain recency and is unavailable.
+report age at least 120 seconds or a failed latest read means stale. retained
+reports keep their original receipt, host time and descriptor; successful reads
+replace the whole report, including omissions. descriptor/identity changes
+discard the old report. source selection follows [terminal usage](terminal-usage.md),
+including selection of a newer stale eligible report ahead of older healthy data.
 
-stale means report age at least 120 seconds or a failed latest read. even a
-recent claude report may contain older backend data. retain stale values at normal
-readable weight until their known reset; disclose age and staleness on the usage
-page. at `now >= resetsAt`, show unknown and
-`awaiting report after reset`, never inferred zero or renewed capacity.
-an absent reset reads `reset unknown` and permits no predicted reset.
+at a known reset, omit that window and disclose `awaiting report after reset`;
+never infer zero or renewed capacity. absent resets remain unknown. weekly
+remaining capacity is `floor(max(0,100-usedPercent))`, computed from the unrounded
+native value. optional short windows appear only when actually reported.
 
-## refresh and browser interaction
+## evidence
 
-reuse the existing five-second browser tick. schedule a separate usage read at
-startup, when entering a new usage scope, and every 60 seconds while the
-browser is active. measure cadence from attempt start with monotonic due times
-and one current in-flight usage batch; coalesce repeated refresh intent without
-a queue. this read lane does not use
-the pending-mutation slot or await inventory completion. slow usage cannot delay
-list results, keyboard handling, attachment or controls.
+the native acquisition was previously qualified with helper revision
+`92cf72aa15817a6f0e14b4c5a861b8c6cdd6d589` and installed default-branch revision
+`4d270abd48dd61240b22b9d741ce737fa611f67b`. the v0.13.0 and v0.14.0 checks qualify
+their recorded generations only. their claude-file and devbox-only observations
+do not qualify the replacement. current source/provider boundaries and remaining
+deployment work are recorded in [terminal usage](terminal-usage.md#qualification).
 
-the table and usage page read devbox only. opening/closing usage retires/cancels
-its batch and marks devbox due immediately. forms hide usage and retire its work;
-returning to the table preserves the attempt cadence. machine/view/session changes
-never retarget the quota read. read no other host for usage disclosure.
-
-capture each batch's scope/identity and a monotonically increasing read
-generation. only the current generation may admit results or clear the in-flight
-slot; returning to an earlier scope cannot revive an old completion. retire and
-cancel the batch before fullscreen attachment, stop scheduling while attached,
-and read when due on return. cancel with the browser. retain last reports in
-memory by devbox's machine handle and profile descriptor. failures may retain that report as
-stale; successful reads replace it completely, including absent windows. clear
-reports when machine identity or profile descriptors change. only claude's latest
-report is stored on disk.
-
-keep the view strip on row 1. put the summary at the beginning of the bottom
-block, after notices and before the selected-session rule, facts and keys.
-show declared profile keys in configured order, with a `remaining · codex 7d:`
-row and an aligned `claude-work: 5h … · 7d …` row. compute
-`floor(max(0, 100 - usedPercent))` from the unrounded provider value and show a
-percent sign on every known number; source and wire values stay unchanged.
-use `—` for unknown. the summary has no machine label, legend, source/freshness
-markers or age-dependent dimming. use quiet readable typography, not ready-green
-or an account-readiness badge. the four configured profiles fit two rows at
-80 columns. zero profiles reads `no agent profiles`; failures keep profile names
-and retained values until reset, or unknown when no report exists.
-
-add `u usage` to table hints and `--help`. `u` opens a read-only page in the
-existing frame without changing session/view selection. its source is devbox
-regardless of the desktop machine filter. include unused profiles, remaining
-percentages, source, report age, reset time/countdown and `no report`/`unavailable`.
-claude shows both windows; codex shows weekly, plus a short window only when
-one was actually reported. omit absent codex short-window/reset entries.
-up/down or j/k scroll; q/escape returns to the previous table selection/scroll,
-subject to ordinary inventory reconciliation. the page has no session-action
-keys or captured session target. forms/attachment show no usage strip.
-
-ctrl-r on the table requests inventory and usage independently; on the usage
-page it requests usage only. automatic inventory reconciliation continues there.
-coalescing never relabels an old report as newly fetched. all values,
-outages and return controls remain usable at 80×24/no color. usage failure never
-changes session action admission.
-
-## implementation plan
-
-2026-10-07 revision: `internal/sessionui` owns fixed devbox selection and the
-remaining-quota footer/details; `internal/agentcli` names that source in help.
-dev-server's existing ai-tools installer owns the statusline publication argument,
-enabled only by devbox's ansible task. acquisition, transport, account homes,
-provider execution and refresh ownership stay with their existing modules.
-no service, host forwarding or inactive-claude getter is added.
-
-2026-10-02: implementation is requested as one focused feature across these
-owners, with temporary integration/live tests and adversarial review. installed
-acceptance targets macbook, devbox and arch. public release and device work remain
-separate operations.
-
-1. **qualify sources.** verify the installed codex payload/default pool and
-   supported claude input. prove the native usage-only path creates no thread or
-   inference turn. preserve missing/reset fields and retain content-free results.
-   schema generation/version replies alone are not live quota acceptance.
-2. **helper.** add codex `usage` in `llm-calling`'s existing provider-runtime
-   control owner; qualify its normalized result and record the exact source
-   revision. installation follows that repository's default branch through the
-   existing install mechanism; no revision pin or second native transport.
-3. **producer.** extend `dev-server/assets/claude/statusline.sh` with the atomic
-   report while preserving display. add no hooks or provider-auth/config changes.
-   qualify source before any managed-script distribution or fleet apply.
-4. **host and transport.** add usage beside `internal/agentcontrol/native.go`,
-   the independent route/DTO in `internal/gateway`, and one decoded read operation
-   in `internal/fleetclient`. reuse profiles, machine binding, deadlines/errors;
-   leave inventory envelopes, existing profile DTOs and android untouched.
-5. **tui.** update `internal/sessionui`'s model, existing tick, keys and frame,
-   plus `internal/agentcli/run.go` help. summary/details share report presentation.
-   add only required due/in-flight state, retained observations and page offset;
-   no navigation history or persisted browser state.
-6. **verify and close.** use a small set of temporary source/host/client checks
-   for the acceptance below; remove them before commit under
-   [testing policy](rules/testing.md), run `scripts/check verify`, and record
-   exact-source delivery/remaining issues. release, deployment and installed
-   acceptance remain separate operations.
-
-## acceptance
-
-| boundary | required evidence |
-| --- | --- |
-| codex | actual helper→account-daemon read, correct home/default pool/durations, optional fields; no owner start/restart, thread, inference, terminal operation or retargeting |
-| claude producer | devbox installer enables publication, workstation installer omits it; synthetic input exports quotas only and preserves display; absent flag/default home does not publish; absence/reset replaces prior fields; failed/cancelled writes preserve a complete previous file and remove owned temporary files |
-| report semantics | cached callbacks/conflicting same-home writers remain last-reported observations; restart preserves report age; reports contain no account identifiers or terminal content; logs/evidence contain no actual quota values |
-| gateway/client | zero profiles/sessions, one failed or slow profile, unsupported helper/version, host outage/machine mismatch; omissions clear old values; no caller paths or inventory/status dependency |
-| timing/lifetime | 60-second scheduling, one current batch, manual coalescing, independent inventory completion, host receipt/monotonic elapsed age, 120-second stale boundary, exact reset expiry, fixed devbox source through table/page and machine/view/session changes, attach/return and cancellation without late admission or slot clearing |
-| actual tui | 80×24/color and no-color remaining footer and full page, conservative rounding/zero clamp, all profiles, codex weekly-only summary, readable stale values, devbox/source/age/resets in details, correct selected-row viewport, scroll/return and unaffected controls under usage failure |
-| installed composition | qualified helper, gateway/browser and managed producer on intended hosts; real codex/claude data visible through gateway→browser, with inactive claude honestly stale/unknown |
-
-use dummy quota values where possible and actual owning code paths. live evidence
-records shape/outcomes/absence of effects, not actual usage percentages. tmux
-requires explicit current-turn approval and exact isolated `-L` resources;
-phone/adb work is outside scope. engineering checks do not establish behavior.
-
-2026-10-07 revision qualification: temporary source checks fail against the prior
-remaining/source/footer behavior and pass against this revision with the race
-detector. they cover conservative remaining percentages and zero clamping,
-missing/reset windows, fixed devbox scope through machine filters and the usage
-page, no substituted source when devbox is unconfigured, readable stale claude
-values, 80×24 color/no-color layout, selected-row viewport and source/age/reset
-disclosure. dev-server's isolated installer/callback checks prove publication
-enabled on devbox and disabled on workstations, unchanged native display,
-account isolation, preserved settings and repeat-install convergence.
-temporary tests are removed before commit. installed cutover and actual native
-callback acceptance remain [pending](issues/devbox-usage-cutover.md).
-
-2026-10-02 implementation qualification: temporary source checks demonstrated
-behavioural red before green, including quota-only atomic publication, cached
-callbacks, concurrent writers, failure cleanup and unchanged statusline display.
-gateway/client/timing checks passed with the race detector. the actual browser
-passed at 80×24 without color, including scope changes, read-only scrolling with
-a selected session, omissions, stale/reset presentation, independent refresh and
-quit during an observed blocked usage request. adversarial review covered the
-implementation and test sensitivity. these temporary source tests are removed
-before commit; `scripts/check verify host` separately passed engineering checks.
-integration with the subsequently merged session views and searchable group
-entry passed focused race checks and the updated actual-terminal probe: view
-changes leave quota scope/cadence intact, usage returns to the selected group
-and session, and forms retain their explicit create/save actions.
-
-qualified `llm-calling` helper source:
-`92cf72aa15817a6f0e14b4c5a861b8c6cdd6d589`. the producer's qualified bytes
-remain unchanged through the shared-native-installation merge.
-
-candidate composition of skid source
-`a2fea3e6de46b1eee06e8cb1cde05b83ddd380ea` passed on macbook, devbox and arch using their actual
-installed profile configuration and existing account endpoints. the changed
-helper, gateway and fleetclient read weekly codex usage; those native responses
-omitted 5h. arch's absent work/work2 owners remained absent and unavailable.
-claude had no publication on all three hosts, reported as successful absence.
-only usage reads were allowed; endpoint identities were unchanged, terminal
-operations were fenced, and the owned candidate stages were removed. this is
-candidate evidence, not managed installation or installed browser acceptance.
-
-2026-10-02 installed composition passed on macbook, devbox and arch through the
-normal managed installation paths. the immutable
-[v0.13.0 release](https://github.com/NielsdaWheelz/skidbladnir/releases/tag/v0.13.0)
-comes from skid source `b2ea62aea57a87668835eefbcaebcffcf5761559`;
-its five public assets passed source/tag, checksum and signer verification,
-and both host binaries reproduced byte-for-byte. both release pins admit this
-generation. the installed helper is default-branch revision
-`4d270abd48dd61240b22b9d741ce737fa611f67b`, with the qualified native usage
-sources unchanged. actual imports, optional sdk, dependency consistency and
-matching installed dependency metadata were checked on all three hosts. the
-managed producer matched its qualified bytes and mode; provider settings stayed
-unchanged.
-
-the existing fleet verifier and each installed public browser passed against
-all three authenticated gateways. the 80×24/no-color browser checks covered
-default summaries, every declared profile including unused profiles, source,
-age, stale/reset presentation, read-only scrolling, return and clean quit.
-the native personal responses supplied weekly windows and omitted 5h.
-arch's absent work/work2 owners remained absent and unavailable. an earlier
-installed macbook check admitted naturally reported claude 5h and 7d values in
-the summary and page. the final three-browser runs separately observed a
-macbook report with neither window and no claude publication on devbox or arch;
-these absences correctly displayed unknown. live account/browser checks invoked
-no inference turn or forced statusline callback.
-
-adversarial review covered the installed receipts and temporary probes. all
-temporary integration/live tests were removed after qualification. devbox's
-jarvis remained cleanly stopped and paused. phone installation and adb work
-were not performed.
-
-## research evidence and limits
-
-2026-10-02 research checked local codex cli 0.159.2 schema and account-daemon
-version replies (0.160.0 for personal/work/work2), claude cli 2.1.287 and the
-deployed managed statusline. that research did not test live quotas, exports or
-rendered usage; subsequent implementation qualification is recorded above.
-versions describe evidence, not pin-parity admission requirements.
-
-the official [codex app-server contract](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
-defines account reads and quota/duration/reset fields. the official
-[claude statusline contract](https://code.claude.com/docs/en/statusline#rate-limit-usage)
-defines 5h/7d data and subscription/first-response limits; render callbacks do
-not promise a new backend read. the
-[published claude sdk types](https://unpkg.com/@anthropic-ai/claude-agent-sdk@0.3.287/sdk.d.ts)
-include an explicitly unstable usage getter, which this plan excludes.
+the official [codex account contract](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
+defines the native quota/duration/reset fields. logs and evidence contain shape,
+timing and typed outcomes, never actual quota values, account identifiers, homes
+or raw provider payloads.

@@ -220,7 +220,7 @@ func (m *model) footerLines() []string {
 	case "create":
 		legend = "new session on " + ansi.Truncate(attention.SingleLine(m.form[0]), width/2, "…")
 	case "usage":
-		legend = "profile usage · read only"
+		legend = "usage · read only"
 	}
 	lines := append(notices, usage...)
 	lines = append(lines, rule(legend, end, width))

@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -28,7 +25,6 @@ type UsageReport struct {
 
 type ProfileUsage struct {
 	Profile   agentruntime.Profile
-	Source    string
 	ReadState string
 	Report    *UsageReport
 }
@@ -44,7 +40,7 @@ type usageReportJSON struct {
 	SevenDay   json.RawMessage `json:"sevenDay,omitempty"`
 }
 
-// UnmarshalJSON establishes the shared normalized helper/file/wire report.
+// UnmarshalJSON establishes the shared normalized native helper/wire report.
 func (report *UsageReport) UnmarshalJSON(encoded []byte) error {
 	var wire usageReportJSON
 	if err := strictjson.Decode(encoded, &wire); err != nil {
@@ -101,35 +97,27 @@ func parseUsageReport(wire usageReportJSON) (UsageReport, error) {
 func (service *Service) ProfileUsage(parent context.Context) (UsageObservation, error) {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	profiles := service.sessions.Profiles()
+	declared := service.sessions.Profiles()
+	profiles := make([]agentruntime.Profile, 0, len(declared))
+	for _, profile := range declared {
+		if profile.Provider == agentruntime.ProviderCodex {
+			profiles = append(profiles, profile)
+		}
+	}
 	observed := make([]ProfileUsage, len(profiles))
 	failures := make([]error, len(profiles))
 	var pending sync.WaitGroup
 	for index, profile := range profiles {
 		pending.Go(func() {
 			value := ProfileUsage{Profile: profile, ReadState: "unavailable"}
-			var report *UsageReport
-			var err error
-			switch profile.Provider {
-			case agentruntime.ProviderCodex:
-				value.Source = "native"
-				var result UsageReport
-				err = service.native(ctx, profile, "usage", nil, nil, &result)
-				if err == nil {
-					report = &result
-				}
-			case agentruntime.ProviderClaude:
-				value.Source = "statusline"
-				report, err = readClaudeUsage(profile)
-			default:
-				panic("usage profile has an unknown provider") // justify-defect: manager construction closes the profile provider union.
-			}
+			var report UsageReport
+			err := service.native(ctx, profile, "usage", nil, nil, &report)
 			var unavailable *UnavailableError
 			if err != nil && !errors.As(err, &unavailable) {
 				failures[index] = err
 			}
 			if err == nil && ctx.Err() == nil {
-				value.ReadState, value.Report = "ok", report
+				value.ReadState, value.Report = "ok", &report
 			}
 			observed[index] = value
 		})
@@ -145,54 +133,4 @@ func (service *Service) ProfileUsage(parent context.Context) (UsageObservation, 
 		}
 	}
 	return UsageObservation{ObservedAt: stamp, Profiles: observed}, nil
-}
-
-func readClaudeUsage(profile agentruntime.Profile) (*UsageReport, error) {
-	home := ""
-	for _, entry := range profile.Environment {
-		if entry.Name == "CLAUDE_CONFIG_DIR" {
-			home = entry.Value
-			break
-		}
-	}
-	file, err := os.Open(filepath.Join(home, "skidbladnir-usage.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, &UnavailableError{Dispatch: "not_sent"}
-	}
-	defer file.Close()
-	encoded, err := io.ReadAll(io.LimitReader(file, 4097))
-	if err != nil || len(encoded) > 4096 {
-		return nil, &UnavailableError{Dispatch: "not_sent"}
-	}
-	// Read the version before accepting the single v1 shape. Incompatible
-	// snapshots are unavailable. justify-defect: malformed publications violate
-	// our single owned writer's contract and retain the gateway's internal error.
-	var fields map[string]json.RawMessage
-	if strictjson.Decode(encoded, &fields) != nil || fields == nil || len(fields["schemaVersion"]) == 0 {
-		return nil, errors.New("invalid statusline usage publication")
-	}
-	var schema *int
-	if strictjson.Decode(fields["schemaVersion"], &schema) != nil || schema == nil {
-		return nil, errors.New("invalid statusline usage publication version")
-	}
-	if *schema != 1 {
-		return nil, &UnavailableError{Dispatch: "not_sent"}
-	}
-	var wire struct {
-		SchemaVersion int             `json:"schemaVersion"`
-		ReportedAt    string          `json:"reportedAt"`
-		FiveHour      json.RawMessage `json:"fiveHour,omitempty"`
-		SevenDay      json.RawMessage `json:"sevenDay,omitempty"`
-	}
-	if strictjson.Decode(encoded, &wire) != nil {
-		return nil, errors.New("invalid statusline usage publication")
-	}
-	report, err := parseUsageReport(usageReportJSON{ReportedAt: wire.ReportedAt, FiveHour: wire.FiveHour, SevenDay: wire.SevenDay})
-	if err != nil {
-		return nil, err
-	}
-	return &report, nil
 }

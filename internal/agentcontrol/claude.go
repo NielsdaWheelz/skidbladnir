@@ -697,6 +697,9 @@ func claudeComposer(screen *claudeScreen, last int) (reading, bool) {
 		footer.classes&^claudeTolerated == 0 && (kind == claudeSlotNone || kind == claudeSlotOther) && !waiting
 
 	read := reading{activity: sessions.ActivityUnknown}
+	if ordinary && footer.kind == claudeFooterOrdinary {
+		read.usage = claudeReadUsage(screen, bottom, footer.mode)
+	}
 	var activity DiagnosticRule
 	// The panel, the waiting row and a work pill are independent of the
 	// chevron and the slot, so they decide before any conflict.

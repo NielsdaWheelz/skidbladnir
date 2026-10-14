@@ -100,6 +100,7 @@ type connectionDTO struct {
 
 type sessionDTO struct {
 	TerminalStatus  sessions.TerminalStatus    `json:"terminalStatus"`
+	TerminalUsage   *sessions.TerminalUsage    `json:"terminalUsage,omitempty"`
 	TmuxID          string                     `json:"tmuxId"`
 	ActivePaneID    string                     `json:"activePaneId"`
 	TmuxName        string                     `json:"tmuxName"`
@@ -375,6 +376,7 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 		Agent:           agent,
 		Conversation:    session.Conversation,
 		TerminalStatus:  session.TerminalStatus,
+		TerminalUsage:   session.TerminalUsage,
 		Connection:      connection,
 		Objective:       session.Objective,
 		Group:           session.Group.String(),
@@ -385,6 +387,9 @@ func mapSession(session sessions.Session, profiles []agentruntime.Profile) (sess
 	if !card.TerminalStatus.Valid() || card.Conversation != nil && !card.Conversation.Valid() || card.ActivePaneID == "" || agent != nil && agent.PaneID != card.ActivePaneID || card.TmuxID == "" || card.TmuxName == "" || card.NameMode != sessions.NameAutomatic && card.NameMode != sessions.NameManual || card.IdentityToken == "" ||
 		card.Character.Key == "" || card.Character.DisplayName == "" || card.AttachedClients < 0 {
 		return sessionDTO{}, errors.New("invalid required session facts")
+	}
+	if card.TerminalUsage != nil && (!card.TerminalUsage.ValidFor(card.TerminalStatus) || agent == nil || agent.Provider != agentruntime.ProviderClaude.String() || connection != nil) {
+		return sessionDTO{}, errors.New("invalid terminal usage attachment")
 	}
 	return card, nil
 }
