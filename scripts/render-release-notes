@@ -55,35 +55,40 @@ render_notes() {
     "- Android signer SHA-256: \`$signer\`" \
     "- mac app signer SHA-256: \`$mac_signer\`" "" \
     "## Install" "" \
+    'for a new installation, complete **first setup only** below before step 2 verification.' "" \
     '1. In a separate post-publication pin-control checkout, confirm its' \
     '   tracked `release-pin.json` owns the exact tag, source, and all five asset digests.' \
     '   Pin the same tag, source, and two host-bundle' \
-    '   digests in `dev-server`, then apply devbox, arch, and macbook.' \
+    '   digests in `dev-server`. run `./workstation gateway apply skidbladnir` on' \
+    '   macbook and arch, and `./devbox gateway apply skidbladnir` from dev-server.' \
     '   the darwin bundle includes the signed `Skid.app`; dev-server owns its login launch.' \
-    '2. From that pin-control checkout on the MacBook, run' \
-    '   `scripts/fleet provision-clients` to configure the desktop client on all three hosts, then' \
-    '   reapply devbox to activate the observer after provisioning, then run' \
+    '2. with the existing fleet client configuration, run from the pin-control checkout' \
+    '   on macbook:' \
     '   `SKIDBLADNIR_DEV_SERVER_CHECKOUT=/absolute/path/to/dev-server scripts/fleet verify`.' \
     '3. On the phone, download `skidbladnir-android.apk` from this release and' \
     '   approve installation from the browser when Android asks. Or, with USB debugging' \
     '   already authorized, run `scripts/install-android /path/to/skidbladnir-android.apk`.' \
-    '   The script installs in place without prompts and preserves app data and existing pairings.' \
-    '4. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
+    '   The script installs in place without prompts and preserves app data and existing pairings.' "" \
+    '## first setup only' "" \
+    'for a new installation, configure the fleet and enroll notifications once.' \
+    '1. on macbook, run `scripts/fleet provision-clients` from the pin-control checkout' \
+    '   to configure the desktop client on all three hosts. from dev-server, run' \
+    '   `./devbox gateway apply skidbladnir` to activate the observer after provisioning.' \
+    '2. Install Tailscale from Google Play, sign into the fleet tailnet, and leave' \
     '   Tailscale connected.' \
-    '5. for first enrollment, open skid and tap **Connect**.' \
+    '3. for first enrollment, open skid and tap **Connect**.' \
     '   On a computer configured for `skid`, run `scripts/fleet invite`,' \
     '   then scan the fresh qr within five minutes. it works once.' \
-    '6. configure the qualified ntfy android distributor with the private devbox `:8444`' \
+    '4. configure the qualified ntfy android distributor with the private devbox `:8444`' \
     '   origin and its read-only phone account. keep ntfy and tailscale running in' \
-    '   the background. allow skid notifications; open `Skid.app` for mac setup.' \
+    '   the background. allow skid notifications; run `skid notifications setup` for mac setup.' \
     '   retrieve phone credentials locally from the private dev-server configuration;' \
     '   never share the publisher token.' "" \
     '## Update order' "" \
     'Apply and verify all three hosts first; update the phone second. Mixed' \
     'versions and ordinary APK downgrade are not supported. Same-version reinstall' \
-    'is supported. this cutover retains pairings but needs one **Reconnect fleet**' \
-    'with a fresh `scripts/fleet invite` v2 qr for notification configuration.' \
-    'attention resets once; no old attention state is migrated. devbox owns readiness.' \
+    'is supported. in-place updates preserve installed credentials, pairings, client and notification' \
+    'configuration, and attention state. devbox owns readiness.' \
     'respect platform focus/do-not-disturb; all alert reasons use default sound.' "" \
     '## rollback' "" \
     'follow the complete previous-release procedure in dev-server: stop notification' \
