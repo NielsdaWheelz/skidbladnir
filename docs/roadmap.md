@@ -27,6 +27,17 @@ checks, physical phone geometry/text-scale checks and owner terminal-return
 observation passed; tests were retired and android engineering checks passed.
 the spec records qualification and limits. no production release was made.
 
+## compact dashboard roster — implemented; roster acceptance verified
+
+2026-10-14: [the spec and plan](dashboard-compact-roster.md) follows compact
+chrome with smaller crests, wrapping cards, a full-width context footer, compact
+all-view headings and flat selected groups. it defines disjoint code ownership,
+content rules and temporary red/green/device acceptance. recognition uses crest
+plus names; readability outranks fixed height.
+[qualification](dashboard-compact-roster.md#verification) records passing phone
+probes, owner-confirmed talkback/readability and engineering checks. unchanged
+[real-session card qualification](issues/session-card-hands-on.md) remains open.
+
 ## tmux workspace recovery — deployed; reboot checks deferred
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers

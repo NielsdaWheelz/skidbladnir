@@ -55,6 +55,10 @@ interaction, visible-draft admission and inline mobile directory search.
 [compact dashboard chrome](dashboard-compact-chrome.md) owns the header,
 view-tab presentation and notification-action placement, with qualification
 recorded there.
+[compact dashboard roster](dashboard-compact-roster.md) owns the accepted card
+layout, group-heading policy and vertical spacing; source is implemented and
+[qualification](dashboard-compact-roster.md#verification) records its evidence.
+readable facts may grow cards; recognition uses crest plus names.
 [design language](design-language.md) owns visual values; [codebase rules](rules/index.md)
 own implementation conventions. a platform fact that contradicts a premise
 reopens the responsible contract.
@@ -298,8 +302,9 @@ outside every view. recovery adds no controls or saved client state.
   Missing or invalid character metadata is assigned from Dvergatal and
   persisted during inventory; other invalid or unknown `@skid_*` metadata is
   absent, never guessed.
-- **Card presentation:** [session card](session-card.md) owns the card's
-  structure, actions and speech. the operator-owned tmux name is the primary work
+- **Card presentation:** [compact roster](dashboard-compact-roster.md) owns the
+  accepted replacement structure; [session card](session-card.md) retains actions
+  and speech. the operator-owned tmux name is the primary work
   identity. The dwarf display name remains a smaller Big Shoulders signature.
   the status line's leading facet is redundant decoration; the line's literal
   label remains the semantic and accessible source. the exclusive status/attention
@@ -310,13 +315,13 @@ outside every view. recovery adds no controls or saved client state.
   and durable memory across uncertain observations. the device-local v2 owner
   remembers non-idle until idle, and actual output presentation acknowledges
   ready while preserving armed work. no human reply viewer or read receipt. recorded
-  native identity is secondary and may differ from the terminal. the machine label
-  leads the quiet `where` line (machine · directory) on every card. the flat
-  needs-input queue adds one quiet group-context line; all/group views retain
-  their existing headings and card density. machine identity remains present
-  in accessibility and every routed or destructive action. The quiet `who` line
-  follows the dwarf signature with the configured runtime profile label for a
-  proven runtime profile, `<provider> · profile unknown` for an agent without
+  native identity is secondary and may differ from the terminal. every card shows
+  machine context. the accepted roster puts the dwarf beside status when space
+  permits and profile/host/path in a full-width wrapping footer. the flat
+  needs-input queue adds one quiet group-context line; only `all` retains group
+  headings. machine identity remains present in accessibility and every routed
+  or destructive action. the footer uses the configured runtime profile label for
+  a proven runtime profile, `<provider> · profile unknown` for an agent without
   one, and no profile for a pane without an agent, whose status already reads
   `terminal`. It never substitutes launch
   profile for missing runtime profile. Cwd abbreviation never changes its
@@ -360,8 +365,9 @@ outside every view. recovery adds no controls or saved client state.
   history only with its configured profile/scope. only claude
   registration supplies projected profile/provider-session id; codex's old
   hook registration is not used for native binding or projected identity.
-- all/group grid order: named headings in ascii-folded/exact utf-8 label order,
-  then unassigned; sessions within each group by case-folded/exact machine label,
+- all/group grid order: named groups in ascii-folded/exact utf-8 label order,
+  then unassigned; under the accepted roster only `all` renders headings.
+  sessions within each group sort by case-folded/exact machine label,
   machine handle and numeric tmux id. needs input is flat, by ready/action tier
   then that same session order. the host envelope promises no display order.
 - the human queue never supplies control admission. cli `wait --state needs-input`
@@ -577,7 +583,8 @@ or absent local metadata projects as unassigned without repair; global options
 are not inherited. creation publishes membership in its existing queue. no group
 id, registry, launch context, lifecycle, tmux session group, or new hook exists.
 
-cli/tui/phone expose assignment and clearing. human collections use headings;
+cli/tui/phone expose assignment and clearing. phone `all` uses headings; selected
+phone groups use the tab as their scope label under the accepted roster.
 json remains peer-oriented with optional `group` per row. machine/group filters
 intersect, selection/actions retain session lifetimes, and an emptied selected
 group stays selected. filtering never removes source inventory or narrows refresh

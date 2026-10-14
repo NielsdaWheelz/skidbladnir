@@ -426,7 +426,7 @@ private fun DashboardDwarfGrid(
                 bottom = sealClearance,
             ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(
                 items = recoveryNotices,
@@ -479,7 +479,8 @@ private fun DashboardDwarfGrid(
                         is DashboardItem.Heading -> {
                             val label = item.label?.text ?: "unassigned"
                             Text(label, fontFamily = NidavellirType.Data, color = Muted,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics {
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.fillMaxWidth().semantics {
                                     heading()
                                     contentDescription = label
                                 }, maxLines = 1, overflow = TextOverflow.Ellipsis)

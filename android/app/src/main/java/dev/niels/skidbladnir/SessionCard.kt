@@ -12,13 +12,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -50,13 +53,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 
-// The session card (docs/session-card.md): persona left, then four lines of
-// work: what (tmux name), state (status), who (dwarf signature and runtime
-// profile), where (host and directory). Verbs live behind the overflow. The
-// clickable body owns the card's whole spoken account in one node; the
+// The compact roster card (docs/dashboard-compact-roster.md): work and status
+// lead, the dwarf signature flows beside status, and context uses the full
+// footer width. Verbs live behind the overflow. The clickable body owns the
+// card's whole spoken account in one node; the
 // overflow is its only sibling. M3's `Card(onClick)` hardcodes its ripple, so
 // the body is a plain clickable with the angular press flash
 // (docs/chrome-tokens.md "Interaction states").
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SessionCard(
     visibleSession: VisibleSession,
@@ -97,8 +101,6 @@ internal fun SessionCard(
         is ExecutionContext.Remote -> "running on ${context.machine.label.text} · terminal on $terminalMachine"
         ExecutionContext.RemoteUnknown -> "remote context unknown · terminal on $terminalMachine"
     }
-    val shownDirectory = directory?.let(::abbreviatedDirectory)
-        ?: "directory unavailable".takeIf { context is ExecutionContext.Remote }
     val density = LocalDensity.current
     val facetSize = with(density) { 12.dp.toSp() }
     val nameLineHeight = with(density) { MaterialTheme.typography.titleSmall.lineHeight.toDp() }
@@ -120,7 +122,7 @@ internal fun SessionCard(
     }
     Surface(color = DeepSurface, shape = NidavellirShapes.Card) {
         Box(Modifier.drawBehind { drawRect(Gold.copy(alpha = 0.25f), size = size.copy(height = 1.dp.toPx())) }) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(
@@ -139,139 +141,148 @@ internal fun SessionCard(
                             }
                         }
                     }
-                    // The end inset is the overflow's 48dp column: text never runs under it.
-                    .padding(start = CardPadding, top = CardPadding, end = 48.dp, bottom = CardPadding),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = 8.dp, vertical = CardVerticalPadding),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                DwarfPortrait(session.character)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = session.tmuxName,
-                        color = Bone,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontFamily = NidavellirType.Data,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val primaryStatus = buildAnnotatedString {
-                        appendInlineContent(FACET)
-                        append(" ")
-                        withStyle(SpanStyle(color = tone, fontWeight = FontWeight.Bold)) { append(status.label) }
-                    }
-                    val statusInlineContent = mapOf(
-                        FACET to InlineTextContent(Placeholder(facetSize, facetSize, PlaceholderVerticalAlign.TextCenter)) {
-                            ActivityFacet(
-                                working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
-                                tone = tone,
-                                animate = machine.canMutate && motionEnabled,
-                            )
-                        },
-                    )
-                    if (needsInputView && status.detailExplainsQueue) {
-                        // The notice explains this queue row. Give the bounded detail its own
-                        // line so it can wrap without hiding the reason or stranding a separator.
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(end = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DwarfPortrait(session.character)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = buildAnnotatedString {
-                                append(primaryStatus)
-                                status.detail?.let { withStyle(SpanStyle(color = Muted)) { append("\n$it") } }
-                            },
-                            inlineContent = statusInlineContent,
-                            style = MaterialTheme.typography.labelMedium,
+                            text = session.tmuxName,
+                            color = Bone,
+                            style = MaterialTheme.typography.titleSmall,
                             fontFamily = NidavellirType.Data,
-                        )
-                    } else {
-                        // Ordinary cards keep a fixed-height detail beside the primary label;
-                        // only the label itself can require a second line (session-card.md).
-                        Row {
-                            Text(
-                                text = primaryStatus,
-                                inlineContent = statusInlineContent,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontFamily = NidavellirType.Data,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.alignByBaseline(),
-                            )
-                            status.detail?.let {
-                                Text(
-                                    text = " · $it",
-                                    color = Muted,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = NidavellirType.Data,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
-                                )
-                            }
-                        }
-                    }
-                    availability?.let { CardFact(it.label, noticeToneColor(it.tone)) }
-                    status.secondary?.let { CardFact(it, Muted) }
-                    session.objective?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        val primaryStatus = buildAnnotatedString {
+                            appendInlineContent(FACET)
+                            append(" ")
+                            withStyle(SpanStyle(color = tone, fontWeight = FontWeight.Bold)) { append(status.label) }
+                        }
+                        val statusInlineContent = mapOf(
+                            FACET to InlineTextContent(Placeholder(facetSize, facetSize, PlaceholderVerticalAlign.TextCenter)) {
+                                ActivityFacet(
+                                    working = session.agent != null && session.terminalStatus.activity == TerminalActivity.Working,
+                                    tone = tone,
+                                    animate = machine.canMutate && motionEnabled,
+                                )
+                            },
+                        )
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            if (needsInputView && status.detailExplainsQueue) {
+                                // Queue reasons wrap completely; ordinary detail remains a single line.
+                                Text(
+                                    text = buildAnnotatedString {
+                                        append(primaryStatus)
+                                        status.detail?.let { withStyle(SpanStyle(color = Muted)) { append("\n$it") } }
+                                    },
+                                    inlineContent = statusInlineContent,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = NidavellirType.Data,
+                                )
+                            } else {
+                                Row {
+                                    Text(
+                                        text = primaryStatus,
+                                        inlineContent = statusInlineContent,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = NidavellirType.Data,
+                                        modifier = Modifier.alignByBaseline(),
+                                    )
+                                    status.detail?.let {
+                                        Text(
+                                            text = " · $it",
+                                            color = Muted,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontFamily = NidavellirType.Data,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = session.character.displayName,
+                                color = Muted,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = NidavellirType.Display,
+                            )
+                        }
                     }
-                    // Who: the dwarf signs in the display face; its runtime follows as a machine fact.
+                }
+                availability?.let { CardFact(it.label, noticeToneColor(it.tone)) }
+                status.secondary?.let { CardFact(it, Muted) }
+                session.objective?.let {
                     Text(
-                        text = buildAnnotatedString {
-                            withStyle(
-                                SpanStyle(
-                                    fontFamily = NidavellirType.Display,
-                                    fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                                ),
-                            ) { append(session.character.displayName) }
-                            profile?.let { append(" · $it") }
-                        },
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    CardFact(profile?.let { "$it · $host" } ?: host, Muted)
+                    if (directory != null) {
+                        CardFact(
+                            text = abbreviatedDirectory(directory),
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.StartEllipsis,
+                        )
+                    } else if (context is ExecutionContext.Remote) {
+                        CardFact("directory unavailable", Muted)
+                    }
+                }
+                if (needsInputView) {
+                    CardFact(
+                        text = session.group?.let { "group: ${it.text}" } ?: "unassigned",
                         color = Muted,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = NidavellirType.Data,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // Where: the host never yields to the path; the path yields from
-                    // its head, so the segment that names the work stays legible.
-                    Row(Modifier.fillMaxWidth()) {
-                        CardFact(if (shownDirectory != null) "$host · " else host, Muted)
-                        shownDirectory?.let {
-                            CardFact(it, Muted, Modifier.weight(1f, fill = false), TextOverflow.StartEllipsis)
-                        }
-                    }
-                    if (needsInputView) CardFact(session.group?.let { "group: ${it.text}" } ?: "unassigned", Muted)
                 }
             }
             ActionMenuButton(
                 spokenName = "session actions for ${session.tmuxName} on $terminalMachine",
                 actions = actions,
                 modifier = Modifier.align(Alignment.TopEnd),
-                markCenterY = CardPadding + nameLineHeight / 2,
+                markCenterY = CardVerticalPadding + nameLineHeight / 2,
             )
         }
     }
 }
 
-private val CardPadding = 10.dp
+private val CardVerticalPadding = 6.dp
 private const val FACET = "facet"
 
 @Composable
 private fun CardFact(
     text: String,
     color: Color,
-    modifier: Modifier = Modifier,
-    overflow: TextOverflow = TextOverflow.Ellipsis,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     Text(
         text = text,
         color = color,
         style = MaterialTheme.typography.labelSmall,
         fontFamily = NidavellirType.Data,
-        maxLines = 1,
+        maxLines = maxLines,
         overflow = overflow,
-        modifier = modifier,
     )
 }
 
@@ -345,9 +356,10 @@ internal fun DwarfPortrait(character: CharacterSummary) {
     val spec = sealSpec(character.key)
     val metal = if (spec.metal == SealMetal.Gold) Gold else Bronze
     val label = character.displayName.take(1).uppercase()
+    val density = LocalDensity.current
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(36.dp)
             .clip(NidavellirShapes.Octagon)
             .semantics {
                 contentDescription = "Portrait of ${character.displayName}"
@@ -463,6 +475,9 @@ internal fun DwarfPortrait(character: CharacterSummary) {
             fontFamily = NidavellirType.Display,
             fontWeight = FontWeight.Black,
             modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
+            // The initial is part of the seal; the neighboring full name scales with text settings.
+            fontSize = with(density) { 12.dp.toSp() },
+            lineHeight = with(density) { 16.dp.toSp() },
             style = MaterialTheme.typography.labelMedium,
         )
     }

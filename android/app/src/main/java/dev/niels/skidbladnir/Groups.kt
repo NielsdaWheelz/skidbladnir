@@ -178,21 +178,25 @@ internal fun dashboardItems(
         .thenBy { it.first.machine.label.text }
         .thenBy { it.first.machine.handle.encoded }
         .thenBy { it.first.target.session.tmuxId.substring(1).toBigInteger() })
-    if (view == DashboardViewSelection.NeedsInput) {
-        return sessions.filter { it.second != SessionQueueCategory.Excluded }
+    return when (view) {
+        DashboardViewSelection.NeedsInput -> sessions.filter { it.second != SessionQueueCategory.Excluded }
             .sortedBy { it.second }.map { DashboardItem.Session(it.first) }
-    }
-    val grouped = sessions.map { it.first }.groupBy { it.target.session.group }
-    val labels = grouped.keys.filterNotNull()
-        .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
-    return buildList {
-        labels.forEach { label ->
-            add(DashboardItem.Heading(label))
-            grouped.getValue(label).forEach { add(DashboardItem.Session(it)) }
-        }
-        grouped[null]?.let { unassigned ->
-            add(DashboardItem.Heading(null))
-            unassigned.forEach { add(DashboardItem.Session(it)) }
+        is DashboardViewSelection.Named, DashboardViewSelection.Unassigned ->
+            sessions.map { DashboardItem.Session(it.first) }
+        DashboardViewSelection.All -> {
+            val grouped = sessions.map { it.first }.groupBy { it.target.session.group }
+            val labels = grouped.keys.filterNotNull()
+                .sortedWith { first, second -> compareCaseInsensitiveUtf8(first.text, second.text) }
+            buildList {
+                labels.forEach { label ->
+                    add(DashboardItem.Heading(label))
+                    grouped.getValue(label).forEach { add(DashboardItem.Session(it)) }
+                }
+                grouped[null]?.let { unassigned ->
+                    add(DashboardItem.Heading(null))
+                    unassigned.forEach { add(DashboardItem.Session(it)) }
+                }
+            }
         }
     }
 }

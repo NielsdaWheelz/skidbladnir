@@ -359,11 +359,11 @@ catalogue casing.
 - **Machine facts speak mono.** The dashboard borrows the terminal's own
   voice for everything tmux/proc reported — a quiet, honest bridge between
   the two surfaces.
-- **Work-first hierarchy** on the session card: tmux name (Data, largest and
-  highest contrast) → named status line → objective → dwarf display-name
-  signature (Display, smaller and quieter) · runtime profile → conditional
-  machine · directory (Data, smallest, ≥ 11sp). A stepped decay around the
-  operator's work label, not a flat metadata stack.
+- **work-first hierarchy** under the accepted
+  [compact roster](dashboard-compact-roster.md): tmux name (data, largest and
+  highest contrast), literal status with a quieter display-face dwarf signature,
+  conditional notices/objective, then profile/host/directory (data, ≥11sp).
+  readable status and full dwarf names may wrap.
 - Berkeley Mono is explicitly unusable (its standard tiers exclude terminal
   apps). Norse by Joël Carrouché is unusable (embedding rights ambiguous).
 
@@ -447,11 +447,12 @@ frozen in dwarf-seals.md; changing them re-rolls every visible identity
 and is a design event, never a silent tweak.
 ```
 
-Rules: metal linework in Gold or Bronze on the mineral field; Bone initial
-retained as a legibility anchor; no curves except none. Acceptance criterion
-for the implementing slice: all 101 catalogue seals pairwise distinguishable
-at 48dp on the physical panel — the research pass never verified this; treat
-it as a red test, not an assumption.
+rules: metal linework in Gold or Bronze on the mineral field; Bone initial
+retained as decorative lettering; no curves. the accepted
+[compact roster](dashboard-compact-roster.md) uses a 36dp seal and recognition
+from crest plus dwarf/work names. it replaces the unverified requirement that
+all 101 crests be distinguishable alone at 48dp. derivation/traits stay frozen;
+the initial has fixed artwork dimensions while meaningful text scales.
 
 ## 12. Motion and interaction states
 
@@ -483,12 +484,12 @@ it as a red test, not an assumption.
 ## 13. Component register
 
 - **Session card**: DeepSurface, 10dp cut corners, Gold lip hairline at 25%,
-  48dp seal at the start, then the work-first text stack (§9). Dwarf/profile
-  and machine/directory form two quiet unbadged lines; machine renders only in
-  `All`. Its verbs sit behind a drawn three-stud overflow whose menu is
+  accepted 36dp seal and compact wrapping composition under
+  [compact roster](dashboard-compact-roster.md). machine
+  context appears in every view. its verbs sit behind a drawn three-stud overflow whose menu is
   RaisedSurface, Card cut, shadowless, with Ember destructive rows after a
-  hairline rule. [session card](session-card.md) owns its structure, actions
-  and speech. Global grid order is architecture-owned.
+  hairline rule. [session card](session-card.md) retains actions and speech.
+  Global grid order is architecture-owned.
 - **status line**: unboxed; a leading status facet, then the literal sampled
   status label, bold in the status tone, and an optional Muted detail, Data
   face ≥ 11sp. no transition age or unread signal. the terminal-inference
@@ -585,12 +586,13 @@ the implemented component contracts are [terminal theme](terminal-theme.md),
 [terminal chrome](terminal-chrome.md), and [refresh boundary](dashboard-refresh-boundary.md).
 [compact dashboard chrome](dashboard-compact-chrome.md) owns header/tab
 presentation and menu reuse.
+[compact roster](dashboard-compact-roster.md) owns the accepted card, heading and
+vertical-spacing contract and qualification.
 this document owns their common visual values. historical delivery recipes in
 those plans do not override current testing policy or claim human acceptance.
 
 ## 18. Open questions
 
-- hands-on seal distinguishability at 48dp across the full catalogue (§11).
 - On-panel comfort of `brightBlack #5c6370` for agent dim-text on the S22+
   at night brightness; WCAG bias near black is documented.
 - Whether Junicode's subset ships in v0 at all, or waits for the About/

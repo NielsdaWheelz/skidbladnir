@@ -1,134 +1,39 @@
 # session card
 
-2026-10-02 accepted design: [session views](session-views.md) makes machine
-context visible in every phone view and adds one quiet group-context line only
-in its flat needs-input queue. source implements those changes; qualification
-belongs to that specification. earlier evidence below retains its recorded
-source boundary.
-
-status: current contract for the phone dashboard's session card, implemented
-2026-10-02. it replaces `dashboard-card-refactor.md` (the 2026-08-27 delivery
-recipe, retained in git history). hands-on device acceptance is `NOT_RUN`
-([issue](issues/session-card-hands-on.md)).
-
-[architecture §4](architecture.md#4-product-behavior) owns product behavior and
-wins on conflict. [design language](design-language.md) owns visual identity;
-[observation §6](terminal-observation.md#6-content-attention-and-filtering)
-owns status copy and tone; [agent control](agent-control.md) owns what the
-terminal lifetime controls do; [groups](groups.md) owns the group action;
-[dashboard refresh boundary](dashboard-refresh-boundary.md) owns collection
-spacing; [forge seal](forge-seal.md) owns the create control floating over the
-grid. this document owns the card's structure, its action surface and its
-spoken account.
-
-## purpose
-
-a card answers, at a glance and in this order: what work is this, what state
-is it in, who is doing it, and where. one tap opens its terminal. every other
-verb is one tap further, behind the overflow.
+[compact roster](dashboard-compact-roster.md) owns the implemented card layout,
+crest, wrapping, headings and spacing. this document owns the action surface and
+spoken account. [architecture §4](architecture.md#4-product-behavior) owns product
+behavior; [observation §6](terminal-observation.md#6-content-attention-and-filtering)
+owns status copy/tone; [agent control](agent-control.md) owns terminal effects;
+[groups](groups.md) owns assignment; [design language](design-language.md) owns
+visual values.
 
 ## invariants
 
-1. the tmux name is the primary identity: exact, Data face, bold Bone, at most
-   two lines. nothing aliases, prefixes or generates it.
-2. status is literal. its label and tone come from observation §6 unchanged,
-   read without colour, and own the card's status meaning in sight and speech.
-   the facet beside it is decoration.
-3. the dwarf display name is visible on every card, exact, in the Display face,
-   quieter than the tmux name.
-4. every card shows its machine. speech, the overflow's name, every routed
-   action and every confirmation always name it.
-5. the complete cwd is spoken exactly once. the visible directory may be
-   abbreviated but never rewritten.
-6. tapping the body opens the terminal and does nothing else. no verb is
-   reachable only by gesture.
-7. targets are at least 48dp; text is at least 11sp.
-8. a stale card keeps its last observed status, muted and still, its verbs
-   fenced, and names the fence on its face.
-9. the card synthesizes no fact. absent values are omitted, never filled.
-10. at the default font scale a card's height does not change when its status
-    changes, unless the status label itself needs a second line. needs input
-    also permits its menu/notice status to wrap so the inclusion reason remains
-    visible; ordinary all/group status geometry is unchanged.
+- exact tmux name is primary; the complete dwarf name is a quieter signature.
+- status stays literal, including stale fences. the fixed 12dp facet is decoration.
+- every view shows machine context. actions and confirmations retain exact targets.
+- full cwd is spoken once; visible abbreviation never changes that fact.
+- one body tap opens its captured terminal; other verbs use the overflow.
+- touch targets remain at least 48dp and meaningful text at least 11sp.
+- absent facts are omitted. status, dwarf, host and warnings may grow the card.
+- profile/host/path use the full-width footer; selected groups use their tab as scope.
 
-## structure
+## status line
 
-```text
-┌──────────────────────────────────────────────────┬──────┐
-│ ⬡⬡⬡⬡  skid-terminal-chrome                       │ ▪▪▪  │  what
-│ ⬡48⬡  ◆ needs permission · work continues        │      │  state
-│ ⬡⬡⬡⬡  STALE · actions disabled            (opt.) │      │
-│       notifications unavailable           (opt.) │      │
-│       objective, ≤2 lines                 (opt.) │      │
-│       Thorin Oakenshield · Claude · Work         │      │  who
-│       macbook · …/code/skidbladnir-terminal-chrome│      │  where
-└──────────────────────────────────────────────────┴──────┘
-```
+`sessionStatusContent` owns both visible status and its complete accessibility
+label. ordinary optional detail ellipsizes on one line; the primary label and
+needs-input queue reasons wrap completely. the inference qualifier is spoken
+and remains undrawn on cards. consumers never reconstruct speech from `evidence`.
 
-- one row: the 48dp seal (top-aligned, exact
-  [dwarf seal](dwarf-seals.md) rendering), a 12dp gap, then the text column.
-- padding 10dp start, top and bottom. the end inset is the overflow's 48dp
-  column, so text never runs beneath it. lines are 2dp apart. omitted lines
-  leave no gap.
-- **what**: tmux name, `titleSmall`, Data face, bold, Bone, ≤2 lines.
-- **state**: the status line (below), `labelMedium`, Data face.
-- **availability**: the existing conditional marker
-  (`sessionAvailabilityContent`), its copy and tone unchanged.
-- **secondary**: `notifications unavailable` when observation §6 requires it.
-- **objective**: present only when set, `bodySmall`, ≤2 lines.
-- **who**: the dwarf signature in the Display face at `labelMedium` size, then
-  ` · {profile}` in Data `labelSmall`, Muted, one line. the profile is the
-  resolved runtime profile label, `<provider> · profile unknown` for an agent
-  without one, and absent for a pane without an agent: its status already
-  reads `terminal`.
-- **where**: Data `labelSmall`, Muted, one line. every local card shows
-  `{machine} · {directory}`. a remote card
-  shows `running on {X} · terminal on {Y} · {directory}`, with
-  `directory unavailable` when the remote cwd is unknown; an unknown remote
-  context shows `remote context unknown · terminal on {Y}`. the host never
-  yields width to the path. the directory is `abbreviatedDirectory` (two
-  trailing segments behind `…/`) and yields further from its head
-  (`StartEllipsis`), so the segment that names the work stays legible.
-- **group**: needs input only, after where: `group: {label}` or `unassigned`,
-  Data `labelSmall`, Muted, one line with ellipsis. the complete group is spoken
-  once in the body account. ordinary grouped views retain their headings.
-- the surface is DeepSurface with 10dp cut corners and the 25% Gold top lip.
-  the whole body presses with the angular flash.
+## collection
 
-the common card (one-line name, no objective, no notices) is 94dp at font
-scale 1.0, measured 93dp in the 2026-10-02 render.
-
-### status line
-
-`[facet] {label}[ · {detail}]`. the facet is the line's first glyph: an inline
-12dp (fixed, not font-scaled) `Chip`-cut square in the status tone, so it holds
-the first line at every font scale and wraps with the words. only a fresh
-working observation turns its notch (design-language §12). the label is bold in
-the status tone and never yields: it wraps to a second line only when it alone
-cannot fit. `detail` is Muted: `work continues` when a request is shown over
-visible work, or the active command of a plain local pane. it takes the width
-the label leaves and ellipsizes, so a status change cannot reflow the list;
-speech carries it whole.
-
-in needs input, a menu over an independent error/interruption notice keeps
-`menu open` primary and shows the notice in this same detail on the next line.
-the detail wraps without clipping the reason, including at doubled text size;
-any `work continues` fact stays in it. this exception costs a status line at
-default size and may need more at large text.
-
-the inference qualifier (`inferred from terminal`) is spoken on the card and
-shown on the terminal surface. it is not drawn on the card: it is identical on
-every agent card, so it distinguishes nothing there.
-`SessionStatusContent` carries it as `evidence`, apart from `detail`.
-
-## grid
-
-`GridCells.Adaptive(300dp)`: one column on a portrait phone, further columns
-of the same card in wider windows. there is one card layout at every width.
-spacing and the trailing clearance for the floating create seal belong to the
-[refresh boundary](dashboard-refresh-boundary.md) and
-[forge seal](forge-seal.md) documents. cards pass beneath the seal while
-scrolling, and the clearance lets the last row's overflow scroll clear of it.
+one `GridCells.Adaptive(300dp)` layout serves phone and wide windows. only `all`
+has full-span group headings; selected groups omit them, and needs input stays
+flat with a group line per card. vertical gaps are 4dp, horizontal gaps 8dp.
+[refresh boundary](dashboard-refresh-boundary.md) and [forge seal](forge-seal.md)
+retain the 12dp collection insets and 84dp trailing content clearance. the final
+row can scroll above the seal; intermediate rows may pass beneath it.
 
 ## actions
 
@@ -177,28 +82,17 @@ the card is two accessibility nodes.
    `Machine {m}.`, and `Directory unavailable.` when the remote cwd is
    unknown; an unknown remote context says
    `Remote context unknown. Terminal on {Y}.` the status accessibility label
-   already carries `work continues`, the inference qualifier and
+   already carries ordinary command detail, `work continues`, the inference qualifier and
    `notifications unavailable`. its custom actions are the enabled
    `MenuAction`s, with bare labels in list order.
 2. **overflow**: role button, named as above.
 
-## verification
+## verification and costs
 
-behavioral tests are retired ([testing](rules/testing.md)). this change's
-evidence was a temporary Robolectric render and semantics harness (deleted
-before commit) run against the old and new source on 2026-10-02: a three-machine
-fixture at 384×832dp, font scales 1.0, 1.3 and 2.0, landscape 832×384dp, the
-list scrolled to its end beneath the seal, the open menu, and the semantics
-tree. it is not device evidence.
+[roster verification](dashboard-compact-roster.md#verification) records the
+change-specific integration/device evidence. temporary probes are removed under
+[testing policy](rules/testing.md); no behavioral regression suite remains.
 
-## trade-offs
-
-- interrupting from the dashboard takes two taps. the terminal surface is
-  one tap away.
-- the Cleft no longer appears on the card face. the destructive signal is the
-  rule, the Ember rows and the Cleft on the confirmation.
-- the inference qualifier is spoken but not drawn on the card.
-- one column on a portrait phone, where there were two. at about 94dp a row,
-  the list shows more sessions than the old two-column grid, with nothing
-  truncated, at the cost of the tiled hall.
-- a card's overflow can sit beneath the floating create seal mid-scroll.
+interrupting takes two taps; closures retain their confirmations. inference is
+spoken without adding a repeated visible qualifier. compact-crests/wrapping and
+section-spacing costs belong to the roster specification.

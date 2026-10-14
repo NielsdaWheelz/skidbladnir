@@ -1,5 +1,12 @@
 # Design delta D3: dwarf seals
 
+2026-10-14 accepted target: [compact roster](dashboard-compact-roster.md) changes
+the shared renderer to 36dp, treats the initial as fixed decorative lettering,
+and judges recognition from crest plus names. it supersedes the earlier 48dp
+crest-only acceptance below; [qualification](dashboard-compact-roster.md#verification)
+records the implemented renderer’s evidence.
+trait derivation and deterministic geometry remain owned here.
+
 2026-09-17: the copied python seal formula and static collision check are retired.
 `scripts/check-catalogue` validates catalogue data and source inventory only.
 rendering requirements remain; the proof plan below is historical under the
@@ -159,12 +166,11 @@ delete the retired drawing helpers; no seal caching layer.
 
 ## Acceptance and gates
 
-Routine verification plus the Compose/instrumented card suite re-run under
-the existing separately-approved platform gate. The named hands-on check —
-all 101 seals pairwise distinguishable at 48dp on the S22+ panel, spot-read
-by scrolling a synthetic full-catalogue grid in the debug build — stays
-`NOT_RUN` until approved; a distinguishability failure re-opens the mineral
-table or facet weights in this document, not ad-hoc in code.
+the historical 48dp crest-only hands-on check was not performed. it is superseded
+by [compact roster](dashboard-compact-roster.md)'s recognition and scaling
+acceptance. the existing debug gallery shares the production renderer; no
+separate 48dp acceptance path remains in the target. current verification uses
+[testing policy](rules/testing.md), not the retired platform gate.
 
 ## Non-goals
 

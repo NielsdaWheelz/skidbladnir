@@ -59,8 +59,9 @@ label, or reserved height. The first grid item begins at `y = 12dp`, leaving
 `10dp` clear.
 Start/end padding remains `12dp`. Since 2026-10-02 the `84dp` bottom
 clearance is trailing content padding, not a viewport exclusion
-([forge seal](forge-seal.md#placement-and-semantics)), and card gaps are `8dp`
-([session card](session-card.md#grid)).
+([forge seal](forge-seal.md#placement-and-semantics)). the accepted
+[compact roster](dashboard-compact-roster.md) uses `4dp` vertical item gaps,
+retaining `8dp` horizontal gaps.
 pressure rails live in the machines disclosure under
 [session views](session-views.md#phone-presentation-and-machine-scope-removal),
 so no selected-machine rail-to-card gap remains. a dashboard notice is still a

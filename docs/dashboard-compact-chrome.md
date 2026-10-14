@@ -214,7 +214,8 @@ if implementation finishes with unresolved acceptance.
 
 ## qualification
 
-2026-10-14, from this worktree, with independent adversarial review:
+2026-10-14, from the chrome prerequisite worktree (`016acd0`), with independent
+adversarial review:
 
 - **red:** unchanged actual dashboard failed on its `64dp` header, missing
   overflow and duplicate settings action; the installed original also failed

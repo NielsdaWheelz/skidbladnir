@@ -17,6 +17,8 @@ and its verified boundaries.
 2026-10-14: [compact dashboard chrome](dashboard-compact-chrome.md) owns the
 replacement header, tab styling and overflow entry to machines.
 membership, navigation and restoration stay here.
+[compact roster](dashboard-compact-roster.md) separately owns the accepted card
+layout and heading/spacing below; source is implemented and qualification is linked there.
 
 [terminal observation](terminal-observation.md) retains status facts, copy,
 presentation precedence and the strict request predicate used by cli wait.
@@ -182,12 +184,13 @@ strip while the user scrolls. exact horizontal offset is not persisted.
 
 needs input uses the existing 300dp-minimum adaptive card grid, globally ordered
 by tier. group headings cannot precede ready-first order. in this view only, add one quiet
-`group: <label>` line after the card's where line, or `unassigned`; use the
+`group: <label>` line after the card's context footer, or `unassigned`; use the
 existing data typography, one visual line with ellipsis and the full group once
 in the existing body speech node. add no separate action or badge. this costs
 one card line in exchange for group context without interleaving priority tiers.
-all/group views retain their headings and existing card geometry. every phone
-card now shows its machine, including in a named group.
+the accepted [compact roster](dashboard-compact-roster.md) replaces card geometry
+and keeps headings only in `all`; named/unassigned views use their selected tab
+as scope. every phone card shows its machine, including in a named group.
 
 remove machine scope from `DashboardEntryState`, collection projection,
 restoration readiness, pull verification, forge gating/defaults and recovery
