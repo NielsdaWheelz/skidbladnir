@@ -1,5 +1,10 @@
 # desktop browser
 
+2026-10-14: [session rows](desktop-session-rows.md) owns the accepted replacement
+row content, width rules and info's known-profile/missing-label wording.
+source and [scoped darwin qualification](issues/desktop-browser-runtime-acceptance.md#session-row-qualification)
+are complete; the broader historical gaps below remain open.
+
 [profile usage](profile-usage.md) owns the compact quota summary and read-only
 `u usage` disclosure, with independent profile reads on the existing tick.
 that capability extends this document's api/state limit only for its accepted
@@ -216,14 +221,10 @@ from 80 columns row 1 fits in width − 1. with nothing hidden, a step between
 groups changes the text of only the two tabs it crosses; entering the groups
 from `all` may reflow the strip once.
 
-the table's two-cell gutter carries the cursor mark. columns follow: name,
-status, agent (the configured profile label, else `<provider> · profile
-unknown`), group (needs-input view only), machine (the terminal's owner, only when all
-machines are in scope), and the current directory in the remaining width,
-truncated from the left and omitted below 8 cells; remote work reads `host:path`
-and an unresolved connection `remote context unknown`. columns other than
-status shrink widest-first to fit. in the all view a faint heading (the bare
-label or `unassigned`) precedes each group. the status cell is the shared projection's
+the accepted [session-row contract](desktop-session-rows.md#content-contract-and-fit)
+owns columns, group placement, remote qualifiers and fitting. it replaces the
+combined agent and repeated machine/directory layout without changing the
+following status behavior. the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
 copy, coloured by its tone. only in needs input, a menu with a qualifying notice
 adds that notice to the status cell and selected detail, as specified by
@@ -239,12 +240,9 @@ stale while that host is re-read. a row of any other host being re-read (a
 pending scoped read, or the re-read after a metadata change) is never ready, and
 its cell makes no status claim: it reads faint `checking`. a failed host keeps
 its notice. the stale cell is up to 33 cells (`last observed: status
-unavailable`); the longest ordinary fresh label is 18 cells, while queue-only
-menu/notice detail can be wider. other columns give way to status (in an 80×24
-render with a failed host, names
-fell from 24 to 12 cells). the outage form is accepted with that cost, an
-exception to [observation §6](terminal-observation.md#6-content-attention-and-filtering)'s
-fit rule; the 8-cell `checking` widens nothing.
+unavailable`); the longest ordinary fresh label is 18 cells, while the longest
+queue menu/notice label is 30 cells. the accepted row budget preserves them
+whole; `checking` requires eight cells.
 
 below the table, top to bottom: scoped notices; the fixed-devbox remaining-quota
 summary under [profile usage](profile-usage.md); the rule, with the target set into
