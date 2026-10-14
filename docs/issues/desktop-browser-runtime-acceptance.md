@@ -1,5 +1,35 @@
 # desktop browser runtime acceptance
 
+## session-row qualification
+
+2026-10-14; row/info source `2c918070874e` on darwin, isolated branch
+`codex/desktop-session-rows` from `8551cd3`. the [session-row contract](../desktop-session-rows.md)
+is implemented and qualified. the same frozen probes failed the intended old
+row/info behavior at `8551cd3`, then passed after the production edit:
+
+- `TestSessionRows`: real tls decoding/context resolution and model updates/view;
+  columns at 80/100/120, color and `NO_COLOR`, full status/provider/profile,
+  unicode and invisible groups, named/unassigned/empty views, offscreen stale33,
+  remote known/unknown/failed/checking, configured label/key/unknown info,
+  scrolling/resize, duplicate lifetimes and captured confirmation after refresh.
+- `TestSessionRowsLive`: real browser/event loop, loopback gateway and two
+  distinct owned tmux sockets. rendered grids at 80×24/120×30, one row per
+  terminal, info, exact selected attachment, `ctrl-] d`, first navigation key,
+  refresh/selection and both original cwd/session lifetimes pass (5.21s).
+  terminal continuity also passed against the old renderer before the edit.
+- content and independent adversarial review pass. no additional refactor was
+  warranted; old row helpers/columns are removed. both disposable probes, their
+  artifacts and the resolved profile-wording issue are removed.
+- `scripts/check verify host` passes after probe deletion: formatting, syntax,
+  shell lint, generated assets, dependency integrity, go vet and host build.
+
+live traffic reached fixtures only; cleanup reaped the browser, closed gateway
+terminals/tls and removed only recorded owned tmux sessions. no provider accounts,
+production sessions, phone or deployment were involved. model/effort stays deferred.
+this scoped pass does not qualify the broader historical matrix below.
+
+## remaining browser acceptance
+
 pr 3's [a4](../desktop-browser.md#7-acceptance-and-delivery) requires the real
 browser/pty/gateway/isolated-tmux journey on linux and darwin. unit tests and
 cross-compilation cannot establish tty ownership or attachment return.

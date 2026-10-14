@@ -5,6 +5,18 @@ accepted feature specifications own detailed product contracts.
 [the codebase map](codebase-map.md) locates their implementation.
 this index records present scope and open work, not a release diary.
 
+## desktop session rows — implemented and qualified
+
+2026-10-14: [the spec and plan](desktop-session-rows.md) removes repeated
+machine/directory cells, separates current provider/profile keys and gives names
+the remaining width. structural groups, remote context, status and exact targets
+are preserved. info retains a known profile key when its display label is absent.
+source `2c918070874e` passes frozen red/green model/tls and real darwin
+browser/gateway/tmux checks, content/adversarial review and host engineering
+checks; probes are deleted. [model/effort](issues/session-model-effort.md) is deferred
+by the owner. [scoped evidence and broader desktop gaps](issues/desktop-browser-runtime-acceptance.md)
+remain separate.
+
 ## tmux workspace recovery — deployed; reboot checks deferred
 
 2026-10-07: [the spec and implementation plan](session-recovery.md) covers

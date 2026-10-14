@@ -34,6 +34,8 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
+[desktop session rows](desktop-session-rows.md) owns the accepted row simplification;
+source is implemented; scoped darwin acceptance passes. model/effort is deferred.
 [profile usage](profile-usage.md) owns desktop quota disclosure, source selection
 and its separate profile reads and qualification.
 [native notifications](native-notifications.md) owns needs-input alerts,
@@ -626,6 +628,10 @@ through the ordinary exclusive view path. it owns the exact selection, keys,
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
+the accepted [session-row revision](desktop-session-rows.md) separates current
+provider/profile and moves repeated owner/directory context to existing selected
+details, with explicit remote qualifiers. source and scoped darwin acceptance
+are complete; the revision changes presentation only.
 ordinary commands expose list, info, enter,
 read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`

@@ -727,49 +727,23 @@ func (m *model) fitViewports() {
 }
 
 // tableLines lays out one line per row, with a quiet heading wherever the
-// all view enters another group. needs input names each row's group
-// in a column instead; machine appears only when all machines are in scope.
+// all view enters another group. needs input names each row's group in its
+// first column instead. names take the space left by complete status and identity.
 func (m *model) tableLines(width int) []string {
-	name, status, agent, label, machine := 4, 0, 0, 0, 0
+	const providerWidth, profileWidth = 6, 11
+	statusWidth, groupWidth := 0, 0
 	for _, row := range m.rows {
-		name = max(name, ansi.StringWidth(attention.SingleLine(row.session.Name)))
 		printed, _ := m.tableStatus(row)
-		status = max(status, ansi.StringWidth(printed))
-		agent = max(agent, ansi.StringWidth(m.agentText(row)))
-		if m.view.kind == viewNeedsInput {
-			label = max(label, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
-		}
-		if m.machine == "" {
-			machine = max(machine, ansi.StringWidth(attention.SingleLine(row.label)))
+		statusWidth = max(statusWidth, ansi.StringWidth(attention.SingleLine(printed)))
+		if m.view.kind == viewNeedsInput && !row.session.Group.IsUnassigned() {
+			groupWidth = max(groupWidth, 1, ansi.StringWidth(attention.SingleLine(row.session.Group.String())))
 		}
 	}
-	name, agent, label, machine = min(name, 24), min(agent, 20), min(label, 16), min(machine, 12)
-	span := func(width int) int {
-		if width == 0 {
-			return 0
-		}
-		return width + 2
+	nameWidth := width - 2 - statusWidth - providerWidth - profileWidth - 3*2
+	if groupWidth > 0 {
+		groupWidth = min(groupWidth, 16, nameWidth-2-12)
+		nameWidth -= groupWidth + 2
 	}
-	for 2+name+span(status)+span(agent)+span(label)+span(machine) > width && max(name, agent, label, machine) > 8 {
-		switch max(name, agent, label, machine) {
-		case name:
-			name--
-		case agent:
-			agent--
-		case label:
-			label--
-		default:
-			machine--
-		}
-	}
-	for 2+name+span(status)+span(agent)+span(label)+span(machine) > width && (agent > 0 || label > 0) {
-		if agent > 0 {
-			agent = 0
-		} else {
-			label = 0
-		}
-	}
-	directory := width - 2 - name - span(status) - span(agent) - span(label) - span(machine) - 2
 	lines := []string{}
 	for index, row := range m.rows {
 		if m.opensGroup(index) {
@@ -784,21 +758,29 @@ func (m *model) tableLines(width int) []string {
 		if index == m.cursor {
 			gutter, nameStyle = here.Styled("▌")+" ", bold
 		}
-		facts := []string{}
-		for _, column := range []struct {
-			text  string
-			width int
-		}{{m.agentText(row), agent}, {attention.SingleLine(row.session.Group.String()), label}, {attention.SingleLine(row.label), machine}} {
-			if column.width > 0 {
-				facts = append(facts, cell(column.text, column.width))
+		current := m.current(&row)
+		qualifier := ""
+		if current.Kind == "remote" {
+			qualifier = " on " + ansi.Truncate(attention.SingleLine(current.Label), min(12, nameWidth-16), "…")
+		}
+		name := ansi.Truncate(attention.SingleLine(row.session.Name), nameWidth-ansi.StringWidth(qualifier), "…")
+		line := gutter
+		if groupWidth > 0 {
+			line += faint.Styled(cell(row.session.Group.String(), groupWidth)) + "  "
+		}
+		line += nameStyle.Styled(name) + faint.Styled(qualifier) + strings.Repeat(" ", nameWidth-ansi.StringWidth(name)-ansi.StringWidth(qualifier))
+		line += "  " + statusStyle.Styled(cell(printed, statusWidth)) + "  "
+		if current.Kind == "remoteUnknown" {
+			line += faint.Styled(cell("remote unknown", providerWidth+2+profileWidth))
+		} else {
+			provider, profile := "", ""
+			if agent := current.Agent; agent != nil {
+				provider, profile = agent.Provider, agent.Profile
+				if profile == "" {
+					profile = "unknown"
+				}
 			}
-		}
-		if directory >= 8 {
-			facts = append(facts, m.whereText(row, directory))
-		}
-		line := gutter + nameStyle.Styled(cell(row.session.Name, name)) + "  " + statusStyle.Styled(cell(printed, status))
-		if len(facts) > 0 {
-			line += "  " + faint.Styled(strings.Join(facts, "  "))
+			line += faint.Styled(cell(provider, providerWidth) + "  " + cell(profile, profileWidth))
 		}
 		lines = append(lines, line)
 	}
@@ -850,31 +832,6 @@ func (m *model) tableStatus(row listedRow) (string, ansi.Style) {
 		return view.Label, moss
 	}
 	panic("invalid status tone") // justify-defect: Tone is a closed enum.
-}
-
-// agentText is the configured profile label, per terminal continuity's identity copy.
-func (m *model) agentText(row listedRow) string {
-	agent := m.current(&row).Agent
-	switch {
-	case agent == nil:
-		return ""
-	case agent.Label == "":
-		return attention.SingleLine(agent.Provider + " · profile unknown")
-	}
-	return attention.SingleLine(agent.Label)
-}
-
-// whereText is the directory where the work runs; remote work reads host:path.
-func (m *model) whereText(row listedRow, width int) string {
-	current := m.current(&row)
-	switch current.Kind {
-	case "remote":
-		host := ansi.Truncate(attention.SingleLine(current.Label), width/3, "…") + ":"
-		return host + tail(attention.SingleLine(current.CWD), width-ansi.StringWidth(host))
-	case "remoteUnknown":
-		return ansi.Truncate("remote context unknown", width, "…")
-	}
-	return tail(attention.SingleLine(current.CWD), width)
 }
 
 // tail keeps the end of a path, where directories differ.

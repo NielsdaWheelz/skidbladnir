@@ -291,6 +291,11 @@ one content designer owns the following feature copy and acceptance before each
 builder starts. good content names the target/effect, separates observation from
 certainty, fits existing chrome and works through accessibility without colour.
 configured profile labels and current design tokens remain authoritative.
+the accepted [desktop session rows](desktop-session-rows.md) is the narrow
+exception: rows use exact current profile keys, a bounded ` on <destination>`
+qualifier and `remote unknown` in the empty metadata area. info uses a known key
+when its configured label is absent; other clients retain the copy below. that
+presentation revision is implemented and qualified for its scoped darwin boundary.
 
 | feature | content contract and designer's quality criterion |
 | --- | --- |
