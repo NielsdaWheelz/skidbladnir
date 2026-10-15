@@ -9,12 +9,14 @@ owns observed text and adds only its optional session field to this document's
 api/state limit. preceding source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
 the broader historical gaps retain their recorded scope.
 
-[terminal usage](terminal-usage.md) owns the compact quota summary and read-only
-`u usage` disclosure. both existing inventory/native lanes read all machines
-independently of table filters; one whole latest-received observation supplies
-each profile. `ctrl-r` refreshes both lanes from the table and usage page.
-that capability extends this document's api/state limit only for its accepted
-session field, native profile route and presentation.
+[terminal usage](terminal-usage.md) owns quota acquisition and source selection;
+[desktop usage](desktop-usage.md) owns the compact footer and `u` page, with
+[isolated desktop qualification](desktop-usage.md#qualification). both lanes read
+all machines independently of table filters; one whole latest-received observation
+supplies each profile.
+the revision removes usage-page manual refresh and scope chrome while preserving
+table refresh. it adds no api/state capability beyond the existing session field
+and native profile route.
 
 2026-10-02: [session views](session-views.md) owns the exclusive needs-input view,
 queue membership/order and navigation keys. source implements this cutover;
@@ -248,7 +250,8 @@ unavailable`); the longest ordinary fresh label is 18 cells, while the longest
 queue menu/notice label is 30 cells. the accepted row budget preserves them
 whole; `checking` requires eight cells.
 
-below the table: fleet notices, the existing quota summary, an unlabelled rule
+below the table: fleet notices, the remaining summary under [desktop usage](desktop-usage.md),
+an unlabelled rule
 with `i of n` only when scrolling, then ordinary shortcuts. no selected-session
 facts or busy target legend remain there. captured pages and operation notices
 retain their explicit targets. every row owns its sampled directory; info retains
@@ -267,8 +270,9 @@ uses displayed paths. available remote sources refuse with no fallback. the
 strip chevrons and help teach view navigation. [the command contract](desktop-browser-simplification.md#footer-and-commands)
 owns exact copy, defaults and error/checking precedence.
 
-pages keep row 1 and the rule. the page title is bold, and labels right-align on
-one axis. the rule names the captured target (pending action or details
+pages keep row 1 and the rule; [usage](desktop-usage.md) owns its scope-free header,
+unlabelled rule and fixed column headings. the page title is bold, and labels
+right-align on one axis. the rule names the captured target (pending action or details
 snapshot), never the live selection. focused choice fields show `‹ value ›`,
 focused text fields a caret. confirmation names its effect: `enter close terminal
 only`, `enter interrupt terminal` or `enter interrupt and close terminal`.

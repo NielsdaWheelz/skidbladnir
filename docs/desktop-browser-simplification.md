@@ -183,11 +183,11 @@ before builders and actual output after integration. reviewers cannot change
 scope/acceptance; root resolves findings at the responsible owner. no broad
 refactor, production test seam or modification to `scripts/check` composition.
 
-separate desktop-usage work owns quota content and usage-page keys/chrome in its
-own branch. compose overlapping browser-file changes serially at integration;
-this contract removes machine filtering on return. preserve the usage changes
-and rerun affected acceptance on the composed source. this branch does not import
-that work. no concurrent writers to shared files or new cross-feature machinery.
+[desktop usage](desktop-usage.md) owns quota content and usage-page keys/chrome.
+compose overlapping browser-file changes serially at integration; this contract
+removes machine filtering on return. preserve the usage changes and rerun affected
+acceptance on the composed source. no concurrent writers to shared files or new
+cross-feature machinery.
 
 ## red, green, refactor and acceptance
 
@@ -254,8 +254,8 @@ excluded: android changes, host/provider observation or launch changes, native
 controls, protocol/persistence migrations, new commands/search/palettes,
 registries/settings, live failover, extra pollers, unrelated cleanup and deployment.
 hard-cut the replaced client paths; no compatibility aliases, hidden filters,
-fallbacks or parallel renderer. release/deployment, installed usability and
-composition with the separate usage branch remain unperformed.
+fallbacks or parallel renderer. release/deployment and installed usability remain
+unperformed.
 
 planning review: row and interaction designers approve the content contract.
 independent review corrected available-path claims, startup/error precedence,
@@ -263,7 +263,7 @@ concurrent usage ownership and the lost-reply oracle. no product question remain
 
 ## source qualification
 
-2026-10-15, this branch's production tree from `b253c05`:
+2026-10-15, production source `dc268db` from `b253c05`, before usage composition:
 
 - **red:** the final disposable probes compile against `b253c05` and fail the
   intended footer, removed keys, row geometry/directory, creation copy, startup
@@ -293,6 +293,6 @@ owned sessions were removed; no owned live process remains. local documentation
 links and `git diff --check` pass. `scripts/check verify host` passes after probe
 deletion: formatting/syntax/lint, generated assets, dependencies, go vet and build.
 
-installed version/usability and joint qualification with the separate usage
-branch remain `NOT_RUN`; no source result substitutes for them. the broader
+installed version/usability remains `NOT_RUN`; no source result substitutes for
+it. the broader
 live stop/close and metadata-editing gaps retain their existing issue record.

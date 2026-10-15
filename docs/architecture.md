@@ -43,8 +43,9 @@ are qualified, with installed usability pending.
 footer evidence. source `6974851` passes the scoped
 [qualification](terminal-model-effort.md#qualification); release and installed-fleet
 qualification remain separate.
-[terminal usage](terminal-usage.md) owns desktop quota disclosure, source selection
-and qualification; [native usage](profile-usage.md) owns codex report acquisition.
+[terminal usage](terminal-usage.md) owns quota acquisition and source selection;
+[desktop usage](desktop-usage.md) owns remaining presentation and its isolated
+qualification; [native usage](profile-usage.md) owns codex account reads.
 [native notifications](native-notifications.md) owns needs-input alerts,
 background observation and device acknowledgement. source is implemented;
 [qualification](native-notifications-qualification.md) records verified boundaries
@@ -476,8 +477,9 @@ observations. existing inventory captures carry optional literal claude used
 percentages; the independent [native route](profile-usage.md) reads codex only.
 both existing lanes read all paired hosts independently of table filters. the
 desktop selects one whole eligible observation per profile by client-local
-receipt, under the owner's same-account-across-hosts guarantee. details disclose
-the selected machine and evidence age; usage never supplies admission/readiness.
+receipt, under the owner's same-account-across-hosts guarantee. [desktop usage](desktop-usage.md)
+shows compact remaining values, explicit approximation/unknown/stale states and
+day-based countdowns. usage never supplies admission/readiness.
 there is no quota file, publisher, extra capture, hook extension or new poller.
 
 ### Start (The Forge)
@@ -1126,6 +1128,12 @@ needs-input/all/group views, explicit creation destinations and asynchronous
 ownership remain. no public api, wire/config schema, persistence or polling change.
 the spec owns source qualification and the separate installed usability step.
 
+2026-10-15 accepted desktop usage revision: [the spec](desktop-usage.md) owns
+uniform remaining presentation, one-hour age staleness, compact weekly/short
+records and usage-page key removal. acquisition, source selection, external
+schemas and cadence stay unchanged. [isolated desktop acceptance](desktop-usage.md#qualification)
+passes; deployment remains separate.
+
 2026-10-15 preceding readability revision: [desktop rows](desktop-session-rows.md)
 owns section/record hierarchy, complete-entry viewport admission and selected
 directory presentation. this is a client presentation hard cut with no public
@@ -1148,8 +1156,8 @@ separate.
 2026-10-14 accepted cutover: [terminal usage](terminal-usage.md) replaces claude's
 quota-file path with optional evidence from the existing exact terminal capture.
 the desktop consolidates both providers across all hosts using original local
-receipts; details identify one selected source per profile. claude shows literal
-used percentages; codex retains conservative remaining/native reset semantics.
+receipts. [desktop usage](desktop-usage.md) now owns remaining presentation;
+this acquisition cutover retains raw used percentages and native reset facts.
 the strict shared session schema changes with host, go and android consumers;
 the native quota route becomes codex-only and the managed formatter stops
 publishing. no new state owner, poller, provider getter, compatibility or fallback

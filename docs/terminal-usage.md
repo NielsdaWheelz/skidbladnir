@@ -1,5 +1,10 @@
 # terminal usage and consolidated profile disclosure
 
+2026-10-15: [desktop usage](desktop-usage.md) supersedes this document's
+presentation, stale threshold and usage-page keys; its [qualification](desktop-usage.md#qualification)
+covers the isolated desktop boundary. this document retains acquisition,
+whole-source selection and their qualification.
+
 accepted 2026-10-14; source and installed v0.15.0 qualification below record the
 exercised boundaries. this document supersedes the claude acquisition,
 devbox-only sourcing and presentation clauses in [profile usage](profile-usage.md).
@@ -9,13 +14,12 @@ that document retains codex's native acquisition, normalization and clock rules.
 
 ## outcome, scope and decisions
 
-the usage page shows one record per configured profile; the footer keeps compact
-provider summaries. each uses the latest received eligible observation from any
-paired host. details identify the selected source;
-there are no repeated per-host quota sections. codex shows remaining quota from
-its existing account read. claude shows literal displayed **used** percentages
-from the terminal, or unknown. usage never determines readiness, attention,
-provider admission, launch, switching, stop or close.
+the usage page and footer each use the latest received eligible observation per
+configured profile from any paired host. [desktop usage](desktop-usage.md) owns
+their common remaining presentation. codex supplies native account reports;
+claude supplies literal displayed used percentages or unknown. usage never
+determines readiness, attention, provider admission, launch, switching, stop
+or close.
 
 the owner confirms that each profile denotes the same authenticated account on
 macbook, devbox and arch. grouping by profile key/provider rests on that explicit
@@ -47,7 +51,7 @@ existing all-host native-usage lane (60s)
   gateway -> agentcontrol -> existing helper/account daemon: codex only
           -> native profile reports -> fleetclient -> desktop codex candidates
 
-desktop: select one whole observation per profile -> shared footer/details copy
+desktop: select one whole observation per profile -> desktop usage projection
 android: accept the new shared session field; present no quotas
 ```
 
@@ -198,8 +202,9 @@ no helper change or daemon start. old claude/source-bearing replies are rejected
    descriptor/identity changes. select the latest received report with at least
    one currently displayable window, even if that latest eligible report is stale;
    do not rank an older healthy report ahead of it. known reset expiry omits that
-   window. keep existing 120-second/native-failure staleness and host-clock/
-   monotonic age math. access/identity rejection follows the common admission rule.
+   window. [desktop usage](desktop-usage.md) owns stale presentation; preserve
+   host-clock/monotonic age math. access/identity rejection follows the common
+   admission rule.
    failure diagnoses only profiles declared on that host or still unknown there;
    known-empty or unrelated declarations cannot contaminate another profile.
 8. derive profile rows from the union of admitted inventory/native declarations
@@ -220,58 +225,22 @@ independent of inventory and the mutation slot. any relevant host codex descript
 change retires its whole-fleet batch. forms hide usage; attachment/browser exit
 cancel it under existing ownership. no new poller or cache is introduced.
 
-`ctrl-r` on both table and usage page requests inventory and native usage
-independently; this now refreshes both providers. automatic inventory continues
-on the usage page. return preserves selected view/session/scroll. no session
-action keys or captured control target exist on that page.
+table `ctrl-r` requests inventory and native usage independently. automatic
+inventory continues on the usage page; [desktop usage](desktop-usage.md) removes
+its manual refresh and owns its keys. return preserves selected view/session/scroll.
+no session action keys or captured control target exist on that page.
 
 ## content and layout
 
-the desktop content designer owns copy before implementation and reviews rendered
-states. good content names used versus remaining, discloses selected evidence,
-and distinguishes unknown from failed reads without promising provider freshness.
-reuse existing typography, wrapping, `attention.SingleLine`, frame and scrolling;
-neutral readable text, no readiness colours or stale-value dimming.
-
-```text
-remaining · codex 7d: personal 72% · work 61% · work2 14%
-used · claude-work: 5h 12% · 7d 43%
-```
-
-footer has no source/age/repetition. codex remaining stays
-`floor(max(0,100-usedPercent))`; claude displays the observed integer unchanged.
-every known value has `%`; unknown is `—`. never subtract rounded claude used
-from 100. page title is `usage · all machines`, rule `usage · read only`.
-one record per profile shows selected machine and source; terminal records also
-show the selected sanitized session name and pane id. no extra per-host or
-raw-terminal rows.
-
-| state/source | required details |
-| --- | --- |
-| codex | `source <machine> · native · report age <age>`; existing known reset/countdown, optional short window |
-| claude | `source <machine> · terminal display · received <age> ago`; `terminal <name> · pane <id>`; `provider freshness and resets unknown` |
-| initial | `checking usage` |
-| claude absence | `usage not detected for this profile` |
-| conflicting claude evidence | `conflicting terminal displays` |
-| unavailable terminal evidence | `terminal observation unavailable`; no retained quota number |
-| native successful absence | `no reported quota` |
-| native failure with retained report | `unavailable; showing last report`, original age and stale marker |
-| native reset passed | `awaiting report after reset` |
-
-for claude, an eligible other source takes precedence over unavailable/conflicting
-evidence. codex retained reports remain eligible with original receipts until no
-window is displayable; selected native evidence can be stale.
-without an eligible source, current conflict takes precedence over unavailable,
-then successful absence; no admitted outcomes remains checking. no selected
-candidate means no selected source machine. an expired native report may supply
-reset diagnosis only as `last report from <machine>`, with its original age;
-`awaiting report after reset` requires an actual known expired reset.
-claude's received
-age measures time since response receipt, never data age. native report/reset
-clocks keep their existing meaning. both footer and page must work at 80×24,
-colour/no-colour, long names and ordinary scrolling; q/escape returns.
+[desktop usage](desktop-usage.md) is the sole owner of remaining conversion,
+approximation, compact states, time formatting, page/footer geometry and keys.
+it retains the acquisition limitations and source-selection rules above.
 
 ## non-overlapping implementation slices
+
+the following slices and sequence describe the completed 2026-10-14 acquisition
+cutover. the new desktop revision has its own narrower ownership and acceptance
+in [desktop usage](desktop-usage.md); these historical slices do not expand it.
 
 freeze these contracts before edits. each owner edits only its listed paths;
 read-only adversarial reviewers write neither tests nor production files.
