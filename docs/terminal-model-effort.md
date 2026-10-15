@@ -1,19 +1,23 @@
 # terminal model and effort display
 
-2026-10-15: source implemented and [qualified](#qualification) at `6974851`.
-[session rows](desktop-session-rows.md) owns layout, exclusive file ownership
-and delivery. this contract owns optional terminal text and its meaning.
+2026-10-15: preceding source [qualified](#qualification) at `6974851`.
+the subsequent owner-requested refinement parses codex's model/effort phrase
+instead of copying its entire bar. [current qualification](desktop-browser-simplification.md#location-refinement-qualification)
+records 452 passing frames and the unchanged installed native footer, including
+interactive effort changes. [browser simplification](desktop-browser-simplification.md)
+owns current layout and delivery. this contract owns optional terminal text and
+its meaning.
 
-shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
+the preceding source shipped in v0.16.0; [installed qualification](workspace-checkpoint-reliability.md#installed-qualification)
 verifies the matching fleet and android generation. production cloud inference
 and per-request settings remain outside that deployment check.
 
 ## capability and schema
 
-show what the sampled terminal displays. claude supplies its identifiable
-model/effort phrase; codex supplies its whole native status line because its
-configurable, unlabelled items cannot reliably identify a model field. preserve
-native spelling, order and service-tier wording. neither source establishes
+show the recognized model/effort phrase from the sampled terminal. claude keeps
+its managed phrase. codex recognizes one complete item in its anchored footer
+using the bounded grammar below. preserve native spelling and supported
+service-tier wording. neither source establishes
 effective per-inference settings or that the current process painted every cell.
 
 extend only the session dto in `GET /v1/sessions`, `POST /v1/sessions` and
@@ -62,8 +66,27 @@ an intact footer may coexist with unrelated unknown/clipped status evidence.
 the provider grammar documents own the exact [codex](terminal-observation-codex.md#8-displayed-footer-extension)
 and [claude](terminal-observation-claude.md#7-displayed-footer-extension)
 productions. inspect only their already anchored ordinary footer. no transcript,
-scrollback, picker selection, wrapped-fragment joining or model-name catalogue.
+scrollback, picker selection, wrapped-fragment joining or runtime model catalogue.
 unsupported or ambiguous evidence omits the field without failing inventory.
+
+codex's supported phrase is one ` · `-delimited item: a case-insensitive `gpt-` model
+identifier with ascii alphanumeric components separated by `-` or `.`, or
+`codex-auto-review` / `Codex Auto Review`; one space; effort `default`, `minimal`, `low`, `medium`,
+`high`, `xhigh`, `max`, `ultra` or `persistent`; optional literal ` Fast` suffix.
+require exactly one complete match and preserve the observed case. item order
+and colors do not matter.
+reject clipped candidates and duplicate matches; a complete candidate may survive
+truncation of a later unrelated item. unrelated run state, directory and quota
+items never enter the value. no independent model/effort columns are required.
+the final item's right-edge check uses the existing conservative byte-bound
+approach: preceding unicode can cause omission despite sufficient display cells.
+an explicit following item separator establishes completion independently.
+
+this is deliberately bounded text inference, authorized by the owner. custom
+aliases, custom effort/tier names, separate model/effort items and incomplete
+phrases remain unsupported. an unrelated item that exactly imitates this grammar
+can be mistaken for a model phrase; terminal text supplies no semantic item ids.
+these values are display evidence only, never identity or control admission.
 
 `terminal/inspect` stays status-only. normal `info` retains inventory metadata;
 `info --explain` clears this field beside `TerminalUsage` when substituting the
@@ -86,7 +109,7 @@ setting and explains missing evidence without guessing its cause.
 
 | context | row | info |
 | --- | --- | --- |
-| fresh local codex with footer | native status line | `native status line`: full accepted text |
+| fresh local codex with footer | recognized model/effort phrase | `displayed model / effort`: full accepted phrase |
 | fresh local claude with footer | native model/effort phrase | `displayed model / effort`: full accepted phrase |
 | detected agent without usable observation | `—` | provider label with `—` and explanation below |
 | plain terminal | blank | omit this fact |
@@ -100,10 +123,9 @@ freshness rules; there is no new expiry timer.
 
 local info explanation: `text from the sampled terminal. — means no usable
 observation is available.` existing freshness context explains stale/checking
-rows; fresh absence adds `the footer may be hidden, clipped, ambiguous or unsupported.` codex
-adds: `includes other status-line items; model and effort appear only when shown
-there. native truncation is preserved.` claude adds: `native wording may include
-service tier.` no invented absence-reason field. the row uses a single ellipsis
+rows; fresh absence adds `the footer may be hidden, clipped, ambiguous or unsupported.`
+both add: `native wording may include service tier.` no invented absence-reason
+field. the row uses a single ellipsis
 within its 30-cell budget; info wraps the full accepted value in its scrolling
 page. neither path interprets text as terminal escapes.
 
@@ -111,20 +133,20 @@ page. neither path interprets text as terminal escapes.
 
 | boundary | required proof |
 | --- | --- |
-| retained provider frames | codex whole anchored line preserved, including internal spacing, reordered items, aliases, tier/run-state/badges and native ellipsis; no guessed model extraction; unsupported one-row footer omits |
+| retained provider frames | codex extracts only one complete supported phrase, including a composer-anchored one-row footer; reordered items/colors, default and effort variants, optional Fast, unrelated truncation pass; aliases, duplicates, candidate truncation and shortcut-only rows omit; existing status/composer/rules stay unchanged |
 | claude frames | intact managed phrase with/without effort or quota; aliases preserved; wrong/missing boundaries, duplicate candidate, custom/wrapped/clipped suffix omit; quota and footer detection remain independent |
 | isolation | transcript/picker decoys never substitute; missing row, invalid encoding/value, failed capture and changed process/pane omit; unrelated clipped transcript can retain intact footer; existing status/composer/rule outputs unchanged |
 | transport | real gateway serialization → go decoder and actual android decoder for list/create/shell; absent/valid values accepted exactly; null, nonstring, empty, oversized, controls and invalid agent/remote/status attachments rejected |
 | replacement/display | two sessions sharing an account remain distinct; present→absent clears; stale/checking suppress; creation insertion and explained inspection clear; normal info/structured output retain; row truncates, info preserves |
 | live source | scoped installed-provider checks in the row plan prove actual surfaces and interactive changes; authored frames or injected gateway responses alone never qualify provider behavior |
 
-hard cut all shared producers/consumers together. older strict readers may reject
-the new field; coordinated go/android deployment is required. optional absence
-means missing observation, not a version-negotiation or fallback path. release
-and installed-fleet qualification are separate from source completion.
+the original field introduction required a coordinated go/android cutover because
+older strict readers rejected it. the current refinement reuses that scalar and
+schema; it requires no android change. optional absence means missing observation,
+not version negotiation or a fallback. release and installed-fleet qualification
+remain separate from source completion.
 
-codex may duplicate status and include directories or other configured items;
-its model may be absent or beyond the compact column. a draft can hide whether
+codex's model/effort may be absent or clipped in its native bar. a draft can hide whether
 its visible footer belongs to the main or a side conversation. claude supports the
 managed formatter's ordinary footer only; other layouts show a dash. its
 conservative width test can omit an intact unicode footer. values over 1,024

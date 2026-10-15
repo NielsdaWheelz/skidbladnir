@@ -657,7 +657,8 @@ geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
 the implemented [browser simplification](desktop-browser-simplification.md)
-puts sampled directories in every row and host identity in info; the resting
+puts the current machine and compact sampled directory in every row, with full
+machine/path details in info; the resting
 footer holds notices, quota, pagination and ordinary action hints.
 the preceding [session-row revision](desktop-session-rows.md#qualification) caps
 intrinsic widths and uses uniform two-line entries at narrow sizes. the accepted
@@ -1124,6 +1125,14 @@ enum values are defects, with no protocol branch or compatibility state.
 
 ## 8. Upgrade ladder
 
+2026-10-15 accepted installed-row refinement: [browser simplification](desktop-browser-simplification.md)
+shows current machine plus the final two path components and retains full info.
+the owner explicitly accepts [bounded codex model/effort parsing](terminal-model-effort.md)
+from the already anchored footer, replacing its whole-bar display. this is
+display-only text inference with declared unsupported/ambiguous cases; native
+execution settings, provider configuration, cwd acquisition, shared schemas,
+polling and control admission do not change.
+
 2026-10-15 implemented [browser simplification](desktop-browser-simplification.md):
 the desktop removes machine collection scope and selected-footer facts, gives
 every row its sampled directory, and presents `n`/`N`/`T` as ordinary actions.
@@ -1152,10 +1161,11 @@ api, wire schema, stored state or execution change. source, isolated runtime and
 separate installed usability acceptance are required. source and isolated runtime
 pass; installed usability remains pending.
 
-2026-10-15 accepted design: [compact desktop rows](desktop-session-rows.md) keeps
+2026-10-15 preceding design: [compact desktop rows](desktop-session-rows.md) keeps
 identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).
-claude supplies its delimited model/effort phrase; codex supplies its whole
-native status line, without asserting which item is a model. one optional
+claude supplied its delimited model/effort phrase; codex initially supplied its
+whole native status line. the accepted refinement above replaces the latter with
+bounded phrase extraction. one optional
 `terminalFooter` session field flows through existing host/go/android boundaries.
 no new capture, native getter, publisher, persistence or effective-setting claim.
 the specs own exact grammar, responsive geometry and temporary integration/live

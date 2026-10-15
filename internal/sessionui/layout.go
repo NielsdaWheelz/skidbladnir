@@ -108,20 +108,30 @@ func (m *model) rowMetadata(row listedRow) (provider, profile, footer string) {
 }
 
 func rowDirectory(current fleetclient.ExecutionContext, width int) string {
-	prefix := ""
+	machine := ansi.Truncate(attention.SingleLine(current.Label), 16, "…")
 	switch current.Kind {
 	case "local":
 	case "remote":
-		prefix = "remote: "
+		machine += " (remote)"
 	case "remoteUnknown":
 		return "remote context unknown"
 	default:
 		panic("invalid execution context") // justify-defect: current returns one of three closed execution contexts.
 	}
+	prefix := machine + " · "
 	if current.CWD == "" {
 		return prefix + "directory unavailable"
 	}
-	return prefix + tail(attention.SingleLine(current.CWD), width-len(prefix))
+	path := attention.SingleLine(current.CWD)
+	// Keep two final components without resolving or normalizing the path.
+	start := len(path)
+	for range 2 {
+		start = strings.LastIndex(strings.TrimRight(path[:start], "/"), "/") + 1
+	}
+	if strings.Trim(path[:start], "/") != "" {
+		path = "…/" + path[start:]
+	}
+	return prefix + tail(path, width-ansi.StringWidth(prefix))
 }
 
 func (m *model) fitViewports() {

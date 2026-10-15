@@ -1093,30 +1093,36 @@ every record is content-free.
 
 ## 8. displayed footer extension
 
-2026-10-15: implemented at `6974851`; [scoped qualification](terminal-model-effort.md#qualification)
-passes. this display-only extension
+2026-10-15: preceding whole-line implementation at `6974851` has
+[scoped qualification](terminal-model-effort.md#qualification). the subsequent
+owner-authorized refinement extracts a bounded model/effort phrase. this display-only extension
 feeds [terminal model and effort](terminal-model-effort.md), without changing
 the status/composer grammar or its existing qualification.
 
-in `codexComposer`, use only the existing `statusLine` index after composer
-anchoring. exclude surfaces identified by its `side`, `editor` or `disconnected`
-predicates. drafts can hide the main/side placeholder distinction; their whole
-visible status line is still literal evidence, with no main-thread attribution.
-require `statusLine >= 0` and a parsed physical row. take its plain `cellText`,
-removing only outer space padding; preserve internal spacing and every item,
-including run-state, service tier, right-side badges and native ellipses. missing,
-unparseable, empty or contract-invalid rows omit. no row joining, searching,
-item selection, semantic splitting or status-rule change. other screen branches
-omit. a sole footer row which existing anchoring cannot establish as `SL` omits.
+in `codexComposer`, use only the first footer row established by its existing
+composer anchoring. exclude surfaces identified by its `side`, `editor` or `disconnected`
+predicates. drafts can hide the main/side placeholder distinction; the visible
+phrase is still display evidence, with no main-thread attribution.
+require a parsed physical row. extract exactly one complete
+item matching the [bounded model/effort grammar](terminal-model-effort.md#observation-composition).
+preserve that phrase's spelling and supported tier suffix; discard unrelated
+items. unsupported, duplicate, clipped or contract-invalid candidates omit.
+no row joining, transcript search or status-rule change. other screen branches
+omit. a single physical footer row is eligible even without a run-state word:
+the bounded phrase establishes this display evidence independently of `statusLine`,
+which retains its existing meaning for activity classification. shortcut-only
+rows contain no supported phrase and omit.
 
-tmux capture drops whole rows, not row fragments. native clipping remains
-literal displayed text; do not salvage what was hidden or apply claude's
-complete-field width test to this whole-row observation.
+tmux capture drops whole rows, not row fragments. a candidate touching the
+physical right edge is not established complete. a complete candidate before a
+later truncated directory remains usable; never salvage a clipped model phrase.
 
 the pinned [status formatter](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/chatwidget/status_surfaces.rs)
 joins model, reasoning and optional service tier without field labels.
 [status-line composition](https://github.com/openai/codex/blob/ff6aec96948b70d94983af2641a6b67c94faeff5/codex-rs/tui/src/bottom_pane/status_line_style.rs)
-permits arbitrary item order and separators; model aliases cannot establish item
-identity. the accepted output is therefore the whole native status line, never
-an asserted model setting. retained authored frames and scoped installed-provider
-checks must qualify this new field separately.
+permits arbitrary item order; model-like text cannot prove item identity. the
+owner accepts this narrow display inference, including the possibility that an
+unrelated item imitates the supported grammar. arbitrary aliases and custom
+effort/tier labels remain unsupported. no provider configuration change or new
+observation source is involved. retained authored frames and scoped installed-provider
+checks qualify the parser separately from existing status behavior.

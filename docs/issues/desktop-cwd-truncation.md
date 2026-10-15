@@ -6,6 +6,9 @@ source-qualified. [browser simplification](../desktop-browser-simplification.md)
 now owns acceptance and moves the directory into every row. v0.17.1 is installed
 and its desktop smoke passes. owner review requests one compact machine/current-path
 label with full paths in info; final path-readability acceptance remains pending.
+the [refinement source](../desktop-browser-simplification.md#location-refinement-qualification)
+now passes its row/context matrix and isolated darwin cwd/transport journey.
+matching deployment and owner review remain pending.
 
 problem/impact: selected-directory presentation preserves the cwd tail only
 when the new-shell action is available; checking/unavailable local and known

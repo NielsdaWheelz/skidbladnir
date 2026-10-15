@@ -3,7 +3,7 @@
 ; docs/terminal-observation-codex.md. frames ending -default-footer or n12/n60 have no run-state word (idle from the screen).
 ; header: #frame <id> <W>x<H> alt=<0|1> [obs=bottom.first=<row>,clipped] expect=<activity>/<interaction>/<notice>/<composer>
 ;         reason=<reason> rules=<id>[@top|@compound],...|none (the classifier's decision order; regions default to bottom).
-;         optional final footer=<JSON string|null> asserts the literal footer or its absence; omission leaves it unchecked.
+;         optional final footer=<JSON string|null> asserts the recognized model/effort phrase or its absence; omission leaves it unchecked.
 ; obs=... drops the rows above <row> from the bottom region and marks it clipped, as a byte cap would.
 ; rows:   NN|<text with tags> (NNN| from row 100); unlisted rows are blank; every row starts from the default style.
 ; tags: {b}1 {d}2 {i}3 {u}4 {r}7 {br}1;7 {bd}1;2 {/}0 {/fg}39 {red}38;5;1 {grn}38;5;2 {yel}38;5;3 {mag}38;5;5
@@ -13,12 +13,12 @@
 ;       {lhdr}38;2;141;141;141 {lacc}38;2;28;100;200 {warn}38;2;196;167;103 {fill}=EL (erase to end of row in the current background)
 ;       {osc:URL}/{/osc}=OSC 8 open/close.
 
-#frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="dummy-model low · /dummy/project"
+#frame codex-f01-status-row 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="gpt-6-sol low"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Checking the dummy files.
 06|{gly}•{/} {d}Working{/} {d}(12s • {/}{b}esc{/}{d} to interrupt) · 1 background terminal …{/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
-10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+10|  {mdl}gpt-6-sol low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
 #frame codex-f02-status-plain-remapped 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
@@ -28,11 +28,11 @@
 10|  {run}Working{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f03-status-truncated-narrow 24x10 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="dummy-model low · /du…"
+#frame codex-f03-status-truncated-narrow 24x10 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row footer="gpt-6-sol low"
 00|{bd}› {/}dummy task
 04|{gly}•{/} {d}Working{/} {d}(7s • {/}{b}esc{/}{d} to …{/}
 06|{b}›{/} {d}Ask Codex to do anyth{/}
-08|  {mdl}dummy-model low{/fg} · {dir}/du…{/fg}
+08|  {mdl}gpt-6-sol low{/fg} · {dir}/du…{/fg}
 09|  {b}?{/} for shortcuts
 
 #frame codex-f04-waiting-background 60x12 alt=1 expect=working/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.status_row,codex.run_state.working
@@ -52,19 +52,19 @@
 10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f06-ready-empty 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready footer="Ready · dummy-model low · /dummy/project"
+#frame codex-f06-ready-empty 60x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready footer="gpt-6-sol low"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 29s • 12:46 PM{/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
-10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+10|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-#frame codex-f07-ready-draft 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="Ready · dummy-model low · /dummy/project"
+#frame codex-f07-ready-draft 60x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="gpt-6-sol low"
 00|{bd}› {/}dummy task alpha
 02|{d}• {/}Dummy answer.
 08|{b}›{/} dummy draft words
-10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+10|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg} · {dir}/dummy/project{/fg}
 
 #frame codex-f08-starting 60x12 alt=1 expect=starting/none/none/empty reason=recognized rules=codex.interaction.none,codex.run_state.starting
 01|  {acc}>_ {/fg}{b}OpenAI Codex{/}{d} (v0.159.2){/}
@@ -450,7 +450,7 @@
 03|{bd}› {/}dummy side question
 06|{gly}•{/} {d}Working{/} {d}(3s • {/}{b}esc{/}{d} to interrupt){/}
 09|{b}›{/} {d}Ask a follow-up question{/}
-11|  {run}Working{/fg} · {mdl}dummy-model low{/fg}
+11|  {run}Working{/fg} · {mdl}gpt-6-sol low{/fg}
 12|  {b}?{/} for shortcuts                       {b}{mag}Side{/} {mag}from main thread{/fg} · {b}ctrl+/{/} to switch · {b}ctrl+c{/} to close
 
 #frame codex-f54-confirmation-rate-limits 80x12 alt=1 expect=unknown/confirmation/none/blocked reason=partial rules=codex.confirmation.provider_picker
@@ -658,13 +658,13 @@
 10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg} · {dir}/dummy{/fg} · Working notes
 11|  {b}?{/} for shortcuts
 
-#frame codex-n08-ready-with-status-row 60x13 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready footer="Ready · dummy-model low"
+#frame codex-n08-ready-with-status-row 60x13 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.status_row,codex.run_state.ready footer="gpt-6-sol low"
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 06|{gly}•{/} {d}Compacting context{/} {d}(2s • {/}{b}esc{/}{d} to interrupt){/}
 07|{d}  └ Dummy compaction detail.{/}
 09|{b}›{/} {d}Ask Codex to do anything{/}
-11|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+11|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg}
 12|  {b}?{/} for shortcuts
 
 #frame codex-n09-slash-popup-draft 80x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready
@@ -736,7 +736,7 @@
 06|{red}■ Connection lost. Attempting to reconnect…{/fg}
 08|{gly}•{/} {d}Reconnecting to app-server…{/} {d}(19s) · 1 background terminal running · /ps to vi…{/}
 11|{b}›{/} {d}Ask Codex to do anything{/}
-13|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+13|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg}
 14|  {b}ctrl+c{/} quit
 
 #frame codex-n19-prompt-pending 60x12 alt=1 expect=unknown/none/none/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.prompt_pending,codex.run_state.ready
@@ -751,7 +751,7 @@
 #frame codex-n20-side-ready 100x9 alt=1 expect=unknown/none/none/blocked reason=partial rules=codex.scope.side,codex.interaction.none,codex.run_state.ready footer=null
 00|{d}• {/}Dummy side answer.
 05|{b}›{/} {d}Ask a follow-up question{/}
-07|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+07|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg}
 08|  {b}?{/} for shortcuts                       {b}{mag}Side{/} {mag}from main thread{/fg} · {b}ctrl+/{/} to switch · {b}ctrl+c{/} to close
 
 #frame codex-n21-parent-owned-ready 60x9 alt=1 expect=unknown/none/none/unknown reason=partial rules=codex.interaction.none,codex.run_state.ready
@@ -777,12 +777,12 @@
 12|  {run}Waiting{/fg} · {mdl}dummy-model low{/fg}
 13|  {b}?{/} for shortcuts
 
-#frame codex-n24-clipped-default-footer 80x14 alt=1 obs=bottom.first=6,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none footer="dummy-model low · /dummy/project"
+#frame codex-n24-clipped-default-footer 80x14 alt=1 obs=bottom.first=6,clipped expect=unknown/none/none/empty reason=evidence_clipped rules=codex.interaction.none footer="gpt-6-sol low"
 05|{gly}•{/} {d}Waiting for background terminal{/} {d}(9s • {/}{b}esc{/}{d} to interrupt){/}
 06|{d}  └ dummy detail line one{/}
 07|{d}    dummy detail line two{/}
 10|{b}›{/} {d}Ask Codex to do anything{/}
-12|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
+12|  {mdl}gpt-6-sol low{/fg} · {dir}/dummy/project{/fg}
 13|  {b}?{/} for shortcuts
 
 #frame codex-n25-footerless-unlisted-title 80x12 alt=1 expect=unknown/unknown/none/unknown reason=layout_unknown rules=none
@@ -866,10 +866,10 @@
 14|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
 15|  {b}?{/} for shortcuts
 
-#frame codex-n35-side-draft-no-cue 40x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="Ready · dummy-model low"
+#frame codex-n35-side-draft-no-cue 40x12 alt=1 expect=unknown/none/none/draft reason=partial rules=codex.interaction.none,codex.run_state.ready footer="gpt-6-sol low"
 00|{d}• {/}Dummy side answer.
 08|{b}›{/} dummy side draft
-10|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+10|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg}
 11|  {d}esc again to edit previous message{/}
 
 #frame codex-n36-disconnected-narrow 28x20 alt=1 expect=unknown/none/error/empty reason=evidence_conflict rules=codex.interaction.none,codex.activity.disconnected,codex.run_state.working,codex.notice.error
@@ -980,14 +980,14 @@
 00|{d}• {/}Dummy answer.
 02|{d}  Worked for 1s • 4:55 PM{/}
 06|{b}›{/} {d}Ask Codex to do anything{/}
-08|  {run}Ready{/fg} · {mdl}dummy-model low{/fg}
+08|  {run}Ready{/fg} · {mdl}gpt-6-sol low{/fg}
 09|  {b}Save and close external editor to continue.{/}
 
 #frame codex-f75-external-editor-working 100x12 alt=1 expect=working/none/none/blocked reason=recognized rules=codex.composer.external_editor,codex.interaction.none,codex.activity.status_row,codex.run_state.working footer=null
 00|{bd}› {/}dummy task alpha
 04|{gly}•{/} {d}Working{/} {d}(8s • {/}{b}esc{/}{d} to interrupt){/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
-10|  {run}Working{/fg} · {mdl}dummy-model low{/fg}
+10|  {run}Working{/fg} · {mdl}gpt-6-sol low{/fg}
 11|  {b}Save and close external editor to continue.{/}
 
 #frame codex-f76-sticky-header-idle 80x14 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle,codex.run_state.ready
@@ -1524,9 +1524,9 @@
 10|  {mdl}dummy-model low{/fg} · {dir}/dummy/project{/fg}
 11|  {b}?{/} for shortcuts
 
-; displayed footer extension: whole anchored rows and exact scalar admission.
+; displayed footer extension: bounded model/effort items; unsupported aliases and unrelated text omit.
 
-#frame codex-footer01-alias-tier-spacing 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="fast   alias-q xhigh · /dummy/project  84% left"
+#frame codex-footer01-alias-tier-spacing 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1534,7 +1534,7 @@
 10|  fast   alias-q xhigh · /dummy/project  84% left
 11|  {b}?{/} for shortcuts
 
-#frame codex-footer02-reordered-items 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="72% left · /dummy/project · alias-q low · fast"
+#frame codex-footer02-reordered-items 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1542,7 +1542,7 @@
 10|  72% left · /dummy/project · alias-q low · fast
 11|  {b}?{/} for shortcuts
 
-#frame codex-footer03-model-absent 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="/dummy/project · 72% left"
+#frame codex-footer03-model-absent 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1550,7 +1550,7 @@
 10|  /dummy/project · 72% left
 11|  {b}?{/} for shortcuts
 
-#frame codex-footer04-native-ellipsis 32x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="alias-q high · /dummy/p…"
+#frame codex-footer04-native-ellipsis 32x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1558,14 +1558,14 @@
 10|  alias-q high · /dummy/p…
 11|  {b}?{/} for shortcuts
 
-#frame codex-footer05-one-row-unanchored 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+#frame codex-footer05-one-row-model 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol high"
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
 08|{b}›{/} {d}Ask Codex to do anything{/}
-10|  alias-q high
+10|  gpt-6.1-sol high
 
-#frame codex-footer06-internal-nbsp 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="alias-q  high"
+#frame codex-footer06-internal-nbsp 110x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1581,7 +1581,7 @@
 10|  alias-q‍ high
 11|  {b}?{/} for shortcuts
 
-#frame codex-footer08-byte-limit 1100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#frame codex-footer08-byte-limit 1100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
 00|{bd}› {/}dummy task
 02|{d}• {/}Dummy answer.
 04|{d}  Worked for 1s • 1:11 PM{/}
@@ -1612,3 +1612,250 @@
 08|{b}›{/} {d}Ask Codex to do anything{/}
 10|  alias-q high 
 11|  {b}?{/} for shortcuts
+
+#frame codex-footer12-canonical-plain 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer13-reordered-unicode 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6-astra ultra Fast"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  72% left · /dummy/工作 · gpt-6-astra ultra Fast · fast
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer14-colored-items 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6-sol xhigh"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {dir}/dummy/project{/fg} · {mdl}gpt-6-sol xhigh{/fg} · 72% left
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer15-default-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-reserve default"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-reserve default
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer16-minimal-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6-luna minimal"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6-luna minimal · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer17-medium-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-5.6-terra medium"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-5.6-terra medium
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer18-max-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-5.6-luna max Fast"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-5.6-luna max Fast
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer19-auto-review 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="codex-auto-review persistent"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  codex-auto-review persistent · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer20-duplicate-candidates 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high · /dummy/project · gpt-6-astra ultra
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer21-duplicate-identical 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high · gpt-6.1-sol high
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer22-unsupported-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol enormous · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer23-unsupported-tier 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high Priority · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer24-path-substring 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  /dummy/gpt-6.1-sol high · 72% left
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer25-title-substring 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  notes about gpt-6.1-sol high · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer26-model-only 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer27-effort-clipped 30x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol persi…
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer28-tier-clipped 30x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high Fa…
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer29-complete-before-clipped-path 32x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol high · /dummy/pr…
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer30-physical-right-edge 24x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anyth{/}
+10|  gpt-6.1-sol persistent
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer31-one-column-padding 25x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol persistent"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anyth{/}
+10|  gpt-6.1-sol persistent
+11|  {b}?{/} for shortcuts
+
+; accepted limitation: an unrelated item with this exact spelling is indistinguishable from a model phrase.
+#frame codex-footer32-model-shaped-item 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-6.1-sol high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  72% left · gpt-6.1-sol high
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer33-malformed-spacing 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol  high · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer34-separate-model-effort 80x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-sol · high · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer35-badges 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="gpt-5.6-sol low Fast"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  [Plan] · gpt-5.6-sol low Fast · /dummy/project · [read-only]
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer36-model-clipped 30x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  gpt-6.1-s… high · /dummy/proj
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer37-native-model-display-name 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="GPT-6.1-Sol high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  GPT-6.1-Sol high · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer38-auto-review-display-name 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="Codex Auto Review persistent Fast"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  Codex Auto Review persistent Fast · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer39-effort-case 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  GPT-6.1-Sol HIGH · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer40-tier-case 100x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  GPT-6.1-Sol high FAST · /dummy/project
+11|  {b}?{/} for shortcuts
+
+#frame codex-footer41-one-row-shortcuts 160x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer=null
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {b}?{/} for shortcuts
+
+#frame codex-footer42-native-one-row-items 160x12 alt=1 expect=idle/none/none/empty reason=recognized rules=codex.interaction.none,codex.activity.idle footer="GPT-6.1-Sol high"
+00|{bd}› {/}dummy task
+02|{d}• {/}Dummy answer.
+04|{d}  Worked for 1s • 1:11 PM{/}
+08|{b}›{/} {d}Ask Codex to do anything{/}
+10|  {mdl}GPT-6.1-Sol high{/fg} · {dir}/dummy/project{/fg} · {d}5h 83% left{/}
