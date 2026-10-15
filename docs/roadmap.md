@@ -103,18 +103,28 @@ observer/private ntfy services, notification-enabled desktop configs and android
 update. phone notification enrollment requires reconnecting with a fresh v2
 fleet qr and configuring the production ntfy distributor.
 
-## terminal usage — deployed
+## desktop usage — isolated acceptance passed
+
+2026-10-15: [the spec](desktop-usage.md) owns common remaining values, compact
+weekly/short records, one-hour staleness, day-based countdowns and usage-page key
+removal. [qualification](desktop-usage.md#qualification) records baseline red,
+darwin live acceptance, the linux/amd64 short journey under emulation, content
+and adversarial review, probe retirement and host engineering checks. acquisition
+and wire schemas stay unchanged; deployment remains separate.
+
+## terminal usage acquisition — deployed
 
 2026-10-14: [the accepted contract](terminal-usage.md) replaces claude's quota-file
 reader/publisher with literal used percentages from the existing terminal capture.
 codex retains [native account reads](profile-usage.md). both existing desktop lanes
-read all paired hosts; receipt order selects one whole observation per profile,
-with source/uncertainty in one details record. table filters do not affect quota.
+read all paired hosts; receipt order selects one whole observation per profile.
+table filters do not affect quota.
 the owner guarantees the same account per profile across hosts. inactive or
 unsupported claude displays are accepted unknowns, not an account-getter follow-up.
 
-the contract supersedes the 2026-10-02 publication and 2026-10-07 devbox-only
-designs, retiring their inactive-source and callback issues. current source
+the desktop revision above supersedes this generation's presentation contract.
+the acquisition contract supersedes the 2026-10-02 publication and 2026-10-07
+devbox-only designs, retiring their inactive-source and callback issues. current source
 [qualification](terminal-usage.md#qualification) owns replacement acceptance;
 old installed results do not transfer. [installed qualification](terminal-usage.md#installed-qualification)
 records the coordinated v0.15.0 rollout on all three hosts and android, exact

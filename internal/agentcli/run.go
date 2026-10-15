@@ -76,9 +76,8 @@ browser (80x24 minimum)
   f selects needs input (ready, response requests, error/interruption notices)
   m chooses machine; n opens terminal; N opens options
   enter attaches; space opens info
-  u opens all-machine usage; arrows/j/k scroll; q/escape returns
-  one record per profile selects its latest received eligible source
-  codex shows remaining; claude shows terminal-displayed used; details identify source
+  u opens usage; up/down scroll; q/escape returns
+  quota shows remaining; ~ marks claude's estimate; updates are automatic
   info: r edits name; g edits group; escape returns to the table
   name editor: enter saves; escape cancels to info; ctrl-a restores automatic naming
   directory/group: left/right chooses; tab/enter uses and continues
@@ -88,7 +87,7 @@ browser (80x24 minimum)
   shift+t creates and enters a shell on the selected session's machine,
   in its current directory and group; the original session keeps running
   s sends interrupt; x interrupts and closes terminal
-  ctrl-r refreshes inventory and native usage on the table and usage page
+  ctrl-r refreshes inventory outside usage; on the table, native usage too
   escape closes a page; q quits from the table
   ctrl-c quits from the table or any page unless an operation is in flight
 
