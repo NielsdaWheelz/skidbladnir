@@ -1,9 +1,10 @@
 # desktop browser
 
-2026-10-14: [session rows](desktop-session-rows.md) owns the accepted replacement
-row content, width rules and info's known-profile/missing-label wording.
-source and [scoped darwin qualification](issues/desktop-browser-runtime-acceptance.md#session-row-qualification)
-are complete; the broader historical gaps below remain open.
+2026-10-15: [session rows](desktop-session-rows.md) owns the implemented compact
+width/height rules and [displayed footer](terminal-model-effort.md) presentation.
+the latter adds only its optional session field to this document's api/state
+limit. source `6974851` passes its [scoped qualification](desktop-session-rows.md#qualification);
+the broader historical gaps retain their recorded scope.
 
 [terminal usage](terminal-usage.md) owns the compact quota summary and read-only
 `u usage` disclosure. both existing inventory/native lanes read all machines
@@ -223,10 +224,10 @@ from 80 columns row 1 fits in width − 1. with nothing hidden, a step between
 groups changes the text of only the two tabs it crosses; entering the groups
 from `all` may reflow the strip once.
 
-the accepted [session-row contract](desktop-session-rows.md#content-contract-and-fit)
-owns columns, group placement, remote qualifiers and fitting. it replaces the
-combined agent and repeated machine/directory layout without changing the
-following status behavior. the status cell is the shared projection's
+the accepted [session-row contract](desktop-session-rows.md#deterministic-geometry)
+owns columns, group placement, remote qualifiers and fitting. its implemented
+compact layout and displayed text preserve the following status behavior.
+the status cell is the shared projection's
 label in [observation §6](terminal-observation.md#6-content-attention-and-filtering)
 copy, coloured by its tone. only in needs input, a menu with a qualifying notice
 adds that notice to the status cell and selected detail, as specified by

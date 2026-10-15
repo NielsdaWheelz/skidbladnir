@@ -605,8 +605,11 @@ deleted (§1.2), drawn in the operator's own terminal. the operator's theme supp
 the ground and default ink; the browser paints no background. navigation/error
 accents use bright slots. status tones use explicit frost/moss/muted RGB values
 and bright-red ember. NO_COLOR strips styling and preserves every label.
-[session rows](desktop-session-rows.md) owns the accepted replacement column
-content and width budgets; source and scoped darwin qualification are complete.
+[session rows](desktop-session-rows.md) owns the accepted compact column and
+responsive entry budgets; source `6974851` is implemented and
+[qualified](desktop-session-rows.md#qualification). observed footer
+text uses the existing faint metadata register, with full text and source meaning
+in info. earlier row qualification applies only to its recorded source.
 
 | intensity | sgr | carries |
 | --- | --- | --- |

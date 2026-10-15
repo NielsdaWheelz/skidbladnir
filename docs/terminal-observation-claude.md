@@ -1097,3 +1097,44 @@ every record is content-free.
 6. update §1's qualified column and versions, record the run in the
    [qualification](terminal-agent-control-qualification.md#terminal-observation-qualification),
    and file each new `NOT_RUN` required family as an issue.
+
+## 7. displayed footer extension
+
+2026-10-15: implemented at `6974851`; [scoped qualification](terminal-model-effort.md#qualification)
+passes. this display-only extension
+feeds [terminal model and effort](terminal-model-effort.md), without changing
+the status/composer grammar or its existing qualification.
+
+use only the ordinary composer's established `bottom` and `footer.mode` anchors,
+as `claudeReadUsage` does. the final physical row before the mode row must have
+exactly three or four ` │ `-separated fields:
+
+```text
+<prefix> │ <native model/effort phrase> │ ctx <integer%|-->
+<prefix> │ <native model/effort phrase> │ ctx <integer%|--> │ <quota>
+```
+
+`integer` is `0|[1-9][0-9]*`; quota reuses the existing `claudeUsageSuffix`
+production: `5h P%`, `7d P%`, or `5h P% · 7d P%`, with canonical `P` in 0–100.
+preserve the phrase exactly between delimiters, including native aliases and
+effort/tier wording. do not split on its last word. prefix is opaque, not evidence.
+quota may be absent; a footer value does not require `TerminalUsage`.
+
+require both phrase boundaries and the whole recognized suffix, no extra fields,
+and no second matching candidate anywhere in the anchored footer. reuse the
+conservative bound from `claudeReadUsage`:
+`utf8ByteLength(all text before " │ ctx ") + runeCount(complete recognized suffix starting " │ ctx ") < paneWidth`.
+this counts the model phrase as well as the prefix; it works without quota.
+a row touching the bound omits. missing/unparseable
+rows, wrapped fields, incomplete boundaries and unsupported custom layouts omit.
+do not join fragments or infer missing text from an ellipsis. screen-reader,
+picker and other nonordinary branches omit. these rules do not change quota
+admission; reuse parsing primitives without making one capability depend on the
+other.
+
+source: the managed [formatter](https://github.com/NielsdaWheelz/dev-server/blob/6339edc3a923e3f926e855e60a0f07c7814b2ede/assets/claude/statusline.sh)
+joins native display name and effort into this delimited clause; no formatter
+change is required. a custom formatter reproducing exactly this grammar is
+indistinguishable; this is displayed text, never provider-authenticated settings.
+retained authored frames and scoped installed-provider checks must qualify this
+new field separately.

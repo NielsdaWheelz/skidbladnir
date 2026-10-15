@@ -34,8 +34,11 @@ this document owns shared mechanisms, invariants, and scope. the accepted
 [agent controls](agent-control.md), [client and attachment](agent-control-ux.md),
 [groups](groups.md), [terminal creation](shells.md), and
 [desktop browser](desktop-browser.md) specifications own their detailed contracts.
-[desktop session rows](desktop-session-rows.md) owns the accepted row simplification;
-source is implemented; scoped darwin acceptance passes. model/effort is deferred.
+[desktop session rows](desktop-session-rows.md) owns the accepted compact layout;
+[terminal model and effort](terminal-model-effort.md) owns its optional displayed
+footer evidence. source `6974851` passes the scoped
+[qualification](terminal-model-effort.md#qualification); release and installed-fleet
+qualification remain separate.
 [terminal usage](terminal-usage.md) owns desktop quota disclosure, source selection
 and qualification; [native usage](profile-usage.md) owns codex report acquisition.
 [native notifications](native-notifications.md) owns needs-input alerts,
@@ -642,10 +645,12 @@ through the ordinary exclusive view path. it owns the exact selection, keys,
 geometry and return rules; no new public api
 or runtime owner. fullscreen direct attachment remains; persistent chrome during
 attachment belongs to pr 4's investigation.
-the accepted [session-row revision](desktop-session-rows.md) separates current
-provider/profile and moves repeated owner/directory context to existing selected
-details, with explicit remote qualifiers. source and scoped darwin acceptance
-are complete; the revision changes presentation only.
+the implemented row simplification separates provider/profile and moves repeated
+owner/directory context to selected details, with explicit remote qualifiers.
+the implemented [session-row revision](desktop-session-rows.md) caps intrinsic widths
+and uses uniform two-line entries at narrow sizes. its optional
+[displayed footer](terminal-model-effort.md) comes from the existing terminal
+sample and extends the strict shared session schema; it adds no state owner.
 ordinary commands expose list, info, enter,
 read, send, text, keys, wait, stop, close, start, shell, and group. `list --group LABEL` /
 `--unassigned`, `start --group LABEL`, and `group TARGET --set LABEL | --clear`
@@ -1098,6 +1103,18 @@ enum values are defects, with no protocol branch or compatibility state.
   is explicitly out of scope.
 
 ## 8. Upgrade ladder
+
+2026-10-15 accepted design: [compact desktop rows](desktop-session-rows.md) keeps
+identity/status/metadata adjacent and adds [displayed terminal text](terminal-model-effort.md).
+claude supplies its delimited model/effort phrase; codex supplies its whole
+native status line, without asserting which item is a model. one optional
+`terminalFooter` session field flows through existing host/go/android boundaries.
+no new capture, native getter, publisher, persistence or effective-setting claim.
+the specs own exact grammar, responsive geometry and temporary integration/live
+acceptance. source `6974851` passes the scoped
+[qualification](terminal-model-effort.md#qualification), including native rendering
+on darwin and a linux container. release and installed-fleet deployment remain
+separate.
 
 2026-10-14 accepted cutover: [terminal usage](terminal-usage.md) replaces claude's
 quota-file path with optional evidence from the existing exact terminal capture.
